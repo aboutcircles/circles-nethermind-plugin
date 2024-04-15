@@ -1,10 +1,8 @@
 using System.Globalization;
-using Circles.Index.Data.Cache;
-using Circles.Index.Data.Model;
-using Circles.Index.Data.Sqlite;
-using Circles.Index.Pathfinder;
+using Circles.Index.Data;
+using Circles.Index.Data.Postgresql;
+using Circles.Index.Data.Query;
 using Circles.Index.Utils;
-using Microsoft.Data.Sqlite;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +12,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index.Rpc;
 
@@ -22,35 +21,33 @@ public class CirclesRpcModule : ICirclesRpcModule
     private readonly ILogger _pluginLogger;
     private readonly INethermindApi _nethermindApi;
 
-    private readonly string _dbLocation;
-    private readonly MemoryCache _cache;
+    private readonly string _indexConnectionString;
 
-    public CirclesRpcModule(INethermindApi nethermindApi, MemoryCache cache, string dbLocation)
+    public CirclesRpcModule(INethermindApi nethermindApi, string indexConnectionString)
     {
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         _nethermindApi = nethermindApi;
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
 
-        _dbLocation = dbLocation;
-        _cache = cache;
+        _indexConnectionString = indexConnectionString;
     }
-    
+
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
     {
         using RentedEthRpcModule rentedEthRpcModule = new(_nethermindApi);
         await rentedEthRpcModule.Rent();
-        
-        UInt256 totalBalance = TotalBalance(_dbLocation, rentedEthRpcModule.RpcModule!, address, _pluginLogger);
+
+        UInt256 totalBalance =
+            TotalBalance(_indexConnectionString, rentedEthRpcModule.RpcModule!, address, _pluginLogger);
         return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
     }
 
     public static UInt256 TotalBalance(string dbLocation, IEthRpcModule rpcModule, Address address, ILogger? logger)
     {
-        using SqliteConnection connection = new($"Data Source={dbLocation}");
+        using NpgsqlConnection connection = new(dbLocation);
         connection.Open();
-        //logger?.Info("circles_getTotalBalance: Query connection opened");
 
-        IEnumerable<Address> tokens = Query.TokenAddressesForAccount(connection, address);
+        IEnumerable<Address> tokens = PostgresQuery.TokenAddressesForAccount(connection, address);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -73,7 +70,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 throw new Exception($"Couldn't get the balance of token {token} for account {address}");
             }
 
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
+            byte[] uint256Bytes = System.Convert.FromHexString(result.Data.Substring(2));
             UInt256 tokenBalance = new(uint256Bytes, true);
             totalBalance += tokenBalance;
         }
@@ -86,17 +83,19 @@ public class CirclesRpcModule : ICirclesRpcModule
         using RentedEthRpcModule rentedEthRpcModule = new(_nethermindApi);
         await rentedEthRpcModule.Rent();
 
-        var balances = CirclesTokenBalances(_dbLocation, rentedEthRpcModule.RpcModule!, address, _pluginLogger);
+        var balances =
+            CirclesTokenBalances(_indexConnectionString, rentedEthRpcModule.RpcModule!, address, _pluginLogger);
 
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule, Address address, ILogger? logger)
+    public static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,
+        Address address, ILogger? logger)
     {
-        using SqliteConnection connection = new($"Data Source={dbLocation}");
+        using NpgsqlConnection connection = new(dbLocation);
         connection.Open();
-        //logger?.Info("circles_getTokenBalances: Query connection opened");
-        IEnumerable<Address> tokens = Query.TokenAddressesForAccount(connection, address);
+
+        IEnumerable<Address> tokens = PostgresQuery.TokenAddressesForAccount(connection, address);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -119,7 +118,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 throw new Exception($"Couldn't get the balance of token {token} for account {address}");
             }
 
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
+            byte[] uint256Bytes = System.Convert.FromHexString(result.Data.Substring(2));
             UInt256 tokenBalance = new(uint256Bytes, true);
 
             balances.Add(new CirclesTokenBalance(token, tokenBalance.ToString(CultureInfo.InvariantCulture)));
@@ -128,38 +127,60 @@ public class CirclesRpcModule : ICirclesRpcModule
         return balances;
     }
 
-    public ResultWrapper<TrustRelations> circles_getTrustRelations(Address address)
+    public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
     {
-        return !_cache.TrustGraph.TryGet(address.ToString(true, false), out TrustRelations? trustRelations)
-            ? ResultWrapper<TrustRelations>.Fail("Couldn't get the trust relations")
-            : ResultWrapper<TrustRelations>.Success(trustRelations!);
-    }
-
-    public ResultWrapper<IEnumerable<CirclesTrustDto>> circles_queryTrustEvents(CirclesTrustQuery query)
-    {
-        SqliteConnection connection = new($"Data Source={_dbLocation}");
+        using NpgsqlConnection connection = new(_indexConnectionString);
         connection.Open();
 
-        IEnumerable<CirclesTrustDto> result = Query.CirclesTrusts(connection, query, true);
-        return ResultWrapper<IEnumerable<CirclesTrustDto>>.Success(result);
+        var select = Query.Select(query.Table,
+            query.Columns ?? throw new InvalidOperationException("Columns are null"));
+
+        Console.WriteLine(select.ToString());
+        
+        if (query.Conditions.Any())
+        {
+            foreach (var condition in query.Conditions)
+            {
+                select.Where(BuildCondition(select.Table, condition));
+            }
+        }
+
+        Console.WriteLine(select.ToString());
+
+        
+        var result = Query.Execute(connection, select).ToList();
+
+        return ResultWrapper<IEnumerable<object[]>>.Success(result);
     }
 
-    public ResultWrapper<IEnumerable<CirclesHubTransferDto>> circles_queryHubTransfers(CirclesHubTransferQuery query)
+    private IQuery BuildCondition(Tables table, Expression expression)
     {
-        SqliteConnection connection = new($"Data Source={_dbLocation}");
-        connection.Open();
+        if (expression.Type == "Equals")
+        {
+            return Query.Equals(table, expression.Column!.Value, expression.Value);
+        }
 
-        IEnumerable<CirclesHubTransferDto> result = Query.CirclesHubTransfers(connection, query, true);
-        return ResultWrapper<IEnumerable<CirclesHubTransferDto>>.Success(result);
-    }
+        if (expression.Type == "GreaterThan")
+        {
+            return Query.GreaterThan(table, expression.Column!.Value, expression.Value);
+        }
 
-    public ResultWrapper<IEnumerable<CirclesTransferDto>> circles_queryCrcTransfers(CirclesTransferQuery query)
-    {
-        SqliteConnection connection = new($"Data Source={_dbLocation}");
-        connection.Open();
+        if (expression.Type == "LessThan")
+        {
+            return Query.LessThan(table, expression.Column!.Value, expression.Value);
+        }
 
-        IEnumerable<CirclesTransferDto> result = Query.CirclesTransfers(connection, query, true);
-        return ResultWrapper<IEnumerable<CirclesTransferDto>>.Success(result);
+        if (expression.Type == "And")
+        {
+            return Query.And(expression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
+        }
+
+        if (expression.Type == "Or")
+        {
+            return Query.Or(expression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
+        }
+
+        throw new InvalidOperationException($"Unknown expression type: {expression.Type}");
     }
 
     public ResultWrapper<string> circles_computeTransfer(string from, string to, string amount)

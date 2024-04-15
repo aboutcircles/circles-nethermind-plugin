@@ -9,7 +9,6 @@ RUN dotnet publish -c Release -o /circles-nethermind-plugin
 FROM nethermind/nethermind:1.25.4 AS base
 
 # native libs
-COPY --from=build /circles-nethermind-plugin/libpathfinder2.so /usr/lib/
 COPY --from=build /circles-nethermind-plugin/runtimes/linux-arm64/native/libe_sqlite3.so /usr/lib/
 
 # dotnet libs
@@ -20,3 +19,4 @@ COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll /nethermind/p
 COPY --from=build /circles-nethermind-plugin/SQLitePCLRaw.batteries_v2.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/SQLitePCLRaw.core.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/SQLitePCLRaw.provider.e_sqlite3.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins

@@ -10,6 +10,7 @@
         <Product>Circles</Product>
         <AssemblyVersion>1.0</AssemblyVersion>
         <FileVersion>1.0</FileVersion>
+        <OutputType>Exe</OutputType>
     </PropertyGroup>
 
 
@@ -23,21 +24,19 @@
 
     <ItemGroup>
       <None Remove="known_relevant_blocks.csv" />
-      <None Update="libpathfinder2.so">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <None Update="Indexer\Cheatcodes\relevant_blocks.csv">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
     </ItemGroup>
 
 
     <ItemGroup>
-      <EmbeddedResource Include="cheatcodes\100.known_relevant_blocks.csv" />
-    </ItemGroup>
-
-
-    <ItemGroup>
-      <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.2" />
+      <PackageReference Include="Dapper" Version="2.1.44" />
+      <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.3" />
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
       <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.25.4" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+      <PackageReference Include="Npgsql" Version="8.0.2" />
     </ItemGroup>
 
 

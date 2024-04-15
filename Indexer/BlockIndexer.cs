@@ -1,119 +1,180 @@
 using System.Threading.Tasks.Dataflow;
-using Circles.Index.Data.Cache;
-using Circles.Index.Data.Sqlite;
+using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Circles.Index.Data.Model;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Indexer;
 
-public static class BlockIndexer
+public record BlockWithReceipts(Nethermind.Core.Block Block, TxReceipt[] Receipts);
+
+public class ImportFlow(
+    IBlockTree blockTree,
+    IReceiptFinder receiptFinder,
+    IIndexerVisitor visitor,
+    ISink dataSink)
 {
-    public static async Task<Range<long>> IndexBlocks(
-        IBlockTree blockTree,
-        IReceiptFinder receiptFinder,
-        MemoryCache cache,
-        Sink sink,
-        ILogger logger,
-        IEnumerable<long> remainingKnownRelevantBlocks,
-        CancellationToken cancellationToken,
-        Settings settings)
+    private static readonly IndexPerformanceMetrics _metrics = new();
+
+    private ExecutionDataflowBlockOptions CreateOptions(
+        CancellationToken cancellationToken
+        , int boundedCapacity = -1
+        , int parallelism = -1) =>
+        new()
+        {
+            MaxDegreeOfParallelism = parallelism > -1 ? parallelism : Environment.ProcessorCount,
+            EnsureOrdered = false,
+            CancellationToken = cancellationToken,
+            BoundedCapacity = boundedCapacity
+        };
+
+
+    private BlockWithReceipts Sink(BlockWithReceipts data)
     {
-        int maxParallelism = Environment.ProcessorCount;
-        switch (maxParallelism)
+        try
         {
-            case >= 3:
-                maxParallelism /= 3;
-                maxParallelism *= 2;
-                break;
-            default:
-                maxParallelism = 1;
-                break;
-        }
-        
-        if (settings.MaxParallelism > 0)
-        {
-            maxParallelism = settings.MaxParallelism;
-        }
+            visitor.VisitBlock(data.Block);
 
-        logger.Debug($"Indexing blocks with max parallelism {maxParallelism}");
-
-        TransformBlock<long, (long blockNo, ulong Timestamp, Hash256 blockHash, TxReceipt[] receipts)> getReceiptsBlock = new(
-            blockNo => FindBlockReceipts(blockTree, receiptFinder, blockNo)
-            , new ExecutionDataflowBlockOptions
+            bool indexed = false;
+            foreach (var receipt in data.Receipts)
             {
-                MaxDegreeOfParallelism = maxParallelism,
-                EnsureOrdered = true,
-                CancellationToken = cancellationToken
-            });
-
-        ActionBlock<(long blockNo, ulong timestamp, Hash256 blockHash, TxReceipt[] receipts)> indexReceiptsBlock = new(
-            data =>
-            {
-                HashSet<(long BlockNo, ulong Timestamp, Hash256 BlockHash)> relevantBlocks =
-                    ReceiptIndexer.IndexReceipts(data, settings, cache, sink);
-                foreach ((long BlockNo, ulong Timestamp, Hash256 BlockHash) relevantBlock in relevantBlocks)
+                visitor.VisitReceipt(data.Block, receipt);
+                if (receipt.Logs != null)
                 {
-                    sink.AddRelevantBlock(relevantBlock.BlockNo, relevantBlock.Timestamp, relevantBlock.BlockHash.ToString(true));
+                    for (int logIndex = 0; logIndex < receipt.Logs.Length; logIndex++)
+                    {
+                        var logEntry = receipt.Logs[logIndex];
+                        visitor.VisitLog(data.Block, receipt, logEntry, logIndex);
+                    }
                 }
 
-                if (!relevantBlocks.Contains((data.blockNo, data.timestamp, data.blockHash)))
+                visitor.LeaveReceipt(data.Block, receipt, indexed);
+            }
+
+            visitor.LeaveBlock(data.Block, indexed);
+            _metrics.LogBlockWithReceipts(data);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+
+        return data;
+    }
+
+    private TransformBlock<long, Nethermind.Core.Block> BuildPipeline(CancellationToken cancellationToken)
+    {
+        var flushIntervalInBlocks = 100000;
+
+        BlockHeader GenerateDummyBlockHeader(long blockNo)
+        {
+            var dummyHash = Keccak.Compute(new[] { (byte)blockNo });
+            var dummyAddress = Address.Zero;
+            return new(dummyHash, dummyHash, dummyAddress, 0, blockNo, 0, 0, Array.Empty<byte>(), 0, 0, dummyHash);
+        }
+
+        TransformBlock<long, Nethermind.Core.Block> blocks = new(
+            blockNo =>
+            {
+                return blockNo < Caches.MaxKnownBlock && !Caches.KnownBlocks.ContainsKey(blockNo)
+                    ? new Nethermind.Core.Block(GenerateDummyBlockHeader(blockNo))
+                    : blockTree.FindBlock(blockNo) ?? throw new Exception($"Couldn't find block {blockNo}");
+            }
+            , CreateOptions(cancellationToken, 4));
+
+        TransformBlock<Nethermind.Core.Block, BlockWithReceipts> receipts = new(
+            block => new BlockWithReceipts(
+                block
+                , block.Number < Caches.MaxKnownBlock && !Caches.KnownBlocks.ContainsKey(block.Number)
+                    ? []
+                    : receiptFinder.Get(block))
+            , CreateOptions(cancellationToken, 8));
+        blocks.LinkTo(receipts);
+
+        TransformBlock<BlockWithReceipts, BlockWithReceipts> sink = new(Sink,
+            CreateOptions(cancellationToken, 16));
+        receipts.LinkTo(sink);
+
+        long accumulated = 0;
+        bool isFlushing = false;
+        ActionBlock<BlockWithReceipts> flush = new(_ =>
+            {
+                if (accumulated >= flushIntervalInBlocks && !isFlushing)
                 {
-                    sink.AddIrrelevantBlock(data.blockNo, data.timestamp, data.blockHash.ToString(true));
+                    isFlushing = true;
+                    var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    dataSink.Flush().ContinueWith(_ =>
+                    {
+                        isFlushing = false;
+                        accumulated = 0;
+                        var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - timestamp;
+                        Console.WriteLine($"Flushed {flushIntervalInBlocks} blocks in {elapsed}ms");
+                    }, cancellationToken);
+                }
+                else
+                {
+                    accumulated++;
                 }
             },
-            new ExecutionDataflowBlockOptions
-            {
-                MaxDegreeOfParallelism = 1,
-                BoundedCapacity = 1,
-                EnsureOrdered = true,
-                CancellationToken = cancellationToken
-            });
+            CreateOptions(cancellationToken, flushIntervalInBlocks * 5, 1));
+        sink.LinkTo(flush);
 
-        getReceiptsBlock.LinkTo(indexReceiptsBlock, new DataflowLinkOptions { PropagateCompletion = true });
+        return blocks;
+    }
+
+    public async Task<Range<long>> Run(IAsyncEnumerable<long> blocksToIndex, CancellationToken? cancellationToken)
+    {
+        var flushIntervalInMs = 5000;
+        var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        TransformBlock<long, Nethermind.Core.Block> pipeline = BuildPipeline(CancellationToken.None);
 
         long min = long.MaxValue;
         long max = long.MinValue;
-        
-        foreach (long blockNo in remainingKnownRelevantBlocks)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
 
-            getReceiptsBlock.Post(blockNo);
-            
+        if (cancellationToken == null)
+        {
+            CancellationTokenSource cts = new();
+            cancellationToken = cts.Token;
+        }
+
+        var source = blocksToIndex.WithCancellation(cancellationToken.Value);
+        var flushing = false;
+
+        var timer = new Timer(e =>
+        {
+            var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
+            if (elapsed >= flushIntervalInMs && !flushing)
+            {
+                flushing = true;
+                dataSink.Flush().ContinueWith(_ =>
+                {
+                    start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    flushing = false;
+                });
+            }
+        }, null, flushIntervalInMs, flushIntervalInMs);
+
+        await foreach (var blockNo in source)
+        {
+            await pipeline.SendAsync(blockNo, cancellationToken.Value);
+
             min = Math.Min(min, blockNo);
             max = Math.Max(max, blockNo);
         }
 
-        getReceiptsBlock.Complete();
+        pipeline.Complete();
+        await pipeline.Completion;
 
-        await indexReceiptsBlock.Completion;
+        await timer.DisposeAsync();
+        await dataSink.Flush();
 
         return new Range<long>
         {
             Min = min,
             Max = max
         };
-    }
-
-    private static (long BlockNumber, ulong timestamp, Hash256 BlockHash, TxReceipt[] Receipts) FindBlockReceipts(
-        IBlockTree blockTree,
-        IReceiptFinder receiptFinder,
-        long blockNo)
-    {
-        Block? block = blockTree.FindBlock(blockNo);
-        if (block == null)
-        {
-            throw new Exception($"Couldn't find block {blockNo}.");
-        }
-
-        TxReceipt[] receipts = receiptFinder.Get(block);
-        return (blockNo, block.Header.Timestamp, block.Hash!, receipts);
     }
 }

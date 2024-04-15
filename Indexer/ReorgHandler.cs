@@ -1,17 +1,20 @@
-using Circles.Index.Data.Cache;
+using Circles.Index.Data;
 using Circles.Index.Data.Model;
-using Circles.Index.Data.Sqlite;
-using Microsoft.Data.Sqlite;
+using Circles.Index.Data.Postgresql;
 using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index.Indexer;
 
 public static class ReorgHandler
 {
-    private record ReorgAffectedData(CirclesSignupDto[] Signups, CirclesTrustDto[] Trusts,
-        CirclesHubTransferDto[] HubTransfers, CirclesTransferDto[] Transfers);
+    private record ReorgAffectedData(
+        CirclesSignupDto[] Signups,
+        CirclesTrustDto[] Trusts,
+        CirclesHubTransferDto[] HubTransfers,
+        CirclesTransferDto[] Transfers);
 
-    public static async Task ReorgAt(SqliteConnection connection, MemoryCache cache, ILogger logger, long block)
+    public static async Task ReorgAt(NpgsqlConnection connection, ILogger logger, long block)
     {
         ReorgAffectedData affectedData = await GetAffectedItems(connection, block);
         logger.Info($"Deleting all blocks greater or equal {block} from the index ..");
@@ -21,100 +24,21 @@ public static class ReorgHandler
         logger.Info($"Affected crc transfers: {affectedData.Transfers.Length}");
 
         DeleteFromBlockOnwards(connection, block);
-        await MaintainCache(cache, connection, affectedData, block);
     }
 
-    private static async Task MaintainCache(MemoryCache cache, SqliteConnection connection, ReorgAffectedData affectedData, long reorgAt)
+    private static void DeleteFromBlockOnwards(NpgsqlConnection connection, long reorgAt)
     {
-        foreach (CirclesSignupDto signup in affectedData.Signups)
-        {
-            cache.RemoveUser(signup);
-        }
-
-        foreach (CirclesTrustDto trust in affectedData.Trusts)
-        {
-            cache.RemoveTrustRelation(trust);
-        }
-
-        Task<CirclesTrustDto[]>[] trustCacheRefreshData = affectedData.Trusts
-            .Select(t => new CirclesTrustQuery { CanSendToAddress = t.UserAddress })
-            .Select(tq => Task.Run(() => Query.CirclesTrusts(connection, tq).ToArray()))
-            .ToArray();
-
-        await Task.WhenAll(trustCacheRefreshData);
-
-        foreach (Task<CirclesTrustDto[]> userTrusts in trustCacheRefreshData)
-        {
-            foreach (CirclesTrustDto trust in userTrusts.Result)
-            {
-                cache.TrustGraph.AddOrUpdateEdge(trust.UserAddress, trust.CanSendToAddress, trust.Limit);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Deletes all data from the specified block number onwards.
-    /// </summary>
-    /// <param name="connection">The connection to the database</param>
-    /// <param name="reorgAt">The block number to delete from (inclusive)</param>
-    public static void DeleteFromBlockOnwards(SqliteConnection connection, long reorgAt)
-    {
-        using SqliteTransaction transaction = connection.BeginTransaction();
+        using var transaction = connection.BeginTransaction();
         try
         {
-            using SqliteCommand deleteRelevantBlocksCmd = connection.CreateCommand();
-            deleteRelevantBlocksCmd.CommandText = @$"
-                DELETE FROM {TableNames.BlockRelevant}
-                WHERE block_number >= @reorgAt;
-            ";
-            deleteRelevantBlocksCmd.Transaction = transaction;
-            deleteRelevantBlocksCmd.Parameters.AddWithValue("@reorgAt", reorgAt);
-            deleteRelevantBlocksCmd.ExecuteNonQuery();
-
-            using SqliteCommand deleteIrrelevantBlocksCmd = connection.CreateCommand();
-            deleteIrrelevantBlocksCmd.CommandText = @$"
-                DELETE FROM {TableNames.BlockIrrelevant}
-                WHERE block_number >= @reorgAt;
-            ";
-            deleteIrrelevantBlocksCmd.Transaction = transaction;
-            deleteIrrelevantBlocksCmd.Parameters.AddWithValue("@reorgAt", reorgAt);
-            deleteIrrelevantBlocksCmd.ExecuteNonQuery();
-
-            using SqliteCommand deleteCirclesSignupCmd = connection.CreateCommand();
-            deleteCirclesSignupCmd.CommandText = @$"
-                DELETE FROM {TableNames.CirclesSignup}
-                WHERE block_number >= @reorgAt;
-            ";
-            deleteCirclesSignupCmd.Transaction = transaction;
-            deleteCirclesSignupCmd.Parameters.AddWithValue("@reorgAt", reorgAt);
-            deleteCirclesSignupCmd.ExecuteNonQuery();
-
-            using SqliteCommand deleteCirclesTrustCmd = connection.CreateCommand();
-            deleteCirclesTrustCmd.CommandText = @$"
-                DELETE FROM {TableNames.CirclesTrust}
-                WHERE block_number >= @reorgAt;
-            ";
-            deleteCirclesTrustCmd.Transaction = transaction;
-            deleteCirclesTrustCmd.Parameters.AddWithValue("@reorgAt", reorgAt);
-            deleteCirclesTrustCmd.ExecuteNonQuery();
-
-            using SqliteCommand deleteCirclesHubTransferCmd = connection.CreateCommand();
-            deleteCirclesHubTransferCmd.CommandText = @$"
-                DELETE FROM {TableNames.CirclesHubTransfer}
-                WHERE block_number >= @reorgAt;
-            ";
-            deleteCirclesHubTransferCmd.Transaction = transaction;
-            deleteCirclesHubTransferCmd.Parameters.AddWithValue("@reorgAt", reorgAt);
-            deleteCirclesHubTransferCmd.ExecuteNonQuery();
-
-            using SqliteCommand deleteCirclesTransferCmd = connection.CreateCommand();
-            deleteCirclesTransferCmd.CommandText = @$"
-                DELETE FROM {TableNames.CirclesTransfer}
-                WHERE block_number >= @reorgAt;
-            ";
-            deleteCirclesTransferCmd.Transaction = transaction;
-            deleteCirclesTransferCmd.Parameters.AddWithValue("@reorgAt", reorgAt);
-            deleteCirclesTransferCmd.ExecuteNonQuery();
+            foreach (var tableName in TableNames.AllTableNames)
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"DELETE FROM {tableName} WHERE block_number >= @reorgAt;";
+                command.Parameters.AddWithValue("@reorgAt", reorgAt);
+                command.Transaction = transaction;
+                command.ExecuteNonQuery();
+            }
 
             transaction.Commit();
         }
@@ -125,35 +49,29 @@ public static class ReorgHandler
         }
     }
 
-    private static async Task<ReorgAffectedData> GetAffectedItems(SqliteConnection connection, long reorgAt)
+
+    private static async Task<ReorgAffectedData> GetAffectedItems(NpgsqlConnection connection, long reorgAt)
     {
-        CirclesSignupQuery affectedSignupQuery = new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue};
-        Task<CirclesSignupDto[]> affectedSignups =
-            Task.Run(() => Query.CirclesSignups(connection, affectedSignupQuery).ToArray());
+        CirclesSignupQuery affectedSignupQuery = new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue };
+        CirclesSignupDto[] affectedSignups = PostgresQuery.CirclesSignups(connection, affectedSignupQuery).ToArray();
 
         CirclesTrustQuery affectedTrustQuery = new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue };
-        Task<CirclesTrustDto[]> affectedTrusts =
-            Task.Run(() => Query.CirclesTrusts(connection, affectedTrustQuery).ToArray());
+        CirclesTrustDto[] affectedTrusts = PostgresQuery.CirclesTrusts(connection, affectedTrustQuery).ToArray();
 
-        CirclesHubTransferQuery affectedHubTransferQuery = new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue };
-        Task<CirclesHubTransferDto[]> affectedHubTransfers =
-            Task.Run(() => Query.CirclesHubTransfers(connection, affectedHubTransferQuery).ToArray());
+        CirclesHubTransferQuery affectedHubTransferQuery =
+            new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue };
+        CirclesHubTransferDto[] affectedHubTransfers =
+            PostgresQuery.CirclesHubTransfers(connection, affectedHubTransferQuery).ToArray();
 
-        CirclesTransferQuery affectedTransferQuery = new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue };
-        Task<CirclesTransferDto[]> affectedTransfers =
-            Task.Run(() => Query.CirclesTransfers(connection, affectedTransferQuery).ToArray());
-
-        await Task.WhenAll(
-            affectedSignups,
-            affectedTrusts,
-            affectedHubTransfers,
-            affectedTransfers
-        );
+        CirclesTransferQuery affectedTransferQuery =
+            new() { BlockNumberRange = { Min = reorgAt }, Limit = int.MaxValue };
+        CirclesTransferDto[] affectedTransfers =
+            PostgresQuery.CirclesTransfers(connection, affectedTransferQuery).ToArray();
 
         return new ReorgAffectedData(
-            Signups: affectedSignups.Result,
-            Trusts: affectedTrusts.Result,
-            HubTransfers: affectedHubTransfers.Result,
-            Transfers: affectedTransfers.Result);
+            Signups: affectedSignups,
+            Trusts: affectedTrusts,
+            HubTransfers: affectedHubTransfers,
+            Transfers: affectedTransfers);
     }
 }
