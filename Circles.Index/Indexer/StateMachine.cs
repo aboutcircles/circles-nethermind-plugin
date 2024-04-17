@@ -177,8 +177,6 @@ public class StateMachine(
         mainConnection.Open();
 
         LastIndexHeight = PostgresQuery.FirstGap(mainConnection) ?? PostgresQuery.LatestBlock(mainConnection) ?? 0;
-        // context.Logger.Info($"Current index height: {LastIndexHeight}");
-        // context.Logger.Info($"Current chain height: {getHead()}");
     }
 
     private void Cleanup()

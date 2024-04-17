@@ -114,9 +114,49 @@ public class IndexerVisitor(ISink sink, Settings settings) : IIndexerVisitor
             {
                 return CrcV2RegisterOrganization(block, receipt, log, logIndex);
             }
+            
+            if (topic == StaticResources.Erc1155TransferBatchTopic)
+            {
+                return Erc1155TransferBatch(block, receipt, log, logIndex);
+            }
+            
+            if (topic == StaticResources.Erc1155TransferSingleTopic)
+            {
+                return Erc1155TransferSingle(block, receipt, log, logIndex);
+            }
+            
+            if (topic == StaticResources.Erc1155ApprovalForAllTopic)
+            {
+                return Erc1155ApprovalForAll(block, receipt, log, logIndex);
+            }
+            
+            if (topic == StaticResources.Erc1155UriTopic)
+            {
+                return Erc1155Uri(block, receipt, log, logIndex);
+            }
         }
 
         return false;
+    }
+
+    private bool Erc1155Uri(Nethermind.Core.Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        throw new NotImplementedException();
+    }
+
+    private bool Erc1155ApprovalForAll(Nethermind.Core.Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        throw new NotImplementedException();
+    }
+
+    private bool Erc1155TransferSingle(Nethermind.Core.Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        throw new NotImplementedException();
+    }
+
+    private bool Erc1155TransferBatch(Nethermind.Core.Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        throw new NotImplementedException();
     }
 
     private bool CrcV2RegisterOrganization(Nethermind.Core.Block block, TxReceipt receipt, LogEntry log, int logIndex)

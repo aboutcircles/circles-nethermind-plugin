@@ -43,5 +43,19 @@ public interface ISink
     void AddCrcV2Stopped(long blockNumber, long blockTimestamp, int receiptIndex, int logIndex,
         string transactionHash, string address);
 
+    void AddErc1155ApprovalForAll(long blockNumber, long blockTimestamp, int receiptIndex, int logIndex,
+        string transactionHash, string operatorAddress, string approvedAddress, bool approved);
+
+    void AddErc1155TransferSingle(long blockNumber, long blockTimestamp, int receiptIndex, int logIndex,
+        string transactionHash, string operatorAddress, string fromAddress, string toAddress, UInt256 id,
+        UInt256 value);
+
+    void AddErc1155TransferBatch(long blockNumber, long blockTimestamp, int receiptIndex, int logIndex, int batchIndex,
+        string transactionHash, string operatorAddress, string fromAddress, string toAddress, UInt256 id,
+        UInt256 value);
+
+    void AddErc1155Uri(long blockNumber, long blockTimestamp, int receiptIndex, int logIndex,
+        string transactionHash, string tokenAddress, UInt256 id, string uri);
+
     Task Flush();
 }

@@ -41,5 +41,5 @@ public static class StaticResources
         Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])");
 
     public static Hash256 Erc1155ApprovalForAllTopic { get; } = Keccak.Compute("ApprovalForAll(address,address,bool)");
-    public static Hash256 Erc1155URITopic { get; } = Keccak.Compute("URI(uint256,string)");
+    public static Hash256 Erc1155UriTopic { get; } = Keccak.Compute("URI(uint256,string)");
 }

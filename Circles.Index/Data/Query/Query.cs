@@ -4,7 +4,6 @@ using Nethermind.Int256;
 
 namespace Circles.Index.Data.Query;
 
-[Flags]
 public enum ValueTypes
 {
     Address = 0,
@@ -37,6 +36,9 @@ public static class Query
         new(GetProvider(), table, column, value);
 
     public static GreaterThan GreaterThan(Tables table, Columns column, object value) =>
+        new(GetProvider(), table, column, value);
+
+    public static GreaterThanOrEqual GreaterThanOrEqual(Tables table, Columns column, object value) =>
         new(GetProvider(), table, column, value);
 
     public static LessThan LessThan(Tables table, Columns column, object value) =>

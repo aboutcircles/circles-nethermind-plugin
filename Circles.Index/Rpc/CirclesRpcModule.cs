@@ -70,7 +70,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 throw new Exception($"Couldn't get the balance of token {token} for account {address}");
             }
 
-            byte[] uint256Bytes = System.Convert.FromHexString(result.Data.Substring(2));
+            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
             UInt256 tokenBalance = new(uint256Bytes, true);
             totalBalance += tokenBalance;
         }
@@ -84,13 +84,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         await rentedEthRpcModule.Rent();
 
         var balances =
-            CirclesTokenBalances(_indexConnectionString, rentedEthRpcModule.RpcModule!, address, _pluginLogger);
+            CirclesTokenBalances(_indexConnectionString, rentedEthRpcModule.RpcModule!, address);
 
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
     public static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,
-        Address address, ILogger? logger)
+        Address address)
     {
         using NpgsqlConnection connection = new(dbLocation);
         connection.Open();
@@ -118,7 +118,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 throw new Exception($"Couldn't get the balance of token {token} for account {address}");
             }
 
-            byte[] uint256Bytes = System.Convert.FromHexString(result.Data.Substring(2));
+            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
             UInt256 tokenBalance = new(uint256Bytes, true);
 
             balances.Add(new CirclesTokenBalance(token, tokenBalance.ToString(CultureInfo.InvariantCulture)));
@@ -136,7 +136,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             query.Columns ?? throw new InvalidOperationException("Columns are null"));
 
         Console.WriteLine(select.ToString());
-        
+
         if (query.Conditions.Any())
         {
             foreach (var condition in query.Conditions)
@@ -147,7 +147,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         Console.WriteLine(select.ToString());
 
-        
+
         var result = Query.Execute(connection, select).ToList();
 
         return ResultWrapper<IEnumerable<object[]>>.Success(result);
