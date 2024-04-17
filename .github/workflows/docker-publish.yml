@@ -28,6 +28,6 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          file: ./plugin/x64.Dockerfile
+          file: ./Circles.Index/x64.Dockerfile
           push: true
           tags: jaensen/nethermind-circlesubi:dev-x86_64
