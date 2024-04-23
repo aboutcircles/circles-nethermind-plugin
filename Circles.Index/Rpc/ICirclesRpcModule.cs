@@ -25,15 +25,15 @@ public class CirclesTokenBalance
 
 public class CirclesQuery
 {
-    public Tables Table { get; set; }
-    public Columns[]? Columns { get; set; }
+    public string Table { get; set; }
+    public string[]? Columns { get; set; }
     public List<Expression> Conditions { get; set; } = new();
 }
 
 public class Expression
 {
     public string? Type { get; set; }  // "Equals", "GreaterThan", "LessThan", "And", "Or"
-    public Columns? Column { get; set; }  // Null for composite types like "And" and "Or"
+    public string? Column { get; set; }  // Null for composite types like "And" and "Or"
     public object? Value { get; set; }  // Null for composite types
     public List<Expression>? Elements { get; set; }  // Used only for "And" and "Or"
 }
