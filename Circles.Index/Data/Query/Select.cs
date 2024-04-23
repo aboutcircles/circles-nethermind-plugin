@@ -10,6 +10,7 @@ public class Select : IQuery
     public readonly IEnumerable<Columns> Columns;
     private readonly List<string> _fields;
     public readonly List<IQuery> Conditions;
+    public readonly List<(Columns Column, SortOrder Order)> OrderBy = new();
 
     public Select(Tables table, IEnumerable<Columns> columns)
     {
@@ -35,6 +36,11 @@ public class Select : IQuery
             sql.Append(" WHERE ");
             sql.Append(string.Join(" AND ", Conditions.Select(c => c.ToSql())));
         }
+        if (OrderBy.Any())
+        {
+            sql.Append(" ORDER BY ");
+            sql.Append(string.Join(", ", OrderBy.Select(o => $"{o.Column.GetIdentifier()} {o.Order}")));
+        }
 
         return sql.ToString();
     }
@@ -49,9 +55,6 @@ public class Select : IQuery
             }
         }
     }
-
-    public IQuery And(IQuery other) => Query.And(this, other);
-    public IQuery Or(IQuery other) => Query.Or(this, other);
 
     public override string ToString()
     {

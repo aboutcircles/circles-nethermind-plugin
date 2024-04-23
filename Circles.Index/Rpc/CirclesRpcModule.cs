@@ -132,13 +132,16 @@ public class CirclesRpcModule : ICirclesRpcModule
         using NpgsqlConnection connection = new(_indexConnectionString);
         connection.Open();
 
-        Tables parsedTableName = Enum.Parse<Tables>(query.Table);
-        
-        var select = Query.Select(parsedTableName,
-            query.Columns?.Select(c => Enum.Parse<Columns>(c)) 
-            ?? throw new InvalidOperationException("Columns are null"));
+        if (query.Table == null)
+        {
+            throw new InvalidOperationException("Table is null");
+        }
 
-        Console.WriteLine(select.ToString());
+        Tables parsedTableName = Enum.Parse<Tables>(query.Table);
+
+        var select = Query.Select(parsedTableName,
+            query.Columns?.Select(Enum.Parse<Columns>)
+            ?? throw new InvalidOperationException("Columns are null"));
 
         if (query.Conditions.Any())
         {
@@ -148,9 +151,25 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
         }
 
+        if (query.OrderBy.Any())
+        {
+            foreach (var orderBy in query.OrderBy)
+            {
+                if (orderBy.Column == null || orderBy.SortOrder == null)
+                {
+                    throw new InvalidOperationException("OrderBy: Column or SortOrder is null");
+                }
+
+                Columns parsedColumnName = Enum.Parse<Columns>(orderBy.Column);
+                select.OrderBy.Add((
+                    parsedColumnName,
+                    orderBy.SortOrder.ToLowerInvariant() == "asc"
+                        ? SortOrder.Asc
+                        : SortOrder.Desc));
+            }
+        }
+
         Console.WriteLine(select.ToString());
-
-
         var result = Query.Execute(connection, select).ToList();
 
         return ResultWrapper<IEnumerable<object[]>>.Success(result);

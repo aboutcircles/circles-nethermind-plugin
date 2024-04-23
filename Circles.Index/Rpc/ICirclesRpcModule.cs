@@ -25,9 +25,17 @@ public class CirclesTokenBalance
 
 public class CirclesQuery
 {
-    public string Table { get; set; }
+    public string? Table { get; set; }
     public string[]? Columns { get; set; }
     public List<Expression> Conditions { get; set; } = new();
+    
+    public List<OrderBy> OrderBy { get; set; } = new();
+}
+
+public class OrderBy
+{
+    public string? Column { get; set; }
+    public string? SortOrder { get; set; }
 }
 
 public class Expression
