@@ -132,8 +132,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         using NpgsqlConnection connection = new(_indexConnectionString);
         connection.Open();
 
-        var select = Query.Select(query.Table,
-            query.Columns ?? throw new InvalidOperationException("Columns are null"));
+        Tables parsedTableName = Enum.Parse<Tables>(query.Table);
+        
+        var select = Query.Select(parsedTableName,
+            query.Columns?.Select(c => Enum.Parse<Columns>(c)) 
+            ?? throw new InvalidOperationException("Columns are null"));
 
         Console.WriteLine(select.ToString());
 
@@ -157,17 +160,20 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         if (expression.Type == "Equals")
         {
-            return Query.Equals(table, expression.Column!.Value, expression.Value);
+            Columns parsedColumnName = Enum.Parse<Columns>(expression.Column!);
+            return Query.Equals(table, parsedColumnName, expression.Value);
         }
 
         if (expression.Type == "GreaterThan")
         {
-            return Query.GreaterThan(table, expression.Column!.Value, expression.Value);
+            Columns parsedColumnName = Enum.Parse<Columns>(expression.Column!);
+            return Query.GreaterThan(table, parsedColumnName, expression.Value!);
         }
 
         if (expression.Type == "LessThan")
         {
-            return Query.LessThan(table, expression.Column!.Value, expression.Value);
+            Columns parsedColumnName = Enum.Parse<Columns>(expression.Column!);
+            return Query.LessThan(table, parsedColumnName, expression.Value!);
         }
 
         if (expression.Type == "And")

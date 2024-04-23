@@ -40,29 +40,15 @@ The plugin provides a JSON-RPC module to query the data. The following RPC metho
           "method":"circles_query",
           "id":1,
           "params": [{
-            "Table": 12,
+            "Table": "CrcV1Signup",
             "Columns": [
-              1,
-              36,
-              30,
-              6,
-              11,
-              34,
-              24
-            ],
-            "Conditions": [
-              {
-                "Type": "LessThan",
-                "Column": 24,
-                "Value": "500000000000000000000",
-                "Elements": null
-              },
-              {
-                "Type": "Equals",
-                "Column": 11,
-                "Value": "0x0000000000000000000000000000000000000000",
-                "Elements": null
-              }
+              "BlockNumber",
+              "Timestamp",
+              "TransactionIndex",
+              "LogIndex",
+              "TransactionHash",
+              "CirclesAddress",
+              "TokenAddress"
             ]
         }]
       }' -H "Content-Type: application/json" http://localhost:8545/

@@ -78,7 +78,7 @@ public static class Query
             case ValueTypes.String:
                 return input.ToString() ?? throw new ArgumentNullException(nameof(input));
             case ValueTypes.Int:
-                return System.Convert.ToInt64(input);
+                return System.Convert.ToInt64(input?.ToString());
             case ValueTypes.BigInt when input is string i:
                 return BigInteger.Parse(i);
             case ValueTypes.BigInt when input is BigInteger:
