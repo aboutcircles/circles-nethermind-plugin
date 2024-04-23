@@ -1,4 +1,4 @@
-namespace Circles.Index.Data.Model;
+namespace Circles.Index.Data;
 
 public class Range<T>
 {

@@ -71,8 +71,12 @@ public static class Query
         }
     }
 
-    public static object Convert(object input, ValueTypes target)
+    public static object? Convert(object? input, ValueTypes target)
     {
+        if (input == null)
+        {
+            return null;
+        }
         switch (target)
         {
             case ValueTypes.String:
@@ -94,10 +98,16 @@ public static class Query
             case ValueTypes.Address when input is string i:
                 return i.ToLowerInvariant();
             case ValueTypes.Address:
-                return input.ToString().ToLowerInvariant();
+                return input.ToString()?.ToLowerInvariant();
+            case ValueTypes.Boolean when input is bool b:
+                return b;
+            case ValueTypes.Boolean when input is string s:
+                return bool.Parse(s);
+            case ValueTypes.Boolean when input is int i:
+                return i != 0;
             default:
                 throw new ArgumentOutOfRangeException(nameof(target), target,
-                    $"Input was {input} of type {input.GetType()}");
+                    $"Cannot convert input {input} (type: {input.GetType()?.Name ?? "<null>"}) to target type {target}.");
         }
     }
 }

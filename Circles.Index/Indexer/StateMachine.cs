@@ -1,5 +1,4 @@
 using Circles.Index.Data;
-using Circles.Index.Data.Model;
 using Circles.Index.Data.Postgresql;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;

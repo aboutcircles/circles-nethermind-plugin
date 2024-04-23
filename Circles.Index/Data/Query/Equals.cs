@@ -9,10 +9,10 @@ public class Equals : IQuery
     public readonly Tables Table;
     public readonly Columns Column;
     private readonly string _parameterName;
-    public readonly object Value;
+    public readonly object? Value;
     private readonly DbProviderFactory _provider;
 
-    internal Equals(DbProviderFactory provider, Tables table, Columns column, object value)
+    internal Equals(DbProviderFactory provider, Tables table, Columns column, object? value)
     {
         _provider = provider;
         Table = table;
@@ -34,7 +34,7 @@ public class Equals : IQuery
 
         parameter.ParameterName = _parameterName;
         var targetType = Schema.TableSchemas[Table].Columns.First(o => o.Column == Column).Type;
-        parameter.Value = Query.Convert(Value, targetType);
+        parameter.Value = Query.Convert(Value, targetType) ?? DBNull.Value;
         yield return parameter;
     }
 }

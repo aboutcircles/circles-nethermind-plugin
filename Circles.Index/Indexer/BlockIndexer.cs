@@ -3,7 +3,6 @@ using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Circles.Index.Data.Model;
 using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Indexer;

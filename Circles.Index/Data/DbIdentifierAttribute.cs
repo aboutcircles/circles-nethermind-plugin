@@ -11,10 +11,17 @@ public static class EnumExtensions
             throw new InvalidOperationException($"Enum value {enumValue} (type: {type}) does not have a name.");
         }
         var field = type.GetField(name);
+        if (field == null)
+        {
+            throw new InvalidOperationException($"Enum {type} does not have a field named {name}.");
+        }
         var attribute = Attribute.GetCustomAttribute(field, typeof(DbIdentifierAttribute)) as DbIdentifierAttribute;
         var dbName = attribute?.Identifier ??
                      throw new InvalidOperationException(
                          $"Enum value {enumValue} does not have a DbIdentifierAttribute.");
+        
+        // Escape reserved keywords
+        // TODO: Replace with a more robust solution
         if (dbName.ToLower() == "limit")
         {
             return "\"limit\"";
