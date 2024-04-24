@@ -1,3 +1,4 @@
+using Circles.Index.Common;
 using Circles.Index.Data;
 using Circles.Index.Data.Postgresql;
 using Nethermind.Blockchain;

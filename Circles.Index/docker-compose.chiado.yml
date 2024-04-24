@@ -40,16 +40,16 @@ services:
       - V1_HUB_ADDRESS=0xdbf22d4e8962db3b2f1d9ff55be728a887e47710
       - V2_HUB_ADDRESS=0xDA02CDB5279B3a1eF27Be3d91aE924495E6A5569
       - START_BLOCK=0
-      - POSTGRES_CONNECTION_STRING=Server=db;Port=5432;User Id=postgres;Password=;Database=postgres;
+      - POSTGRES_CONNECTION_STRING=Server=192.168.178.143;Port=5432;User Id=postgres;Password=;Database=postgres;
 
   db:
     image: postgres:16
     command: -c 'max_connections=100'
     restart: unless-stopped
     container_name: 'postgres'
-#    network_mode: host
-    networks:
-      - circles
+    network_mode: host
+#    networks:
+#      - circles
     environment:
       POSTGRES_PASSWORD: ''
       POSTGRES_USER: 'postgres'

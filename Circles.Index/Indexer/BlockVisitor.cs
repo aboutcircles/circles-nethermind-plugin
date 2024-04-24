@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using Circles.Index.Data;
+using Circles.Index.Common;
 using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;

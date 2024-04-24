@@ -1,0 +1,154 @@
+{
+  "format": 1,
+  "restore": {
+    "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index/Circles.Index.csproj": {}
+  },
+  "projects": {
+    "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index.Common/Circles.Index.Common.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index.Common/Circles.Index.Common.csproj",
+        "projectName": "Circles.Index.Common",
+        "projectPath": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index.Common/Circles.Index.Common.csproj",
+        "packagesPath": "/home/daniel/.nuget/packages/",
+        "outputPath": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index.Common/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/daniel/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Nethermind.Numerics.Int256": {
+              "target": "Package",
+              "version": "[1.2.0, )"
+            },
+            "Nethermind.ReferenceAssemblies": {
+              "target": "Package",
+              "version": "[1.25.4, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/8.0.103/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index/Circles.Index.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index/Circles.Index.csproj",
+        "projectName": "Circles.Index",
+        "projectPath": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index/Circles.Index.csproj",
+        "packagesPath": "/home/daniel/.nuget/packages/",
+        "outputPath": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/daniel/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index.Common/Circles.Index.Common.csproj": {
+                "projectPath": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index.Common/Circles.Index.Common.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Dapper": {
+              "target": "Package",
+              "version": "[2.1.44, )"
+            },
+            "Microsoft.Data.Sqlite": {
+              "target": "Package",
+              "version": "[8.0.3, )"
+            },
+            "Nethermind.Numerics.Int256": {
+              "target": "Package",
+              "version": "[1.2.0, )"
+            },
+            "Nethermind.ReferenceAssemblies": {
+              "target": "Package",
+              "version": "[1.25.4, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )"
+            },
+            "Npgsql": {
+              "target": "Package",
+              "version": "[8.0.2, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/8.0.103/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

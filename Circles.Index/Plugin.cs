@@ -1,6 +1,6 @@
 ﻿using System.Data.Common;
 using System.Threading.Channels;
-using Circles.Index.Data;
+using Circles.Index.Common;
 using Circles.Index.Data.Postgresql;
 using Circles.Index.Data.Query;
 using Circles.Index.Indexer;

@@ -40,4 +40,9 @@
     </ItemGroup>
 
 
+    <ItemGroup>
+      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+    </ItemGroup>
+
+
 </Project>

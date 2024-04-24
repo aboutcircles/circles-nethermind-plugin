@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "dgSpecHash": "JT+gbSE5kTLxcOzFjbPqnckbpRFk4MVWfy9QHTC75RL4pQA2aP45/PN/olcuOhmSsfQXk1aKqzPEyNfV/BA1ow==",
+  "success": true,
+  "projectFilePath": "/home/daniel/src/circlesubi/circles-nethermind-plugin/Circles.Index/Circles.Index.csproj",
+  "expectedPackageFiles": [
+    "/home/daniel/.nuget/packages/dapper/2.1.44/dapper.2.1.44.nupkg.sha512",
+    "/home/daniel/.nuget/packages/microsoft.data.sqlite/8.0.3/microsoft.data.sqlite.8.0.3.nupkg.sha512",
+    "/home/daniel/.nuget/packages/microsoft.data.sqlite.core/8.0.3/microsoft.data.sqlite.core.8.0.3.nupkg.sha512",
+    "/home/daniel/.nuget/packages/microsoft.extensions.dependencyinjection.abstractions/8.0.0/microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
+    "/home/daniel/.nuget/packages/microsoft.extensions.logging.abstractions/8.0.0/microsoft.extensions.logging.abstractions.8.0.0.nupkg.sha512",
+    "/home/daniel/.nuget/packages/nethermind.numerics.int256/1.2.0/nethermind.numerics.int256.1.2.0.nupkg.sha512",
+    "/home/daniel/.nuget/packages/nethermind.referenceassemblies/1.25.4/nethermind.referenceassemblies.1.25.4.nupkg.sha512",
+    "/home/daniel/.nuget/packages/newtonsoft.json/13.0.3/newtonsoft.json.13.0.3.nupkg.sha512",
+    "/home/daniel/.nuget/packages/npgsql/8.0.2/npgsql.8.0.2.nupkg.sha512",
+    "/home/daniel/.nuget/packages/sqlitepclraw.bundle_e_sqlite3/2.1.6/sqlitepclraw.bundle_e_sqlite3.2.1.6.nupkg.sha512",
+    "/home/daniel/.nuget/packages/sqlitepclraw.core/2.1.6/sqlitepclraw.core.2.1.6.nupkg.sha512",
+    "/home/daniel/.nuget/packages/sqlitepclraw.lib.e_sqlite3/2.1.6/sqlitepclraw.lib.e_sqlite3.2.1.6.nupkg.sha512",
+    "/home/daniel/.nuget/packages/sqlitepclraw.provider.e_sqlite3/2.1.6/sqlitepclraw.provider.e_sqlite3.2.1.6.nupkg.sha512",
+    "/home/daniel/.nuget/packages/system.memory/4.5.3/system.memory.4.5.3.nupkg.sha512"
+  ],
+  "logs": []
+}

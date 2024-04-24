@@ -1,3 +1,4 @@
+using Circles.Index.Common;
 using Circles.Index.Indexer;
 using Nethermind.Int256;
 

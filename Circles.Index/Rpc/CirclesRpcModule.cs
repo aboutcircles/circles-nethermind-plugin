@@ -42,42 +42,6 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
     }
 
-    public static UInt256 TotalBalance(string dbLocation, IEthRpcModule rpcModule, Address address, ILogger? logger)
-    {
-        using NpgsqlConnection connection = new(dbLocation);
-        connection.Open();
-
-        IEnumerable<Address> tokens = PostgresQuery.TokenAddressesForAccount(connection, address);
-
-        // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
-        byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
-        byte[] addressBytes = address.Bytes.PadLeft(32);
-        byte[] data = functionSelector.Concat(addressBytes).ToArray();
-
-        UInt256 totalBalance = UInt256.Zero;
-
-        foreach (Address token in tokens)
-        {
-            TransactionForRpc transactionCall = new()
-            {
-                To = token,
-                Input = data
-            };
-
-            ResultWrapper<string> result = rpcModule.eth_call(transactionCall);
-            if (result.ErrorCode != 0)
-            {
-                throw new Exception($"Couldn't get the balance of token {token} for account {address}");
-            }
-
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
-            UInt256 tokenBalance = new(uint256Bytes, true);
-            totalBalance += tokenBalance;
-        }
-
-        return totalBalance;
-    }
-
     public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
     {
         using RentedEthRpcModule rentedEthRpcModule = new(_nethermindApi);
@@ -89,7 +53,63 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,
+    public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
+    {
+        using NpgsqlConnection connection = new(_indexConnectionString);
+        connection.Open();
+
+        if (query.Table == null)
+        {
+            throw new InvalidOperationException("Table is null");
+        }
+
+        Tables parsedTableName = Enum.Parse<Tables>(query.Table);
+
+        var select = Query.Select(parsedTableName,
+            query.Columns?.Select(Enum.Parse<Columns>)
+            ?? throw new InvalidOperationException("Columns are null"));
+
+        if (query.Conditions.Count != 0)
+        {
+            foreach (var condition in query.Conditions)
+            {
+                select.Where(BuildCondition(select.Table, condition));
+            }
+        }
+
+        if (query.OrderBy.Count != 0)
+        {
+            foreach (var orderBy in query.OrderBy)
+            {
+                if (orderBy.Column == null || orderBy.SortOrder == null)
+                {
+                    throw new InvalidOperationException("OrderBy: Column or SortOrder is null");
+                }
+
+                Columns parsedColumnName = Enum.Parse<Columns>(orderBy.Column);
+                select.OrderBy.Add((
+                    parsedColumnName,
+                    orderBy.SortOrder.Equals("asc", StringComparison.InvariantCultureIgnoreCase)
+                        ? SortOrder.Asc
+                        : SortOrder.Desc));
+            }
+        }
+
+        Console.WriteLine(select.ToString());
+        var result = Query.Execute(connection, select).ToList();
+
+        return ResultWrapper<IEnumerable<object[]>>.Success(result);
+    }
+
+    public ResultWrapper<string> circles_computeTransfer(string from, string to, string amount)
+    {
+        // string result = LibPathfinder.ffi_compute_transfer(from, to, amount);
+        return ResultWrapper<string>.Success("");
+    }
+    
+    #region private methods
+
+    private static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,
         Address address)
     {
         using NpgsqlConnection connection = new(dbLocation);
@@ -127,52 +147,40 @@ public class CirclesRpcModule : ICirclesRpcModule
         return balances;
     }
 
-    public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
+    private static UInt256 TotalBalance(string dbLocation, IEthRpcModule rpcModule, Address address, ILogger? logger)
     {
-        using NpgsqlConnection connection = new(_indexConnectionString);
+        using NpgsqlConnection connection = new(dbLocation);
         connection.Open();
 
-        if (query.Table == null)
+        IEnumerable<Address> tokens = PostgresQuery.TokenAddressesForAccount(connection, address);
+
+        // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
+        byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
+        byte[] addressBytes = address.Bytes.PadLeft(32);
+        byte[] data = functionSelector.Concat(addressBytes).ToArray();
+
+        UInt256 totalBalance = UInt256.Zero;
+
+        foreach (Address token in tokens)
         {
-            throw new InvalidOperationException("Table is null");
-        }
-
-        Tables parsedTableName = Enum.Parse<Tables>(query.Table);
-
-        var select = Query.Select(parsedTableName,
-            query.Columns?.Select(Enum.Parse<Columns>)
-            ?? throw new InvalidOperationException("Columns are null"));
-
-        if (query.Conditions.Any())
-        {
-            foreach (var condition in query.Conditions)
+            TransactionForRpc transactionCall = new()
             {
-                select.Where(BuildCondition(select.Table, condition));
-            }
-        }
+                To = token,
+                Input = data
+            };
 
-        if (query.OrderBy.Any())
-        {
-            foreach (var orderBy in query.OrderBy)
+            ResultWrapper<string> result = rpcModule.eth_call(transactionCall);
+            if (result.ErrorCode != 0)
             {
-                if (orderBy.Column == null || orderBy.SortOrder == null)
-                {
-                    throw new InvalidOperationException("OrderBy: Column or SortOrder is null");
-                }
-
-                Columns parsedColumnName = Enum.Parse<Columns>(orderBy.Column);
-                select.OrderBy.Add((
-                    parsedColumnName,
-                    orderBy.SortOrder.ToLowerInvariant() == "asc"
-                        ? SortOrder.Asc
-                        : SortOrder.Desc));
+                throw new Exception($"Couldn't get the balance of token {token} for account {address}");
             }
+
+            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
+            UInt256 tokenBalance = new(uint256Bytes, true);
+            totalBalance += tokenBalance;
         }
 
-        Console.WriteLine(select.ToString());
-        var result = Query.Execute(connection, select).ToList();
-
-        return ResultWrapper<IEnumerable<object[]>>.Success(result);
+        return totalBalance;
     }
 
     private IQuery BuildCondition(Tables table, Expression expression)
@@ -207,10 +215,6 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         throw new InvalidOperationException($"Unknown expression type: {expression.Type}");
     }
-
-    public ResultWrapper<string> circles_computeTransfer(string from, string to, string amount)
-    {
-        // string result = LibPathfinder.ffi_compute_transfer(from, to, amount);
-        return ResultWrapper<string>.Success("");
-    }
+    
+    #endregion
 }
