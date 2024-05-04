@@ -4,19 +4,42 @@ using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace Circles.Index.Indexer;
 
-public record BlockWithReceipts(Nethermind.Core.Block Block, TxReceipt[] Receipts);
+public record BlockWithReceipts(Block Block, TxReceipt[] Receipts);
 
-public class ImportFlow(
-    IBlockTree blockTree,
-    IReceiptFinder receiptFinder,
-    IIndexerVisitor visitor,
-    ISink dataSink)
+public class ImportFlow
 {
-    private static readonly IndexPerformanceMetrics _metrics = new();
+    private static readonly IndexPerformanceMetrics Metrics = new();
+
+    private readonly MeteredCaller<Block, Task> _addBlock;
+    private readonly MeteredCaller<object?, Task> _flushBlocks;
+
+    private readonly InsertBuffer<Block> _blockBuffer = new();
+    private readonly Settings _settings;
+    private readonly IBlockTree _blockTree;
+    private readonly IReceiptFinder _receiptFinder;
+    private readonly INewIndexerVisitor[] _parsers;
+    private readonly IEventSink[] _sinks;
+
+    public ImportFlow(Settings settings,
+        IBlockTree blockTree,
+        IReceiptFinder receiptFinder,
+        INewIndexerVisitor[] parsers,
+        IEventSink[] sinks)
+    {
+        _settings = settings;
+        _blockTree = blockTree;
+        _receiptFinder = receiptFinder;
+        _parsers = parsers;
+        _sinks = sinks;
+        _addBlock = new MeteredCaller<Block, Task>("BlockIndexer: AddBlock", PerformAddBlock);
+        _flushBlocks = new MeteredCaller<object?, Task>("BlockIndexer: FlushBlocks", _ => PerformFlushBlocks());
+    }
+
 
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
@@ -31,105 +54,77 @@ public class ImportFlow(
         };
 
 
-    private BlockWithReceipts Sink(BlockWithReceipts data)
+    private async Task Sink((BlockWithReceipts, IEnumerable<IIndexEvent>) data)
     {
-        try
+        foreach (var indexEvent in data.Item2)
         {
-            visitor.VisitBlock(data.Block);
-
-            bool indexed = false;
-            foreach (var receipt in data.Receipts)
+            foreach (var sink in _sinks)
             {
-                visitor.VisitReceipt(data.Block, receipt);
-                if (receipt.Logs != null)
+                await sink.AddEvent(indexEvent);
+            }
+        }
+
+        await AddBlock(data.Item1.Block);
+        Metrics.LogBlockWithReceipts(data.Item1);
+    }
+
+    // Config on 16 core AMD:
+    // blockSource: 3 buffer, 3 parallel
+    // findReceipts: 6 buffer, 6 parallel
+
+    private TransformBlock<long, Block?> BuildPipeline(CancellationToken cancellationToken)
+    {
+        MeteredCaller<long, Block?> findBlock = new("BlockIndexer: FindBlock", _blockTree.FindBlock);
+        TransformBlock<long, Block?> blockSource = new(
+            blockNo => findBlock.Call(blockNo),
+            CreateOptions(cancellationToken, 3, 3));
+
+        MeteredCaller<Block, BlockWithReceipts> findReceipts = new("BlockIndexer: FindReceipts", block =>
+            new BlockWithReceipts(
+                block
+                , _receiptFinder.Get(block)));
+        TransformBlock<Block?, BlockWithReceipts> receiptsSource = new(
+            block => findReceipts.Call(block!)
+            , CreateOptions(cancellationToken, 6, 6));
+
+        blockSource.LinkTo(receiptsSource, b => b != null);
+
+        MeteredCaller<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)>
+            parseLogs = new("BlockIndexer: ParseLogs", blockWithReceipts =>
+            {
+                List<IIndexEvent> events = new();
+                foreach (var receipt in blockWithReceipts.Receipts)
                 {
-                    for (int logIndex = 0; logIndex < receipt.Logs.Length; logIndex++)
+                    for (int i = 0; i < receipt.Logs?.Length; i++)
                     {
-                        var logEntry = receipt.Logs[logIndex];
-                        visitor.VisitLog(data.Block, receipt, logEntry, logIndex);
+                        LogEntry log = receipt.Logs[i];
+                        foreach (var parser in _parsers)
+                        {
+                            var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
+                            events.AddRange(parsedEvents);
+                        }
                     }
                 }
 
-                visitor.LeaveReceipt(data.Block, receipt, indexed);
-            }
+                return (blockWithReceipts, events);
+            });
 
-            visitor.LeaveBlock(data.Block, indexed);
-            _metrics.LogBlockWithReceipts(data);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-        }
+        TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parser = new(
+            blockWithReceipts => parseLogs.Call(blockWithReceipts),
+            CreateOptions(cancellationToken, Environment.ProcessorCount));
 
-        return data;
-    }
+        receiptsSource.LinkTo(parser);
 
-    private TransformBlock<long, Nethermind.Core.Block> BuildPipeline(CancellationToken cancellationToken)
-    {
-        var flushIntervalInBlocks = 100000;
+        ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> sink = new(Sink,
+            CreateOptions(cancellationToken, 200000, 1));
+        parser.LinkTo(sink);
 
-        BlockHeader GenerateDummyBlockHeader(long blockNo)
-        {
-            var dummyHash = Keccak.Compute(new[] { (byte)blockNo });
-            var dummyAddress = Address.Zero;
-            return new(dummyHash, dummyHash, dummyAddress, 0, blockNo, 0, 0, Array.Empty<byte>(), 0, 0, dummyHash);
-        }
-
-        TransformBlock<long, Nethermind.Core.Block> blocks = new(
-            blockNo =>
-            {
-                return blockNo < Caches.MaxKnownBlock && !Caches.KnownBlocks.ContainsKey(blockNo)
-                    ? new Nethermind.Core.Block(GenerateDummyBlockHeader(blockNo))
-                    : blockTree.FindBlock(blockNo) ?? throw new Exception($"Couldn't find block {blockNo}");
-            }
-            , CreateOptions(cancellationToken, 4));
-
-        TransformBlock<Nethermind.Core.Block, BlockWithReceipts> receipts = new(
-            block => new BlockWithReceipts(
-                block
-                , block.Number < Caches.MaxKnownBlock && !Caches.KnownBlocks.ContainsKey(block.Number)
-                    ? []
-                    : receiptFinder.Get(block))
-            , CreateOptions(cancellationToken, 8));
-        blocks.LinkTo(receipts);
-
-        TransformBlock<BlockWithReceipts, BlockWithReceipts> sink = new(Sink,
-            CreateOptions(cancellationToken, 16));
-        receipts.LinkTo(sink);
-
-        long accumulated = 0;
-        bool isFlushing = false;
-        ActionBlock<BlockWithReceipts> flush = new(_ =>
-            {
-                if (accumulated >= flushIntervalInBlocks && !isFlushing)
-                {
-                    isFlushing = true;
-                    var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    dataSink.Flush().ContinueWith(_ =>
-                    {
-                        isFlushing = false;
-                        accumulated = 0;
-                        var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - timestamp;
-                        Console.WriteLine($"Flushed {flushIntervalInBlocks} blocks in {elapsed}ms");
-                    }, cancellationToken);
-                }
-                else
-                {
-                    accumulated++;
-                }
-            },
-            CreateOptions(cancellationToken, flushIntervalInBlocks * 5, 1));
-        sink.LinkTo(flush);
-
-        return blocks;
+        return blockSource;
     }
 
     public async Task<Range<long>> Run(IAsyncEnumerable<long> blocksToIndex, CancellationToken? cancellationToken)
     {
-        var flushIntervalInMs = 5000;
-        var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        TransformBlock<long, Nethermind.Core.Block> pipeline = BuildPipeline(CancellationToken.None);
+        TransformBlock<long, Block?> pipeline = BuildPipeline(CancellationToken.None);
 
         long min = long.MaxValue;
         long max = long.MinValue;
@@ -141,25 +136,14 @@ public class ImportFlow(
         }
 
         var source = blocksToIndex.WithCancellation(cancellationToken.Value);
-        var flushing = false;
 
-        var timer = new Timer(e =>
-        {
-            var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start;
-            if (elapsed >= flushIntervalInMs && !flushing)
-            {
-                flushing = true;
-                dataSink.Flush().ContinueWith(_ =>
-                {
-                    start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    flushing = false;
-                });
-            }
-        }, null, flushIntervalInMs, flushIntervalInMs);
+        MeteredCaller<long, Task> sendBlock = new("BlockIndexer: pipeline.SendAsync",
+            blockNo => pipeline.SendAsync(blockNo, cancellationToken.Value));
 
         await foreach (var blockNo in source)
         {
-            await pipeline.SendAsync(blockNo, cancellationToken.Value);
+            //await pipeline.SendAsync(blockNo, cancellationToken.Value);
+            await sendBlock.Call(blockNo);
 
             min = Math.Min(min, blockNo);
             max = Math.Max(max, blockNo);
@@ -168,13 +152,55 @@ public class ImportFlow(
         pipeline.Complete();
         await pipeline.Completion;
 
-        await timer.DisposeAsync();
-        await dataSink.Flush();
+        await FlushBlocks();
 
         return new Range<long>
         {
             Min = min,
             Max = max
         };
+    }
+
+    private Task AddBlock(Block block)
+    {
+        return _addBlock.Call(block);
+    }
+
+    private async Task PerformAddBlock(Block block)
+    {
+        _blockBuffer.Add(block);
+        if (_blockBuffer.Length >= 10000)
+        {
+            await FlushBlocks();
+        }
+    }
+
+    public Task FlushBlocks()
+    {
+        return _flushBlocks.Call(null);
+    }
+
+    private async Task PerformFlushBlocks()
+    {
+        var blocks = _blockBuffer.TakeSnapshot();
+        await using var connection = new NpgsqlConnection(_settings.IndexDbConnectionString);
+        await connection.OpenAsync();
+
+        await using var writer = await connection.BeginBinaryImportAsync(
+            $@"
+                COPY {Tables.Block.GetIdentifier()} (
+                    block_number, timestamp, block_hash
+                ) FROM STDIN (FORMAT BINARY)"
+        );
+
+        foreach (var block in blocks)
+        {
+            await writer.StartRowAsync();
+            await writer.WriteAsync(block.Number, NpgsqlDbType.Bigint);
+            await writer.WriteAsync((long)block.Timestamp, NpgsqlDbType.Bigint);
+            await writer.WriteAsync(block.Hash!.ToString(), NpgsqlDbType.Text);
+        }
+
+        await writer.CompleteAsync();
     }
 }

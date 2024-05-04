@@ -1,11 +1,11 @@
+using System.Collections.Immutable;
+using Circles.Index.Common;
 using Nethermind.Core;
 
 namespace Circles.Index;
 
 public class Settings
 {
-    public readonly string IndexDbFileName = "circles-index.sqlite";
-
     public readonly Address CirclesV1HubAddress = Environment.GetEnvironmentVariable("V1_HUB_ADDRESS") != null
         ? new(Environment.GetEnvironmentVariable("V1_HUB_ADDRESS")!)
         : new("0x29b9a7fBb8995b2423a71cC17cf9810798F6C543");
@@ -22,17 +22,5 @@ public class Settings
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 12541946L;
 
-    public readonly string PathfinderRpcUrl = "http://localhost:8080";
-
-    public readonly string PathfinderDbFileName = "pathfinder.db";
-
-    public static readonly int InitialUserCacheSize = 150000;
-
-    public static readonly int InitialOrgCacheSize = 15000;
-
-    public ulong ChainId { get; set; } = Environment.GetEnvironmentVariable("CHAIN_ID") != null
-        ? ulong.Parse(Environment.GetEnvironmentVariable("CHAIN_ID")!)
-        : 100;
-
-    public int MaxParallelism { get; set; } = 0;
+    public static readonly ImmutableArray<ISchema> Schemas = [new V1.Schema(), new V2.Schema()];
 }

@@ -18,9 +18,5 @@ public interface IIndexerVisitor
 
 public interface INewIndexerVisitor
 {
-    bool VisitReceipt(Block block, TxReceipt receipt);
-
-    bool VisitLog(Block block, TxReceipt receipt, LogEntry log, int logIndex);
-
-    void LeaveReceipt(Block block, TxReceipt receipt, bool logIndexed);
+    IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex);
 }

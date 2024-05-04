@@ -13,6 +13,20 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Common", "Cir
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.V2", "Circles.Index.V2\Circles.Index.V2.csproj", "{FF8E96F7-2903-4C0B-A443-19EA8D7FBB67}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB76D-01EE-4E92-AEE5-27224DA53350}"
+	ProjectSection(SolutionItems) = preProject
+		x64.debug.spaceneth.Dockerfile = x64.debug.spaceneth.Dockerfile
+		x64.Dockerfile = x64.Dockerfile
+		arm64.Dockerfile = arm64.Dockerfile
+		docker-compose.chiado.yml = docker-compose.chiado.yml
+		docker-compose.yml = docker-compose.yml
+		.dockerignore = .dockerignore
+		circles-chainspec.json = circles-chainspec.json
+		circles-config.cfg = circles-config.cfg
+		time_controller.py = time_controller.py
+		x64.debug.Dockerfile = x64.debug.Dockerfile
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

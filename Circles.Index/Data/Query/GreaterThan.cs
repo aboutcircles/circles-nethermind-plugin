@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using Circles.Index.Common;
 
 namespace Circles.Index.Data.Query;
 
@@ -32,8 +33,21 @@ public class GreaterThan : IQuery
             throw new InvalidOperationException("The provider did not return a parameter object.");
         }
         parameter.ParameterName = _parameterName;
-        var targetType = Schema.TableSchemas[Table].Columns.First(o => o.Column == Column).Type;
-        parameter.Value = Query.Convert(Value, targetType);
+        foreach (var schema in Settings.Schemas)
+        {
+            if (!schema.TableSchemas.TryGetValue(Table, out var tableSchema))
+            {
+                continue;
+            }
+            var column = tableSchema.Columns.FirstOrDefault(o => o.Column == Column);
+            if (column == default)
+            {
+                continue;
+            }
+            
+            parameter.Value = Query.Convert(Value, column.Type);
+            break;
+        }
         yield return parameter;
     }
 }

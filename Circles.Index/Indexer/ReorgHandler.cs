@@ -1,4 +1,4 @@
-using Circles.Index.Data;
+using Circles.Index.Common;
 using Circles.Index.Data.Query;
 using Nethermind.Logging;
 using Npgsql;
@@ -51,18 +51,23 @@ public static class ReorgHandler
     }
 
 
-    private static async Task<ReorgAffectedData> GetAffectedItems(NpgsqlConnection connection, long reorgAt)
+    private static Task<ReorgAffectedData> GetAffectedItems(NpgsqlConnection connection, long reorgAt)
     {
         Dictionary<Tables, object[][]> results = new();
-        foreach (KeyValuePair<Tables, TableSchema> table in Schema.TableSchemas)
-        {
-            var q = Query.Select(table.Key, table.Value.Columns.Select(o => o.Column))
-                .Where(Query.GreaterThanOrEqual(table.Key, Columns.BlockNumber, reorgAt));
+        ISchema[] schemas = [new V1.Schema(), new V2.Schema()];
 
-            var result = Query.Execute(connection, q);
-            results.Add(table.Key, result.ToArray());
+        foreach (var schema in schemas)
+        {
+            foreach (var table in schema.TableSchemas)
+            {
+                var q = Query.Select(table.Key, table.Value.Columns.Select(o => o.Column))
+                    .Where(Query.GreaterThanOrEqual(table.Key, Columns.BlockNumber, reorgAt));
+
+                var result = Query.Execute(connection, q);
+                results.Add(table.Key, result.ToArray());
+            }
         }
 
-        return new ReorgAffectedData(results);
+        return Task.FromResult(new ReorgAffectedData(results));
     }
 }

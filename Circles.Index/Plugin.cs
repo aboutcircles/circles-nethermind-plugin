@@ -1,4 +1,5 @@
 ﻿using System.Data.Common;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Circles.Index.Common;
 using Circles.Index.Data.Postgresql;
@@ -9,6 +10,7 @@ using Circles.Index.Utils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules;
@@ -36,8 +38,6 @@ public class CirclesIndex : INethermindPlugin
     public Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi;
-
-        // LibPathfinder.ffi_initialize();
 
         Run();
 
@@ -76,7 +76,7 @@ public class CirclesIndex : INethermindPlugin
 
         return reorgAt;
     }
-
+    
     private async void Run()
     {
         try
@@ -87,30 +87,23 @@ public class CirclesIndex : INethermindPlugin
             }
 
             Settings settings = new();
-            IInitConfig initConfig = _nethermindApi.Config<IInitConfig>();
-
+            
             ILogger baseLogger = _nethermindApi.LogManager.GetClassLogger();
             ILogger pluginLogger = new LoggerWithPrefix("Circles.Index:", baseLogger);
-
-            string indexDbLocation = Path.Combine(initConfig.BaseDbPath, settings.IndexDbFileName);
-            string pathfinderDbLocation = Path.Combine(initConfig.BaseDbPath, settings.PathfinderDbFileName);
-            ISink sink = new PostgresSink(settings.IndexDbConnectionString);
-
+            
             DbProviderFactory factory = NpgsqlFactory.Instance;
             Query.Initialize(factory);
-
-            pluginLogger.Info("SQLite database at: " + indexDbLocation);
-            pluginLogger.Info("Pathfinder database at: " + pathfinderDbLocation);
+            
             pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
             pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
             pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
             pluginLogger.Info("Start index from: " + settings.StartBlock);
-
-            _indexerContext = new Context(indexDbLocation
-                , pluginLogger
+            
+            _indexerContext = new Context(
+                pluginLogger
                 , _nethermindApi.ChainSpec
                 , settings);
-
+            
             // Wait in a loop as long as the nethermind node is not fully in sync with the chain
             while ((_nethermindApi.Pivot?.PivotNumber > _nethermindApi.BlockTree?.Head?.Number
                     || _nethermindApi.BlockTree?.Head == null
@@ -120,37 +113,32 @@ public class CirclesIndex : INethermindPlugin
                 pluginLogger.Info("Waiting for the node to sync");
                 await Task.Delay(1000);
             }
-
+            
             if (_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 return;
             }
-
-            Caches.Init();
-            IndexerVisitor visitor = new(sink, settings);
-
+            
             long? FindReorg() => TryFindReorg(pluginLogger, _nethermindApi.BlockTree!, settings);
             long GetHead() => _nethermindApi.BlockTree!.Head!.Number;
-
+            
             _indexerMachine = new StateMachine(
                 _indexerContext
                 , _nethermindApi.BlockTree!
                 , _nethermindApi.ReceiptFinder!
-                , visitor
                 , GetHead
                 , FindReorg
-                , sink
                 , _cancellationTokenSource.Token);
-
+            
             Channel<BlockEventArgs> blockChannel = Channel.CreateBounded<BlockEventArgs>(1);
-
+            
             await Task.Run(async () =>
             {
                 _nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
                 {
                     blockChannel.Writer.TryWrite(args); // This will overwrite if the channel is full
                 };
-
+            
                 // Process blocks from the channel
                 _ = Task.Run(async () =>
                 {
@@ -166,9 +154,9 @@ public class CirclesIndex : INethermindPlugin
                                 _indexerContext.Logger.Warn($"Reorg at {args.Block.Number}");
                                 _indexerMachine.LastReorgAt = args.Block.Number;
                             }
-
+            
                             _indexerContext.Logger.Debug($"New block received: {args.Block.Number}");
-
+            
                             await _indexerMachine.HandleEvent(StateMachine.Event.NewBlock);
                         }
                         catch (Exception e)
@@ -177,7 +165,7 @@ public class CirclesIndex : INethermindPlugin
                         }
                     }
                 }, _cancellationTokenSource.Token);
-
+            
                 await _indexerMachine.TransitionTo(StateMachine.State.Initial);
             }, _cancellationTokenSource.Token);
         }
@@ -195,7 +183,7 @@ public class CirclesIndex : INethermindPlugin
     }
 
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_nethermindApi == null)
         {
@@ -215,6 +203,8 @@ public class CirclesIndex : INethermindPlugin
         (IApiWithNetwork apiWithNetwork, _) = _nethermindApi.ForRpc;
         CirclesRpcModule circlesRpcModule = new(_nethermindApi, _indexerContext.Settings.IndexDbConnectionString);
         apiWithNetwork.RpcModuleProvider?.Register(new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
+
+        return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync()

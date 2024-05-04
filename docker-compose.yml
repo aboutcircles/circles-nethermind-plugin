@@ -1,0 +1,77 @@
+services:
+  circles-spaceneth:
+    depends_on:
+      - db
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./x64.debug.Dockerfile
+    network_mode: host
+    environment:
+      - V1_HUB_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+      - V2_HUB_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+      - START_BLOCK=0
+      - POSTGRES_CONNECTION_STRING=Server=localhost;Port=7432;User Id=postgres;Password=;Database=postgres;Include Error Detail=true;
+    volumes:
+      - ./.container-state/circles-spaceneth/spaceneth_db:/nethermind/spaceneth_db
+      - ./.container-state/circles-spaceneth/logs:/nethermind/logs
+      - ./.container-state/circles-spaceneth/keystore:/nethermind/keystore
+
+  redis_db:
+    image: 'redis:alpine'
+    ports:
+      - 6379:6379
+    container_name: redis_db
+    command: redis-server
+    restart: unless-stopped
+    volumes:
+      - ./.container-state/redis-data:/data
+
+  db:
+    image: postgres:14
+    command: -c 'max_connections=500'
+    restart: unless-stopped
+    container_name: 'postgres'
+    environment:
+      POSTGRES_PASSWORD: ''
+      POSTGRES_USER: 'postgres'W
+      POSTGRES_HOST_AUTH_METHOD: 'trust'
+    volumes:
+      - ./.container-state/postgres-data:/var/lib/postgresql/data
+    ports:
+      - 7432:5432
+
+  blockscout:
+    depends_on:
+      - db
+      - smart-contract-verifier
+      - redis_db
+      - circles-spaceneth
+    image: blockscout/blockscout:${DOCKER_TAG:-latest}
+    restart: unless-stopped
+    container_name: 'blockscout'
+    links:
+      - db:database
+    command: sh -c "bin/blockscout eval \"Elixir.Explorer.ReleaseTasks.create_and_migrate()\" && bin/blockscout start"
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    env_file:
+      - ./envs/common-blockscout.env
+    environment:
+      ETHEREUM_JSONRPC_VARIANT: 'nethermind'
+      ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:8545/
+      ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:8545/
+      DATABASE_URL: postgresql://postgres:@host.docker.internal:7432/blockscout?ssl=false
+      ECTO_USE_SSL: 'false'
+      SECRET_KEY_BASE: '56NtB48ear7+wMSf0IQuWDAAazhpb31qyc7GiyspBP2vh7t5zlCsF5QDv76chXeN'
+    ports:
+      - 4000:4000
+
+  smart-contract-verifier:
+    image: ghcr.io/blockscout/smart-contract-verifier:${SMART_CONTRACT_VERIFIER_DOCKER_TAG:-latest}
+    restart: no
+    container_name: 'smart-contract-verifier'
+    env_file:
+      - ./envs/common-smart-contract-verifier.env
+    ports:
+      - 8043:8043

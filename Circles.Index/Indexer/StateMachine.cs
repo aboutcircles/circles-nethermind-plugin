@@ -1,6 +1,7 @@
 using Circles.Index.Common;
 using Circles.Index.Data;
 using Circles.Index.Data.Postgresql;
+using Circles.Index.V1;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Npgsql;
@@ -11,10 +12,8 @@ public class StateMachine(
     Context context,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
-    IIndexerVisitor visitor,
     Func<long> getHead,
     Func<long?> tryFindReorg,
-    ISink dataSink,
     CancellationToken cancellationToken)
 {
     public State CurrentState { get; private set; } = State.New;
@@ -58,7 +57,7 @@ public class StateMachine(
                         case Event.EnterState:
                         {
                             // Make sure all tables exist before we start
-                            MigrateTables();
+                            MigrateSchemas();
 
                             long head = getHead();
                             SetLastIndexHeight();
@@ -95,9 +94,6 @@ public class StateMachine(
                             return;
                         case Event.SyncCompleted:
                             Errors.Clear(); // Clean up errors after a successful sync
-
-                            // TODO: Should only be done once, not every time the event is triggered
-                            MigrateIndexes(); // Make sure that the indexes are only created once the syncing is complete
                             SetLastIndexHeight();
 
                             await TransitionTo(State.WaitForNewBlock);
@@ -215,26 +211,37 @@ public class StateMachine(
     private async void Sync()
     {
         context.Logger.Info("Starting syncing process.");
+        
+        IEventSink v1Sink = new V1Sink(context.Settings.IndexDbConnectionString);
+        // IEventSink v2Sink = new V2Sink(context.Settings.IndexDbConnectionString);
+        INewIndexerVisitor[] parsers =
+        [
+            new V1IndexerVisitor(context.Settings.CirclesV1HubAddress),
+            // new V2IndexerVisitor(context.Settings.CirclesV2HubAddress, v2Sink)
+        ];
 
         try
         {
             ImportFlow flow = new ImportFlow(
-                blockTree
+                context.Settings
+                , blockTree
                 , receiptFinder
-                , visitor
-                , dataSink);
+                , parsers
+                , [v1Sink]);
 
             IAsyncEnumerable<long> blocksToSync = GetBlocksToSync();
             Range<long> importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
 
+            await v1Sink.Flush();
+            await flow.FlushBlocks();
+            
             if (importedBlockRange is { Min: long.MaxValue, Max: long.MinValue })
             {
                 await HandleEvent(Event.SyncCompleted);
                 return;
             }
-
+            
             context.Logger.Info($"Imported blocks from {importedBlockRange.Min} to {importedBlockRange.Max}");
-            await dataSink.Flush();
             await HandleEvent(Event.SyncCompleted);
         }
         catch (TaskCanceledException)
@@ -246,6 +253,7 @@ public class StateMachine(
     private async IAsyncEnumerable<long> GetBlocksToSync()
     {
         long head = getHead();
+        SetLastIndexHeight();
         LastIndexHeight = LastIndexHeight == 0 ? context.Settings.StartBlock : LastIndexHeight;
         context.Logger.Info($"Getting blocks to sync from {LastIndexHeight} (LastIndexHeight) to {head} (chain-head)");
 
@@ -264,33 +272,17 @@ public class StateMachine(
         }
     }
 
-    private void MigrateTables()
+    private void MigrateSchemas()
     {
         using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
         mainConnection.Open();
 
-        context.Logger.Info("Migrating database schema (tables)");
-        Schema.Migrate(mainConnection);
-    }
+        context.Logger.Info("Migrating database schema (v1 tables) ...");
+        ISchema v1 = new V1.Schema();
+        v1.Migrate(mainConnection);
 
-    private void MigrateIndexes()
-    {
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        // Check if the index exists. If yes, return.
-        using NpgsqlCommand command =
-            new("SELECT 1 FROM pg_indexes WHERE tablename = 'block' AND indexname = 'idx_block_block_number';",
-                mainConnection);
-        using NpgsqlDataReader reader = command.ExecuteReader();
-        if (reader.Read())
-        {
-            return;
-        }
-
-        reader.Close();
-
-        context.Logger.Info("Migrating database schema (indexes)");
-        Schema.Migrate(mainConnection);
+        context.Logger.Info("Migrating database schema (v2 tables) ...");
+        ISchema v2 = new V2.Schema();
+        v2.Migrate(mainConnection);
     }
 }

@@ -1,3 +1,4 @@
+using Circles.Index.Common;
 using Npgsql;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

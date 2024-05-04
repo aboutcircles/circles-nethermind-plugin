@@ -1,17 +1,9 @@
 using System.Data.Common;
 using System.Numerics;
+using Circles.Index.Common;
 using Nethermind.Int256;
 
 namespace Circles.Index.Data.Query;
-
-public enum ValueTypes
-{
-    Address = 0,
-    Int = 1,
-    BigInt = 2,
-    String = 4,
-    Boolean = 6
-}
 
 public static class Query
 {
