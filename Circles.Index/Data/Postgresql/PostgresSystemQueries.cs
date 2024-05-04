@@ -1,13 +1,12 @@
 using Circles.Index.Common;
 using Npgsql;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Data.Postgresql;
 
-public static class PostgresQuery
+public class PostgresSystemQueries(NpgsqlConnection connection) : ISystemQueries
 {
-    public static long? LatestBlock(NpgsqlConnection connection)
+    public long? LatestBlock()
     {
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
@@ -23,7 +22,7 @@ public static class PostgresQuery
         return null;
     }
 
-    public static long? FirstGap(NpgsqlConnection connection)
+    public long? FirstGap()
     {
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
@@ -48,8 +47,7 @@ public static class PostgresQuery
         return null;
     }
 
-    public static IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(NpgsqlConnection connection,
-        int count = 100)
+    public IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count = 100)
     {
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
@@ -63,25 +61,6 @@ public static class PostgresQuery
         while (reader.Read())
         {
             yield return (reader.GetInt64(0), new Hash256(reader.GetString(1)));
-        }
-    }
-
-    public static IEnumerable<Address> TokenAddressesForAccount(NpgsqlConnection connection, Address circlesAccount)
-    {
-        const string sql = @$"
-            select token_address
-            from {TableNames.Erc20Transfer}
-            where to_address = @circlesAccount
-            group by token_address;";
-
-        using NpgsqlCommand selectCmd = connection.CreateCommand();
-        selectCmd.CommandText = sql;
-        selectCmd.Parameters.AddWithValue("@circlesAccount", circlesAccount.ToString(true, false));
-
-        using NpgsqlDataReader reader = selectCmd.ExecuteReader();
-        while (reader.Read())
-        {
-            yield return new Address((byte[])reader.GetValue(0));
         }
     }
 }

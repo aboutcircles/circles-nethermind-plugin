@@ -5,13 +5,13 @@ using Npgsql;
 
 namespace Circles.Index.Indexer;
 
-public static class ReorgHandler
-{
-    private record ReorgAffectedData(IDictionary<Tables, object[][]> AffectedData);
+public record ReorgAffectedData(IDictionary<Tables, object[][]> AffectedData);
 
-    public static async Task ReorgAt(NpgsqlConnection connection, ILogger logger, long block)
+public class ReorgHandler(NpgsqlConnection connection, ILogger logger) : IReorgHandler
+{
+    public async Task ReorgAt(long block)
     {
-        ReorgAffectedData affectedData = await GetAffectedItems(connection, block);
+        ReorgAffectedData affectedData = await GetAffectedItems(block);
         logger.Info($"Deleting all blocks greater or equal {block} from the index ..");
 
         foreach (var affectedTable in affectedData.AffectedData)
@@ -24,10 +24,10 @@ public static class ReorgHandler
             }
         }
 
-        DeleteFromBlockOnwards(connection, block);
+        DeleteFromBlockOnwards(block);
     }
 
-    private static void DeleteFromBlockOnwards(NpgsqlConnection connection, long reorgAt)
+    private void DeleteFromBlockOnwards(long reorgAt)
     {
         using var transaction = connection.BeginTransaction();
         try
@@ -51,10 +51,10 @@ public static class ReorgHandler
     }
 
 
-    private static Task<ReorgAffectedData> GetAffectedItems(NpgsqlConnection connection, long reorgAt)
+    private Task<ReorgAffectedData> GetAffectedItems(long reorgAt)
     {
         Dictionary<Tables, object[][]> results = new();
-        ISchema[] schemas = [new V1.Schema(), new V2.Schema()];
+        ISchema[] schemas = [new Common.Schema(), new V1.Schema(), new V2.Schema()];
 
         foreach (var schema in schemas)
         {
@@ -62,7 +62,7 @@ public static class ReorgHandler
             {
                 var q = Query.Select(table.Key, table.Value.Columns.Select(o => o.Column))
                     .Where(Query.GreaterThanOrEqual(table.Key, Columns.BlockNumber, reorgAt));
-
+                
                 var result = Query.Execute(connection, q);
                 results.Add(table.Key, result.ToArray());
             }

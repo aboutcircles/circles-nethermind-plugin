@@ -1,22 +1,14 @@
-﻿using System.Data.Common;
-using System.Diagnostics;
-using System.Threading.Channels;
-using Circles.Index.Common;
-using Circles.Index.Data.Postgresql;
+﻿using System.Threading.Channels;
 using Circles.Index.Data.Query;
 using Circles.Index.Indexer;
 using Circles.Index.Rpc;
 using Circles.Index.Utils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Npgsql;
-using Block = Nethermind.Core.Block;
 
 namespace Circles.Index;
 
@@ -30,8 +22,8 @@ public class CirclesIndex : INethermindPlugin
     public string Author => "Gnosis";
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private INethermindApi? _nethermindApi;
 
+    private INethermindApi? _nethermindApi;
     private StateMachine? _indexerMachine;
     private Context? _indexerContext;
 
@@ -39,106 +31,62 @@ public class CirclesIndex : INethermindPlugin
     {
         _nethermindApi = nethermindApi;
 
-        Run();
+        Settings settings = new();
+        ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
+        ILogger pluginLogger = new LoggerWithPrefix("Circles.Index:", baseLogger);
+
+        Query.Initialize(NpgsqlFactory.Instance);
+
+        pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
+        pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
+        pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
+        pluginLogger.Info("Start index from: " + settings.StartBlock);
+
+        _indexerContext = new Context(pluginLogger, settings);
+
+        Run(nethermindApi);
 
         return Task.CompletedTask;
     }
 
-    private long? TryFindReorg(ILogger logger, IBlockTree blockTree, Settings settings)
+    private async void Run(INethermindApi nethermindApi)
     {
-        logger.Info("Trying to find reorg.");
-
-        using NpgsqlConnection mainConnection = new(settings.IndexDbConnectionString);
-        mainConnection.Open();
-        IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
-            PostgresQuery.LastPersistedBlocks(mainConnection);
-        long? reorgAt = null;
-
-        foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
+        if (_indexerContext == null)
         {
-            Block? recentChainBlock = blockTree.FindBlock(recentPersistedBlock.BlockNumber);
-            if (recentChainBlock == null)
-            {
-                throw new Exception($"Couldn't find block {recentPersistedBlock.BlockNumber} in the chain");
-            }
-
-            if (recentPersistedBlock.BlockHash == recentChainBlock.Hash)
-            {
-                continue;
-            }
-
-            logger.Info($"Block {recentPersistedBlock.BlockNumber} is different in the chain.");
-            logger.Info($"  Recent persisted block hash: {recentPersistedBlock.BlockHash}");
-            logger.Info($"  Recent chain block hash: {recentChainBlock.Hash}");
-            reorgAt = recentPersistedBlock.BlockNumber;
-            break;
+            throw new Exception("_indexerContext is not set");
         }
 
-        return reorgAt;
-    }
-    
-    private async void Run()
-    {
         try
         {
-            if (_nethermindApi == null)
-            {
-                throw new Exception("_nethermindApi is not set");
-            }
-
-            Settings settings = new();
-            
-            ILogger baseLogger = _nethermindApi.LogManager.GetClassLogger();
-            ILogger pluginLogger = new LoggerWithPrefix("Circles.Index:", baseLogger);
-            
-            DbProviderFactory factory = NpgsqlFactory.Instance;
-            Query.Initialize(factory);
-            
-            pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
-            pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
-            pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
-            pluginLogger.Info("Start index from: " + settings.StartBlock);
-            
-            _indexerContext = new Context(
-                pluginLogger
-                , _nethermindApi.ChainSpec
-                , settings);
-            
             // Wait in a loop as long as the nethermind node is not fully in sync with the chain
-            while ((_nethermindApi.Pivot?.PivotNumber > _nethermindApi.BlockTree?.Head?.Number
-                    || _nethermindApi.BlockTree?.Head == null
-                    || _nethermindApi.ReceiptFinder == null)
-                   && !_cancellationTokenSource.Token.IsCancellationRequested)
+            while (nethermindApi.Pivot?.PivotNumber > nethermindApi.BlockTree?.Head?.Number
+                   || nethermindApi.BlockTree?.Head == null
+                   || nethermindApi.ReceiptFinder == null)
             {
-                pluginLogger.Info("Waiting for the node to sync");
+                if (_cancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _indexerContext.Logger.Info("Waiting for the node to sync");
                 await Task.Delay(1000);
             }
-            
-            if (_cancellationTokenSource.Token.IsCancellationRequested)
-            {
-                return;
-            }
-            
-            long? FindReorg() => TryFindReorg(pluginLogger, _nethermindApi.BlockTree!, settings);
-            long GetHead() => _nethermindApi.BlockTree!.Head!.Number;
-            
+
             _indexerMachine = new StateMachine(
                 _indexerContext
-                , _nethermindApi.BlockTree!
-                , _nethermindApi.ReceiptFinder!
-                , GetHead
-                , FindReorg
+                , nethermindApi.BlockTree!
+                , nethermindApi.ReceiptFinder!
                 , _cancellationTokenSource.Token);
-            
+
             Channel<BlockEventArgs> blockChannel = Channel.CreateBounded<BlockEventArgs>(1);
-            
+            nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
+            {
+                _indexerContext.Logger.Debug($"New head block: {args.Block.Number}");
+                blockChannel.Writer.TryWrite(args);
+            };
+
             await Task.Run(async () =>
             {
-                _nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
-                {
-                    blockChannel.Writer.TryWrite(args); // This will overwrite if the channel is full
-                };
-            
                 // Process blocks from the channel
                 _ = Task.Run(async () =>
                 {
@@ -147,17 +95,8 @@ public class CirclesIndex : INethermindPlugin
                     {
                         try
                         {
-                            if (args.Block.Number <= _indexerMachine.LastIndexHeight
-                                && (_indexerMachine.LastReorgAt == 0 ||
-                                    args.Block.Number <= _indexerMachine.LastReorgAt))
-                            {
-                                _indexerContext.Logger.Warn($"Reorg at {args.Block.Number}");
-                                _indexerMachine.LastReorgAt = args.Block.Number;
-                            }
-            
                             _indexerContext.Logger.Debug($"New block received: {args.Block.Number}");
-            
-                            await _indexerMachine.HandleEvent(StateMachine.Event.NewBlock);
+                            await _indexerMachine.HandleEvent(new StateMachine.NewHead(args.Block.Number));
                         }
                         catch (Exception e)
                         {
@@ -165,7 +104,7 @@ public class CirclesIndex : INethermindPlugin
                         }
                     }
                 }, _cancellationTokenSource.Token);
-            
+
                 await _indexerMachine.TransitionTo(StateMachine.State.Initial);
             }, _cancellationTokenSource.Token);
         }
@@ -176,12 +115,10 @@ public class CirclesIndex : INethermindPlugin
         }
     }
 
-
     public Task InitNetworkProtocol()
     {
         return Task.CompletedTask;
     }
-
 
     public Task InitRpcModules()
     {
@@ -200,9 +137,9 @@ public class CirclesIndex : INethermindPlugin
             throw new Exception("_indexerContext is not set");
         }
 
-        (IApiWithNetwork apiWithNetwork, _) = _nethermindApi.ForRpc;
         CirclesRpcModule circlesRpcModule = new(_nethermindApi, _indexerContext.Settings.IndexDbConnectionString);
-        apiWithNetwork.RpcModuleProvider?.Register(new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
+        _nethermindApi.ForRpc.GetFromApi.RpcModuleProvider?.Register(
+            new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
         return Task.CompletedTask;
     }

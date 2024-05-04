@@ -5,28 +5,17 @@ using NpgsqlTypes;
 
 namespace Circles.Index.V1;
 
-public class PropertyMap
-{
-    public Dictionary<Tables, Dictionary<Columns, (NpgsqlDbType type, Func<IIndexEvent, object?> extractor)>> Map { get; } = new();
-    
-    public void Add<TEvent>(Tables table, Dictionary<Columns, (NpgsqlDbType type, Func<TEvent, object?> extractor)> map) 
-        where TEvent : IIndexEvent
-    {
-        Map.Add(table, map.ToDictionary(o => o.Key, o => ((NpgsqlDbType, Func<IIndexEvent, object?>))(o.Value.type, e => o.Value.extractor((TEvent)e))));
-    }
-}
-
-public class V1Sink : IEventSink
+public class PostgresSink : IEventSink
 {
     private readonly string _connectionString;
     private readonly int _batchSize;
     private readonly PropertyMap _propertyMap = new();
     private readonly InsertBuffer<IIndexEvent> _insertBuffer = new ();
 
-    private MeteredCaller<object?, Task> _flush;
-    private MeteredCaller<IIndexEvent, Task> _addEvent;
+    private readonly MeteredCaller<object?, Task> _flush;
+    private readonly MeteredCaller<IIndexEvent, Task> _addEvent;
     
-    public V1Sink(string connectionString, int batchSize = 1)
+    public PostgresSink(string connectionString, int batchSize = 1)
     {
         _connectionString = connectionString;
         _batchSize = batchSize;
@@ -79,14 +68,12 @@ public class V1Sink : IEventSink
             { Columns.Amount, (NpgsqlDbType.Numeric, e => (BigInteger)e.Value) }
         });
         
-        _flush = new MeteredCaller<object?, Task>("V1Sink: Flush", _ => PerformFlush());
+        _flush = new MeteredCaller<object?, Task>("V1Sink: Flush", async _ => await PerformFlush());
         _addEvent = new MeteredCaller<IIndexEvent, Task>("V1Sink: AddEvent", PerformAddEvent);
     }
-    
-    public async Task FlushEvents(Tables table, IEnumerable<IIndexEvent> events)
+
+    private async Task FlushEvents(Tables table, IEnumerable<IIndexEvent> events)
     {
-        // Console.WriteLine($"Flushing {events.Count()} events to {table}");
-        
         await using var flushConnection = new NpgsqlConnection(_connectionString);
         await flushConnection.OpenAsync();
         

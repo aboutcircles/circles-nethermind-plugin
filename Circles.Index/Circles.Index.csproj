@@ -14,14 +14,6 @@
     </PropertyGroup>
 
 
-
-    <ItemGroup>
-      <Reference Include="Microsoft.Data.Sqlite">
-        <HintPath>..\..\..\..\..\..\.nuget\packages\microsoft.data.sqlite.core\6.0.7\lib\net6.0\Microsoft.Data.Sqlite.dll</HintPath>
-      </Reference>
-    </ItemGroup>
-
-
     <ItemGroup>
       <None Remove="known_relevant_blocks.csv" />
       <None Remove="arm64.Dockerfile" />

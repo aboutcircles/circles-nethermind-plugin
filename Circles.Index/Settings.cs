@@ -22,5 +22,5 @@ public class Settings
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 12541946L;
 
-    public static readonly ImmutableArray<ISchema> Schemas = [new V1.Schema(), new V2.Schema()];
+    public static readonly ImmutableArray<ISchema> Schemas = [new Common.Schema(), new V1.Schema(), new V2.Schema()];
 }

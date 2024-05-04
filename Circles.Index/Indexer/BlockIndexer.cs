@@ -58,6 +58,7 @@ public class ImportFlow
     {
         foreach (var indexEvent in data.Item2)
         {
+            // TODO: Add events only if the sink can handle them
             foreach (var sink in _sinks)
             {
                 await sink.AddEvent(indexEvent);
@@ -142,7 +143,6 @@ public class ImportFlow
 
         await foreach (var blockNo in source)
         {
-            //await pipeline.SendAsync(blockNo, cancellationToken.Value);
             await sendBlock.Call(blockNo);
 
             min = Math.Min(min, blockNo);

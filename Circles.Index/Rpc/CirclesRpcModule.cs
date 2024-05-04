@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using Circles.Index.Common;
 using Circles.Index.Data;
@@ -107,8 +108,40 @@ public class CirclesRpcModule : ICirclesRpcModule
         // string result = LibPathfinder.ffi_compute_transfer(from, to, amount);
         return ResultWrapper<string>.Success("");
     }
-    
+
     #region private methods
+
+    private static IEnumerable<Address> TokenAddressesForAccount(NpgsqlConnection connection, Address circlesAccount)
+    {
+        var select = Query.Select(
+                Tables.Erc20Transfer
+                , new[]
+                {
+                    Columns.TokenAddress
+                })
+            .Where(
+                Query.Equals(
+                    Tables.Erc20Transfer
+                    , Columns.ToAddress
+                    , circlesAccount.ToString(true, false)));
+
+        return Query.Execute(connection, select).Select(o => o[0]).Cast<byte[]>().Select(o => new Address(o));
+
+        // const string sql = @$"
+        //     select token_address
+        //     from {TableNames.Erc20Transfer}
+        //     where to_address = @circlesAccount
+        //     group by token_address;";
+        // using NpgsqlCommand selectCmd = connection.CreateCommand();
+        // selectCmd.CommandText = sql;
+        // selectCmd.Parameters.AddWithValue("@circlesAccount", circlesAccount.ToString(true, false));
+        //
+        // using NpgsqlDataReader reader = selectCmd.ExecuteReader();
+        // while (reader.Read())
+        // {
+        //     yield return new Address((byte[])reader.GetValue(0));
+        // }
+    }
 
     private static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,
         Address address)
@@ -116,7 +149,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         using NpgsqlConnection connection = new(dbLocation);
         connection.Open();
 
-        IEnumerable<Address> tokens = PostgresQuery.TokenAddressesForAccount(connection, address);
+        IEnumerable<Address> tokens = TokenAddressesForAccount(connection, address);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -153,7 +186,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         using NpgsqlConnection connection = new(dbLocation);
         connection.Open();
 
-        IEnumerable<Address> tokens = PostgresQuery.TokenAddressesForAccount(connection, address);
+        IEnumerable<Address> tokens = TokenAddressesForAccount(connection, address);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -216,6 +249,6 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         throw new InvalidOperationException($"Unknown expression type: {expression.Type}");
     }
-    
+
     #endregion
 }

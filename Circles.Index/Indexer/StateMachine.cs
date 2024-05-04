@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using Circles.Index.Common;
 using Circles.Index.Data;
 using Circles.Index.Data.Postgresql;
-using Circles.Index.V1;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Npgsql;
 
 namespace Circles.Index.Indexer;
@@ -12,14 +14,24 @@ public class StateMachine(
     Context context,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
-    Func<long> getHead,
-    Func<long?> tryFindReorg,
     CancellationToken cancellationToken)
 {
-    public State CurrentState { get; private set; } = State.New;
-    public long LastReorgAt { get; set; }
-    public long LastIndexHeight { get; set; }
-    public List<Exception> Errors { get; } = new();
+    public interface IEvent;
+
+    record SyncCompleted : IEvent;
+
+    public record NewHead(long Head) : IEvent;
+
+    record EnterState : IEvent;
+
+    record LeaveState : IEvent;
+
+    record ReorgCompleted : IEvent;
+
+    private long LastReorgAt { get; set; }
+    private long LastIndexHeight { get; set; }
+    private List<Exception> Errors { get; } = new();
+    private State CurrentState { get; set; } = State.New;
 
     public enum State
     {
@@ -32,17 +44,7 @@ public class StateMachine(
         End
     }
 
-    public enum Event
-    {
-        SyncCompleted,
-        NewBlock,
-        ErrorOccurred,
-        EnterState,
-        LeaveState,
-        ReorgCompleted
-    }
-
-    public async Task HandleEvent(Event e)
+    public async Task HandleEvent(IEvent e)
     {
         try
         {
@@ -54,22 +56,20 @@ public class StateMachine(
                 case State.Initial:
                     switch (e)
                     {
-                        case Event.EnterState:
+                        case EnterState:
                         {
                             // Make sure all tables exist before we start
                             MigrateSchemas();
 
-                            long head = getHead();
+                            long head = blockTree.Head!.Number;
                             SetLastIndexHeight();
 
                             await using NpgsqlConnection
                                 reorgConnection = new(context.Settings.IndexDbConnectionString);
                             await reorgConnection.OpenAsync();
 
-                            await ReorgHandler.ReorgAt(
-                                reorgConnection
-                                , context.Logger
-                                , Math.Min(LastIndexHeight, head) + 1);
+                            IReorgHandler reorgHandler = new ReorgHandler(reorgConnection, context.Logger);
+                            await reorgHandler.ReorgAt(Math.Min(LastIndexHeight, head) + 1);
 
                             await TransitionTo(head == LastIndexHeight
                                 ? State.WaitForNewBlock
@@ -83,16 +83,13 @@ public class StateMachine(
                 case State.Syncing:
                     switch (e)
                     {
-                        case Event.EnterState:
+                        case EnterState:
                             // Make sure we know what exactly we are syncing
                             SetLastIndexHeight();
 
-                            // Internally runs asynchronous and syncs the whole backlog of missed blocks.
-                            // After that the method will trigger SyncComplete and stop executing.
-                            // It will only be restarted once the state is entered again.
-                            Sync();
+                            await Sync();
                             return;
-                        case Event.SyncCompleted:
+                        case SyncCompleted:
                             Errors.Clear(); // Clean up errors after a successful sync
                             SetLastIndexHeight();
 
@@ -105,10 +102,15 @@ public class StateMachine(
                 case State.WaitForNewBlock:
                     switch (e)
                     {
-                        case Event.NewBlock:
-                            LastReorgAt = tryFindReorg() ?? 0;
+                        case NewHead newHead:
+                            LastReorgAt = newHead.Head <= LastIndexHeight
+                                ? newHead.Head
+                                : TryFindReorg() ?? 0;
+
                             if (LastReorgAt > 0)
                             {
+                                context.Logger.Warn($"Reorg at {LastReorgAt}");
+
                                 await TransitionTo(State.Reorg);
                                 return;
                             }
@@ -122,12 +124,12 @@ public class StateMachine(
                 case State.Reorg:
                     switch (e)
                     {
-                        case Event.EnterState:
+                        case EnterState:
                             // Internally runs asynchronous, deletes all state after the reorg block and triggers a ReorgCompleted event when done.
                             // After that the method will stop executing and only be restarted once the state is entered again.
                             Reorg();
                             return;
-                        case Event.ReorgCompleted:
+                        case ReorgCompleted:
                             await TransitionTo(State.Syncing);
                             return;
                     }
@@ -137,12 +139,12 @@ public class StateMachine(
                 case State.Error:
                     switch (e)
                     {
-                        case Event.EnterState:
+                        case EnterState:
                             await TransitionTo(Errors.Count >= 3
                                 ? State.End
                                 : State.Initial);
                             return;
-                        case Event.LeaveState:
+                        case LeaveState:
                             Cleanup();
                             return;
                     }
@@ -161,25 +163,35 @@ public class StateMachine(
             context.Logger.Error($"Error while handling {e} event in state {CurrentState}", ex);
             Errors.Add(ex);
 
-            await HandleEvent(Event.ErrorOccurred);
+            await TransitionTo(State.Error);
         }
     }
 
-    #region Context changing methods
+    public async Task TransitionTo(State newState)
+    {
+        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
+        if (newState is not State.Error)
+        {
+            await HandleEvent(new LeaveState());
+        }
+
+        CurrentState = newState;
+
+        await HandleEvent(new EnterState());
+    }
 
     private void SetLastIndexHeight()
     {
         using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
         mainConnection.Open();
 
-        LastIndexHeight = PostgresQuery.FirstGap(mainConnection) ?? PostgresQuery.LatestBlock(mainConnection) ?? 0;
+        ISystemQueries postgresSystemQueries = new PostgresSystemQueries(mainConnection);
+        LastIndexHeight = postgresSystemQueries.FirstGap() ?? postgresSystemQueries.LatestBlock() ?? 0;
     }
 
     private void Cleanup()
     {
     }
-
-    #endregion
 
     private async void Reorg()
     {
@@ -191,33 +203,25 @@ public class StateMachine(
 
         await using NpgsqlConnection connection = new(context.Settings.IndexDbConnectionString);
         connection.Open();
-        await ReorgHandler.ReorgAt(connection, context.Logger, LastReorgAt);
+
+        IReorgHandler reorgHandler = new ReorgHandler(connection, context.Logger);
+        await reorgHandler.ReorgAt(LastReorgAt);
 
         LastReorgAt = 0;
 
-        await HandleEvent(Event.ReorgCompleted);
+        await HandleEvent(new ReorgCompleted());
     }
 
-    public async Task TransitionTo(State newState)
-    {
-        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
-        await HandleEvent(Event.LeaveState);
-
-        CurrentState = newState;
-
-        await HandleEvent(Event.EnterState);
-    }
-
-    private async void Sync()
+    private async Task Sync()
     {
         context.Logger.Info("Starting syncing process.");
-        
-        IEventSink v1Sink = new V1Sink(context.Settings.IndexDbConnectionString);
-        // IEventSink v2Sink = new V2Sink(context.Settings.IndexDbConnectionString);
+
+        IEventSink v1Sink = new V1.PostgresSink(context.Settings.IndexDbConnectionString);
+        IEventSink v2Sink = new V2.PostgresSink(context.Settings.IndexDbConnectionString);
         INewIndexerVisitor[] parsers =
         [
-            new V1IndexerVisitor(context.Settings.CirclesV1HubAddress),
-            // new V2IndexerVisitor(context.Settings.CirclesV2HubAddress, v2Sink)
+            new V1.IndexerVisitor(context.Settings.CirclesV1HubAddress),
+            new V2.IndexerVisitor(context.Settings.CirclesV2HubAddress)
         ];
 
         try
@@ -227,55 +231,110 @@ public class StateMachine(
                 , blockTree
                 , receiptFinder
                 , parsers
-                , [v1Sink]);
+                , [v1Sink, v2Sink]);
 
             IAsyncEnumerable<long> blocksToSync = GetBlocksToSync();
             Range<long> importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
 
             await v1Sink.Flush();
             await flow.FlushBlocks();
-            
+
             if (importedBlockRange is { Min: long.MaxValue, Max: long.MinValue })
             {
-                await HandleEvent(Event.SyncCompleted);
+                await HandleEvent(new SyncCompleted());
                 return;
             }
-            
+
             context.Logger.Info($"Imported blocks from {importedBlockRange.Min} to {importedBlockRange.Max}");
-            await HandleEvent(Event.SyncCompleted);
+            await HandleEvent(new SyncCompleted());
         }
         catch (TaskCanceledException)
         {
             context.Logger.Info($"Cancelled indexing blocks.");
         }
+        catch (Exception ex)
+        {
+            context.Logger.Error("Error while syncing blocks.", ex);
+            Errors.Add(ex);
+            await TransitionTo(State.Error);
+        }
     }
 
     private async IAsyncEnumerable<long> GetBlocksToSync()
     {
-        long head = getHead();
+        if (blockTree.Head == null)
+        {
+            yield break;
+        }
+
         SetLastIndexHeight();
         LastIndexHeight = LastIndexHeight == 0 ? context.Settings.StartBlock : LastIndexHeight;
+
+        long head = blockTree.Head.Number;
+        long lastIndexHeight = LastIndexHeight;
+
         context.Logger.Info($"Getting blocks to sync from {LastIndexHeight} (LastIndexHeight) to {head} (chain-head)");
 
-        if (LastIndexHeight == head)
+        if (lastIndexHeight == head)
         {
             context.Logger.Info("No blocks to sync.");
             yield break;
         }
 
-        context.Logger.Debug($"Enumerating blocks to sync from {LastIndexHeight} to {head}");
+        context.Logger.Debug($"Enumerating blocks to sync from {lastIndexHeight} to {head}");
 
-        for (long i = LastIndexHeight + 1; i <= head; i++)
+        for (long i = lastIndexHeight + 1; i <= head; i++)
         {
             yield return i;
             await Task.Yield();
         }
     }
 
+
+    private long? TryFindReorg()
+    {
+        context.Logger.Info("Trying to find reorg.");
+
+        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
+        mainConnection.Open();
+
+        ISystemQueries postgresSystemQueries = new PostgresSystemQueries(mainConnection);
+
+        IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
+            postgresSystemQueries.LastPersistedBlocks(100);
+        long? reorgAt = null;
+
+        foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
+        {
+            Block? recentChainBlock = blockTree.FindBlock(recentPersistedBlock.BlockNumber);
+            if (recentChainBlock == null)
+            {
+                throw new Exception($"Couldn't find block {recentPersistedBlock.BlockNumber} in the chain");
+            }
+
+            if (recentPersistedBlock.BlockHash == recentChainBlock.Hash)
+            {
+                continue;
+            }
+
+            context.Logger.Info($"Block {recentPersistedBlock.BlockNumber} is different in the chain.");
+            context.Logger.Info($"  Recent persisted block hash: {recentPersistedBlock.BlockHash}");
+            context.Logger.Info($"  Recent chain block hash: {recentChainBlock.Hash}");
+            reorgAt = recentPersistedBlock.BlockNumber;
+            break;
+        }
+
+        return reorgAt;
+    }
+
     private void MigrateSchemas()
     {
         using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
         mainConnection.Open();
+
+        context.Logger.Info("Migrating database schema (common tables) ...");
+        ISchema common = new Common.Schema();
+        common.Migrate(mainConnection);
 
         context.Logger.Info("Migrating database schema (v1 tables) ...");
         ISchema v1 = new V1.Schema();

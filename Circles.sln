@@ -25,6 +25,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		circles-config.cfg = circles-config.cfg
 		time_controller.py = time_controller.py
 		x64.debug.Dockerfile = x64.debug.Dockerfile
+		docker-compose.gnosis.yml = docker-compose.gnosis.yml
 	EndProjectSection
 EndProject
 Global

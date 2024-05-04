@@ -13,13 +13,17 @@ public static class MeteredCallers
         Timer = new Timer(_ =>
         {
             // Format all values as table and print to the console
-            var columns = new[] { "Name", "Total Calls", "Total Time", "Avg. Time" };
+            var columns = new[] { "Name", "Total Calls", "Total Time (ms)", "Avg. Time (ms)", "Avg. Call Interval (ms)" };
             List<object[]> rows = new();
 
             foreach (MeteredCaller caller in Instances.Values.Reverse())
             {
                 rows.Add([
-                    caller.Name, caller.TotalCalls, caller.TotalTime, caller.TotalTime / caller.TotalCalls
+                    caller.Name,
+                    caller.TotalCalls,
+                    caller.TotalTime,
+                    caller.TotalTime / caller.TotalCalls,
+                    caller.AverageCallInterval
                 ]);
             }
 
@@ -62,13 +66,22 @@ public static class MeteredCallers
 
 public abstract class MeteredCaller
 {
-    public string Name { get; protected set; }
+    public string Name { get; protected init; }
 
     protected long _totalCalls;
     public long TotalCalls => _totalCalls;
 
     protected double _totalTime;
     public double TotalTime => _totalTime;
+
+    public DateTime FirstCallTime => _firstCallTime;
+    protected DateTime _firstCallTime;
+
+    public DateTime LastCallTime => _lastCallTime;
+    protected DateTime _lastCallTime;
+
+    public double AverageCallInterval =>
+        _totalCalls > 1 ? (_lastCallTime - _firstCallTime).TotalMilliseconds / (_totalCalls - 1) : 0;
 }
 
 public class MeteredCaller<T, TResult> : MeteredCaller
@@ -79,12 +92,15 @@ public class MeteredCaller<T, TResult> : MeteredCaller
     {
         Name = name;
         _func = func;
-        
+
         if (MeteredCallers.Instances.TryGetValue(name, out var existing))
         {
             _totalCalls = existing.TotalCalls;
             _totalTime = existing.TotalTime;
+            _firstCallTime = existing.FirstCallTime;
+            _lastCallTime = existing.LastCallTime;
         }
+
         MeteredCallers.Instances.AddOrUpdate(name, _ => this, (_, _) => this);
     }
 
@@ -98,6 +114,12 @@ public class MeteredCaller<T, TResult> : MeteredCaller
         var sw = Stopwatch.StartNew();
         var result = _func(arg);
         sw.Stop();
+
+        var now = DateTime.UtcNow;
+        if (_totalCalls == 0)
+            _firstCallTime = now;
+        _lastCallTime = now;
+
         Interlocked.Increment(ref _totalCalls);
         _totalTime += sw.Elapsed.TotalMilliseconds;
 

@@ -69,12 +69,13 @@ public static class Query
         {
             return null;
         }
+        
         switch (target)
         {
             case ValueTypes.String:
                 return input.ToString() ?? throw new ArgumentNullException(nameof(input));
             case ValueTypes.Int:
-                return System.Convert.ToInt64(input?.ToString());
+                return System.Convert.ToInt64(input.ToString());
             case ValueTypes.BigInt when input is string i:
                 return BigInteger.Parse(i);
             case ValueTypes.BigInt when input is BigInteger:
@@ -99,7 +100,7 @@ public static class Query
                 return i != 0;
             default:
                 throw new ArgumentOutOfRangeException(nameof(target), target,
-                    $"Cannot convert input {input} (type: {input.GetType()?.Name ?? "<null>"}) to target type {target}.");
+                    $"Cannot convert input {input} (type: {input.GetType().Name}) to target type {target}.");
         }
     }
 }

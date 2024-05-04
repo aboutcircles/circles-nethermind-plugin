@@ -42,7 +42,7 @@ public class Schema : ISchema
                 (Columns.TransactionIndex, ValueTypes.Int, true, true),
                 (Columns.LogIndex, ValueTypes.Int, true, true),
                 (Columns.TransactionHash, ValueTypes.String, false, true),
-                (Columns.ToAddress, ValueTypes.Address, false, true),
+                (Columns.HumanAddress, ValueTypes.Address, false, true),
                 (Columns.Amount, ValueTypes.BigInt, false, false),
                 (Columns.StartPeriod, ValueTypes.BigInt, false, false),
                 (Columns.EndPeriod, ValueTypes.BigInt, false, false)
@@ -58,8 +58,8 @@ public class Schema : ISchema
                 (Columns.LogIndex, ValueTypes.Int, true, true),
                 (Columns.TransactionHash, ValueTypes.String, false, true),
                 (Columns.GroupAddress, ValueTypes.Address, false, true),
-                (Columns.GroupMintPolicy, ValueTypes.Address, false, true),
-                (Columns.GroupTreasury, ValueTypes.Address, false, true),
+                (Columns.MintPolicy, ValueTypes.Address, false, true),
+                (Columns.Treasury, ValueTypes.Address, false, true),
                 (Columns.GroupName, ValueTypes.String, false, true),
                 (Columns.GroupSymbol, ValueTypes.String, false, true)
             ])
@@ -73,7 +73,7 @@ public class Schema : ISchema
                 (Columns.TransactionIndex, ValueTypes.Int, true, true),
                 (Columns.LogIndex, ValueTypes.Int, true, true),
                 (Columns.TransactionHash, ValueTypes.String, false, true),
-                (Columns.Address, ValueTypes.Address, false, true)
+                (Columns.HumanAddress, ValueTypes.Address, false, true)
             ])
         },
         {
@@ -115,6 +115,9 @@ public class Schema : ISchema
                 (Columns.ExpiryTime, ValueTypes.BigInt, false, false)
             ])
         },
+
+
+        // Existing:
         {
             Tables.Erc20Transfer,
             new TableSchema(Tables.Erc20Transfer,
@@ -139,8 +142,8 @@ public class Schema : ISchema
                 (Columns.TransactionIndex, ValueTypes.Int, true, true),
                 (Columns.LogIndex, ValueTypes.Int, true, true),
                 (Columns.TransactionHash, ValueTypes.String, false, true),
-                (Columns.OwnerAddress, ValueTypes.Address, false, true),
-                (Columns.OperatorAddress, ValueTypes.Address, false, true),
+                (Columns.Owner, ValueTypes.Address, false, true),
+                (Columns.Operator, ValueTypes.Address, false, true),
                 (Columns.Approved, ValueTypes.Boolean, false, true)
             ])
         },
@@ -158,7 +161,7 @@ public class Schema : ISchema
                 (Columns.FromAddress, ValueTypes.Address, false, true),
                 (Columns.ToAddress, ValueTypes.Address, false, true),
                 (Columns.TokenId, ValueTypes.BigInt, false, true),
-                (Columns.Amount, ValueTypes.BigInt, false, false)
+                (Columns.Value, ValueTypes.BigInt, false, false)
             ])
         },
         {
@@ -174,7 +177,7 @@ public class Schema : ISchema
                 (Columns.FromAddress, ValueTypes.Address, false, true),
                 (Columns.ToAddress, ValueTypes.Address, false, true),
                 (Columns.TokenId, ValueTypes.BigInt, false, true),
-                (Columns.Amount, ValueTypes.BigInt, false, false)
+                (Columns.Value, ValueTypes.BigInt, false, false)
             ])
         },
         {

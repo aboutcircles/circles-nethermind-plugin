@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Circles.Index.V1;
 
-public class V1IndexerVisitor(Address v1HubAddress) : SinkVisitor
+public class IndexerVisitor(Address v1HubAddress) : SinkVisitor
 {
     public static Hash256 CrcHubTransferEventTopic { get; } = Keccak.Compute("HubTransfer(address,address,uint256)");
     public static Hash256 CrcTrustEventTopic { get; } = Keccak.Compute("Trust(address,address,uint256)");
@@ -30,7 +30,6 @@ public class V1IndexerVisitor(Address v1HubAddress) : SinkVisitor
         if (topic == Erc20TransferTopic &&
             CirclesTokenAddresses.ContainsKey(log.LoggersAddress))
         {
-            Console.WriteLine("Found ERC20 transfer for {0}", log.LoggersAddress);
             events.Add(Erc20Transfer(block, receipt, log, logIndex));
         }
 
@@ -160,7 +159,6 @@ public class V1IndexerVisitor(Address v1HubAddress) : SinkVisitor
 
             if (repeatedLogEntry.Topics[0] == Erc20TransferTopic)
             {
-                Console.WriteLine("Found signup bonus for {0}", user);
                 signupBonusEvent = Erc20Transfer(block, receipt, repeatedLogEntry, logIndex);
                 break;
             }
