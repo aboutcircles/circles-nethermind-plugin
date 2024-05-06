@@ -1,9 +1,5 @@
-using System.Data;
 using System.Globalization;
 using Circles.Index.Common;
-using Circles.Index.Data;
-using Circles.Index.Data.Postgresql;
-using Circles.Index.Data.Query;
 using Circles.Index.Utils;
 using Nethermind.Api;
 using Nethermind.Core;
@@ -14,7 +10,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Npgsql;
 
 namespace Circles.Index.Rpc;
 
@@ -22,16 +17,14 @@ public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly ILogger _pluginLogger;
     private readonly INethermindApi _nethermindApi;
+    private readonly IDatabase _database;
 
-    private readonly string _indexConnectionString;
-
-    public CirclesRpcModule(INethermindApi nethermindApi, string indexConnectionString)
+    public CirclesRpcModule(INethermindApi nethermindApi, IDatabase database)
     {
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         _nethermindApi = nethermindApi;
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
-
-        _indexConnectionString = indexConnectionString;
+        _database = database;
     }
 
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
@@ -57,9 +50,6 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
     {
-        using NpgsqlConnection connection = new(_indexConnectionString);
-        connection.Open();
-
         if (query.Table == null)
         {
             throw new InvalidOperationException("Table is null");
@@ -126,21 +116,6 @@ public class CirclesRpcModule : ICirclesRpcModule
                     , circlesAccount.ToString(true, false)));
 
         return Query.Execute(connection, select).Select(o => o[0]).Cast<byte[]>().Select(o => new Address(o));
-
-        // const string sql = @$"
-        //     select token_address
-        //     from {TableNames.Erc20Transfer}
-        //     where to_address = @circlesAccount
-        //     group by token_address;";
-        // using NpgsqlCommand selectCmd = connection.CreateCommand();
-        // selectCmd.CommandText = sql;
-        // selectCmd.Parameters.AddWithValue("@circlesAccount", circlesAccount.ToString(true, false));
-        //
-        // using NpgsqlDataReader reader = selectCmd.ExecuteReader();
-        // while (reader.Read())
-        // {
-        //     yield return new Address((byte[])reader.GetValue(0));
-        // }
     }
 
     private static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,

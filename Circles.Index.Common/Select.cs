@@ -1,8 +1,7 @@
 using System.Data;
 using System.Text;
-using Circles.Index.Common;
 
-namespace Circles.Index.Data.Query;
+namespace Circles.Index.Common;
 
 public class Select : IQuery
 {
@@ -37,6 +36,7 @@ public class Select : IQuery
             sql.Append(" WHERE ");
             sql.Append(string.Join(" AND ", Conditions.Select(c => c.ToSql())));
         }
+
         if (OrderBy.Any())
         {
             sql.Append(" ORDER BY ");
@@ -46,11 +46,11 @@ public class Select : IQuery
         return sql.ToString();
     }
 
-    public IEnumerable<IDataParameter> GetParameters()
+    public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
     {
         foreach (var condition in Conditions)
         {
-            foreach (var param in condition.GetParameters())
+            foreach (var param in condition.GetParameters(schema))
             {
                 yield return param;
             }
@@ -59,6 +59,11 @@ public class Select : IQuery
 
     public override string ToString()
     {
+        return ToSql();
+    }
+
+    public string ToString(IDatabaseSchema schema)
+    {
         StringBuilder sb = new();
         sb.AppendLine("Query:");
         sb.AppendLine("------");
@@ -66,7 +71,7 @@ public class Select : IQuery
         sb.AppendLine();
         sb.AppendLine("Parameters:");
         sb.AppendLine("-----------");
-        foreach (var parameter in GetParameters())
+        foreach (var parameter in GetParameters(schema))
         {
             sb.AppendLine($"{parameter.ParameterName}: {parameter.Value}");
         }

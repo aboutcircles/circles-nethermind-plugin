@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: ./x64.debug.Dockerfile
+      dockerfile: ./x64.debug.spaceneth.Dockerfile
     network_mode: host
     environment:
       - V1_HUB_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
@@ -34,7 +34,7 @@ services:
     container_name: 'postgres'
     environment:
       POSTGRES_PASSWORD: ''
-      POSTGRES_USER: 'postgres'W
+      POSTGRES_USER: 'postgres'
       POSTGRES_HOST_AUTH_METHOD: 'trust'
     volumes:
       - ./.container-state/postgres-data:/var/lib/postgresql/data

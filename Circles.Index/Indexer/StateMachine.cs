@@ -1,12 +1,9 @@
-using System.Diagnostics;
 using Circles.Index.Common;
 using Circles.Index.Data;
-using Circles.Index.Data.Postgresql;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Npgsql;
 
 namespace Circles.Index.Indexer;
 
@@ -58,18 +55,10 @@ public class StateMachine(
                     {
                         case EnterState:
                         {
-                            // Make sure all tables exist before we start
-                            MigrateSchemas();
-
                             long head = blockTree.Head!.Number;
                             SetLastIndexHeight();
 
-                            await using NpgsqlConnection
-                                reorgConnection = new(context.Settings.IndexDbConnectionString);
-                            await reorgConnection.OpenAsync();
-
-                            IReorgHandler reorgHandler = new ReorgHandler(reorgConnection, context.Logger);
-                            await reorgHandler.ReorgAt(Math.Min(LastIndexHeight, head) + 1);
+                            await context.Database.DeleteFromBlockOnwards(Math.Min(LastIndexHeight, head) + 1);
 
                             await TransitionTo(head == LastIndexHeight
                                 ? State.WaitForNewBlock
@@ -145,14 +134,12 @@ public class StateMachine(
                                 : State.Initial);
                             return;
                         case LeaveState:
-                            Cleanup();
                             return;
                     }
 
                     break;
 
                 case State.End:
-                    Cleanup();
                     return;
             }
 
@@ -182,15 +169,7 @@ public class StateMachine(
 
     private void SetLastIndexHeight()
     {
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        ISystemQueries postgresSystemQueries = new PostgresSystemQueries(mainConnection);
-        LastIndexHeight = postgresSystemQueries.FirstGap() ?? postgresSystemQueries.LatestBlock() ?? 0;
-    }
-
-    private void Cleanup()
-    {
+        LastIndexHeight = context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
     }
 
     private async void Reorg()
@@ -201,12 +180,7 @@ public class StateMachine(
             throw new Exception("LastReorgAt is 0");
         }
 
-        await using NpgsqlConnection connection = new(context.Settings.IndexDbConnectionString);
-        connection.Open();
-
-        IReorgHandler reorgHandler = new ReorgHandler(connection, context.Logger);
-        await reorgHandler.ReorgAt(LastReorgAt);
-
+        await context.Database.DeleteFromBlockOnwards(LastReorgAt);
         LastReorgAt = 0;
 
         await HandleEvent(new ReorgCompleted());
@@ -216,12 +190,29 @@ public class StateMachine(
     {
         context.Logger.Info("Starting syncing process.");
 
-        IEventSink v1Sink = new V1.PostgresSink(context.Settings.IndexDbConnectionString);
-        IEventSink v2Sink = new V2.PostgresSink(context.Settings.IndexDbConnectionString);
-        INewIndexerVisitor[] parsers =
+        var commonSchema = new Common.DatabaseSchema();
+        var v1Schema = new V1.DatabaseSchema();
+        var v2Schema = new V2.DatabaseSchema();
+
+        IDatabaseSchema databaseDatabaseSchema = new CompositeDatabaseSchema([
+            commonSchema, v1Schema, v2Schema
+        ]);
+
+        IEventDtoTableMap compositeEventDtoTableMap = new CompositeEventDtoTableMap([
+            v1Schema.EventDtoTableMap, v2Schema.EventDtoTableMap
+        ]);
+
+        ISchemaPropertyMap compositeSchemaPropertyMap = new CompositeSchemaPropertyMap([
+            v1Schema.SchemaPropertyMap, v2Schema.SchemaPropertyMap
+        ]);
+
+        Sink sink = new Sink(context.Database, databaseDatabaseSchema, compositeSchemaPropertyMap,
+            compositeEventDtoTableMap);
+
+        ILogParser[] parsers =
         [
-            new V1.IndexerVisitor(context.Settings.CirclesV1HubAddress),
-            new V2.IndexerVisitor(context.Settings.CirclesV2HubAddress)
+            new V1.LogParser(context.Settings.CirclesV1HubAddress),
+            new V2.LogParser(context.Settings.CirclesV2HubAddress)
         ];
 
         try
@@ -231,12 +222,12 @@ public class StateMachine(
                 , blockTree
                 , receiptFinder
                 , parsers
-                , [v1Sink, v2Sink]);
+                , sink);
 
             IAsyncEnumerable<long> blocksToSync = GetBlocksToSync();
             Range<long> importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
 
-            await v1Sink.Flush();
+            await sink.Flush();
             await flow.FlushBlocks();
 
             if (importedBlockRange is { Min: long.MaxValue, Max: long.MinValue })
@@ -295,13 +286,8 @@ public class StateMachine(
     {
         context.Logger.Info("Trying to find reorg.");
 
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        ISystemQueries postgresSystemQueries = new PostgresSystemQueries(mainConnection);
-
         IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
-            postgresSystemQueries.LastPersistedBlocks(100);
+            context.Database.LastPersistedBlocks(100);
         long? reorgAt = null;
 
         foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
@@ -325,23 +311,5 @@ public class StateMachine(
         }
 
         return reorgAt;
-    }
-
-    private void MigrateSchemas()
-    {
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        context.Logger.Info("Migrating database schema (common tables) ...");
-        ISchema common = new Common.Schema();
-        common.Migrate(mainConnection);
-
-        context.Logger.Info("Migrating database schema (v1 tables) ...");
-        ISchema v1 = new V1.Schema();
-        v1.Migrate(mainConnection);
-
-        context.Logger.Info("Migrating database schema (v2 tables) ...");
-        ISchema v2 = new V2.Schema();
-        v2.Migrate(mainConnection);
     }
 }

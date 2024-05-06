@@ -1,6 +1,7 @@
 ﻿using System.Threading.Channels;
-using Circles.Index.Data.Query;
+using Circles.Index.Common;
 using Circles.Index.Indexer;
+using Circles.Index.Postgres;
 using Circles.Index.Rpc;
 using Circles.Index.Utils;
 using Nethermind.Api;
@@ -34,15 +35,28 @@ public class CirclesIndex : INethermindPlugin
         Settings settings = new();
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         ILogger pluginLogger = new LoggerWithPrefix("Circles.Index:", baseLogger);
+        IDatabase database = new PostgresDb(settings.IndexDbConnectionString);
 
         Query.Initialize(NpgsqlFactory.Instance);
+
+        pluginLogger.Info("Migrating database schema (common tables) ...");
+        IDatabaseSchema common = new Common.DatabaseSchema();
+        database.Migrate(common);
+
+        pluginLogger.Info("Migrating database schema (v1 tables) ...");
+        IDatabaseSchema v1 = new V1.DatabaseSchema();
+        database.Migrate(v1);
+
+        pluginLogger.Info("Migrating database schema (v2 tables) ...");
+        IDatabaseSchema v2 = new V2.DatabaseSchema();
+        database.Migrate(v2);
 
         pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
         pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
         pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
         pluginLogger.Info("Start index from: " + settings.StartBlock);
 
-        _indexerContext = new Context(pluginLogger, settings);
+        _indexerContext = new Context(pluginLogger, settings, database);
 
         Run(nethermindApi);
 
@@ -137,7 +151,7 @@ public class CirclesIndex : INethermindPlugin
             throw new Exception("_indexerContext is not set");
         }
 
-        CirclesRpcModule circlesRpcModule = new(_nethermindApi, _indexerContext.Settings.IndexDbConnectionString);
+        CirclesRpcModule circlesRpcModule = new(_nethermindApi, _indexerContext.Database);
         _nethermindApi.ForRpc.GetFromApi.RpcModuleProvider?.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 

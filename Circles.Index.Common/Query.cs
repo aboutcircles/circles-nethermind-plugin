@@ -1,9 +1,8 @@
 using System.Data.Common;
 using System.Numerics;
-using Circles.Index.Common;
 using Nethermind.Int256;
 
-namespace Circles.Index.Data.Query;
+namespace Circles.Index.Common;
 
 public static class Query
 {
@@ -39,29 +38,29 @@ public static class Query
     public static LogicalAnd And(params IQuery[] subElements) => new(subElements);
     public static LogicalOr Or(params IQuery[] subElements) => new(subElements);
     public static Select Select(Tables table, IEnumerable<Columns> columns) => new(table, columns);
-
-    public static IEnumerable<object[]> Execute(DbConnection connection, IQuery query, bool closeConnection = false)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = query.ToSql();
-        foreach (var param in query.GetParameters())
-        {
-            command.Parameters.Add(param);
-        }
-
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            var row = new object[reader.FieldCount];
-            reader.GetValues(row);
-            yield return row;
-        }
-
-        if (closeConnection)
-        {
-            connection.Close();
-        }
-    }
+    //
+    // public static IEnumerable<object[]> Execute(DbConnection connection, IQuery query, bool closeConnection = false)
+    // {
+    //     using var command = connection.CreateCommand();
+    //     command.CommandText = query.ToSql();
+    //     foreach (var param in query.GetParameters())
+    //     {
+    //         command.Parameters.Add(param);
+    //     }
+    //
+    //     using var reader = command.ExecuteReader();
+    //     while (reader.Read())
+    //     {
+    //         var row = new object[reader.FieldCount];
+    //         reader.GetValues(row);
+    //         yield return row;
+    //     }
+    //
+    //     if (closeConnection)
+    //     {
+    //         connection.Close();
+    //     }
+    // }
 
     public static object? Convert(object? input, ValueTypes target)
     {

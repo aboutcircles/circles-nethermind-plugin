@@ -1,6 +1,6 @@
 using System.Data;
 
-namespace Circles.Index.Data.Query;
+namespace Circles.Index.Common;
 
 public class LogicalOr : IQuery
 {
@@ -13,11 +13,11 @@ public class LogicalOr : IQuery
 
     public string ToSql() => $"({string.Join(" OR ", Elements.Select(e => e.ToSql()))})";
 
-    public IEnumerable<IDataParameter> GetParameters()
+    public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
     {
         foreach (var element in Elements)
         {
-            foreach (var param in element.GetParameters())
+            foreach (var param in element.GetParameters(schema))
             {
                 yield return param;
             }

@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Circles.Index.V1;
 
-public class IndexerVisitor(Address v1HubAddress) : SinkVisitor
+public class LogParser(Address v1HubAddress) : ILogParser
 {
     public static Hash256 CrcHubTransferEventTopic { get; } = Keccak.Compute("HubTransfer(address,address,uint256)");
     public static Hash256 CrcTrustEventTopic { get; } = Keccak.Compute("Trust(address,address,uint256)");
@@ -18,7 +18,7 @@ public class IndexerVisitor(Address v1HubAddress) : SinkVisitor
     
     public static readonly ConcurrentDictionary<Address, object?> CirclesTokenAddresses = new();
     
-    public override IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         List<IIndexEvent> events = new();
         if (log.Topics.Length == 0)

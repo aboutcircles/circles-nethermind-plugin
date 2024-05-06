@@ -22,20 +22,20 @@ public class ImportFlow
     private readonly Settings _settings;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptFinder _receiptFinder;
-    private readonly INewIndexerVisitor[] _parsers;
-    private readonly IEventSink[] _sinks;
+    private readonly ILogParser[] _parsers;
+    private readonly Sink _sink;
 
     public ImportFlow(Settings settings,
         IBlockTree blockTree,
         IReceiptFinder receiptFinder,
-        INewIndexerVisitor[] parsers,
-        IEventSink[] sinks)
+        ILogParser[] parsers,
+        Sink sink)
     {
         _settings = settings;
         _blockTree = blockTree;
         _receiptFinder = receiptFinder;
         _parsers = parsers;
-        _sinks = sinks;
+        _sink = sink;
         _addBlock = new MeteredCaller<Block, Task>("BlockIndexer: AddBlock", PerformAddBlock);
         _flushBlocks = new MeteredCaller<object?, Task>("BlockIndexer: FlushBlocks", _ => PerformFlushBlocks());
     }
@@ -58,11 +58,7 @@ public class ImportFlow
     {
         foreach (var indexEvent in data.Item2)
         {
-            // TODO: Add events only if the sink can handle them
-            foreach (var sink in _sinks)
-            {
-                await sink.AddEvent(indexEvent);
-            }
+            await _sink.AddEvent(indexEvent);
         }
 
         await AddBlock(data.Item1.Block);

@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Circles.Index.V2;
 
-public class IndexerVisitor(Address v2HubAddress) : SinkVisitor
+public class LogParser(Address v2HubAddress) : ILogParser
 {
     public static Hash256 CrcV2RegisterHumanTopic { get; } = Keccak.Compute("RegisterHuman(address)");
     public static Hash256 CrcV2InviteHumanTopic { get; } = Keccak.Compute("InviteHuman(address,address)");
@@ -39,7 +39,7 @@ public class IndexerVisitor(Address v2HubAddress) : SinkVisitor
     public static Hash256 Erc1155ApprovalForAllTopic { get; } = Keccak.Compute("ApprovalForAll(address,address,bool)");
     public static Hash256 Erc1155UriTopic { get; } = Keccak.Compute("URI(uint256,string)");
 
-    public override IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         if (log.Topics.Length == 0)
         {
@@ -96,17 +96,17 @@ public class IndexerVisitor(Address v2HubAddress) : SinkVisitor
         {
             yield return Erc1155TransferBatch(block, receipt, log, logIndex);
         }
-        
+
         if (topic == Erc1155TransferSingleTopic)
         {
             yield return Erc1155TransferSingle(block, receipt, log, logIndex);
         }
-        
+
         if (topic == Erc1155ApprovalForAllTopic)
         {
             yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
         }
-        
+
         if (topic == Erc1155UriTopic)
         {
             yield return Erc1155Uri(block, receipt, log, logIndex);
@@ -143,7 +143,8 @@ public class IndexerVisitor(Address v2HubAddress) : SinkVisitor
         throw new NotImplementedException();
     }
 
-    private CrcV2RegisterOrganizationData CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private CrcV2RegisterOrganizationData CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         string orgAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string orgName = Encoding.UTF8.GetString(log.Data);

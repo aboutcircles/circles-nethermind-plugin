@@ -1,5 +1,4 @@
 using Circles.Index.Data;
-using Circles.Index.Data.Query;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;

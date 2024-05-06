@@ -2,12 +2,7 @@ using System.Collections.Concurrent;
 
 namespace Circles.Index.Common;
 
-public interface ISnapshot<T>
-{
-    ConcurrentQueue<T> TakeSnapshot();
-}
-
-public class InsertBuffer<T> : ISnapshot<T>
+public class InsertBuffer<T>
 {
     private ConcurrentQueue<T> _currentSegment = new();
 

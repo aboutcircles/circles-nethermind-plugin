@@ -9,7 +9,6 @@
     <ItemGroup>
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
       <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.25.4" />
-      <PackageReference Include="Npgsql" Version="8.0.2" />
     </ItemGroup>
 
     <ItemGroup>
