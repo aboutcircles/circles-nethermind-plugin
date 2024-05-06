@@ -10,16 +10,16 @@ public class PostgresSink : IEventSink
     private readonly string _connectionString;
     private readonly int _batchSize;
     private readonly PropertyMap _propertyMap = new();
-    private readonly InsertBuffer<IIndexEvent> _insertBuffer = new ();
+    private readonly InsertBuffer<IIndexEvent> _insertBuffer = new();
 
     private readonly MeteredCaller<object?, Task> _flush;
     private readonly MeteredCaller<IIndexEvent, Task> _addEvent;
-    
-    public PostgresSink(string connectionString, int batchSize = 1)
+
+    public PostgresSink(string connectionString, int batchSize = 100000)
     {
         _connectionString = connectionString;
         _batchSize = batchSize;
-        
+
         _propertyMap.Add(Tables.CrcV1Signup, new Dictionary<Columns, (NpgsqlDbType, Func<CirclesSignupData, object?>)>
         {
             { Columns.BlockNumber, (NpgsqlDbType.Bigint, e => e.BlockNumber) },
@@ -30,7 +30,7 @@ public class PostgresSink : IEventSink
             { Columns.CirclesAddress, (NpgsqlDbType.Text, e => e.CirclesAddress) },
             { Columns.TokenAddress, (NpgsqlDbType.Text, e => e.TokenAddress ?? string.Empty) }
         });
-        
+
         _propertyMap.Add(Tables.CrcV1Trust, new Dictionary<Columns, (NpgsqlDbType, Func<CirclesTrustData, object?>)>
         {
             { Columns.BlockNumber, (NpgsqlDbType.Bigint, e => e.BlockNumber) },
@@ -42,19 +42,20 @@ public class PostgresSink : IEventSink
             { Columns.CanSendToAddress, (NpgsqlDbType.Text, e => e.CanSendToAddress) },
             { Columns.Limit, (NpgsqlDbType.Bigint, e => e.Limit) }
         });
-        
-        _propertyMap.Add(Tables.CrcV1HubTransfer, new Dictionary<Columns, (NpgsqlDbType, Func<CirclesHubTransferData, object?>)>
-        {
-            { Columns.BlockNumber, (NpgsqlDbType.Bigint, e => e.BlockNumber) },
-            { Columns.Timestamp, (NpgsqlDbType.Bigint, e => e.Timestamp) },
-            { Columns.TransactionIndex, (NpgsqlDbType.Bigint, e => e.TransactionIndex) },
-            { Columns.LogIndex, (NpgsqlDbType.Bigint, e => e.LogIndex) },
-            { Columns.TransactionHash, (NpgsqlDbType.Text, e => e.TransactionHash) },
-            { Columns.FromAddress, (NpgsqlDbType.Text, e => e.FromAddress) },
-            { Columns.ToAddress, (NpgsqlDbType.Text, e => e.ToAddress) },
-            { Columns.Amount, (NpgsqlDbType.Numeric, e => (BigInteger)e.Amount) }
-        });
-        
+
+        _propertyMap.Add(Tables.CrcV1HubTransfer,
+            new Dictionary<Columns, (NpgsqlDbType, Func<CirclesHubTransferData, object?>)>
+            {
+                { Columns.BlockNumber, (NpgsqlDbType.Bigint, e => e.BlockNumber) },
+                { Columns.Timestamp, (NpgsqlDbType.Bigint, e => e.Timestamp) },
+                { Columns.TransactionIndex, (NpgsqlDbType.Bigint, e => e.TransactionIndex) },
+                { Columns.LogIndex, (NpgsqlDbType.Bigint, e => e.LogIndex) },
+                { Columns.TransactionHash, (NpgsqlDbType.Text, e => e.TransactionHash) },
+                { Columns.FromAddress, (NpgsqlDbType.Text, e => e.FromAddress) },
+                { Columns.ToAddress, (NpgsqlDbType.Text, e => e.ToAddress) },
+                { Columns.Amount, (NpgsqlDbType.Numeric, e => (BigInteger)e.Amount) }
+            });
+
         _propertyMap.Add(Tables.Erc20Transfer, new Dictionary<Columns, (NpgsqlDbType, Func<Erc20TransferData, object?>)>
         {
             { Columns.BlockNumber, (NpgsqlDbType.Bigint, e => e.BlockNumber) },
@@ -67,7 +68,7 @@ public class PostgresSink : IEventSink
             { Columns.ToAddress, (NpgsqlDbType.Text, e => e.To) },
             { Columns.Amount, (NpgsqlDbType.Numeric, e => (BigInteger)e.Value) }
         });
-        
+
         _flush = new MeteredCaller<object?, Task>("V1Sink: Flush", async _ => await PerformFlush());
         _addEvent = new MeteredCaller<IIndexEvent, Task>("V1Sink: AddEvent", PerformAddEvent);
     }
@@ -76,7 +77,7 @@ public class PostgresSink : IEventSink
     {
         await using var flushConnection = new NpgsqlConnection(_connectionString);
         await flushConnection.OpenAsync();
-        
+
         await using var writer = await flushConnection.BeginBinaryImportAsync(
             $@"
                 COPY {table.GetIdentifier()} (
@@ -95,7 +96,7 @@ public class PostgresSink : IEventSink
 
         await writer.CompleteAsync();
     }
-    
+
     public async ValueTask DisposeAsync()
     {
         await _flush.Call(null);
@@ -105,7 +106,7 @@ public class PostgresSink : IEventSink
     {
         return _addEvent.Call(indexEvent);
     }
-    
+
     private async Task PerformAddEvent(IIndexEvent indexEvent)
     {
         _insertBuffer.Add(indexEvent);
@@ -115,16 +116,16 @@ public class PostgresSink : IEventSink
             await Flush();
         }
     }
-    
+
     public Task Flush()
     {
         return _flush.Call(null);
     }
-    
+
     private async Task PerformFlush()
     {
         var events = _insertBuffer.TakeSnapshot();
-        
+
         var signupEvents = events.OfType<CirclesSignupData>();
         var trustEvents = events.OfType<CirclesTrustData>();
         var hubTransferEvents = events.OfType<CirclesHubTransferData>();

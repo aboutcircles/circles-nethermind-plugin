@@ -86,7 +86,7 @@ public class ImportFlow
                 , _receiptFinder.Get(block)));
         TransformBlock<Block?, BlockWithReceipts> receiptsSource = new(
             block => findReceipts.Call(block!)
-            , CreateOptions(cancellationToken, 6, 6));
+            , CreateOptions(cancellationToken));
 
         blockSource.LinkTo(receiptsSource, b => b != null);
 
@@ -117,7 +117,7 @@ public class ImportFlow
         receiptsSource.LinkTo(parser);
 
         ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> sink = new(Sink,
-            CreateOptions(cancellationToken, 200000, 1));
+            CreateOptions(cancellationToken, 100000, 1));
         parser.LinkTo(sink);
 
         return blockSource;
@@ -169,7 +169,7 @@ public class ImportFlow
     private async Task PerformAddBlock(Block block)
     {
         _blockBuffer.Add(block);
-        if (_blockBuffer.Length >= 10000)
+        if (_blockBuffer.Length >= 20000)
         {
             await FlushBlocks();
         }

@@ -14,7 +14,7 @@ public class PostgresSink : IEventSink
     private readonly MeteredCaller<object?, Task> _flush;
     private readonly MeteredCaller<IIndexEvent, Task> _addEvent;
 
-    public PostgresSink(string connectionString, int batchSize = 1)
+    public PostgresSink(string connectionString, int batchSize = 100000)
     {
         _connectionString = connectionString;
         _batchSize = batchSize;
