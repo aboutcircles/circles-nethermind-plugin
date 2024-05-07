@@ -6,19 +6,19 @@ namespace Circles.Index.Common;
 public abstract class QueryPredicate : IQuery
 {
     protected readonly string Field;
-    public readonly Tables Table;
-    public readonly Columns Column;
+    public readonly string Table;
+    public readonly string Column;
     protected readonly string ParameterName;
     public readonly object Value;
-    protected readonly DbProviderFactory Provider;
+    protected readonly IDatabase Database;
 
-    internal QueryPredicate(DbProviderFactory provider, Tables table, Columns column, object value)
+    internal QueryPredicate(IDatabase database, string table, string column, object value)
     {
-        Provider = provider;
+        Database = database;
         Table = table;
         Column = column;
-        Field = column.GetIdentifier();
-        ParameterName = $"@{column.ToString().Replace(".", "")}";
+        Field = column;
+        ParameterName = $"@{column.Replace(".", "")}";
         Value = value;
     }
 
@@ -26,7 +26,7 @@ public abstract class QueryPredicate : IQuery
 
     public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
     {
-        var parameter = Provider.CreateParameter();
+        var parameter = Database.CreateParameter();
         if (parameter is null)
         {
             throw new InvalidOperationException("The provider did not return a parameter object.");
@@ -45,7 +45,7 @@ public abstract class QueryPredicate : IQuery
             throw new Exception($"The table {Table} doesn't contain a column with the name {Column}");
         }
 
-        parameter.Value = Query.Convert(Value, column.Type);
+        parameter.Value = Database.Convert(Value, column.Type);
 
         yield return parameter;
     }

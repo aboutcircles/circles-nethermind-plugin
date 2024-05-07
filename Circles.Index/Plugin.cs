@@ -9,7 +9,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Npgsql;
 
 namespace Circles.Index;
 
@@ -24,14 +23,11 @@ public class Plugin : INethermindPlugin
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-    private INethermindApi? _nethermindApi;
     private StateMachine? _indexerMachine;
     private Context? _indexerContext;
 
     public Task Init(INethermindApi nethermindApi)
     {
-        _nethermindApi = nethermindApi;
-
         IDatabaseSchema common = new Common.DatabaseSchema();
         IDatabaseSchema v1 = new V1.DatabaseSchema();
         IDatabaseSchema v2 = new V2.DatabaseSchema();
@@ -47,11 +43,10 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema, pluginLogger);
-        database.Migrate();
+        _indexerContext = new Context(nethermindApi, pluginLogger, settings, database);
 
-        Query.Initialize(NpgsqlFactory.Instance);
-
-        _indexerContext = new Context(pluginLogger, settings, database);
+        _indexerContext.Database.Migrate();
+        Query.Initialize(_indexerContext.Database);
 
         Run(nethermindApi);
 
@@ -140,28 +135,25 @@ public class Plugin : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
+    public async Task InitRpcModules()
     {
-        if (_nethermindApi == null)
+        await Task.Delay(1000);
+
+        if (_indexerContext?.NethermindApi == null)
         {
             throw new Exception("_nethermindApi is not set");
         }
 
-        if (_nethermindApi.RpcModuleProvider == null)
+        if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
         {
             throw new Exception("_nethermindApi.RpcModuleProvider is not set");
         }
 
-        if (_indexerContext == null)
-        {
-            throw new Exception("_indexerContext is not set");
-        }
-
-        CirclesRpcModule circlesRpcModule = new(_nethermindApi, _indexerContext.Database);
-        _nethermindApi.ForRpc.GetFromApi.RpcModuleProvider?.Register(
+        CirclesRpcModule circlesRpcModule = new(_indexerContext);
+        _indexerContext.NethermindApi.ForRpc.GetFromApi.RpcModuleProvider?.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
-        return Task.CompletedTask;
+        return;
     }
 
     public ValueTask DisposeAsync()

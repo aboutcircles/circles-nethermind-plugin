@@ -1,11 +1,9 @@
-using System.Data.Common;
-
 namespace Circles.Index.Common;
 
 public class LessThan : QueryPredicate
 {
-    internal LessThan(DbProviderFactory provider, Tables table, Columns column, object value)
-        : base(provider, table, column, value)
+    internal LessThan(IDatabase database, string table, string column, object value)
+        : base(database, table, column, value)
     {
     }
 

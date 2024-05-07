@@ -212,9 +212,7 @@ public class StateMachine(
 
         try
         {
-            ImportFlow flow = new ImportFlow(
-                context.Settings
-                , blockTree
+            ImportFlow flow = new ImportFlow(blockTree
                 , receiptFinder
                 , parsers
                 , sink);

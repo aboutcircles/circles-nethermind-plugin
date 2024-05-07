@@ -1,15 +1,18 @@
+using Nethermind.Core.Crypto;
+
 namespace Circles.Index.Common;
 
 public class DatabaseSchema : IDatabaseSchema
 {
-    public IDictionary<Tables, TableSchema> Tables { get; } = new Dictionary<Tables, TableSchema>
+    public IDictionary<string, EventSchema> Tables { get; } = new Dictionary<string, EventSchema>
     {
         {
-            Common.Tables.Block,
-            new TableSchema(Common.Tables.Block, [
-                new (Columns.BlockNumber, ValueTypes.Int, true, true),
-                new (Columns.Timestamp, ValueTypes.Int, false, true),
-                new (Columns.BlockHash, ValueTypes.String, false, true)
+            "Block",
+            // Hash256 must be 32 bytes and was 0 bytes
+            new EventSchema("Block", new Hash256(new byte[32]), [
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("BlockHash", ValueTypes.String, true)
             ])
         }
     };

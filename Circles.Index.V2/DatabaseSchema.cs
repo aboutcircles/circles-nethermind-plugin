@@ -1,4 +1,5 @@
 using Circles.Index.Common;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index.V2;
 
@@ -8,365 +9,365 @@ public class DatabaseSchema : IDatabaseSchema
 
     public EventDtoTableMap EventDtoTableMap { get; } = new();
 
-    public IDictionary<Tables, TableSchema> Tables { get; } = new Dictionary<Tables, TableSchema>
+    public IDictionary<string, EventSchema> Tables { get; } = new Dictionary<string, EventSchema>
     {
         {
-            Common.Tables.CrcV2ConvertInflation,
-            new TableSchema(Common.Tables.CrcV2ConvertInflation,
+            "CrcV2ConvertInflation",
+            new EventSchema("CrcV2ConvertInflation", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.InflationValue, ValueTypes.BigInt, false, false),
-                new(Columns.DemurrageValue, ValueTypes.BigInt, false, false),
-                new(Columns.Day, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("InflationValue", ValueTypes.BigInt, false),
+                new("DemurrageValue", ValueTypes.BigInt, false),
+                new("Day", ValueTypes.BigInt, false)
             ])
         },
         {
-            Common.Tables.CrcV2InviteHuman,
-            new TableSchema(Common.Tables.CrcV2InviteHuman,
+            "CrcV2InviteHuman",
+            new EventSchema("CrcV2InviteHuman", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.InviterAddress, ValueTypes.Address, false, true),
-                new(Columns.InviteeAddress, ValueTypes.Address, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("InviterAddress", ValueTypes.Address, true),
+                new("InviteeAddress", ValueTypes.Address, true)
             ])
         },
         {
-            Common.Tables.CrcV2PersonalMint,
-            new TableSchema(Common.Tables.CrcV2PersonalMint,
+            "CrcV2PersonalMint",
+            new EventSchema("CrcV2PersonalMint", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.HumanAddress, ValueTypes.Address, false, true),
-                new(Columns.Amount, ValueTypes.BigInt, false, false),
-                new(Columns.StartPeriod, ValueTypes.BigInt, false, false),
-                new(Columns.EndPeriod, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("HumanAddress", ValueTypes.Address, true),
+                new("Amount", ValueTypes.BigInt, false),
+                new("StartPeriod", ValueTypes.BigInt, false),
+                new("EndPeriod", ValueTypes.BigInt, false)
             ])
         },
         {
-            Common.Tables.CrcV2RegisterGroup,
-            new TableSchema(Common.Tables.CrcV2RegisterGroup,
+            "CrcV2RegisterGroup",
+            new EventSchema("CrcV2RegisterGroup", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.GroupAddress, ValueTypes.Address, false, true),
-                new(Columns.MintPolicy, ValueTypes.Address, false, true),
-                new(Columns.Treasury, ValueTypes.Address, false, true),
-                new(Columns.GroupName, ValueTypes.String, false, true),
-                new(Columns.GroupSymbol, ValueTypes.String, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("GroupAddress", ValueTypes.Address, true),
+                new("MintPolicy", ValueTypes.Address, true),
+                new("Treasury", ValueTypes.Address, true),
+                new("GroupName", ValueTypes.String, true),
+                new("GroupSymbol", ValueTypes.String, true)
             ])
         },
         {
-            Common.Tables.CrcV2RegisterHuman,
-            new TableSchema(Common.Tables.CrcV2RegisterHuman,
+            "CrcV2RegisterHuman",
+            new EventSchema("CrcV2RegisterHuman", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.HumanAddress, ValueTypes.Address, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("HumanAddress", ValueTypes.Address, true)
             ])
         },
         {
-            Common.Tables.CrcV2RegisterOrganization,
-            new TableSchema(Common.Tables.CrcV2RegisterOrganization,
+            "CrcV2RegisterOrganization",
+            new EventSchema("CrcV2RegisterOrganization", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.OrganizationAddress, ValueTypes.Address, false, true),
-                new(Columns.OrganizationName, ValueTypes.String, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("OrganizationAddress", ValueTypes.Address, true),
+                new("OrganizationName", ValueTypes.String, true)
             ])
         },
         {
-            Common.Tables.CrcV2Stopped,
-            new TableSchema(Common.Tables.CrcV2Stopped,
+            "CrcV2Stopped",
+            new EventSchema("CrcV2Stopped", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.Address, ValueTypes.Address, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("Address", ValueTypes.Address, true)
             ])
         },
         {
-            Common.Tables.CrcV2Trust,
-            new TableSchema(Common.Tables.CrcV2Trust,
+            "CrcV2Trust",
+            new EventSchema("CrcV2Trust", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.TrusterAddress, ValueTypes.Address, false, true),
-                new(Columns.TrusteeAddress, ValueTypes.Address, false, true),
-                new(Columns.ExpiryTime, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("TrusterAddress", ValueTypes.Address, true),
+                new("TrusteeAddress", ValueTypes.Address, true),
+                new("ExpiryTime", ValueTypes.BigInt, false)
             ])
         },
 
 
         // Existing:
         {
-            Common.Tables.Erc20Transfer,
-            new TableSchema(Common.Tables.Erc20Transfer,
+            "Erc20Transfer",
+            new EventSchema("Erc20Transfer", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.TokenAddress, ValueTypes.Address, false, true),
-                new(Columns.FromAddress, ValueTypes.Address, false, true),
-                new(Columns.ToAddress, ValueTypes.Address, false, true),
-                new(Columns.Amount, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("TokenAddress", ValueTypes.Address, true),
+                new("FromAddress", ValueTypes.Address, true),
+                new("ToAddress", ValueTypes.Address, true),
+                new("Amount", ValueTypes.BigInt, false)
             ])
         },
         {
-            Common.Tables.Erc1155ApprovalForAll,
-            new TableSchema(Common.Tables.Erc1155ApprovalForAll,
+            "Erc1155ApprovalForAll",
+            new EventSchema("Erc1155ApprovalForAll", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.Owner, ValueTypes.Address, false, true),
-                new(Columns.Operator, ValueTypes.Address, false, true),
-                new(Columns.Approved, ValueTypes.Boolean, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("Owner", ValueTypes.Address, true),
+                new("Operator", ValueTypes.Address, true),
+                new("Approved", ValueTypes.Boolean, true)
             ])
         },
         {
-            Common.Tables.Erc1155TransferBatch,
-            new TableSchema(Common.Tables.Erc1155TransferBatch,
+            "Erc1155TransferBatch",
+            new EventSchema("Erc1155TransferBatch", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.BatchIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.OperatorAddress, ValueTypes.Address, false, true),
-                new(Columns.FromAddress, ValueTypes.Address, false, true),
-                new(Columns.ToAddress, ValueTypes.Address, false, true),
-                new(Columns.TokenId, ValueTypes.BigInt, false, true),
-                new(Columns.Value, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("BatchIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("OperatorAddress", ValueTypes.Address, true),
+                new("FromAddress", ValueTypes.Address, true),
+                new("ToAddress", ValueTypes.Address, true),
+                new("TokenId", ValueTypes.BigInt, true),
+                new("Value", ValueTypes.BigInt, false)
             ])
         },
         {
-            Common.Tables.Erc1155TransferSingle,
-            new TableSchema(Common.Tables.Erc1155TransferSingle,
+            "Erc1155TransferSingle",
+            new EventSchema("Erc1155TransferSingle", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.OperatorAddress, ValueTypes.Address, false, true),
-                new(Columns.FromAddress, ValueTypes.Address, false, true),
-                new(Columns.ToAddress, ValueTypes.Address, false, true),
-                new(Columns.TokenId, ValueTypes.BigInt, false, true),
-                new(Columns.Value, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("OperatorAddress", ValueTypes.Address, true),
+                new("FromAddress", ValueTypes.Address, true),
+                new("ToAddress", ValueTypes.Address, true),
+                new("TokenId", ValueTypes.BigInt, true),
+                new("Value", ValueTypes.BigInt, false)
             ])
         },
         {
-            Common.Tables.Erc1155Uri,
-            new TableSchema(Common.Tables.Erc1155Uri,
+            "Erc1155Uri",
+            new EventSchema("Erc1155Uri", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.TokenId, ValueTypes.BigInt, false, true),
-                new(Columns.Uri, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("TokenId", ValueTypes.BigInt, true),
+                new("Uri", ValueTypes.BigInt, false)
             ])
         }
     };
 
     public DatabaseSchema()
     {
-        EventDtoTableMap.Add<CrcV2ConvertInflationData>(Common.Tables.CrcV2ConvertInflation);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2ConvertInflation,
-            new Dictionary<Columns, Func<CrcV2ConvertInflationData, object?>>
+        EventDtoTableMap.Add<CrcV2ConvertInflationData>("CrcV2ConvertInflation");
+        SchemaPropertyMap.Add("CrcV2ConvertInflation",
+            new Dictionary<string, Func<CrcV2ConvertInflationData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.InflationValue, e => e.InflationValue },
-                { Columns.DemurrageValue, e => e.DemurrageValue },
-                { Columns.Day, e => e.Day }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "InflationValue", e => e.InflationValue },
+                { "DemurrageValue", e => e.DemurrageValue },
+                { "Day", e => e.Day }
             });
 
-        EventDtoTableMap.Add<CrcV2InviteHumanData>(Common.Tables.CrcV2InviteHuman);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2InviteHuman,
-            new Dictionary<Columns, Func<CrcV2InviteHumanData, object?>>
+        EventDtoTableMap.Add<CrcV2InviteHumanData>("CrcV2InviteHuman");
+        SchemaPropertyMap.Add("CrcV2InviteHuman",
+            new Dictionary<string, Func<CrcV2InviteHumanData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.InviterAddress, e => e.InviterAddress },
-                { Columns.InviteeAddress, e => e.InviteeAddress }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "InviterAddress", e => e.InviterAddress },
+                { "InviteeAddress", e => e.InviteeAddress }
             });
 
-        EventDtoTableMap.Add<CrcV2PersonalMintData>(Common.Tables.CrcV2PersonalMint);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2PersonalMint,
-            new Dictionary<Columns, Func<CrcV2PersonalMintData, object?>>
+        EventDtoTableMap.Add<CrcV2PersonalMintData>("CrcV2PersonalMint");
+        SchemaPropertyMap.Add("CrcV2PersonalMint",
+            new Dictionary<string, Func<CrcV2PersonalMintData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.HumanAddress, e => e.HumanAddress },
-                { Columns.Amount, e => e.Amount },
-                { Columns.StartPeriod, e => e.StartPeriod },
-                { Columns.EndPeriod, e => e.EndPeriod }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "HumanAddress", e => e.HumanAddress },
+                { "Amount", e => e.Amount },
+                { "StartPeriod", e => e.StartPeriod },
+                { "EndPeriod", e => e.EndPeriod }
             });
 
-        EventDtoTableMap.Add<CrcV2RegisterGroupData>(Common.Tables.CrcV2RegisterGroup);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2RegisterGroup,
-            new Dictionary<Columns, Func<CrcV2RegisterGroupData, object?>>
+        EventDtoTableMap.Add<CrcV2RegisterGroupData>("CrcV2RegisterGroup");
+        SchemaPropertyMap.Add("CrcV2RegisterGroup",
+            new Dictionary<string, Func<CrcV2RegisterGroupData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.GroupAddress, e => e.GroupAddress },
-                { Columns.MintPolicy, e => e.MintPolicy },
-                { Columns.Treasury, e => e.Treasury },
-                { Columns.GroupName, e => e.GroupName },
-                { Columns.GroupSymbol, e => e.GroupSymbol }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "GroupAddress", e => e.GroupAddress },
+                { "MintPolicy", e => e.MintPolicy },
+                { "Treasury", e => e.Treasury },
+                { "GroupName", e => e.GroupName },
+                { "GroupSymbol", e => e.GroupSymbol }
             });
 
-        EventDtoTableMap.Add<CrcV2RegisterHumanData>(Common.Tables.CrcV2RegisterHuman);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2RegisterHuman,
-            new Dictionary<Columns, Func<CrcV2RegisterHumanData, object?>>
+        EventDtoTableMap.Add<CrcV2RegisterHumanData>("CrcV2RegisterHuman");
+        SchemaPropertyMap.Add("CrcV2RegisterHuman",
+            new Dictionary<string, Func<CrcV2RegisterHumanData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.HumanAddress, e => e.HumanAddress }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "HumanAddress", e => e.HumanAddress }
             });
 
-        EventDtoTableMap.Add<CrcV2RegisterOrganizationData>(Common.Tables.CrcV2RegisterOrganization);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2RegisterOrganization,
-            new Dictionary<Columns, Func<CrcV2RegisterOrganizationData, object?>>
+        EventDtoTableMap.Add<CrcV2RegisterOrganizationData>("CrcV2RegisterOrganization");
+        SchemaPropertyMap.Add("CrcV2RegisterOrganization",
+            new Dictionary<string, Func<CrcV2RegisterOrganizationData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.OrganizationAddress, e => e.OrganizationAddress },
-                { Columns.OrganizationName, e => e.OrganizationName }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "OrganizationAddress", e => e.OrganizationAddress },
+                { "OrganizationName", e => e.OrganizationName }
             });
 
-        EventDtoTableMap.Add<CrcV2StoppedData>(Common.Tables.CrcV2Stopped);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2Stopped,
-            new Dictionary<Columns, Func<CrcV2StoppedData, object?>>
+        EventDtoTableMap.Add<CrcV2StoppedData>("CrcV2Stopped");
+        SchemaPropertyMap.Add("CrcV2Stopped",
+            new Dictionary<string, Func<CrcV2StoppedData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.Address, e => e.Address }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "Address", e => e.Address }
             });
 
-        EventDtoTableMap.Add<CrcV2TrustData>(Common.Tables.CrcV2Trust);
-        SchemaPropertyMap.Add(Common.Tables.CrcV2Trust,
-            new Dictionary<Columns, Func<CrcV2TrustData, object?>>
+        EventDtoTableMap.Add<CrcV2TrustData>("CrcV2Trust");
+        SchemaPropertyMap.Add("CrcV2Trust",
+            new Dictionary<string, Func<CrcV2TrustData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.TrusterAddress, e => e.TrusterAddress },
-                { Columns.TrusteeAddress, e => e.TrusteeAddress },
-                { Columns.ExpiryTime, e => e.ExpiryTime }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "TrusterAddress", e => e.TrusterAddress },
+                { "TrusteeAddress", e => e.TrusteeAddress },
+                { "ExpiryTime", e => e.ExpiryTime }
             });
 
-        EventDtoTableMap.Add<Erc1155ApprovalForAllData>(Common.Tables.Erc1155ApprovalForAll);
-        SchemaPropertyMap.Add(Common.Tables.Erc1155ApprovalForAll,
-            new Dictionary<Columns, Func<Erc1155ApprovalForAllData, object?>>
+        EventDtoTableMap.Add<Erc1155ApprovalForAllData>("Erc1155ApprovalForAll");
+        SchemaPropertyMap.Add("Erc1155ApprovalForAll",
+            new Dictionary<string, Func<Erc1155ApprovalForAllData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.Owner, e => e.Owner },
-                { Columns.Operator, e => e.Operator },
-                { Columns.Approved, e => e.Approved }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "Owner", e => e.Owner },
+                { "Operator", e => e.Operator },
+                { "Approved", e => e.Approved }
             });
 
-        EventDtoTableMap.Add<Erc1155TransferSingleData>(Common.Tables.Erc1155TransferSingle);
-        SchemaPropertyMap.Add(Common.Tables.Erc1155TransferSingle,
-            new Dictionary<Columns, Func<Erc1155TransferSingleData, object?>>
+        EventDtoTableMap.Add<Erc1155TransferSingleData>("Erc1155TransferSingle");
+        SchemaPropertyMap.Add("Erc1155TransferSingle",
+            new Dictionary<string, Func<Erc1155TransferSingleData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.OperatorAddress, e => e.OperatorAddress },
-                { Columns.FromAddress, e => e.FromAddress },
-                { Columns.ToAddress, e => e.ToAddress },
-                { Columns.TokenId, e => e.TokenId },
-                { Columns.Value, e => e.Value }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "OperatorAddress", e => e.OperatorAddress },
+                { "FromAddress", e => e.FromAddress },
+                { "ToAddress", e => e.ToAddress },
+                { "TokenId", e => e.TokenId },
+                { "Value", e => e.Value }
             });
 
-        EventDtoTableMap.Add<Erc1155TransferBatchData>(Common.Tables.Erc1155TransferBatch);
-        SchemaPropertyMap.Add(Common.Tables.Erc1155TransferBatch,
-            new Dictionary<Columns, Func<Erc1155TransferBatchData, object?>>
+        EventDtoTableMap.Add<Erc1155TransferBatchData>("Erc1155TransferBatch");
+        SchemaPropertyMap.Add("Erc1155TransferBatch",
+            new Dictionary<string, Func<Erc1155TransferBatchData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.OperatorAddress, e => e.OperatorAddress },
-                { Columns.FromAddress, e => e.FromAddress },
-                { Columns.ToAddress, e => e.ToAddress },
-                { Columns.TokenId, e => e.TokenId },
-                { Columns.Value, e => e.Value }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "OperatorAddress", e => e.OperatorAddress },
+                { "FromAddress", e => e.FromAddress },
+                { "ToAddress", e => e.ToAddress },
+                { "TokenId", e => e.TokenId },
+                { "Value", e => e.Value }
             });
 
-        EventDtoTableMap.Add<Erc1155UriData>(Common.Tables.Erc1155Uri);
-        SchemaPropertyMap.Add(Common.Tables.Erc1155Uri,
-            new Dictionary<Columns, Func<Erc1155UriData, object?>>
+        EventDtoTableMap.Add<Erc1155UriData>("Erc1155Uri");
+        SchemaPropertyMap.Add("Erc1155Uri",
+            new Dictionary<string, Func<Erc1155UriData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.TokenId, e => e.TokenId },
-                { Columns.Uri, e => e.Uri }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "TokenId", e => e.TokenId },
+                { "Uri", e => e.Uri }
             });
     }
 }

@@ -1,5 +1,6 @@
 using System.Numerics;
 using Circles.Index.Common;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index.V1;
 
@@ -9,104 +10,107 @@ public class DatabaseSchema : IDatabaseSchema
 
     public EventDtoTableMap EventDtoTableMap { get; } = new();
 
-    public IDictionary<Tables, TableSchema> Tables { get; } = new Dictionary<Tables, TableSchema>
+    public IDictionary<string, EventSchema> Tables { get; } = new Dictionary<string, EventSchema>
     {
         {
-            Common.Tables.CrcV1HubTransfer,
-            new TableSchema(Common.Tables.CrcV1HubTransfer,
+            "CrcV1HubTransfer",
+            new EventSchema("CrcV1HubTransfer", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.FromAddress, ValueTypes.Address, false, true),
-                new(Columns.ToAddress, ValueTypes.Address, false, true),
-                new(Columns.Amount, ValueTypes.BigInt, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("FromAddress", ValueTypes.Address, true),
+                new("ToAddress", ValueTypes.Address, true),
+                new("Amount", ValueTypes.BigInt, false)
             ])
         },
         {
-            Common.Tables.CrcV1Signup,
-            new TableSchema(Common.Tables.CrcV1Signup,
+            "CrcV1Signup",
+            new EventSchema("CrcV1Signup", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.CirclesAddress, ValueTypes.Address, false, true),
-                new(Columns.TokenAddress, ValueTypes.Address, false, true)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("CirclesAddress", ValueTypes.Address, true),
+                new("TokenAddress", ValueTypes.Address, true)
             ])
         },
         {
-            Common.Tables.CrcV1Trust,
-            new TableSchema(Common.Tables.CrcV1Trust,
+            "CrcV1Trust",
+            new EventSchema("CrcV1Trust", new Hash256(new byte[32]),
             [
-                new(Columns.BlockNumber, ValueTypes.Int, true, true),
-                new(Columns.Timestamp, ValueTypes.Int, false, true),
-                new(Columns.TransactionIndex, ValueTypes.Int, true, true),
-                new(Columns.LogIndex, ValueTypes.Int, true, true),
-                new(Columns.TransactionHash, ValueTypes.String, false, true),
-                new(Columns.UserAddress, ValueTypes.Address, false, true),
-                new(Columns.CanSendToAddress, ValueTypes.Address, false, true),
-                new(Columns.Limit, ValueTypes.Int, false, false)
+                new("BlockNumber", ValueTypes.Int, true),
+                new("Timestamp", ValueTypes.Int, true),
+                new("TransactionIndex", ValueTypes.Int, true),
+                new("LogIndex", ValueTypes.Int, true),
+                new("TransactionHash", ValueTypes.String, true),
+                new("UserAddress", ValueTypes.Address, true),
+                new("CanSendToAddress", ValueTypes.Address, true),
+                new("Limit", ValueTypes.Int, false)
             ])
         }
     };
 
     public DatabaseSchema()
     {
-        EventDtoTableMap.Add<CirclesSignupData>(Common.Tables.CrcV1Signup);
-        SchemaPropertyMap.Add(Common.Tables.CrcV1Signup, new Dictionary<Columns, Func<CirclesSignupData, object?>>
-        {
-            { Columns.BlockNumber, e => e.BlockNumber },
-            { Columns.Timestamp, e => e.Timestamp },
-            { Columns.TransactionIndex, e => e.TransactionIndex },
-            { Columns.LogIndex, e => e.LogIndex },
-            { Columns.TransactionHash, e => e.TransactionHash },
-            { Columns.CirclesAddress, e => e.CirclesAddress },
-            { Columns.TokenAddress, e => e.TokenAddress ?? string.Empty }
-        });
-
-        EventDtoTableMap.Add<CirclesTrustData>(Common.Tables.CrcV1Trust);
-        SchemaPropertyMap.Add(Common.Tables.CrcV1Trust, new Dictionary<Columns, Func<CirclesTrustData, object?>>
-        {
-            { Columns.BlockNumber, e => e.BlockNumber },
-            { Columns.Timestamp, e => e.Timestamp },
-            { Columns.TransactionIndex, e => e.TransactionIndex },
-            { Columns.LogIndex, e => e.LogIndex },
-            { Columns.TransactionHash, e => e.TransactionHash },
-            { Columns.UserAddress, e => e.UserAddress },
-            { Columns.CanSendToAddress, e => e.CanSendToAddress },
-            { Columns.Limit, e => e.Limit }
-        });
-
-        EventDtoTableMap.Add<CirclesHubTransferData>(Common.Tables.CrcV1HubTransfer);
-        SchemaPropertyMap.Add(Common.Tables.CrcV1HubTransfer,
-            new Dictionary<Columns, Func<CirclesHubTransferData, object?>>
+        EventDtoTableMap.Add<CirclesSignupData>("CrcV1Signup");
+        SchemaPropertyMap.Add("CrcV1Signup", 
+            new Dictionary<string, Func<CirclesSignupData, object?>>
             {
-                { Columns.BlockNumber, e => e.BlockNumber },
-                { Columns.Timestamp, e => e.Timestamp },
-                { Columns.TransactionIndex, e => e.TransactionIndex },
-                { Columns.LogIndex, e => e.LogIndex },
-                { Columns.TransactionHash, e => e.TransactionHash },
-                { Columns.FromAddress, e => e.FromAddress },
-                { Columns.ToAddress, e => e.ToAddress },
-                { Columns.Amount, e => (BigInteger)e.Amount }
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "CirclesAddress", e => e.CirclesAddress },
+                { "TokenAddress", e => e.TokenAddress ?? string.Empty }
             });
 
-        EventDtoTableMap.Add<CirclesHubTransferData>(Common.Tables.CrcV1HubTransfer);
-        SchemaPropertyMap.Add(Common.Tables.Erc20Transfer, new Dictionary<Columns, Func<Erc20TransferData, object?>>
-        {
-            { Columns.BlockNumber, e => e.BlockNumber },
-            { Columns.Timestamp, e => e.Timestamp },
-            { Columns.TransactionIndex, e => e.TransactionIndex },
-            { Columns.LogIndex, e => e.LogIndex },
-            { Columns.TransactionHash, e => e.TransactionHash },
-            { Columns.TokenAddress, e => e.TokenAddress },
-            { Columns.FromAddress, e => e.From },
-            { Columns.ToAddress, e => e.To },
-            { Columns.Amount, e => (BigInteger)e.Value }
-        });
+        EventDtoTableMap.Add<CirclesTrustData>("CrcV1Trust");
+        SchemaPropertyMap.Add("CrcV1Trust",
+            new Dictionary<string, Func<CirclesTrustData, object?>>
+            {
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "UserAddress", e => e.UserAddress },
+                { "CanSendToAddress", e => e.CanSendToAddress },
+                { "Limit", e => e.Limit }
+            });
+
+        EventDtoTableMap.Add<CirclesHubTransferData>("CrcV1HubTransfer");
+        SchemaPropertyMap.Add("CrcV1HubTransfer", 
+            new Dictionary<string, Func<CirclesHubTransferData, object?>>
+            {
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "FromAddress", e => e.FromAddress },
+                { "ToAddress", e => e.ToAddress },
+                { "Amount", e => (BigInteger)e.Amount }
+            });
+
+        EventDtoTableMap.Add<CirclesHubTransferData>("CrcV1HubTransfer");
+        SchemaPropertyMap.Add("Erc20Transfer", 
+            new Dictionary<string, Func<Erc20TransferData, object?>>
+            {
+                { "BlockNumber", e => e.BlockNumber },
+                { "Timestamp", e => e.Timestamp },
+                { "TransactionIndex", e => e.TransactionIndex },
+                { "LogIndex", e => e.LogIndex },
+                { "TransactionHash", e => e.TransactionHash },
+                { "TokenAddress", e => e.TokenAddress },
+                { "FromAddress", e => e.From },
+                { "ToAddress", e => e.To },
+                { "Amount", e => (BigInteger)e.Value }
+            });
     }
 }

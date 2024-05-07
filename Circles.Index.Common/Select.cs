@@ -5,20 +5,20 @@ namespace Circles.Index.Common;
 
 public class Select : IQuery
 {
-    public readonly Tables Table;
+    public readonly string Table;
     private readonly string _table;
-    public readonly IEnumerable<Columns> Columns;
+    public readonly IEnumerable<string> Columns;
     private readonly List<string> _databaseFields;
     public readonly List<IQuery> Conditions;
-    public readonly List<(Columns Column, SortOrder Order)> OrderBy = new();
+    public readonly List<(string Column, SortOrder Order)> OrderBy = new();
 
-    public Select(Tables table, IEnumerable<Columns> columns)
+    public Select(string table, IEnumerable<string> columns)
     {
         var columnsArray = columns.ToArray();
         Table = table;
-        _table = table.GetIdentifier();
+        _table = table;
         Columns = columnsArray;
-        _databaseFields = columnsArray.Select(c => c.GetIdentifier()).ToList();
+        _databaseFields = columnsArray.ToList();
         Conditions = new List<IQuery>();
     }
 
@@ -40,7 +40,7 @@ public class Select : IQuery
         if (OrderBy.Any())
         {
             sql.Append(" ORDER BY ");
-            sql.Append(string.Join(", ", OrderBy.Select(o => $"{o.Column.GetIdentifier()} {o.Order}")));
+            sql.Append(string.Join(", ", OrderBy.Select(o => $"{o.Column} {o.Order}")));
         }
 
         return sql.ToString();

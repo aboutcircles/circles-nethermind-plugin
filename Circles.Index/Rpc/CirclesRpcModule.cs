@@ -1,7 +1,7 @@
 using System.Globalization;
 using Circles.Index.Common;
+using Circles.Index.Indexer;
 using Circles.Index.Utils;
-using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,20 +16,17 @@ namespace Circles.Index.Rpc;
 public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly ILogger _pluginLogger;
-    private readonly INethermindApi _nethermindApi;
-    private readonly IDatabase _database;
+    private readonly Context _indexerContext;
 
-    public CirclesRpcModule(INethermindApi nethermindApi, IDatabase database)
+    public CirclesRpcModule(Context indexerContext)
     {
-        ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
-        _nethermindApi = nethermindApi;
+        ILogger baseLogger = indexerContext.NethermindApi.LogManager.GetClassLogger();
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
-        _database = database;
     }
 
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
     {
-        using RentedEthRpcModule rentedEthRpcModule = new(_nethermindApi);
+        using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
         await rentedEthRpcModule.Rent();
 
         UInt256 totalBalance = TotalBalance(rentedEthRpcModule.RpcModule!, address);
@@ -38,7 +35,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
     {
-        using RentedEthRpcModule rentedEthRpcModule = new(_nethermindApi);
+        using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
         await rentedEthRpcModule.Rent();
 
         var balances =
@@ -49,16 +46,15 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
     {
+        throw new NotImplementedException("Input is currently not validated.");
+
         if (query.Table == null)
         {
             throw new InvalidOperationException("Table is null");
         }
 
-        Tables parsedTableName = Enum.Parse<Tables>(query.Table);
-
-        var select = Query.Select(parsedTableName,
-            query.Columns?.Select(Enum.Parse<Columns>)
-            ?? throw new InvalidOperationException("Columns are null"));
+        var select = Query.Select(query.Table,
+            query.Columns ?? throw new InvalidOperationException("Columns are null"));
 
         if (query.Conditions.Count != 0)
         {
@@ -77,9 +73,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                     throw new InvalidOperationException("OrderBy: Column or SortOrder is null");
                 }
 
-                Columns parsedColumnName = Enum.Parse<Columns>(orderBy.Column);
                 select.OrderBy.Add((
-                    parsedColumnName,
+                    orderBy.Column,
                     orderBy.SortOrder.Equals("asc", StringComparison.InvariantCultureIgnoreCase)
                         ? SortOrder.Asc
                         : SortOrder.Desc));
@@ -87,7 +82,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         Console.WriteLine(select.ToString());
-        var result = _database.Select(select).ToList();
+        var result = _indexerContext.Database.Select(select).ToList();
 
         return ResultWrapper<IEnumerable<object[]>>.Success(result);
     }
@@ -103,18 +98,18 @@ public class CirclesRpcModule : ICirclesRpcModule
     private IEnumerable<Address> TokenAddressesForAccount(Address circlesAccount)
     {
         var select = Query.Select(
-                Tables.Erc20Transfer
+                "Erc20Transfer"
                 , new[]
                 {
-                    Columns.TokenAddress
+                    "TokenAddress"
                 })
             .Where(
                 Query.Equals(
-                    Tables.Erc20Transfer
-                    , Columns.ToAddress
+                    "Erc20Transfer"
+                    , "ToAddress"
                     , circlesAccount.ToString(true, false)));
 
-        return _database.Select(select)
+        return _indexerContext.Database.Select(select)
             .Select(o => o[0]).Cast<byte[]>().Select(o => new Address(o));
     }
 
@@ -185,24 +180,21 @@ public class CirclesRpcModule : ICirclesRpcModule
         return totalBalance;
     }
 
-    private IQuery BuildCondition(Tables table, QueryExpression queryExpression)
+    private IQuery BuildCondition(string table, QueryExpression queryExpression)
     {
         if (queryExpression.Type == "Equals")
         {
-            Columns parsedColumnName = Enum.Parse<Columns>(queryExpression.Column!);
-            return Query.Equals(table, parsedColumnName, queryExpression.Value);
+            return Query.Equals(table, queryExpression.Column!, queryExpression.Value);
         }
 
         if (queryExpression.Type == "GreaterThan")
         {
-            Columns parsedColumnName = Enum.Parse<Columns>(queryExpression.Column!);
-            return Query.GreaterThan(table, parsedColumnName, queryExpression.Value!);
+            return Query.GreaterThan(table, queryExpression.Column!, queryExpression.Value!);
         }
 
         if (queryExpression.Type == "LessThan")
         {
-            Columns parsedColumnName = Enum.Parse<Columns>(queryExpression.Column!);
-            return Query.LessThan(table, parsedColumnName, queryExpression.Value!);
+            return Query.LessThan(table, queryExpression.Column!, queryExpression.Value!);
         }
 
         if (queryExpression.Type == "And")

@@ -23,17 +23,17 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         }
     }
 
-    public async Task WriteBatch(Tables table, IEnumerable<IIndexEvent> data, ISchemaPropertyMap propertyMap)
+    public async Task WriteBatch(string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap)
     {
         var tableSchema = Schema.Tables[table];
-        var columnTyoes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
-        var columnList = string.Join(", ", columnTyoes.Select(o => o.Key.GetIdentifier()));
+        var columnTypes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
+        var columnList = string.Join(", ", columnTypes.Select(o => $"\"{o.Key}\""));
 
         await using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
 
         await using var writer = await connection.BeginBinaryImportAsync(
-            $"COPY {table.GetIdentifier()} ({columnList}) FROM STDIN (FORMAT BINARY)"
+            $"COPY \"{table}\" ({columnList}) FROM STDIN (FORMAT BINARY)"
         );
 
         foreach (var indexEvent in data)
@@ -49,32 +49,31 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         await writer.CompleteAsync();
     }
 
-    private string GetDdl(TableSchema table)
+    private string GetDdl(EventSchema @event)
     {
         StringBuilder ddlSql = new StringBuilder();
-        string tableName = table.Table.GetIdentifier();
-        ddlSql.AppendLine($"CREATE TABLE IF NOT EXISTS {tableName} (");
+        ddlSql.AppendLine($"CREATE TABLE IF NOT EXISTS \"{@event.Table}\" (");
 
         List<string> columnDefinitions = new List<string>();
         List<string> primaryKeyColumns = new List<string>();
 
-        foreach (var column in table.Columns)
+        foreach (var column in @event.Columns)
         {
             string columnType = GetSqlType(column.Type);
-            string columnName = column.Column.GetIdentifier();
-            string columnDefinition = $"{columnName} {columnType}";
+            string columnName = column.Column;
+            string columnDefinition = $"\"{columnName}\" {columnType}";
 
-            if (column.IsPrimaryKey)
-            {
-                primaryKeyColumns.Add(columnName);
-            }
+            // if (column.IsPrimaryKey)
+            // {
+            //     primaryKeyColumns.Add(columnName);
+            // }
 
             columnDefinitions.Add(columnDefinition);
         }
 
         if (primaryKeyColumns.Any())
         {
-            columnDefinitions.Add($"PRIMARY KEY ({string.Join(", ", primaryKeyColumns)})");
+            columnDefinitions.Add($"PRIMARY KEY ({string.Join(", ", primaryKeyColumns.Select(o => $"\"{o}\""))})");
         }
 
         ddlSql.AppendLine(string.Join(",\n", columnDefinitions));
@@ -82,19 +81,19 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         ddlSql.AppendLine();
 
         // Generate index creation statements
-        var indexedColumns = table.Columns
+        var indexedColumns = @event.Columns
             .Where(column =>
                 column is
                 {
                     IsIndexed: true,
-                    IsPrimaryKey: false
+                    // IsPrimaryKey: false
                 });
 
         foreach (var column in indexedColumns)
         {
-            string columnName = column.Column.GetIdentifier();
-            string indexName = $"idx_{tableName.ToLower()}_{columnName.ToLower()}";
-            ddlSql.AppendLine($"CREATE INDEX IF NOT EXISTS {indexName} ON {tableName} ({columnName});");
+            string indexName = $"idx_{@event.Table}_{column.Column}";
+            ddlSql.AppendLine(
+                $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON \"{@event.Table}\" (\"{column.Column}\");");
         }
 
         return ddlSql.ToString();
@@ -135,6 +134,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         cmd.CommandText = command;
         cmd.Parameters.AddRange(parameters ?? []);
 
+        Console.WriteLine($"Executing: {command}");
+        Console.WriteLine(
+            $" with parameters: {string.Join(", ", cmd.Parameters.Select(o => o.Value?.ToString() ?? "<null>"))}");
         cmd.ExecuteNonQuery();
     }
 
@@ -145,7 +147,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-            SELECT MAX(block_number) as block_number FROM {TableNames.Block}
+            SELECT MAX(""BlockNumber"") as block_number FROM ""{"Block"}""
         ";
 
         object? result = cmd.ExecuteScalar();
@@ -164,14 +166,14 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-        SELECT (prev.block_number + 1) AS gap_start
+        SELECT (prev.""BlockNumber"" + 1) AS gap_start 
         FROM (
-            SELECT block_number, LEAD(block_number) OVER (ORDER BY block_number) AS next_block_number 
+            SELECT ""BlockNumber"", LEAD(""BlockNumber"") OVER (ORDER BY ""BlockNumber"") AS next_block_number 
             FROM (
-                SELECT block_number FROM {TableNames.Block} ORDER BY block_number DESC LIMIT 500000
+                SELECT ""BlockNumber"" FROM ""{"Block"}"" ORDER BY ""BlockNumber"" DESC LIMIT 500000
             ) AS sub
         ) AS prev
-        WHERE prev.next_block_number - prev.block_number > 1
+        WHERE prev.next_block_number - prev.""BlockNumber"" > 1
         ORDER BY gap_start
         LIMIT 1;
     ";
@@ -192,9 +194,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-            SELECT block_number, block_hash
-            FROM {TableNames.Block}
-            ORDER BY block_number DESC
+            SELECT ""BlockNumber"", ""BlockHash""
+            FROM {"Block"}
+            ORDER BY ""BlockNumber"" DESC
             LIMIT {count}
         ";
 
@@ -226,6 +228,11 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         }
     }
 
+    public IDataParameter CreateParameter()
+    {
+        return new NpgsqlParameter();
+    }
+
     public async Task DeleteFromBlockOnwards(long reorgAt)
     {
         await using var connection = new NpgsqlConnection(connectionString);
@@ -234,10 +241,10 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
-            foreach (var tableName in TableNames.AllTableNames)
+            foreach (var tableName in Schema.Tables.Keys)
             {
                 await using var command = connection.CreateCommand();
-                command.CommandText = $"DELETE FROM {tableName} WHERE block_number >= @reorgAt;";
+                command.CommandText = $"DELETE FROM \"{tableName}\" WHERE \"{"BlockNumber"}\" >= @reorgAt;";
                 command.Parameters.AddWithValue("@reorgAt", reorgAt);
                 command.Transaction = transaction;
                 command.ExecuteNonQuery();
@@ -252,7 +259,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         }
     }
 
-    public static object? Convert(object? input, ValueTypes target)
+    public object? Convert(object? input, ValueTypes target)
     {
         if (input == null)
         {

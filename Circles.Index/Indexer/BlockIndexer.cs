@@ -4,8 +4,6 @@ using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Npgsql;
-using NpgsqlTypes;
 
 namespace Circles.Index.Indexer;
 
@@ -19,19 +17,17 @@ public class ImportFlow
     private readonly MeteredCaller<object?, Task> _flushBlocks;
 
     private readonly InsertBuffer<Block> _blockBuffer = new();
-    private readonly Settings _settings;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ILogParser[] _parsers;
     private readonly Sink _sink;
 
-    public ImportFlow(Settings settings,
+    public ImportFlow(
         IBlockTree blockTree,
         IReceiptFinder receiptFinder,
         ILogParser[] parsers,
         Sink sink)
     {
-        _settings = settings;
         _blockTree = blockTree;
         _receiptFinder = receiptFinder;
         _parsers = parsers;
@@ -179,24 +175,15 @@ public class ImportFlow
     private async Task PerformFlushBlocks()
     {
         var blocks = _blockBuffer.TakeSnapshot();
-        await using var connection = new NpgsqlConnection(_settings.IndexDbConnectionString);
-        await connection.OpenAsync();
 
-        await using var writer = await connection.BeginBinaryImportAsync(
-            $@"
-                COPY {Tables.Block.GetIdentifier()} (
-                    block_number, timestamp, block_hash
-                ) FROM STDIN (FORMAT BINARY)"
-        );
-
-        foreach (var block in blocks)
+        var map = new SchemaPropertyMap();
+        map.Add("Block", new Dictionary<string, Func<Block, object?>>()
         {
-            await writer.StartRowAsync();
-            await writer.WriteAsync(block.Number, NpgsqlDbType.Bigint);
-            await writer.WriteAsync((long)block.Timestamp, NpgsqlDbType.Bigint);
-            await writer.WriteAsync(block.Hash!.ToString(), NpgsqlDbType.Text);
-        }
+            { "BlockNumber", o => o.Number },
+            { "Timestamp", o => (long)o.Timestamp },
+            { "Hash", o => o.Hash!.ToString() }
+        });
 
-        await writer.CompleteAsync();
+        await _sink.Database.WriteBatch("Block", blocks, map);
     }
 }
