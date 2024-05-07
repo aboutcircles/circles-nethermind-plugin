@@ -11,13 +11,11 @@ public class Sink
     private readonly MeteredCaller<IIndexEvent, Task> _addEvent;
 
     private readonly IDatabase _database;
-    private readonly IDatabaseSchema _databaseSchema;
 
-    public Sink(IDatabase database, IDatabaseSchema databaseSchema, ISchemaPropertyMap schemaPropertyMap,
+    public Sink(IDatabase database, ISchemaPropertyMap schemaPropertyMap,
         IEventDtoTableMap eventDtoTableMap, int batchSize = 100000)
     {
         _database = database;
-        _databaseSchema = databaseSchema;
         _batchSize = batchSize;
         _schemaPropertyMap = schemaPropertyMap;
         _eventDtoTableMap = eventDtoTableMap;
@@ -72,10 +70,9 @@ public class Sink
         foreach (var tableEvents in eventsByTable)
         {
             var table = tableEvents.Key;
-            var tableSchema = _databaseSchema.Tables[table];
             var events = tableEvents.Value;
 
-            tasks.Add(_database.WriteBatch(tableSchema, events, _schemaPropertyMap));
+            tasks.Add(_database.WriteBatch(table, events, _schemaPropertyMap));
         }
 
         await Task.WhenAll(tasks);

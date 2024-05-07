@@ -4,10 +4,13 @@ namespace Circles.Index.Common;
 
 public interface IDatabase
 {
-    void Migrate(IDatabaseSchema databaseSchema);
+    public IDatabaseSchema Schema { get; }
+    
+    void Migrate();
     Task DeleteFromBlockOnwards(long reorgAt);
-    Task WriteBatch(TableSchema table, IEnumerable<IIndexEvent> data, ISchemaPropertyMap propertyMap);
+    Task WriteBatch(Tables table, IEnumerable<IIndexEvent> data, ISchemaPropertyMap propertyMap);
     long? LatestBlock();
     long? FirstGap();
     IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count);
+    IEnumerable<object[]> Select(Select select);
 }

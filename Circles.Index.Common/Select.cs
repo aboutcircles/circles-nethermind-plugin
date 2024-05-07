@@ -8,7 +8,7 @@ public class Select : IQuery
     public readonly Tables Table;
     private readonly string _table;
     public readonly IEnumerable<Columns> Columns;
-    private readonly List<string> _fields;
+    private readonly List<string> _databaseFields;
     public readonly List<IQuery> Conditions;
     public readonly List<(Columns Column, SortOrder Order)> OrderBy = new();
 
@@ -18,7 +18,7 @@ public class Select : IQuery
         Table = table;
         _table = table.GetIdentifier();
         Columns = columnsArray;
-        _fields = columnsArray.Select(c => c.GetIdentifier()).ToList();
+        _databaseFields = columnsArray.Select(c => c.GetIdentifier()).ToList();
         Conditions = new List<IQuery>();
     }
 
@@ -30,7 +30,7 @@ public class Select : IQuery
 
     public string ToSql()
     {
-        var sql = new StringBuilder($"SELECT {string.Join(", ", _fields)} FROM {_table}");
+        var sql = new StringBuilder($"SELECT {string.Join(", ", _databaseFields)} FROM {_table}");
         if (Conditions.Any())
         {
             sql.Append(" WHERE ");

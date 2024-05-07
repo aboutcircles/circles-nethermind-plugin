@@ -4,40 +4,44 @@ using System.Text;
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace Circles.Index.Postgres;
 
-public class PostgresDb(string connectionString) : IDatabase
+public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger logger) : IDatabase
 {
-    public void Migrate(IDatabaseSchema databaseSchema)
+    public IDatabaseSchema Schema { get; } = schema;
+
+    public void Migrate()
     {
-        foreach (var table in databaseSchema.Tables)
+        foreach (var table in Schema.Tables)
         {
             var ddl = GetDdl(table.Value);
             ExecuteNonQuery(ddl);
         }
     }
 
-    public async Task WriteBatch(TableSchema table, IEnumerable<IIndexEvent> data, ISchemaPropertyMap propertyMap)
+    public async Task WriteBatch(Tables table, IEnumerable<IIndexEvent> data, ISchemaPropertyMap propertyMap)
     {
-        var columnTyoes = table.Columns.ToDictionary(o => o.Column, o => o.Type);
+        var tableSchema = Schema.Tables[table];
+        var columnTyoes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
         var columnList = string.Join(", ", columnTyoes.Select(o => o.Key.GetIdentifier()));
 
         await using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
 
         await using var writer = await connection.BeginBinaryImportAsync(
-            $"COPY {table.Table.GetIdentifier()} ({columnList}) FROM STDIN (FORMAT BINARY)"
+            $"COPY {table.GetIdentifier()} ({columnList}) FROM STDIN (FORMAT BINARY)"
         );
 
         foreach (var indexEvent in data)
         {
             await writer.StartRowAsync();
-            foreach (var column in table.Columns)
+            foreach (var column in tableSchema.Columns)
             {
-                var value = propertyMap.Map[table.Table][column.Column](indexEvent);
+                var value = propertyMap.Map[table][column.Column](indexEvent);
                 await writer.WriteAsync(value, GetNpgsqlDbType(column.Type));
             }
         }
@@ -137,6 +141,8 @@ public class PostgresDb(string connectionString) : IDatabase
     public long? LatestBlock()
     {
         using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
             SELECT MAX(block_number) as block_number FROM {TableNames.Block}
@@ -154,6 +160,8 @@ public class PostgresDb(string connectionString) : IDatabase
     public long? FirstGap()
     {
         using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
         SELECT (prev.block_number + 1) AS gap_start
@@ -180,6 +188,8 @@ public class PostgresDb(string connectionString) : IDatabase
     public IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count = 100)
     {
         using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
             SELECT block_number, block_hash
@@ -195,9 +205,32 @@ public class PostgresDb(string connectionString) : IDatabase
         }
     }
 
+    public IEnumerable<object[]> Select(Select select)
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = select.ToSql();
+        foreach (var param in select.GetParameters(Schema))
+        {
+            command.Parameters.Add(param);
+        }
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var row = new object[reader.FieldCount];
+            reader.GetValues(row);
+            yield return row;
+        }
+    }
+
     public async Task DeleteFromBlockOnwards(long reorgAt)
     {
         await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
@@ -216,30 +249,6 @@ public class PostgresDb(string connectionString) : IDatabase
         {
             await transaction.RollbackAsync();
             throw;
-        }
-    }
-
-    public IEnumerable<object[]> Execute(IQuery query, IDatabaseSchema schema, bool closeConnection = false)
-    {
-        using var connection = new NpgsqlConnection(connectionString);
-        var command = connection.CreateCommand();
-        command.CommandText = query.ToSql();
-        foreach (var param in query.GetParameters(schema))
-        {
-            command.Parameters.Add(param);
-        }
-
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            var row = new object[reader.FieldCount];
-            reader.GetValues(row);
-            yield return row;
-        }
-
-        if (closeConnection)
-        {
-            connection.Close();
         }
     }
 

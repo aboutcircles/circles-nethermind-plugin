@@ -13,9 +13,9 @@ services:
       - START_BLOCK=0
       - POSTGRES_CONNECTION_STRING=Server=localhost;Port=7432;User Id=postgres;Password=;Database=postgres;Include Error Detail=true;
     volumes:
-      - ./.container-state/circles-spaceneth/spaceneth_db:/nethermind/spaceneth_db
-      - ./.container-state/circles-spaceneth/logs:/nethermind/logs
-      - ./.container-state/circles-spaceneth/keystore:/nethermind/keystore
+      - ./.spaceneth-state/circles-spaceneth/spaceneth_db:/nethermind/spaceneth_db
+      - ./.spaceneth-state/circles-spaceneth/logs:/nethermind/logs
+      - ./.spaceneth-state/circles-spaceneth/keystore:/nethermind/keystore
 
   redis_db:
     image: 'redis:alpine'
@@ -25,7 +25,7 @@ services:
     command: redis-server
     restart: unless-stopped
     volumes:
-      - ./.container-state/redis-data:/data
+      - ./.spaceneth-state/redis-data:/data
 
   db:
     image: postgres:14
@@ -37,7 +37,7 @@ services:
       POSTGRES_USER: 'postgres'
       POSTGRES_HOST_AUTH_METHOD: 'trust'
     volumes:
-      - ./.container-state/postgres-data:/var/lib/postgresql/data
+      - ./.spaceneth-state/postgres-data:/var/lib/postgresql/data
     ports:
       - 7432:5432
 

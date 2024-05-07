@@ -21,6 +21,4 @@ public class Settings
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 12541946L;
-
-    public static readonly ImmutableArray<IDatabaseSchema> Schemas = [new Common.DatabaseSchema(), new V1.DatabaseSchema(), new V2.DatabaseSchema()];
 }

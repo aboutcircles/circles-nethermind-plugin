@@ -32,8 +32,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         using RentedEthRpcModule rentedEthRpcModule = new(_nethermindApi);
         await rentedEthRpcModule.Rent();
 
-        UInt256 totalBalance =
-            TotalBalance(_indexConnectionString, rentedEthRpcModule.RpcModule!, address, _pluginLogger);
+        UInt256 totalBalance = TotalBalance(rentedEthRpcModule.RpcModule!, address);
         return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
     }
 
@@ -43,7 +42,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await rentedEthRpcModule.Rent();
 
         var balances =
-            CirclesTokenBalances(_indexConnectionString, rentedEthRpcModule.RpcModule!, address);
+            CirclesTokenBalances(rentedEthRpcModule.RpcModule!, address);
 
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
@@ -88,7 +87,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         Console.WriteLine(select.ToString());
-        var result = Query.Execute(connection, select).ToList();
+        var result = _database.Select(select).ToList();
 
         return ResultWrapper<IEnumerable<object[]>>.Success(result);
     }
@@ -101,7 +100,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     #region private methods
 
-    private static IEnumerable<Address> TokenAddressesForAccount(NpgsqlConnection connection, Address circlesAccount)
+    private IEnumerable<Address> TokenAddressesForAccount(Address circlesAccount)
     {
         var select = Query.Select(
                 Tables.Erc20Transfer
@@ -115,16 +114,13 @@ public class CirclesRpcModule : ICirclesRpcModule
                     , Columns.ToAddress
                     , circlesAccount.ToString(true, false)));
 
-        return Query.Execute(connection, select).Select(o => o[0]).Cast<byte[]>().Select(o => new Address(o));
+        return _database.Select(select)
+            .Select(o => o[0]).Cast<byte[]>().Select(o => new Address(o));
     }
 
-    private static List<CirclesTokenBalance> CirclesTokenBalances(string dbLocation, IEthRpcModule rpcModule,
-        Address address)
+    private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address)
     {
-        using NpgsqlConnection connection = new(dbLocation);
-        connection.Open();
-
-        IEnumerable<Address> tokens = TokenAddressesForAccount(connection, address);
+        IEnumerable<Address> tokens = TokenAddressesForAccount(address);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -156,12 +152,9 @@ public class CirclesRpcModule : ICirclesRpcModule
         return balances;
     }
 
-    private static UInt256 TotalBalance(string dbLocation, IEthRpcModule rpcModule, Address address, ILogger? logger)
+    private UInt256 TotalBalance(IEthRpcModule rpcModule, Address address)
     {
-        using NpgsqlConnection connection = new(dbLocation);
-        connection.Open();
-
-        IEnumerable<Address> tokens = TokenAddressesForAccount(connection, address);
+        IEnumerable<Address> tokens = TokenAddressesForAccount(address);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -192,37 +185,37 @@ public class CirclesRpcModule : ICirclesRpcModule
         return totalBalance;
     }
 
-    private IQuery BuildCondition(Tables table, Expression expression)
+    private IQuery BuildCondition(Tables table, QueryExpression queryExpression)
     {
-        if (expression.Type == "Equals")
+        if (queryExpression.Type == "Equals")
         {
-            Columns parsedColumnName = Enum.Parse<Columns>(expression.Column!);
-            return Query.Equals(table, parsedColumnName, expression.Value);
+            Columns parsedColumnName = Enum.Parse<Columns>(queryExpression.Column!);
+            return Query.Equals(table, parsedColumnName, queryExpression.Value);
         }
 
-        if (expression.Type == "GreaterThan")
+        if (queryExpression.Type == "GreaterThan")
         {
-            Columns parsedColumnName = Enum.Parse<Columns>(expression.Column!);
-            return Query.GreaterThan(table, parsedColumnName, expression.Value!);
+            Columns parsedColumnName = Enum.Parse<Columns>(queryExpression.Column!);
+            return Query.GreaterThan(table, parsedColumnName, queryExpression.Value!);
         }
 
-        if (expression.Type == "LessThan")
+        if (queryExpression.Type == "LessThan")
         {
-            Columns parsedColumnName = Enum.Parse<Columns>(expression.Column!);
-            return Query.LessThan(table, parsedColumnName, expression.Value!);
+            Columns parsedColumnName = Enum.Parse<Columns>(queryExpression.Column!);
+            return Query.LessThan(table, parsedColumnName, queryExpression.Value!);
         }
 
-        if (expression.Type == "And")
+        if (queryExpression.Type == "And")
         {
-            return Query.And(expression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
+            return Query.And(queryExpression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
         }
 
-        if (expression.Type == "Or")
+        if (queryExpression.Type == "Or")
         {
-            return Query.Or(expression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
+            return Query.Or(queryExpression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
         }
 
-        throw new InvalidOperationException($"Unknown expression type: {expression.Type}");
+        throw new InvalidOperationException($"Unknown expression type: {queryExpression.Type}");
     }
 
     #endregion

@@ -13,12 +13,12 @@ using Npgsql;
 
 namespace Circles.Index;
 
-public class CirclesIndex : INethermindPlugin
+public class Plugin : INethermindPlugin
 {
-    public string Name => "Circles.Index";
+    public string Name => "Circles";
 
     public string Description =>
-        "Indexes Circles related events and provides query capabilities via JSON-RPC. Indexed events are: Signup, OrgSignup, Trust, HubTransfer, CrcTransfer.";
+        "Indexes Circles related events and provides query capabilities via JSON-RPC.";
 
     public string Author => "Gnosis";
 
@@ -32,29 +32,24 @@ public class CirclesIndex : INethermindPlugin
     {
         _nethermindApi = nethermindApi;
 
-        Settings settings = new();
-        ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
-        ILogger pluginLogger = new LoggerWithPrefix("Circles.Index:", baseLogger);
-        IDatabase database = new PostgresDb(settings.IndexDbConnectionString);
-
-        Query.Initialize(NpgsqlFactory.Instance);
-
-        pluginLogger.Info("Migrating database schema (common tables) ...");
         IDatabaseSchema common = new Common.DatabaseSchema();
-        database.Migrate(common);
-
-        pluginLogger.Info("Migrating database schema (v1 tables) ...");
         IDatabaseSchema v1 = new V1.DatabaseSchema();
-        database.Migrate(v1);
-
-        pluginLogger.Info("Migrating database schema (v2 tables) ...");
         IDatabaseSchema v2 = new V2.DatabaseSchema();
-        database.Migrate(v2);
+        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2]);
 
+        ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
+        ILogger pluginLogger = new LoggerWithPrefix(Name, baseLogger);
+
+        Settings settings = new();
         pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
         pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
         pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
         pluginLogger.Info("Start index from: " + settings.StartBlock);
+
+        IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema, pluginLogger);
+        database.Migrate();
+
+        Query.Initialize(NpgsqlFactory.Instance);
 
         _indexerContext = new Context(pluginLogger, settings, database);
 
@@ -72,19 +67,7 @@ public class CirclesIndex : INethermindPlugin
 
         try
         {
-            // Wait in a loop as long as the nethermind node is not fully in sync with the chain
-            while (nethermindApi.Pivot?.PivotNumber > nethermindApi.BlockTree?.Head?.Number
-                   || nethermindApi.BlockTree?.Head == null
-                   || nethermindApi.ReceiptFinder == null)
-            {
-                if (_cancellationTokenSource.Token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                _indexerContext.Logger.Info("Waiting for the node to sync");
-                await Task.Delay(1000);
-            }
+            await WaitUntilSynced(nethermindApi);
 
             _indexerMachine = new StateMachine(
                 _indexerContext
@@ -126,6 +109,29 @@ public class CirclesIndex : INethermindPlugin
         {
             Console.WriteLine(e);
             throw;
+        }
+    }
+
+    private async Task WaitUntilSynced(INethermindApi nethermindApi)
+    {
+        long count = 0;
+
+        while (nethermindApi.Pivot?.PivotNumber > nethermindApi.BlockTree?.Head?.Number
+               || nethermindApi.BlockTree?.Head == null
+               || nethermindApi.ReceiptFinder == null)
+        {
+            if (_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            count++;
+            if (count % 10 == 0)
+            {
+                _indexerContext?.Logger.Info("Waiting for sync...");
+            }
+
+            await Task.Delay(1000);
         }
     }
 

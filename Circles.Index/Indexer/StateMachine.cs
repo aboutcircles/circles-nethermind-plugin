@@ -190,13 +190,8 @@ public class StateMachine(
     {
         context.Logger.Info("Starting syncing process.");
 
-        var commonSchema = new Common.DatabaseSchema();
         var v1Schema = new V1.DatabaseSchema();
         var v2Schema = new V2.DatabaseSchema();
-
-        IDatabaseSchema databaseDatabaseSchema = new CompositeDatabaseSchema([
-            commonSchema, v1Schema, v2Schema
-        ]);
 
         IEventDtoTableMap compositeEventDtoTableMap = new CompositeEventDtoTableMap([
             v1Schema.EventDtoTableMap, v2Schema.EventDtoTableMap
@@ -206,7 +201,7 @@ public class StateMachine(
             v1Schema.SchemaPropertyMap, v2Schema.SchemaPropertyMap
         ]);
 
-        Sink sink = new Sink(context.Database, databaseDatabaseSchema, compositeSchemaPropertyMap,
+        Sink sink = new Sink(context.Database, compositeSchemaPropertyMap,
             compositeEventDtoTableMap);
 
         ILogParser[] parsers =
