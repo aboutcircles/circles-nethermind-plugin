@@ -31,10 +31,11 @@ public class Plugin : INethermindPlugin
         IDatabaseSchema common = new Common.DatabaseSchema();
         IDatabaseSchema v1 = new V1.DatabaseSchema();
         IDatabaseSchema v2 = new V2.DatabaseSchema();
+
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
-        ILogger pluginLogger = new LoggerWithPrefix(Name, baseLogger);
+        ILogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
 
         Settings settings = new();
         pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
@@ -43,9 +44,26 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema, pluginLogger);
-        _indexerContext = new Context(nethermindApi, pluginLogger, settings, database);
+        
+        Sink sink = new Sink(
+            database,
+            new CompositeSchemaPropertyMap([
+                v1.SchemaPropertyMap, v2.SchemaPropertyMap
+            ]),
+            new CompositeEventDtoTableMap([
+                v1.EventDtoTableMap, v2.EventDtoTableMap
+            ]));
+
+        ILogParser[] logParsers =
+        [
+            new V1.LogParser(settings.CirclesV1HubAddress),
+            new V2.LogParser(settings.CirclesV2HubAddress)
+        ];
+
+        _indexerContext = new Context(nethermindApi, pluginLogger, settings, database, logParsers, sink);
 
         _indexerContext.Database.Migrate();
+        
         Query.Initialize(_indexerContext.Database);
 
         Run(nethermindApi);
@@ -137,7 +155,7 @@ public class Plugin : INethermindPlugin
 
     public async Task InitRpcModules()
     {
-        await Task.Delay(1000);
+        await Task.Delay(5000);
 
         if (_indexerContext?.NethermindApi == null)
         {
@@ -152,8 +170,6 @@ public class Plugin : INethermindPlugin
         CirclesRpcModule circlesRpcModule = new(_indexerContext);
         _indexerContext.NethermindApi.ForRpc.GetFromApi.RpcModuleProvider?.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
-
-        return;
     }
 
     public ValueTask DisposeAsync()

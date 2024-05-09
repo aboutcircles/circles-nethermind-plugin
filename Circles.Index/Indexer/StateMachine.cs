@@ -1,4 +1,3 @@
-using Circles.Index.Common;
 using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -190,37 +189,17 @@ public class StateMachine(
     {
         context.Logger.Info("Starting syncing process.");
 
-        var v1Schema = new V1.DatabaseSchema();
-        var v2Schema = new V2.DatabaseSchema();
-
-        IEventDtoTableMap compositeEventDtoTableMap = new CompositeEventDtoTableMap([
-            v1Schema.EventDtoTableMap, v2Schema.EventDtoTableMap
-        ]);
-
-        ISchemaPropertyMap compositeSchemaPropertyMap = new CompositeSchemaPropertyMap([
-            v1Schema.SchemaPropertyMap, v2Schema.SchemaPropertyMap
-        ]);
-
-        Sink sink = new Sink(context.Database, compositeSchemaPropertyMap,
-            compositeEventDtoTableMap);
-
-        ILogParser[] parsers =
-        [
-            new V1.LogParser(context.Settings.CirclesV1HubAddress),
-            new V2.LogParser(context.Settings.CirclesV2HubAddress)
-        ];
-
         try
         {
             ImportFlow flow = new ImportFlow(blockTree
                 , receiptFinder
-                , parsers
-                , sink);
+                , context.LogParsers
+                , context.Sink);
 
             IAsyncEnumerable<long> blocksToSync = GetBlocksToSync();
             Range<long> importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
 
-            await sink.Flush();
+            await context.Sink.Flush();
             await flow.FlushBlocks();
 
             if (importedBlockRange is { Min: long.MaxValue, Max: long.MinValue })

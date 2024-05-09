@@ -5,8 +5,9 @@ namespace Circles.Index.Common;
 
 public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed);
 
-public class EventSchema(string table, Hash256 topic, List<EventFieldSchema> columns)
+public class EventSchema(string @namespace, string table, Hash256 topic, List<EventFieldSchema> columns)
 {
+    public string Namespace { get; } = @namespace;
     public Hash256 Topic { get; } = topic;
     public string Table { get; } = table;
     public List<EventFieldSchema> Columns { get; } = columns;
@@ -21,13 +22,14 @@ public class EventSchema(string table, Hash256 topic, List<EventFieldSchema> col
     /// );
     /// ```
     /// </summary>
+    /// <param name="namespace"></param>
     /// <param name="solidityEventDefinition"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentException">Thrown when the event definition is invalid (according to this parser ;).</exception>
     /// <remarks>
     /// Doesn't support all Solidity types yet (most notably arrays). Please handle events with these types manually.
     /// </remarks>
-    public static EventSchema FromSolidity(string solidityEventDefinition)
+    public static EventSchema FromSolidity(string @namespace, string solidityEventDefinition)
     {
         var trimmedDefinition = solidityEventDefinition.Trim();
         const string prefix = "event ";
@@ -55,14 +57,22 @@ public class EventSchema(string table, Hash256 topic, List<EventFieldSchema> col
             .Substring(openParenthesisIndex + 1, closeParenthesisIndex - openParenthesisIndex - 1).Trim();
 
         var columnDefinitions = parameters.Split(',');
-        var columns = new List<EventFieldSchema>();
-
-        StringBuilder sb = new StringBuilder();
-        sb.Append(eventName);
-        sb.Append("(");
-
-        foreach (var columnDefinition in columnDefinitions)
+        var columns = new List<EventFieldSchema>
         {
+            new("blockNumber", ValueTypes.Int, false),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, false),
+            new("logIndex", ValueTypes.Int, false),
+            new("transactionHash", ValueTypes.String, true)
+        };
+
+        StringBuilder eventTopic = new StringBuilder();
+        eventTopic.Append(eventName);
+        eventTopic.Append('(');
+
+        for (int i = 0; i < columnDefinitions.Length; i++)
+        {
+            var columnDefinition = columnDefinitions[i];
             var parts = columnDefinition.Trim().Split(' ');
             if (parts.Length < 2)
             {
@@ -70,34 +80,41 @@ public class EventSchema(string table, Hash256 topic, List<EventFieldSchema> col
                     $"Invalid column definition '${columnDefinition}'. Must contain a type and a name.");
             }
 
+            if (i > 0)
+            {
+                eventTopic.Append(',');
+            }
+
             if (parts.Length == 2)
             {
                 var type = MapSolidityType(parts[0].Trim());
+                eventTopic.Append(parts[0].Trim());
+
                 var columnName = parts[1].Trim();
                 columns.Add(new EventFieldSchema(columnName, type, false));
-                sb.Append($"{type} {columnName}");
             }
 
             if (parts.Length == 3)
             {
-                var isIndexed = parts[0].Trim() == "indexed";
+                var type = MapSolidityType(parts[0].Trim());
+                eventTopic.Append(parts[0].Trim());
+
+                var isIndexed = parts[1].Trim() == "indexed";
                 if (!isIndexed)
                 {
                     throw new ArgumentException(
                         $"Invalid column definition '${columnDefinition}'.");
                 }
 
-                var type = MapSolidityType(parts[1].Trim());
                 var columnName = parts[2].Trim();
-                columns.Add(new EventFieldSchema(columnName, type, false));
-                sb.Append($"{type} {columnName}");
+                columns.Add(new EventFieldSchema(columnName, type, isIndexed));
             }
         }
 
-        sb.Append(")");
+        eventTopic.Append(')');
 
-        Hash256 topic = Keccak.Compute(sb.ToString());
-        return new EventSchema(eventName, topic, columns);
+        Hash256 topic = Keccak.Compute(eventTopic.ToString());
+        return new EventSchema(@namespace, eventName, topic, columns);
     }
 
     private static ValueTypes MapSolidityType(string type)
@@ -112,8 +129,9 @@ public class EventSchema(string table, Hash256 topic, List<EventFieldSchema> col
             "uint128" => ValueTypes.BigInt,
             "uint256" => ValueTypes.BigInt,
             "string" => ValueTypes.String,
+            "bool" => ValueTypes.Boolean,
             _ => throw new ArgumentException(
-                $"'${type}' is not supported. Please handle this event manually.")
+                $"'{type}' is not supported. Please handle this event manually.")
         };
     }
 }

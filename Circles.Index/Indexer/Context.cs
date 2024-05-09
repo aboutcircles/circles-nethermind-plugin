@@ -8,4 +8,6 @@ public record Context(
     INethermindApi NethermindApi,
     ILogger Logger,
     Settings Settings,
-    IDatabase Database);
+    IDatabase Database,
+    ILogParser[] LogParsers,
+    Sink Sink);

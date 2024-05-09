@@ -2,7 +2,10 @@ namespace Circles.Index.Common;
 
 public class CompositeDatabaseSchema : IDatabaseSchema
 {
-    public IDictionary<string, EventSchema> Tables { get; }
+    public ISchemaPropertyMap SchemaPropertyMap { get; }
+    public IEventDtoTableMap EventDtoTableMap { get; }
+
+    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
 
     public CompositeDatabaseSchema(IDatabaseSchema[] components)
     {
@@ -12,19 +15,24 @@ public class CompositeDatabaseSchema : IDatabaseSchema
                 kvp => kvp.Key
                 , kvp => kvp.Value
             );
+
+        SchemaPropertyMap = new CompositeSchemaPropertyMap(components.Select(o => o.SchemaPropertyMap).ToArray());
+        EventDtoTableMap = new CompositeEventDtoTableMap(components.Select(o => o.EventDtoTableMap).ToArray());
     }
 }
 
 public interface ISchemaPropertyMap
 {
-    Dictionary<string, Dictionary<string, Func<object, object?>>> Map { get; }
+    Dictionary<(string Namespace, string Table), Dictionary<string, Func<object, object?>>> Map { get; }
+
+    public void Add<TEvent>((string Namespace, string Table) table, Dictionary<string, Func<TEvent, object?>> map);
 }
 
 public class SchemaPropertyMap : ISchemaPropertyMap
 {
-    public Dictionary<string, Dictionary<string, Func<object, object?>>> Map { get; } = new();
+    public Dictionary<(string Namespace, string Table), Dictionary<string, Func<object, object?>>> Map { get; } = new();
 
-    public void Add<TEvent>(string table, Dictionary<string, Func<TEvent, object?>> map)
+    public void Add<TEvent>((string Namespace, string Table) table, Dictionary<string, Func<TEvent, object?>> map)
     {
         Map[table] = map.ToDictionary(
             pair => pair.Key,
@@ -35,9 +43,13 @@ public class SchemaPropertyMap : ISchemaPropertyMap
 
 public class CompositeSchemaPropertyMap : ISchemaPropertyMap
 {
-    public Dictionary<string, Dictionary<string, Func<object, object?>>> Map { get; }
+    public Dictionary<(string Namespace, string Table), Dictionary<string, Func<object, object?>>> Map { get; }
+    public void Add<TEvent>((string Namespace, string Table) table, Dictionary<string, Func<TEvent, object?>> map)
+    {
+        throw new NotImplementedException();
+    }
 
-    public CompositeSchemaPropertyMap(SchemaPropertyMap[] components)
+    public CompositeSchemaPropertyMap(ISchemaPropertyMap[] components)
     {
         Map = components
             .SelectMany(c => c.Map)
@@ -50,14 +62,17 @@ public class CompositeSchemaPropertyMap : ISchemaPropertyMap
 
 public interface IEventDtoTableMap
 {
-    Dictionary<Type, string> Map { get; }
+    Dictionary<Type, (string Namespace, string Table)> Map { get; }
+
+    public void Add<TEvent>((string Namespace, string Table) table)
+        where TEvent : IIndexEvent;
 }
 
 public class EventDtoTableMap : IEventDtoTableMap
 {
-    public Dictionary<Type, string> Map { get; } = new();
+    public Dictionary<Type, (string Namespace, string Table)> Map { get; } = new();
 
-    public void Add<TEvent>(string table)
+    public void Add<TEvent>((string Namespace, string Table) table)
         where TEvent : IIndexEvent
     {
         Map[typeof(TEvent)] = table;
@@ -66,9 +81,14 @@ public class EventDtoTableMap : IEventDtoTableMap
 
 public class CompositeEventDtoTableMap : IEventDtoTableMap
 {
-    public Dictionary<Type, string> Map { get; }
+    public Dictionary<Type, (string Namespace, string Table)> Map { get; }
 
-    public CompositeEventDtoTableMap(EventDtoTableMap[] components)
+    public void Add<TEvent>((string Namespace, string Table) table) where TEvent : IIndexEvent
+    {
+        throw new NotImplementedException();
+    }
+
+    public CompositeEventDtoTableMap(IEventDtoTableMap[] components)
     {
         Map = components
             .SelectMany(c => c.Map)

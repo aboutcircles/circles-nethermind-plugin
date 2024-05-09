@@ -22,6 +22,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         ILogger baseLogger = indexerContext.NethermindApi.LogManager.GetClassLogger();
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
+        _indexerContext = indexerContext;
     }
 
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
@@ -53,7 +54,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new InvalidOperationException("Table is null");
         }
 
-        var select = Query.Select(query.Table,
+        var select = Query.Select((query.Namespace, query.Table),
             query.Columns ?? throw new InvalidOperationException("Columns are null"));
 
         if (query.Conditions.Count != 0)
@@ -98,14 +99,14 @@ public class CirclesRpcModule : ICirclesRpcModule
     private IEnumerable<Address> TokenAddressesForAccount(Address circlesAccount)
     {
         var select = Query.Select(
-                "Erc20Transfer"
+                ("CrcV1", "Transfer")
                 , new[]
                 {
                     "TokenAddress"
                 })
             .Where(
                 Query.Equals(
-                    "Erc20Transfer"
+                    ("CrcV1", "Transfer")
                     , "ToAddress"
                     , circlesAccount.ToString(true, false)));
 
@@ -180,7 +181,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return totalBalance;
     }
 
-    private IQuery BuildCondition(string table, QueryExpression queryExpression)
+    private IQuery BuildCondition((string Namespace, string Table) table, QueryExpression queryExpression)
     {
         if (queryExpression.Type == "Equals")
         {

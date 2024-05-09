@@ -4,16 +4,19 @@ namespace Circles.Index.Common;
 
 public class DatabaseSchema : IDatabaseSchema
 {
-    public IDictionary<string, EventSchema> Tables { get; } = new Dictionary<string, EventSchema>
-    {
+    public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
+    public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
+
+    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
+        new Dictionary<(string Namespace, string Table), EventSchema>
         {
-            "Block",
-            // Hash256 must be 32 bytes and was 0 bytes
-            new EventSchema("Block", new Hash256(new byte[32]), [
-                new("BlockNumber", ValueTypes.Int, true),
-                new("Timestamp", ValueTypes.Int, true),
-                new("BlockHash", ValueTypes.String, true)
-            ])
-        }
-    };
+            {
+                ("System", "Block"),
+                new EventSchema("System", "Block", new Hash256(new byte[32]), [
+                    new("blockNumber", ValueTypes.Int, false),
+                    new("timestamp", ValueTypes.Int, true),
+                    new("blockHash", ValueTypes.String, false)
+                ])
+            }
+        };
 }

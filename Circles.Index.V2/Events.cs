@@ -3,123 +3,113 @@ using Nethermind.Int256;
 
 namespace Circles.Index.V2;
 
-public record CrcV2RegisterOrganizationData(
+public record RegisterOrganization(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string OrganizationAddress,
-    string OrganizationName) : IIndexEvent;
+    string Organization,
+    string Name) : IIndexEvent;
 
-public record CrcV2RegisterGroupData(
+public record RegisterGroup(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string GroupAddress,
-    string MintPolicy,
+    string Group,
+    string Mint,
     string Treasury,
-    string GroupName,
-    string GroupSymbol) : IIndexEvent;
+    string Name,
+    string Symbol) : IIndexEvent;
 
-public record CrcV2RegisterHumanData(
+public record RegisterHuman(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string HumanAddress) : IIndexEvent;
+    string Avatar) : IIndexEvent;
 
-public record CrcV2PersonalMintData(
+public record PersonalMint(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string HumanAddress,
+    string Human,
     UInt256 Amount,
     UInt256 StartPeriod,
     UInt256 EndPeriod) : IIndexEvent;
 
-public record CrcV2InviteHumanData(
+public record InviteHuman(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string InviterAddress,
-    string InviteeAddress) : IIndexEvent;
+    string Inviter,
+    string Invited) : IIndexEvent;
 
-public record CrcV2ConvertInflationData(
+public record Trust(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    UInt256 InflationValue,
-    UInt256 DemurrageValue,
-    ulong Day) : IIndexEvent;
-
-public record CrcV2TrustData(
-    long BlockNumber,
-    long Timestamp,
-    int TransactionIndex,
-    int LogIndex,
-    string TransactionHash,
-    string TrusterAddress,
-    string TrusteeAddress,
+    string Truster,
+    string Trustee,
     UInt256 ExpiryTime) : IIndexEvent;
 
-public record CrcV2StoppedData(
+public record Stopped(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string Address) : IIndexEvent;
+    string Avatar) : IIndexEvent;
 
-public record Erc1155ApprovalForAllData(
+public record ApprovalForAll(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string Owner,
+    string Account,
     string Operator,
     bool Approved) : IIndexEvent;
 
-public record Erc1155TransferSingleData(
+public record TransferSingle(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string OperatorAddress,
-    string FromAddress,
-    string ToAddress,
-    UInt256 TokenId,
+    string Operator,
+    string From,
+    string To,
+    UInt256 Id,
     UInt256 Value) : IIndexEvent;
 
-public record Erc1155TransferBatchData(
+public record TransferBatch(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
     int BatchIndex,
-    string OperatorAddress,
-    string FromAddress,
-    string ToAddress,
-    UInt256 TokenId,
+    string Operator,
+    string From,
+    string To,
+    UInt256 Id,
     UInt256 Value) : IIndexEvent;
 
-public record Erc1155UriData(
+public record URI(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    UInt256 TokenId,
-    string Uri) : IIndexEvent;
+    UInt256 Id,
+    string Value) : IIndexEvent;

@@ -19,20 +19,21 @@ public static class Query
         return _database;
     }
 
-    public static Equals Equals(string table, string column, object? value) =>
+    public static Equals Equals((string Namespace, string Table) table, string column, object? value) =>
         new(GetDatabase(), table, column, value);
 
-    public static GreaterThan GreaterThan(string table, string column, object value) =>
+    public static GreaterThan GreaterThan((string Namespace, string Table) table, string column, object value) =>
         new(GetDatabase(), table, column, value);
 
-    public static GreaterThanOrEqual GreaterThanOrEqual(string table, string column, object value) =>
+    public static GreaterThanOrEqual GreaterThanOrEqual((string Namespace, string Table) table, string column,
+        object value) =>
         new(GetDatabase(), table, column, value);
 
-    public static LessThan LessThan(string table, string column, object value) =>
+    public static LessThan LessThan((string Namespace, string Table) table, string column, object value) =>
         new(GetDatabase(), table, column, value);
 
     public static LogicalAnd And(params IQuery[] subElements) => new(subElements);
     public static LogicalOr Or(params IQuery[] subElements) => new(subElements);
 
-    public static Select Select(string table, IEnumerable<string> columns) => new(table, columns);
+    public static Select Select((string Namespace, string Table) table, IEnumerable<string> columns) => new(table, columns);
 }

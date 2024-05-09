@@ -2,9 +2,9 @@ namespace Circles.Index.Common;
 
 public enum ValueTypes
 {
-    Address = 0,
-    Int = 1,
-    BigInt = 2,
+    Boolean = 0,
+    Address = 1,
+    Int = 2,
+    BigInt = 3,
     String = 4,
-    Boolean = 6
 }

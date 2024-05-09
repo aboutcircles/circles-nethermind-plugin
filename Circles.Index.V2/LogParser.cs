@@ -1,9 +1,7 @@
-using System.Globalization;
 using System.Numerics;
 using System.Text;
 using Circles.Index.Common;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -11,34 +9,6 @@ namespace Circles.Index.V2;
 
 public class LogParser(Address v2HubAddress) : ILogParser
 {
-    public static Hash256 CrcV2RegisterHumanTopic { get; } = Keccak.Compute("RegisterHuman(address)");
-    public static Hash256 CrcV2InviteHumanTopic { get; } = Keccak.Compute("InviteHuman(address,address)");
-
-    public static Hash256 CrcV2RegisterOrganizationTopic { get; } =
-        Keccak.Compute("RegisterOrganization(address,string)");
-
-    public static Hash256 CrcV2RegisterGroupTopic { get; } =
-        Keccak.Compute("RegisterGroup(address,address,address,string,string)");
-
-    public static Hash256 CrcV2TrustTopic { get; } = Keccak.Compute("Trust(address,address,uint256)");
-    public static Hash256 CrcV2StoppedTopic { get; } = Keccak.Compute("Stopped(address)");
-
-    public static Hash256 CrcV2PersonalMintTopic { get; } =
-        Keccak.Compute("PersonalMint(address,uint256,uint256,uint256)");
-
-    public static Hash256 CrcV2ConvertInflationTopic { get; } =
-        Keccak.Compute("ConvertInflation(uint256,uint256,uint64");
-
-    // All ERC1155 events
-    public static Hash256 Erc1155TransferSingleTopic { get; } =
-        Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)");
-
-    public static Hash256 Erc1155TransferBatchTopic { get; } =
-        Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])");
-
-    public static Hash256 Erc1155ApprovalForAllTopic { get; } = Keccak.Compute("ApprovalForAll(address,address,bool)");
-    public static Hash256 Erc1155UriTopic { get; } = Keccak.Compute("URI(uint256,string)");
-
     public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         if (log.Topics.Length == 0)
@@ -52,73 +22,75 @@ public class LogParser(Address v2HubAddress) : ILogParser
             yield break;
         }
 
-        if (topic == CrcV2StoppedTopic)
+        if (topic == DatabaseSchema.Stopped.Topic)
         {
             yield return CrcV2Stopped(block, receipt, log, logIndex);
         }
 
-        if (topic == CrcV2TrustTopic)
+        if (topic == DatabaseSchema.Trust.Topic)
         {
             yield return CrcV2Trust(block, receipt, log, logIndex);
         }
 
-        if (topic == CrcV2ConvertInflationTopic)
-        {
-            yield return CrcV2ConvertInflation(block, receipt, log, logIndex);
-        }
-
-        if (topic == CrcV2InviteHumanTopic)
+        if (topic == DatabaseSchema.InviteHuman.Topic)
         {
             yield return CrcV2InviteHuman(block, receipt, log, logIndex);
         }
 
-        if (topic == CrcV2PersonalMintTopic)
+        if (topic == DatabaseSchema.PersonalMint.Topic)
         {
             yield return CrcV2PersonalMint(block, receipt, log, logIndex);
         }
 
-        if (topic == CrcV2RegisterHumanTopic)
+        if (topic == DatabaseSchema.RegisterHuman.Topic)
         {
             yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
         }
 
-        if (topic == CrcV2RegisterGroupTopic)
+        {
+            yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
+        }
+
+        if (topic == DatabaseSchema.RegisterGroup.Topic)
         {
             yield return CrcV2RegisterGroup(block, receipt, log, logIndex);
         }
 
-        if (topic == CrcV2RegisterOrganizationTopic)
+        if (topic == DatabaseSchema.RegisterOrganization.Topic)
         {
             yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
         }
 
-        if (topic == Erc1155TransferBatchTopic)
+        if (topic == DatabaseSchema.TransferBatch.Topic)
         {
-            yield return Erc1155TransferBatch(block, receipt, log, logIndex);
+            foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
+            {
+                yield return batchEvent;
+            }
         }
 
-        if (topic == Erc1155TransferSingleTopic)
+        if (topic == DatabaseSchema.TransferSingle.Topic)
         {
             yield return Erc1155TransferSingle(block, receipt, log, logIndex);
         }
 
-        if (topic == Erc1155ApprovalForAllTopic)
+        if (topic == DatabaseSchema.ApprovalForAll.Topic)
         {
             yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
         }
 
-        if (topic == Erc1155UriTopic)
+        if (topic == DatabaseSchema.URI.Topic)
         {
             yield return Erc1155Uri(block, receipt, log, logIndex);
         }
     }
 
-    private Erc1155UriData Erc1155Uri(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private URI Erc1155Uri(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         var tokenId = new UInt256(log.Topics[1].Bytes, true);
         var uri = Encoding.UTF8.GetString(log.Data);
 
-        return new Erc1155UriData(
+        return new URI(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -128,28 +100,28 @@ public class LogParser(Address v2HubAddress) : ILogParser
             uri);
     }
 
-    private Erc1155ApprovalForAllData Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private ApprovalForAll Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         throw new NotImplementedException();
     }
 
-    private Erc1155TransferSingleData Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private TransferSingle Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         throw new NotImplementedException();
     }
 
-    private Erc1155TransferBatchData Erc1155TransferBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<TransferBatch> Erc1155TransferBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         throw new NotImplementedException();
     }
 
-    private CrcV2RegisterOrganizationData CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log,
+    private RegisterOrganization CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log,
         int logIndex)
     {
         string orgAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string orgName = Encoding.UTF8.GetString(log.Data);
 
-        return new CrcV2RegisterOrganizationData(
+        return new RegisterOrganization(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -159,7 +131,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             orgName);
     }
 
-    private CrcV2RegisterGroupData CrcV2RegisterGroup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private RegisterGroup CrcV2RegisterGroup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string mintPolicy = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
@@ -173,7 +145,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
         int symbolLength = (int)new BigInteger(log.Data.Slice(symbolOffset, 32).ToArray());
         string groupSymbol = Encoding.UTF8.GetString(log.Data.Slice(symbolOffset + 32, symbolLength));
 
-        return new CrcV2RegisterGroupData(
+        return new RegisterGroup(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -187,11 +159,11 @@ public class LogParser(Address v2HubAddress) : ILogParser
     }
 
 
-    private CrcV2RegisterHumanData CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private RegisterHuman CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string humanAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        return new CrcV2RegisterHumanData(
+        return new RegisterHuman(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -200,14 +172,14 @@ public class LogParser(Address v2HubAddress) : ILogParser
             humanAddress);
     }
 
-    private CrcV2PersonalMintData CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private PersonalMint CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string toAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 startPeriod = new UInt256(log.Data.Slice(32, 32), true);
         UInt256 endPeriod = new UInt256(log.Data.Slice(64), true);
 
-        return new CrcV2PersonalMintData(
+        return new PersonalMint(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -219,14 +191,14 @@ public class LogParser(Address v2HubAddress) : ILogParser
             endPeriod);
     }
 
-    private CrcV2InviteHumanData CrcV2InviteHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private InviteHuman CrcV2InviteHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string inviterAddress =
             "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string inviteeAddress =
             "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        return new CrcV2InviteHumanData(
+        return new InviteHuman(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -236,31 +208,14 @@ public class LogParser(Address v2HubAddress) : ILogParser
             inviteeAddress);
     }
 
-    private CrcV2ConvertInflationData CrcV2ConvertInflation(Block block, TxReceipt receipt, LogEntry log, int logIndex)
-    {
-        UInt256 inflationValue = new UInt256(log.Data.Slice(0, 32), true);
-        UInt256 demurrageValue = new UInt256(log.Data.Slice(32, 32), true);
-        ulong day = new UInt256(log.Data.Slice(64), true).ToUInt64(CultureInfo.InvariantCulture);
-
-        return new CrcV2ConvertInflationData(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash.ToString(),
-            inflationValue,
-            demurrageValue,
-            day);
-    }
-
-    private CrcV2TrustData CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private Trust CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string userAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string canSendToAddress =
             "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 limit = new UInt256(log.Data, true);
 
-        return new CrcV2TrustData(
+        return new Trust(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -271,11 +226,11 @@ public class LogParser(Address v2HubAddress) : ILogParser
             limit);
     }
 
-    private CrcV2StoppedData CrcV2Stopped(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private Stopped CrcV2Stopped(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string address = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        return new CrcV2StoppedData(
+        return new Stopped(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,

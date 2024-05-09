@@ -6,13 +6,13 @@ namespace Circles.Index.Common;
 public abstract class QueryPredicate : IQuery
 {
     protected readonly string Field;
-    public readonly string Table;
+    public readonly (string Namespace, string Table) Table;
     public readonly string Column;
     protected readonly string ParameterName;
     public readonly object Value;
     protected readonly IDatabase Database;
 
-    internal QueryPredicate(IDatabase database, string table, string column, object value)
+    internal QueryPredicate(IDatabase database, (string Namespace, string Table) table, string column, object value)
     {
         Database = database;
         Table = table;

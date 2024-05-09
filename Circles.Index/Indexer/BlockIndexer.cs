@@ -78,7 +78,7 @@ public class ImportFlow
                 , _receiptFinder.Get(block)));
         TransformBlock<Block?, BlockWithReceipts> receiptsSource = new(
             block => findReceipts.Call(block!)
-            , CreateOptions(cancellationToken));
+            , CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
 
         blockSource.LinkTo(receiptsSource, b => b != null);
 
@@ -109,7 +109,7 @@ public class ImportFlow
         receiptsSource.LinkTo(parser);
 
         ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> sink = new(Sink,
-            CreateOptions(cancellationToken, 100000, 1));
+            CreateOptions(cancellationToken, 50000, 1));
         parser.LinkTo(sink);
 
         return blockSource;
@@ -177,13 +177,13 @@ public class ImportFlow
         var blocks = _blockBuffer.TakeSnapshot();
 
         var map = new SchemaPropertyMap();
-        map.Add("Block", new Dictionary<string, Func<Block, object?>>()
+        map.Add(("System", "Block"), new Dictionary<string, Func<Block, object?>>
         {
-            { "BlockNumber", o => o.Number },
-            { "Timestamp", o => (long)o.Timestamp },
-            { "Hash", o => o.Hash!.ToString() }
+            { "blockNumber", o => o.Number },
+            { "timestamp", o => (long)o.Timestamp },
+            { "blockHash", o => o.Hash!.ToString() }
         });
 
-        await _sink.Database.WriteBatch("Block", blocks, map);
+        await _sink.Database.WriteBatch("System", "Block", blocks, map);
     }
 }

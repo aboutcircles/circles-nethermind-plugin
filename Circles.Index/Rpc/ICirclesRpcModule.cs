@@ -24,6 +24,7 @@ public class CirclesTokenBalance
 
 public class CirclesQuery
 {
+    public string? Namespace { get; set; }
     public string? Table { get; set; }
     public string[]? Columns { get; set; }
     public List<QueryExpression> Conditions { get; set; } = new();
