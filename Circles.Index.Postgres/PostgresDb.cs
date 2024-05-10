@@ -4,13 +4,12 @@ using System.Text;
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace Circles.Index.Postgres;
 
-public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger logger) : IDatabase
+public class PostgresDb(string connectionString, IDatabaseSchema schema) : IDatabase
 {
     public IDatabaseSchema Schema { get; } = schema;
 
@@ -47,22 +46,27 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
             StringBuilder primaryKeyDdl = new StringBuilder();
             foreach (var table in Schema.Tables)
             {
-                if (!HasPrimaryKey(connection, table.Value))
+                if (HasPrimaryKey(connection, table.Value))
                 {
-                    if (table.Value is { Namespace: "System", Table: "Block" })
-                    {
-                        primaryKeyDdl.AppendLine(
-                            $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\");");
-                    }
-                    else
-                    {
-                        primaryKeyDdl.AppendLine(
-                            $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"transactionIndex\", \"logIndex\");");
-                    }
+                    continue;
+                }
+
+                if (table.Value is { Namespace: "System", Table: "Block" })
+                {
+                    primaryKeyDdl.AppendLine(
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\");");
+                }
+                else
+                {
+                    primaryKeyDdl.AppendLine(
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"transactionIndex\", \"logIndex\");");
                 }
             }
 
-            ExecuteNonQuery(connection, primaryKeyDdl.ToString());
+            if (primaryKeyDdl.Length > 0)
+            {
+                ExecuteNonQuery(connection, primaryKeyDdl.ToString());
+            }
         }
         catch (Exception)
         {
@@ -106,7 +110,6 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
         ddlSql.AppendLine($"CREATE TABLE IF NOT EXISTS \"{@event.Namespace}_{@event.Table}\" (");
 
         List<string> columnDefinitions = new List<string>();
-        List<string> primaryKeyColumns = new List<string>();
 
         foreach (var column in @event.Columns)
         {
@@ -114,17 +117,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
             string columnName = column.Column;
             string columnDefinition = $"\"{columnName}\" {columnType}";
 
-            // if (column.IsPrimaryKey)
-            // {
-            //     primaryKeyColumns.Add(columnName);
-            // }
-
             columnDefinitions.Add(columnDefinition);
-        }
-
-        if (primaryKeyColumns.Any())
-        {
-            columnDefinitions.Add($"PRIMARY KEY ({string.Join(", ", primaryKeyColumns.Select(o => $"\"{o}\""))})");
         }
 
         ddlSql.AppendLine(string.Join(",\n", columnDefinitions));
@@ -133,12 +126,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
 
         // Generate index creation statements
         var indexedColumns = @event.Columns
-            .Where(column =>
-                column is
-                {
-                    IsIndexed: true,
-                    // IsPrimaryKey: false
-                });
+            .Where(column => column.IsIndexed);
 
         foreach (var column in indexedColumns)
         {
@@ -210,17 +198,19 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-        SELECT (prev.""blockNumber"" + 1) AS gap_start 
-        FROM (
-            SELECT ""blockNumber"", LEAD(""blockNumber"") OVER (ORDER BY ""blockNumber"") AS next_block_number 
+            SELECT (prev.""blockNumber"" + 1) AS gap_start
+            --        ,(prev.next_block_number - 1) AS gap_end
+            --        ,(prev.next_block_number - prev.""blockNumber"" - 1) AS gap_size
             FROM (
-                SELECT ""blockNumber"" FROM ""{"System_Block"}"" ORDER BY ""blockNumber"" DESC LIMIT 500000
-            ) AS sub
-        ) AS prev
-        WHERE prev.next_block_number - prev.""blockNumber"" > 1
-        ORDER BY gap_start
-        LIMIT 1;
-    ";
+                     SELECT ""blockNumber"", LEAD(""blockNumber"") OVER (ORDER BY ""blockNumber"") AS next_block_number
+                     FROM (
+                              SELECT ""blockNumber"" FROM ""System_Block"" ORDER BY ""blockNumber"" DESC LIMIT 1000000
+                          ) AS sub
+                 ) AS prev
+            WHERE prev.next_block_number - prev.""blockNumber"" > 1
+            ORDER BY gap_start
+            LIMIT 1;
+        ";
 
         object? result = cmd.ExecuteScalar();
         if (result is long longResult)
@@ -292,6 +282,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema, ILogger
                     $"DELETE FROM \"{table.Namespace}_{table.Table}\" WHERE \"{"blockNumber"}\" >= @reorgAt;";
                 command.Parameters.AddWithValue("@reorgAt", reorgAt);
                 command.Transaction = transaction;
+
                 command.ExecuteNonQuery();
             }
 

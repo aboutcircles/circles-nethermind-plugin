@@ -1,5 +1,6 @@
 using System.Numerics;
 using Circles.Index.Common;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index.V1;
 
@@ -21,8 +22,18 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema Trust = EventSchema.FromSolidity("CrcV1",
         "event Trust(address indexed canSendTo, address indexed user, uint256 limit)");
 
-    public static readonly EventSchema Transfer = EventSchema.FromSolidity("CrcV1",
-        "event Transfer(address indexed from, address indexed to, uint256 amount)");
+    public static readonly EventSchema Transfer = new("CrcV1", "Transfer",
+        Keccak.Compute("Transfer(address,address,uint256)"),
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("tokenAddress", ValueTypes.Address, true),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("amount", ValueTypes.BigInt, false)
+        ]);
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>

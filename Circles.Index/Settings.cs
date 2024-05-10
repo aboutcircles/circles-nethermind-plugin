@@ -18,6 +18,9 @@ public class Settings
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? "Server=postgres;Port=5432;User Id=postgres;Password=postgres;Database=postgres;";
 
+    public readonly int BlockBufferSize = 20000;
+    public readonly int EventBufferSize = 100000;
+
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 12541946L;

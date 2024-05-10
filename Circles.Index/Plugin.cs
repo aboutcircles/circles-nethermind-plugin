@@ -1,12 +1,10 @@
-﻿using System.Threading.Channels;
-using Circles.Index.Common;
+﻿using Circles.Index.Common;
 using Circles.Index.Indexer;
 using Circles.Index.Postgres;
 using Circles.Index.Rpc;
 using Circles.Index.Utils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 
@@ -26,12 +24,11 @@ public class Plugin : INethermindPlugin
     private StateMachine? _indexerMachine;
     private Context? _indexerContext;
 
-    public Task Init(INethermindApi nethermindApi)
+    public async Task Init(INethermindApi nethermindApi)
     {
         IDatabaseSchema common = new Common.DatabaseSchema();
         IDatabaseSchema v1 = new V1.DatabaseSchema();
         IDatabaseSchema v2 = new V2.DatabaseSchema();
-
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
@@ -43,16 +40,16 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
         pluginLogger.Info("Start index from: " + settings.StartBlock);
 
-        IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema, pluginLogger);
-        
+        IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
+        database.Migrate();
+
+        Query.Initialize(database);
+
         Sink sink = new Sink(
             database,
-            new CompositeSchemaPropertyMap([
-                v1.SchemaPropertyMap, v2.SchemaPropertyMap
-            ]),
-            new CompositeEventDtoTableMap([
-                v1.EventDtoTableMap, v2.EventDtoTableMap
-            ]));
+            new CompositeSchemaPropertyMap([v1.SchemaPropertyMap, v2.SchemaPropertyMap]),
+            new CompositeEventDtoTableMap([v1.EventDtoTableMap, v2.EventDtoTableMap]),
+            settings.EventBufferSize);
 
         ILogParser[] logParsers =
         [
@@ -60,92 +57,36 @@ public class Plugin : INethermindPlugin
             new V2.LogParser(settings.CirclesV2HubAddress)
         ];
 
-        _indexerContext = new Context(nethermindApi, pluginLogger, settings, database, logParsers, sink);
+        _indexerContext = new Context(
+            nethermindApi,
+            pluginLogger,
+            settings,
+            database,
+            logParsers,
+            sink);
 
-        _indexerContext.Database.Migrate();
-        
-        Query.Initialize(_indexerContext.Database);
+        _indexerMachine = new StateMachine(
+            _indexerContext
+            , nethermindApi.BlockTree!
+            , nethermindApi.ReceiptFinder!
+            , _cancellationTokenSource.Token);
 
-        Run(nethermindApi);
+        await _indexerMachine.TransitionTo(StateMachine.State.Initial);
 
-        return Task.CompletedTask;
-    }
+        Task currentMachineExecution = Task.CompletedTask;
 
-    private async void Run(INethermindApi nethermindApi)
-    {
-        if (_indexerContext == null)
+        nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
         {
-            throw new Exception("_indexerContext is not set");
-        }
-
-        try
-        {
-            await WaitUntilSynced(nethermindApi);
-
-            _indexerMachine = new StateMachine(
-                _indexerContext
-                , nethermindApi.BlockTree!
-                , nethermindApi.ReceiptFinder!
-                , _cancellationTokenSource.Token);
-
-            Channel<BlockEventArgs> blockChannel = Channel.CreateBounded<BlockEventArgs>(1);
-            nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
-            {
-                _indexerContext.Logger.Debug($"New head block: {args.Block.Number}");
-                blockChannel.Writer.TryWrite(args);
-            };
-
-            await Task.Run(async () =>
-            {
-                // Process blocks from the channel
-                _ = Task.Run(async () =>
-                {
-                    await foreach (BlockEventArgs args in blockChannel.Reader.ReadAllAsync(_cancellationTokenSource
-                                       .Token))
-                    {
-                        try
-                        {
-                            _indexerContext.Logger.Debug($"New block received: {args.Block.Number}");
-                            await _indexerMachine.HandleEvent(new StateMachine.NewHead(args.Block.Number));
-                        }
-                        catch (Exception e)
-                        {
-                            _indexerContext.Logger.Error("Error while indexing new block", e);
-                        }
-                    }
-                }, _cancellationTokenSource.Token);
-
-                await _indexerMachine.TransitionTo(StateMachine.State.Initial);
-            }, _cancellationTokenSource.Token);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-            throw;
-        }
-    }
-
-    private async Task WaitUntilSynced(INethermindApi nethermindApi)
-    {
-        long count = 0;
-
-        while (nethermindApi.Pivot?.PivotNumber > nethermindApi.BlockTree?.Head?.Number
-               || nethermindApi.BlockTree?.Head == null
-               || nethermindApi.ReceiptFinder == null)
-        {
-            if (_cancellationTokenSource.Token.IsCancellationRequested)
+            // Simple debounce mechanism that works well when blocks are produced consistently.
+            // TODO: This won't work well e.g. with spaceneth where blocks are only produced when there are transactions.
+            if (currentMachineExecution is { IsCompleted: false })
             {
                 return;
             }
 
-            count++;
-            if (count % 10 == 0)
-            {
-                _indexerContext?.Logger.Info("Waiting for sync...");
-            }
-
-            await Task.Delay(1000);
-        }
+            currentMachineExecution = Task.Run(() =>
+                _indexerMachine.HandleEvent(new StateMachine.NewHead(args.Block.Number)));
+        };
     }
 
     public Task InitNetworkProtocol()
@@ -157,14 +98,9 @@ public class Plugin : INethermindPlugin
     {
         await Task.Delay(5000);
 
-        if (_indexerContext?.NethermindApi == null)
-        {
-            throw new Exception("_nethermindApi is not set");
-        }
-
         if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
         {
-            throw new Exception("_nethermindApi.RpcModuleProvider is not set");
+            throw new Exception("_indexerContext.NethermindApi.RpcModuleProvider is not set");
         }
 
         CirclesRpcModule circlesRpcModule = new(_indexerContext);

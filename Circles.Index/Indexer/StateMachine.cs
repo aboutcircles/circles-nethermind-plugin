@@ -1,8 +1,6 @@
 using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Indexer;
 
@@ -14,20 +12,19 @@ public class StateMachine(
 {
     public interface IEvent;
 
-    record SyncCompleted : IEvent;
-
     public record NewHead(long Head) : IEvent;
 
     record EnterState : IEvent;
 
+    record EnterState<TArg>(TArg Arg) : EnterState;
+
     record LeaveState : IEvent;
 
-    record ReorgCompleted : IEvent;
-
-    private long LastReorgAt { get; set; }
-    private long LastIndexHeight { get; set; }
     private List<Exception> Errors { get; } = new();
+
     private State CurrentState { get; set; } = State.New;
+
+    private long LastIndexHeight => context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
 
     public enum State
     {
@@ -47,40 +44,29 @@ public class StateMachine(
             switch (CurrentState)
             {
                 case State.New:
-                    // Empty state, only used to transition to the initial state
                     return;
+
                 case State.Initial:
                     switch (e)
                     {
                         case EnterState:
                         {
-                            long head = blockTree.Head!.Number;
-                            SetLastIndexHeight();
-
-                            await context.Database.DeleteFromBlockOnwards(Math.Min(LastIndexHeight, head) + 1);
-
-                            await TransitionTo(head == LastIndexHeight
-                                ? State.WaitForNewBlock
-                                : State.Syncing);
+                            // Initially delete all events for which no "System_Block" exists
+                            await TransitionTo(State.Reorg, LastIndexHeight);
                             return;
                         }
                     }
 
                     break;
 
-                case State.Syncing:
+                case State.Reorg:
                     switch (e)
                     {
-                        case EnterState:
-                            // Make sure we know what exactly we are syncing
-                            SetLastIndexHeight();
+                        case EnterState<long> enterState:
+                            context.Logger.Info(
+                                $"Reorg at {enterState.Arg}. Deleting all events from this block onwards...");
 
-                            await Sync();
-                            return;
-                        case SyncCompleted:
-                            Errors.Clear(); // Clean up errors after a successful sync
-                            SetLastIndexHeight();
-
+                            await context.Database.DeleteFromBlockOnwards(enterState.Arg);
                             await TransitionTo(State.WaitForNewBlock);
                             return;
                     }
@@ -91,34 +77,29 @@ public class StateMachine(
                     switch (e)
                     {
                         case NewHead newHead:
-                            LastReorgAt = newHead.Head <= LastIndexHeight
-                                ? newHead.Head
-                                : TryFindReorg() ?? 0;
-
-                            if (LastReorgAt > 0)
+                            context.Logger.Info($"New head received: {newHead.Head}");
+                            if (newHead.Head <= LastIndexHeight)
                             {
-                                context.Logger.Warn($"Reorg at {LastReorgAt}");
-
-                                await TransitionTo(State.Reorg);
+                                await TransitionTo(State.Reorg, newHead.Head);
                                 return;
                             }
 
-                            await TransitionTo(State.Syncing);
+                            await TransitionTo(State.Syncing, newHead.Head);
                             return;
                     }
 
                     break;
 
-                case State.Reorg:
+                case State.Syncing:
                     switch (e)
                     {
-                        case EnterState:
-                            // Internally runs asynchronous, deletes all state after the reorg block and triggers a ReorgCompleted event when done.
-                            // After that the method will stop executing and only be restarted once the state is entered again.
-                            Reorg();
-                            return;
-                        case ReorgCompleted:
-                            await TransitionTo(State.Syncing);
+                        case EnterState<long> enterSyncing:
+                            var importedBlockRange = await Sync(enterSyncing.Arg);
+                            context.Logger.Info($"Imported blocks from {importedBlockRange.Min} " +
+                                                $"to {importedBlockRange.Max}");
+                            Errors.Clear();
+
+                            await TransitionTo(State.WaitForNewBlock);
                             return;
                     }
 
@@ -153,7 +134,46 @@ public class StateMachine(
         }
     }
 
-    public async Task TransitionTo(State newState)
+    private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
+    {
+        long lastIndexHeight = LastIndexHeight;
+        if (lastIndexHeight == toBlock)
+        {
+            context.Logger.Info("No blocks to sync.");
+            yield break;
+        }
+
+        var nextBlock = lastIndexHeight + 1;
+        context.Logger.Info($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
+
+        for (long i = nextBlock; i <= toBlock; i++)
+        {
+            yield return i;
+            await Task.Yield();
+        }
+    }
+
+    private async Task<Range<long>> Sync(long toBlock)
+    {
+        Range<long> importedBlockRange = new();
+        try
+        {
+            ImportFlow flow = new(blockTree, receiptFinder, context);
+            IAsyncEnumerable<long> blocksToSync = GetBlocksToSync(toBlock);
+            importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
+
+            await context.Sink.Flush();
+            await flow.FlushBlocks();
+        }
+        catch (TaskCanceledException)
+        {
+            context.Logger.Info("Cancelled indexing blocks.");
+        }
+
+        return importedBlockRange;
+    }
+
+    private async Task TransitionTo<TArgument>(State newState, TArgument? argument)
     {
         context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
         if (newState is not State.Error)
@@ -163,125 +183,11 @@ public class StateMachine(
 
         CurrentState = newState;
 
-        await HandleEvent(new EnterState());
+        await HandleEvent(new EnterState<TArgument?>(argument));
     }
 
-    private void SetLastIndexHeight()
+    public async Task TransitionTo(State newState)
     {
-        LastIndexHeight = context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
-    }
-
-    private async void Reorg()
-    {
-        context.Logger.Info("Starting reorg process.");
-        if (LastReorgAt == 0)
-        {
-            throw new Exception("LastReorgAt is 0");
-        }
-
-        await context.Database.DeleteFromBlockOnwards(LastReorgAt);
-        LastReorgAt = 0;
-
-        await HandleEvent(new ReorgCompleted());
-    }
-
-    private async Task Sync()
-    {
-        context.Logger.Info("Starting syncing process.");
-
-        try
-        {
-            ImportFlow flow = new ImportFlow(blockTree
-                , receiptFinder
-                , context.LogParsers
-                , context.Sink);
-
-            IAsyncEnumerable<long> blocksToSync = GetBlocksToSync();
-            Range<long> importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
-
-            await context.Sink.Flush();
-            await flow.FlushBlocks();
-
-            if (importedBlockRange is { Min: long.MaxValue, Max: long.MinValue })
-            {
-                await HandleEvent(new SyncCompleted());
-                return;
-            }
-
-            context.Logger.Info($"Imported blocks from {importedBlockRange.Min} to {importedBlockRange.Max}");
-            await HandleEvent(new SyncCompleted());
-        }
-        catch (TaskCanceledException)
-        {
-            context.Logger.Info($"Cancelled indexing blocks.");
-        }
-        catch (Exception ex)
-        {
-            context.Logger.Error("Error while syncing blocks.", ex);
-            Errors.Add(ex);
-            await TransitionTo(State.Error);
-        }
-    }
-
-    private async IAsyncEnumerable<long> GetBlocksToSync()
-    {
-        if (blockTree.Head == null)
-        {
-            yield break;
-        }
-
-        SetLastIndexHeight();
-        LastIndexHeight = LastIndexHeight == 0 ? context.Settings.StartBlock : LastIndexHeight;
-
-        long head = blockTree.Head.Number;
-        long lastIndexHeight = LastIndexHeight;
-
-        context.Logger.Info($"Getting blocks to sync from {LastIndexHeight} (LastIndexHeight) to {head} (chain-head)");
-
-        if (lastIndexHeight == head)
-        {
-            context.Logger.Info("No blocks to sync.");
-            yield break;
-        }
-
-        context.Logger.Debug($"Enumerating blocks to sync from {lastIndexHeight} to {head}");
-
-        for (long i = lastIndexHeight + 1; i <= head; i++)
-        {
-            yield return i;
-            await Task.Yield();
-        }
-    }
-
-
-    private long? TryFindReorg()
-    {
-        context.Logger.Info("Trying to find reorg.");
-
-        IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
-            context.Database.LastPersistedBlocks(100);
-        long? reorgAt = null;
-
-        foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
-        {
-            Block? recentChainBlock = blockTree.FindBlock(recentPersistedBlock.BlockNumber);
-            if (recentChainBlock == null)
-            {
-                throw new Exception($"Couldn't find block {recentPersistedBlock.BlockNumber} in the chain");
-            }
-
-            if (recentPersistedBlock.BlockHash == recentChainBlock.Hash)
-            {
-                continue;
-            }
-
-            context.Logger.Info($"Block {recentPersistedBlock.BlockNumber} is different in the chain.");
-            context.Logger.Info($"  Recent persisted block hash: {recentPersistedBlock.BlockHash}");
-            context.Logger.Info($"  Recent chain block hash: {recentChainBlock.Hash}");
-            reorgAt = recentPersistedBlock.BlockNumber;
-            break;
-        }
-
-        return reorgAt;
+        await TransitionTo<object>(newState, null);
     }
 }

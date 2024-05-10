@@ -95,7 +95,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             tokenId,
             uri);
     }
@@ -126,7 +126,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             orgAddress,
             orgName);
     }
@@ -150,7 +150,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             groupAddress,
             mintPolicy,
             treasury,
@@ -168,7 +168,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             humanAddress);
     }
 
@@ -184,7 +184,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             toAddress,
             amount,
             startPeriod,
@@ -203,7 +203,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             inviterAddress,
             inviteeAddress);
     }
@@ -220,7 +220,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             userAddress,
             canSendToAddress,
             limit);
@@ -235,7 +235,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash.ToString(),
+            receipt.TxHash!.ToString(),
             address);
     }
 }
