@@ -10,7 +10,7 @@ The plugin provides a JSON-RPC module to query the data. The following RPC metho
     "method":"circles_getTotalBalance",
     "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
     "id":1
-    }' -H "Content-Type: application/json" https://circles-rpc.circlesubi.id/
+    }' -H "Content-Type: application/json" http://localhost:8545/
     ```
 
 * `circles_getTokenBalances(Address address)`
@@ -20,40 +20,39 @@ The plugin provides a JSON-RPC module to query the data. The following RPC metho
     "method":"circles_getTokenBalances",
     "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
     "id":1
-    }' -H "Content-Type: application/json" https://circles-rpc.circlesubi.id/
+    }' -H "Content-Type: application/json" http://localhost:8545/
     ```
 
-  * `circles_getTrustRelations(Address address)`
-      ```shell
-      curl -X POST --data '{
+* `circles_getTrustRelations(Address address)`
+    ```shell
+    curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getTrustRelations",
+    "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+    "id":1
+    }' -H "Content-Type: application/json" http://localhost:8545/
+    ```
+
+* `circles_query(Select select)` 
+    ```shell
+  curl -X POST --data '{
       "jsonrpc":"2.0",
-      "method":"circles_getTrustRelations",
-      "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
-      "id":1
-      }' -H "Content-Type: application/json" https://circles-rpc.circlesubi.id/
-      ```
-
-    * `circles_queryTrustEvents(CirclesTrustQuery query)`
-        ```shell
-      curl -X POST --data '{
-          "jsonrpc":"2.0",
-          "method":"circles_query",
-          "id":1,
-          "params": [{
-            "Table": "CrcV1Signup",
-            "Columns": [
-              "BlockNumber",
-              "Timestamp",
-              "TransactionIndex",
-              "LogIndex",
-              "TransactionHash",
-              "CirclesAddress",
-              "TokenAddress"
-            ]
-        }]
-      }' -H "Content-Type: application/json" http://localhost:8545/
-      ```
-
+      "method":"circles_query",
+      "id":1,
+      "params": [{
+        "Namespace": "CrcV1",
+        "Table": "Signup",
+        "Columns": [
+          "blockNumber",
+          "timestamp",
+          "transactionIndex",
+          "logIndex",
+          "transactionHash",
+          "user",
+          "token"
+        ]
+  }' -H "Content-Type: application/json" http://localhost:8545/
+  ```
 * `circles_computeTransfer(string query)`
     ```shell
   curl -X POST --data '{

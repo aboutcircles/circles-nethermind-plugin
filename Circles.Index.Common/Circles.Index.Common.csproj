@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.25.4" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="Npgsql">
+        <HintPath>..\..\..\..\.nuget\packages\npgsql\8.0.2\lib\net8.0\Npgsql.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+</Project>

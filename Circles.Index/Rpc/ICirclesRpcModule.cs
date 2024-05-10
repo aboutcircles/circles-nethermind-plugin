@@ -1,5 +1,4 @@
 using Circles.Index.Data;
-using Circles.Index.Data.Query;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -25,9 +24,10 @@ public class CirclesTokenBalance
 
 public class CirclesQuery
 {
+    public string? Namespace { get; set; }
     public string? Table { get; set; }
     public string[]? Columns { get; set; }
-    public List<Expression> Conditions { get; set; } = new();
+    public List<QueryExpression> Conditions { get; set; } = new();
     
     public List<OrderBy> OrderBy { get; set; } = new();
 }
@@ -38,12 +38,12 @@ public class OrderBy
     public string? SortOrder { get; set; }
 }
 
-public class Expression
+public class QueryExpression
 {
     public string? Type { get; set; }  // "Equals", "GreaterThan", "LessThan", "And", "Or"
     public string? Column { get; set; }  // Null for composite types like "And" and "Or"
     public object? Value { get; set; }  // Null for composite types
-    public List<Expression>? Elements { get; set; }  // Used only for "And" and "Or"
+    public List<QueryExpression>? Elements { get; set; }  // Used only for "And" and "Or"
 }
 
 [RpcModule("Circles")]

@@ -7,6 +7,31 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{1A7A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index", "Circles.Index\Circles.Index.csproj", "{6B1B1D07-6A85-4502-877F-09776658100D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV1", "Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj", "{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Common", "Circles.Index.Common\Circles.Index.Common.csproj", "{3B0594BF-32D3-4631-86D1-8498BA5983D9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2", "Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj", "{FF8E96F7-2903-4C0B-A443-19EA8D7FBB67}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB76D-01EE-4E92-AEE5-27224DA53350}"
+	ProjectSection(SolutionItems) = preProject
+		x64.debug.spaceneth.Dockerfile = x64.debug.spaceneth.Dockerfile
+		x64.Dockerfile = x64.Dockerfile
+		arm64.Dockerfile = arm64.Dockerfile
+		docker-compose.chiado.yml = docker-compose.chiado.yml
+		docker-compose.yml = docker-compose.yml
+		.dockerignore = .dockerignore
+		circles-chainspec.json = circles-chainspec.json
+		circles-config.cfg = circles-config.cfg
+		time_controller.py = time_controller.py
+		x64.debug.Dockerfile = x64.debug.Dockerfile
+		docker-compose.gnosis.yml = docker-compose.gnosis.yml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Postgres", "Circles.Index.Postgres\Circles.Index.Postgres.csproj", "{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.NameRegistry", "Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj", "{33D651AB-1C61-4A06-9C02-A144E7342317}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -17,5 +42,25 @@ Global
 		{6B1B1D07-6A85-4502-877F-09776658100D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6B1B1D07-6A85-4502-877F-09776658100D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6B1B1D07-6A85-4502-877F-09776658100D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B0594BF-32D3-4631-86D1-8498BA5983D9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B0594BF-32D3-4631-86D1-8498BA5983D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B0594BF-32D3-4631-86D1-8498BA5983D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B0594BF-32D3-4631-86D1-8498BA5983D9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FF8E96F7-2903-4C0B-A443-19EA8D7FBB67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FF8E96F7-2903-4C0B-A443-19EA8D7FBB67}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FF8E96F7-2903-4C0B-A443-19EA8D7FBB67}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FF8E96F7-2903-4C0B-A443-19EA8D7FBB67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}.Release|Any CPU.Build.0 = Release|Any CPU
+		{33D651AB-1C61-4A06-9C02-A144E7342317}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{33D651AB-1C61-4A06-9C02-A144E7342317}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{33D651AB-1C61-4A06-9C02-A144E7342317}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{33D651AB-1C61-4A06-9C02-A144E7342317}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

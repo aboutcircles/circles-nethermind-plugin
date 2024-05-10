@@ -14,29 +14,26 @@
     </PropertyGroup>
 
 
-
-    <ItemGroup>
-      <Reference Include="Microsoft.Data.Sqlite">
-        <HintPath>..\..\..\..\..\..\.nuget\packages\microsoft.data.sqlite.core\6.0.7\lib\net6.0\Microsoft.Data.Sqlite.dll</HintPath>
-      </Reference>
-    </ItemGroup>
-
-
     <ItemGroup>
       <None Remove="known_relevant_blocks.csv" />
-      <None Update="Indexer\Cheatcodes\relevant_blocks.csv">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
+      <None Remove="arm64.Dockerfile" />
+      <None Remove="circles-chainspec.json" />
     </ItemGroup>
 
 
     <ItemGroup>
-      <PackageReference Include="Dapper" Version="2.1.44" />
-      <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.3" />
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
       <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.25.4" />
       <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-      <PackageReference Include="Npgsql" Version="8.0.2" />
+    </ItemGroup>
+
+
+    <ItemGroup>
+      <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
+      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+      <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
     </ItemGroup>
 
 

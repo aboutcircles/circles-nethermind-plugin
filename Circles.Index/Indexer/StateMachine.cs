@@ -1,8 +1,6 @@
 using Circles.Index.Data;
-using Circles.Index.Data.Postgresql;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Npgsql;
 
 namespace Circles.Index.Indexer;
 
@@ -10,16 +8,23 @@ public class StateMachine(
     Context context,
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,
-    IIndexerVisitor visitor,
-    Func<long> getHead,
-    Func<long?> tryFindReorg,
-    ISink dataSink,
     CancellationToken cancellationToken)
 {
-    public State CurrentState { get; private set; } = State.New;
-    public long LastReorgAt { get; set; }
-    public long LastIndexHeight { get; set; }
-    public List<Exception> Errors { get; } = new();
+    public interface IEvent;
+
+    public record NewHead(long Head) : IEvent;
+
+    record EnterState : IEvent;
+
+    record EnterState<TArg>(TArg Arg) : EnterState;
+
+    record LeaveState : IEvent;
+
+    private List<Exception> Errors { get; } = new();
+
+    private State CurrentState { get; set; } = State.New;
+
+    private long LastIndexHeight => context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
 
     public enum State
     {
@@ -32,73 +37,36 @@ public class StateMachine(
         End
     }
 
-    public enum Event
-    {
-        SyncCompleted,
-        NewBlock,
-        ErrorOccurred,
-        EnterState,
-        LeaveState,
-        ReorgCompleted
-    }
-
-    public async Task HandleEvent(Event e)
+    public async Task HandleEvent(IEvent e)
     {
         try
         {
             switch (CurrentState)
             {
                 case State.New:
-                    // Empty state, only used to transition to the initial state
                     return;
+
                 case State.Initial:
                     switch (e)
                     {
-                        case Event.EnterState:
+                        case EnterState:
                         {
-                            // Make sure all tables exist before we start
-                            MigrateTables();
-
-                            long head = getHead();
-                            SetLastIndexHeight();
-
-                            await using NpgsqlConnection
-                                reorgConnection = new(context.Settings.IndexDbConnectionString);
-                            await reorgConnection.OpenAsync();
-
-                            await ReorgHandler.ReorgAt(
-                                reorgConnection
-                                , context.Logger
-                                , Math.Min(LastIndexHeight, head) + 1);
-
-                            await TransitionTo(head == LastIndexHeight
-                                ? State.WaitForNewBlock
-                                : State.Syncing);
+                            // Initially delete all events for which no "System_Block" exists
+                            await TransitionTo(State.Reorg, LastIndexHeight);
                             return;
                         }
                     }
 
                     break;
 
-                case State.Syncing:
+                case State.Reorg:
                     switch (e)
                     {
-                        case Event.EnterState:
-                            // Make sure we know what exactly we are syncing
-                            SetLastIndexHeight();
+                        case EnterState<long> enterState:
+                            context.Logger.Info(
+                                $"Reorg at {enterState.Arg}. Deleting all events from this block onwards...");
 
-                            // Internally runs asynchronous and syncs the whole backlog of missed blocks.
-                            // After that the method will trigger SyncComplete and stop executing.
-                            // It will only be restarted once the state is entered again.
-                            Sync();
-                            return;
-                        case Event.SyncCompleted:
-                            Errors.Clear(); // Clean up errors after a successful sync
-
-                            // TODO: Should only be done once, not every time the event is triggered
-                            MigrateIndexes(); // Make sure that the indexes are only created once the syncing is complete
-                            SetLastIndexHeight();
-
+                            await context.Database.DeleteFromBlockOnwards(enterState.Arg);
                             await TransitionTo(State.WaitForNewBlock);
                             return;
                     }
@@ -108,30 +76,30 @@ public class StateMachine(
                 case State.WaitForNewBlock:
                     switch (e)
                     {
-                        case Event.NewBlock:
-                            LastReorgAt = tryFindReorg() ?? 0;
-                            if (LastReorgAt > 0)
+                        case NewHead newHead:
+                            context.Logger.Info($"New head received: {newHead.Head}");
+                            if (newHead.Head <= LastIndexHeight)
                             {
-                                await TransitionTo(State.Reorg);
+                                await TransitionTo(State.Reorg, newHead.Head);
                                 return;
                             }
 
-                            await TransitionTo(State.Syncing);
+                            await TransitionTo(State.Syncing, newHead.Head);
                             return;
                     }
 
                     break;
 
-                case State.Reorg:
+                case State.Syncing:
                     switch (e)
                     {
-                        case Event.EnterState:
-                            // Internally runs asynchronous, deletes all state after the reorg block and triggers a ReorgCompleted event when done.
-                            // After that the method will stop executing and only be restarted once the state is entered again.
-                            Reorg();
-                            return;
-                        case Event.ReorgCompleted:
-                            await TransitionTo(State.Syncing);
+                        case EnterState<long> enterSyncing:
+                            var importedBlockRange = await Sync(enterSyncing.Arg);
+                            context.Logger.Info($"Imported blocks from {importedBlockRange.Min} " +
+                                                $"to {importedBlockRange.Max}");
+                            Errors.Clear();
+
+                            await TransitionTo(State.WaitForNewBlock);
                             return;
                     }
 
@@ -140,20 +108,18 @@ public class StateMachine(
                 case State.Error:
                     switch (e)
                     {
-                        case Event.EnterState:
+                        case EnterState:
                             await TransitionTo(Errors.Count >= 3
                                 ? State.End
                                 : State.Initial);
                             return;
-                        case Event.LeaveState:
-                            Cleanup();
+                        case LeaveState:
                             return;
                     }
 
                     break;
 
                 case State.End:
-                    Cleanup();
                     return;
             }
 
@@ -164,132 +130,64 @@ public class StateMachine(
             context.Logger.Error($"Error while handling {e} event in state {CurrentState}", ex);
             Errors.Add(ex);
 
-            await HandleEvent(Event.ErrorOccurred);
+            await TransitionTo(State.Error);
         }
     }
 
-    #region Context changing methods
-
-    private void SetLastIndexHeight()
+    private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
     {
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        LastIndexHeight = PostgresQuery.FirstGap(mainConnection) ?? PostgresQuery.LatestBlock(mainConnection) ?? 0;
-    }
-
-    private void Cleanup()
-    {
-    }
-
-    #endregion
-
-    private async void Reorg()
-    {
-        context.Logger.Info("Starting reorg process.");
-        if (LastReorgAt == 0)
-        {
-            throw new Exception("LastReorgAt is 0");
-        }
-
-        await using NpgsqlConnection connection = new(context.Settings.IndexDbConnectionString);
-        connection.Open();
-        await ReorgHandler.ReorgAt(connection, context.Logger, LastReorgAt);
-
-        LastReorgAt = 0;
-
-        await HandleEvent(Event.ReorgCompleted);
-    }
-
-    public async Task TransitionTo(State newState)
-    {
-        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
-        await HandleEvent(Event.LeaveState);
-
-        CurrentState = newState;
-
-        await HandleEvent(Event.EnterState);
-    }
-
-    private async void Sync()
-    {
-        context.Logger.Info("Starting syncing process.");
-
-        try
-        {
-            ImportFlow flow = new ImportFlow(
-                blockTree
-                , receiptFinder
-                , visitor
-                , dataSink);
-
-            IAsyncEnumerable<long> blocksToSync = GetBlocksToSync();
-            Range<long> importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
-
-            if (importedBlockRange is { Min: long.MaxValue, Max: long.MinValue })
-            {
-                await HandleEvent(Event.SyncCompleted);
-                return;
-            }
-
-            context.Logger.Info($"Imported blocks from {importedBlockRange.Min} to {importedBlockRange.Max}");
-            await dataSink.Flush();
-            await HandleEvent(Event.SyncCompleted);
-        }
-        catch (TaskCanceledException)
-        {
-            context.Logger.Info($"Cancelled indexing blocks.");
-        }
-    }
-
-    private async IAsyncEnumerable<long> GetBlocksToSync()
-    {
-        long head = getHead();
-        LastIndexHeight = LastIndexHeight == 0 ? context.Settings.StartBlock : LastIndexHeight;
-        context.Logger.Info($"Getting blocks to sync from {LastIndexHeight} (LastIndexHeight) to {head} (chain-head)");
-
-        if (LastIndexHeight == head)
+        long lastIndexHeight = LastIndexHeight;
+        if (lastIndexHeight == toBlock)
         {
             context.Logger.Info("No blocks to sync.");
             yield break;
         }
 
-        context.Logger.Debug($"Enumerating blocks to sync from {LastIndexHeight} to {head}");
+        var nextBlock = lastIndexHeight + 1;
+        context.Logger.Info($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
 
-        for (long i = LastIndexHeight + 1; i <= head; i++)
+        for (long i = nextBlock; i <= toBlock; i++)
         {
             yield return i;
             await Task.Yield();
         }
     }
 
-    private void MigrateTables()
+    private async Task<Range<long>> Sync(long toBlock)
     {
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        context.Logger.Info("Migrating database schema (tables)");
-        Schema.Migrate(mainConnection);
-    }
-
-    private void MigrateIndexes()
-    {
-        using NpgsqlConnection mainConnection = new(context.Settings.IndexDbConnectionString);
-        mainConnection.Open();
-
-        // Check if the index exists. If yes, return.
-        using NpgsqlCommand command =
-            new("SELECT 1 FROM pg_indexes WHERE tablename = 'block' AND indexname = 'idx_block_block_number';",
-                mainConnection);
-        using NpgsqlDataReader reader = command.ExecuteReader();
-        if (reader.Read())
+        Range<long> importedBlockRange = new();
+        try
         {
-            return;
+            ImportFlow flow = new(blockTree, receiptFinder, context);
+            IAsyncEnumerable<long> blocksToSync = GetBlocksToSync(toBlock);
+            importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
+
+            await context.Sink.Flush();
+            await flow.FlushBlocks();
+        }
+        catch (TaskCanceledException)
+        {
+            context.Logger.Info("Cancelled indexing blocks.");
         }
 
-        reader.Close();
+        return importedBlockRange;
+    }
 
-        context.Logger.Info("Migrating database schema (indexes)");
-        Schema.Migrate(mainConnection);
+    private async Task TransitionTo<TArgument>(State newState, TArgument? argument)
+    {
+        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
+        if (newState is not State.Error)
+        {
+            await HandleEvent(new LeaveState());
+        }
+
+        CurrentState = newState;
+
+        await HandleEvent(new EnterState<TArgument?>(argument));
+    }
+
+    public async Task TransitionTo(State newState)
+    {
+        await TransitionTo<object>(newState, null);
     }
 }

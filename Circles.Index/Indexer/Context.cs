@@ -1,12 +1,13 @@
+using Circles.Index.Common;
+using Nethermind.Api;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Circles.Index.Indexer;
 
 public record Context(
-    string IndexDbLocation,
+    INethermindApi NethermindApi,
     ILogger Logger,
-    ChainSpec ChainSpec,
-    Settings Settings)
-{
-}
+    Settings Settings,
+    IDatabase Database,
+    ILogParser[] LogParsers,
+    Sink Sink);
