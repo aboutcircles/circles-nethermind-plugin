@@ -29,10 +29,11 @@
 
 
     <ItemGroup>
+      <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
-      <ProjectReference Include="..\Circles.Index.V1\Circles.Index.V1.csproj" />
-      <ProjectReference Include="..\Circles.Index.V2\Circles.Index.V2.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
     </ItemGroup>
 
 

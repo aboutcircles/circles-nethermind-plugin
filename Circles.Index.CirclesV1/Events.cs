@@ -1,7 +1,7 @@
 using Circles.Index.Common;
 using Nethermind.Int256;
 
-namespace Circles.Index.V1;
+namespace Circles.Index.CirclesV1;
 
 public record Signup(
     long BlockNumber,

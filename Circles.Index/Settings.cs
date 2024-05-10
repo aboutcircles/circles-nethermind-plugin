@@ -24,4 +24,8 @@ public class Settings
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 12541946L;
+
+    public readonly Address CirclesV2NameRegistryAddress = Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS") != null
+        ? new(Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS")!)
+        : new("0x29b9a7fBb8995b2423a71cC17cf9810798F6C543");
 }

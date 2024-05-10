@@ -27,9 +27,10 @@ public class Plugin : INethermindPlugin
     public async Task Init(INethermindApi nethermindApi)
     {
         IDatabaseSchema common = new Common.DatabaseSchema();
-        IDatabaseSchema v1 = new V1.DatabaseSchema();
-        IDatabaseSchema v2 = new V2.DatabaseSchema();
-        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2]);
+        IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
+        IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
+        IDatabaseSchema v2NameRegistry = new CirclesV2.NameRegistry.DatabaseSchema();
+        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         ILogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
@@ -47,14 +48,19 @@ public class Plugin : INethermindPlugin
 
         Sink sink = new Sink(
             database,
-            new CompositeSchemaPropertyMap([v1.SchemaPropertyMap, v2.SchemaPropertyMap]),
-            new CompositeEventDtoTableMap([v1.EventDtoTableMap, v2.EventDtoTableMap]),
+            new CompositeSchemaPropertyMap([
+                v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap
+            ]),
+            new CompositeEventDtoTableMap([
+                v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap
+            ]),
             settings.EventBufferSize);
 
         ILogParser[] logParsers =
         [
-            new V1.LogParser(settings.CirclesV1HubAddress),
-            new V2.LogParser(settings.CirclesV2HubAddress)
+            new CirclesV1.LogParser(settings.CirclesV1HubAddress),
+            new CirclesV2.LogParser(settings.CirclesV2HubAddress),
+            new CirclesV2.NameRegistry.LogParser(settings.CirclesV2NameRegistryAddress)
         ];
 
         _indexerContext = new Context(

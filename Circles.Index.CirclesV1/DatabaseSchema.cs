@@ -2,7 +2,7 @@ using System.Numerics;
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
 
-namespace Circles.Index.V1;
+namespace Circles.Index.CirclesV1;
 
 public class DatabaseSchema : IDatabaseSchema
 {

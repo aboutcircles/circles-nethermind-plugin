@@ -1,7 +1,7 @@
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
 
-namespace Circles.Index.V2;
+namespace Circles.Index.CirclesV2;
 
 /*
 
@@ -21,7 +21,7 @@ namespace Circles.Index.V2;
        Manual events:
         event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
 
- TODO: 
+ TODO:
  lift/
     DemurrageCircles.sol:
         event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);

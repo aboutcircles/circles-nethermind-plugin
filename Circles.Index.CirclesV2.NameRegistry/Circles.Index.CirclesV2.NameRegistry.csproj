@@ -10,8 +10,4 @@
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="Npgsql" Version="8.0.3" />
-    </ItemGroup>
-
 </Project>

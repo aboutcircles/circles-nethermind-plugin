@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Circles.Index.V2;
+namespace Circles.Index.CirclesV2;
 
 public class LogParser(Address v2HubAddress) : ILogParser
 {
