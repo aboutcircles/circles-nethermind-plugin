@@ -83,6 +83,11 @@ public class LogParser(Address v2HubAddress) : ILogParser
         {
             yield return Erc1155Uri(block, receipt, log, logIndex);
         }
+
+        if (topic == DatabaseSchema.DiscountCost.Topic)
+        {
+            yield return DiscountCost(block, receipt, log, logIndex);
+        }
     }
 
     private URI Erc1155Uri(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -237,5 +242,22 @@ public class LogParser(Address v2HubAddress) : ILogParser
             logIndex,
             receipt.TxHash!.ToString(),
             address);
+    }
+
+    private DiscountCost DiscountCost(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 id = new UInt256(log.Topics[2].Bytes, true);
+        UInt256 cost = new UInt256(log.Data, true);
+
+        return new DiscountCost(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            id,
+            cost);
     }
 }
