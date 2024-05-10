@@ -51,6 +51,16 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
                     continue;
                 }
 
+                var additionalKeyColumns = table.Value.Columns
+                    .Where(column => column.IncludeInPrimaryKey)
+                    .Select(column => $"\"{column.Column}\"")
+                    .ToArray();
+                var additionalKeyColumnsString = string.Join(", ", additionalKeyColumns);
+                if (additionalKeyColumns.Length > 0)
+                {
+                    additionalKeyColumnsString = ", " + additionalKeyColumnsString;
+                }
+
                 if (table.Value is { Namespace: "System", Table: "Block" })
                 {
                     primaryKeyDdl.AppendLine(
@@ -59,7 +69,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
                 else
                 {
                     primaryKeyDdl.AppendLine(
-                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"transactionIndex\", \"logIndex\");");
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"transactionIndex\", \"logIndex\"{additionalKeyColumnsString});");
                 }
             }
 
@@ -147,6 +157,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
             ValueTypes.String => "TEXT",
             ValueTypes.Address => "TEXT",
             ValueTypes.Boolean => "BOOLEAN",
+            ValueTypes.Bytes => "BYTEA",
             _ => throw new ArgumentException("Unsupported type")
         };
     }
@@ -330,6 +341,8 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
                 return bool.Parse(s);
             case ValueTypes.Boolean when input is int i:
                 return i != 0;
+            case ValueTypes.Bytes when input is byte[] b:
+                return b;
             default:
                 throw new ArgumentOutOfRangeException(nameof(target), target,
                     $"Cannot convert input {input} (type: {input.GetType().Name}) to target type {target}.");

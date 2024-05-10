@@ -90,7 +90,7 @@ public class DatabaseSchema : IDatabaseSchema
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true),
             new("logIndex", ValueTypes.Int, true),
-            new("batchIndex", ValueTypes.Int, true),
+            new("batchIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
             new("operatorAddress", ValueTypes.Address, true),
             new("fromAddress", ValueTypes.Address, true),

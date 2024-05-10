@@ -3,7 +3,7 @@ using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Common;
 
-public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed);
+public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, bool IncludeInPrimaryKey = false);
 
 public class EventSchema(string @namespace, string table, Hash256 topic, List<EventFieldSchema> columns)
 {
@@ -11,7 +11,7 @@ public class EventSchema(string @namespace, string table, Hash256 topic, List<Ev
     public Hash256 Topic { get; } = topic;
     public string Table { get; } = table;
     public List<EventFieldSchema> Columns { get; } = columns;
-
+    
     /// <summary>
     /// Parses a Solidity event definition and creates an EventSchema from it.
     /// 
@@ -126,6 +126,8 @@ public class EventSchema(string @namespace, string table, Hash256 topic, List<Ev
             "uint16" => ValueTypes.Int,
             "uint32" => ValueTypes.Int,
             "uint64" => ValueTypes.Int,
+            "uint72" => ValueTypes.BigInt,
+            "bytes32" => ValueTypes.Bytes,
             "uint128" => ValueTypes.BigInt,
             "uint256" => ValueTypes.BigInt,
             "string" => ValueTypes.String,
