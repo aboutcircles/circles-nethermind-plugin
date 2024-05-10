@@ -11,11 +11,13 @@ public class Select : IQuery
     private readonly List<string> _databaseFields;
     public readonly List<IQuery> Conditions;
     public readonly List<(string Column, SortOrder Order)> OrderBy = new();
+    public readonly bool Distinct;
 
-    public Select((string Namespace, string Table) table, IEnumerable<string> columns)
+    public Select((string Namespace, string Table) table, IEnumerable<string> columns, bool distinct)
     {
         var columnsArray = columns.ToArray();
         Table = table;
+        Distinct = distinct;
         _table = table;
         Columns = columnsArray;
         _databaseFields = columnsArray.ToList();
@@ -28,14 +30,16 @@ public class Select : IQuery
         return this;
     }
 
-    public string ToSql()
+    public string ToSql(IDatabaseSchema schema)
     {
+        CheckColumnsInSelect(schema);
+
         var sql = new StringBuilder(
-            $"SELECT {string.Join(", ", _databaseFields.Select(o => $"\"{o}\""))} FROM \"{_table}\"");
+            $"SELECT{(Distinct ? " DISTINCT" : "")} {string.Join(", ", _databaseFields.Select(o => $"\"{o}\""))} FROM \"{_table.Namespace}_{_table.Table}\"");
         if (Conditions.Any())
         {
             sql.Append(" WHERE ");
-            sql.Append(string.Join(" AND ", Conditions.Select(c => c.ToSql())));
+            sql.Append(string.Join(" AND ", Conditions.Select(c => c.ToSql(schema))));
         }
 
         if (OrderBy.Any())
@@ -45,6 +49,39 @@ public class Select : IQuery
         }
 
         return sql.ToString();
+    }
+
+    private void CheckColumnsInSelect(IDatabaseSchema databaseSchema)
+    {
+        foreach (var column in _databaseFields)
+        {
+            if (databaseSchema.Tables[_table].Columns.All(c => c.Column != column))
+            {
+                throw new InvalidOperationException(
+                    $"Column '{column}' does not exist in table '{_table.Namespace}_{_table.Table}'");
+            }
+        }
+
+        foreach (var condition in Conditions)
+        {
+            if (condition is not QueryPredicate queryPredicate)
+                continue;
+
+            if (databaseSchema.Tables[queryPredicate.Table].Columns.All(c => c.Column != queryPredicate.Column))
+            {
+                throw new InvalidOperationException(
+                    $"Column '{queryPredicate.Column}' does not exist in table '{queryPredicate.Table.Namespace}_{queryPredicate.Table.Table}'");
+            }
+        }
+
+        foreach (var orderBy in OrderBy)
+        {
+            if (databaseSchema.Tables[_table].Columns.All(c => c.Column != orderBy.Column))
+            {
+                throw new InvalidOperationException(
+                    $"Column '{orderBy.Column}' does not exist in table '{_table.Namespace}_{_table.Table}'");
+            }
+        }
     }
 
     public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
@@ -58,17 +95,12 @@ public class Select : IQuery
         }
     }
 
-    public override string ToString()
-    {
-        return ToSql();
-    }
-
     public string ToString(IDatabaseSchema schema)
     {
         StringBuilder sb = new();
         sb.AppendLine("Query:");
         sb.AppendLine("------");
-        sb.AppendLine(ToSql());
+        sb.AppendLine(ToSql(schema));
         sb.AppendLine();
         sb.AppendLine("Parameters:");
         sb.AppendLine("-----------");

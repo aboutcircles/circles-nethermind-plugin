@@ -11,7 +11,7 @@ public class LogicalAnd : IQuery
         Elements = elements;
     }
 
-    public string ToSql() => $"({string.Join(" AND ", Elements.Select(e => e.ToSql()))})";
+    public string ToSql(IDatabaseSchema schema) => $"({string.Join(" AND ", Elements.Select(e => e.ToSql(schema)))})";
 
     public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
     {

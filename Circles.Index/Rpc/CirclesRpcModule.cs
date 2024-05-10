@@ -47,7 +47,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
     {
-        throw new NotImplementedException("Input is currently not validated.");
+        // throw new NotImplementedException("Input is currently not validated.");
 
         if (query.Table == null)
         {
@@ -55,7 +55,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         var select = Query.Select((query.Namespace, query.Table),
-            query.Columns ?? throw new InvalidOperationException("Columns are null"));
+            query.Columns ?? throw new InvalidOperationException("Columns are null"), false);
 
         if (query.Conditions.Count != 0)
         {
@@ -102,16 +102,16 @@ public class CirclesRpcModule : ICirclesRpcModule
                 ("CrcV1", "Transfer")
                 , new[]
                 {
-                    "TokenAddress"
-                })
+                    "tokenAddress"
+                }, true)
             .Where(
                 Query.Equals(
                     ("CrcV1", "Transfer")
-                    , "ToAddress"
+                    , "to"
                     , circlesAccount.ToString(true, false)));
 
         return _indexerContext.Database.Select(select)
-            .Select(o => o[0]).Cast<byte[]>().Select(o => new Address(o));
+            .Select(o => o[0]).Cast<string>().Select(o => new Address(o));
     }
 
     private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address)

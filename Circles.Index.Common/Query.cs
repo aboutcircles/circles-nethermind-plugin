@@ -35,5 +35,5 @@ public static class Query
     public static LogicalAnd And(params IQuery[] subElements) => new(subElements);
     public static LogicalOr Or(params IQuery[] subElements) => new(subElements);
 
-    public static Select Select((string Namespace, string Table) table, IEnumerable<string> columns) => new(table, columns);
+    public static Select Select((string Namespace, string Table) table, IEnumerable<string> columns, bool distinct) => new(table, columns, distinct);
 }

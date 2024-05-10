@@ -1,5 +1,4 @@
 using System.Data;
-using System.Data.Common;
 
 namespace Circles.Index.Common;
 
@@ -22,7 +21,7 @@ public abstract class QueryPredicate : IQuery
         Value = value;
     }
 
-    public abstract string ToSql();
+    public abstract string ToSql(IDatabaseSchema schema);
 
     public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
     {

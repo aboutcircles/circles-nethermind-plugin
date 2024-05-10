@@ -7,5 +7,5 @@ public class GreaterThan : QueryPredicate
     {
     }
 
-    public override string ToSql() => $"\"{Field}\" > {ParameterName}";
+    public override string ToSql(IDatabaseSchema schema) => $"\"{Field}\" > {ParameterName}";
 }

@@ -11,7 +11,7 @@ public class LogicalOr : IQuery
         Elements = elements;
     }
 
-    public string ToSql() => $"({string.Join(" OR ", Elements.Select(e => e.ToSql()))})";
+    public string ToSql(IDatabaseSchema schema) => $"({string.Join(" OR ", Elements.Select(e => e.ToSql(schema)))})";
 
     public IEnumerable<IDataParameter> GetParameters(IDatabaseSchema schema)
     {

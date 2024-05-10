@@ -258,7 +258,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = select.ToSql();
+        command.CommandText = select.ToSql(Schema);
         foreach (var param in select.GetParameters(Schema))
         {
             command.Parameters.Add(param);
