@@ -21,14 +21,15 @@ namespace Circles.Index.V2;
        Manual events:
         event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
 
+ TODO: 
  lift/
     DemurrageCircles.sol:
-        event Deposit(address indexed account, uint256 amount, uint256 inflationaryAmount);
-        event Withdraw(address indexed account, uint256 amount, uint256 inflationaryAmount);
+        event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);
+        event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);
 
     InflationaryCircles.sol:
-        event Deposit(address indexed account, uint256 amount, uint256 demurragedAmount);
-        event Withdraw(address indexed account, uint256 amount, uint256 demurragedAmount);
+        event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount);
+        event WithdrawInflationary(address indexed account, uint256 amount, uint256 demurragedAmount);
 
  names/
     NameRegistry.sol:
@@ -307,7 +308,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "value", e => e.Value },
                 { "id", e => e.Id }
             });
-        
+
         EventDtoTableMap.Add<DiscountCost>(("CrcV2", "DiscountCost"));
         SchemaPropertyMap.Add(("CrcV2", "DiscountCost"),
             new Dictionary<string, Func<DiscountCost, object?>>

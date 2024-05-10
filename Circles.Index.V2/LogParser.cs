@@ -107,17 +107,69 @@ public class LogParser(Address v2HubAddress) : ILogParser
 
     private ApprovalForAll Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        throw new NotImplementedException();
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string operatorAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        bool approved = new BigInteger(log.Data) == 1;
+
+        return new ApprovalForAll(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            operatorAddress,
+            approved);
     }
 
     private TransferSingle Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        throw new NotImplementedException();
+        string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 id = new UInt256(log.Topics[4].Bytes, true);
+        UInt256 value = new UInt256(log.Data, true);
+
+        return new TransferSingle(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            operatorAddress,
+            fromAddress,
+            toAddress,
+            id,
+            value);
     }
 
     private IEnumerable<TransferBatch> Erc1155TransferBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        throw new NotImplementedException();
+        string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        int offset = 32;
+        int batchSize = (int)new BigInteger(log.Data.Slice(0, 32).ToArray());
+        for (int i = 0; i < batchSize; i++)
+        {
+            UInt256 batchId = new UInt256(log.Data.Slice(offset, 32), true);
+            UInt256 batchValue = new UInt256(log.Data.Slice(offset + 32, 32), true);
+            offset += 64;
+
+            yield return new TransferBatch(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                i,
+                operatorAddress,
+                fromAddress,
+                toAddress,
+                batchId,
+                batchValue);
+        }
     }
 
     private RegisterOrganization CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log,
