@@ -2,12 +2,6 @@ using Circles.Index.Common;
 
 namespace Circles.Index.CirclesV2.NameRegistry;
 
-/*
- names/
-    NameRegistry.sol:
-        event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce);
-        event UpdateMetadataDigest(address indexed avatar, bytes32 metadataDigest);
- */
 public class DatabaseSchema : IDatabaseSchema
 {
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();

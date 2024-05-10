@@ -44,6 +44,13 @@ public class Plugin : INethermindPlugin
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         database.Migrate();
 
+        // var reorgAt = TryFindReorg(pluginLogger, nethermindApi.BlockTree!, database);
+        // if (reorgAt != null)
+        // {
+        //     pluginLogger.Info($"Reorg detected at block {reorgAt.Value}. Deleting from that block onwards.");
+        //     await database.DeleteFromBlockOnwards(reorgAt.Value);
+        // }
+
         Query.Initialize(database);
 
         Sink sink = new Sink(
@@ -121,4 +128,36 @@ public class Plugin : INethermindPlugin
 
         return ValueTask.CompletedTask;
     }
+
+    // private long? TryFindReorg(ILogger logger, IBlockTree blockTree, IDatabase database)
+    // {
+    //     logger.Info("Trying to find reorg.");
+    //
+    //     IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
+    //         database.LastPersistedBlocks(100000);
+    //     
+    //     long? reorgAt = null;
+    //
+    //     foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
+    //     {
+    //         Block? recentChainBlock = blockTree.FindBlock(recentPersistedBlock.BlockNumber);
+    //         if (recentChainBlock == null)
+    //         {
+    //             throw new Exception($"Couldn't find block {recentPersistedBlock.BlockNumber} in the chain");
+    //         }
+    //
+    //         if (recentPersistedBlock.BlockHash == recentChainBlock.Hash)
+    //         {
+    //             continue;
+    //         }
+    //
+    //         logger.Info($"Block {recentPersistedBlock.BlockNumber} is different in the chain.");
+    //         logger.Info($"  Recent persisted block hash: {recentPersistedBlock.BlockHash}");
+    //         logger.Info($"  Recent chain block hash: {recentChainBlock.Hash}");
+    //         reorgAt = recentPersistedBlock.BlockNumber;
+    //         break;
+    //     }
+    //
+    //     return reorgAt;
+    // }
 }
