@@ -1,8 +1,6 @@
-using System.Collections.Immutable;
-using Circles.Index.Common;
 using Nethermind.Core;
 
-namespace Circles.Index;
+namespace Circles.Index.Common;
 
 public class Settings
 {
@@ -25,7 +23,8 @@ public class Settings
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 12541946L;
 
-    public readonly Address CirclesV2NameRegistryAddress = Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS") != null
-        ? new(Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS")!)
-        : new("0x29b9a7fBb8995b2423a71cC17cf9810798F6C543");
+    public readonly Address CirclesV2NameRegistryAddress =
+        Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS") != null
+            ? new(Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS")!)
+            : new("0x29b9a7fBb8995b2423a71cC17cf9810798F6C543");
 }

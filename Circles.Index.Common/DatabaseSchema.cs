@@ -12,7 +12,7 @@ public class DatabaseSchema : IDatabaseSchema
         {
             {
                 ("System", "Block"),
-                new EventSchema("System", "Block", new Hash256(new byte[32]), [
+                new EventSchema("System", "Block", new byte[32], [
                     new("blockNumber", ValueTypes.Int, false),
                     new("timestamp", ValueTypes.Int, true),
                     new("blockHash", ValueTypes.String, false)

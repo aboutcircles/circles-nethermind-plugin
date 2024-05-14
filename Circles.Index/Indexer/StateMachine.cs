@@ -1,3 +1,4 @@
+using Circles.Index.Common;
 using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -14,18 +15,6 @@ public class StateMachine(
 
     public record NewHead(long Head) : IEvent;
 
-    record EnterState : IEvent;
-
-    record EnterState<TArg>(TArg Arg) : EnterState;
-
-    record LeaveState : IEvent;
-
-    private List<Exception> Errors { get; } = new();
-
-    private State CurrentState { get; set; } = State.New;
-
-    private long LastIndexHeight => context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
-
     public enum State
     {
         New,
@@ -36,6 +25,18 @@ public class StateMachine(
         Error,
         End
     }
+
+    private record EnterState : IEvent;
+
+    private record EnterState<TArg>(TArg Arg) : EnterState;
+
+    private record LeaveState : IEvent;
+
+    private List<Exception> Errors { get; } = new();
+
+    private State CurrentState { get; set; } = State.New;
+
+    private long LastIndexHeight => context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
 
     public async Task HandleEvent(IEvent e)
     {
@@ -134,6 +135,24 @@ public class StateMachine(
         }
     }
 
+    private async Task TransitionTo<TArgument>(State newState, TArgument? argument)
+    {
+        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
+        if (newState is not State.Error)
+        {
+            await HandleEvent(new LeaveState());
+        }
+
+        CurrentState = newState;
+
+        await HandleEvent(new EnterState<TArgument?>(argument));
+    }
+
+    public async Task TransitionTo(State newState)
+    {
+        await TransitionTo<object>(newState, null);
+    }
+
     private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
     {
         long lastIndexHeight = LastIndexHeight;
@@ -171,23 +190,5 @@ public class StateMachine(
         }
 
         return importedBlockRange;
-    }
-
-    private async Task TransitionTo<TArgument>(State newState, TArgument? argument)
-    {
-        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
-        if (newState is not State.Error)
-        {
-            await HandleEvent(new LeaveState());
-        }
-
-        CurrentState = newState;
-
-        await HandleEvent(new EnterState<TArgument?>(argument));
-    }
-
-    public async Task TransitionTo(State newState)
-    {
-        await TransitionTo<object>(newState, null);
     }
 }

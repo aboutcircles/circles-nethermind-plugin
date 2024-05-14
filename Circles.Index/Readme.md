@@ -1,5 +1,5 @@
 # Circles Nethermind Plug-in
-Indexes all Circles transactions to a SQLite database and provides a JSON-RPC module to query the data.
+A plugin to [Nethermind](https://www.nethermind.io/nethermind-client) to support the [Circles](https://www.aboutcircles.com/) protocol.
 
 The plugin provides a JSON-RPC module to query the data. The following RPC methods are supported:
 

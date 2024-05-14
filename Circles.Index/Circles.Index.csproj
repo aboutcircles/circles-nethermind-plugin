@@ -34,6 +34,7 @@
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
+      <ProjectReference Include="..\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
     </ItemGroup>
 
 

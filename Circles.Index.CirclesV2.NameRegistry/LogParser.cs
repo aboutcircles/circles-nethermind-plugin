@@ -1,11 +1,15 @@
 using Circles.Index.Common;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2.NameRegistry;
 
 public class LogParser(Address nameRegistryAddress) : ILogParser
 {
+    private readonly Hash256 _registerShortNameTopic = new Hash256(DatabaseSchema.RegisterShortName.Topic);
+    private readonly Hash256 _updateMetadataDigestTopic = new Hash256(DatabaseSchema.UpdateMetadataDigest.Topic);
+
     public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         if (log.Topics.Length == 0)
@@ -19,12 +23,12 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             yield break;
         }
 
-        if (topic == DatabaseSchema.RegisterShortName.Topic)
+        if (topic == _registerShortNameTopic)
         {
             yield return RegisterShortName(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.UpdateMetadataDigest.Topic)
+        if (topic == _updateMetadataDigestTopic)
         {
             yield return UpdateMetadataDigest(block, receipt, log, logIndex);
         }

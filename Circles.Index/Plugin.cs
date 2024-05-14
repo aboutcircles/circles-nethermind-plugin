@@ -1,14 +1,12 @@
-﻿using System.Net.Quic;
-using Circles.Index.Common;
+﻿using Circles.Index.Common;
 using Circles.Index.Indexer;
 using Circles.Index.Postgres;
 using Circles.Index.Rpc;
-using Circles.Index.Utils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Newtonsoft.Json;
+// using Newtonsoft.Json;
 
 namespace Circles.Index;
 
@@ -55,11 +53,10 @@ public class Plugin : INethermindPlugin
 
         Query.Initialize(database);
 
-        var q = Query.Select(("CrcV1", "Trust"), new[] { "user" }, false);
-        q.Conditions.Add(Query.Equals(("CrcV2", "Trust"), "canSendTo", "0xDE374ece6fA50e781E81Aac78e811b33D16912c7"));
-
-        var query = JsonConvert.SerializeObject(q);
-        Console.WriteLine(query);
+        // var q = Query.Select(("CrcV1", "Trust"), new[] { "user" }, false);
+        // q.Conditions.Add(Query.Equals(("CrcV2", "Trust"), "canSendTo", "0xDE374ece6fA50e781E81Aac78e811b33D16912c7"));
+        // var query = JsonConvert.SerializeObject(q);
+        // Console.WriteLine(query);
 
         Sink sink = new Sink(
             database,

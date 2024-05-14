@@ -1,7 +1,7 @@
 services:
   circles-spaceneth:
     depends_on:
-      - db
+      - db2
     restart: unless-stopped
     build:
       context: .
@@ -11,7 +11,7 @@ services:
       - V1_HUB_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
       - V2_HUB_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
       - START_BLOCK=0
-      - POSTGRES_CONNECTION_STRING=Server=localhost;Port=7432;User Id=postgres;Password=;Database=postgres;Include Error Detail=true;
+      - POSTGRES_CONNECTION_STRING=Server=localhost;Port=5432;User Id=postgres;Password=postgres;Database=postgres;Include Error Detail=true;
     volumes:
       - ./.spaceneth-state/circles-spaceneth/spaceneth_db:/nethermind/spaceneth_db
       - ./.spaceneth-state/circles-spaceneth/logs:/nethermind/logs
@@ -40,6 +40,20 @@ services:
       - ./.spaceneth-state/postgres-data:/var/lib/postgresql/data
     ports:
       - 7432:5432
+
+  db2:
+    image: postgres:14
+    command: -c 'max_connections=500'
+    restart: unless-stopped
+    network_mode: host
+    container_name: 'postgres2'
+    environment:
+      POSTGRES_PASSWORD: 'postgres'
+      POSTGRES_USER: 'postgres'
+    volumes:
+      - ./.spaceneth-state/postgres2-data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
 
   blockscout:
     depends_on:

@@ -1,6 +1,6 @@
 services:
-  execution:
-    container_name: execution
+  nethermind-chiado:
+    container_name: nethermind-chiado
     #image: jaensen/nethermind-circlesubi:dev-x86_64
     build:
       context: .
@@ -16,8 +16,8 @@ services:
     expose:
       - 8551 # engine api
     volumes:
-      - .state/execution:/data
-      - .state/jwtsecret/jwt.hex:/jwt.hex
+      - .state/nethermind-chiado:/data
+      - .state/jwtsecret-chiado/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -38,9 +38,9 @@ services:
       driver: "local"
     environment:
       - V1_HUB_ADDRESS=0xdbf22d4e8962db3b2f1d9ff55be728a887e47710
-      - V2_HUB_ADDRESS=0xDA02CDB5279B3a1eF27Be3d91aE924495E6A5569
+      - V2_HUB_ADDRESS=0xFFfbD3E62203B888bb8E09c1fcAcE58242674964
       - START_BLOCK=0
-      - POSTGRES_CONNECTION_STRING=Server=192.168.178.143;Port=5432;User Id=postgres;Password=;Database=postgres;Include Error Detail=true;
+      - POSTGRES_CONNECTION_STRING=Server=192.168.179.2;Port=5432;User Id=postgres;Password=;Database=postgres;Include Error Detail=true;
 
   db:
     image: postgres:16
@@ -57,8 +57,8 @@ services:
     volumes:
       - ./.state/postgres-data:/var/lib/postgresql/data
 
-  consensus:
-    container_name: consensus
+  consensus-chiado:
+    container_name: consensus-chiado
     image: sigp/lighthouse:v5.0.0
     restart: always
     # network_mode: host
@@ -71,8 +71,8 @@ services:
     expose:
       - 4000 # http
     volumes:
-      - .state/consensus/data:/data
-      - .state/jwtsecret/jwt.hex:/jwt.hex
+      - .state/consensus-chiado/data:/data
+      - .state/jwtsecret-chiado/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -85,7 +85,7 @@ services:
       --http
       --http-address=0.0.0.0
       --http-port=4000
-      --execution-endpoint=http://execution:8551
+      --execution-endpoint=http://nethermind-chiado:8551
       --execution-jwt=/jwt.hex
       --checkpoint-sync-url=https://checkpoint.chiadochain.net/
     logging:

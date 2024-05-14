@@ -32,6 +32,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Postgres", "C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.NameRegistry", "Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj", "{33D651AB-1C61-4A06-9C02-A144E7342317}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Rpc", "Circles.Index.Rpc\Circles.Index.Rpc.csproj", "{646C8BE3-405C-4390-8034-2F15B9994F62}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Query", "Circles.Index.Query\Circles.Index.Query.csproj", "{9B8A7804-7A89-412F-975D-102F9E728EB9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Query.Tests", "Circles.Index.Query.Tests\Circles.Index.Query.Tests.csproj", "{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -62,5 +68,17 @@ Global
 		{33D651AB-1C61-4A06-9C02-A144E7342317}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{33D651AB-1C61-4A06-9C02-A144E7342317}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{33D651AB-1C61-4A06-9C02-A144E7342317}.Release|Any CPU.Build.0 = Release|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

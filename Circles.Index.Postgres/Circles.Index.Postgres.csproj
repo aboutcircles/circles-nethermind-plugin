@@ -8,9 +8,11 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+      <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
       <PackageReference Include="Npgsql" Version="8.0.3" />
     </ItemGroup>
 

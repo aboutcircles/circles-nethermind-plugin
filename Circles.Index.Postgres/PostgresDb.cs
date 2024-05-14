@@ -2,6 +2,7 @@ using System.Data;
 using System.Numerics;
 using System.Text;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Npgsql;
@@ -258,8 +259,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = select.ToSql(Schema);
-        foreach (var param in select.GetParameters(Schema))
+        var generatedSql = select.ToSql(this);
+        command.CommandText = generatedSql.Sql;
+        foreach (var param in generatedSql.Parameters)
         {
             command.Parameters.Add(param);
         }

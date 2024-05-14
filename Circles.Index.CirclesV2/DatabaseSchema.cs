@@ -84,7 +84,7 @@ public class DatabaseSchema : IDatabaseSchema
         "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
 
     public static readonly EventSchema TransferBatch = new("CrcV2", "TransferBatch",
-        Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])"),
+        Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])").BytesToArray(),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),

@@ -1,7 +1,6 @@
 using System.Globalization;
 using Circles.Index.Common;
-using Circles.Index.Indexer;
-using Circles.Index.Utils;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,44 +44,9 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public ResultWrapper<IEnumerable<object[]>> circles_query(CirclesQuery query)
+    public ResultWrapper<IEnumerable<object[]>> circles_query(Select query)
     {
         // throw new NotImplementedException("Input is currently not validated.");
-
-        if (query.Table == null)
-        {
-            throw new InvalidOperationException("Table is null");
-        }
-
-        var select = Query.Select((query.Namespace, query.Table),
-            query.Columns ?? throw new InvalidOperationException("Columns are null"), false);
-
-        if (query.Conditions.Count != 0)
-        {
-            foreach (var condition in query.Conditions)
-            {
-                select.Where(BuildCondition(select.Table, condition));
-            }
-        }
-
-        if (query.OrderBy.Count != 0)
-        {
-            foreach (var orderBy in query.OrderBy)
-            {
-                if (orderBy.Column == null || orderBy.SortOrder == null)
-                {
-                    throw new InvalidOperationException("OrderBy: Column or SortOrder is null");
-                }
-
-                select.OrderBy.Add((
-                    orderBy.Column,
-                    orderBy.SortOrder.Equals("asc", StringComparison.InvariantCultureIgnoreCase)
-                        ? SortOrder.Asc
-                        : SortOrder.Desc));
-            }
-        }
-
-        Console.WriteLine(select.ToString());
         var result = _indexerContext.Database.Select(select).ToList();
 
         return ResultWrapper<IEnumerable<object[]>>.Success(result);
@@ -179,36 +143,6 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         return totalBalance;
-    }
-
-    private IQuery BuildCondition((string Namespace, string Table) table, QueryExpression queryExpression)
-    {
-        if (queryExpression.Type == "Equals")
-        {
-            return Query.Equals(table, queryExpression.Column!, queryExpression.Value);
-        }
-
-        if (queryExpression.Type == "GreaterThan")
-        {
-            return Query.GreaterThan(table, queryExpression.Column!, queryExpression.Value!);
-        }
-
-        if (queryExpression.Type == "LessThan")
-        {
-            return Query.LessThan(table, queryExpression.Column!, queryExpression.Value!);
-        }
-
-        if (queryExpression.Type == "And")
-        {
-            return Query.And(queryExpression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
-        }
-
-        if (queryExpression.Type == "Or")
-        {
-            return Query.Or(queryExpression.Elements!.Select(o => BuildCondition(table, o)).ToArray());
-        }
-
-        throw new InvalidOperationException($"Unknown expression type: {queryExpression.Type}");
     }
 
     #endregion
