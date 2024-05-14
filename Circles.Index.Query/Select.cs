@@ -71,17 +71,6 @@ public record Select(
             sql += orderBySql;
         }
 
-        Console.WriteLine("Select.ToSql");
-        Console.WriteLine("-----------------");
-        Console.WriteLine("SQL:");
-        Console.WriteLine(sql);
-        Console.WriteLine("");
-        Console.WriteLine("Parameters:");
-        foreach (var parameter in parameters)
-        {
-            Console.WriteLine($"* {parameter.ParameterName} = {parameter.Value}");
-        }
-
         return new ParameterizedSql(sql, parameters);
     }
 }
