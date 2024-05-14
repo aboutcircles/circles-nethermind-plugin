@@ -1,6 +1,5 @@
 using System.Data;
 using Circles.Index.Common;
-using Npgsql;
 
 namespace Circles.Index.Query;
 
@@ -26,7 +25,7 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             _ => throw new NotImplementedException()
         };
 
-        var parameters = CreateParameters(parameterName.Substring(1), Value);
+        var parameters = CreateParameters(database, parameterName.Substring(1), Value);
         return new ParameterizedSql(sqlCondition, parameters);
     }
 
@@ -41,15 +40,13 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
         throw new ArgumentException("Value must be an IEnumerable for In/NotIn filter types.");
     }
 
-    private IEnumerable<IDbDataParameter> CreateParameters(string parameterName, object? value)
+    private IEnumerable<IDbDataParameter> CreateParameters(IDatabaseUtils database, string parameterName, object? value)
     {
         if (value is IEnumerable<object> enumerable)
         {
-            return enumerable.Select((v, index) => CreateParameter($"{parameterName}_{index}", v)).ToList();
+            return enumerable.Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v)).ToList();
         }
 
-        return new List<IDbDataParameter> { CreateParameter(parameterName, value) };
+        return new List<IDbDataParameter> { database.CreateParameter(parameterName, value) };
     }
-
-    private IDbDataParameter CreateParameter(string name, object? value) => new NpgsqlParameter(name, value);
 }

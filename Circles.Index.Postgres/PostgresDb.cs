@@ -273,9 +273,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         }
     }
 
-    public IDataParameter CreateParameter()
+    public IDbDataParameter CreateParameter(string? name, object? value)
     {
-        return new NpgsqlParameter();
+        return new NpgsqlParameter(name, value);
     }
 
     public async Task DeleteFromBlockOnwards(long reorgAt)

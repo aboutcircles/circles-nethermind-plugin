@@ -18,7 +18,7 @@ public interface IDatabaseUtils
         return $"\"{identifier}\"";
     }
 
-    IDataParameter CreateParameter();
+    IDbDataParameter CreateParameter(string? name, object? value);
     public object? Convert(object? input, ValueTypes target);
 }
 

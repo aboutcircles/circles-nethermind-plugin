@@ -35,15 +35,35 @@ public class TestDatabase : IDatabaseUtils
         throw new NotImplementedException();
     }
 
-    public IDataParameter CreateParameter()
+    public IDbDataParameter CreateParameter(string? name, object? value)
     {
-        throw new NotImplementedException();
+        return new TestDbDataParameter(name, value);
     }
 
     public object? Convert(object? input, ValueTypes target)
     {
         throw new NotImplementedException();
     }
+}
+
+public class TestDbDataParameter : IDbDataParameter
+{
+    public TestDbDataParameter(string? name, object? value)
+    {
+        ParameterName = name;
+        Value = value;
+    }
+
+    public DbType DbType { get; set; }
+    public ParameterDirection Direction { get; set; }
+    public bool IsNullable { get; }
+    public string ParameterName { get; set; }
+    public string SourceColumn { get; set; }
+    public DataRowVersion SourceVersion { get; set; }
+    public object? Value { get; set; }
+    public byte Precision { get; set; }
+    public byte Scale { get; set; }
+    public int Size { get; set; }
 }
 
 public class Tests

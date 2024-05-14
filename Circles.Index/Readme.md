@@ -78,9 +78,8 @@ The plugin provides a JSON-RPC module to query the data. The following RPC metho
           "SortOrder": "DESC"
         }
       ]
-    }
-  ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+    }]
+  }' -H "Content-Type: application/json" http://localhost:8545/
   ```
 * `circles_computeTransfer(string query)`
     ```shell
