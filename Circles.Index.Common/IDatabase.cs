@@ -30,5 +30,5 @@ public interface IDatabase : IDatabaseUtils
     long? LatestBlock();
     long? FirstGap();
     IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count);
-    IEnumerable<object[]> Select(Select select);
+    IEnumerable<object[]> Select(ParameterizedSql select);
 }

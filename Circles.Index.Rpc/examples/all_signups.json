@@ -1,0 +1,45 @@
+{
+  "jsonrpc": "2.0",
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "CrcV1",
+      "Table": "Signup",
+      "Columns": [
+        "blockNumber",
+        "timestamp",
+        "transactionIndex",
+        "logIndex",
+        "transactionHash",
+        "user",
+        "token"
+      ],
+      "Filter": [
+        {
+          "Type": "Conjunction",
+          "ConjunctionType": "And",
+          "Predicates": [
+            {
+              "Type": "FilterPredicate",
+              "Column": "timestamp",
+              "FilterType": "GraterThan",
+              "Value": 1611839280
+            },
+            {
+              "Type": "FilterPredicate",
+              "Column": "timestamp",
+              "FilterType": "LessThan",
+              "Value": 1656331760
+            }
+          ]
+        }
+      ],
+      "Order": [
+        {
+          "Column": "timestamp",
+          "SortOrder": "DESC"
+        }
+      ]
+    }
+  ]
+}

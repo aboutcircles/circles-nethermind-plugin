@@ -1,7 +1,9 @@
 using System.Data;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Circles.Index.Common;
-using Newtonsoft.Json;
+using Circles.Index.Query.Dto;
 
 namespace Circles.Index.Query.Tests;
 
@@ -60,13 +62,18 @@ public class Tests
         var generatedSql = predicate.ToSql(_database);
 
         // Use regex to match the uuid part of the parameter name
-        var expectedSql = "\"Name\" = @Name_[0-9a-f]{32}";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        var expectedSql = "\"Name\" = @Name_([0-9a-f]{32})";
+        var expectedSqlMatch = Regex.Match(generatedSql.Sql, expectedSql);
+        Assert.IsTrue(expectedSqlMatch.Success);
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
 
-        var expectedParameterName = "@Name_[0-9a-f]{32}";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Parameters.First().ParameterName, expectedParameterName));
+        var expectedParameterName = "Name_([0-9a-f]{32})";
+        var expectedParameterNameMatch =
+            Regex.Match(generatedSql.Parameters.First().ParameterName, expectedParameterName);
+        Assert.IsTrue(expectedParameterNameMatch.Success);
         Assert.That(generatedSql.Parameters.First().Value, Is.EqualTo("John"));
+
+        Assert.That(expectedSqlMatch.Groups[1].Value, Is.EqualTo(expectedParameterNameMatch.Groups[1].Value));
     }
 
     [Test]
@@ -241,6 +248,7 @@ public class Tests
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(0));
     }
 
+
     [Test]
     public void JsonSerialization_Deserialization()
     {
@@ -251,12 +259,13 @@ public class Tests
 
         var selectDto = select.ToDto();
 
-        var json = JsonConvert.SerializeObject(selectDto);
+        var options = new JsonSerializerOptions();
+        options.Converters.Add(new FilterPredicateDtoConverter());
+        options.Converters.Add(new JsonStringEnumConverter());
 
-        var settings = new JsonSerializerSettings();
-        settings.Converters.Add(new FilterPredicateDtoConverter());
+        var json = JsonSerializer.Serialize(selectDto, options);
 
-        var deserializedSelectDto = JsonConvert.DeserializeObject<SelectDto>(json, settings);
+        var deserializedSelectDto = JsonSerializer.Deserialize<SelectDto>(json, options);
         Assert.That(deserializedSelectDto, Is.Not.Null);
         var deserializedSelect = deserializedSelectDto.ToModel();
 
@@ -283,17 +292,22 @@ public class Tests
         var conjunction = new Conjunction(ConjunctionType.And, [predicate1, predicate2]);
 
         var orderBy = new OrderBy("Age", "DESC");
-        var select = new Select("public", "Users", new[] { "Name", "Age" }, new[] { conjunction },
+        var select = new Select("public", "Users", new[] { "Name", "Age" }, new IFilterPredicate[] { conjunction },
             new[] { orderBy }, true);
 
         var selectDto = select.ToDto();
+        var options = new JsonSerializerOptions
+        {
+            Converters =
+            {
+                new FilterPredicateDtoConverter(),
+                new JsonStringEnumConverter()
+            }
+        };
 
-        var json = JsonConvert.SerializeObject(selectDto);
+        var json = JsonSerializer.Serialize(selectDto, options);
 
-        var settings = new JsonSerializerSettings();
-        settings.Converters.Add(new FilterPredicateDtoConverter());
-
-        var deserializedSelectDto = JsonConvert.DeserializeObject<SelectDto>(json, settings);
+        var deserializedSelectDto = JsonSerializer.Deserialize<SelectDto>(json, options);
         Assert.That(deserializedSelectDto, Is.Not.Null);
         var deserializedSelect = deserializedSelectDto.ToModel();
 

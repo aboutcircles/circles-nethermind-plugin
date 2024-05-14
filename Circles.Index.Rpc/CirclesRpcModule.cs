@@ -1,6 +1,7 @@
 using System.Globalization;
 using Circles.Index.Common;
 using Circles.Index.Query;
+using Circles.Index.Query.Dto;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,12 +17,15 @@ public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly ILogger _pluginLogger;
     private readonly Context _indexerContext;
+    // private readonly IJsonRpcConfig? _jsonRpcConfig;
+    // private readonly TimeSpan _cancellationTokenTimeout;
 
     public CirclesRpcModule(Context indexerContext)
     {
         ILogger baseLogger = indexerContext.NethermindApi.LogManager.GetClassLogger();
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
         _indexerContext = indexerContext;
+        // _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
     }
 
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
@@ -44,10 +48,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public ResultWrapper<IEnumerable<object[]>> circles_query(Select query)
+    public ResultWrapper<IEnumerable<object[]>> circles_query(SelectDto query)
     {
-        // throw new NotImplementedException("Input is currently not validated.");
-        var result = _indexerContext.Database.Select(select).ToList();
+        Select select = query.ToModel();
+        var parameterizedSql = select.ToSql(_indexerContext.Database);
+        var result = _indexerContext.Database.Select(parameterizedSql).ToList();
 
         return ResultWrapper<IEnumerable<object[]>>.Success(result);
     }
@@ -62,20 +67,23 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private IEnumerable<Address> TokenAddressesForAccount(Address circlesAccount)
     {
-        var select = Query.Select(
-                ("CrcV1", "Transfer")
-                , new[]
-                {
-                    "tokenAddress"
-                }, true)
-            .Where(
-                Query.Equals(
-                    ("CrcV1", "Transfer")
-                    , "to"
-                    , circlesAccount.ToString(true, false)));
+        var select = new Select(
+            "CrcV1"
+            , "Transfer"
+            , new[] { "tokenAddress" }
+            , new[]
+            {
+                new FilterPredicate("to", FilterType.Equals, circlesAccount.ToString(true, false))
+            }
+            , Array.Empty<OrderBy>()
+            , true);
 
-        return _indexerContext.Database.Select(select)
-            .Select(o => o[0]).Cast<string>().Select(o => new Address(o));
+        var sql = select.ToSql(_indexerContext.Database);
+        return _indexerContext.Database
+            .Select(sql)
+            .Select(o => new Address(o[0].ToString()
+                                     ?? throw new Exception("A token address in the result set is null"))
+            );
     }
 
     private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address)

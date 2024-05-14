@@ -6,7 +6,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-// using Newtonsoft.Json;
 
 namespace Circles.Index;
 
@@ -43,20 +42,6 @@ public class Plugin : INethermindPlugin
 
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         database.Migrate();
-
-        // var reorgAt = TryFindReorg(pluginLogger, nethermindApi.BlockTree!, database);
-        // if (reorgAt != null)
-        // {
-        //     pluginLogger.Info($"Reorg detected at block {reorgAt.Value}. Deleting from that block onwards.");
-        //     await database.DeleteFromBlockOnwards(reorgAt.Value);
-        // }
-
-        Query.Initialize(database);
-
-        // var q = Query.Select(("CrcV1", "Trust"), new[] { "user" }, false);
-        // q.Conditions.Add(Query.Equals(("CrcV2", "Trust"), "canSendTo", "0xDE374ece6fA50e781E81Aac78e811b33D16912c7"));
-        // var query = JsonConvert.SerializeObject(q);
-        // Console.WriteLine(query);
 
         Sink sink = new Sink(
             database,
@@ -133,36 +118,4 @@ public class Plugin : INethermindPlugin
 
         return ValueTask.CompletedTask;
     }
-
-    // private long? TryFindReorg(ILogger logger, IBlockTree blockTree, IDatabase database)
-    // {
-    //     logger.Info("Trying to find reorg.");
-    //
-    //     IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
-    //         database.LastPersistedBlocks(100000);
-    //     
-    //     long? reorgAt = null;
-    //
-    //     foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
-    //     {
-    //         Block? recentChainBlock = blockTree.FindBlock(recentPersistedBlock.BlockNumber);
-    //         if (recentChainBlock == null)
-    //         {
-    //             throw new Exception($"Couldn't find block {recentPersistedBlock.BlockNumber} in the chain");
-    //         }
-    //
-    //         if (recentPersistedBlock.BlockHash == recentChainBlock.Hash)
-    //         {
-    //             continue;
-    //         }
-    //
-    //         logger.Info($"Block {recentPersistedBlock.BlockNumber} is different in the chain.");
-    //         logger.Info($"  Recent persisted block hash: {recentPersistedBlock.BlockHash}");
-    //         logger.Info($"  Recent chain block hash: {recentChainBlock.Hash}");
-    //         reorgAt = recentPersistedBlock.BlockNumber;
-    //         break;
-    //     }
-    //
-    //     return reorgAt;
-    // }
 }
