@@ -1,3 +1,4 @@
+using System.Data;
 using Circles.Index.Common;
 
 namespace Circles.Index.Query;
@@ -34,12 +35,29 @@ public record Select(
         }
 
         var columns = Columns.Any() ? string.Join(", ", Columns.Select(database.QuoteIdentifier)) : "*";
-        var filterSql = Filter.Any()
-            ? string.Join(" AND ", Filter.OfType<ISql>().Select(f => f.ToSql(database).Sql))
-            : string.Empty;
-        var orderBySql = Order.Any()
-            ? $" ORDER BY {string.Join(", ", Order.Select(o => o.ToSql(database).Sql))}"
-            : string.Empty;
+
+        var filterSqlList = new List<string>();
+        var parameters = new List<IDbDataParameter>();
+
+        foreach (var filter in Filter.OfType<ISql>())
+        {
+            var f = filter.ToSql(database);
+            filterSqlList.Add(f.Sql);
+            parameters.AddRange(f.Parameters);
+        }
+
+        var filterSql = filterSqlList.Any() ? string.Join(" AND ", filterSqlList) : string.Empty;
+
+        var orderBySqlList = new List<string>();
+
+        foreach (var order in Order.OfType<ISql>())
+        {
+            var orderSql = order.ToSql(database);
+            orderBySqlList.Add(orderSql.Sql);
+            parameters.AddRange(orderSql.Parameters);
+        }
+
+        var orderBySql = orderBySqlList.Any() ? $" ORDER BY {string.Join(", ", orderBySqlList)}" : string.Empty;
         var distinctSql = Distinct ? "DISTINCT " : string.Empty;
 
         var sql = $"SELECT {distinctSql}{columns} FROM {database.QuoteIdentifier($"{Namespace}_{Table}")}";
@@ -53,10 +71,6 @@ public record Select(
             sql += orderBySql;
         }
 
-        var parameters = Filter.OfType<ISql>().SelectMany(f => f.ToSql(database).Parameters)
-            .Concat(Order.OfType<ISql>().SelectMany(o => o.ToSql(database).Parameters))
-            .ToList();
-
         Console.WriteLine("Select.ToSql");
         Console.WriteLine("-----------------");
         Console.WriteLine("SQL:");
@@ -67,7 +81,7 @@ public record Select(
         {
             Console.WriteLine($"* {parameter.ParameterName} = {parameter.Value}");
         }
-        
+
         return new ParameterizedSql(sql, parameters);
     }
 }
