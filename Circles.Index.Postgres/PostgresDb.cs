@@ -252,14 +252,14 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         }
     }
 
-    public IEnumerable<object[]> Select(Select select)
+    public IEnumerable<object[]> Select(ParameterizedSql select)
     {
         using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
 
         using var command = connection.CreateCommand();
-        command.CommandText = select.ToSql(Schema);
-        foreach (var param in select.GetParameters(Schema))
+        command.CommandText = select.Sql;
+        foreach (var param in select.Parameters)
         {
             command.Parameters.Add(param);
         }
@@ -273,9 +273,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         }
     }
 
-    public IDataParameter CreateParameter()
+    public IDbDataParameter CreateParameter(string? name, object? value)
     {
-        return new NpgsqlParameter();
+        return new NpgsqlParameter(name, value);
     }
 
     public async Task DeleteFromBlockOnwards(long reorgAt)

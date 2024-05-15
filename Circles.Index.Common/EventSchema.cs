@@ -5,13 +5,13 @@ namespace Circles.Index.Common;
 
 public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, bool IncludeInPrimaryKey = false);
 
-public class EventSchema(string @namespace, string table, Hash256 topic, List<EventFieldSchema> columns)
+public class EventSchema(string @namespace, string table, byte[] topic, List<EventFieldSchema> columns)
 {
     public string Namespace { get; } = @namespace;
-    public Hash256 Topic { get; } = topic;
+    public byte[] Topic { get; } = topic;
     public string Table { get; } = table;
     public List<EventFieldSchema> Columns { get; } = columns;
-    
+
     /// <summary>
     /// Parses a Solidity event definition and creates an EventSchema from it.
     /// 
@@ -114,7 +114,7 @@ public class EventSchema(string @namespace, string table, Hash256 topic, List<Ev
         eventTopic.Append(')');
 
         Hash256 topic = Keccak.Compute(eventTopic.ToString());
-        return new EventSchema(@namespace, eventName, topic, columns);
+        return new EventSchema(@namespace, eventName, topic.Bytes.ToArray(), columns);
     }
 
     private static ValueTypes MapSolidityType(string type)

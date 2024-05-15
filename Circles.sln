@@ -19,18 +19,33 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		x64.Dockerfile = x64.Dockerfile
 		arm64.Dockerfile = arm64.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
-		docker-compose.yml = docker-compose.yml
+		docker-compose.spaceneth.yml = docker-compose.spaceneth.yml
 		.dockerignore = .dockerignore
 		circles-chainspec.json = circles-chainspec.json
 		circles-config.cfg = circles-config.cfg
 		time_controller.py = time_controller.py
 		x64.debug.Dockerfile = x64.debug.Dockerfile
+		.env.example = .env.example
 		docker-compose.gnosis.yml = docker-compose.gnosis.yml
+		Readme.md = Readme.md
+		envs\common-smart-contract-verifier.env = envs\common-smart-contract-verifier.env
+		envs\common-blockscout.env = envs\common-blockscout.env
+		.gitmodules = .gitmodules
+		createFundedAccount.js = createFundedAccount.js
+		package.json = package.json
+		deploy.sh = deploy.sh
+		.gitignore = .gitignore
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Postgres", "Circles.Index.Postgres\Circles.Index.Postgres.csproj", "{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.NameRegistry", "Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj", "{33D651AB-1C61-4A06-9C02-A144E7342317}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Rpc", "Circles.Index.Rpc\Circles.Index.Rpc.csproj", "{646C8BE3-405C-4390-8034-2F15B9994F62}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Query", "Circles.Index.Query\Circles.Index.Query.csproj", "{9B8A7804-7A89-412F-975D-102F9E728EB9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Query.Tests", "Circles.Index.Query.Tests\Circles.Index.Query.Tests.csproj", "{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -62,5 +77,17 @@ Global
 		{33D651AB-1C61-4A06-9C02-A144E7342317}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{33D651AB-1C61-4A06-9C02-A144E7342317}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{33D651AB-1C61-4A06-9C02-A144E7342317}.Release|Any CPU.Build.0 = Release|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{646C8BE3-405C-4390-8034-2F15B9994F62}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B8A7804-7A89-412F-975D-102F9E728EB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4BFF176-178E-4C8B-A7C1-DC7240F91E0D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

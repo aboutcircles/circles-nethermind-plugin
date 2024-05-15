@@ -24,7 +24,6 @@
     <ItemGroup>
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
       <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.25.4" />
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     </ItemGroup>
 
 
@@ -34,6 +33,7 @@
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
+      <ProjectReference Include="..\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
     </ItemGroup>
 
 

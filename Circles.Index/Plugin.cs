@@ -1,14 +1,10 @@
-﻿using System.Net.Quic;
-using Circles.Index.Common;
-using Circles.Index.Indexer;
+﻿using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Rpc;
-using Circles.Index.Utils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Newtonsoft.Json;
 
 namespace Circles.Index;
 
@@ -25,6 +21,9 @@ public class Plugin : INethermindPlugin
 
     private StateMachine? _indexerMachine;
     private Context? _indexerContext;
+    private Task? _currentMachineExecution;
+    private int _newItemsArrived;
+    private long _latestHeadToIndex = -1;
 
     public async Task Init(INethermindApi nethermindApi)
     {
@@ -45,21 +44,6 @@ public class Plugin : INethermindPlugin
 
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         database.Migrate();
-
-        // var reorgAt = TryFindReorg(pluginLogger, nethermindApi.BlockTree!, database);
-        // if (reorgAt != null)
-        // {
-        //     pluginLogger.Info($"Reorg detected at block {reorgAt.Value}. Deleting from that block onwards.");
-        //     await database.DeleteFromBlockOnwards(reorgAt.Value);
-        // }
-
-        Query.Initialize(database);
-
-        var q = Query.Select(("CrcV1", "Trust"), new[] { "user" }, false);
-        q.Conditions.Add(Query.Equals(("CrcV2", "Trust"), "canSendTo", "0xDE374ece6fA50e781E81Aac78e811b33D16912c7"));
-
-        var query = JsonConvert.SerializeObject(q);
-        Console.WriteLine(query);
 
         Sink sink = new Sink(
             database,
@@ -94,20 +78,41 @@ public class Plugin : INethermindPlugin
 
         await _indexerMachine.TransitionTo(StateMachine.State.Initial);
 
-        Task currentMachineExecution = Task.CompletedTask;
+        _currentMachineExecution = Task.CompletedTask;
 
         nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
         {
-            // Simple debounce mechanism that works well when blocks are produced consistently.
-            // TODO: This won't work well e.g. with spaceneth where blocks are only produced when there are transactions.
-            if (currentMachineExecution is { IsCompleted: false })
+            Interlocked.Exchange(ref _newItemsArrived, 1);
+            Interlocked.Exchange(ref _latestHeadToIndex, args.Block.Number);
+
+            HandleNewHead();
+        };
+    }
+
+    private void HandleNewHead()
+    {
+        if (_currentMachineExecution is { IsCompleted: false })
+        {
+            // If there is an ongoing execution, we don't need to start a new one
+            return;
+        }
+
+        _currentMachineExecution = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
+    }
+
+    private async Task ProcessBlocksAsync()
+    {
+        // This loop is to ensure that we process all the new heads that arrive while we are processing the current head
+        do
+        {
+            long toIndex = Interlocked.Exchange(ref _latestHeadToIndex, -1);
+            if (toIndex == -1)
             {
-                return;
+                continue;
             }
 
-            currentMachineExecution = Task.Run(() =>
-                _indexerMachine.HandleEvent(new StateMachine.NewHead(args.Block.Number)));
-        };
+            await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
+        } while (Interlocked.CompareExchange(ref _newItemsArrived, 0, 1) == 1);
     }
 
     public Task InitNetworkProtocol()
@@ -136,36 +141,4 @@ public class Plugin : INethermindPlugin
 
         return ValueTask.CompletedTask;
     }
-
-    // private long? TryFindReorg(ILogger logger, IBlockTree blockTree, IDatabase database)
-    // {
-    //     logger.Info("Trying to find reorg.");
-    //
-    //     IEnumerable<(long BlockNumber, Hash256 BlockHash)> lastPersistedBlocks =
-    //         database.LastPersistedBlocks(100000);
-    //     
-    //     long? reorgAt = null;
-    //
-    //     foreach ((long BlockNumber, Hash256 BlockHash) recentPersistedBlock in lastPersistedBlocks)
-    //     {
-    //         Block? recentChainBlock = blockTree.FindBlock(recentPersistedBlock.BlockNumber);
-    //         if (recentChainBlock == null)
-    //         {
-    //             throw new Exception($"Couldn't find block {recentPersistedBlock.BlockNumber} in the chain");
-    //         }
-    //
-    //         if (recentPersistedBlock.BlockHash == recentChainBlock.Hash)
-    //         {
-    //             continue;
-    //         }
-    //
-    //         logger.Info($"Block {recentPersistedBlock.BlockNumber} is different in the chain.");
-    //         logger.Info($"  Recent persisted block hash: {recentPersistedBlock.BlockHash}");
-    //         logger.Info($"  Recent chain block hash: {recentChainBlock.Hash}");
-    //         reorgAt = recentPersistedBlock.BlockNumber;
-    //         break;
-    //     }
-    //
-    //     return reorgAt;
-    // }
 }

@@ -16,5 +16,7 @@ COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV1.dll /nether
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Rpc.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins

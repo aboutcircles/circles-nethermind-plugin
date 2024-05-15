@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Text;
 using Circles.Index.Common;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -9,6 +10,19 @@ namespace Circles.Index.CirclesV2;
 
 public class LogParser(Address v2HubAddress) : ILogParser
 {
+    private readonly Hash256 _stoppedTopic = new(DatabaseSchema.Stopped.Topic);
+    private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
+    private readonly Hash256 _inviteHumanTopic = new(DatabaseSchema.InviteHuman.Topic);
+    private readonly Hash256 _personalMintTopic = new(DatabaseSchema.PersonalMint.Topic);
+    private readonly Hash256 _registerHumanTopic = new(DatabaseSchema.RegisterHuman.Topic);
+    private readonly Hash256 _registerGroupTopic = new(DatabaseSchema.RegisterGroup.Topic);
+    private readonly Hash256 _registerOrganizationTopic = new(DatabaseSchema.RegisterOrganization.Topic);
+    private readonly Hash256 _transferBatchTopic = new(DatabaseSchema.TransferBatch.Topic);
+    private readonly Hash256 _transferSingleTopic = new(DatabaseSchema.TransferSingle.Topic);
+    private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
+    private readonly Hash256 _uriTopic = new(DatabaseSchema.URI.Topic);
+    private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
+
     public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         if (log.Topics.Length == 0)
@@ -22,46 +36,42 @@ public class LogParser(Address v2HubAddress) : ILogParser
             yield break;
         }
 
-        if (topic == DatabaseSchema.Stopped.Topic)
+        if (topic == _stoppedTopic)
         {
             yield return CrcV2Stopped(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.Trust.Topic)
+        if (topic == _trustTopic)
         {
             yield return CrcV2Trust(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.InviteHuman.Topic)
+        if (topic == _inviteHumanTopic)
         {
             yield return CrcV2InviteHuman(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.PersonalMint.Topic)
+        if (topic == _personalMintTopic)
         {
             yield return CrcV2PersonalMint(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.RegisterHuman.Topic)
+        if (topic == _registerHumanTopic)
         {
             yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
         }
 
-        {
-            yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
-        }
-
-        if (topic == DatabaseSchema.RegisterGroup.Topic)
+        if (topic == _registerGroupTopic)
         {
             yield return CrcV2RegisterGroup(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.RegisterOrganization.Topic)
+        if (topic == _registerOrganizationTopic)
         {
             yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.TransferBatch.Topic)
+        if (topic == _transferBatchTopic)
         {
             foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
             {
@@ -69,22 +79,22 @@ public class LogParser(Address v2HubAddress) : ILogParser
             }
         }
 
-        if (topic == DatabaseSchema.TransferSingle.Topic)
+        if (topic == _transferSingleTopic)
         {
             yield return Erc1155TransferSingle(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.ApprovalForAll.Topic)
+        if (topic == _approvalForAllTopic)
         {
             yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.URI.Topic)
+        if (topic == _uriTopic)
         {
             yield return Erc1155Uri(block, receipt, log, logIndex);
         }
 
-        if (topic == DatabaseSchema.DiscountCost.Topic)
+        if (topic == _discountCostTopic)
         {
             yield return DiscountCost(block, receipt, log, logIndex);
         }

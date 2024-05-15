@@ -23,7 +23,7 @@ public class DatabaseSchema : IDatabaseSchema
         "event Trust(address indexed canSendTo, address indexed user, uint256 limit)");
 
     public static readonly EventSchema Transfer = new("CrcV1", "Transfer",
-        Keccak.Compute("Transfer(address,address,uint256)"),
+        Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),
