@@ -99,9 +99,3 @@ git submodule update --init --recursive
 # Deploy the contracts
 npm install && ./deploy.sh
 ```
-
-#### Endpoints:
-
-* `localhost:8545` - Nethermind RPC endpoint
-* `localhost:5432` - Postgres database
-* `localhost:3000` - Blockscout
