@@ -1,0 +1,6 @@
+[submodule "circles-contracts-v2"]
+	path = circles-contracts-v2
+	url = git@github.com:CirclesUBI/circles-contracts-v2.git
+[submodule "circles-contracts"]
+	path = circles-contracts
+	url = git@github.com:CirclesUBI/circles-contracts.git
