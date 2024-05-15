@@ -252,7 +252,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         }
     }
 
-    public IEnumerable<object[]> Select(ParameterizedSql select)
+    public DatabaseQueryResult Select(ParameterizedSql select)
     {
         using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
@@ -265,12 +265,21 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         }
 
         using var reader = command.ExecuteReader();
+        var columnNames = new string[reader.FieldCount];
+        for (int i = 0; i < reader.FieldCount; i++)
+        {
+            columnNames[i] = reader.GetName(i);
+        }
+        
+        var resultRows = new List<object[]>();
+        var row = new object[reader.FieldCount];
         while (reader.Read())
         {
-            var row = new object[reader.FieldCount];
             reader.GetValues(row);
-            yield return row;
+            resultRows.Add(row);
         }
+        
+        return new DatabaseQueryResult(columnNames, resultRows);
     }
 
     public IDbDataParameter CreateParameter(string? name, object? value)

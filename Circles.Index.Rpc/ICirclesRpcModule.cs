@@ -1,4 +1,4 @@
-using Circles.Index.Query;
+using Circles.Index.Common;
 using Circles.Index.Query.Dto;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
@@ -24,7 +24,7 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Queries the data of one Circles index table",
         IsImplemented = true)]
-    ResultWrapper<IEnumerable<object[]>> circles_query(SelectDto query);
+    ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query);
 
     [JsonRpcMethod(Description = "Calculates a transitive transfer path along the trust relations of a user",
         IsImplemented = true)]

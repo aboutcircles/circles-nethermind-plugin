@@ -272,8 +272,7 @@ Query all `Signup` events with a block number greater than 1000000, a transactio
 greater than 10. Order the results by block number, transaction index and log index.
 
 The combination of `blockNumber`, `transactionIndex` and `logIndex` is unique for every event and can be used to
-paginate
-the results.
+paginate the results.
 
 ```shell
 curl -X POST --data '{
@@ -284,7 +283,7 @@ curl -X POST --data '{
     {
       "Namespace": "CrcV1",
       "Table": "Signup",
-      "Limit": 10,
+      "Limit": 2,
       "Columns": [],
       "Filter": [],
       "Order": [
@@ -304,4 +303,45 @@ curl -X POST --data '{
     }
   ]
 }' -H "Content-Type: application/json" https://localhost:8545/
+```
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "columns": [
+      "blockNumber",
+      "timestamp",
+      "transactionIndex",
+      "logIndex",
+      "transactionHash",
+      "user",
+      "token"
+    ],
+    "rows": [
+      [
+        "0x597343",
+        "0x64f5aa5a",
+        "0x0",
+        "0x3",
+        "0xb41462160f73af912b550b27a7ed31e091d5da6c59a6325b367048ea42eef47f",
+        "0x4bc38a9f15508d19299a45b063556ec4bee853ff",
+        "0xcc724001786fcf8414747dd598e8e9383882b6d7"
+      ],
+      [
+        "0x597343",
+        "0x64f5aa5a",
+        "0x0",
+        "0x3",
+        "0xb41462160f73af912b550b27a7ed31e091d5da6c59a6325b367048ea42eef47f",
+        "0x4bc38a9f15508d19299a45b063556ec4bee853ff",
+        "0xcc724001786fcf8414747dd598e8e9383882b6d7"
+      ]
+    ]
+  },
+  "id": 1
+}
+
 ```

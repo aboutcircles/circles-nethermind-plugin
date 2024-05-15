@@ -16,6 +16,7 @@ namespace Circles.Index.Rpc;
 public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly ILogger _pluginLogger;
+
     private readonly Context _indexerContext;
     // private readonly IJsonRpcConfig? _jsonRpcConfig;
     // private readonly TimeSpan _cancellationTokenTimeout;
@@ -48,13 +49,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public ResultWrapper<IEnumerable<object[]>> circles_query(SelectDto query)
+    public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
     {
         Select select = query.ToModel();
         var parameterizedSql = select.ToSql(_indexerContext.Database);
-        var result = _indexerContext.Database.Select(parameterizedSql).ToList();
+        var result = _indexerContext.Database.Select(parameterizedSql);
 
-        return ResultWrapper<IEnumerable<object[]>>.Success(result);
+        return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
     public ResultWrapper<string> circles_computeTransfer(string from, string to, string amount)
@@ -82,6 +83,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var sql = select.ToSql(_indexerContext.Database);
         return _indexerContext.Database
             .Select(sql)
+            .Rows
             .Select(o => new Address(o[0].ToString()
                                      ?? throw new Exception("A token address in the result set is null"))
             );
