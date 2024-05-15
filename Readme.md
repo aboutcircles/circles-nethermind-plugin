@@ -62,13 +62,14 @@ Once synced you can use the node like any other RPC node, but with the added ben
 at the same RPC endpoint.
 
 #### Ports:
-*  `30303/tcp` (nethermind p2p)
-*  `30303/udp` (nethermind p2p)
-*  `8545/tcp` (nethermind rpc)
-*  `5432/tcp` (postgres)
-*  `9000/tcp` (consensus p2p)
-*  `9000/udp` (consensus p2p)
-*  `5054/tcp` (consensus metrics)
+
+* `30303/tcp` (nethermind p2p)
+* `30303/udp` (nethermind p2p)
+* `8545/tcp` (nethermind rpc)
+* `5432/tcp` (postgres)
+* `9000/tcp` (consensus p2p)
+* `9000/udp` (consensus p2p)
+* `5054/tcp` (consensus metrics)
 
 #### Volumes
 
@@ -88,6 +89,7 @@ docker compose -f docker-compose.spaceneth.yml up -d
 ```
 
 #### Deploying the Circles contracts
+
 Since a new spaceneth node is empty except for the genesis block, you need to deploy the Circles contracts yourself.
 
 ```bash
@@ -101,26 +103,132 @@ npm install && ./deploy.sh
 ```
 
 ## Circles RPC methods
+
+### circles_getTotalBalance
+
+This method allows you to query the total Circles (v1) holdings of an address.
+
+#### Request:
+
+```shell
+curl -X POST --data '{
+"jsonrpc":"2.0",
+"method":"circles_getTotalBalance",
+"params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+"id":1
+}' -H "Content-Type: application/json" https://circles-rpc.aboutcircles.com/
+````
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": "5444258229585459544466",
+  "id": 1
+}
+```
+
+### circles_getTokenBalance
+
+This method allows you to query all individual Circles (v1) holdings of an address.
+
+#### Request:
+
+```shell
+curl -X POST --data '{
+"jsonrpc":"2.0",
+"method":"circles_getTokenBalances",
+"params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+"id":1
+}' -H "Content-Type: application/json" httpS://circles-rpc.aboutcircles.com/
+```
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "token": "0x057f55e194b94073d2dfa4e86163c2e897086dc7",
+      "balance": "51429863673363442586"
+    },
+    {
+      "token": "0x09c85ee337f6f7bdd3e5e17213b703c26d9c907d",
+      "balance": "56223473812572527629"
+    }
+  ],
+  "id": 1
+}
+```
+
+### circles_getTrustRelations
+
+This method allows you to query all (v1) trust relations of an address.
+
+#### Request:
+
+```shell
+curl -X POST --data '{
+"jsonrpc":"2.0",
+"method":"circles_getTrustRelations",
+"params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+"id":1
+}' -H "Content-Type: application/json" https://circles-rpc.aboutcircles.com/
+````
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "user": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "trusts": {
+      "0xb7c83b840e146f9768a1fdc4ce46c8ad17594720": 100,
+      "0x5fd8f7464c050ec0fb34223aab544e13510812fa": 50,
+      "0x83d296691be2c9d7be14378ecbf2d95c3ddb0200": 100,
+      "0x70551a5862ef2c9baf81596f67be723283b6ccd0": 100
+    },
+    "trustedBy": {
+      "0x965090908dcd0b134802f35c9138a7e987b5182f": 100,
+      "0x5ce3d708a2b1e8371530754c930fc9b5bad27ab7": 100,
+      "0x6fae976eb90127b895ceddf8311864cda42ac6ac": 100,
+      "0x3e93a305d5cd96202c12084414a6622fa7a36c3d": 100
+    }
+  },
+  "id": 1
+}
+```
+
 ### circles_query
+
 This method allows you to query Circles events. The method takes a single parameter, which is a JSON object with the
 following properties:
 
 * `namespace` - The protocol namespace to query (System, CrcV1 or CrcV2).
 * `table` - The table to query (e.g. `Signup`, `Trust`, etc.).
-* `columns` - An array of column names to return or `null` to return all columns of the table.
+* `columns` - An array of column names to return or `[]` to return all columns of the table.
 * `filter` - Filters that can be used e.g. for pagination or to search for specific values.
 * `order` - A list of columns to order the results by.
 * `distinct` - If set to `true`, only distinct rows are returned.
+* `limit` - The maximum number of rows to return (defaults to max. 1000).
 
-#### Available namespaces and tables
-Every table has the following columns:
+#### Available namespaces, tables and columns
+
+Every table has at least the following columns:
+
 * `blockNumber` - The block number the event was emitted in.
 * `timestamp` - The unix timestamp of the event.
 * `transactionIndex` - The index of the transaction in the block.
 * `logIndex` - The index of the log in the transaction.
 
+Tables for batch events have an additional `batchIndex` column.
+The items of a batch are treated like individual events that can only be distinguished by the `batchIndex`.
 
 Namespaces and tables:
+
 * `System`
     * `Block`
 * `CrcV1`
@@ -146,6 +254,7 @@ Namespaces and tables:
     * `URI`
 
 #### Available filter types
+
 * `Equals`
 * `NotEquals`
 * `GreaterThan`
@@ -158,11 +267,14 @@ Namespaces and tables:
 * `NotIn`
 
 #### Example
+
 Query all `Signup` events with a block number greater than 1000000, a transaction index greater than 5 and a log index
 greater than 10. Order the results by block number, transaction index and log index.
 
-The combination of `blockNumber`, `transactionIndex` and `logIndex` is unique for every event and can be used to paginate
+The combination of `blockNumber`, `transactionIndex` and `logIndex` is unique for every event and can be used to
+paginate
 the results.
+
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
@@ -191,5 +303,5 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://localhost:8545/
 ```

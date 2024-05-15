@@ -12,6 +12,8 @@ public record Select(
     int? Limit = null,
     bool Distinct = false) : ISql
 {
+    private const int MaxLimit = 1000;
+
     public ParameterizedSql ToSql(IDatabaseUtils database)
     {
         if (!database.Schema.Tables.TryGetValue((Namespace, Table), out var tableSchema))
@@ -71,10 +73,14 @@ public record Select(
         {
             sql += orderBySql;
         }
-        
-        if (Limit.HasValue)
+
+        if (Limit is > 0 and <= MaxLimit)
         {
             sql += $" LIMIT {Limit.Value}";
+        }
+        else
+        {
+            sql += " LIMIT " + MaxLimit;
         }
 
         return new ParameterizedSql(sql, parameters);
