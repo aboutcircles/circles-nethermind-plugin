@@ -2,7 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{1A7AB239-847B-437F-8A00-BE2B172105CC}"
 	ProjectSection(SolutionItems) = preProject
-		.github\workflows\docker-publish.yml = .github\workflows\docker-publish.yml
+		.github\workflows\docker-publish.dev.yml = .github\workflows\docker-publish.dev.yml
+		.github\workflows\docker-publish.main.yml = .github\workflows\docker-publish.main.yml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index", "Circles.Index\Circles.Index.csproj", "{6B1B1D07-6A85-4502-877F-09776658100D}"
