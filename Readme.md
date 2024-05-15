@@ -173,41 +173,8 @@ curl -X POST --data '{
       "Namespace": "CrcV1",
       "Table": "Signup",
       "Limit": 10,
-      "Columns": [
-        "blockNumber",
-        "timestamp",
-        "transactionIndex",
-        "logIndex",
-        "transactionHash",
-        "user",
-        "token"
-      ],
-      "Filter": [
-        {
-          "Type": "Conjunction",
-          "ConjunctionType": "And",
-          "Predicates": [
-            {
-              "Type": "FilterPredicate",
-              "Column": "blockNumber",
-              "FilterType": "GreaterThan",
-              "Value": 1000000
-            },
-            {
-              "Type": "FilterPredicate",
-              "Column": "transactionIndex",
-              "FilterType": "GreaterThan",
-              "Value": 5
-            },
-            {
-              "Type": "FilterPredicate",
-              "Column": "logIndex",
-              "FilterType": "GreaterThan",
-              "Value": 10
-            }
-          ]
-        }
-      ],
+      "Columns": [],
+      "Filter": [],
       "Order": [
         {
           "Column": "blockNumber",

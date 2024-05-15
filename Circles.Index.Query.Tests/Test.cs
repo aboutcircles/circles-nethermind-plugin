@@ -259,7 +259,7 @@ public class Tests
     public void Select_ToSql_WithDistinct()
     {
         var select = new Select("public", "Users", new[] { "Name", "Age" }, Array.Empty<IFilterPredicate>(),
-            Array.Empty<OrderBy>(), true);
+            Array.Empty<OrderBy>(), null, true);
 
         var generatedSql = select.ToSql(_database);
 
@@ -275,7 +275,7 @@ public class Tests
         var predicate = new FilterPredicate("Name", FilterType.Equals, "John");
         var orderBy = new OrderBy("Age", "DESC");
         var select = new Select("public", "Users", new[] { "Name", "Age" }, new IFilterPredicate[] { predicate },
-            new[] { orderBy }, true);
+            new[] { orderBy }, null, true);
 
         var selectDto = select.ToDto();
 
@@ -312,8 +312,14 @@ public class Tests
         var conjunction = new Conjunction(ConjunctionType.And, [predicate1, predicate2]);
 
         var orderBy = new OrderBy("Age", "DESC");
-        var select = new Select("public", "Users", new[] { "Name", "Age" }, new IFilterPredicate[] { conjunction },
-            new[] { orderBy }, true);
+        var select = new Select(
+            "public"
+            , "Users"
+            , new[] { "Name", "Age" }
+            , new IFilterPredicate[] { conjunction }
+            , new[] { orderBy }
+            , 10
+            , true);
 
         var selectDto = select.ToDto();
         var options = new JsonSerializerOptions
@@ -335,6 +341,7 @@ public class Tests
         Assert.That(deserializedSelect.Table, Is.EqualTo(select.Table));
         CollectionAssert.AreEqual(select.Columns, deserializedSelect.Columns);
         Assert.That(deserializedSelect.Distinct, Is.EqualTo(select.Distinct));
+        Assert.That(deserializedSelect.Limit, Is.EqualTo(select.Limit));
 
         var deserializedConjunction = (Conjunction)deserializedSelect.Filter.First();
         Assert.That(deserializedConjunction.ConjunctionType, Is.EqualTo(conjunction.ConjunctionType));

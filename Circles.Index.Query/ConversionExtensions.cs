@@ -39,6 +39,7 @@ public static class ConversionExtensions
             Conjunction conj => (IFilterPredicateDto)conj.ToDto(),
             _ => throw new NotImplementedException()
         }).ToArray(),
+        Limit = model.Limit,
         Order = model.Order.Select(o => o.ToDto()).ToArray(),
         Distinct = model.Distinct
     };
@@ -69,6 +70,7 @@ public static class ConversionExtensions
             _ => throw new NotImplementedException()
         }) ?? new List<IFilterPredicate>(),
         dto.Order?.Select(o => o.ToModel()) ?? new List<OrderBy>(),
+        dto.Limit,
         dto.Distinct
     );
 }
