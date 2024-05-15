@@ -215,6 +215,8 @@ following properties:
 * `distinct` - If set to `true`, only distinct rows are returned.
 * `limit` - The maximum number of rows to return (defaults to max. 1000).
 
+*There is no default order, so make sure to always add sensible order columns.*
+
 #### Available namespaces, tables and columns
 
 Every table has at least the following columns:
@@ -266,13 +268,14 @@ Namespaces and tables:
 * `In`
 * `NotIn`
 
+#### Pagination
+
+You can use the combination of `blockNumber`, `transactionIndex` and `logIndex` 
+(+ `batchIndex` in the case of batch events) together with a `limit` to paginate through the results.
+
 #### Example
 
-Query all `Signup` events with a block number greater than 1000000, a transaction index greater than 5 and a log index
-greater than 10. Order the results by block number, transaction index and log index.
-
-The combination of `blockNumber`, `transactionIndex` and `logIndex` is unique for every event and can be used to
-paginate the results.
+Query the last two Circles signups:
 
 ```shell
 curl -X POST --data '{
