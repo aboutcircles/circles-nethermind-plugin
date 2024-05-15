@@ -84,7 +84,7 @@ The process of setting up a local only node is a bit more involved. However, by 
 the possibility to manipulate the node's time and don't need any xDai, which is useful for testing purposes.
 
 ```bash
-docker compose -f docker-compose.spaceneth.yml up
+docker compose -f docker-compose.spaceneth.yml up -d
 ```
 
 #### Deploying the Circles contracts
@@ -92,7 +92,7 @@ Since a new spaceneth node is empty except for the genesis block, you need to de
 
 ```bash
 # Clone the Circles contracts submodules
-git submodules update --init --recursive
+git submodule update --init --recursive
 ```
 
 
