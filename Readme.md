@@ -99,3 +99,130 @@ git submodule update --init --recursive
 # Deploy the contracts
 npm install && ./deploy.sh
 ```
+
+## Circles RPC methods
+### circles_query
+This method allows you to query Circles events. The method takes a single parameter, which is a JSON object with the
+following properties:
+
+* `namespace` - The protocol namespace to query (System, CrcV1 or CrcV2).
+* `table` - The table to query (e.g. `Signup`, `Trust`, etc.).
+* `columns` - An array of column names to return or `null` to return all columns of the table.
+* `filter` - Filters that can be used e.g. for pagination or to search for specific values.
+* `order` - A list of columns to order the results by.
+* `distinct` - If set to `true`, only distinct rows are returned.
+
+#### Available namespaces and tables
+Every table has the following columns:
+* `blockNumber` - The block number the event was emitted in.
+* `timestamp` - The unix timestamp of the event.
+* `transactionIndex` - The index of the transaction in the block.
+* `logIndex` - The index of the log in the transaction.
+
+
+Namespaces and tables:
+* `System`
+    * `Block`
+* `CrcV1`
+    * `HubTransfer`
+    * `OrganizationSignup`
+    * `Signup`
+    * `Transfer`
+    * `Trust`
+* `CrcV2`
+    * `ApprovalForAll`
+    * `DiscountCost`
+    * `InviteHuman`
+    * `PersonalMint`
+    * `RegisterGroup`
+    * `RegisterHuman`
+    * `RegisterOrganization`
+    * `RegisterShortName`
+    * `Stopped`
+    * `TransferBatch`
+    * `TransferSingle`
+    * `Trust`
+    * `UpdateMetadataDigest`
+    * `URI`
+
+#### Available filter types
+* `Equals`
+* `NotEquals`
+* `GreaterThan`
+* `GreaterThanOrEquals`
+* `LessThan`
+* `LessThanOrEquals`
+* `Like`
+* `NotLike`
+* `In`
+* `NotIn`
+
+#### Example
+Query all `Signup` events with a block number greater than 1000000, a transaction index greater than 5 and a log index
+greater than 10. Order the results by block number, transaction index and log index.
+
+The combination of `blockNumber`, `transactionIndex` and `logIndex` is unique for every event and can be used to paginate
+the results.
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "CrcV1",
+      "Table": "Signup",
+      "Limit": 10,
+      "Columns": [
+        "blockNumber",
+        "timestamp",
+        "transactionIndex",
+        "logIndex",
+        "transactionHash",
+        "user",
+        "token"
+      ],
+      "Filter": [
+        {
+          "Type": "Conjunction",
+          "ConjunctionType": "And",
+          "Predicates": [
+            {
+              "Type": "FilterPredicate",
+              "Column": "blockNumber",
+              "FilterType": "GreaterThan",
+              "Value": 1000000
+            },
+            {
+              "Type": "FilterPredicate",
+              "Column": "transactionIndex",
+              "FilterType": "GreaterThan",
+              "Value": 5
+            },
+            {
+              "Type": "FilterPredicate",
+              "Column": "logIndex",
+              "FilterType": "GreaterThan",
+              "Value": 10
+            }
+          ]
+        }
+      ],
+      "Order": [
+        {
+          "Column": "blockNumber",
+          "SortOrder": "ASC"
+        },
+        {
+          "Column": "transactionIndex",
+          "SortOrder": "ASC"
+        },
+        {
+          "Column": "logIndex",
+          "SortOrder": "ASC"
+        }
+      ]
+    }
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
