@@ -3,7 +3,7 @@ using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 
-namespace Circles.Index.Indexer;
+namespace Circles.Index;
 
 public class StateMachine(
     Context context,

@@ -5,7 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 
-namespace Circles.Index.Indexer;
+namespace Circles.Index;
 
 public record BlockWithReceipts(Block Block, TxReceipt[] Receipts);
 

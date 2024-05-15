@@ -1,12 +1,11 @@
 services:
-  nethermind:
-    container_name: nethermind
-    #image: jaensen/nethermind-circlesubi:dev-x86_64
+  nethermind-gnosis:
     build:
       context: .
       dockerfile: x64.Dockerfile
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - circles-gnosis
     ports:
       - 30303:30303/tcp # p2p
       - 30303:30303/udp # p2p
@@ -14,8 +13,8 @@ services:
     expose:
       - 8551 # engine api
     volumes:
-      - .state/gnosis/nethermind:/data
-      - .state/gnosis/jwtsecret:/jwt.hex
+      - .state/nethermind-gnosis:/data
+      - .state/jwtsecret-gnosis/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -32,31 +31,36 @@ services:
       --JsonRpc.EnginePort=8551
       --Network.DiscoveryPort=30303
       --HealthChecks.Enabled=false
-    logging:
-      driver: "local"
+    env_file:
+      - .env
     environment:
-      - V1_HUB_ADDRESS=0x29b9a7fBb8995b2423a71cC17cf9810798F6C543
-      - V2_HUB_ADDRESS=0xDA02CDB5279B3a1eF27Be3d91aE924495E6A5569
+      - V1_HUB_ADDRESS=0xdbf22d4e8962db3b2f1d9ff55be728a887e47710
+      - V2_HUB_ADDRESS=0xFFfbD3E62203B888bb8E09c1fcAcE58242674964
       - START_BLOCK=0
-      - POSTGRES_CONNECTION_STRING=Server=localhost;Port=5432;User Id=postgres;Password=;Database=postgres;Include Error Detail=true;
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
 
-  db:
+  postgres-gnosis:
     image: postgres:16
     command: -c 'max_connections=100'
     restart: unless-stopped
-    container_name: 'postgres'
-    network_mode: host
+    networks:
+      - circles-gnosis
+    ports:
+      - 5432:5432
+    env_file:
+      - .env
     environment:
-      POSTGRES_PASSWORD: 'postgres'
-      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
     volumes:
-      - ./.state/gnosis/postgres-data:/var/lib/postgresql/data
+      - ./.state/postgres-gnosis:/var/lib/postgresql/data
 
-  lighthouse:
-    container_name: lighthouse
+  consensus-gnosis:
+    container_name: consensus-gnosis
     image: sigp/lighthouse:v5.0.0
     restart: always
-    network_mode: host
+    networks:
+      - circles-gnosis
     ports:
       - 9000:9000/tcp # p2p
       - 9000:9000/udp # p2p
@@ -64,8 +68,8 @@ services:
     expose:
       - 4000 # http
     volumes:
-      - .state/gnosis/lighthouse/data:/data
-      - .state/gnosis/jwtsecret:/jwt.hex
+      - .state/consensus-gnosis/data:/data
+      - .state/jwtsecret-gnosis/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -78,12 +82,10 @@ services:
       --http
       --http-address=0.0.0.0
       --http-port=4000
-      --execution-endpoint=http://localhost:8551
+      --execution-endpoint=http://nethermind-gnosis:8551
       --execution-jwt=/jwt.hex
       --checkpoint-sync-url=https://checkpoint.gnosis.gateway.fm/
-    logging:
-      driver: "local"
 
 networks:
-  circles:
-    name: circles
+  circles-gnosis:
+    name: circles-gnosis

@@ -1,5 +1,4 @@
 ﻿using Circles.Index.Common;
-using Circles.Index.Indexer;
 using Circles.Index.Postgres;
 using Circles.Index.Rpc;
 using Nethermind.Api;
@@ -22,6 +21,9 @@ public class Plugin : INethermindPlugin
 
     private StateMachine? _indexerMachine;
     private Context? _indexerContext;
+    private Task? _currentMachineExecution;
+    private int _newItemsArrived;
+    private long _latestHeadToIndex = -1;
 
     public async Task Init(INethermindApi nethermindApi)
     {
@@ -76,20 +78,41 @@ public class Plugin : INethermindPlugin
 
         await _indexerMachine.TransitionTo(StateMachine.State.Initial);
 
-        Task currentMachineExecution = Task.CompletedTask;
+        _currentMachineExecution = Task.CompletedTask;
 
         nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
         {
-            // Simple debounce mechanism that works well when blocks are produced consistently.
-            // TODO: This won't work well e.g. with spaceneth where blocks are only produced when there are transactions.
-            if (currentMachineExecution is { IsCompleted: false })
+            Interlocked.Exchange(ref _newItemsArrived, 1);
+            Interlocked.Exchange(ref _latestHeadToIndex, args.Block.Number);
+
+            HandleNewHead();
+        };
+    }
+
+    private void HandleNewHead()
+    {
+        if (_currentMachineExecution is { IsCompleted: false })
+        {
+            // If there is an ongoing execution, we don't need to start a new one
+            return;
+        }
+
+        _currentMachineExecution = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
+    }
+
+    private async Task ProcessBlocksAsync()
+    {
+        // This loop is to ensure that we process all the new heads that arrive while we are processing the current head
+        do
+        {
+            long toIndex = Interlocked.Exchange(ref _latestHeadToIndex, -1);
+            if (toIndex == -1)
             {
-                return;
+                continue;
             }
 
-            currentMachineExecution = Task.Run(() =>
-                _indexerMachine.HandleEvent(new StateMachine.NewHead(args.Block.Number)));
-        };
+            await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
+        } while (Interlocked.CompareExchange(ref _newItemsArrived, 0, 1) == 1);
     }
 
     public Task InitNetworkProtocol()

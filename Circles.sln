@@ -19,13 +19,18 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		x64.Dockerfile = x64.Dockerfile
 		arm64.Dockerfile = arm64.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
-		docker-compose.yml = docker-compose.yml
+		docker-compose.spaceneth.yml = docker-compose.spaceneth.yml
 		.dockerignore = .dockerignore
 		circles-chainspec.json = circles-chainspec.json
 		circles-config.cfg = circles-config.cfg
 		time_controller.py = time_controller.py
 		x64.debug.Dockerfile = x64.debug.Dockerfile
+		.env.example = .env.example
 		docker-compose.gnosis.yml = docker-compose.gnosis.yml
+		Utils\package.json = Utils\package.json
+		Utils\package-lock.json = Utils\package-lock.json
+		Utils\deploy.sh = Utils\deploy.sh
+		Utils\createFundedAccount.js = Utils\createFundedAccount.js
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Postgres", "Circles.Index.Postgres\Circles.Index.Postgres.csproj", "{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}"

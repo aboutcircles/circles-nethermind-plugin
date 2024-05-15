@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Circles.Index.Indexer;
+namespace Circles.Index;
 
 public class IndexPerformanceMetrics
 {
