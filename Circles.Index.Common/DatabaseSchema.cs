@@ -1,5 +1,3 @@
-using Nethermind.Core.Crypto;
-
 namespace Circles.Index.Common;
 
 public class DatabaseSchema : IDatabaseSchema
