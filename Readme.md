@@ -95,7 +95,10 @@ Since a new spaceneth node is empty except for the genesis block, you need to de
 git submodule update --init --recursive
 ```
 
-
+```bash
+# Deploy the contracts
+npm install && ./deploy.sh
+```
 
 #### Endpoints:
 
