@@ -49,12 +49,12 @@ Choose if your want to run your node on Gnosis Chain or Chiado.
 
 ```bash
 # Gnosis chain
-docker-compose -f docker-compose.gnosis.yml up
+docker compose -f docker-compose.gnosis.yml up -d
 ```
 
 ```bash
 # Chiado
-docker-compose -f docker-compose.chiado.yml up
+docker compose -f docker-compose.chiado.yml up -d
 ```
 
 That's it! The node must be fully synced before you can start querying the Circles events.
@@ -84,7 +84,7 @@ The process of setting up a local only node is a bit more involved. However, by 
 the possibility to manipulate the node's time and don't need any xDai, which is useful for testing purposes.
 
 ```bash
-docker-compose -f docker-compose.spaceneth.yml up
+docker compose -f docker-compose.spaceneth.yml up
 ```
 
 #### Deploying the Circles contracts
