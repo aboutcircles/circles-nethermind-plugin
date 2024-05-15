@@ -9,6 +9,7 @@ public record Select(
     IEnumerable<string> Columns,
     IEnumerable<IFilterPredicate> Filter,
     IEnumerable<OrderBy> Order,
+    int? Limit = null,
     bool Distinct = false) : ISql
 {
     public ParameterizedSql ToSql(IDatabaseUtils database)
@@ -69,6 +70,11 @@ public record Select(
         if (!string.IsNullOrEmpty(orderBySql))
         {
             sql += orderBySql;
+        }
+        
+        if (Limit.HasValue)
+        {
+            sql += $" LIMIT {Limit.Value}";
         }
 
         return new ParameterizedSql(sql, parameters);

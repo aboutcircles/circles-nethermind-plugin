@@ -34,7 +34,7 @@ services:
     env_file:
       - .env
     environment:
-      - V1_HUB_ADDRESS=0xdbf22d4e8962db3b2f1d9ff55be728a887e47710
+      - V1_HUB_ADDRESS=0x29b9a7fBb8995b2423a71cC17cf9810798F6C543
       - V2_HUB_ADDRESS=0xFFfbD3E62203B888bb8E09c1fcAcE58242674964
       - START_BLOCK=0
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};

@@ -11,6 +11,7 @@ public class SelectDto
     public IEnumerable<string>? Columns { get; set; }
     public IEnumerable<IFilterPredicateDto>? Filter { get; set; }
     public IEnumerable<OrderByDto>? Order { get; set; }
+    public int? Limit { get; set; }
     public bool Distinct { get; set; }
 }
 
@@ -39,6 +40,9 @@ public class SelectDtoConverter : JsonConverter<SelectDto>
                     break;
                 case "table":
                     dto.Table = property.Value.GetString();
+                    break;
+                case "limit":
+                    dto.Limit = property.Value.GetInt32();
                     break;
                 case "columns":
                     dto.Columns =
@@ -78,6 +82,11 @@ public class SelectDtoConverter : JsonConverter<SelectDto>
         if (value.Table != null)
         {
             writer.WriteString("table", value.Table);
+        }
+
+        if (value.Limit != null)
+        {
+            writer.WriteNumber("limit", value.Limit.Value);
         }
 
         if (value.Columns != null)

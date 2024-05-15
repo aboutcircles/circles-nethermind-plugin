@@ -76,6 +76,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 new FilterPredicate("to", FilterType.Equals, circlesAccount.ToString(true, false))
             }
             , Array.Empty<OrderBy>()
+            , null
             , true);
 
         var sql = select.ToSql(_indexerContext.Database);
