@@ -97,9 +97,113 @@ Since a new spaceneth node is empty except for the genesis block, you need to de
 git submodule update --init --recursive
 ```
 
+To deploy the contracts, we add a script to the Circles contracts repository that deploys the contracts to the spaceneth
+node.
+
+```bash
+# Add the deploy script to the Circles contracts repository
+./add-deploy-script-tp-v2-repo.sh
+```
+
+As a last step, we need to replace the `tload` and `tstore` based reentrancy guards with a more classic approach.
+Spaceneth does not support these instructions.
+
+1. Open `circles-contracts-v2/src/hub/Hub.sol`
+2. Replace this modifier:
+   ```solidity
+   modifier nonReentrant(uint8 _code) {
+       assembly {
+           if tload(0) { revert(0, 0) }
+           tstore(0, 1)
+       }
+       _;
+       assembly {
+           tstore(0, 0)
+       }
+   }
+   ```
+
+   with this modifier:
+
+   ```solidity
+   bool private _reentrancyGuard;
+   modifier nonReentrant(uint8 _code) {
+       if (_reentrancyGuard) {
+           revert CirclesReentrancyGuard(_code);
+       }
+       _reentrancyGuard = true;
+       _;
+       _reentrancyGuard = false;
+   }
+   ```
+3. Open `circles-contracts-v2/foundry.toml`
+4. Remove this line:
+   ```toml
+   evm_version = 'cancun'
+   ```
+
+
+Now you can deploy the contracts to the spaceneth node.
+
 ```bash
 # Deploy the contracts
 npm install && ./deploy.sh
+```
+
+#### Blockscout
+
+You can access the blockscout instance at `http://localhost:4000`.
+
+#### Get a funded account
+
+You can get a funded account private key by running:
+
+```bash
+npm install
+node createFundedAccount.js
+```
+
+#### Manipulate time
+
+You can fast-forward the time by running:
+
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"fake_time": "+1d x1"}' http://localhost:5000/set_time
+```
+
+**Explanation:**
+
+```json
+{
+  "fake_time": "+1d x1"
+}
+```
+
+`+1d` means to offset the current time by 1 day. `x1` means that the time will pass as real time. If you want to
+fast-forward the time, you can increase the number of `x` (e.g. `x10`).
+
+_NOTE: This will restart the nethermind node._
+
+#### Reset the spaceneth node
+
+If you want to start over, you can reset the spaceneth node by running:
+
+```bash
+# Stop the stack
+docker compose -f docker-compose.spaceneth.yml down
+``` 
+
+```bash
+# Delete all persisted data
+sudo rm -rf .state/nethermind-spaceneth
+sudo rm -rf .state/postgres-spaceneth
+sudo rm -rf .state/postgres2-spaceneth
+sudo rm -rf .state/redis-spaceneth
+```
+
+```bash
+# Start the stack again
+docker compose -f docker-compose.spaceneth.yml up
 ```
 
 ## Circles RPC methods
@@ -215,7 +319,7 @@ following properties:
 * `distinct` - If set to `true`, only distinct rows are returned.
 * `limit` - The maximum number of rows to return (defaults to max. 1000).
 
-*There is no default order, so make sure to always add sensible order columns.*
+_NOTE: There is no default order, so make sure to always add sensible order columns._
 
 #### Available namespaces, tables and columns
 
@@ -270,7 +374,7 @@ Namespaces and tables:
 
 #### Pagination
 
-You can use the combination of `blockNumber`, `transactionIndex` and `logIndex` 
+You can use the combination of `blockNumber`, `transactionIndex` and `logIndex`
 (+ `batchIndex` in the case of batch events) together with a `limit` to paginate through the results.
 
 #### Example
