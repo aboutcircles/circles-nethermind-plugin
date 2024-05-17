@@ -1,6 +1,5 @@
 using System.Threading.Tasks.Dataflow;
 using Circles.Index.Common;
-using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -16,7 +15,7 @@ public class ImportFlow(
 {
     private static readonly IndexPerformanceMetrics Metrics = new();
 
-    public readonly InsertBuffer<Block> BlockBuffer = new();
+    private readonly InsertBuffer<Block> _blockBuffer = new();
 
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
@@ -127,9 +126,9 @@ public class ImportFlow(
 
     private async Task AddBlock(Block block)
     {
-        BlockBuffer.Add(block);
+        _blockBuffer.Add(block);
 
-        if (BlockBuffer.Length >= context.Settings.BlockBufferSize)
+        if (_blockBuffer.Length >= context.Settings.BlockBufferSize)
         {
             await FlushBlocks();
         }
@@ -137,7 +136,7 @@ public class ImportFlow(
 
     public async Task FlushBlocks()
     {
-        var blocks = BlockBuffer.TakeSnapshot();
+        var blocks = _blockBuffer.TakeSnapshot();
 
         var map = new SchemaPropertyMap();
         map.Add(("System", "Block"), new Dictionary<string, Func<Block, object?>>

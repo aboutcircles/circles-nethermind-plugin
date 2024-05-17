@@ -137,8 +137,8 @@ public class LogParser(Address v2HubAddress) : ILogParser
         string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 id = new UInt256(log.Topics[4].Bytes, true);
-        UInt256 value = new UInt256(log.Data, true);
+        UInt256 id = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 value = new UInt256(log.Data.Slice(32), true);
 
         return new TransferSingle(
             block.Number,
@@ -186,7 +186,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
         int logIndex)
     {
         string orgAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string orgName = Encoding.UTF8.GetString(log.Data);
+        string orgName = LogDataStringDecoder.ReadStrings(log.Data)[0];
 
         return new RegisterOrganization(
             block.Number,
@@ -204,13 +204,9 @@ public class LogParser(Address v2HubAddress) : ILogParser
         string mintPolicy = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string treasury = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        int nameOffset = (int)new BigInteger(log.Data.Slice(0, 32).ToArray());
-        int nameLength = (int)new BigInteger(log.Data.Slice(nameOffset, 32).ToArray());
-        string groupName = Encoding.UTF8.GetString(log.Data.Slice(nameOffset + 32, nameLength));
-
-        int symbolOffset = (int)new BigInteger(log.Data.Slice(32, 32).ToArray());
-        int symbolLength = (int)new BigInteger(log.Data.Slice(symbolOffset, 32).ToArray());
-        string groupSymbol = Encoding.UTF8.GetString(log.Data.Slice(symbolOffset + 32, symbolLength));
+        string[] stringData = LogDataStringDecoder.ReadStrings(log.Data);
+        string groupName = stringData[0];
+        string groupSymbol = stringData[1];
 
         return new RegisterGroup(
             block.Number,

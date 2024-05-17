@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
 
@@ -178,9 +179,9 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "human", e => e.Human },
-                { "amount", e => e.Amount },
-                { "startPeriod", e => e.StartPeriod },
-                { "endPeriod", e => e.EndPeriod }
+                { "amount", e => (BigInteger)e.Amount },
+                { "startPeriod", e => (BigInteger)e.StartPeriod },
+                { "endPeriod", e => (BigInteger)e.EndPeriod }
             });
 
         EventDtoTableMap.Add<RegisterGroup>(("CrcV2", "RegisterGroup"));
@@ -247,7 +248,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "truster", e => e.Truster },
                 { "trustee", e => e.Trustee },
-                { "expiryTime", e => e.ExpiryTime }
+                { "expiryTime", e => (BigInteger)e.ExpiryTime }
             });
 
         EventDtoTableMap.Add<ApprovalForAll>(("CrcV2", "ApprovalForAll"));
@@ -276,8 +277,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "operator", e => e.Operator },
                 { "from", e => e.From },
                 { "to", e => e.To },
-                { "id", e => e.Id },
-                { "value", e => e.Value }
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value }
             });
 
         EventDtoTableMap.Add<TransferBatch>(("CrcV2", "TransferBatch"));
@@ -292,8 +293,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "operator", e => e.Operator },
                 { "from", e => e.From },
                 { "to", e => e.To },
-                { "id", e => e.Id },
-                { "value", e => e.Value }
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value }
             });
 
         EventDtoTableMap.Add<URI>(("CrcV2", "URI"));
@@ -306,7 +307,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "value", e => e.Value },
-                { "id", e => e.Id }
+                { "id", e => (BigInteger)e.Id }
             });
 
         EventDtoTableMap.Add<DiscountCost>(("CrcV2", "DiscountCost"));
@@ -319,8 +320,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "account", e => e.Account },
-                { "id", e => e.Id },
-                { "discountCost", e => e._DiscountCost }
+                { "id", e => (BigInteger)e.Id },
+                { "discountCost", e => (BigInteger)e._DiscountCost }
             });
     }
 }

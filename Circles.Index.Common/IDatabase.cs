@@ -19,7 +19,6 @@ public interface IDatabaseUtils
     }
 
     IDbDataParameter CreateParameter(string? name, object? value);
-    public object? Convert(object? input, ValueTypes target);
 }
 
 public interface IDatabase : IDatabaseUtils
