@@ -1,5 +1,4 @@
 using Circles.Index.Common;
-using Circles.Index.Data;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 

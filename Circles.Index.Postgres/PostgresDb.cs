@@ -1,9 +1,7 @@
 using System.Data;
-using System.Numerics;
 using System.Text;
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -312,49 +310,6 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         {
             await transaction.RollbackAsync();
             throw;
-        }
-    }
-
-    public object? Convert(object? input, ValueTypes target)
-    {
-        if (input == null)
-        {
-            return null;
-        }
-
-        switch (target)
-        {
-            case ValueTypes.String:
-                return input.ToString() ?? throw new ArgumentNullException(nameof(input));
-            case ValueTypes.Int:
-                return System.Convert.ToInt64(input.ToString());
-            case ValueTypes.BigInt when input is string i:
-                return BigInteger.Parse(i);
-            case ValueTypes.BigInt when input is BigInteger:
-                return input;
-            case ValueTypes.BigInt when input is UInt256:
-            case ValueTypes.BigInt when input is ulong:
-            case ValueTypes.BigInt when input is uint:
-            case ValueTypes.BigInt when input is long:
-            case ValueTypes.BigInt when input is int:
-                return (BigInteger)input;
-            case ValueTypes.BigInt:
-                return BigInteger.Parse(input.ToString() ?? throw new ArgumentNullException(nameof(input)));
-            case ValueTypes.Address when input is string i:
-                return i.ToLowerInvariant();
-            case ValueTypes.Address:
-                return input.ToString()?.ToLowerInvariant();
-            case ValueTypes.Boolean when input is bool b:
-                return b;
-            case ValueTypes.Boolean when input is string s:
-                return bool.Parse(s);
-            case ValueTypes.Boolean when input is int i:
-                return i != 0;
-            case ValueTypes.Bytes when input is byte[] b:
-                return b;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(target), target,
-                    $"Cannot convert input {input} (type: {input.GetType().Name}) to target type {target}.");
         }
     }
 }
