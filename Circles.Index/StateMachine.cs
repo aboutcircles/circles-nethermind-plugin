@@ -109,9 +109,16 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState:
-                            await TransitionTo(Errors.Count >= 3
-                                ? State.End
-                                : State.Initial);
+                            if (Errors.Count >= 3)
+                            {
+                                // If we have tried 3 times, give up
+                                await TransitionTo(State.End);
+                                return;
+                            }
+
+                            // Otherwise, wait for a bit before retrying
+                            await Task.Delay(Errors.Count * Errors.Count * 1000, cancellationToken);
+                            await TransitionTo(State.Initial);
                             return;
                         case LeaveState:
                             return;
