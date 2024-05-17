@@ -39,11 +39,6 @@ public class TestDatabase : IDatabaseUtils
     {
         return new TestDbDataParameter(name, value);
     }
-
-    public object? Convert(object? input, ValueTypes target)
-    {
-        throw new NotImplementedException();
-    }
 }
 
 public class TestDbDataParameter : IDbDataParameter
