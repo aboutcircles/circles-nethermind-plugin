@@ -19,7 +19,6 @@ public class DatabaseSchema : IDatabaseSchema
         "event CidV0(address indexed avatar, bytes32 cidV0Digest)");
 
     public static readonly EventSchema Avatars = new ("V_CrcV2", "Avatars", new byte[32], [
-
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
