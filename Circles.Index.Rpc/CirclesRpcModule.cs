@@ -103,6 +103,12 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         Select select = query.ToModel();
         var parameterizedSql = select.ToSql(_indexerContext.Database);
+        
+        Console.WriteLine("circles_query: parameterizedSql:");
+        Console.WriteLine(parameterizedSql.Sql);
+        Console.WriteLine(string.Join(", ", parameterizedSql.Parameters.Select(p => $" * {p.ParameterName}={p.Value}")));
+        
+        
         var result = _indexerContext.Database.Select(parameterizedSql);
 
         // Log the .net types of the columns of the first row of the result set:
