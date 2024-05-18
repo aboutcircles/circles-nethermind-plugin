@@ -59,45 +59,6 @@ curl -X POST --data '{
 }
 ```
 
-### circles_getTrustRelations
-
-This method allows you to query all (v1) trust relations of an address.
-
-#### Request:
-
-```shell
-curl -X POST --data '{
-"jsonrpc":"2.0",
-"method":"circles_getTrustRelations",
-"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
-"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
-````
-
-##### Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "user": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-    "trusts": {
-      "0xb7c83b840e146f9768a1fdc4ce46c8ad17594720": 100,
-      "0x5fd8f7464c050ec0fb34223aab544e13510812fa": 50,
-      "0x83d296691be2c9d7be14378ecbf2d95c3ddb0200": 100,
-      "0x70551a5862ef2c9baf81596f67be723283b6ccd0": 100
-    },
-    "trustedBy": {
-      "0x965090908dcd0b134802f35c9138a7e987b5182f": 100,
-      "0x5ce3d708a2b1e8371530754c930fc9b5bad27ab7": 100,
-      "0x6fae976eb90127b895ceddf8311864cda42ac6ac": 100,
-      "0x3e93a305d5cd96202c12084414a6622fa7a36c3d": 100
-    }
-  },
-  "id": 1
-}
-```
-
 ### circles_query
 
 ##### Get the transaction history of a wallet
@@ -210,7 +171,6 @@ curl -X POST --data '{
 }
 ```
 
-
 ##### Get a list of Circles users
 
 Query latest 10 Circles V2 registrations:
@@ -259,6 +219,7 @@ curl -X POST --data '{
       "logIndex",
       "transactionHash",
       "type",
+      "invitedBy",
       "avatar",
       "tokenId",
       "name",
@@ -266,15 +227,29 @@ curl -X POST --data '{
     ],
     "Rows": [
       [
-        9817945,
-        1715900445,
+        9819751,
+        1715909570,
         0,
         1,
-        "0x4a72ef04c38d4f4759534fc4666e1cd5e3338ed7dbfb938a58155efe676e895d",
+        "0x408796aed78e7743b0c4851a003dfb343987a206ddb9bab9ee8d87f6f34c4224",
         "group",
-        "0xd1911ecd477a08df036da356006cf75dbded32b3",
-        "0xd1911ecd477a08df036da356006cf75dbded32b3",
-        "Peter Group",
+        null,
+        "0xabab7fccac344519639449f843d966b24730836d",
+        "0xabab7fccac344519639449f843d966b24730836d",
+        "Hans Peter Meier Wurstwaren GmbH",
+        "0x0e7071c59df3b9454d1d18a15270aa36d54f89606a576dc621757afd44ad1d2e"
+      ],
+      [
+        9814715,
+        1715884250,
+        0,
+        1,
+        "0x562dc2ba8edadecdffccecd4510a75135399af05878b258e367ec2bd1150a4c8",
+        "organization",
+        null,
+        "0xfe7b2837dac1848248cbfb0f683d8e178050ba1b",
+        null,
+        "Peter",
         "0x0e7071c59df3b9454d1d18a15270aa36d54f89606a576dc621757afd44ad1d2e"
       ],
       [
@@ -284,6 +259,7 @@ curl -X POST --data '{
         2,
         "0x1ebcefbea5db55a1156a42bad494af2baebd4943c8dd73f943333f2cee39b3aa",
         "human",
+        null,
         "0xb3f0882a345dfbdd2b98c833b9d603d42e18fe21",
         "0xb3f0882a345dfbdd2b98c833b9d603d42e18fe21",
         null,
@@ -293,4 +269,57 @@ curl -X POST --data '{
   },
   "id": 1
 }
+```
+
+##### Get the trust relations between avatars
+
+Find all incoming and outgoing trust relations of a Circles V2 avatar:
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_CrcV2",
+      "Table": "TrustRelations",
+      "Columns": [],
+      "Filter": [
+        {
+          "Type": "Conjunction",
+          "ConjunctionType": "Or",
+          "Predicates": [
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equals",
+                "Column": "truster",
+                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
+              },
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equals",
+                "Column": "trustee",
+                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
+              }
+          ]
+        }
+      ],
+      "Order": [
+        {
+          "Column": "blockNumber",
+          "SortOrder": "DESC"
+        },
+        {
+          "Column": "transactionIndex",
+          "SortOrder": "DESC"
+        },
+        {
+          "Column": "logIndex",
+          "SortOrder": "DESC"
+        }
+      ]
+    }
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
 ```

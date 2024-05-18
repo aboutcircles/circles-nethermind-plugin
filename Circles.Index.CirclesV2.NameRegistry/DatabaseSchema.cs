@@ -18,13 +18,14 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema CidV0 = EventSchema.FromSolidity("CrcV2",
         "event CidV0(address indexed avatar, bytes32 cidV0Digest)");
 
-    public static readonly EventSchema Avatars = new ("V_CrcV2", "Avatars", new byte[32], [
+    public static readonly EventSchema Avatars = new("V_CrcV2", "Avatars", new byte[32], [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
         new("logIndex", ValueTypes.Int, true),
         new("transactionHash", ValueTypes.String, true),
         new("type", ValueTypes.String, false, false),
+        new("invitedBy", ValueTypes.String, false, false),
         new("avatar", ValueTypes.String, false, false),
         new("tokenId", ValueTypes.String, false, false),
         new("name", ValueTypes.String, false, false),
@@ -40,6 +41,7 @@ public class DatabaseSchema : IDatabaseSchema
                        ""logIndex"", 
                        ""transactionHash"", 
                        'organization' as ""type"",
+                       null as ""invitedBy"",
                        ""organization"" as ""avatar"",
                        null as ""tokenId"",
                        ""name""
@@ -51,6 +53,7 @@ public class DatabaseSchema : IDatabaseSchema
                        ""logIndex"",
                        ""transactionHash"",
                        'group' as ""type"",
+                       null as ""invitedBy"",
                        ""group"" as ""avatar"",
                        ""group"" as ""tokenId"",
                        ""name""
@@ -62,6 +65,7 @@ public class DatabaseSchema : IDatabaseSchema
                        ""logIndex"", 
                        ""transactionHash"",
                        'human' as ""type"",
+                       null as ""invitedBy"",
                        ""avatar"",
                        ""avatar"" as ""tokenId"",
                        null as ""name""
@@ -73,6 +77,7 @@ public class DatabaseSchema : IDatabaseSchema
                        ""logIndex"",
                        ""transactionHash"",
                        'human' as ""type"",
+                       ""inviter"" as ""invitedBy"",
                        ""invited"",
                        ""invited"" as ""tokenId"",
                        null as ""name""
@@ -140,7 +145,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "avatar", e => e.Avatar },
                 { "metadataDigest", e => e.MetadataDigest }
             });
-        
+
         EventDtoTableMap.Add<CidV0>(("CrcV2", "CidV0"));
         SchemaPropertyMap.Add(("CrcV2", "CidV0"),
             new Dictionary<string, Func<CidV0, object?>>

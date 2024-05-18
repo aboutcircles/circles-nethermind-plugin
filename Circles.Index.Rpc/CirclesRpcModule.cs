@@ -65,7 +65,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var incomingTrusts = new List<CirclesTrustRelation>();
         var outgoingTrusts = new List<CirclesTrustRelation>();
 
-        foreach (var resultRow in result.Rows)
+        foreach (var resultRow in result.rows)
         {
             var user = new Address(resultRow[0].ToString() ?? throw new Exception("A user in the result set is null"));
             var canSendTo = new Address(resultRow[1].ToString() ??
@@ -112,11 +112,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         var result = _indexerContext.Database.Select(parameterizedSql);
 
         // Log the .net types of the columns of the first row of the result set:
-        foreach (var resultRow in result.Rows)
+        foreach (var resultRow in result.rows)
         {
             for (int colIdx = 0; colIdx < resultRow.Length; colIdx++)
             {
-                var colName = result.Columns[colIdx];
+                var colName = result.columns[colIdx];
                 var colValue = resultRow[colIdx];
                 
                 _pluginLogger.Info($"Column '{colName}' is of type '{colValue?.GetType().Name ?? "null"}'");
@@ -147,7 +147,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var sql = select.ToSql(_indexerContext.Database);
         return _indexerContext.Database
             .Select(sql)
-            .Rows
+            .rows
             .Select(o => new Address(o[0].ToString()
                                      ?? throw new Exception("A token address in the result set is null"))
             );

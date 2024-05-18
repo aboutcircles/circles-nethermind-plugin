@@ -173,6 +173,46 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static EventSchema TrustRelations = new("V_CrcV2", "TrustRelations", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("batchIndex", ValueTypes.Int, true, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("trustee", ValueTypes.Address, true),
+        new("truster", ValueTypes.Address, true),
+        new("expiryTime", ValueTypes.BigInt, true),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+        create or replace view ""V_CrcV2_TrustRelations"" as
+            select ""blockNumber"",
+                   ""timestamp"",
+                   ""transactionIndex"",
+                   ""logIndex"",
+                   ""transactionHash"",
+                   ""trustee"",
+                   ""truster"",
+                   ""expiryTime""
+            from (
+                     select ""blockNumber"",
+                            ""timestamp"",
+                            ""transactionIndex"",
+                            ""logIndex"",
+                            ""transactionHash"",
+                            ""truster"",
+                            ""trustee"",
+                            ""expiryTime"",
+                            row_number() over (partition by ""truster"", ""trustee"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as ""rn""
+                     from ""CrcV2_Trust""
+                 ) t
+            where ""rn"" = 1
+              and ""expiryTime"" > (select max(""timestamp"") from ""System_Block"")
+            order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc;    
+        ")
+    };
+
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
@@ -228,6 +268,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV2", "Transfers"),
                 TransfersView
+            },
+            {
+                ("V_CrcV2", "TrustRelations"),
+                TrustRelations
             }
         };
 

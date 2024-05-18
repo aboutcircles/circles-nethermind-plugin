@@ -6,8 +6,8 @@ namespace Circles.Index.Common;
 
 [JsonConverter(typeof(DatabaseQueryResultConverter))]
 public record DatabaseQueryResult(
-    string[] Columns,
-    IEnumerable<object?[]> Rows);
+    string[] columns,
+    IEnumerable<object?[]> rows);
 
 public class DatabaseQueryResultConverter : JsonConverter<DatabaseQueryResult>
 {
@@ -22,11 +22,11 @@ public class DatabaseQueryResultConverter : JsonConverter<DatabaseQueryResult>
         writer.WriteStartObject();
 
         writer.WritePropertyName("Columns");
-        JsonSerializer.Serialize(writer, value.Columns, options);
+        JsonSerializer.Serialize(writer, value.columns, options);
 
         writer.WritePropertyName("Rows");
         writer.WriteStartArray();
-        foreach (var row in value.Rows)
+        foreach (var row in value.rows)
         {
             writer.WriteStartArray();
             foreach (var item in row)
