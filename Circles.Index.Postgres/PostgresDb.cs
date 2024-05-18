@@ -122,38 +122,50 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
     private string GetDdl(EventSchema @event)
     {
         StringBuilder ddlSql = new StringBuilder();
-        ddlSql.AppendLine($"CREATE TABLE IF NOT EXISTS \"{@event.Namespace}_{@event.Table}\" (");
 
-        List<string> columnDefinitions = new List<string>();
-
-        foreach (var column in @event.Columns)
+        if (!@event.Namespace.StartsWith("V_"))
         {
-            string columnType = GetSqlType(column.Type);
-            string columnName = column.Column;
-            string columnDefinition = $"\"{columnName}\" {columnType}";
+            ddlSql.AppendLine($"CREATE TABLE IF NOT EXISTS \"{@event.Namespace}_{@event.Table}\" (");
 
-            columnDefinitions.Add(columnDefinition);
-        }
+            List<string> columnDefinitions = new List<string>();
 
-        ddlSql.AppendLine(string.Join(",\n", columnDefinitions));
-        ddlSql.AppendLine(");");
-        ddlSql.AppendLine();
-
-        // Generate index creation statements
-        var indexedColumns = @event.Columns
-            .Where(column => column.IsIndexed);
-
-        foreach (var column in indexedColumns)
-        {
-            if (@event.Namespace.StartsWith("V_"))
+            foreach (var column in @event.Columns)
             {
-                // Dirty way to skip indexes and primary keys for views
-                continue;
+                string columnType = GetSqlType(column.Type);
+                string columnName = column.Column;
+                string columnDefinition = $"\"{columnName}\" {columnType}";
+
+                columnDefinitions.Add(columnDefinition);
             }
 
-            string indexName = $"idx_{@event.Namespace}_{@event.Table}_{column.Column}";
-            ddlSql.AppendLine(
-                $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON \"{@event.Namespace}_{@event.Table}\" (\"{column.Column}\");");
+            ddlSql.AppendLine(string.Join(",\n", columnDefinitions));
+            ddlSql.AppendLine(");");
+            ddlSql.AppendLine();
+
+            // Generate index creation statements
+            var indexedColumns = @event.Columns
+                .Where(column => column.IsIndexed);
+
+            foreach (var column in indexedColumns)
+            {
+                if (@event.Namespace.StartsWith("V_"))
+                {
+                    // Dirty way to skip indexes and primary keys for views
+                    continue;
+                }
+
+                string indexName = $"idx_{@event.Namespace}_{@event.Table}_{column.Column}";
+                ddlSql.AppendLine(
+                    $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON \"{@event.Namespace}_{@event.Table}\" (\"{column.Column}\");");
+            }
+        }
+
+        // If the event schema has a SqlMigrationItem, execute it
+        if (@event.SqlMigrationItem != null)
+        {
+            ddlSql.AppendLine();
+            ddlSql.AppendLine(@event.SqlMigrationItem.Sql);
+            ddlSql.AppendLine(";"); // An additional semicolon doesn't hurt
         }
 
         return ddlSql.ToString();

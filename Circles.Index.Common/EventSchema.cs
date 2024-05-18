@@ -7,6 +7,8 @@ public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, b
 
 public class EventSchema(string @namespace, string table, byte[] topic, List<EventFieldSchema> columns)
 {
+    public SqlMigrationItem? SqlMigrationItem { get; set; }
+
     public string Namespace { get; } = @namespace;
     public byte[] Topic { get; } = topic;
     public string Table { get; } = table;

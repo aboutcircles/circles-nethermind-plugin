@@ -114,7 +114,64 @@ public class DatabaseSchema : IDatabaseSchema
             new("toAddress", ValueTypes.Address, true),
             new("id", ValueTypes.BigInt, true),
             new("value", ValueTypes.BigInt, false)
-        ]);
+        ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+            create or replace view ""V_CrcV2_Transfers"" (
+                ""blockNumber""
+                , ""timestamp""
+                , ""transactionIndex""
+                , ""logIndex""
+                , ""batchIndex""
+                , ""transactionHash""
+                , ""operator""
+                , ""from""
+                , ""to""
+                , ""id""
+                , ""value""
+            ) as
+                WITH ""allTransfers"" AS (
+                    SELECT ""CrcV2_TransferSingle"".""blockNumber"",
+                           ""CrcV2_TransferSingle"".""timestamp"",
+                           ""CrcV2_TransferSingle"".""transactionIndex"",
+                           ""CrcV2_TransferSingle"".""logIndex"",
+                           0 AS ""batchIndex"",
+                           ""CrcV2_TransferSingle"".""transactionHash"",
+                           ""CrcV2_TransferSingle"".operator,
+                           ""CrcV2_TransferSingle"".""from"",
+                           ""CrcV2_TransferSingle"".""to"",
+                           ""CrcV2_TransferSingle"".""id"",
+                           ""CrcV2_TransferSingle"".""value""
+                    FROM ""CrcV2_TransferSingle""
+                    UNION ALL
+                    SELECT ""CrcV2_TransferBatch"".""blockNumber"",
+                           ""CrcV2_TransferBatch"".""timestamp"",
+                           ""CrcV2_TransferBatch"".""transactionIndex"",
+                           ""CrcV2_TransferBatch"".""logIndex"",
+                           ""CrcV2_TransferBatch"".""batchIndex"",
+                           ""CrcV2_TransferBatch"".""transactionHash"",
+                           ""CrcV2_TransferBatch"".""operator"",
+                           ""CrcV2_TransferBatch"".""fromAddress"",
+                           ""CrcV2_TransferBatch"".""toAddress"",
+                           ""CrcV2_TransferBatch"".""id"",
+                           ""CrcV2_TransferBatch"".""value""
+                    FROM ""CrcV2_TransferBatch""
+                )
+                SELECT ""blockNumber"",
+                       ""timestamp"",
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       ""batchIndex"",
+                       ""transactionHash"",
+                       ""operator"",
+                       ""from"",
+                       ""to"",
+                       ""id"",
+                       ""value""
+                FROM ""allTransfers""
+                ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC;
+        ")
+    };
 
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
