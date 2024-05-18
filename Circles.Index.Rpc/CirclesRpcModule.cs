@@ -16,17 +16,13 @@ namespace Circles.Index.Rpc;
 public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly ILogger _pluginLogger;
-
     private readonly Context _indexerContext;
-    // private readonly IJsonRpcConfig? _jsonRpcConfig;
-    // private readonly TimeSpan _cancellationTokenTimeout;
 
     public CirclesRpcModule(Context indexerContext)
     {
         ILogger baseLogger = indexerContext.NethermindApi.LogManager.GetClassLogger();
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
         _indexerContext = indexerContext;
-        // _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
     }
 
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
@@ -36,6 +32,61 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         UInt256 totalBalance = TotalBalance(rentedEthRpcModule.RpcModule!, address);
         return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
+    }
+
+    public Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address)
+    {
+        var sql = @"
+        select ""user"",
+               ""canSendTo"",
+               ""limit""
+        from (
+                 select ""blockNumber"",
+                        ""transactionIndex"",
+                        ""logIndex"",
+                        ""user"",
+                        ""canSendTo"",
+                        ""limit"",
+                        row_number() over (partition by ""user"", ""canSendTo"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as rn
+                 from ""CrcV1_Trust""
+             ) t
+        where rn = 1
+          and (""user"" = @address
+           or ""canSendTo"" = @address)
+        ";
+
+        var parameterizedSql = new ParameterizedSql(sql, new[]
+        {
+            _indexerContext.Database.CreateParameter("address", address.ToString(true, false))
+        });
+
+        var result = _indexerContext.Database.Select(parameterizedSql);
+        
+        var incomingTrusts = new List<CirclesTrustRelation>();
+        var outgoingTrusts = new List<CirclesTrustRelation>();
+        
+        Console.WriteLine($"result.Rows.Count: {result.Rows.Count()}");
+        
+        foreach (var resultRow in result.Rows)
+        {
+            var user = new Address(resultRow[0].ToString() ?? throw new Exception("A user in the result set is null"));
+            var canSendTo = new Address(resultRow[1].ToString() ??
+                                        throw new Exception("A canSendTo in the result set is null"));
+            var limit = int.Parse(resultRow[2].ToString() ?? throw new Exception("A limit in the result set is null"));
+
+            if (user == address)
+            {
+                // user is the sender
+                outgoingTrusts.Add(new CirclesTrustRelation(canSendTo, limit));
+            }
+            else
+            {
+                // user is the receiver
+                incomingTrusts.Add(new CirclesTrustRelation(user, limit));
+            }
+        }
+        var trustRelations = new CirclesTrustRelations(address, outgoingTrusts.ToArray(), incomingTrusts.ToArray());
+        return Task.FromResult(ResultWrapper<CirclesTrustRelations>.Success(trustRelations));
     }
 
     public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)

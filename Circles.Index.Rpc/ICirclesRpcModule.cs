@@ -10,6 +10,10 @@ namespace Circles.Index.Rpc;
 
 public record CirclesTokenBalance(Address Token, string Balance);
 
+public record CirclesTrustRelation(Address User, int limit);
+
+public record CirclesTrustRelations(Address User, CirclesTrustRelation[] Trusts, CirclesTrustRelation[] TrustedBy);
+
 #endregion
 
 [RpcModule("Circles")]
@@ -17,6 +21,10 @@ public interface ICirclesRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Gets the Circles balance of the specified address", IsImplemented = true)]
     Task<ResultWrapper<string>> circles_getTotalBalance(Address address);
+
+    [JsonRpcMethod(Description = "This method allows you to query all (v1) trust relations of an address",
+        IsImplemented = true)]
+    Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address);
 
     [JsonRpcMethod(Description = "Gets the balance of each Circles token the specified address holds",
         IsImplemented = true)]
