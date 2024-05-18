@@ -93,7 +93,23 @@ public class DatabaseSchema : IDatabaseSchema
             new("logIndex", ValueTypes.Int, true),
             new("batchIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
-            new("operatorAddress", ValueTypes.Address, true),
+            new("operator", ValueTypes.Address, true),
+            new("fromAddress", ValueTypes.Address, true),
+            new("toAddress", ValueTypes.Address, true),
+            new("id", ValueTypes.BigInt, true),
+            new("value", ValueTypes.BigInt, false)
+        ]);
+
+    public static readonly EventSchema TransfersView = new("V_CrcV2", "Transfers",
+        new byte[32],
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("batchIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("operator", ValueTypes.Address, true),
             new("fromAddress", ValueTypes.Address, true),
             new("toAddress", ValueTypes.Address, true),
             new("id", ValueTypes.BigInt, true),
@@ -151,6 +167,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "DiscountCost"),
                 DiscountCost
+            },
+            {
+                ("V_CrcV2", "Transfers"),
+                TransfersView
             }
         };
 
@@ -289,6 +309,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "timestamp", e => e.Timestamp },
                 { "transactionIndex", e => e.TransactionIndex },
                 { "logIndex", e => e.LogIndex },
+                { "batchIndex", e => e.BatchIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "operator", e => e.Operator },
                 { "from", e => e.From },

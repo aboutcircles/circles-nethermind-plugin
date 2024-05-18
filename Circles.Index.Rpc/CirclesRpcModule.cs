@@ -61,12 +61,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         });
 
         var result = _indexerContext.Database.Select(parameterizedSql);
-        
+
         var incomingTrusts = new List<CirclesTrustRelation>();
         var outgoingTrusts = new List<CirclesTrustRelation>();
-        
-        Console.WriteLine($"result.Rows.Count: {result.Rows.Count()}");
-        
+
         foreach (var resultRow in result.Rows)
         {
             var user = new Address(resultRow[0].ToString() ?? throw new Exception("A user in the result set is null"));
@@ -85,6 +83,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 incomingTrusts.Add(new CirclesTrustRelation(user, limit));
             }
         }
+
         var trustRelations = new CirclesTrustRelations(address, outgoingTrusts.ToArray(), incomingTrusts.ToArray());
         return Task.FromResult(ResultWrapper<CirclesTrustRelations>.Success(trustRelations));
     }
@@ -106,13 +105,21 @@ public class CirclesRpcModule : ICirclesRpcModule
         var parameterizedSql = select.ToSql(_indexerContext.Database);
         var result = _indexerContext.Database.Select(parameterizedSql);
 
-        return ResultWrapper<DatabaseQueryResult>.Success(result);
-    }
+        // Log the .net types of the columns of the first row of the result set:
+        foreach (var resultRow in result.Rows)
+        {
+            for (int colIdx = 0; colIdx < resultRow.Length; colIdx++)
+            {
+                var colName = result.Columns[colIdx];
+                var colValue = resultRow[colIdx];
+                
+                _pluginLogger.Info($"Column '{colName}' is of type '{colValue?.GetType().Name ?? "null"}'");
+            }
 
-    public ResultWrapper<string> circles_computeTransfer(string from, string to, string amount)
-    {
-        // string result = LibPathfinder.ffi_compute_transfer(from, to, amount);
-        return ResultWrapper<string>.Success("");
+            break;
+        }
+
+        return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
     #region private methods

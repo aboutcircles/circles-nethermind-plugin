@@ -218,9 +218,9 @@ This method allows you to query the total Circles (v1) holdings of an address.
 curl -X POST --data '{
 "jsonrpc":"2.0",
 "method":"circles_getTotalBalance",
-"params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
 "id":1
-}' -H "Content-Type: application/json" https://circles-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" http://localhost:8545/
 ````
 
 ##### Response:
@@ -243,9 +243,9 @@ This method allows you to query all individual Circles (v1) holdings of an addre
 curl -X POST --data '{
 "jsonrpc":"2.0",
 "method":"circles_getTokenBalances",
-"params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
 "id":1
-}' -H "Content-Type: application/json" httpS://circles-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" http://localhost:8545/
 ```
 
 ##### Response:
@@ -277,9 +277,9 @@ This method allows you to query all (v1) trust relations of an address.
 curl -X POST --data '{
 "jsonrpc":"2.0",
 "method":"circles_getTrustRelations",
-"params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
 "id":1
-}' -H "Content-Type: application/json" https://circles-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" http://localhost:8545/
 ````
 
 ##### Response:
