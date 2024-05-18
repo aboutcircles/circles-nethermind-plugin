@@ -33,8 +33,4 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Queries the data of one Circles index table",
         IsImplemented = true)]
     ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query);
-
-    [JsonRpcMethod(Description = "Calculates a transitive transfer path along the trust relations of a user",
-        IsImplemented = true)]
-    ResultWrapper<string> circles_computeTransfer(string from, string to, string amount);
 }

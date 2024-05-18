@@ -30,7 +30,7 @@ public class FilterPredicateDtoConverter : JsonConverter<IFilterPredicateDto>
 
 public class FilterPredicateArrayConverter : JsonConverter<IFilterPredicateDto[]>
 {
-    public override IFilterPredicateDto[]? Read(ref Utf8JsonReader reader, Type typeToConvert,
+    public override IFilterPredicateDto[] Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
