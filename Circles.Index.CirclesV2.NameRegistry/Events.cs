@@ -21,3 +21,12 @@ public record UpdateMetadataDigest(
     string TransactionHash,
     string Avatar,
     byte[] MetadataDigest) : IIndexEvent;
+
+public record CidV0(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Avatar,
+    byte[] CidV0Digest) : IIndexEvent;

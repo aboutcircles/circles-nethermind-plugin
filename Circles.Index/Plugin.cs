@@ -3,6 +3,7 @@ using Circles.Index.Postgres;
 using Circles.Index.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 
@@ -35,12 +36,20 @@ public class Plugin : INethermindPlugin
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         ILogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
+        
+        // Log all indexed events
+        pluginLogger.Info("Indexing events:");
+        foreach (var databaseSchemaTable in databaseSchema.Tables)
+        {
+            pluginLogger.Info($" * Topic: {databaseSchemaTable.Value.Topic.ToHexString()}; Name: {databaseSchemaTable.Key.Namespace}_{databaseSchemaTable.Key.Table}");
+        }
 
         Settings settings = new();
         pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
         pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
         pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
-        pluginLogger.Info("Start index from: " + settings.StartBlock);
+        pluginLogger.Info("V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
+        // pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         database.Migrate();
@@ -59,7 +68,7 @@ public class Plugin : INethermindPlugin
         [
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
             new CirclesV2.LogParser(settings.CirclesV2HubAddress),
-            new CirclesV2.NameRegistry.LogParser(settings.CirclesV2NameRegistryAddress)
+            new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress)
         ];
 
         _indexerContext = new Context(

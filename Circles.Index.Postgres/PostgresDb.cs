@@ -194,6 +194,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
             ValueTypes.String => NpgsqlDbType.Text,
             ValueTypes.Address => NpgsqlDbType.Text,
             ValueTypes.Boolean => NpgsqlDbType.Boolean,
+            ValueTypes.Bytes => NpgsqlDbType.Bytea,
             _ => throw new ArgumentException("Unsupported type")
         };
     }

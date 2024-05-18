@@ -36,7 +36,8 @@ services:
     environment:
       - V1_HUB_ADDRESS=0xdbf22d4e8962db3b2f1d9ff55be728a887e47710
       - V2_HUB_ADDRESS=0xFFfbD3E62203B888bb8E09c1fcAcE58242674964
-      - START_BLOCK=0
+      - V2_NAME_REGISTRY_ADDRESS=0x0A1D308a39A6dF8972A972E586E4b4b3Dc73520f
+      # - START_BLOCK=0
       - POSTGRES_CONNECTION_STRING=Server=postgres-chiado;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
 
   postgres-chiado:
