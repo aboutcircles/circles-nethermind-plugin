@@ -297,10 +297,10 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
             columnNames[i] = reader.GetName(i);
         }
 
-        var resultRows = new List<object[]>();
-        var row = new object[reader.FieldCount];
+        var resultRows = new List<object?[]>();
         while (reader.Read())
         {
+            var row = new object?[reader.FieldCount];
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
@@ -310,6 +310,10 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
                 else
                 {
                     row[i] = reader.GetValue(i);
+                    if (row[i] is DBNull)
+                    {
+                        row[i] = null;
+                    }
                 }
             }
 
