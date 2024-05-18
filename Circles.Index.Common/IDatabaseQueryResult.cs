@@ -7,7 +7,7 @@ namespace Circles.Index.Common;
 [JsonConverter(typeof(DatabaseQueryResultConverter))]
 public record DatabaseQueryResult(
     string[] Columns,
-    IEnumerable<object[]> Rows);
+    IEnumerable<object?[]> Rows);
 
 public class DatabaseQueryResultConverter : JsonConverter<DatabaseQueryResult>
 {
