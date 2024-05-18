@@ -7,8 +7,9 @@ namespace Circles.Index.CirclesV2.NameRegistry;
 
 public class LogParser(Address nameRegistryAddress) : ILogParser
 {
-    private readonly Hash256 _registerShortNameTopic = new Hash256(DatabaseSchema.RegisterShortName.Topic);
-    private readonly Hash256 _updateMetadataDigestTopic = new Hash256(DatabaseSchema.UpdateMetadataDigest.Topic);
+    private readonly Hash256 _registerShortNameTopic = new(DatabaseSchema.RegisterShortName.Topic);
+    private readonly Hash256 _updateMetadataDigestTopic = new(DatabaseSchema.UpdateMetadataDigest.Topic);
+    private readonly Hash256 _cidV0Topic = new(DatabaseSchema.CidV0.Topic);
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -17,11 +18,14 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             yield break;
         }
 
-        var topic = log.Topics[0];
         if (log.LoggersAddress != nameRegistryAddress)
         {
             yield break;
         }
+
+        Console.WriteLine($"Event from NameRegistry: {log.Topics[0]}");
+
+        var topic = log.Topics[0];
 
         if (topic == _registerShortNameTopic)
         {
@@ -31,6 +35,11 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         if (topic == _updateMetadataDigestTopic)
         {
             yield return UpdateMetadataDigest(block, receipt, log, logIndex);
+        }
+
+        if (topic == _cidV0Topic)
+        {
+            yield return CidV0(block, receipt, log, logIndex);
         }
     }
 
@@ -66,5 +75,19 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             avatar,
             shortName,
             nonce);
+    }
+
+    private CidV0 CidV0(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        return new CidV0(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            avatar,
+            log.Data);
     }
 }

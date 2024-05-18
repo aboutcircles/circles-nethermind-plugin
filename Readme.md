@@ -142,7 +142,6 @@ Spaceneth does not support these instructions.
    evm_version = 'cancun'
    ```
 
-
 Now you can deploy the contracts to the spaceneth node.
 
 ```bash
@@ -358,6 +357,8 @@ Namespaces and tables:
     * `Trust`
     * `UpdateMetadataDigest`
     * `URI`
+* `V_CrcV2`
+    * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
 
 #### Available filter types
 
@@ -379,7 +380,9 @@ You can use the combination of `blockNumber`, `transactionIndex` and `logIndex`
 
 #### Example
 
-Query the last two Circles signups:
+##### Get the transaction history of a wallet
+
+Query the 10 most recent Circles V2 transfers from or to an address showing the most recent first:
 
 ```shell
 curl -X POST --data '{
@@ -388,28 +391,51 @@ curl -X POST --data '{
   "method": "circles_query",
   "params": [
     {
-      "Namespace": "CrcV1",
-      "Table": "Signup",
-      "Limit": 2,
+      "Namespace": "V_CrcV2",
+      "Table": "Transfers",
+      "Limit": 10,
       "Columns": [],
-      "Filter": [],
+      "Filter": [
+        {
+          "Type": "Conjunction",
+          "ConjunctionType": "Or",
+          "Predicates": [
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equals",
+                "Column": "from",
+                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
+              },
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equals",
+                "Column": "to",
+                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
+              }
+          ]
+        }
+      ],
       "Order": [
         {
           "Column": "blockNumber",
-          "SortOrder": "ASC"
+          "SortOrder": "DESC"
         },
         {
           "Column": "transactionIndex",
-          "SortOrder": "ASC"
+          "SortOrder": "DESC"
         },
         {
           "Column": "logIndex",
-          "SortOrder": "ASC"
+          "SortOrder": "DESC"
+        },
+        {
+          "Column": "batchIndex",
+          "SortOrder": "DESC"
         }
       ]
     }
   ]
-}' -H "Content-Type: application/json" https://localhost:8545/
+}' -H "Content-Type: application/json" http://localhost:8545/
 ```
 
 ##### Response:
@@ -418,37 +444,48 @@ curl -X POST --data '{
 {
   "jsonrpc": "2.0",
   "result": {
-    "columns": [
+    "Columns": [
       "blockNumber",
       "timestamp",
       "transactionIndex",
       "logIndex",
+      "batchIndex",
       "transactionHash",
-      "user",
-      "token"
+      "operator",
+      "from",
+      "to",
+      "id",
+      "value"
     ],
-    "rows": [
+    "Rows": [
       [
-        "0x597343",
-        "0x64f5aa5a",
-        "0x0",
-        "0x3",
-        "0xb41462160f73af912b550b27a7ed31e091d5da6c59a6325b367048ea42eef47f",
-        "0x4bc38a9f15508d19299a45b063556ec4bee853ff",
-        "0xcc724001786fcf8414747dd598e8e9383882b6d7"
+        9817761,
+        1715899520,
+        0,
+        0,
+        0,
+        "0x3b3f9cfebdd164bf53cfcb1fe4c163f388712f566576edf6ac1f2c55da95929a",
+        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
+        "0x0000000000000000000000000000000000000000",
+        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
+        "994661466795450363997821247051269595921846891877",
+        "4000000000000000000"
       ],
       [
-        "0x597343",
-        "0x64f5aa5a",
-        "0x0",
-        "0x3",
-        "0xb41462160f73af912b550b27a7ed31e091d5da6c59a6325b367048ea42eef47f",
-        "0x4bc38a9f15508d19299a45b063556ec4bee853ff",
-        "0xcc724001786fcf8414747dd598e8e9383882b6d7"
+        9817761,
+        1715899520,
+        0,
+        0,
+        0,
+        "0x3b3f9cfebdd164bf53cfcb1fe4c163f388712f566576edf6ac1f2c55da95929a",
+        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
+        "0x0000000000000000000000000000000000000000",
+        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
+        "994661466795450363997821247051269595921846891877",
+        "4000000000000000000"
       ]
     ]
   },
   "id": 1
 }
-
 ```

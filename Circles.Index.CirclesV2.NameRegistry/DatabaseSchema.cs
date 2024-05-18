@@ -15,6 +15,9 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema UpdateMetadataDigest = EventSchema.FromSolidity("CrcV2",
         "event UpdateMetadataDigest(address indexed avatar, bytes32 metadataDigest)");
 
+    public static readonly EventSchema CidV0 = EventSchema.FromSolidity("CrcV2",
+        "event CidV0(address indexed avatar, bytes32 cidV0Digest)");
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -25,6 +28,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "UpdateMetadataDigest"),
                 UpdateMetadataDigest
+            },
+            {
+                ("CrcV2", "CidV0"),
+                CidV0
             }
         };
 
@@ -55,6 +62,19 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "avatar", e => e.Avatar },
                 { "metadataDigest", e => e.MetadataDigest }
+            });
+        
+        EventDtoTableMap.Add<CidV0>(("CrcV2", "CidV0"));
+        SchemaPropertyMap.Add(("CrcV2", "CidV0"),
+            new Dictionary<string, Func<CidV0, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "avatar", e => e.Avatar },
+                { "cidV0Digest", e => e.CidV0Digest }
             });
     }
 }
