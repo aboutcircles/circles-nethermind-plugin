@@ -65,7 +65,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var incomingTrusts = new List<CirclesTrustRelation>();
         var outgoingTrusts = new List<CirclesTrustRelation>();
 
-        foreach (var resultRow in result.rows)
+        foreach (var resultRow in result.Rows)
         {
             var user = new Address(resultRow[0].ToString() ?? throw new Exception("A user in the result set is null"));
             var canSendTo = new Address(resultRow[1].ToString() ??
@@ -163,28 +163,19 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         Select select = query.ToModel();
         var parameterizedSql = select.ToSql(_indexerContext.Database);
-
-        Console.WriteLine("circles_query: parameterizedSql:");
-        Console.WriteLine(parameterizedSql.Sql);
-        Console.WriteLine(string.Join(", ",
-            parameterizedSql.Parameters.Select(p => $" * {p.ParameterName}={p.Value}")));
-
-
-        var result = _indexerContext.Database.Select(parameterizedSql);
-
-        // Log the .net types of the columns of the first row of the result set:
-        foreach (var resultRow in result.rows)
+        
+        StringWriter stringWriter = new();
+        stringWriter.WriteLine($"circles_query(SelectDto query):");
+        stringWriter.WriteLine($"  select: {parameterizedSql.Sql}");
+        stringWriter.WriteLine($"  parameters:");
+        foreach (var parameter in parameterizedSql.Parameters)
         {
-            for (int colIdx = 0; colIdx < resultRow.Length; colIdx++)
-            {
-                var colName = result.columns[colIdx];
-                var colValue = resultRow[colIdx];
-
-                _pluginLogger.Info($"Column '{colName}' is of type '{colValue?.GetType().Name ?? "null"}'");
-            }
-
-            break;
+            stringWriter.WriteLine($"    {parameter.ParameterName}: {parameter.Value}");
         }
+        
+        _pluginLogger.Info(stringWriter.ToString());
+        
+        var result = _indexerContext.Database.Select(parameterizedSql);
 
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
@@ -208,7 +199,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var sql = select.ToSql(_indexerContext.Database);
         return _indexerContext.Database
             .Select(sql)
-            .rows
+            .Rows
             .Select(o => new Address(o[0].ToString()
                                      ?? throw new Exception("A token address in the result set is null"))
             );
@@ -305,7 +296,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return _indexerContext.Database
             .Select(sql)
-            .rows
+            .Rows
             .Select(o => UInt256.Parse(o[0]?.ToString()
                                        ?? throw new Exception("A token id in the result set is null"))
             );
