@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
@@ -25,13 +26,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         _indexerContext = indexerContext;
     }
 
-    public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address)
+    public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address, bool asTimeCircles = false)
     {
         using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
         await rentedEthRpcModule.Rent();
 
-        UInt256 totalBalance = TotalBalance(rentedEthRpcModule.RpcModule!, address);
-        return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
+        string totalBalance = TotalBalance(rentedEthRpcModule.RpcModule!, address, asTimeCircles);
+        return ResultWrapper<string>.Success(totalBalance);
     }
 
     public Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address)
@@ -88,27 +89,28 @@ public class CirclesRpcModule : ICirclesRpcModule
         return Task.FromResult(ResultWrapper<CirclesTrustRelations>.Success(trustRelations));
     }
 
-    public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
+    public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address,
+        bool asTimeCircles = false)
     {
         using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
         await rentedEthRpcModule.Rent();
 
         var balances =
-            CirclesTokenBalances(rentedEthRpcModule.RpcModule!, address);
+            CirclesTokenBalances(rentedEthRpcModule.RpcModule!, address, asTimeCircles);
 
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public Task<ResultWrapper<string>> circlesV2_getTotalBalance(Address address)
+    public Task<ResultWrapper<string>> circlesV2_getTotalBalance(Address address, bool asTimeCircles = false)
     {
         using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
         rentedEthRpcModule.Rent().Wait();
 
-        UInt256 totalBalance = TotalBalanceV2(rentedEthRpcModule.RpcModule!, address);
-        return Task.FromResult(ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture)));
+        string totalBalance = TotalBalanceV2(rentedEthRpcModule.RpcModule!, address, asTimeCircles);
+        return Task.FromResult(ResultWrapper<string>.Success(totalBalance));
     }
 
-    private UInt256 TotalBalanceV2(IEthRpcModule rpcModule, Address address)
+    private string TotalBalanceV2(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
     {
         IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(_pluginLogger, address);
 
@@ -142,19 +144,20 @@ public class CirclesRpcModule : ICirclesRpcModule
             totalBalance += tokenBalance;
         }
 
-        return totalBalance;
+        return asTimeCircles
+            ? FormatTimeCircles(totalBalance)
+            : totalBalance.ToString(CultureInfo.InvariantCulture);
     }
 
-    public async Task<ResultWrapper<CirclesTokenBalanceV2[]>> circlesV2_getTokenBalances(Address address)
+    public async Task<ResultWrapper<CirclesTokenBalanceV2[]>> circlesV2_getTokenBalances(Address address,
+        bool asTimeCircles = false)
     {
-        _pluginLogger.Info($"circlesV2_getTokenBalances({address})");
-
         using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
         await rentedEthRpcModule.Rent();
 
         var balances =
             V2CirclesTokenBalances(_pluginLogger, rentedEthRpcModule.RpcModule!, address,
-                _indexerContext.Settings.CirclesV2HubAddress);
+                _indexerContext.Settings.CirclesV2HubAddress, asTimeCircles);
 
         return ResultWrapper<CirclesTokenBalanceV2[]>.Success(balances.ToArray());
     }
@@ -163,7 +166,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         Select select = query.ToModel();
         var parameterizedSql = select.ToSql(_indexerContext.Database);
-        
+
         StringWriter stringWriter = new();
         stringWriter.WriteLine($"circles_query(SelectDto query):");
         stringWriter.WriteLine($"  select: {parameterizedSql.Sql}");
@@ -172,9 +175,9 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             stringWriter.WriteLine($"    {parameter.ParameterName}: {parameter.Value}");
         }
-        
+
         _pluginLogger.Info(stringWriter.ToString());
-        
+
         var result = _indexerContext.Database.Select(parameterizedSql);
 
         return ResultWrapper<DatabaseQueryResult>.Success(result);
@@ -205,9 +208,40 @@ public class CirclesRpcModule : ICirclesRpcModule
             );
     }
 
-    private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address)
+    private IDictionary<string, string> GetTokenOwners(string[] tokenAddresses)
     {
-        IEnumerable<Address> tokens = TokenAddressesForAccount(address);
+        // Construct a query for "V_Crc_Avatars" and select the "avatar" and "tokenId" columns.
+        // Use an IN clause to filter the results by the token addresses.
+        var select = new Select(
+            "V_Crc"
+            , "Avatars"
+            , new[] { "avatar", "tokenId" }
+            , new[]
+            {
+                new FilterPredicate("tokenId", FilterType.In, tokenAddresses.Select(o => o.ToLowerInvariant()))
+            }
+            , Array.Empty<OrderBy>()
+            , null
+            , true);
+
+        var sql = select.ToSql(_indexerContext.Database);
+        var result = _indexerContext.Database.Select(sql);
+
+        var tokenOwners = new Dictionary<string, string>();
+        foreach (var row in result.Rows)
+        {
+            var avatar = row[0].ToString() ?? throw new Exception("An avatar in the result set is null");
+            var tokenId = row[1].ToString() ?? throw new Exception("A tokenId in the result set is null");
+            tokenOwners[tokenId] = avatar;
+        }
+
+        return tokenOwners;
+    }
+
+    private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
+    {
+        IEnumerable<Address> tokens = TokenAddressesForAccount(address).ToArray();
+        IDictionary<string, string> tokenOwners = GetTokenOwners(tokens.Select(o => o.ToString(true, false)).ToArray());
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
@@ -233,14 +267,43 @@ public class CirclesRpcModule : ICirclesRpcModule
             byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
             UInt256 tokenBalance = new(uint256Bytes, true);
 
-            balances.Add(new CirclesTokenBalance(token, tokenBalance.ToString(CultureInfo.InvariantCulture)));
+            if (asTimeCircles)
+            {
+                var tcBalance = ToTimeCircles(tokenBalance);
+                balances.Add(new CirclesTokenBalance(token, tcBalance.ToString(CultureInfo.InvariantCulture),
+                    tokenOwners[token.ToString(true, false)]));
+            }
+            else
+            {
+                balances.Add(new CirclesTokenBalance(token, tokenBalance.ToString(CultureInfo.InvariantCulture),
+                    tokenOwners[token.ToString(true, false)]));
+            }
         }
 
         return balances;
     }
 
+    private static decimal ToTimeCircles(UInt256 tokenBalance)
+    {
+        var balance = FormatTimeCircles(tokenBalance);
+        var tcBalance = TimeCirclesConverter.CrcToTc(DateTime.Now, decimal.Parse(balance));
+
+        return tcBalance;
+    }
+
+    private static string FormatTimeCircles(UInt256 tokenBalance)
+    {
+        var ether = BigInteger.Divide((BigInteger)tokenBalance, BigInteger.Pow(10, 18));
+        var remainder = BigInteger.Remainder((BigInteger)tokenBalance, BigInteger.Pow(10, 18));
+        var remainderString = remainder.ToString("D18").TrimEnd('0');
+
+        return remainderString.Length > 0
+            ? $"{ether}.{remainderString}"
+            : ether.ToString(CultureInfo.InvariantCulture);
+    }
+
     private List<CirclesTokenBalanceV2> V2CirclesTokenBalances(ILogger logger, IEthRpcModule rpcModule, Address address,
-        Address hubAddress)
+        Address hubAddress, bool asTimeCircles)
     {
         IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(logger, address);
 
@@ -272,7 +335,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
             UInt256 tokenBalance = new(uint256Bytes, true);
 
-            balances.Add(new CirclesTokenBalanceV2(tokenId, tokenBalance.ToString(CultureInfo.InvariantCulture)));
+            if (asTimeCircles)
+            {
+                var tcBalance = FormatTimeCircles(tokenBalance);
+                balances.Add(new CirclesTokenBalanceV2(tokenId, tcBalance, tokenId.ToHexString(true)));
+            }
+            else
+            {
+                balances.Add(new CirclesTokenBalanceV2(tokenId, tokenBalance.ToString(CultureInfo.InvariantCulture),
+                    tokenId.ToHexString(true)));
+            }
         }
 
         return balances;
@@ -302,7 +374,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             );
     }
 
-    private UInt256 TotalBalance(IEthRpcModule rpcModule, Address address)
+    private string TotalBalance(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
     {
         IEnumerable<Address> tokens = TokenAddressesForAccount(address);
 
@@ -332,7 +404,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             totalBalance += tokenBalance;
         }
 
-        return totalBalance;
+        return asTimeCircles
+            ? ToTimeCircles(totalBalance).ToString(CultureInfo.InvariantCulture)
+            : totalBalance.ToString(CultureInfo.InvariantCulture);
     }
 
     #endregion
