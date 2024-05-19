@@ -68,7 +68,7 @@ curl -X POST --data '{
 
 ### circles_query
 
-##### Get the transaction history of a wallet
+#### Get the transaction history of a wallet
 
 Query the 10 most recent Circles V2 transfers from or to an address:
 
@@ -178,7 +178,7 @@ curl -X POST --data '{
 }
 ```
 
-##### Get a list of Circles avatars
+#### Get a list of Circles avatars
 
 Query latest 10 Circles V2 registrations:
 
@@ -278,7 +278,7 @@ curl -X POST --data '{
 }
 ```
 
-##### Get the trust relations between avatars
+#### Get the trust relations between avatars
 
 Find all incoming and outgoing trust relations of a Circles V2 avatar:
 
