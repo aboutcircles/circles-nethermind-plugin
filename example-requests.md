@@ -59,6 +59,40 @@ curl -X POST --data '{
 }
 ```
 
+### circlesV2_getTokenBalances
+
+This method allows you to query all individual Circles (v2) holdings of an address.
+
+#### Request:
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circlesV2_getTokenBalances",
+    "params":["0xc661fe4ce147c209ea6ca66a2a2323b69791a463"],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "token": "0x057f55e194b94073d2dfa4e86163c2e897086dc7",
+      "balance": "51429863673363442586"
+    },
+    {
+      "token": "0x09c85ee337f6f7bdd3e5e17213b703c26d9c907d",
+      "balance": "56223473812572527629"
+    }
+  ],
+  "id": 1
+}
+```
+
 ### circles_query
 
 ##### Get the transaction history of a wallet
