@@ -1,5 +1,9 @@
 ## Circles V1 RPC methods
 
+1. [circles_getTotalBalance](#circles_getTotalBalance)
+2. [circles_getTokenBalances](#circles_getTokenBalances)
+3. [circles_getTrustRelations](#circles_getTrustRelations)
+
 ### circles_getTotalBalance
 
 This method allows you to query the total Circles (v1) holdings of an address.

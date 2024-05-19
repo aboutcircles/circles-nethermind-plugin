@@ -1,5 +1,12 @@
 ## Circles V2 RPC methods
 
+1. [circlesV2_getTotalBalance](#circlesV2_getTotalBalance) 
+2. [circlesV2_getTokenBalances](#circlesV2_getTokenBalances)
+3. [circles_query](#circles_query)  
+3.1. [Get the transaction history of a wallet](#get-the-transaction-history-of-a-wallet)    
+3.2. [Get a list of Circles users](#get-a-list-of-circles-users)  
+3.3. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)  
+
 ### circlesV2_getTotalBalance
 
 This method allows you to query the total Circles (v2) holdings of an address.

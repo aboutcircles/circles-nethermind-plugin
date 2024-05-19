@@ -5,6 +5,15 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
 
 ## Quickstart
 
+**Query a node**
+
+If you're just looking for a way to query Circles events, you can check out the query examples in
+the [v1-example-requests.md](v1-example-requests.md) and [v2-example-requests.md](v2-example-requests.md) files.
+
+For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
+
+**Run a node**
+
 The repository contains a docker-compose file to start a Nethermind node with the Circles plugin installed. There are
 configurations for Gnosis Chain, Chiado and Spaceneth (a local testnet).
 
@@ -208,16 +217,17 @@ docker compose -f docker-compose.spaceneth.yml up
 ## Circles RPC methods
 
 The plugin extends the Nethermind JSON-RPC API with additional methods to query Circles events and aggregate values.  
-You can find some concrete examples in the [v1-example-requests.md](v1-example-requests.md)
+
+You can find concrete examples for all rpc-methods in the [v1-example-requests.md](v1-example-requests.md)
 and [v2-example-requests.md](v2-example-requests.md) files.
 
 ### circles_getTotalBalance / circlesV2_getTotalBalance
 
-This method allows you to query the total Circles holdings of an address.
+These methods allow you to query the total Circles (v1/v2) holdings of an address.
 
 ### circles_getTokenBalance / circlesV2_getTokenBalances
 
-This method allows you to query all individual Circles holdings of an address.
+These methods allow you to query all individual Circles (v1/v2) holdings of an address.
 
 ### circles_query
 
@@ -271,6 +281,7 @@ Namespaces and tables:
     * `Trust`
     * `UpdateMetadataDigest`
     * `URI`
+    * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
 * `V_CrcV2`
     * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
     * `Avatars` (view combining `RegisterHuman`, `InviteHuman`, `RegisterGroup` and `RegisterOrganization`)
