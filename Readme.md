@@ -5,6 +5,18 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
 
 ## Quickstart
 
+**Query a node**
+
+If you're just looking for a way to query Circles events, you can check out the query examples:
+
+* [General examples](general-example-requests.md)
+* [Circles v1 examples](v1-example-requests.md)
+* [Circles v2 examples](v2-example-requests.md)
+
+For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
+
+**Run a node**
+
 The repository contains a docker-compose file to start a Nethermind node with the Circles plugin installed. There are
 configurations for Gnosis Chain, Chiado and Spaceneth (a local testnet).
 
@@ -207,103 +219,18 @@ docker compose -f docker-compose.spaceneth.yml up
 
 ## Circles RPC methods
 
-### circles_getTotalBalance
+The plugin extends the Nethermind JSON-RPC API with additional methods to query Circles events and aggregate values.
 
-This method allows you to query the total Circles (v1) holdings of an address.
+You can find concrete examples for all rpc-methods in the [v1-example-requests.md](v1-example-requests.md)
+and [v2-example-requests.md](v2-example-requests.md) files.
 
-#### Request:
+### circles_getTotalBalance / circlesV2_getTotalBalance
 
-```shell
-curl -X POST --data '{
-"jsonrpc":"2.0",
-"method":"circles_getTotalBalance",
-"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
-"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
-````
+These methods allow you to query the total Circles (v1/v2) holdings of an address.
 
-##### Response:
+### circles_getTokenBalance / circlesV2_getTokenBalances
 
-```json
-{
-  "jsonrpc": "2.0",
-  "result": "5444258229585459544466",
-  "id": 1
-}
-```
-
-### circles_getTokenBalance
-
-This method allows you to query all individual Circles (v1) holdings of an address.
-
-#### Request:
-
-```shell
-curl -X POST --data '{
-"jsonrpc":"2.0",
-"method":"circles_getTokenBalances",
-"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
-"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
-```
-
-##### Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": [
-    {
-      "token": "0x057f55e194b94073d2dfa4e86163c2e897086dc7",
-      "balance": "51429863673363442586"
-    },
-    {
-      "token": "0x09c85ee337f6f7bdd3e5e17213b703c26d9c907d",
-      "balance": "56223473812572527629"
-    }
-  ],
-  "id": 1
-}
-```
-
-### circles_getTrustRelations
-
-This method allows you to query all (v1) trust relations of an address.
-
-#### Request:
-
-```shell
-curl -X POST --data '{
-"jsonrpc":"2.0",
-"method":"circles_getTrustRelations",
-"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
-"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
-````
-
-##### Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "user": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-    "trusts": {
-      "0xb7c83b840e146f9768a1fdc4ce46c8ad17594720": 100,
-      "0x5fd8f7464c050ec0fb34223aab544e13510812fa": 50,
-      "0x83d296691be2c9d7be14378ecbf2d95c3ddb0200": 100,
-      "0x70551a5862ef2c9baf81596f67be723283b6ccd0": 100
-    },
-    "trustedBy": {
-      "0x965090908dcd0b134802f35c9138a7e987b5182f": 100,
-      "0x5ce3d708a2b1e8371530754c930fc9b5bad27ab7": 100,
-      "0x6fae976eb90127b895ceddf8311864cda42ac6ac": 100,
-      "0x3e93a305d5cd96202c12084414a6622fa7a36c3d": 100
-    }
-  },
-  "id": 1
-}
-```
+These methods allow you to query all individual Circles (v1/v2) holdings of an address.
 
 ### circles_query
 
@@ -357,8 +284,17 @@ Namespaces and tables:
     * `Trust`
     * `UpdateMetadataDigest`
     * `URI`
+    * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
+* `V_CrcV1`
+    * `Avatars` (view combining `Signup` and `OrganizationSignup`)
+    * `TrustRelations` (view filtered to represent all current `Trust` relations)
 * `V_CrcV2`
+    * `Avatars` (view combining `RegisterHuman`, `InviteHuman`, `RegisterGroup` and `RegisterOrganization`)
+    * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
+* `V_Crc`
+    * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
+    * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)
 
 #### Available filter types
 
@@ -377,115 +313,3 @@ Namespaces and tables:
 
 You can use the combination of `blockNumber`, `transactionIndex` and `logIndex`
 (+ `batchIndex` in the case of batch events) together with a `limit` to paginate through the results.
-
-#### Example
-
-##### Get the transaction history of a wallet
-
-Query the 10 most recent Circles V2 transfers from or to an address showing the most recent first:
-
-```shell
-curl -X POST --data '{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "circles_query",
-  "params": [
-    {
-      "Namespace": "V_CrcV2",
-      "Table": "Transfers",
-      "Limit": 10,
-      "Columns": [],
-      "Filter": [
-        {
-          "Type": "Conjunction",
-          "ConjunctionType": "Or",
-          "Predicates": [
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "Equals",
-                "Column": "from",
-                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
-              },
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "Equals",
-                "Column": "to",
-                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
-              }
-          ]
-        }
-      ],
-      "Order": [
-        {
-          "Column": "blockNumber",
-          "SortOrder": "DESC"
-        },
-        {
-          "Column": "transactionIndex",
-          "SortOrder": "DESC"
-        },
-        {
-          "Column": "logIndex",
-          "SortOrder": "DESC"
-        },
-        {
-          "Column": "batchIndex",
-          "SortOrder": "DESC"
-        }
-      ]
-    }
-  ]
-}' -H "Content-Type: application/json" http://localhost:8545/
-```
-
-##### Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "Columns": [
-      "blockNumber",
-      "timestamp",
-      "transactionIndex",
-      "logIndex",
-      "batchIndex",
-      "transactionHash",
-      "operator",
-      "from",
-      "to",
-      "id",
-      "value"
-    ],
-    "Rows": [
-      [
-        9817761,
-        1715899520,
-        0,
-        0,
-        0,
-        "0x3b3f9cfebdd164bf53cfcb1fe4c163f388712f566576edf6ac1f2c55da95929a",
-        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
-        "0x0000000000000000000000000000000000000000",
-        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
-        "994661466795450363997821247051269595921846891877",
-        "4000000000000000000"
-      ],
-      [
-        9817761,
-        1715899520,
-        0,
-        0,
-        0,
-        "0x3b3f9cfebdd164bf53cfcb1fe4c163f388712f566576edf6ac1f2c55da95929a",
-        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
-        "0x0000000000000000000000000000000000000000",
-        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
-        "994661466795450363997821247051269595921846891877",
-        "4000000000000000000"
-      ]
-    ]
-  },
-  "id": 1
-}
-```

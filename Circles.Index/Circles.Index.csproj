@@ -28,6 +28,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj" />
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
