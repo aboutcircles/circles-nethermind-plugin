@@ -1,4 +1,4 @@
-## Circles V1 RPC methods
+## Circles V1 RPC examples
 
 1. [circles_getTotalBalance](#circles_getTotalBalance)
 2. [circles_getTokenBalances](#circles_getTokenBalances)

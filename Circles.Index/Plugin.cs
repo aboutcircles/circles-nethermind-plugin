@@ -32,7 +32,8 @@ public class Plugin : INethermindPlugin
         IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
         IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
         IDatabaseSchema v2NameRegistry = new CirclesV2.NameRegistry.DatabaseSchema();
-        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry]);
+        IDatabaseSchema circlesViews = new CirclesViews.DatabaseSchema();
+        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry, circlesViews]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         ILogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);

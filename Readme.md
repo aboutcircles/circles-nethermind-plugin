@@ -7,8 +7,11 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
 
 **Query a node**
 
-If you're just looking for a way to query Circles events, you can check out the query examples in
-the [v1-example-requests.md](v1-example-requests.md) and [v2-example-requests.md](v2-example-requests.md) files.
+If you're just looking for a way to query Circles events, you can check out the query examples:
+
+* [General examples](general-example-requests.md)
+* [Circles v1 examples](v1-example-requests.md)
+* [Circles v2 examples](v2-example-requests.md)
 
 For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
 
@@ -216,7 +219,7 @@ docker compose -f docker-compose.spaceneth.yml up
 
 ## Circles RPC methods
 
-The plugin extends the Nethermind JSON-RPC API with additional methods to query Circles events and aggregate values.  
+The plugin extends the Nethermind JSON-RPC API with additional methods to query Circles events and aggregate values.
 
 You can find concrete examples for all rpc-methods in the [v1-example-requests.md](v1-example-requests.md)
 and [v2-example-requests.md](v2-example-requests.md) files.
@@ -282,10 +285,16 @@ Namespaces and tables:
     * `UpdateMetadataDigest`
     * `URI`
     * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
+* `V_CrcV1`
+    * `Avatars` (view combining `Signup` and `OrganizationSignup`)
+    * `TrustRelations` (view filtered to represent all current `Trust` relations)
 * `V_CrcV2`
-    * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
     * `Avatars` (view combining `RegisterHuman`, `InviteHuman`, `RegisterGroup` and `RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
+    * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
+* `V_Crc`
+    * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
+    * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)
 
 #### Available filter types
 

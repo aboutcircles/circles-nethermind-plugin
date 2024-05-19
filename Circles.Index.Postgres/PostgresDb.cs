@@ -305,15 +305,16 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
             {
                 if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
                 {
-                    row[i] = reader.GetFieldValue<BigInteger>(i);
+                    row[i] = reader.GetFieldValue<BigInteger?>(i);
                 }
                 else
                 {
                     row[i] = reader.GetValue(i);
-                    if (row[i] is DBNull)
-                    {
-                        row[i] = null;
-                    }
+                }
+
+                if (row[i] is DBNull)
+                {
+                    row[i] = null;
                 }
             }
 

@@ -1,10 +1,10 @@
-## Circles V2 RPC methods
+## Circles V2 RPC examples
 
 1. [circlesV2_getTotalBalance](#circlesV2_getTotalBalance) 
 2. [circlesV2_getTokenBalances](#circlesV2_getTokenBalances)
 3. [circles_query](#circles_query)  
 3.1. [Get the transaction history of a wallet](#get-the-transaction-history-of-a-wallet)    
-3.2. [Get a list of Circles users](#get-a-list-of-circles-users)  
+3.2. [Get a list of Circles avatars](#get-a-list-of-circles-users)  
 3.3. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)  
 
 ### circlesV2_getTotalBalance
@@ -178,7 +178,7 @@ curl -X POST --data '{
 }
 ```
 
-##### Get a list of Circles users
+##### Get a list of Circles avatars
 
 Query latest 10 Circles V2 registrations:
 

@@ -35,6 +35,80 @@ public class DatabaseSchema : IDatabaseSchema
             new("amount", ValueTypes.BigInt, false)
         ]);
 
+    public static readonly EventSchema TrustRelations = new("V_CrcV1", "TrustRelations", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("batchIndex", ValueTypes.Int, true, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("user", ValueTypes.Address, true),
+        new("canSendTo", ValueTypes.Address, true),
+        new("limit", ValueTypes.Int, false),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+        create or replace view ""V_CrcV1_TrustRelations"" as 
+            select ""blockNumber"",
+                   ""timestamp"",
+                   ""transactionIndex"",
+                   ""logIndex"",
+                   ""transactionHash"",
+                   ""user"",
+                   ""canSendTo"",
+                   ""limit""
+            from (
+                     select ""blockNumber"",
+                            ""timestamp"",
+                            ""transactionIndex"",
+                            ""logIndex"",
+                            ""transactionHash"",
+                            ""user"",
+                            ""canSendTo"",
+                            ""limit"",
+                            row_number() over (partition by ""user"", ""canSendTo"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as ""rn""
+                     from ""CrcV1_Trust""
+                 ) t
+            where ""rn"" = 1
+            and ""limit"" > 0
+            order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc;
+        ")
+    };
+
+    public static readonly EventSchema Avatars = new("V_CrcV1", "Avatars", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("user", ValueTypes.Address, true),
+        new("token", ValueTypes.Address, true),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+        create or replace view ""V_CrcV1_Avatars"" as
+          select ""blockNumber"",
+                 ""timestamp"",
+                 ""transactionIndex"",
+                 ""logIndex"",
+                 ""transactionHash"",
+                 'human' as ""type"",
+                 ""user"",
+                 ""token""
+          from ""CrcV1_Signup""
+          union all 
+          select ""blockNumber"",
+                 ""timestamp"",
+                 ""transactionIndex"",
+                 ""logIndex"",
+                 ""transactionHash"",
+                 'organization' as ""type"",
+                 ""organization"",
+                 null as ""token""
+          from ""CrcV1_OrganizationSignup"";
+        ")
+    };
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -57,6 +131,14 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV1", "Transfer"),
                 Transfer
+            },
+            {
+                ("V_CrcV1", "TrustRelations"),
+                TrustRelations
+            },
+            {
+                ("V_CrcV1", "Avatars"),
+                Avatars
             }
         };
 

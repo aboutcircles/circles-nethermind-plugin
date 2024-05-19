@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 namespace Circles.Index.CirclesV2;
 
 /*
-
+ TODO: It looks like the new Hub doesn't have an equivalent to the 'HubTransfer' event
  hub/
     Hub.sol:
         event PersonalMint(address indexed human, uint256 amount, uint256 startPeriod, uint256 endPeriod);
@@ -22,7 +22,7 @@ namespace Circles.Index.CirclesV2;
        Manual events:
         event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
 
- TODO:
+ TODO: Add the 'Lift' contract events
  lift/
     DemurrageCircles.sol:
         event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);
