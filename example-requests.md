@@ -59,6 +59,21 @@ curl -X POST --data '{
 }
 ```
 
+### circlesV2_getTotalBalance
+
+This method allows you to query the total Circles (v2) holdings of an address.
+
+#### Request:
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circlesV2_getTotalBalance",
+    "params":["0xc661fe4ce147c209ea6ca66a2a2323b69791a463"],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/
+````
+
 ### circlesV2_getTokenBalances
 
 This method allows you to query all individual Circles (v2) holdings of an address.
