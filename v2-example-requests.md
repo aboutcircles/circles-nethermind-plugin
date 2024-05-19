@@ -1,63 +1,4 @@
-## Circles RPC methods
-
-### circles_getTotalBalance
-
-This method allows you to query the total Circles (v1) holdings of an address.
-
-#### Request:
-
-```shell
-curl -X POST --data '{
-"jsonrpc":"2.0",
-"method":"circles_getTotalBalance",
-"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
-"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
-````
-
-##### Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": "5444258229585459544466",
-  "id": 1
-}
-```
-
-### circles_getTokenBalance
-
-This method allows you to query all individual Circles (v1) holdings of an address.
-
-#### Request:
-
-```shell
-curl -X POST --data '{
-"jsonrpc":"2.0",
-"method":"circles_getTokenBalances",
-"params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
-"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
-```
-
-##### Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": [
-    {
-      "token": "0x057f55e194b94073d2dfa4e86163c2e897086dc7",
-      "balance": "51429863673363442586"
-    },
-    {
-      "token": "0x09c85ee337f6f7bdd3e5e17213b703c26d9c907d",
-      "balance": "56223473812572527629"
-    }
-  ],
-  "id": 1
-}
-```
+## Circles V2 RPC methods
 
 ### circlesV2_getTotalBalance
 
@@ -73,6 +14,16 @@ curl -X POST --data '{
     "id":1
 }' -H "Content-Type: application/json" http://localhost:8545/
 ````
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": "5444258229585459544466",
+  "id": 1
+}
+```
 
 ### circlesV2_getTokenBalances
 
@@ -96,12 +47,12 @@ curl -X POST --data '{
   "jsonrpc": "2.0",
   "result": [
     {
-      "token": "0x057f55e194b94073d2dfa4e86163c2e897086dc7",
-      "balance": "51429863673363442586"
+      "tokenId": "0x25548e3e36c2d1862e4f7aa99a490bf71ed087ca",
+      "balance": "999602703486168722"
     },
     {
-      "token": "0x09c85ee337f6f7bdd3e5e17213b703c26d9c907d",
-      "balance": "56223473812572527629"
+      "tokenId": "0xc661fe4ce147c209ea6ca66a2a2323b69791a463",
+      "balance": "5998013477961872802"
     }
   ],
   "id": 1
@@ -371,4 +322,47 @@ curl -X POST --data '{
     }
   ]
 }' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+##### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "Columns": [
+      "blockNumber",
+      "timestamp",
+      "transactionIndex",
+      "logIndex",
+      "transactionHash",
+      "trustee",
+      "truster",
+      "expiryTime"
+    ],
+    "Rows": [
+      [
+        9819804,
+        1715909835,
+        0,
+        0,
+        "0x41670ceb0bd544f69a6c41ab5390df4ea3ae782cf89b693ac0d7908999bd2f47",
+        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
+        "0x25548e3e36c2d1862e4f7aa99a490bf71ed087ca",
+        "79228162514264337593543950335"
+      ],
+      [
+        9819786,
+        1715909745,
+        0,
+        0,
+        "0x627cb6702e4d357431f7faf0f627416285ee81c84f2175d3cf9d9866c5ad880c",
+        "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565",
+        "0xabab7fccac344519639449f843d966b24730836d",
+        "79228162514264337593543950335"
+      ]
+    ]
+  },
+  "id": 1
+}
 ```
