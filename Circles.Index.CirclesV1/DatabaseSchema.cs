@@ -187,6 +187,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV1", "Avatars"),
                 Avatars
+            },
+            {
+                ("V_CrcV1", "Transfers"),
+                Transfers
             }
         };
 
