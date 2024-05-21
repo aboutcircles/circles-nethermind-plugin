@@ -96,8 +96,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
     private IIndexEvent CrcTrust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string user = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string canSendTo = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string canSendTo = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string user = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         int limit = new UInt256(log.Data, true).ToInt32(CultureInfo.InvariantCulture);
 
         return new Trust(

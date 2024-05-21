@@ -8,6 +8,78 @@ The examples in this file are general Circles RPC methods that can be used to qu
 
 ### circles_query
 
+##### Get a paginated list of trust relations
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_CrcV1",
+      "Table": "TrustRelations",
+      "Limit": 10,
+      "Columns": [],
+      "Filter": [{
+        "Type": "Conjunction",
+        "ConjunctionType": "Or",
+        "Predicates": [
+          {
+            "Type": "FilterPredicate",
+            "FilterType": "LessThan",
+            "Column": "blockNumber",
+            "Value": 9819862
+          },
+          {
+            "Type": "Conjunction",
+            "ConjunctionType": "And",
+            "Predicates": [
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equal",
+                "Column": "blockNumber",
+                "Value": 9819862
+              },
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "LessThan",
+                "Column": "transactionIndex",
+                "Value": 0
+              }
+            ]
+          },
+          {
+            "Type": "Conjunction",
+            "ConjunctionType": "And",
+            "Predicates": [
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equal",
+                "Column": "blockNumber",
+                "Value": 9819862
+              },
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "Equal",
+                "Column": "transactionIndex",
+                "Value": 0
+              },
+              {
+                "Type": "FilterPredicate",
+                "FilterType": "LessThan",
+                "Column": "logIndex",
+                "Value": 1
+              }
+            ]
+          }
+        ]
+      }]
+  }]
+}' -H "Content-Type: application/json" http://localhost:8545/
+
+```
+
 ##### Get a list of Circles avatars
 
 This query returns v1 as well as v2 Circles users. The version of the user can be determined by the `version` column.  
