@@ -24,7 +24,7 @@ public class ImportFlow(
         new()
         {
             MaxDegreeOfParallelism = parallelism > -1 ? parallelism : Environment.ProcessorCount,
-            EnsureOrdered = false,
+            EnsureOrdered = true,
             CancellationToken = cancellationToken,
             BoundedCapacity = boundedCapacity
         };
