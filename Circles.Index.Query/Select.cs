@@ -10,10 +10,9 @@ public record Select(
     IEnumerable<IFilterPredicate> Filter,
     IEnumerable<OrderBy> Order,
     int? Limit = null,
-    bool Distinct = false) : ISql
+    bool Distinct = false,
+    int MaxLimit = 1000) : ISql
 {
-    private const int MaxLimit = 1000;
-
     public ParameterizedSql ToSql(IDatabaseUtils database)
     {
         if (!database.Schema.Tables.TryGetValue((Namespace, Table), out var tableSchema))
@@ -74,7 +73,7 @@ public record Select(
             sql += orderBySql;
         }
 
-        if (Limit is > 0 and <= MaxLimit)
+        if (Limit > 0 && Limit <= MaxLimit)
         {
             sql += $" LIMIT {Limit.Value}";
         }

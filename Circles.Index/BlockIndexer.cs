@@ -15,7 +15,7 @@ public class ImportFlow(
 {
     private static readonly IndexPerformanceMetrics Metrics = new();
 
-    private readonly InsertBuffer<Block> _blockBuffer = new();
+    private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
 
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
@@ -32,12 +32,17 @@ public class ImportFlow(
 
     private async Task Sink((BlockWithReceipts, IEnumerable<IIndexEvent>) data)
     {
+        Dictionary<string, int> eventCounts = new();
+
         foreach (var indexEvent in data.Item2)
         {
             await context.Sink.AddEvent(indexEvent);
+            var tableName = context.Database.Schema.EventDtoTableMap.Map[indexEvent.GetType()];
+            var tableNameString = $"{tableName.Namespace}_{tableName.Table}";
+            eventCounts[tableNameString] = eventCounts.GetValueOrDefault(tableNameString) + 1;
         }
 
-        await AddBlock(data.Item1.Block);
+        await AddBlock(new BlockWithEventCounts(data.Item1.Block, eventCounts));
         Metrics.LogBlockWithReceipts(data.Item1);
     }
 
@@ -124,7 +129,7 @@ public class ImportFlow(
         };
     }
 
-    private async Task AddBlock(Block block)
+    private async Task AddBlock(BlockWithEventCounts block)
     {
         _blockBuffer.Add(block);
 
@@ -136,16 +141,16 @@ public class ImportFlow(
 
     public async Task FlushBlocks()
     {
-        var blocks = _blockBuffer.TakeSnapshot();
-
-        var map = new SchemaPropertyMap();
-        map.Add(("System", "Block"), new Dictionary<string, Func<Block, object?>>
+        try
         {
-            { "blockNumber", o => o.Number },
-            { "timestamp", o => (long)o.Timestamp },
-            { "blockHash", o => o.Hash!.ToString() }
-        });
-
-        await context.Sink.Database.WriteBatch("System", "Block", blocks, map);
+            var blocks = _blockBuffer.TakeSnapshot();
+            await context.Sink.Database.WriteBatch("System", "Block", blocks,
+                context.Database.Schema.SchemaPropertyMap);
+        }
+        catch (Exception e)
+        {
+            context.Logger.Error("Error flushing blocks", e);
+            throw;
+        }
     }
 }
