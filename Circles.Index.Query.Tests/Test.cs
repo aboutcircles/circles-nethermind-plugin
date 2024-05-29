@@ -41,21 +41,18 @@ public class TestDatabase : IDatabaseUtils
     }
 }
 
-public class TestDbDataParameter : IDbDataParameter
+public class TestDbDataParameter(string? name, object? value) : IDbDataParameter
 {
-    public TestDbDataParameter(string? name, object? value)
-    {
-        ParameterName = name;
-        Value = value;
-    }
-
     public DbType DbType { get; set; }
     public ParameterDirection Direction { get; set; }
-    public bool IsNullable { get; }
-    public string ParameterName { get; set; }
-    public string SourceColumn { get; set; }
+    public bool IsNullable => false;
+
+#pragma warning disable CS8767 // Nullability of reference types in type of parameter doesn't match implicitly implemented member (possibly because of nullability attributes).
+    public string ParameterName { get; set; } = name ?? "";
+    public string SourceColumn { get; set; } = "";
+#pragma warning restore CS8767 // Nullability of reference types in type of parameter doesn't match implicitly implemented member (possibly because of nullability attributes).
     public DataRowVersion SourceVersion { get; set; }
-    public object? Value { get; set; }
+    public object? Value { get; set; } = value;
     public byte Precision { get; set; }
     public byte Scale { get; set; }
     public int Size { get; set; }

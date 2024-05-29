@@ -68,10 +68,10 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         foreach (var resultRow in result.Rows)
         {
-            var user = new Address(resultRow[0].ToString() ?? throw new Exception("A user in the result set is null"));
-            var canSendTo = new Address(resultRow[1].ToString() ??
+            var user = new Address(resultRow[0]?.ToString() ?? throw new Exception("A user in the result set is null"));
+            var canSendTo = new Address(resultRow[1]?.ToString() ??
                                         throw new Exception("A canSendTo in the result set is null"));
-            var limit = int.Parse(resultRow[2].ToString() ?? throw new Exception("A limit in the result set is null"));
+            var limit = int.Parse(resultRow[2]?.ToString() ?? throw new Exception("A limit in the result set is null"));
 
             if (user == address)
             {
@@ -112,7 +112,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private string TotalBalanceV2(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
     {
-        IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(_pluginLogger, address);
+        IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(address);
 
         // Call the erc1155's balanceOf function for each token using _ethRpcModule.eth_call().
         // Solidity function signature: balanceOf(address _account, uint256 _id) public view returns (uint256)
@@ -156,7 +156,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await rentedEthRpcModule.Rent();
 
         var balances =
-            V2CirclesTokenBalances(_pluginLogger, rentedEthRpcModule.RpcModule!, address,
+            V2CirclesTokenBalances(rentedEthRpcModule.RpcModule!, address,
                 _indexerContext.Settings.CirclesV2HubAddress, asTimeCircles);
 
         return ResultWrapper<CirclesTokenBalanceV2[]>.Success(balances.ToArray());
@@ -203,7 +203,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return _indexerContext.Database
             .Select(sql)
             .Rows
-            .Select(o => new Address(o[0].ToString()
+            .Select(o => new Address(o[0]?.ToString()
                                      ?? throw new Exception("A token address in the result set is null"))
             );
     }
@@ -230,8 +230,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         var tokenOwners = new Dictionary<string, string>();
         foreach (var row in result.Rows)
         {
-            var avatar = row[0].ToString() ?? throw new Exception("An avatar in the result set is null");
-            var tokenId = row[1].ToString() ?? throw new Exception("A tokenId in the result set is null");
+            var avatar = row[0]?.ToString() ?? throw new Exception("An avatar in the result set is null");
+            var tokenId = row[1]?.ToString() ?? throw new Exception("A tokenId in the result set is null");
             tokenOwners[tokenId] = avatar;
         }
 
@@ -302,10 +302,10 @@ public class CirclesRpcModule : ICirclesRpcModule
             : ether.ToString(CultureInfo.InvariantCulture);
     }
 
-    private List<CirclesTokenBalanceV2> V2CirclesTokenBalances(ILogger logger, IEthRpcModule rpcModule, Address address,
+    private List<CirclesTokenBalanceV2> V2CirclesTokenBalances(IEthRpcModule rpcModule, Address address,
         Address hubAddress, bool asTimeCircles)
     {
-        IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(logger, address);
+        IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(address);
 
         // Call the erc1155's balanceOf function for each token using _ethRpcModule.eth_call().
         // Solidity function signature: balanceOf(address _account, uint256 _id) public view returns (uint256)
@@ -350,7 +350,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return balances;
     }
 
-    private IEnumerable<UInt256> V2TokenIdsForAccount(ILogger logger, Address address)
+    private IEnumerable<UInt256> V2TokenIdsForAccount(Address address)
     {
         var select = new Select(
             "V_CrcV2"
