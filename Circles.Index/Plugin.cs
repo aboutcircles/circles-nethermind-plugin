@@ -1,11 +1,14 @@
 ﻿using Circles.Index.Common;
 using Circles.Index.Postgres;
+using Circles.Index.Query;
 using Circles.Index.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index;
 
@@ -37,22 +40,11 @@ public class Plugin : INethermindPlugin
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         ILogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
-        
-        // Log all indexed events
-        pluginLogger.Info("Indexing events:");
-        foreach (var databaseSchemaTable in databaseSchema.Tables)
-        {
-            pluginLogger.Info($" * Topic: {databaseSchemaTable.Value.Topic.ToHexString()}; Name: {databaseSchemaTable.Key.Namespace}_{databaseSchemaTable.Key.Table}");
-        }
 
         Settings settings = new();
-        pluginLogger.Info("Index Db connection string: " + settings.IndexDbConnectionString);
-        pluginLogger.Info("V1 Hub address: " + settings.CirclesV1HubAddress);
-        pluginLogger.Info("V2 Hub address: " + settings.CirclesV2HubAddress);
-        pluginLogger.Info("V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
-        // pluginLogger.Info("Start index from: " + settings.StartBlock);
-
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
+
+        LogSettings(pluginLogger, settings, database);
         database.Migrate();
 
         Sink sink = new Sink(
@@ -64,6 +56,8 @@ public class Plugin : INethermindPlugin
                 v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap
             ]),
             settings.EventBufferSize);
+
+        InitCaches(pluginLogger, database);
 
         ILogParser[] logParsers =
         [
@@ -97,6 +91,57 @@ public class Plugin : INethermindPlugin
 
             HandleNewHead();
         };
+    }
+
+    private void LogSettings(ILogger pluginLogger, Settings settings, IDatabase database)
+    {
+        // Log all indexed events
+        pluginLogger.Info("Indexing events:");
+        foreach (var databaseSchemaTable in database.Schema.Tables)
+        {
+            pluginLogger.Info(
+                $" * Topic: {databaseSchemaTable.Value.Topic.ToHexString()}; Name: {databaseSchemaTable.Key.Namespace}_{databaseSchemaTable.Key.Table}");
+        }
+
+        NpgsqlConnectionStringBuilder connectionStringBuilder = new(settings.IndexDbConnectionString);
+        pluginLogger.Info("Index database: " + connectionStringBuilder.Database);
+        pluginLogger.Info(" * host: " + connectionStringBuilder.Host);
+        pluginLogger.Info(" * port: " + connectionStringBuilder.Port);
+        pluginLogger.Info(" * user: " + connectionStringBuilder.Username);
+
+        pluginLogger.Info("Contract addresses: ");
+        pluginLogger.Info(" * V1 Hub address: " + settings.CirclesV1HubAddress);
+        pluginLogger.Info(" * V2 Hub address: " + settings.CirclesV2HubAddress);
+        pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
+        // pluginLogger.Info("Start index from: " + settings.StartBlock);
+    }
+
+    private static void InitCaches(ILogger logger, IDatabase database)
+    {
+        logger.Info("Caching Circles token addresses");
+
+        var selectSignups = new Select(
+            "CrcV1",
+            "Signup",
+            ["token"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectSignups.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} Circles token addresses");
+
+        foreach (var row in rows)
+        {
+            CirclesV1.LogParser.CirclesTokenAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
+        }
+
+        logger.Info("Caching Circles token addresses done");
     }
 
     private void HandleNewHead()

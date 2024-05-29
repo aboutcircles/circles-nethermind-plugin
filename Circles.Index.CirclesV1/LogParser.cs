@@ -10,7 +10,7 @@ namespace Circles.Index.CirclesV1;
 
 public class LogParser(Address v1HubAddress) : ILogParser
 {
-    private static readonly ConcurrentDictionary<Address, object?> CirclesTokenAddresses = new();
+    public static readonly ConcurrentDictionary<Address, object?> CirclesTokenAddresses = new();
 
     private readonly Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic);
     private readonly Hash256 _signupTopic = new(DatabaseSchema.Signup.Topic);
