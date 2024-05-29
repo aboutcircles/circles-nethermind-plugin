@@ -51,7 +51,7 @@ public class FilterPredicateArrayConverter : JsonConverter<IFilterPredicateDto[]
                 _ => throw new NotSupportedException($"Unknown filter predicate type: {type}")
             };
 
-            predicates[i++] = result;
+            predicates[i++] = result ?? throw new JsonException("Failed to deserialize filter predicate.");
         }
 
         return predicates;
@@ -77,7 +77,7 @@ public class ObjectToInferredTypeConverter : JsonConverter<object>
         switch (reader.TokenType)
         {
             case JsonTokenType.String:
-                return reader.GetString();
+                return reader.GetString() ?? throw new JsonException("Unexpected null string value.");
             case JsonTokenType.Number:
                 if (reader.TryGetInt32(out int intValue))
                 {
