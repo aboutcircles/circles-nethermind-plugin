@@ -1,4 +1,5 @@
 using Circles.Index.Common;
+using Circles.Index.Rpc;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 
@@ -19,6 +20,7 @@ public class StateMachine(
         New,
         Initial,
         Syncing,
+        NotifySubscribers,
         Reorg,
         WaitForNewBlock,
         Error,
@@ -98,6 +100,30 @@ public class StateMachine(
                             context.Logger.Info($"Imported blocks from {importedBlockRange.Min} " +
                                                 $"to {importedBlockRange.Max}");
                             Errors.Clear();
+
+                            await TransitionTo(State.NotifySubscribers, importedBlockRange);
+                            return;
+                    }
+
+                    break;
+
+                case State.NotifySubscribers:
+                    switch (e)
+                    {
+                        case EnterState<Range<long>> importedBlockRange:
+                            context.Logger.Info(
+                                $"Notifying {CirclesSubscription.SubscriberCount} subscribers about new blocks: " +
+                                $"{importedBlockRange.Arg.Min} - {importedBlockRange.Arg.Max}");
+
+                            if (importedBlockRange.Arg.Max - importedBlockRange.Arg.Min > 1000)
+                            {
+                                context.Logger.Warn(
+                                    $"Too many blocks to notify: {importedBlockRange.Arg.Max - importedBlockRange.Arg.Min}");
+                            }
+                            else
+                            {
+                                CirclesSubscription.Notify(context, importedBlockRange.Arg);
+                            }
 
                             await TransitionTo(State.WaitForNewBlock);
                             return;

@@ -6,7 +6,10 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Npgsql;
 
@@ -29,8 +32,15 @@ public class Plugin : INethermindPlugin
     private int _newItemsArrived;
     private long _latestHeadToIndex = -1;
 
+    private bool _enableWebsockets;
+
     public async Task Init(INethermindApi nethermindApi)
     {
+        var (getFromAPi, _) = nethermindApi.ForInit;
+        IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
+
+        _enableWebsockets = initConfig.WebSocketsEnabled;
+
         IDatabaseSchema common = new Common.DatabaseSchema();
         IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
         IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
@@ -184,9 +194,20 @@ public class Plugin : INethermindPlugin
             throw new Exception("_indexerContext.NethermindApi.RpcModuleProvider is not set");
         }
 
+        var (getFromAPi, _) = _indexerContext.NethermindApi.ForRpc;
+
         CirclesRpcModule circlesRpcModule = new(_indexerContext);
-        _indexerContext.NethermindApi.ForRpc.GetFromApi.RpcModuleProvider?.Register(
+        getFromAPi.RpcModuleProvider?.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
+
+        if (getFromAPi.SubscriptionFactory == null)
+        {
+            throw new Exception("getFromAPi.SubscriptionFactory is not set");
+        }
+
+        getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
+            "circles",
+            (client, param) => new CirclesSubscription(client, _indexerContext, param));
     }
 
     public ValueTask DisposeAsync()

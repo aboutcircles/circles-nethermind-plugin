@@ -2,9 +2,81 @@
 
 The examples in this file are general Circles RPC methods that can be used to query Circles V1 and V2 data.
 
-1. [circles_query](#circles_query)      
-1.1. [Get a list of Circles avatars](#get-a-list-of-circles-users)  
-1.2. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)  
+1. [circles subscription](#circles-subscription)
+2. [circles_events](#circles_events)
+3. [circles_query](#circles_query)      
+   3.1. [Get a list of Circles avatars](#get-a-list-of-circles-users)  
+   3.2. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)
+
+### circles subscription
+
+#### Example
+
+```js
+```
+
+### circles_events
+
+Queries all events that involve a specific address. This is especially useful to update a client once it's address is
+involved in an event (see [circles subscription](#circles-subscription))
+or can be used to populate a history view for a specific address.
+
+**Signature**: `circles_events(address: string, fromBlock: number, toBlock?: number)`.
+
+The `fromBlock` and `toBlock` parameters can be used to filter the events by block number.
+The `toBlock` parameter can be set to `null` to query all events from `fromBlock` to the latest block.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    30282299,
+    null
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+The response generally contains the following fields:
+
+* `event` - The name of the event.
+    * `CrcV1_...`
+        * `HubTransfer`
+        * `OrganizationSignup`
+        * `Signup`
+        * `Transfer`
+        * `Trust`
+    * `CrcV2_...`
+        * `ApprovalForAll`
+        * `DiscountCost`
+        * `InviteHuman`
+        * `PersonalMint`
+        * `RegisterGroup`
+        * `RegisterHuman`
+        * `RegisterOrganization`
+        * `RegisterShortName`
+        * `Stopped`
+        * `TransferBatch`
+        * `TransferSingle`
+        * `Trust`
+        * `UpdateMetadataDigest`
+        * `URI`
+        * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
+* `values` - The values of the event.
+
+The values contain at least the following fields:
+
+* `blockNumber` - The block number the event was emitted in.
+* `timestamp` - The unix timestamp of the event.
+* `transactionIndex` - The index of the transaction in the block.
+* `logIndex` - The index of the log in the transaction.
+* `transactionHash` - The hash of the transaction.
 
 ### circles_query
 
@@ -82,9 +154,10 @@ curl -X POST --data '{
 
 ##### Get a list of Circles avatars
 
-This query returns v1 as well as v2 Circles users. The version of the user can be determined by the `version` column.  
+This query returns v1 as well as v2 Circles users. The version of the user can be determined by the `version` column.
 
 The following columns are only valid for v2 users:
+
 * `invitedBy` - The address of the user who invited the user.
 * `name` - The name of the group or organization.
 * `cidV0Digest` - The token metadata CID of the avatar.
@@ -194,9 +267,11 @@ curl -X POST --data '{
 This query returns the trust relations between avatars.
 
 The following columns are only valid for v1 trust relations:
+
 * `limit` - The trust limit (0 is no trust, 100 full trust).
 
 The following columns are only valid for v2 trust relations:
+
 * `expiryTime` - The expiry time of the trust relation.
 
 ```shell

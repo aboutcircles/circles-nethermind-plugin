@@ -183,6 +183,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
+    public ResultWrapper<CirclesEvent[]> circles_events(Address address, long fromBlock, long? toBlock = null)
+    {
+        var queryEvents = new QueryEvents(_indexerContext);
+        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock));
+    }
+
     #region private methods
 
     private IEnumerable<Address> TokenAddressesForAccount(Address circlesAccount)
