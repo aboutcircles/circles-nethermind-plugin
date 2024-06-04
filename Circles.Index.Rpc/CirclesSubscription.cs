@@ -1,4 +1,6 @@
 using Circles.Index.Common;
+using Circles.Index.Query;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
@@ -18,11 +20,31 @@ public class CirclesSubscription : Subscription
     public static long SubscriberCount => _subscriberCount;
     private static long _subscriberCount;
 
-    public CirclesSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, CirclesSubscriptionParams param) : base(
+    public CirclesSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, Context context,
+        CirclesSubscriptionParams param) : base(
         jsonRpcDuplexClient)
     {
         Notification += OnNotification;
         _param = param;
+
+        if (param.Address == Address.Zero)
+        {
+            throw new Exception("The zero address cannot be subscribed to.");
+        }
+
+        if (param.Address != null)
+        {
+            var select = new Select("V_Crc", "Avatars", ["avatar"], [
+                new FilterPredicate("avatar", FilterType.Equals, param.Address?.ToString(true, false))
+            ], [], 1);
+
+            var parameterizedSql = select.ToSql(context.Database);
+            var avatarInfo = context.Database.Select(parameterizedSql);
+            if (!avatarInfo.Rows.Any())
+            {
+                throw new Exception($"The address {param.Address} is not a circles avatar.");
+            }
+        }
 
         Interlocked.Increment(ref _subscriberCount);
     }
@@ -38,6 +60,11 @@ public class CirclesSubscription : Subscription
 
         var queryEvents = new QueryEvents(context);
         var events = queryEvents.CirclesEvents(null, importedRange.Min, importedRange.Max);
+
+        if (events.Length == 0)
+        {
+            return;
+        }
 
         Notification?.Invoke(null, new NotifyEventArgs(events));
     }

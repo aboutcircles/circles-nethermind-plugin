@@ -89,7 +89,7 @@
         try {
             await wsConnection.connect();
             log('Connected to websocket...');
-            const subscriptionId = await wsConnection.subscribe('circles', JSON.stringify({"address": "0x0000000000000000000000000000000000000000"}), (event) => {
+            const subscriptionId = await wsConnection.subscribe('circles', JSON.stringify({}), (event) => {
                 log(`Circles event: ${JSON.stringify(event)}`);
             });
             log(`Subscribed with ID: ${subscriptionId}`);

@@ -207,7 +207,7 @@ public class Plugin : INethermindPlugin
 
         getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
-            (client, param) => new CirclesSubscription(client, param));
+            (client, param) => new CirclesSubscription(client, _indexerContext, param));
     }
 
     public ValueTask DisposeAsync()

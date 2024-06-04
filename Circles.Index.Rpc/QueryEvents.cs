@@ -65,14 +65,22 @@ public class QueryEvents(Context context)
                     .Cast<IFilterPredicate>()
                     .ToList();
 
-            if (addressColumnFilters.Count == 0)
-                continue;
-
             var filters = new List<IFilterPredicate>
             {
                 new FilterPredicate("blockNumber", FilterType.GreaterThanOrEquals, fromBlock),
-                new Conjunction(ConjunctionType.Or, addressColumnFilters.ToArray())
             };
+
+            if (addressColumnFilters.Count > 0)
+            {
+                if (addressColumnFilters.Count == 1)
+                {
+                    filters.Add(addressColumnFilters[0]);
+                }
+                else
+                {
+                    addressColumnFilters.Add(new Conjunction(ConjunctionType.Or, addressColumnFilters.ToArray()));
+                }
+            }
 
             if (toBlock.HasValue)
             {
@@ -80,7 +88,9 @@ public class QueryEvents(Context context)
             }
 
             queries.Add(new Select(table.Key.Namespace, table.Key.Table, Array.Empty<string>(),
-                new[] { new Conjunction(ConjunctionType.And, filters.ToArray()) },
+                filters.Count > 1
+                    ? new[] { new Conjunction(ConjunctionType.And, filters.ToArray()) }
+                    : filters,
                 new[]
                 {
                     new OrderBy("blockNumber", "ASC"), new OrderBy("transactionIndex", "ASC"),
