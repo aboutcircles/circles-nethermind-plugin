@@ -72,14 +72,9 @@ public class QueryEvents(Context context)
 
             if (addressColumnFilters.Count > 0)
             {
-                if (addressColumnFilters.Count == 1)
-                {
-                    filters.Add(addressColumnFilters[0]);
-                }
-                else
-                {
-                    addressColumnFilters.Add(new Conjunction(ConjunctionType.Or, addressColumnFilters.ToArray()));
-                }
+                filters.Add(addressColumnFilters.Count == 1
+                    ? addressColumnFilters[0]
+                    : new Conjunction(ConjunctionType.Or, addressColumnFilters.ToArray()));
             }
 
             if (toBlock.HasValue)
