@@ -3,9 +3,31 @@
 A [Nethermind](https://www.nethermind.io/nethermind-client) plugin to index and
 query [Circles](https://www.aboutcircles.com/) protocol events.
 
+* [Quickstart](#quickstart)
+    * [Query a node](#query-a-node)
+    * [Run a node](#run-a-node)
+        * [Clone the repository](#1-clone-the-repository)
+        * [Create a jwtsecret](#2-create-a-jwtsecret)
+        * [Set up the .env file](#3-set-up-the-env-file)
+        * [Run node](#4-run-node)
+            * [Ports](#ports)
+            * [Volumes](#volumes)
+    * [Run a spaceneth node](#run-a-spaceneth-node)
+        * [Deploying the Circles contracts](#deploying-the-circles-contracts)
+        * [Blockscout](#blockscout)
+        * [Get a funded account](#get-a-funded-account)
+        * [Manipulate time](#manipulate-time)
+        * [Reset the spaceneth node](#reset-the-spaceneth-node)
+* [Circles RPC methods](#circles-rpc-methods)
+    * [circles_getTotalBalance / circlesV2_getTotalBalance](#circles_gettotalbalance--circlesv2_gettotalbalance)
+    * [circles_getTokenBalance / circlesV2_getTokenBalances](#circles_gettokenbalance--circlesv2_gettokenbalances)
+    * [circles_query](#circles_query)
+    * [circles_events](#circles_events)
+    * [eth_subscribe("circles")](#eth_subscribecircles)
+
 ## Quickstart
 
-**Query a node**
+### Query a node
 
 If you're just looking for a way to query Circles events, you can check out the query examples:
 
@@ -15,7 +37,7 @@ If you're just looking for a way to query Circles events, you can check out the 
 
 For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
 
-**Run a node**
+### Run a node
 
 The repository contains a docker-compose file to start a Nethermind node with the Circles plugin installed. There are
 configurations for Gnosis Chain, Chiado and Spaceneth (a local testnet).
@@ -23,14 +45,14 @@ configurations for Gnosis Chain, Chiado and Spaceneth (a local testnet).
 The quickstart configurations use [lighthouse](https://github.com/sigp/lighthouse) as consensus engine and spin up a
 postgres database to store the indexed data. The spaceneth configuration comes with a local blockscout instance.
 
-### 1. Clone the repository
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/CirclesUBI/circles-nethermind-plugin.git
 cd circles-nethermind-plugin
 ```
 
-### 2. Create a jwtsecret
+#### 2. Create a jwtsecret
 
 For the use with Gnosis Chain and Chiado, a shared secret is required to authenticate requests between the execution and
 consensus engine.
@@ -47,7 +69,7 @@ mkdir -p ./.state/jwtsecret-chiado
 openssl rand -hex 32 > ./.state/jwtsecret-chiado/jwt.hex
 ```
 
-### 3. Set up the .env file
+#### 3. Set up the .env file
 
 Copy the `.env.example` file to `.env` and adjust the values to your needs.
 
@@ -55,7 +77,7 @@ Copy the `.env.example` file to `.env` and adjust the values to your needs.
 cp .env.example .env
 ```
 
-### 4. Run node
+#### 4. Run node
 
 Choose if your want to run your node on Gnosis Chain or Chiado.
 
@@ -73,7 +95,7 @@ That's it! The node must be fully synced before you can start querying the Circl
 Once synced you can use the node like any other RPC node, but with the added benefit of querying Circles events directly
 at the same RPC endpoint.
 
-#### Ports:
+##### Ports:
 
 * `30303/tcp` (nethermind p2p)
 * `30303/udp` (nethermind p2p)
@@ -83,7 +105,7 @@ at the same RPC endpoint.
 * `9000/udp` (consensus p2p)
 * `5054/tcp` (consensus metrics)
 
-#### Volumes
+##### Volumes
 
 * `./.state` - Directory containing all host mapped docker volumes
     * `./.state/consensus-chiado|consensus-chiado` - Lighthouse consensus engine data
@@ -91,7 +113,7 @@ at the same RPC endpoint.
     * `./.state/postgres-chiado|postgres-gnosis` - Postgres data
     * `./.state/jwtsecret-chiado|jwtsecret-gnosis` - Shared secret between execution and consensus engine
 
-### Spaceneth
+### Run a spaceneth node
 
 The process of setting up a local only node is a bit more involved. However, by using this approach, you gain
 the possibility to manipulate the node's time and don't need any xDai, which is useful for testing purposes.
@@ -228,9 +250,65 @@ and [v2-example-requests.md](v2-example-requests.md) files.
 
 These methods allow you to query the total Circles (v1/v2) holdings of an address.
 
+**Signature**:
+
+* `circles_getTotalBalance(address: string, asTimeCircles: bool = false)`.
+* `circlesV2_getTotalBalance(address: string, asTimeCircles: bool = false)`.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getTotalBalance",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    true
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+This method returns a string formatted BigInteger value. The value is the sum of all Circles holdings of the address.
+
+If `asTimeCircles` is set to `true`, the value is formatted
+as [TimeCircles](https://github.com/CirclesUBI/timecircles) floating point number instead of the raw BigInteger value.
+
 ### circles_getTokenBalance / circlesV2_getTokenBalances
 
 These methods allow you to query all individual Circles (v1/v2) holdings of an address.
+
+**Signature**:
+
+* `circles_getTokenBalances(address: string, asTimeCircles: bool = false)`.
+* `circlesV2_getTokenBalances(address: string, asTimeCircles: bool = false)`.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getTokenBalances",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    true
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+This method returns an array of objects with the following properties:
+
+* `tokenId` - The address of the token.
+* `balance` - The balance of the token.
+* `tokenOwner` - The address of the token owner.
+
+If `asTimeCircles` is set to `true`, the value is formatted
+as [TimeCircles](https://github.com/CirclesUBI/timecircles) floating point number instead of the raw BigInteger value.
 
 ### circles_query
 
@@ -246,6 +324,46 @@ following properties:
 * `limit` - The maximum number of rows to return (defaults to max. 1000).
 
 _NOTE: There is no default order, so make sure to always add sensible order columns._
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_Crc",
+      "Table": "Avatars",
+      "Limit": 100,
+      "Columns": [],
+      "Filter": [],
+      "Order": [
+        {
+          "Column": "blockNumber",
+          "SortOrder": "DESC"
+        },
+        {
+          "Column": "transactionIndex",
+          "SortOrder": "DESC"
+        },
+        {
+          "Column": "logIndex",
+          "SortOrder": "DESC"
+        }
+      ]
+    }
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+The result is a JSON object that resembles a table with rows and columns:
+
+* `Columns` - An array of column names.
+* `Rows` - An array of rows, where each row is an array of values.
 
 #### Available namespaces, tables and columns
 
@@ -312,4 +430,176 @@ Namespaces and tables:
 #### Pagination
 
 You can use the combination of `blockNumber`, `transactionIndex` and `logIndex`
-(+ `batchIndex` in the case of batch events) together with a `limit` to paginate through the results.
+(+ `batchIndex` in the case of batch events) together with a `limit` and order to paginate through the results.
+
+### circles_events
+
+Queries all events that involve a specific address. Can be used to e.g. easily populate a user's transaction history.
+
+**Signature**: `circles_events(address: string, fromBlock: number, toBlock?: number)`.
+
+The `fromBlock` and `toBlock` parameters can be used to filter the events by block number.
+The `toBlock` parameter can be set to `null` to query all events from `fromBlock` to the latest block.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    30282299,
+    null
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+The response generally contains the following fields:
+
+* `event` - The name of the event (See
+  [Available namespaces, tables and columns](#available-namespaces-tables-and-columns) for available event types).
+* `values` - The values of the event.
+
+The values contain at least the following fields:
+
+* `blockNumber` - The block number the event was emitted in.
+* `timestamp` - The unix timestamp of the event.
+* `transactionIndex` - The index of the transaction in the block.
+* `logIndex` - The index of the log in the transaction.
+* `transactionHash` - The hash of the transaction.
+
+### eth_subscribe("circles")
+
+Subscribes to all Circles events. The subscription is a stream of events that are emitted as soon as they've been
+indexed. Can be filtered to just a specific address.
+
+**Signature**: `eth_subscribe("circles", { address?: string })`.
+
+#### Example
+
+Copy the following code into an HTML file and open it in a browser to subscribe to Circles events.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Circles Event Subscription</title>
+</head>
+<body>
+<h1>WebSocket Circles Event Subscription</h1>
+<div id="log"></div>
+
+<script>
+    class WebsocketConnection {
+        constructor(url) {
+            this.url = url;
+            this.websocket = null;
+            this.messageId = 0;
+            this.pendingResponses = {};
+            this.subscriptionListeners = {};
+        }
+
+        connect() {
+            return new Promise((resolve, reject) => {
+                this.websocket = new WebSocket(this.url);
+                this.websocket.onopen = () => {
+                    console.log('Connected');
+                    resolve();
+                };
+                this.websocket.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    const {id, method, params} = message;
+                    if (id !== undefined && this.pendingResponses[id]) {
+                        this.pendingResponses[id].resolve(message);
+                        delete this.pendingResponses[id];
+                    }
+                    if (method === 'eth_subscription' && params) {
+                        const {subscription, result} = params;
+                        if (this.subscriptionListeners[subscription]) {
+                            this.subscriptionListeners[subscription].forEach(listener => listener(result));
+                        }
+                    }
+                };
+                this.websocket.onclose = () => console.log('Disconnected');
+                this.websocket.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    reject(error);
+                };
+            });
+        }
+
+        sendMessage(method, params, timeout = 5000) {
+            if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                return Promise.reject('WebSocket is not connected');
+            }
+            const id = this.messageId++;
+            const message = {jsonrpc: "2.0", method, params, id};
+            return new Promise((resolve, reject) => {
+                this.pendingResponses[id] = {resolve, reject};
+                this.websocket.send(JSON.stringify(message));
+                setTimeout(() => {
+                    if (this.pendingResponses[id]) {
+                        this.pendingResponses[id].reject('Request timed out');
+                        delete this.pendingResponses[id];
+                    }
+                }, timeout);
+            });
+        }
+
+        async subscribe(method, params, listener) {
+            const response = await this.sendMessage('eth_subscribe', [method, params]);
+            const subscriptionId = response.result;
+            if (!this.subscriptionListeners[subscriptionId]) {
+                this.subscriptionListeners[subscriptionId] = [];
+            }
+            this.subscriptionListeners[subscriptionId].push(listener);
+            return subscriptionId;
+        }
+    }
+
+    const wsConnection = new WebsocketConnection('ws://localhost:8545');
+    const logElement = document.getElementById('log');
+
+    function log(message) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = message;
+        logElement.appendChild(messageElement);
+    }
+
+    (async () => {
+        try {
+            await wsConnection.connect();
+            log('Connected to websocket...');
+
+            // Subscribe to all Circles events:
+            const subscriptionArgs = JSON.stringify({});
+
+            // Subscribe to events for a specific address:
+            // const subscriptionArgs = JSON.stringify({"address": "0xde374ece6fa50e781e81aac78e811b33d16912c7"});
+
+            const subscriptionId = await wsConnection.subscribe('circles', subscriptionArgs), (
+            event
+        ) =>
+            {
+                log(`Circles event: ${JSON.stringify(event)}`);
+            }
+        )
+            ;
+            log(`Subscribed with ID: ${subscriptionId}`);
+        } catch (error) {
+        }
+    })();
+</script>
+</body>
+</html>
+```
+
+#### Response
+
+The emitted events are the same as the objects returned by the `circles_events` ([circles_events Response](#response-1))
+method.
