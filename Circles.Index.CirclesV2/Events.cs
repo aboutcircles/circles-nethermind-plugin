@@ -123,3 +123,64 @@ public record DiscountCost(
     string Account,
     UInt256 Id,
     UInt256 _DiscountCost) : IIndexEvent;
+
+public record Erc20WrapperDeployed(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Avatar,
+    string Erc20Wrapper,
+    byte[] CirclesType) : IIndexEvent;
+
+public record Erc20WrapperTransfer(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string TokenAddress,
+    string From,
+    string To,
+    UInt256 Value) : IIndexEvent;
+
+public record DepositInflationary(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Account,
+    UInt256 Amount,
+    UInt256 DemurragedAmount) : IIndexEvent;
+
+public record WithdrawInflationary(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Account,
+    UInt256 Amount,
+    UInt256 DemurragedAmount) : IIndexEvent;
+
+public record DepositDemurraged(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Account,
+    UInt256 Amount,
+    UInt256 InflationaryAmount) : IIndexEvent;
+
+public record WithdrawDemurraged(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Account,
+    UInt256 Amount,
+    UInt256 InflationaryAmount) : IIndexEvent;

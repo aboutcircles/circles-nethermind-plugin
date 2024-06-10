@@ -6,10 +6,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Npgsql;
 
@@ -152,6 +149,29 @@ public class Plugin : INethermindPlugin
         }
 
         logger.Info("Caching Circles token addresses done");
+
+        logger.Info("Caching erc20 wrapper addresses");
+
+        var selectErc20WrapperDeployed = new Select(
+            "CrcV2",
+            "Erc20WrapperDeployed",
+            ["erc20Wrapper"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        sql = selectErc20WrapperDeployed.ToSql(database);
+        result = database.Select(sql);
+        rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
+
+        foreach (var row in rows)
+        {
+            CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
+        }
     }
 
     private void HandleNewHead()

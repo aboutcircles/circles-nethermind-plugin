@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using System.Text;
 using Circles.Index.Common;
@@ -22,6 +23,14 @@ public class LogParser(Address v2HubAddress) : ILogParser
     private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
     private readonly Hash256 _uriTopic = new(DatabaseSchema.URI.Topic);
     private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
+    private readonly Hash256 _erc20WrapperDeployed = new(DatabaseSchema.Erc20WrapperDeployed.Topic);
+    private readonly Hash256 _erc20WrapperTransfer = new(DatabaseSchema.Erc20WrapperTransfer.Topic);
+    private readonly Hash256 _depositInflationary = new(DatabaseSchema.DepositInflationary.Topic);
+    private readonly Hash256 _withdrawInflationary = new(DatabaseSchema.WithdrawInflationary.Topic);
+    private readonly Hash256 _depositDemurraged = new(DatabaseSchema.DepositDemurraged.Topic);
+    private readonly Hash256 _withdrawDemurraged = new(DatabaseSchema.WithdrawDemurraged.Topic);
+
+    public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -34,6 +43,39 @@ public class LogParser(Address v2HubAddress) : ILogParser
         if (log.LoggersAddress != v2HubAddress)
         {
             yield break;
+        }
+
+        if (topic == _erc20WrapperDeployed)
+        {
+            yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
+        }
+
+        if (Erc20WrapperAddresses.ContainsKey(log.LoggersAddress))
+        {
+            if (topic == _erc20WrapperTransfer)
+            {
+                yield return Erc20WrapperTransfer(block, receipt, log, logIndex);
+            }
+
+            if (topic == _depositDemurraged)
+            {
+                yield return DepositDemurraged(block, receipt, log, logIndex);
+            }
+
+            if (topic == _withdrawDemurraged)
+            {
+                yield return WithdrawDemurraged(block, receipt, log, logIndex);
+            }
+
+            if (topic == _depositInflationary)
+            {
+                yield return DepositInflationary(block, receipt, log, logIndex);
+            }
+
+            if (topic == _withdrawInflationary)
+            {
+                yield return WithdrawInflationary(block, receipt, log, logIndex);
+            }
         }
 
         if (topic == _stoppedTopic)
@@ -98,6 +140,25 @@ public class LogParser(Address v2HubAddress) : ILogParser
         {
             yield return DiscountCost(block, receipt, log, logIndex);
         }
+    }
+
+    private IIndexEvent Erc20WrapperDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string erc20Wrapper = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        byte[] circlesType = log.Data;
+
+        Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), null);
+
+        return new Erc20WrapperDeployed(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            avatar,
+            erc20Wrapper,
+            circlesType);
     }
 
     private URI Erc1155Uri(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -317,5 +378,91 @@ public class LogParser(Address v2HubAddress) : ILogParser
             account,
             id,
             cost);
+    }
+
+    private Erc20WrapperTransfer Erc20WrapperTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string from = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string to = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 amount = new(log.Data, true);
+
+        return new Erc20WrapperTransfer(
+            block.Number
+            , (long)block.Timestamp
+            , receipt.Index
+            , logIndex
+            , receipt.TxHash!.ToString()
+            , log.LoggersAddress.ToString(true, false)
+            , from
+            , to
+            , amount);
+    }
+
+    private DepositInflationary DepositInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 demurragedAmount = new UInt256(log.Data.Slice(32), true);
+
+        return new DepositInflationary(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            amount,
+            demurragedAmount);
+    }
+
+    private WithdrawInflationary WithdrawInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 demurragedAmount = new UInt256(log.Data.Slice(32), true);
+
+        return new WithdrawInflationary(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            amount,
+            demurragedAmount);
+    }
+
+    private DepositDemurraged DepositDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 inflationaryAmount = new UInt256(log.Data.Slice(32), true);
+
+        return new DepositDemurraged(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            amount,
+            inflationaryAmount);
+    }
+
+    private WithdrawDemurraged WithdrawDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 inflationaryAmount = new UInt256(log.Data.Slice(32), true);
+
+        return new WithdrawDemurraged(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            amount,
+            inflationaryAmount);
     }
 }

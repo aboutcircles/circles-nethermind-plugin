@@ -24,6 +24,17 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
     * [circles_query](#circles_query)
     * [circles_events](#circles_events)
     * [eth_subscribe("circles")](#eth_subscribecircles)
+* [Add a custom protocol](#add-a-custom-protocol)
+    * [DatabaseSchema.cs](#databaseschemacs)
+        * [Tables](#tables)
+        * [EventDtoTableMap](#eventdtotablemap)
+        * [SchemaPropertyMap](#schemapropertymap)
+    * [Events.cs](#eventscs)
+    * [LogParser.cs](#logparsercs)
+    * [Register the protocol](#register-the-protocol)
+        * [Register the schema](#register-the-schema)
+        * [Register the SchemaPropertyMap and EventDtoTableMap](#register-the-schemapropertymap-and-eventdtotablemap)
+        * [Register the LogParser](#register-the-logparser)
 
 ## Quickstart
 
@@ -603,3 +614,211 @@ Copy the following code into an HTML file and open it in a browser to subscribe 
 
 The emitted events are the same as the objects returned by the `circles_events` ([circles_events Response](#response-1))
 method.
+
+## Add a custom protocol
+
+The plugin parses the log entries of all transaction receipts, filters them and stores them in a database.
+To do so it needs the following information:
+
+* The event topic
+* The address of the contract that emits the event
+* A table schema for the database
+
+All the above information are packaged into an own assembly per protocol.
+It's structured like this:
+
+* [your-protocol].csproj
+    * `DatabaseSchema.cs` - Pulls together all information about the indexed events of a protocol.
+    * `Events.cs` - Contains the DTOs for the events (usually just Records).
+    * `LogParser.cs` - Extracts events from the transaction receipt logs.
+
+### DatabaseSchema.cs
+
+The schema pulls together all information about the indexed events of a protocol. Each event type must have a
+corresponding table in the database. Tables are grouped into namespaces. In practice, a namespace is just a prefix
+in front of the table name. Additionally, to the tables the schema contains a mapping of the event DTOs to the tables
+and a mapping of the event properties to the table columns.
+
+```csharp
+public class DatabaseSchema : IDatabaseSchema
+{
+    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } 
+        = new Dictionary<(string Namespace, string Table), EventSchema>();
+    
+    public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
+    
+    public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
+}
+```
+
+#### Tables
+
+The tables are defined as a dictionary with a tuple of the namespace and table name as key and an `EventSchema` as
+value:
+
+```csharp
+var transfer = new EventSchema(
+    "CrcV1",                                                                // Namespace
+    "Transfer",                                                             // Table
+    Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),     // Event topic
+    [                                                                       // Columns ..
+        new ("blockNumber", ValueTypes.Int, true),
+        new ("timestamp", ValueTypes.Int, true),
+        new ("transactionIndex", ValueTypes.Int, true),
+        new ("logIndex", ValueTypes.Int, true),
+        new ("transactionHash", ValueTypes.String, true),
+        new ("tokenAddress", ValueTypes.Address, true),
+        new ("from", ValueTypes.Address, true),
+        new ("to", ValueTypes.Address, true),
+        new ("amount", ValueTypes.BigInt, false)
+    ]);
+
+```
+
+The single fields/columns are defined as follows:
+
+```csharp
+ public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, bool IncludeInPrimaryKey = false);
+```
+
+Alternatively, you can create an EventSchema from a solidity event signature:
+
+```csharp
+var signup = EventSchema.FromSolidity("CrcV1",
+        "event Signup(address indexed user, address indexed token)")
+```
+
+#### EventDtoTableMap
+
+Every protocol implementation has a set of DTOs that represent the events. The `EventDtoTableMap` maps these DTOs to
+the tables defined in the schema. The mapping is established between the generic type and the namespace and table name.
+
+```csharp
+EventDtoTableMap.Add<Signup>(("CrcV1", "Signup"));
+```
+
+#### SchemaPropertyMap
+
+The `SchemaPropertyMap` maps the properties of the DTOs to the columns of the tables.
+Each column is mapped to a function that extracts the value from the DTO. The function can also return a calculated
+value.
+
+```csharp
+SchemaPropertyMap.Add(("CrcV1", "Signup"),
+    new Dictionary<string, Func<Signup, object?>>
+    {
+        { "blockNumber", e => e.BlockNumber },
+        { "timestamp", e => e.Timestamp },
+        { "transactionIndex", e => e.TransactionIndex },
+        { "logIndex", e => e.LogIndex },
+        { "transactionHash", e => e.TransactionHash },
+        { "user", e => e.User },
+        { "token", e => e.Token }
+    });
+```
+
+### Events.cs
+
+The events file contains the DTOs for the events. Usually, these are just records with the properties of the event.
+
+```csharp
+public record Signup(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string User,
+    string Token) : IIndexEvent;
+```
+
+All DTOs must derive from the `IIndexEvent` interface that specifies the basic properties necessary for pagination:
+
+```csharp
+public interface IIndexEvent
+{
+    long BlockNumber { get; }
+    long Timestamp { get; }
+    int TransactionIndex { get; }
+    int LogIndex { get; }
+}
+```
+
+### LogParser.cs
+
+The log parser is responsible for extracting the events from the transaction receipt logs. It must implement the
+`ILogParser` interface.
+
+```csharp
+public class LogParser(Address emitterAddress) : ILogParser {
+    // Use the topics previously defined in the schema
+    Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic)
+    
+    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        List<IIndexEvent> events = new();
+        if (log.Topics.Length == 0)
+        {
+            return events;
+        }
+        
+        // Parse the log entry and add the resulting event DTOs to the list
+        var topic = log.Topics[0];
+        if (topic == _transferTopic))
+        {
+            events.Add(Erc20Transfer(block, receipt, log, logIndex));
+        }
+        
+        return events;
+    }
+}
+```
+
+### Register the protocol
+
+The schema, property map and log parser must be registered in the main plugin file.
+
+On first execution, the plugin will create the necessary tables in the database.
+
+___Note:___ _The plugin will not create new tables if the schema changes. You have to manually update the database
+schema._
+
+#### Register the schema
+
+```csharp
+// Add your schema to the composite schema:
+IDatabaseSchema common = new Common.DatabaseSchema();
+IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
+IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
+IDatabaseSchema customprotocol = new CustomProtocol.DatabaseSchema();
+// ...
+IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, customprotocol /*, ...*/]);
+```
+
+#### Register the SchemaPropertyMap and EventDtoTableMap
+
+```csharp
+// Add your SchemaPropertyMap and EventDtoTableMap to the composite maps to initialize the sink:
+Sink sink = new Sink(
+    database,
+    new CompositeSchemaPropertyMap([
+        v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap /*, ...*/
+    ]),
+    new CompositeEventDtoTableMap([
+        v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap /*, ...*/
+    ]),
+    settings.EventBufferSize);
+```
+
+#### Register the LogParser
+
+```csharp
+// Add your log parser to the list of log parsers:
+ILogParser[] logParsers =
+[
+    new CirclesV1.LogParser(settings.CirclesV1HubAddress),
+    new CirclesV2.LogParser(settings.CirclesV2HubAddress),
+    new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress) //,
+    // ...
+];
+```

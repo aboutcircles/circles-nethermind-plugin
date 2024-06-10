@@ -22,7 +22,6 @@ namespace Circles.Index.CirclesV2;
        Manual events:
         event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
 
- TODO: Add the 'Lift' contract events
  lift/
     DemurrageCircles.sol:
         event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);
@@ -173,6 +172,35 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static readonly EventSchema Erc20WrapperTransfer = new("CrcV2", "Erc20WrapperTransfer",
+        Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("tokenAddress", ValueTypes.Address, true),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("amount", ValueTypes.BigInt, false)
+        ]);
+
+    public static readonly EventSchema Erc20WrapperDeployed = EventSchema.FromSolidity("CrcV2",
+        "event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, CirclesType circlesType)");
+
+    public static readonly EventSchema DepositInflationary = EventSchema.FromSolidity("CrcV2",
+        "event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)");
+
+    public static readonly EventSchema WithdrawInflationary = EventSchema.FromSolidity("CrcV2",
+        "event WithdrawInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)");
+
+    public static readonly EventSchema DepositDemurraged = EventSchema.FromSolidity("CrcV2",
+        "event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
+
+    public static readonly EventSchema WithdrawDemurraged = EventSchema.FromSolidity("CrcV2",
+        "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
+
     public static readonly EventSchema TrustRelations = new("V_CrcV2", "TrustRelations", new byte[32], [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
@@ -272,6 +300,30 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV2", "TrustRelations"),
                 TrustRelations
+            },
+            {
+                ("CrcV2", "Erc20WrapperDeployed"),
+                Erc20WrapperDeployed
+            },
+            {
+                ("CrcV2", "Erc20WrapperTransfer"),
+                Erc20WrapperTransfer
+            },
+            {
+                ("CrcV2", "DepositInflationary"),
+                DepositInflationary
+            },
+            {
+                ("CrcV2", "WithdrawInflationary"),
+                WithdrawInflationary
+            },
+            {
+                ("CrcV2", "DepositDemurraged"),
+                DepositDemurraged
+            },
+            {
+                ("CrcV2", "WithdrawDemurraged"),
+                WithdrawDemurraged
             }
         };
 
@@ -444,6 +496,91 @@ public class DatabaseSchema : IDatabaseSchema
                 { "account", e => e.Account },
                 { "id", e => (BigInteger)e.Id },
                 { "discountCost", e => (BigInteger)e._DiscountCost }
+            });
+
+        EventDtoTableMap.Add<Erc20WrapperDeployed>(("CrcV2", "Erc20WrapperDeployed"));
+        SchemaPropertyMap.Add(("CrcV2", "Erc20WrapperDeployed"),
+            new Dictionary<string, Func<Erc20WrapperDeployed, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "avatar", e => e.Avatar },
+                { "erc20Wrapper", e => e.Erc20Wrapper },
+                { "circlesType", e => e.CirclesType }
+            });
+
+        EventDtoTableMap.Add<Erc20WrapperTransfer>(("CrcV2", "Erc20WrapperTransfer"));
+        SchemaPropertyMap.Add(("CrcV2", "Erc20WrapperTransfer"),
+            new Dictionary<string, Func<Erc20WrapperTransfer, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "tokenAddress", e => e.TokenAddress },
+                { "from", e => e.From },
+                { "to", e => e.To },
+                { "amount", e => (BigInteger)e.Value }
+            });
+
+        EventDtoTableMap.Add<DepositInflationary>(("CrcV2", "DepositInflationary"));
+        SchemaPropertyMap.Add(("CrcV2", "DepositInflationary"),
+            new Dictionary<string, Func<DepositInflationary, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "account", e => e.Account },
+                { "amount", e => (BigInteger)e.Amount },
+                { "demurragedAmount", e => (BigInteger)e.DemurragedAmount }
+            });
+
+        EventDtoTableMap.Add<WithdrawInflationary>(("CrcV2", "WithdrawInflationary"));
+        SchemaPropertyMap.Add(("CrcV2", "WithdrawInflationary"),
+            new Dictionary<string, Func<WithdrawInflationary, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "account", e => e.Account },
+                { "amount", e => (BigInteger)e.Amount },
+                { "demurragedAmount", e => (BigInteger)e.DemurragedAmount }
+            });
+
+        EventDtoTableMap.Add<DepositDemurraged>(("CrcV2", "DepositDemurraged"));
+        SchemaPropertyMap.Add(("CrcV2", "DepositDemurraged"),
+            new Dictionary<string, Func<DepositDemurraged, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "account", e => e.Account },
+                { "amount", e => (BigInteger)e.Amount },
+                { "inflationaryAmount", e => (BigInteger)e.InflationaryAmount }
+            });
+
+        EventDtoTableMap.Add<WithdrawDemurraged>(("CrcV2", "WithdrawDemurraged"));
+        SchemaPropertyMap.Add(("CrcV2", "WithdrawDemurraged"),
+            new Dictionary<string, Func<WithdrawDemurraged, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "account", e => e.Account },
+                { "amount", e => (BigInteger)e.Amount },
+                { "inflationaryAmount", e => (BigInteger)e.InflationaryAmount }
             });
     }
 }
