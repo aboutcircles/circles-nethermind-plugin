@@ -43,11 +43,6 @@ public class LogParser(Address v2HubAddress) : ILogParser
 
         if (log.LoggersAddress == v2HubAddress)
         {
-            if (topic == _erc20WrapperDeployed)
-            {
-                yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
-            }
-
             if (topic == _stoppedTopic)
             {
                 yield return CrcV2Stopped(block, receipt, log, logIndex);
@@ -109,6 +104,11 @@ public class LogParser(Address v2HubAddress) : ILogParser
             if (topic == _discountCostTopic)
             {
                 yield return DiscountCost(block, receipt, log, logIndex);
+            }
+
+            if (topic == _erc20WrapperDeployed)
+            {
+                yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
             }
         }
 

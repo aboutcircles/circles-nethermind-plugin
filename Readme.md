@@ -414,6 +414,12 @@ Namespaces and tables:
     * `UpdateMetadataDigest`
     * `URI`
     * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
+    * `Erc20WrapperDeployed`
+    * `Erc20WrapperTransfer`
+    * `DepositDemurraged`
+    * `WithdrawDemurraged`
+    * `DepositInflationary`
+    * `WithdrawInflationary`
 * `V_CrcV1`
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
