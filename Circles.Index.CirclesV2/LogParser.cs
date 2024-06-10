@@ -40,14 +40,76 @@ public class LogParser(Address v2HubAddress) : ILogParser
         }
 
         var topic = log.Topics[0];
-        if (log.LoggersAddress != v2HubAddress)
-        {
-            yield break;
-        }
 
-        if (topic == _erc20WrapperDeployed)
+        if (log.LoggersAddress == v2HubAddress)
         {
-            yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
+            if (topic == _erc20WrapperDeployed)
+            {
+                yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
+            }
+
+            if (topic == _stoppedTopic)
+            {
+                yield return CrcV2Stopped(block, receipt, log, logIndex);
+            }
+
+            if (topic == _trustTopic)
+            {
+                yield return CrcV2Trust(block, receipt, log, logIndex);
+            }
+
+            if (topic == _inviteHumanTopic)
+            {
+                yield return CrcV2InviteHuman(block, receipt, log, logIndex);
+            }
+
+            if (topic == _personalMintTopic)
+            {
+                yield return CrcV2PersonalMint(block, receipt, log, logIndex);
+            }
+
+            if (topic == _registerHumanTopic)
+            {
+                yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
+            }
+
+            if (topic == _registerGroupTopic)
+            {
+                yield return CrcV2RegisterGroup(block, receipt, log, logIndex);
+            }
+
+            if (topic == _registerOrganizationTopic)
+            {
+                yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
+            }
+
+            if (topic == _transferBatchTopic)
+            {
+                foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
+                {
+                    yield return batchEvent;
+                }
+            }
+
+            if (topic == _transferSingleTopic)
+            {
+                yield return Erc1155TransferSingle(block, receipt, log, logIndex);
+            }
+
+            if (topic == _approvalForAllTopic)
+            {
+                yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
+            }
+
+            if (topic == _uriTopic)
+            {
+                yield return Erc1155Uri(block, receipt, log, logIndex);
+            }
+
+            if (topic == _discountCostTopic)
+            {
+                yield return DiscountCost(block, receipt, log, logIndex);
+            }
         }
 
         if (Erc20WrapperAddresses.ContainsKey(log.LoggersAddress))
@@ -76,69 +138,6 @@ public class LogParser(Address v2HubAddress) : ILogParser
             {
                 yield return WithdrawInflationary(block, receipt, log, logIndex);
             }
-        }
-
-        if (topic == _stoppedTopic)
-        {
-            yield return CrcV2Stopped(block, receipt, log, logIndex);
-        }
-
-        if (topic == _trustTopic)
-        {
-            yield return CrcV2Trust(block, receipt, log, logIndex);
-        }
-
-        if (topic == _inviteHumanTopic)
-        {
-            yield return CrcV2InviteHuman(block, receipt, log, logIndex);
-        }
-
-        if (topic == _personalMintTopic)
-        {
-            yield return CrcV2PersonalMint(block, receipt, log, logIndex);
-        }
-
-        if (topic == _registerHumanTopic)
-        {
-            yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
-        }
-
-        if (topic == _registerGroupTopic)
-        {
-            yield return CrcV2RegisterGroup(block, receipt, log, logIndex);
-        }
-
-        if (topic == _registerOrganizationTopic)
-        {
-            yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
-        }
-
-        if (topic == _transferBatchTopic)
-        {
-            foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
-            {
-                yield return batchEvent;
-            }
-        }
-
-        if (topic == _transferSingleTopic)
-        {
-            yield return Erc1155TransferSingle(block, receipt, log, logIndex);
-        }
-
-        if (topic == _approvalForAllTopic)
-        {
-            yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
-        }
-
-        if (topic == _uriTopic)
-        {
-            yield return Erc1155Uri(block, receipt, log, logIndex);
-        }
-
-        if (topic == _discountCostTopic)
-        {
-            yield return DiscountCost(block, receipt, log, logIndex);
         }
     }
 
