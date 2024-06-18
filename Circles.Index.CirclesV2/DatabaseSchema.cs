@@ -302,7 +302,7 @@ public class DatabaseSchema : IDatabaseSchema
                 TrustRelations
             },
             {
-                ("CrcV2", "Erc20WrapperDeployed"),
+                ("CrcV2", "ERC20WrapperDeployed"),
                 Erc20WrapperDeployed
             },
             {
@@ -509,7 +509,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "avatar", e => e.Avatar },
                 { "erc20Wrapper", e => e.Erc20Wrapper },
-                { "circlesType", e => e.CirclesType }
+                { "circlesType", e => BitConverter.ToInt64(e.CirclesType) }
             });
 
         EventDtoTableMap.Add<Erc20WrapperTransfer>(("CrcV2", "Erc20WrapperTransfer"));

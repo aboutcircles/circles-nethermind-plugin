@@ -29,15 +29,8 @@ public class Plugin : INethermindPlugin
     private int _newItemsArrived;
     private long _latestHeadToIndex = -1;
 
-    private bool _enableWebsockets;
-
     public async Task Init(INethermindApi nethermindApi)
     {
-        var (getFromAPi, _) = nethermindApi.ForInit;
-        IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
-
-        _enableWebsockets = initConfig.WebSocketsEnabled;
-
         IDatabaseSchema common = new Common.DatabaseSchema();
         IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
         IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
@@ -154,7 +147,7 @@ public class Plugin : INethermindPlugin
 
         var selectErc20WrapperDeployed = new Select(
             "CrcV2",
-            "Erc20WrapperDeployed",
+            "ERC20WrapperDeployed",
             ["erc20Wrapper"],
             [],
             [],
