@@ -134,6 +134,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
             "uint256" => ValueTypes.BigInt,
             "string" => ValueTypes.String,
             "bool" => ValueTypes.Boolean,
+            "CirclesType" => ValueTypes.Int,
             _ => throw new ArgumentException(
                 $"'{type}' is not supported. Please handle this event manually.")
         };
