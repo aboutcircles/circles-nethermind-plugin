@@ -470,7 +470,7 @@ curl -X POST --data '{
     30282299,
     null
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://rpc.helsinki.aboutcircles.com/
 ```
 
 #### Response
@@ -498,122 +498,14 @@ indexed. Can be filtered to just a specific address.
 
 #### Example
 
-Copy the following code into an HTML file and open it in a browser to subscribe to Circles events.
+This call subscribes to all Circles events (firehose):
+```shell
+npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{}]}' -w 3600
+```
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>WebSocket Circles Event Subscription</title>
-</head>
-<body>
-<h1>WebSocket Circles Event Subscription</h1>
-<div id="log"></div>
-
-<script>
-    class WebsocketConnection {
-        constructor(url) {
-            this.url = url;
-            this.websocket = null;
-            this.messageId = 0;
-            this.pendingResponses = {};
-            this.subscriptionListeners = {};
-        }
-
-        connect() {
-            return new Promise((resolve, reject) => {
-                this.websocket = new WebSocket(this.url);
-                this.websocket.onopen = () => {
-                    console.log('Connected');
-                    resolve();
-                };
-                this.websocket.onmessage = (event) => {
-                    const message = JSON.parse(event.data);
-                    const {id, method, params} = message;
-                    if (id !== undefined && this.pendingResponses[id]) {
-                        this.pendingResponses[id].resolve(message);
-                        delete this.pendingResponses[id];
-                    }
-                    if (method === 'eth_subscription' && params) {
-                        const {subscription, result} = params;
-                        if (this.subscriptionListeners[subscription]) {
-                            this.subscriptionListeners[subscription].forEach(listener => listener(result));
-                        }
-                    }
-                };
-                this.websocket.onclose = () => console.log('Disconnected');
-                this.websocket.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    reject(error);
-                };
-            });
-        }
-
-        sendMessage(method, params, timeout = 5000) {
-            if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
-                return Promise.reject('WebSocket is not connected');
-            }
-            const id = this.messageId++;
-            const message = {jsonrpc: "2.0", method, params, id};
-            return new Promise((resolve, reject) => {
-                this.pendingResponses[id] = {resolve, reject};
-                this.websocket.send(JSON.stringify(message));
-                setTimeout(() => {
-                    if (this.pendingResponses[id]) {
-                        this.pendingResponses[id].reject('Request timed out');
-                        delete this.pendingResponses[id];
-                    }
-                }, timeout);
-            });
-        }
-
-        async subscribe(method, params, listener) {
-            const response = await this.sendMessage('eth_subscribe', [method, params]);
-            const subscriptionId = response.result;
-            if (!this.subscriptionListeners[subscriptionId]) {
-                this.subscriptionListeners[subscriptionId] = [];
-            }
-            this.subscriptionListeners[subscriptionId].push(listener);
-            return subscriptionId;
-        }
-    }
-
-    const wsConnection = new WebsocketConnection('ws://localhost:8545');
-    const logElement = document.getElementById('log');
-
-    function log(message) {
-        const messageElement = document.createElement('div');
-        messageElement.textContent = message;
-        logElement.appendChild(messageElement);
-    }
-
-    (async () => {
-        try {
-            await wsConnection.connect();
-            log('Connected to websocket...');
-
-            // Subscribe to all Circles events:
-            const subscriptionArgs = JSON.stringify({});
-
-            // Subscribe to events for a specific address:
-            // const subscriptionArgs = JSON.stringify({"address": "0xde374ece6fa50e781e81aac78e811b33d16912c7"});
-
-            const subscriptionId = await wsConnection.subscribe('circles', subscriptionArgs), (
-            event
-        ) =>
-            {
-                log(`Circles event: ${JSON.stringify(event)}`);
-            }
-        )
-            ;
-            log(`Subscribed with ID: ${subscriptionId}`);
-        } catch (error) {
-        }
-    })();
-</script>
-</body>
-</html>
+This call subscribes to all Circles events that involve the address `0xde374ece6fa50e781e81aac78e811b33d16912c7`:
+```shell
+npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{"address":"0xde374ece6fa50e781e81aac78e811b33d16912c7"}]}' -w 3600
 ```
 
 #### Response
