@@ -427,6 +427,7 @@ Namespaces and tables:
     * `Avatars` (view combining `RegisterHuman`, `InviteHuman`, `RegisterGroup` and `RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
+    * `GroupMemberships` (view combining `RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
 * `V_Crc`
     * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
     * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)

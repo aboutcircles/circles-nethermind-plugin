@@ -201,6 +201,33 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema WithdrawDemurraged = EventSchema.FromSolidity("CrcV2",
         "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
 
+    public static readonly EventSchema GroupMemberships = new("V_CrcV2", "GroupMemberships", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("group", ValueTypes.Address, true),
+        new("member", ValueTypes.Address, true),
+        new("expiryTime", ValueTypes.BigInt, true),
+    ])
+    {
+        SqlMigrationItem = new(@"
+        create or replace view ""V_CrcV2_GroupMemberships"" as
+            select t.""blockNumber""
+                 , t.timestamp
+                 , t.""transactionIndex""
+                 , t.""logIndex""
+                 , t.""transactionHash""
+                 , t.truster as ""group""
+                 , t.trustee as ""member""
+                 , t.""expiryTime""
+            from ""V_CrcV2_TrustRelations"" t
+            join ""CrcV2_RegisterGroup"" g on t.truster = g.""group""
+            join ""V_CrcV2_Avatars"" a on a.""avatar"" = t.trustee;
+        ")
+    };
+
     public static readonly EventSchema TrustRelations = new("V_CrcV2", "TrustRelations", new byte[32], [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
@@ -324,6 +351,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "WithdrawDemurraged"),
                 WithdrawDemurraged
+            },
+            {
+                ("V_CrcV2", "GroupMemberships"),
+                GroupMemberships
             }
         };
 
@@ -581,6 +612,20 @@ public class DatabaseSchema : IDatabaseSchema
                 { "account", e => e.Account },
                 { "amount", e => (BigInteger)e.Amount },
                 { "inflationaryAmount", e => (BigInteger)e.InflationaryAmount }
+            });
+
+        EventDtoTableMap.Add<GroupMembership>(("V_CrcV2", "GroupMemberships"));
+        SchemaPropertyMap.Add(("V_CrcV2", "GroupMemberships"),
+            new Dictionary<string, Func<GroupMembership, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "group", e => e.Group },
+                { "member", e => e.Member },
+                { "expiryTime", e => e.ExpiryTime }
             });
     }
 }
