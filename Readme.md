@@ -424,13 +424,14 @@ Namespaces and tables:
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
 * `V_CrcV2`
-    * `Avatars` (view combining `RegisterHuman`, `InviteHuman`, `RegisterGroup` and `RegisterOrganization`)
+    * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
-    * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
-    * `GroupMemberships` (view combining `RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
+    * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)
+    * `GroupMemberships` (view combining `CrcV2_RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
 * `V_Crc`
     * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
     * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)
+    * `Transfers` (view combining `V_CrcV1_Transfer` and `V_CrcV2_Transfers`)
 
 #### Available filter types
 
