@@ -99,6 +99,84 @@ public class DatabaseSchema : IDatabaseSchema
             new("value", ValueTypes.BigInt, false)
         ]);
 
+    public static readonly EventSchema Avatars = new("V_CrcV2", "Avatars", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("type", ValueTypes.String, false),
+        new("invitedBy", ValueTypes.String, false),
+        new("avatar", ValueTypes.String, false),
+        new("tokenId", ValueTypes.String, false),
+        new("name", ValueTypes.String, false),
+        new("cidV0Digest", ValueTypes.Bytes, false),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+        create or replace view ""V_CrcV2_Avatars"" as
+            with ""avatars"" as (
+                select ""blockNumber"", 
+                       ""timestamp"", 
+                       ""transactionIndex"", 
+                       ""logIndex"", 
+                       ""transactionHash"", 
+                       'organization' as ""type"",
+                       null as ""invitedBy"",
+                       ""organization"" as ""avatar"",
+                       null as ""tokenId"",
+                       ""name""
+                from ""CrcV2_RegisterOrganization""
+                union all
+                select ""blockNumber"",
+                       ""timestamp"",
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       ""transactionHash"",
+                       'group' as ""type"",
+                       null as ""invitedBy"",
+                       ""group"" as ""avatar"",
+                       ""group"" as ""tokenId"",
+                       ""name""
+                from ""CrcV2_RegisterGroup""
+                union all
+                select ""blockNumber"", 
+                       ""timestamp"", 
+                       ""transactionIndex"", 
+                       ""logIndex"", 
+                       ""transactionHash"",
+                       'human' as ""type"",
+                       null as ""invitedBy"",
+                       ""avatar"",
+                       ""avatar"" as ""tokenId"",
+                       null as ""name""
+                from ""CrcV2_RegisterHuman""
+                union all
+                select ""blockNumber"",
+                       ""timestamp"",
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       ""transactionHash"",
+                       'human' as ""type"",
+                       ""inviter"" as ""invitedBy"",
+                       ""invited"",
+                       ""invited"" as ""tokenId"",
+                       null as ""name""
+                from ""CrcV2_InviteHuman""
+            )
+            select a.*, cid.""cidV0Digest""
+            from ""avatars"" a
+            left join (
+                select cid.""avatar"", cid.""cidV0Digest"",
+                       max(cid.""blockNumber"") as ""blockNumber"",
+                       max(cid.""transactionIndex"") as ""transactionIndex"",
+                       max(cid.""logIndex"") as ""logIndex""
+                from ""CrcV2_CidV0"" cid
+                group by cid.""avatar"", cid.""cidV0Digest""
+            ) as cid on cid.""avatar"" = a.""avatar""; 
+        ")
+    };
+
     public static readonly EventSchema Transfers = new("V_CrcV2", "Transfers",
         new byte[32],
         [
@@ -139,8 +217,9 @@ public class DatabaseSchema : IDatabaseSchema
                            ""CrcV2_TransferSingle"".""operator"",
                            ""CrcV2_TransferSingle"".""from"",
                            ""CrcV2_TransferSingle"".""to"",
-                           ""CrcV2_TransferSingle"".""id"",
-                           ""CrcV2_TransferSingle"".""value""
+                           ""CrcV2_TransferSingle"".""id""::text,
+                           ""CrcV2_TransferSingle"".""value"",
+                           'erc1155' as type
                     FROM ""CrcV2_TransferSingle""
                     UNION ALL
                     SELECT ""CrcV2_TransferBatch"".""blockNumber"",
@@ -152,9 +231,24 @@ public class DatabaseSchema : IDatabaseSchema
                            ""CrcV2_TransferBatch"".""operator"",
                            ""CrcV2_TransferBatch"".""from"",
                            ""CrcV2_TransferBatch"".""to"",
-                           ""CrcV2_TransferBatch"".""id"",
-                           ""CrcV2_TransferBatch"".""value""
+                           ""CrcV2_TransferBatch"".""id""::text,
+                           ""CrcV2_TransferBatch"".""value"",
+                           'erc1155' as type
                     FROM ""CrcV2_TransferBatch""
+                    UNION ALL
+                    SELECT ""CrcV2_Erc20WrapperTransfer"".""blockNumber"",
+                           ""CrcV2_Erc20WrapperTransfer"".""timestamp"",
+                           ""CrcV2_Erc20WrapperTransfer"".""transactionIndex"",
+                           ""CrcV2_Erc20WrapperTransfer"".""logIndex"",
+                           0 as ""batchIndex"",
+                           ""CrcV2_Erc20WrapperTransfer"".""transactionHash"",
+                           null as ""operator"",
+                           ""CrcV2_Erc20WrapperTransfer"".""from"",
+                           ""CrcV2_Erc20WrapperTransfer"".""to"",
+                           ""CrcV2_Erc20WrapperTransfer"".""tokenAddress"" as ""id"",
+                           ""CrcV2_Erc20WrapperTransfer"".""amount"" as ""value"",
+                           'erc20' as type
+                    FROM ""CrcV2_Erc20WrapperTransfer""
                 )
                 SELECT ""blockNumber"",
                        ""timestamp"",
@@ -167,6 +261,7 @@ public class DatabaseSchema : IDatabaseSchema
                        ""to"",
                        ""id"",
                        ""value""
+                       --,""type""
                 FROM ""allTransfers""
                 ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC;
         ")
@@ -200,6 +295,33 @@ public class DatabaseSchema : IDatabaseSchema
 
     public static readonly EventSchema WithdrawDemurraged = EventSchema.FromSolidity("CrcV2",
         "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
+
+    public static readonly EventSchema GroupMemberships = new("V_CrcV2", "GroupMemberships", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("group", ValueTypes.Address, true),
+        new("member", ValueTypes.Address, true),
+        new("expiryTime", ValueTypes.BigInt, true),
+    ])
+    {
+        SqlMigrationItem = new(@"
+        create or replace view ""V_CrcV2_GroupMemberships"" as
+            select t.""blockNumber""
+                 , t.timestamp
+                 , t.""transactionIndex""
+                 , t.""logIndex""
+                 , t.""transactionHash""
+                 , t.truster as ""group""
+                 , t.trustee as ""member""
+                 , t.""expiryTime""
+            from ""V_CrcV2_TrustRelations"" t
+            join ""CrcV2_RegisterGroup"" g on t.truster = g.""group""
+            join ""V_CrcV2_Avatars"" a on a.""avatar"" = t.trustee;
+        ")
+    };
 
     public static readonly EventSchema TrustRelations = new("V_CrcV2", "TrustRelations", new byte[32], [
         new("blockNumber", ValueTypes.Int, true),
@@ -266,6 +388,10 @@ public class DatabaseSchema : IDatabaseSchema
                 RegisterOrganization
             },
             {
+                ("V_CrcV2", "Avatars"),
+                Avatars
+            },
+            {
                 ("CrcV2", "Stopped"),
                 Stopped
             },
@@ -324,6 +450,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "WithdrawDemurraged"),
                 WithdrawDemurraged
+            },
+            {
+                ("V_CrcV2", "GroupMemberships"),
+                GroupMemberships
             }
         };
 
@@ -581,6 +711,20 @@ public class DatabaseSchema : IDatabaseSchema
                 { "account", e => e.Account },
                 { "amount", e => (BigInteger)e.Amount },
                 { "inflationaryAmount", e => (BigInteger)e.InflationaryAmount }
+            });
+
+        EventDtoTableMap.Add<GroupMembership>(("V_CrcV2", "GroupMemberships"));
+        SchemaPropertyMap.Add(("V_CrcV2", "GroupMemberships"),
+            new Dictionary<string, Func<GroupMembership, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "group", e => e.Group },
+                { "member", e => e.Member },
+                { "expiryTime", e => e.ExpiryTime }
             });
     }
 }

@@ -184,3 +184,13 @@ public record WithdrawDemurraged(
     string Account,
     UInt256 Amount,
     UInt256 InflationaryAmount) : IIndexEvent;
+    
+public record GroupMembership(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Group,
+    string Member,
+    UInt256 ExpiryTime) : IIndexEvent;
