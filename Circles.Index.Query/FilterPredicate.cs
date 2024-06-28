@@ -31,7 +31,7 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
     }
 
 
-    private string FormatArrayParameter(object value, string parameterName)
+    private string FormatArrayParameter(object value, string parameterName) 
     {
         if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
         {
