@@ -127,33 +127,41 @@ public class DatabaseSchema : IDatabaseSchema
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-        create or replace view  ""V_CrcV1_Transfers"" as
-            with ""allTransfers"" as (
-                select ""blockNumber"",
-                       ""timestamp"",
-                       ""transactionIndex"",
-                       ""logIndex"",
-                       ""transactionHash"",
-                       ""from"",
-                       ""to"",
-                       ""amount""
-                from ""CrcV1_HubTransfer""
-                union all
-                select t.""blockNumber"",
-                       t.""timestamp"",
-                       t.""transactionIndex"",
-                       t.""logIndex"",
-                       t.""transactionHash"",
-                       t.""from"",
-                       t.""to"",
-                       t.""amount""
-                from ""CrcV1_Transfer"" t
-                join public.""CrcV1_Signup"" s on s.""token"" = t.""tokenAddress"" and s.""user"" = t.""to""  
-                where ""from"" = '0x0000000000000000000000000000000000000000'
-            )
-            select *
-            from ""allTransfers""
-            order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc;
+            create or replace view ""V_CrcV1_Transfers"" (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""from"", ""to"", ""tokenAddress"", ""amount"") as
+                            WITH ""allTransfers"" AS (SELECT ""CrcV1_HubTransfer"".""blockNumber"",
+                                                           ""CrcV1_HubTransfer"".""timestamp"",
+                                                           ""CrcV1_HubTransfer"".""transactionIndex"",
+                                                           ""CrcV1_HubTransfer"".""logIndex"",
+                                                           ""CrcV1_HubTransfer"".""transactionHash"",
+                                                           ""CrcV1_HubTransfer"".""from"",
+                                                           ""CrcV1_HubTransfer"".""to"",
+                                                           null as ""tokenAddress"",
+                                                           ""CrcV1_HubTransfer"".""amount""
+                                                    FROM ""CrcV1_HubTransfer""
+                                                    UNION ALL
+                                                    SELECT t.""blockNumber"",
+                                                           t.""timestamp"",
+                                                           t.""transactionIndex"",
+                                                           t.""logIndex"",
+                                                           t.""transactionHash"",
+                                                           t.""from"",
+                                                           t.""to"",
+                                                           t.""tokenAddress"",
+                                                           t.""amount""
+                                                    FROM ""CrcV1_Transfer"" t
+                                                             JOIN ""CrcV1_Signup"" s ON s.""token"" = t.""tokenAddress"" AND s.""user"" = t.""to""
+                                                    WHERE t.""from"" = '0x0000000000000000000000000000000000000000'::text)
+                            SELECT ""blockNumber"",
+                                   ""timestamp"",
+                                   ""transactionIndex"",
+                                   ""logIndex"",
+                                   ""transactionHash"",
+                                   ""from"",
+                                   ""to"",
+                                   ""tokenAddress"",
+                                   ""amount""
+                            FROM ""allTransfers""
+                            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC;
         ")
     };
 
