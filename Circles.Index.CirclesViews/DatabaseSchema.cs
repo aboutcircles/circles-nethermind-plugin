@@ -125,7 +125,7 @@ public class DatabaseSchema : IDatabaseSchema
                                            null     as ""operator"",
                                            ""from"",
                                            ""to"",
-                                           null     as ""id"",
+                                           ""tokenAddress"" as ""id"",
                                            ""amount"" as ""value""
                                     from ""V_CrcV1_Transfers""
                                     union all
