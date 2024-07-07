@@ -38,7 +38,7 @@ curl -X POST --data '{
     30282299,
     null
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 #### Response
@@ -148,7 +148,7 @@ curl -X POST --data '{
         ]
       }]
   }]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 
 ```
 
@@ -190,7 +190,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -320,7 +320,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -370,4 +370,15 @@ curl -X POST --data '{
   },
   "id": 1
 }
+```
+
+### circles_events
+Queries all events that involve a specific address between two block numbers. 
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": ["0x389522f8f44cd5cd835d510a17b5f65f74a46468", 9000000]
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
