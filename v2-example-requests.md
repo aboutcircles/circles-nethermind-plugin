@@ -19,7 +19,7 @@ curl -X POST --data '{
     "method":"circlesV2_getTotalBalance",
     "params":["0xc661fe4ce147c209ea6ca66a2a2323b69791a463"],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ````
 
 ##### Response:
@@ -44,7 +44,7 @@ curl -X POST --data '{
     "method":"circlesV2_getTokenBalances",
     "params":["0xc661fe4ce147c209ea6ca66a2a2323b69791a463"],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -123,7 +123,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -210,7 +210,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -328,7 +328,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 ##### Response:
