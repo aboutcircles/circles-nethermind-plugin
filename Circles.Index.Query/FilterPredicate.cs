@@ -19,10 +19,12 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             FilterType.LessThanOrEquals => $"{database.QuoteIdentifier(Column)} <= {parameterName}",
             FilterType.Like => $"{database.QuoteIdentifier(Column)} LIKE {parameterName}",
             FilterType.NotLike => $"{database.QuoteIdentifier(Column)} NOT LIKE {parameterName}",
-            FilterType.In =>
-                $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})",
-            FilterType.NotIn =>
-                $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})",
+            FilterType.In => (Value as IEnumerable<object>)?.Any() ?? false
+                ? $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})"
+                : "1=0 /* empty 'in' filter */",
+            FilterType.NotIn => (Value as IEnumerable<object>)?.Any() ?? false
+                ? $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})"
+                : "1=0 /* empty 'not in' filter */",
             _ => throw new NotImplementedException()
         };
 
@@ -31,7 +33,7 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
     }
 
 
-    private string FormatArrayParameter(object value, string parameterName) 
+    private string FormatArrayParameter(object value, string parameterName)
     {
         if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
         {
