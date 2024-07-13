@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Data;
 using System.Text.Json;
 using Circles.Index.Common;
@@ -40,6 +41,11 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             return string.Join(", ", jsonElement.EnumerateArray().Select((_, index) => $"{parameterName}_{index}"));
         }
 
+        if (value is IEnumerable e)
+        {
+            return string.Join(", ", e.Cast<object>().Select((_, index) => $"{parameterName}_{index}"));
+        }
+
         throw new ArgumentException("Value must be an IEnumerable for In/NotIn filter types. Is: " +
                                     value?.GetType().Name);
     }
@@ -49,6 +55,13 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
         if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
         {
             return jsonElement.EnumerateArray()
+                .Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v.ToString()))
+                .ToList();
+        }
+
+        if (value is IEnumerable e && value is not string)
+        {
+            return e.Cast<object>()
                 .Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v.ToString()))
                 .ToList();
         }

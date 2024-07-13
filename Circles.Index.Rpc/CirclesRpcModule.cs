@@ -218,14 +218,14 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         // Construct a query for "V_Crc_Avatars" and select the "avatar" and "tokenId" columns.
         // Use an IN clause to filter the results by the token addresses.
+        var inFilterValues = tokenAddresses.Select(o => o.ToLowerInvariant()).ToArray();
         var select = new Select(
             "V_Crc"
             , "Avatars"
             , new[] { "avatar", "tokenId" }
             , new[]
             {
-                new FilterPredicate("tokenId", FilterType.In,
-                    tokenAddresses.Select(o => o.ToLowerInvariant()).ToArray())
+                new FilterPredicate("tokenId", FilterType.In, inFilterValues)
             }
             , Array.Empty<OrderBy>()
             , null
@@ -248,7 +248,8 @@ public class CirclesRpcModule : ICirclesRpcModule
     private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
     {
         IEnumerable<Address> tokens = TokenAddressesForAccount(address).ToArray();
-        IDictionary<string, string> tokenOwners = GetTokenOwners(tokens.Select(o => o.ToString(true, false)).ToArray());
+        var tokenAddressesOfAccount = tokens.Select(o => o.ToString(true, false)).ToArray();
+        IDictionary<string, string> tokenOwners = GetTokenOwners(tokenAddressesOfAccount);
 
         // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
         byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
