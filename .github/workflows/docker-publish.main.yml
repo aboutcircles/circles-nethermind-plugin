@@ -1,6 +1,7 @@
 name: Build and Push Docker image
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main

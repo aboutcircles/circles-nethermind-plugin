@@ -23,8 +23,6 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             yield break;
         }
 
-        Console.WriteLine($"Event from NameRegistry: {log.Topics[0]}");
-
         var topic = log.Topics[0];
 
         if (topic == _registerShortNameTopic)

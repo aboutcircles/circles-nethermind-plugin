@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Data;
+using System.Text.Json;
 using Circles.Index.Common;
 
 namespace Circles.Index.Query;
@@ -18,10 +20,12 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             FilterType.LessThanOrEquals => $"{database.QuoteIdentifier(Column)} <= {parameterName}",
             FilterType.Like => $"{database.QuoteIdentifier(Column)} LIKE {parameterName}",
             FilterType.NotLike => $"{database.QuoteIdentifier(Column)} NOT LIKE {parameterName}",
-            FilterType.In =>
-                $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})",
-            FilterType.NotIn =>
-                $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})",
+            FilterType.In => (Value as IEnumerable<object>)?.Any() ?? false
+                ? $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})"
+                : "1=0 /* empty 'in' filter */",
+            FilterType.NotIn => (Value as IEnumerable<object>)?.Any() ?? false
+                ? $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value ?? Array.Empty<object>(), parameterName)})"
+                : "1=0 /* empty 'not in' filter */",
             _ => throw new NotImplementedException()
         };
 
@@ -32,19 +36,34 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
 
     private string FormatArrayParameter(object value, string parameterName)
     {
-        if (value is IEnumerable<object> enumerable)
+        if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
         {
-            return string.Join(", ", enumerable.Select((_, index) => $"{parameterName}_{index}"));
+            return string.Join(", ", jsonElement.EnumerateArray().Select((_, index) => $"{parameterName}_{index}"));
         }
 
-        throw new ArgumentException("Value must be an IEnumerable for In/NotIn filter types.");
+        if (value is IEnumerable e)
+        {
+            return string.Join(", ", e.Cast<object>().Select((_, index) => $"{parameterName}_{index}"));
+        }
+
+        throw new ArgumentException("Value must be an IEnumerable for In/NotIn filter types. Is: " +
+                                    value?.GetType().Name);
     }
 
     private IEnumerable<IDbDataParameter> CreateParameters(IDatabaseUtils database, string parameterName, object? value)
     {
-        if (value is IEnumerable<object> enumerable)
+        if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
         {
-            return enumerable.Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v)).ToList();
+            return jsonElement.EnumerateArray()
+                .Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v.ToString()))
+                .ToList();
+        }
+
+        if (value is IEnumerable e && value is not string)
+        {
+            return e.Cast<object>()
+                .Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v.ToString()))
+                .ToList();
         }
 
         return new List<IDbDataParameter> { database.CreateParameter(parameterName, value) };

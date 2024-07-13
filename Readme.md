@@ -24,6 +24,17 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
     * [circles_query](#circles_query)
     * [circles_events](#circles_events)
     * [eth_subscribe("circles")](#eth_subscribecircles)
+* [Add a custom protocol](#add-a-custom-protocol)
+    * [DatabaseSchema.cs](#databaseschemacs)
+        * [Tables](#tables)
+        * [EventDtoTableMap](#eventdtotablemap)
+        * [SchemaPropertyMap](#schemapropertymap)
+    * [Events.cs](#eventscs)
+    * [LogParser.cs](#logparsercs)
+    * [Register the protocol](#register-the-protocol)
+        * [Register the schema](#register-the-schema)
+        * [Register the SchemaPropertyMap and EventDtoTableMap](#register-the-schemapropertymap-and-eventdtotablemap)
+        * [Register the LogParser](#register-the-logparser)
 
 ## Quickstart
 
@@ -403,16 +414,24 @@ Namespaces and tables:
     * `UpdateMetadataDigest`
     * `URI`
     * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
+    * `Erc20WrapperDeployed`
+    * `Erc20WrapperTransfer`
+    * `DepositDemurraged`
+    * `WithdrawDemurraged`
+    * `DepositInflationary`
+    * `WithdrawInflationary`
 * `V_CrcV1`
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
 * `V_CrcV2`
-    * `Avatars` (view combining `RegisterHuman`, `InviteHuman`, `RegisterGroup` and `RegisterOrganization`)
+    * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
-    * `Transfers` (view combining `TransferBatch` and `TransferSingle`)
+    * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)
+    * `GroupMemberships` (view combining `CrcV2_RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
 * `V_Crc`
     * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
     * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)
+    * `Transfers` (view combining `V_CrcV1_Transfer` and `V_CrcV2_Transfers`)
 
 #### Available filter types
 
@@ -453,7 +472,7 @@ curl -X POST --data '{
     30282299,
     null
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://rpc.helsinki.aboutcircles.com/
 ```
 
 #### Response
@@ -481,125 +500,225 @@ indexed. Can be filtered to just a specific address.
 
 #### Example
 
-Copy the following code into an HTML file and open it in a browser to subscribe to Circles events.
+This call subscribes to all Circles events (firehose):
+```shell
+npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{}]}' -w 3600
+```
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>WebSocket Circles Event Subscription</title>
-</head>
-<body>
-<h1>WebSocket Circles Event Subscription</h1>
-<div id="log"></div>
-
-<script>
-    class WebsocketConnection {
-        constructor(url) {
-            this.url = url;
-            this.websocket = null;
-            this.messageId = 0;
-            this.pendingResponses = {};
-            this.subscriptionListeners = {};
-        }
-
-        connect() {
-            return new Promise((resolve, reject) => {
-                this.websocket = new WebSocket(this.url);
-                this.websocket.onopen = () => {
-                    console.log('Connected');
-                    resolve();
-                };
-                this.websocket.onmessage = (event) => {
-                    const message = JSON.parse(event.data);
-                    const {id, method, params} = message;
-                    if (id !== undefined && this.pendingResponses[id]) {
-                        this.pendingResponses[id].resolve(message);
-                        delete this.pendingResponses[id];
-                    }
-                    if (method === 'eth_subscription' && params) {
-                        const {subscription, result} = params;
-                        if (this.subscriptionListeners[subscription]) {
-                            this.subscriptionListeners[subscription].forEach(listener => listener(result));
-                        }
-                    }
-                };
-                this.websocket.onclose = () => console.log('Disconnected');
-                this.websocket.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    reject(error);
-                };
-            });
-        }
-
-        sendMessage(method, params, timeout = 5000) {
-            if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
-                return Promise.reject('WebSocket is not connected');
-            }
-            const id = this.messageId++;
-            const message = {jsonrpc: "2.0", method, params, id};
-            return new Promise((resolve, reject) => {
-                this.pendingResponses[id] = {resolve, reject};
-                this.websocket.send(JSON.stringify(message));
-                setTimeout(() => {
-                    if (this.pendingResponses[id]) {
-                        this.pendingResponses[id].reject('Request timed out');
-                        delete this.pendingResponses[id];
-                    }
-                }, timeout);
-            });
-        }
-
-        async subscribe(method, params, listener) {
-            const response = await this.sendMessage('eth_subscribe', [method, params]);
-            const subscriptionId = response.result;
-            if (!this.subscriptionListeners[subscriptionId]) {
-                this.subscriptionListeners[subscriptionId] = [];
-            }
-            this.subscriptionListeners[subscriptionId].push(listener);
-            return subscriptionId;
-        }
-    }
-
-    const wsConnection = new WebsocketConnection('ws://localhost:8545');
-    const logElement = document.getElementById('log');
-
-    function log(message) {
-        const messageElement = document.createElement('div');
-        messageElement.textContent = message;
-        logElement.appendChild(messageElement);
-    }
-
-    (async () => {
-        try {
-            await wsConnection.connect();
-            log('Connected to websocket...');
-
-            // Subscribe to all Circles events:
-            const subscriptionArgs = JSON.stringify({});
-
-            // Subscribe to events for a specific address:
-            // const subscriptionArgs = JSON.stringify({"address": "0xde374ece6fa50e781e81aac78e811b33d16912c7"});
-
-            const subscriptionId = await wsConnection.subscribe('circles', subscriptionArgs), (
-            event
-        ) =>
-            {
-                log(`Circles event: ${JSON.stringify(event)}`);
-            }
-        )
-            ;
-            log(`Subscribed with ID: ${subscriptionId}`);
-        } catch (error) {
-        }
-    })();
-</script>
-</body>
-</html>
+This call subscribes to all Circles events that involve the address `0xde374ece6fa50e781e81aac78e811b33d16912c7`:
+```shell
+npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{"address":"0xde374ece6fa50e781e81aac78e811b33d16912c7"}]}' -w 3600
 ```
 
 #### Response
 
 The emitted events are the same as the objects returned by the `circles_events` ([circles_events Response](#response-1))
 method.
+
+## Add a custom protocol
+
+The plugin parses the log entries of all transaction receipts, filters them and stores them in a database.
+To do so it needs the following information:
+
+* The event topic
+* The address of the contract that emits the event
+* A table schema for the database
+
+All the above information are packaged into an own assembly per protocol.
+It's structured like this:
+
+* [your-protocol].csproj
+    * `DatabaseSchema.cs` - Pulls together all information about the indexed events of a protocol.
+    * `Events.cs` - Contains the DTOs for the events (usually just Records).
+    * `LogParser.cs` - Extracts events from the transaction receipt logs.
+
+### DatabaseSchema.cs
+
+The schema pulls together all information about the indexed events of a protocol. Each event type must have a
+corresponding table in the database. Tables are grouped into namespaces. In practice, a namespace is just a prefix
+in front of the table name. Additionally, to the tables the schema contains a mapping of the event DTOs to the tables
+and a mapping of the event properties to the table columns.
+
+```csharp
+public class DatabaseSchema : IDatabaseSchema
+{
+    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } 
+        = new Dictionary<(string Namespace, string Table), EventSchema>();
+    
+    public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
+    
+    public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
+}
+```
+
+#### Tables
+
+The tables are defined as a dictionary with a tuple of the namespace and table name as key and an `EventSchema` as
+value:
+
+```csharp
+var transfer = new EventSchema(
+    "CrcV1",                                                                // Namespace
+    "Transfer",                                                             // Table
+    Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),     // Event topic
+    [                                                                       // Columns ..
+        new ("blockNumber", ValueTypes.Int, true),
+        new ("timestamp", ValueTypes.Int, true),
+        new ("transactionIndex", ValueTypes.Int, true),
+        new ("logIndex", ValueTypes.Int, true),
+        new ("transactionHash", ValueTypes.String, true),
+        new ("tokenAddress", ValueTypes.Address, true),
+        new ("from", ValueTypes.Address, true),
+        new ("to", ValueTypes.Address, true),
+        new ("amount", ValueTypes.BigInt, false)
+    ]);
+
+```
+
+The single fields/columns are defined as follows:
+
+```csharp
+ public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, bool IncludeInPrimaryKey = false);
+```
+
+Alternatively, you can create an EventSchema from a solidity event signature:
+
+```csharp
+var signup = EventSchema.FromSolidity("CrcV1",
+        "event Signup(address indexed user, address indexed token)")
+```
+
+#### EventDtoTableMap
+
+Every protocol implementation has a set of DTOs that represent the events. The `EventDtoTableMap` maps these DTOs to
+the tables defined in the schema. The mapping is established between the generic type and the namespace and table name.
+
+```csharp
+EventDtoTableMap.Add<Signup>(("CrcV1", "Signup"));
+```
+
+#### SchemaPropertyMap
+
+The `SchemaPropertyMap` maps the properties of the DTOs to the columns of the tables.
+Each column is mapped to a function that extracts the value from the DTO. The function can also return a calculated
+value.
+
+```csharp
+SchemaPropertyMap.Add(("CrcV1", "Signup"),
+    new Dictionary<string, Func<Signup, object?>>
+    {
+        { "blockNumber", e => e.BlockNumber },
+        { "timestamp", e => e.Timestamp },
+        { "transactionIndex", e => e.TransactionIndex },
+        { "logIndex", e => e.LogIndex },
+        { "transactionHash", e => e.TransactionHash },
+        { "user", e => e.User },
+        { "token", e => e.Token }
+    });
+```
+
+### Events.cs
+
+The events file contains the DTOs for the events. Usually, these are just records with the properties of the event.
+
+```csharp
+public record Signup(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string User,
+    string Token) : IIndexEvent;
+```
+
+All DTOs must derive from the `IIndexEvent` interface that specifies the basic properties necessary for pagination:
+
+```csharp
+public interface IIndexEvent
+{
+    long BlockNumber { get; }
+    long Timestamp { get; }
+    int TransactionIndex { get; }
+    int LogIndex { get; }
+}
+```
+
+### LogParser.cs
+
+The log parser is responsible for extracting the events from the transaction receipt logs. It must implement the
+`ILogParser` interface.
+
+```csharp
+public class LogParser(Address emitterAddress) : ILogParser {
+    // Use the topics previously defined in the schema
+    Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic)
+    
+    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        List<IIndexEvent> events = new();
+        if (log.Topics.Length == 0)
+        {
+            return events;
+        }
+        
+        // Parse the log entry and add the resulting event DTOs to the list
+        var topic = log.Topics[0];
+        if (topic == _transferTopic))
+        {
+            events.Add(Erc20Transfer(block, receipt, log, logIndex));
+        }
+        
+        return events;
+    }
+}
+```
+
+### Register the protocol
+
+The schema, property map and log parser must be registered in the main plugin file.
+
+On first execution, the plugin will create the necessary tables in the database.
+
+___Note:___ _The plugin will not create new tables if the schema changes. You have to manually update the database
+schema._
+
+#### Register the schema
+
+```csharp
+// Add your schema to the composite schema:
+IDatabaseSchema common = new Common.DatabaseSchema();
+IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
+IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
+IDatabaseSchema customprotocol = new CustomProtocol.DatabaseSchema();
+// ...
+IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, customprotocol /*, ...*/]);
+```
+
+#### Register the SchemaPropertyMap and EventDtoTableMap
+
+```csharp
+// Add your SchemaPropertyMap and EventDtoTableMap to the composite maps to initialize the sink:
+Sink sink = new Sink(
+    database,
+    new CompositeSchemaPropertyMap([
+        v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap /*, ...*/
+    ]),
+    new CompositeEventDtoTableMap([
+        v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap /*, ...*/
+    ]),
+    settings.EventBufferSize);
+```
+
+#### Register the LogParser
+
+```csharp
+// Add your log parser to the list of log parsers:
+ILogParser[] logParsers =
+[
+    new CirclesV1.LogParser(settings.CirclesV1HubAddress),
+    new CirclesV2.LogParser(settings.CirclesV2HubAddress),
+    new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress) //,
+    // ...
+];
+```
