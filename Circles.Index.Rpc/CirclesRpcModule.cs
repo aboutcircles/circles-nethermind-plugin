@@ -224,7 +224,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             , new[] { "avatar", "tokenId" }
             , new[]
             {
-                new FilterPredicate("tokenId", FilterType.In, tokenAddresses.Select(o => o.ToLowerInvariant()))
+                new FilterPredicate("tokenId", FilterType.In,
+                    tokenAddresses.Select(o => o.ToLowerInvariant()).ToArray())
             }
             , Array.Empty<OrderBy>()
             , null
