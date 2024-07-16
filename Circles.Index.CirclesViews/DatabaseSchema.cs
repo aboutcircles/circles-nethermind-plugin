@@ -512,6 +512,90 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static readonly EventSchema V_CrcV2_BalancesByAccountAndToken = new("V_CrcV2", "BalancesByAccountAndToken",
+        new byte[32],
+        [
+            new("account", ValueTypes.Address, true),
+            new("tokenId", ValueTypes.String, true),
+            new("lastActivity", ValueTypes.Int, true),
+            new("demurragedTotalBalance", ValueTypes.BigInt, true),
+        ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+            CREATE OR REPLACE FUNCTION crc_day(""inflationDayZero"" bigint, ""timestamp"" bigint)
+                RETURNS bigint AS $$
+            DECLARE
+                DEMURRAGE_WINDOW bigint := 86400;
+            BEGIN
+                RETURN (""timestamp"" - ""inflationDayZero"") / DEMURRAGE_WINDOW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE OR REPLACE FUNCTION crc_demurrage(""inflationDayZero"" bigint, ""timestamp"" bigint, ""value"" numeric)
+                RETURNS numeric AS $$
+            DECLARE
+                _day_last_interaction bigint;
+                _now bigint := EXTRACT(EPOCH FROM NOW())::bigint;
+                _day_now bigint;
+                _gamma numeric := 0.9998013320085989574306481700129226782902039065082930593676448873;
+            BEGIN
+                _day_last_interaction := crc_day(""inflationDayZero"", ""timestamp"");
+                _day_now := crc_day(""inflationDayZero"", _now);
+                return (value * POWER(_gamma, _day_now - _day_last_interaction));
+            END;
+            $$ LANGUAGE plpgsql;
+
+            create or replace view ""V_CrcV2_BalancesByAccountAndToken"" as
+                WITH ""transfers"" AS (
+                    SELECT ""timestamp"",
+                           ""from"",
+                           ""to"",
+                           ""id"",
+                           ""value""
+                    FROM ""CrcV2_TransferSingle""
+                    UNION ALL
+                    SELECT ""timestamp"",
+                           ""from"",
+                           ""to"",
+                           ""id"",
+                           ""value""
+                    FROM ""CrcV2_TransferBatch""
+                    UNION ALL
+                    SELECT ""timestamp"",
+                           ""account""                                    as ""from"",
+                           '0x0000000000000000000000000000000000000000' as ""to"",
+                           ""id"",
+                           ""discountCost""                               as ""value""
+                    FROM ""CrcV2_DiscountCost""
+                ), ""accountBalances"" AS (
+                    SELECT
+                        account,
+                        id,
+                        SUM(amount) AS balance,
+                        MAX(""timestamp"") AS ""timestamp""
+                    FROM (
+                             SELECT ""from"" AS account, id, -value AS amount, ""timestamp""
+                             FROM ""transfers""
+                             UNION ALL
+                             SELECT ""to"" AS account, id, value AS amount, ""timestamp""
+                             FROM ""transfers""
+                         ) AS all_transfers
+                    GROUP BY account, id
+                )
+                select account
+                     , id::text as ""tokenId""
+                     , ""accountBalances"".""timestamp"" as ""lastActivity""
+                     , floor(crc_demurrage(1675209600, ""accountBalances"".""timestamp"", balance)) as ""demurragedTotalBalance""
+                from ""accountBalances""
+                    LEFT JOIN ""CrcV2_RegisterHuman"" hum ON hum.avatar = ""account""
+                    LEFT JOIN ""CrcV2_InviteHuman"" hum2 ON hum2.invited = ""account""
+                    LEFT JOIN ""CrcV2_RegisterOrganization"" org ON org.""organization"" = ""account""
+                    LEFT JOIN ""CrcV2_RegisterGroup"" grp ON grp.""group"" = ""account""
+                WHERE ""account"" != '0x0000000000000000000000000000000000000000'
+                AND balance > 0;
+        ")
+    };
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -554,6 +638,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_Crc", "Transfers"),
                 V_Crc_Transfers
+            },
+            {
+                ("V_CrcV2", "BalancesByAccountAndToken"),
+                V_CrcV2_BalancesByAccountAndToken
             }
         };
 }
