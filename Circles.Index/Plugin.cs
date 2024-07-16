@@ -84,6 +84,12 @@ public class Plugin : INethermindPlugin
 
         _currentMachineExecution = Task.CompletedTask;
 
+        while (nethermindApi.EthSyncingInfo?.IsSyncing() ?? true)
+        {
+            pluginLogger.Info("Waiting for sync to finish...");
+            await Task.Delay(10000);
+        }
+
         nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
         {
             Interlocked.Exchange(ref _newItemsArrived, 1);
