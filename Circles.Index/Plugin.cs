@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Synchronization.ParallelSync;
 using Npgsql;
 
 namespace Circles.Index;
@@ -86,6 +87,21 @@ public class Plugin : INethermindPlugin
 
         nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
         {
+            var fullSyncInfo = nethermindApi.EthSyncingInfo?.GetFullInfo();
+
+            if (fullSyncInfo?.IsSyncing ?? true)
+            {
+                switch (fullSyncInfo?.SyncMode)
+                {
+                    // Should handle blocks in the following sync modes:
+                    case SyncMode.Full:
+                    case SyncMode.DbLoad:
+                        break;
+                    default:
+                        return;
+                }
+            }
+
             Interlocked.Exchange(ref _newItemsArrived, 1);
             Interlocked.Exchange(ref _latestHeadToIndex, args.Block.Number);
 
