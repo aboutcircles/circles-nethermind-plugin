@@ -5,7 +5,7 @@ namespace Circles.Index.Common;
 
 public record Context(
     INethermindApi NethermindApi,
-    ILogger Logger,
+    InterfaceLogger Logger,
     Settings Settings,
     IDatabase Database,
     ILogParser[] LogParsers,
