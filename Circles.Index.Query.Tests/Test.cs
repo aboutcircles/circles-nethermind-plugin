@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Circles.Index.Common;
 using Circles.Index.Query.Dto;
+using NUnit.Framework.Legacy;
 
 namespace Circles.Index.Query.Tests;
 
@@ -91,13 +92,13 @@ public class Tests
         // Use regex to match the uuid part of the parameter name
         var expectedSql = "\"Name\" = @Name_([0-9a-f]{32})";
         var expectedSqlMatch = Regex.Match(generatedSql.Sql, expectedSql);
-        Assert.IsTrue(expectedSqlMatch.Success);
+        Assert.That(expectedSqlMatch.Success);
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
 
         var expectedParameterName = "Name_([0-9a-f]{32})";
         var expectedParameterNameMatch =
             Regex.Match(generatedSql.Parameters.First().ParameterName, expectedParameterName);
-        Assert.IsTrue(expectedParameterNameMatch.Success);
+        Assert.That(expectedParameterNameMatch.Success);
         Assert.That(generatedSql.Parameters.First().Value, Is.EqualTo("John"));
 
         Assert.That(expectedSqlMatch.Groups[1].Value, Is.EqualTo(expectedParameterNameMatch.Groups[1].Value));
@@ -110,7 +111,7 @@ public class Tests
         var generatedSql = predicate.ToSql(_database);
 
         var expectedSql = "\"Name\" != @Name_[0-9a-f]{32}";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
 
@@ -121,7 +122,7 @@ public class Tests
         var generatedSql = predicate.ToSql(_database);
 
         var expectedSql = "\"Age\" > @Age_[0-9a-f]{32}";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
 
@@ -132,7 +133,7 @@ public class Tests
         var generatedSql = predicate.ToSql(_database);
 
         var expectedSql = "\"Name\" LIKE @Name_[0-9a-f]{32}";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
 
@@ -143,7 +144,7 @@ public class Tests
         var generatedSql = predicate.ToSql(_database);
 
         var expectedSql = "\"Age\" IN \\(@Age_[0-9a-f]{32}_0, @Age_[0-9a-f]{32}_1, @Age_[0-9a-f]{32}_2\\)";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(3));
     }
 
@@ -167,7 +168,7 @@ public class Tests
         var generatedSql = conjunction.ToSql(_database);
 
         var expectedSql = "(\"Name\" = @Name_[0-9a-f]{32} AND \"Age\" > @Age_[0-9a-f]{32})";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(2));
     }
 
@@ -181,7 +182,7 @@ public class Tests
         var generatedSql = conjunction.ToSql(_database);
 
         var expectedSql = "(\"Name\" = @Name_[0-9a-f]{32} OR \"Age\" > @Age_[0-9a-f]{32})";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(2));
     }
 
@@ -201,7 +202,7 @@ public class Tests
         // (("Name" = @Name_56a4d14bb806402bb324662f75c79c14 OR "Age" > @Age_0f82e44befb94ea78ac8b195483e39ee) AND "Country" = @Country_a98a69fdeead40348065abda5b8d72c2)
         var expectedSql =
             "\\(\\(\"Name\" = @Name_[0-9a-f]{32} OR \"Age\" > @Age_[0-9a-f]{32}\\) AND \"Country\" = @Country_[0-9a-f]{32}\\)";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(3));
     }
 
@@ -228,7 +229,7 @@ public class Tests
         var generatedSql = select.ToSql(_database);
 
         var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\" WHERE \"Name\" = @Name_[0-9a-f]{32}";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
 
@@ -258,7 +259,7 @@ public class Tests
 
         var expectedSql =
             "SELECT \"Name\", \"Age\" FROM \"public_Users\" WHERE \"Name\" = @Name_[0-9a-f]{32} ORDER BY \"Age\" DESC";
-        Assert.IsTrue(Regex.IsMatch(generatedSql.Sql, expectedSql));
+        Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
 
@@ -298,7 +299,7 @@ public class Tests
 
         Assert.That(deserializedSelect.Namespace, Is.EqualTo(select.Namespace));
         Assert.That(deserializedSelect.Table, Is.EqualTo(select.Table));
-        CollectionAssert.AreEqual(select.Columns, deserializedSelect.Columns);
+        Assert.That(deserializedSelect.Columns, Is.EqualTo(select.Columns).AsCollection);
         Assert.That(deserializedSelect.Distinct, Is.EqualTo(select.Distinct));
 
         var deserializedPredicate = (FilterPredicate)deserializedSelect.Filter.First();
@@ -346,7 +347,7 @@ public class Tests
 
         Assert.That(deserializedSelect.Namespace, Is.EqualTo(select.Namespace));
         Assert.That(deserializedSelect.Table, Is.EqualTo(select.Table));
-        CollectionAssert.AreEqual(select.Columns, deserializedSelect.Columns);
+        Assert.That(deserializedSelect.Columns, Is.EqualTo(select.Columns).AsCollection);
         Assert.That(deserializedSelect.Distinct, Is.EqualTo(select.Distinct));
         Assert.That(deserializedSelect.Limit, Is.EqualTo(select.Limit));
 
