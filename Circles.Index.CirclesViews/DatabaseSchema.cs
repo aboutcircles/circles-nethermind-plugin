@@ -522,6 +522,50 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static readonly EventSchema V_CrcV2_Groups = new("V_CrcV2", "Groups", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("group", ValueTypes.Address, true),
+        new("mint", ValueTypes.Address, true),
+        new("treasury", ValueTypes.Address, true),
+        new("name", ValueTypes.String, true),
+        new("symbol", ValueTypes.String, true),
+        new("metadataDigest", ValueTypes.Bytes, true),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+        CREATE OR REPLACE VIEW ""V_CrcV2_Groups"" AS
+            WITH LatestMetadata AS (
+                SELECT
+                    u.avatar,
+                    u.""metadataDigest"",
+                    u.""blockNumber"",
+                    u.""transactionIndex"",
+                    u.""logIndex"",
+                    ROW_NUMBER() OVER (PARTITION BY u.avatar ORDER BY u.""blockNumber"" DESC, u.""transactionIndex"" DESC, u.""logIndex"" DESC) as rn
+                FROM ""CrcV2_UpdateMetadataDigest"" u
+            )
+            SELECT
+                g.""blockNumber"",
+                g.timestamp,
+                g.""transactionIndex"",
+                g.""logIndex"",
+                g.""transactionHash"",
+                g.""group"",
+                g.mint,
+                g.treasury,
+                g.name,
+                g.symbol,
+                lm.""metadataDigest"" as ""cidV0Digest""
+            FROM ""CrcV2_RegisterGroup"" g
+            JOIN LatestMetadata lm ON g.""group"" = lm.avatar
+            WHERE lm.rn = 1;
+        ")
+    };
+
     public static readonly EventSchema V_CrcV2_BalancesByAccountAndToken = new("V_CrcV2", "BalancesByAccountAndToken",
         new byte[32],
         [
@@ -648,6 +692,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_Crc", "Transfers"),
                 V_Crc_Transfers
+            },
+            {
+                ("V_CrcV2", "Groups"),
+                V_CrcV2_Groups
             },
             {
                 ("V_CrcV2", "BalancesByAccountAndToken"),
