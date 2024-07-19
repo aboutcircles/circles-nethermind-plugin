@@ -40,7 +40,7 @@ public class Plugin : INethermindPlugin
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry, circlesViews]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
-        ILogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
+        InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
 
         Settings settings = new();
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
@@ -109,7 +109,7 @@ public class Plugin : INethermindPlugin
         };
     }
 
-    private void LogSettings(ILogger pluginLogger, Settings settings, IDatabase database)
+    private void LogSettings(InterfaceLogger pluginLogger, Settings settings, IDatabase database)
     {
         // Log all indexed events
         pluginLogger.Info("Indexing events:");
@@ -132,7 +132,7 @@ public class Plugin : INethermindPlugin
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
     }
 
-    private static void InitCaches(ILogger logger, IDatabase database)
+    private static void InitCaches(InterfaceLogger logger, IDatabase database)
     {
         logger.Info("Caching Circles token addresses");
 
