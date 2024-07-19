@@ -8,8 +8,8 @@
         <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
         <Copyright>Gnosis Service GmbH</Copyright>
         <Product>Circles</Product>
-        <AssemblyVersion>1.3.10</AssemblyVersion>
-        <FileVersion>1.3.10</FileVersion>
+        <AssemblyVersion>1.4.0</AssemblyVersion>
+        <FileVersion>1.4.0</FileVersion>
     </PropertyGroup>
 
 
@@ -22,7 +22,7 @@
 
     <ItemGroup>
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.25.4" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.27.0" />
     </ItemGroup>
 
 

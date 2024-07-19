@@ -16,7 +16,7 @@ namespace Circles.Index.Rpc;
 
 public class CirclesRpcModule : ICirclesRpcModule
 {
-    private readonly ILogger _pluginLogger;
+    private readonly InterfaceLogger _pluginLogger;
     private readonly Context _indexerContext;
 
     public CirclesRpcModule(Context indexerContext)
