@@ -533,7 +533,7 @@ public class DatabaseSchema : IDatabaseSchema
         new("treasury", ValueTypes.Address, true),
         new("name", ValueTypes.String, true),
         new("symbol", ValueTypes.String, true),
-        new("metadataDigest", ValueTypes.Bytes, true),
+        new("cidV0Digest", ValueTypes.Bytes, true),
     ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
@@ -550,7 +550,7 @@ public class DatabaseSchema : IDatabaseSchema
             )
             SELECT
                 g.""blockNumber"",
-                g.timestamp,
+                g.""timestamp"",
                 g.""transactionIndex"",
                 g.""logIndex"",
                 g.""transactionHash"",
