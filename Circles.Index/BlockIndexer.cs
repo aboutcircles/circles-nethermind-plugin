@@ -91,7 +91,7 @@ public class ImportFlow(
         receiptsSourceBlock.LinkTo(parserBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
         ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> sinkBlock = new(Sink,
-            CreateOptions(cancellationToken, 50000, 1));
+            CreateOptions(cancellationToken, 64 * 1024, 1));
         parserBlock.LinkTo(sinkBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
         return (sourceBlock, sinkBlock);
