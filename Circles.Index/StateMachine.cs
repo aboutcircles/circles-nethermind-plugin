@@ -37,19 +37,6 @@ public class StateMachine(
 
     private State CurrentState { get; set; } = State.New;
 
-    private bool _checkedForGaps;
-
-    private long LastIndexHeight
-    {
-        get
-        {
-            // Only initially check for gaps
-            var value = (!_checkedForGaps ? context.Database.FirstGap() : null) ?? context.Database.LatestBlock() ?? 0;
-            _checkedForGaps = true;
-            return value;
-        }
-    }
-
     public async Task HandleEvent(IEvent e)
     {
         try
@@ -64,8 +51,11 @@ public class StateMachine(
                     {
                         case EnterState:
                         {
-                            // Initially delete all events for which no "System_Block" exists
-                            await TransitionTo(State.Reorg, LastIndexHeight);
+                            context.Logger.Info("Initializing: Finding the last persisted block...");
+                            var lastPersistedBlock = context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
+                            
+                            context.Logger.Info($"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
+                            await TransitionTo(State.Reorg, lastPersistedBlock);
                             return;
                         }
                     }
@@ -90,8 +80,8 @@ public class StateMachine(
                     switch (e)
                     {
                         case NewHead newHead:
-                            context.Logger.Info($"New head received: {newHead.Head}");
-                            if (newHead.Head <= LastIndexHeight)
+                            context.Logger.Debug($"New head received: {newHead.Head}");
+                            if (newHead.Head <= context.Database.LatestBlock())
                             {
                                 await TransitionTo(State.Reorg, newHead.Head);
                                 return;
@@ -108,8 +98,8 @@ public class StateMachine(
                     {
                         case EnterState<long> enterSyncing:
                             var importedBlockRange = await Sync(enterSyncing.Arg);
-                            context.Logger.Info($"Imported blocks from {importedBlockRange.Min} " +
-                                                $"to {importedBlockRange.Max}");
+                            context.Logger.Debug($"Imported blocks from {importedBlockRange.Min} " +
+                                                 $"to {importedBlockRange.Max}");
                             Errors.Clear();
 
                             await TransitionTo(State.NotifySubscribers, importedBlockRange);
@@ -146,15 +136,25 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState:
-                            if (Errors.Count >= 3)
+                            // Exponential backoff based on the number of errors
+                            var delay = Errors.Count * Errors.Count * 1000;
+
+                            // If the delay is larger than 60 sec, clear the oldest errors
+                            if (delay > 60000)
                             {
-                                // If we have tried 3 times, give up
-                                await TransitionTo(State.End);
-                                return;
+                                Errors.RemoveAt(0);
                             }
 
-                            // Otherwise, wait for a bit before retrying
-                            await Task.Delay(Errors.Count * Errors.Count * 1000, cancellationToken);
+                            // Add some jitter to the delay
+                            var jitter = new Random((int)DateTime.Now.TimeOfDay.TotalSeconds).Next(0, 1000);
+                            delay += jitter;
+
+                            // Wait 'delay' ms
+                            context.Logger.Info($"Waiting {delay} ms before retrying after an error...");
+                            await Task.Delay(delay, cancellationToken);
+
+                            // Retry
+                            context.Logger.Info("Transitioning to 'Initial' state after an error...");
                             await TransitionTo(State.Initial);
                             return;
                         case LeaveState:
@@ -167,7 +167,7 @@ public class StateMachine(
                     return;
             }
 
-            context.Logger.Debug($"Unhandled event {e} in state {CurrentState}");
+            context.Logger.Trace($"Unhandled event {e} in state {CurrentState}");
         }
         catch (Exception ex)
         {
@@ -180,7 +180,7 @@ public class StateMachine(
 
     private async Task TransitionTo<TArgument>(State newState, TArgument? argument)
     {
-        context.Logger.Info($"Transitioning from {CurrentState} to {newState}");
+        context.Logger.Debug($"Transitioning from {CurrentState} to {newState}");
         if (newState is not State.Error)
         {
             await HandleEvent(new LeaveState());
@@ -198,7 +198,7 @@ public class StateMachine(
 
     private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
     {
-        long lastIndexHeight = LastIndexHeight;
+        long lastIndexHeight = context.Database.LatestBlock() ?? 0;
         if (lastIndexHeight == toBlock)
         {
             context.Logger.Info("No blocks to sync.");
@@ -206,7 +206,7 @@ public class StateMachine(
         }
 
         var nextBlock = lastIndexHeight + 1;
-        context.Logger.Info($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
+        context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
 
         for (long i = nextBlock; i <= toBlock; i++)
         {
