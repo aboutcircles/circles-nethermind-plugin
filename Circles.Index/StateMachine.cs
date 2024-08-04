@@ -37,7 +37,18 @@ public class StateMachine(
 
     private State CurrentState { get; set; } = State.New;
 
-    private long LastIndexHeight => context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
+    private bool _checkedForGaps;
+
+    private long LastIndexHeight
+    {
+        get
+        {
+            // Only initially check for gaps
+            var value = (!_checkedForGaps ? context.Database.FirstGap() : null) ?? context.Database.LatestBlock() ?? 0;
+            _checkedForGaps = true;
+            return value;
+        }
+    }
 
     public async Task HandleEvent(IEvent e)
     {
