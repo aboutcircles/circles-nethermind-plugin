@@ -346,12 +346,14 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (asTimeCircles)
             {
                 var tcBalance = FormatTimeCircles(tokenBalance);
-                balances.Add(new CirclesTokenBalanceV2(tokenId, tcBalance, tokenId.ToHexString(true)));
+                Address tokenAddress = new(tokenIdBytes.Slice(32 - 20, 20));
+                balances.Add(new CirclesTokenBalanceV2(tokenId, tcBalance, tokenAddress.ToString(true, false)));
             }
             else
             {
+                Address tokenAddress = new(tokenIdBytes.Slice(32 - 20, 20));
                 balances.Add(new CirclesTokenBalanceV2(tokenId, tokenBalance.ToString(CultureInfo.InvariantCulture),
-                    tokenId.ToHexString(true)));
+                    tokenAddress.ToString(true, false)));
             }
         }
 
