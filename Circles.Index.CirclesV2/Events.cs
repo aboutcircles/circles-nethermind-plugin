@@ -114,6 +114,7 @@ public record URI(
     UInt256 Id,
     string Value) : IIndexEvent;
 
+[Obsolete("Is replaced by a regular burn TransferSingle event")]
 public record DiscountCost(
     long BlockNumber,
     long Timestamp,
@@ -184,3 +185,15 @@ public record WithdrawDemurraged(
     string Account,
     UInt256 Amount,
     UInt256 InflationaryAmount) : IIndexEvent;
+
+public record StreamCompleted(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Operator,
+    string From,
+    string To,
+    UInt256 Id,
+    UInt256 Amount) : IIndexEvent;

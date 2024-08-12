@@ -22,13 +22,15 @@ public class LogParser(Address v2HubAddress) : ILogParser
     private readonly Hash256 _transferSingleTopic = new(DatabaseSchema.TransferSingle.Topic);
     private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
     private readonly Hash256 _uriTopic = new(DatabaseSchema.URI.Topic);
+    [Obsolete("Is replaced by a regular burn TransferSingle event")]
     private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
-    private readonly Hash256 _erc20WrapperDeployed = new(DatabaseSchema.Erc20WrapperDeployed.Topic);
+    private readonly Hash256 _erc20WrapperDeployedTopic = new(DatabaseSchema.Erc20WrapperDeployed.Topic);
     private readonly Hash256 _erc20WrapperTransfer = new(DatabaseSchema.Erc20WrapperTransfer.Topic);
     private readonly Hash256 _depositInflationary = new(DatabaseSchema.DepositInflationary.Topic);
     private readonly Hash256 _withdrawInflationary = new(DatabaseSchema.WithdrawInflationary.Topic);
     private readonly Hash256 _depositDemurraged = new(DatabaseSchema.DepositDemurraged.Topic);
     private readonly Hash256 _withdrawDemurraged = new(DatabaseSchema.WithdrawDemurraged.Topic);
+    private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
 
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
@@ -106,9 +108,17 @@ public class LogParser(Address v2HubAddress) : ILogParser
                 yield return DiscountCost(block, receipt, log, logIndex);
             }
 
-            if (topic == _erc20WrapperDeployed)
+            if (topic == _erc20WrapperDeployedTopic)
             {
                 yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
+            }
+            
+            if (topic == _streamCompletedTopic)
+            {
+                foreach (var streamCompleted in StreamCompleted(block, receipt, log, logIndex))
+                {
+                    yield return streamCompleted;
+                }
             }
         }
 
@@ -463,5 +473,54 @@ public class LogParser(Address v2HubAddress) : ILogParser
             account,
             amount,
             inflationaryAmount);
+    }
+
+    private IEnumerable<StreamCompleted> StreamCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+    
+        int offset = 32;
+
+        int idsLength = (int)new BigInteger(log.Data.Slice(0, 32).ToArray());
+        offset += 32;
+        var ids = new List<UInt256>(idsLength);
+        for (int i = 0; i < idsLength; i++)
+        {
+            ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            offset += 32;
+        }
+
+        int amountsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        offset += 32;
+        var amounts = new List<UInt256>(amountsLength);
+        for (int i = 0; i < amountsLength; i++)
+        {
+            amounts.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            offset += 32;
+        }
+
+        // Ensure that the ids and amounts arrays have the same length
+        if (idsLength != amountsLength)
+        {
+            throw new InvalidOperationException("Mismatched lengths between ids and amounts arrays while parsing 'StreamCompleted'.");
+        }
+
+        // Emit a StreamCompleted object per id and amount pair
+        for (int i = 0; i < idsLength; i++)
+        {
+            yield return new StreamCompleted(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                operatorAddress,
+                fromAddress,
+                toAddress,
+                ids[i],
+                amounts[i]);
+        }
     }
 }
