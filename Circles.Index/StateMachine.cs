@@ -222,7 +222,7 @@ public class StateMachine(
         {
             ImportFlow flow = new(blockTree, receiptFinder, context);
             IAsyncEnumerable<long> blocksToSync = GetBlocksToSync(toBlock);
-            importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
+            importedBlockRange = await flow.RunPipeline(blocksToSync, cancellationToken);
 
             await context.Sink.Flush();
             await flow.FlushBlocks();
