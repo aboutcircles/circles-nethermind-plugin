@@ -94,12 +94,13 @@ public class DatabaseSchema : IDatabaseSchema
         "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
 
     public static readonly EventSchema StreamCompleted = new("CrcV2", "StreamCompleted",
-        Keccak.Compute("event StreamCompleted(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] amounts)").BytesToArray(),
+        Keccak.Compute("StreamCompleted(address,address,address,uint256[],uint256[])").BytesToArray(),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true),
             new("logIndex", ValueTypes.Int, true),
+            new("batchIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
             new("operator", ValueTypes.Address, true),
             new("from", ValueTypes.Address, true),
@@ -453,12 +454,13 @@ public class DatabaseSchema : IDatabaseSchema
                 { "timestamp", e => e.Timestamp },
                 { "transactionIndex", e => e.TransactionIndex },
                 { "logIndex", e => e.LogIndex },
+                { "batchIndex", e => e.BatchIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "operator", e => e.Operator },
                 { "from", e => e.From },
                 { "to", e => e.To },
-                { "id", e => e.Id },
-                { "amount", e => e.Amount }
+                { "id", e => (BigInteger)e.Id },
+                { "amount", e => (BigInteger)e.Amount }
             });
     }
 }

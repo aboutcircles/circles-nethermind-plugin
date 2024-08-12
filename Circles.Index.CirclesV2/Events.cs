@@ -191,6 +191,7 @@ public record StreamCompleted(
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
+    int BatchIndex,
     string TransactionHash,
     string Operator,
     string From,
