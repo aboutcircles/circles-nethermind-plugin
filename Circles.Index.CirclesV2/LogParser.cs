@@ -22,8 +22,10 @@ public class LogParser(Address v2HubAddress) : ILogParser
     private readonly Hash256 _transferSingleTopic = new(DatabaseSchema.TransferSingle.Topic);
     private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
     private readonly Hash256 _uriTopic = new(DatabaseSchema.URI.Topic);
+
     [Obsolete("Is replaced by a regular burn TransferSingle event")]
     private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
+
     private readonly Hash256 _erc20WrapperDeployedTopic = new(DatabaseSchema.Erc20WrapperDeployed.Topic);
     private readonly Hash256 _erc20WrapperTransfer = new(DatabaseSchema.Erc20WrapperTransfer.Topic);
     private readonly Hash256 _depositInflationary = new(DatabaseSchema.DepositInflationary.Topic);
@@ -112,7 +114,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
             {
                 yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
             }
-            
+
             if (topic == _streamCompletedTopic)
             {
                 foreach (var streamCompleted in StreamCompleted(block, receipt, log, logIndex))
@@ -480,47 +482,48 @@ public class LogParser(Address v2HubAddress) : ILogParser
         string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-    
-        int offset = 32;
 
-        int idsLength = (int)new BigInteger(log.Data.Slice(0, 32).ToArray());
-        offset += 32;
-        var ids = new List<UInt256>(idsLength);
-        for (int i = 0; i < idsLength; i++)
+        // Decode the data section containing the dynamic arrays
+        var data = log.Data;
+        int idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
+        int amountsOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true);
+        var ids = DecodeUInt256Array(data.Slice(idsOffset));
+        var amounts = DecodeUInt256Array(data.Slice(amountsOffset));
+
+        if (ids.Count != amounts.Count)
         {
-            ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
-            offset += 32;
+            throw new InvalidOperationException("The number of ids and amounts must be equal.");
         }
 
-        int amountsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
-        offset += 32;
-        var amounts = new List<UInt256>(amountsLength);
-        for (int i = 0; i < amountsLength; i++)
+        for (int i = 0; i < amounts.Count; i++)
         {
-            amounts.Add(new UInt256(log.Data.Slice(offset, 32), true));
-            offset += 32;
-        }
-
-        // Ensure that the ids and amounts arrays have the same length
-        if (idsLength != amountsLength)
-        {
-            throw new InvalidOperationException("Mismatched lengths between ids and amounts arrays while parsing 'StreamCompleted'.");
-        }
-
-        // Emit a StreamCompleted object per id and amount pair
-        for (int i = 0; i < idsLength; i++)
-        {
+            // Create the event instance
             yield return new StreamCompleted(
                 block.Number,
                 (long)block.Timestamp,
                 receipt.Index,
                 logIndex,
+                i,
                 receipt.TxHash!.ToString(),
                 operatorAddress,
                 fromAddress,
                 toAddress,
                 ids[i],
-                amounts[i]);
+                amounts[i]
+            );
         }
+    }
+
+    private static List<UInt256> DecodeUInt256Array(ReadOnlyMemory<byte> data)
+    {
+        List<UInt256> result = new List<UInt256>();
+        int length = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true); // First 32 bytes are the length
+        for (int i = 0; i < length; i++)
+        {
+            UInt256 value = new UInt256(data.Slice(32 + i * 32, 32).ToArray(), true); // Each element is 32 bytes
+            result.Add(value);
+        }
+
+        return result;
     }
 }
