@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: x64.Dockerfile
     restart: unless-stopped
+    depends_on:
+      - postgres-gnosis
     networks:
       - circles-gnosis
     ports:

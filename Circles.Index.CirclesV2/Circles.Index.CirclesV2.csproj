@@ -13,7 +13,7 @@
 
     <ItemGroup>
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.27.0" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.27.1" />
     </ItemGroup>
 
 </Project>
