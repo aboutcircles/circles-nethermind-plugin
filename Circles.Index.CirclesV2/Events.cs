@@ -174,3 +174,16 @@ public record WithdrawDemurraged(
     string Account,
     UInt256 Amount,
     UInt256 InflationaryAmount) : IIndexEvent;
+
+public record StreamCompleted(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    int BatchIndex,
+    string TransactionHash,
+    string Operator,
+    string From,
+    string To,
+    UInt256 Id,
+    UInt256 Amount) : IIndexEvent;

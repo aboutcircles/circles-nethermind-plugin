@@ -28,6 +28,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
     private readonly Hash256 _withdrawInflationary = new(DatabaseSchema.WithdrawInflationary.Topic);
     private readonly Hash256 _depositDemurraged = new(DatabaseSchema.DepositDemurraged.Topic);
     private readonly Hash256 _withdrawDemurraged = new(DatabaseSchema.WithdrawDemurraged.Topic);
+    private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
 
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
@@ -103,6 +104,14 @@ public class LogParser(Address v2HubAddress) : ILogParser
             if (topic == _erc20WrapperDeployed)
             {
                 yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
+            }
+
+            if (topic == _streamCompletedTopic)
+            {
+                foreach (var streamCompleted in StreamCompleted(block, receipt, log, logIndex))
+                {
+                    yield return streamCompleted;
+                }
             }
         }
 
@@ -440,5 +449,55 @@ public class LogParser(Address v2HubAddress) : ILogParser
             account,
             amount,
             inflationaryAmount);
+    }
+
+    private IEnumerable<StreamCompleted> StreamCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        // Decode the data section containing the dynamic arrays
+        var data = log.Data;
+        int idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
+        int amountsOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true);
+        var ids = DecodeUInt256Array(data.Slice(idsOffset));
+        var amounts = DecodeUInt256Array(data.Slice(amountsOffset));
+
+        if (ids.Count != amounts.Count)
+        {
+            throw new InvalidOperationException("The number of ids and amounts must be equal.");
+        }
+
+        for (int i = 0; i < amounts.Count; i++)
+        {
+            // Create the event instance
+            yield return new StreamCompleted(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                i,
+                receipt.TxHash!.ToString(),
+                operatorAddress,
+                fromAddress,
+                toAddress,
+                ids[i],
+                amounts[i]
+            );
+        }
+    }
+
+    private static List<UInt256> DecodeUInt256Array(ReadOnlyMemory<byte> data)
+    {
+        List<UInt256> result = new List<UInt256>();
+        int length = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true); // First 32 bytes are the length
+        for (int i = 0; i < length; i++)
+        {
+            UInt256 value = new UInt256(data.Slice(32 + i * 32, 32).ToArray(), true); // Each element is 32 bytes
+            result.Add(value);
+        }
+
+        return result;
     }
 }
