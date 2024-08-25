@@ -400,7 +400,6 @@ Namespaces and tables:
     * `Trust`
 * `CrcV2`
     * `ApprovalForAll`
-    * `DiscountCost`
     * `InviteHuman`
     * `PersonalMint`
     * `RegisterGroup`
@@ -424,7 +423,8 @@ Namespaces and tables:
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
 * `V_CrcV2`
-    * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and `CrcV2_RegisterOrganization`)
+    * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and
+      `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)
     * `GroupMemberships` (view combining `CrcV2_RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
@@ -501,11 +501,13 @@ indexed. Can be filtered to just a specific address.
 #### Example
 
 This call subscribes to all Circles events (firehose):
+
 ```shell
 npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{}]}' -w 3600
 ```
 
 This call subscribes to all Circles events that involve the address `0xde374ece6fa50e781e81aac78e811b33d16912c7`:
+
 ```shell
 npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{"address":"0xde374ece6fa50e781e81aac78e811b33d16912c7"}]}' -w 3600
 ```

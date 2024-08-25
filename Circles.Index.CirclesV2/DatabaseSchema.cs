@@ -80,9 +80,6 @@ public class DatabaseSchema : IDatabaseSchema
         EventSchema.FromSolidity(
             "CrcV2", "event ApprovalForAll(address indexed account, address indexed operator, bool approved)");
 
-    public static readonly EventSchema DiscountCost = EventSchema.FromSolidity("CrcV2",
-        "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
-
     public static readonly EventSchema TransferBatch = new("CrcV2", "TransferBatch",
         Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])").BytesToArray(),
         [
@@ -175,10 +172,6 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "TransferBatch"),
                 TransferBatch
-            },
-            {
-                ("CrcV2", "DiscountCost"),
-                DiscountCost
             },
             {
                 ("CrcV2", "ERC20WrapperDeployed"),
@@ -361,20 +354,6 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "value", e => e.Value },
                 { "id", e => (BigInteger)e.Id }
-            });
-
-        EventDtoTableMap.Add<DiscountCost>(("CrcV2", "DiscountCost"));
-        SchemaPropertyMap.Add(("CrcV2", "DiscountCost"),
-            new Dictionary<string, Func<DiscountCost, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "account", e => e.Account },
-                { "id", e => (BigInteger)e.Id },
-                { "discountCost", e => (BigInteger)e._DiscountCost }
             });
 
         EventDtoTableMap.Add<Erc20WrapperDeployed>(("CrcV2", "Erc20WrapperDeployed"));

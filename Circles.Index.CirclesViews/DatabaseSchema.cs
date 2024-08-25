@@ -614,13 +614,6 @@ public class DatabaseSchema : IDatabaseSchema
                            ""id"",
                            ""value""
                     FROM ""CrcV2_TransferBatch""
-                    UNION ALL
-                    SELECT ""timestamp"",
-                           ""account""                                    as ""from"",
-                           '0x0000000000000000000000000000000000000000' as ""to"",
-                           ""id"",
-                           ""discountCost""                               as ""value""
-                    FROM ""CrcV2_DiscountCost""
                 ), ""accountBalances"" AS (
                     SELECT
                         account,

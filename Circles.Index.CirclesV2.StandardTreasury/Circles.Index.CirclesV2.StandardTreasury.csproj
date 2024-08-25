@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Reference Include="Nethermind.Core">
+        <HintPath>..\..\..\..\.nuget\packages\nethermind.referenceassemblies\1.28.0\ref\net8.0\Nethermind.Core.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+    </ItemGroup>
+
+</Project>
