@@ -50,75 +50,44 @@ public class ImportFlow(
     // blockSource: 3 buffer, 3 parallel
     // findReceipts: 6 buffer, 6 parallel
 
-    private (TransformBlock<long, Block?> Source, ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> Sink)
-        BuildPipeline(CancellationToken cancellationToken)
+    public async Task<Range<long>> RunPipeline(
+        IAsyncEnumerable<long> blocksToIndex,
+        CancellationToken cancellationToken)
     {
-        TransformBlock<long, Block?> sourceBlock = new(
-            blockTree.FindBlock,
-            CreateOptions(cancellationToken, 3, 3));
+        var sourceBlock = new BufferBlock<long>(CreateOptions(cancellationToken, 1, 1));
+        var downloadBlock = CreateDownloadBlock(cancellationToken, 3, 3);
+        var receiptsSourceBlock =
+            CreateReceiptsSourceBlock(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount);
+        var parserBlock = CreateParserBlock(cancellationToken);
+        var sinkBlock = CreateSinkBlock(cancellationToken);
 
-        TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock = new(
-            block =>
-                new BlockWithReceipts(
-                    block
-                    , receiptFinder.Get(block))
-            , CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
+        var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
 
-        sourceBlock.LinkTo(receiptsSourceBlock!, new DataflowLinkOptions { PropagateCompletion = true },
-            o => o != null);
-
-        TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
-            blockWithReceipts =>
-            {
-                List<IIndexEvent> events = [];
-                foreach (var receipt in blockWithReceipts.Receipts)
-                {
-                    for (int i = 0; i < receipt.Logs?.Length; i++)
-                    {
-                        LogEntry log = receipt.Logs[i];
-                        foreach (var parser in context.LogParsers)
-                        {
-                            var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
-                            events.AddRange(parsedEvents);
-                        }
-                    }
-                }
-
-                return (blockWithReceipts, events);
-            },
-            CreateOptions(cancellationToken, Environment.ProcessorCount));
-
-        receiptsSourceBlock.LinkTo(parserBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-        ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> sinkBlock = new(Sink,
-            CreateOptions(cancellationToken, 64 * 1024, 1));
-        parserBlock.LinkTo(sinkBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-        return (sourceBlock, sinkBlock);
-    }
-
-    public async Task<Range<long>> Run(IAsyncEnumerable<long> blocksToIndex, CancellationToken? cancellationToken)
-    {
-        var (sourceBlock, sinkBlock) = BuildPipeline(CancellationToken.None);
+        sourceBlock.LinkTo(downloadBlock, linkOptions);
+        downloadBlock.LinkTo(receiptsSourceBlock!, linkOptions, o => o != null);
+        receiptsSourceBlock.LinkTo(parserBlock, linkOptions);
+        parserBlock.LinkTo(sinkBlock, linkOptions);
 
         long min = long.MaxValue;
         long max = long.MinValue;
 
-        if (cancellationToken == null)
+        _ = Task.Run(async () =>
         {
-            CancellationTokenSource cts = new();
-            cancellationToken = cts.Token;
-        }
+            try
+            {
+                await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken))
+                {
+                    await sourceBlock.SendAsync(blockNo, cancellationToken);
 
-        await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken.Value))
-        {
-            await sourceBlock.SendAsync(blockNo, cancellationToken.Value);
-
-            min = Math.Min(min, blockNo);
-            max = Math.Max(max, blockNo);
-        }
-
-        sourceBlock.Complete();
+                    min = Math.Min(min, blockNo);
+                    max = Math.Max(max, blockNo);
+                }
+            }
+            finally
+            {
+                sourceBlock.Complete();
+            }
+        }, cancellationToken);
 
         await sinkBlock.Completion;
 
@@ -128,6 +97,45 @@ public class ImportFlow(
             Max = max
         };
     }
+
+    private ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> CreateSinkBlock(
+        CancellationToken cancellationToken) => new(Sink, CreateOptions(cancellationToken, 64 * 1024, 1));
+
+    private TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> CreateParserBlock(
+        CancellationToken cancellationToken) => new(
+        blockWithReceipts =>
+        {
+            List<IIndexEvent> events = [];
+            foreach (var receipt in blockWithReceipts.Receipts)
+            {
+                for (int i = 0; i < receipt.Logs?.Length; i++)
+                {
+                    LogEntry log = receipt.Logs[i];
+                    foreach (var parser in context.LogParsers)
+                    {
+                        var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
+                        events.AddRange(parsedEvents);
+                    }
+                }
+            }
+
+            return (blockWithReceipts, events);
+        },
+        CreateOptions(cancellationToken, Environment.ProcessorCount));
+
+    private TransformBlock<Block, BlockWithReceipts> CreateReceiptsSourceBlock(CancellationToken cancellationToken,
+        int boundedCapacity = 1, int parallelism = 1) =>
+        new(
+            block =>
+                new BlockWithReceipts(
+                    block
+                    , receiptFinder.Get(block))
+            , CreateOptions(cancellationToken, boundedCapacity, parallelism));
+
+    private TransformBlock<long, Block?> CreateDownloadBlock(CancellationToken cancellationToken,
+        int boundedCapacity = 1, int parallelism = 1) => new(
+        blockTree.FindBlock,
+        CreateOptions(cancellationToken, boundedCapacity, parallelism));
 
     private async Task AddBlock(BlockWithEventCounts block)
     {

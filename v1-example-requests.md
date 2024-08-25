@@ -126,15 +126,15 @@ curl -X POST --data '{
           "Predicates": [
               {
                 "Type": "FilterPredicate",
-                "FilterType": "Equals",
+                "FilterType": "In",
                 "Column": "user",
-                "Value": "0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"
+                "Value": ["0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"]
               },
               {
                 "Type": "FilterPredicate",
-                "FilterType": "Equals",
+                "FilterType": "In",
                 "Column": "canSendTo",
-                "Value": "0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"
+                "Value": ["0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"]
               }
           ]
         }
@@ -155,7 +155,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" http://localhost:8545/
 ```
 
 ##### Response:
