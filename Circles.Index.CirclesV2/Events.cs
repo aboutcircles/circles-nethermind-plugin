@@ -114,16 +114,6 @@ public record URI(
     UInt256 Id,
     string Value) : IIndexEvent;
 
-public record DiscountCost(
-    long BlockNumber,
-    long Timestamp,
-    int TransactionIndex,
-    int LogIndex,
-    string TransactionHash,
-    string Account,
-    UInt256 Id,
-    UInt256 _DiscountCost) : IIndexEvent;
-
 public record Erc20WrapperDeployed(
     long BlockNumber,
     long Timestamp,
