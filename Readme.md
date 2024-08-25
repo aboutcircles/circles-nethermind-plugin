@@ -390,45 +390,167 @@ The items of a batch are treated like individual events that can only be disting
 
 Namespaces and tables:
 
-* `System`
-    * `Block`
-* `CrcV1`
-    * `HubTransfer`
-    * `OrganizationSignup`
-    * `Signup`
-    * `Transfer`
-    * `Trust`
-* `CrcV2`
-    * `ApprovalForAll`
-    * `InviteHuman`
-    * `PersonalMint`
-    * `RegisterGroup`
-    * `RegisterHuman`
-    * `RegisterOrganization`
-    * `RegisterShortName`
-    * `Stopped`
-    * `TransferBatch`
-    * `TransferSingle`
-    * `Trust`
-    * `UpdateMetadataDigest`
-    * `URI`
-    * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
-    * `Erc20WrapperDeployed`
-    * `Erc20WrapperTransfer`
-    * `DepositDemurraged`
-    * `WithdrawDemurraged`
-    * `DepositInflationary`
-    * `WithdrawInflationary`
-* `V_CrcV1`
+## Available Namespaces, Tables, and Columns
+
+Every table has at least the following columns:
+* `blockNumber` - The block number the event was emitted in.
+* `timestamp` - The unix timestamp of the event.
+* `transactionIndex` - The index of the transaction in the block.
+* `logIndex` - The index of the log in the transaction.
+* `transactionHash` - The hash of the transaction.
+
+Tables for batch events have an additional `batchIndex` column.
+
+### Namespaces and Tables:
+
+#### CrcV1
+* `HubTransfer`
+    * `from` (Address)
+    * `to` (Address)
+    * `amount` (BigInteger)
+* `Signup`
+    * `user` (Address)
+    * `token` (Address)
+* `OrganizationSignup`
+    * `organization` (Address)
+* `Trust`
+    * `canSendTo` (Address)
+    * `user` (Address)
+    * `limit` (BigInteger)
+* `Transfer`
+    * `tokenAddress` (Address)
+    * `from` (Address)
+    * `to` (Address)
+    * `amount` (BigInteger)
+
+#### CrcV2
+* `InviteHuman`
+    * `inviter` (Address)
+    * `invited` (Address)
+* `PersonalMint`
+    * `human` (Address)
+    * `amount` (BigInteger)
+    * `startPeriod` (BigInteger)
+    * `endPeriod` (BigInteger)
+* `RegisterGroup`
+    * `group` (Address)
+    * `mint` (Address)
+    * `treasury` (Address)
+    * `name` (String)
+    * `symbol` (String)
+* `RegisterHuman`
+    * `avatar` (Address)
+* `RegisterOrganization`
+    * `organization` (Address)
+    * `name` (String)
+* `Stopped`
+    * `avatar` (Address)
+* `Trust`
+    * `truster` (Address)
+    * `trustee` (Address)
+    * `expiryTime` (BigInteger)
+* `TransferSingle`
+    * `operator` (Address)
+    * `from` (Address)
+    * `to` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+* `TransferBatch`
+    * `operator` (Address)
+    * `from` (Address)
+    * `to` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+* `URI`
+    * `value` (String)
+    * `id` (BigInteger)
+* `ApprovalForAll`
+    * `account` (Address)
+    * `operator` (Address)
+    * `approved` (Boolean)
+* `Erc20WrapperDeployed`
+    * `avatar` (Address)
+    * `erc20Wrapper` (Address)
+    * `circlesType` (Int64)
+* `Erc20WrapperTransfer`
+    * `tokenAddress` (Address)
+    * `from` (Address)
+    * `to` (Address)
+    * `amount` (BigInteger)
+* `DepositInflationary`
+    * `account` (Address)
+    * `amount` (BigInteger)
+    * `demurragedAmount` (BigInteger)
+* `WithdrawInflationary`
+    * `account` (Address)
+    * `amount` (BigInteger)
+    * `demurragedAmount` (BigInteger)
+* `DepositDemurraged`
+    * `account` (Address)
+    * `amount` (BigInteger)
+    * `inflationaryAmount` (BigInteger)
+* `WithdrawDemurraged`
+    * `account` (Address)
+    * `amount` (BigInteger)
+    * `inflationaryAmount` (BigInteger)
+* `StreamCompleted`
+    * `operator` (Address)
+    * `from` (Address)
+    * `to` (Address)
+    * `id` (BigInteger)
+    * `amount` (BigInteger)
+
+#### CrcV2 (NameRegistry)
+* `RegisterShortName`
+    * `avatar` (Address)
+    * `shortName` (UInt72)
+    * `nonce` (BigInteger)
+* `UpdateMetadataDigest`
+    * `avatar` (Address)
+    * `metadataDigest` (Bytes32)
+* `CidV0`
+    * `avatar` (Address)
+    * `cidV0Digest` (Bytes32)
+
+#### CrcV2 (StandardTreasury)
+* `CreateVault`
+    * `group` (Address)
+    * `vault` (Address)
+* `GroupMintSingle`
+    * `group` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+    * `userData` (Bytes)
+* `GroupMintBatch`
+    * `group` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+    * `userData` (Bytes)
+* `GroupRedeem`
+    * `group` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+    * `data` (Bytes)
+* `GroupRedeemCollateralReturn`
+    * `group` (Address)
+    * `to` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+* `GroupRedeemCollateralBurn`
+    * `group` (Address)
+    * `id` (BigInteger)
+    * `value` (BigInteger)
+
+#### V_CrcV1 (Circles v1 views)
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
-* `V_CrcV2`
+#### V_CrcV2 (Circles v2 views)
     * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and
       `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)
     * `GroupMemberships` (view combining `CrcV2_RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
-* `V_Crc`
+#### V_Crc (Views combining v1 and v2 data)
     * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
     * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)
     * `Transfers` (view combining `V_CrcV1_Transfer` and `V_CrcV2_Transfers`)
