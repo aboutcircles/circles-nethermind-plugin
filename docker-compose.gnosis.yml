@@ -41,6 +41,7 @@ services:
       - V2_NAME_REGISTRY_ADDRESS=0xb95eF3f3E693531d9588815bcA954dC8dce30937
       - V2_STANDARD_TREASURY_ADDRESS=0x2434151eB40Af648AbcF73a6C9F1711FfF0F498B
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+      - START_BLOCK=12000000
 
   postgres-gnosis:
     image: postgres:16

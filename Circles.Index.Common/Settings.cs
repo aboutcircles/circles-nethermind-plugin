@@ -23,6 +23,10 @@ public class Settings
     public readonly string IndexDbConnectionString =
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
+    
+    public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
+        ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
+        : 0L;
 
     public readonly int BlockBufferSize = 20000;
     public readonly int EventBufferSize = 100000;
