@@ -61,8 +61,14 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
     {
         // event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce)
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 shortName = new UInt256(log.Topics[2].Bytes, true);
-        UInt256 nonce = new UInt256(log.Topics[3].Bytes, true);
+
+        byte[] shortNameBytes = new byte[9];
+        Array.Copy(log.Data, shortNameBytes, 9);
+        UInt256 shortName = new UInt256(shortNameBytes, true);
+
+        byte[] nonceBytes = new byte[32];
+        Array.Copy(log.Data, 9, nonceBytes, 0, 32);
+        UInt256 nonce = new UInt256(nonceBytes, true);
 
         return new RegisterShortName(
             block.Number,
