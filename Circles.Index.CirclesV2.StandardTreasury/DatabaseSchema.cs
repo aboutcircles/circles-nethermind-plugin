@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
 
@@ -125,8 +126,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "group", e => e.Group },
-                { "id", e => e.Id },
-                { "value", e => e.Value },
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value },
                 { "userData", e => e.UserData }
             });
 
@@ -141,8 +142,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "batchIndex", e => e.BatchIndex },
                 { "group", e => e.Group },
-                { "id", e => e.Id },
-                { "value", e => e.Value },
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value },
                 { "userData", e => e.UserData }
             });
 
@@ -156,8 +157,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "group", e => e.Group },
-                { "id", e => e.Id },
-                { "value", e => e.Value },
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value },
                 { "data", e => e.Data }
             });
 
@@ -173,8 +174,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "batchIndex", e => e.BatchIndex },
                 { "group", e => e.Group },
                 { "to", e => e.To },
-                { "id", e => e.Id },
-                { "value", e => e.Value }
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value }
             });
 
         EventDtoTableMap.Add<GroupRedeemCollateralBurn>(("CrcV2", "GroupRedeemCollateralBurn"));
@@ -188,8 +189,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "batchIndex", e => e.BatchIndex },
                 { "group", e => e.Group },
-                { "id", e => e.Id },
-                { "value", e => e.Value }
+                { "id", e => (BigInteger)e.Id },
+                { "value", e => (BigInteger)e.Value }
             });
     }
 }

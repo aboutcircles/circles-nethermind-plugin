@@ -110,8 +110,20 @@ public class ImportFlow(
                         LogEntry log = receipt.Logs[i];
                         foreach (var parser in context.LogParsers)
                         {
-                            var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
-                            events.AddRange(parsedEvents);
+                            try
+                            {
+                                var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
+                                events.AddRange(parsedEvents);
+                            }
+                            catch (Exception e)
+                            {
+                                context.Logger.Error($"Error parsing log {log} with parser {parser}");
+                                context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
+                                context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
+                                context.Logger.Error(e.Message);
+                                context.Logger.Error(e.StackTrace);
+                                throw;
+                            }
                         }
                     }
                 }
