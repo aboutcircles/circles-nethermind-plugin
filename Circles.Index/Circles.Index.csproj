@@ -8,8 +8,8 @@
         <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
         <Copyright>Gnosis Service GmbH</Copyright>
         <Product>Circles</Product>
-        <AssemblyVersion>1.4.2</AssemblyVersion>
-        <FileVersion>1.4.2</FileVersion>
+        <AssemblyVersion>1.6.3</AssemblyVersion>
+        <FileVersion>1.6.3</FileVersion>
     </PropertyGroup>
 
 
@@ -22,18 +22,26 @@
 
     <ItemGroup>
       <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.27.1" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.28.0" />
     </ItemGroup>
 
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj" />
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
       <ProjectReference Include="..\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
+    </ItemGroup>
+
+
+    <ItemGroup>
+      <None Remove="cheatcodes\spam_accounts.csv" />
+      <EmbeddedResource Include="cheatcodes\spam_accounts.csv" />
     </ItemGroup>
 
 

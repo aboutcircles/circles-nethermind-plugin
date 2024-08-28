@@ -36,8 +36,10 @@ public class Plugin : INethermindPlugin
         IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
         IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
         IDatabaseSchema v2NameRegistry = new CirclesV2.NameRegistry.DatabaseSchema();
+        IDatabaseSchema v2StandardTreasury = new CirclesV2.StandardTreasury.DatabaseSchema();
         IDatabaseSchema circlesViews = new CirclesViews.DatabaseSchema();
-        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry, circlesViews]);
+        IDatabaseSchema databaseSchema =
+            new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry, v2StandardTreasury, circlesViews]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
@@ -51,10 +53,12 @@ public class Plugin : INethermindPlugin
         Sink sink = new Sink(
             database,
             new CompositeSchemaPropertyMap([
-                v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap
+                v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap,
+                v2StandardTreasury.SchemaPropertyMap
             ]),
             new CompositeEventDtoTableMap([
-                v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap
+                v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap,
+                v2StandardTreasury.EventDtoTableMap
             ]),
             settings.EventBufferSize);
 
@@ -64,7 +68,8 @@ public class Plugin : INethermindPlugin
         [
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
             new CirclesV2.LogParser(settings.CirclesV2HubAddress),
-            new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress)
+            new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
+            new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
         ];
 
         _indexerContext = new Context(
@@ -129,6 +134,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V1 Hub address: " + settings.CirclesV1HubAddress);
         pluginLogger.Info(" * V2 Hub address: " + settings.CirclesV2HubAddress);
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
+        pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
     }
 

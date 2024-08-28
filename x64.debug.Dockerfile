@@ -6,7 +6,7 @@ COPY . .
 RUN dotnet restore
 RUN dotnet publish -c Debug -o /circles-nethermind-plugin
 
-FROM nethermind/nethermind:1.27.1 AS base
+FROM nethermind/nethermind:1.28.0 AS base
 
 # dotnet libs
 COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json /nethermind/plugins
@@ -20,6 +20,8 @@ COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.dll /nether
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.pdb /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.pdb /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.StandardTreasury.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.StandardTreasury.pdb /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.pdb /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.dll /nethermind/plugins

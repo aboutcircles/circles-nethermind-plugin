@@ -114,16 +114,6 @@ public record URI(
     UInt256 Id,
     string Value) : IIndexEvent;
 
-public record DiscountCost(
-    long BlockNumber,
-    long Timestamp,
-    int TransactionIndex,
-    int LogIndex,
-    string TransactionHash,
-    string Account,
-    UInt256 Id,
-    UInt256 _DiscountCost) : IIndexEvent;
-
 public record Erc20WrapperDeployed(
     long BlockNumber,
     long Timestamp,
@@ -184,3 +174,16 @@ public record WithdrawDemurraged(
     string Account,
     UInt256 Amount,
     UInt256 InflationaryAmount) : IIndexEvent;
+
+public record StreamCompleted(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    int BatchIndex,
+    string TransactionHash,
+    string Operator,
+    string From,
+    string To,
+    UInt256 Id,
+    UInt256 Amount) : IIndexEvent;

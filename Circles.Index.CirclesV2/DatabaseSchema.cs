@@ -4,42 +4,6 @@ using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV2;
 
-/*
- TODO: It looks like the new Hub doesn't have an equivalent to the 'HubTransfer' event
- hub/
-    Hub.sol:
-        event PersonalMint(address indexed human, uint256 amount, uint256 startPeriod, uint256 endPeriod);
-        event RegisterHuman(address indexed avatar);
-        event RegisterGroup(address indexed group, address indexed mint, address indexed treasury, string indexed name, string indexed symbol);
-        event InviteHuman(address indexed inviter, address indexed invited);
-        event RegisterOrganization(address indexed organization, string name);
-        event Stopped(address indexed avatar);
-        event Trust(address indexed truster, address indexed trustee, uint256 expiryTime);
-        event URI(string value, uint256 indexed id);
-        event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value);
-        event ApprovalForAll(address indexed account, address indexed operator, bool approved);
-
-       Manual events:
-        event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values);
-
- lift/
-    DemurrageCircles.sol:
-        event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);
-        event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount);
-
-    InflationaryCircles.sol:
-        event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount);
-        event WithdrawInflationary(address indexed account, uint256 amount, uint256 demurragedAmount);
-
- names/
-    NameRegistry.sol:
-        event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce);
-        event UpdateMetadataDigest(address indexed avatar, bytes32 metadataDigest);
-
- proxy/
-    ProxyFactory.sol:
-        event ProxyCreation(address proxy, address masterCopy);
- */
 public class DatabaseSchema : IDatabaseSchema
 {
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
@@ -79,9 +43,6 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema ApprovalForAll =
         EventSchema.FromSolidity(
             "CrcV2", "event ApprovalForAll(address indexed account, address indexed operator, bool approved)");
-
-    public static readonly EventSchema DiscountCost = EventSchema.FromSolidity("CrcV2",
-        "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
 
     public static readonly EventSchema TransferBatch = new("CrcV2", "TransferBatch",
         Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])").BytesToArray(),
@@ -128,6 +89,21 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema WithdrawDemurraged = EventSchema.FromSolidity("CrcV2",
         "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
 
+    public static readonly EventSchema StreamCompleted = new("CrcV2", "StreamCompleted",
+        Keccak.Compute("StreamCompleted(address,address,address,uint256[],uint256[])").BytesToArray(),
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("batchIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("operator", ValueTypes.Address, true),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("id", ValueTypes.BigInt, false),
+            new("amount", ValueTypes.BigInt, false)
+        ]);
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
@@ -177,10 +153,6 @@ public class DatabaseSchema : IDatabaseSchema
                 TransferBatch
             },
             {
-                ("CrcV2", "DiscountCost"),
-                DiscountCost
-            },
-            {
                 ("CrcV2", "ERC20WrapperDeployed"),
                 Erc20WrapperDeployed
             },
@@ -203,6 +175,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "WithdrawDemurraged"),
                 WithdrawDemurraged
+            },
+            {
+                ("CrcV2", "StreamCompleted"),
+                StreamCompleted
             }
         };
 
@@ -363,20 +339,6 @@ public class DatabaseSchema : IDatabaseSchema
                 { "id", e => (BigInteger)e.Id }
             });
 
-        EventDtoTableMap.Add<DiscountCost>(("CrcV2", "DiscountCost"));
-        SchemaPropertyMap.Add(("CrcV2", "DiscountCost"),
-            new Dictionary<string, Func<DiscountCost, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "account", e => e.Account },
-                { "id", e => (BigInteger)e.Id },
-                { "discountCost", e => (BigInteger)e._DiscountCost }
-            });
-
         EventDtoTableMap.Add<Erc20WrapperDeployed>(("CrcV2", "Erc20WrapperDeployed"));
         SchemaPropertyMap.Add(("CrcV2", "Erc20WrapperDeployed"),
             new Dictionary<string, Func<Erc20WrapperDeployed, object?>>
@@ -460,6 +422,23 @@ public class DatabaseSchema : IDatabaseSchema
                 { "account", e => e.Account },
                 { "amount", e => (BigInteger)e.Amount },
                 { "inflationaryAmount", e => (BigInteger)e.InflationaryAmount }
+            });
+
+        EventDtoTableMap.Add<StreamCompleted>(("CrcV2", "StreamCompleted"));
+        SchemaPropertyMap.Add(("CrcV2", "StreamCompleted"),
+            new Dictionary<string, Func<StreamCompleted, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "batchIndex", e => e.BatchIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "operator", e => e.Operator },
+                { "from", e => e.From },
+                { "to", e => e.To },
+                { "id", e => (BigInteger)e.Id },
+                { "amount", e => (BigInteger)e.Amount }
             });
     }
 }
