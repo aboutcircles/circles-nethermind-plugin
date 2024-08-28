@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Threading.Tasks.Dataflow;
 using Circles.Index.Common;
 using Nethermind.Blockchain;
@@ -16,6 +17,31 @@ public class ImportFlow(
     private static readonly IndexPerformanceMetrics Metrics = new();
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
+
+    private IReadOnlySet<Address> _senderBlacklist = new HashSet<Address>();
+
+    private void LoadSenderBlacklist()
+    {
+        var resourceName = "Circles.Index.cheatcodes.spam_accounts.csv";
+        var assembly = Assembly.GetExecutingAssembly();
+
+        using Stream? stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream == null)
+        {
+            Console.WriteLine($"Embedded resource not found: {resourceName}");
+            return;
+        }
+
+        using StreamReader reader = new StreamReader(stream);
+        _senderBlacklist = reader.ReadToEnd()
+            .Split(['\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrEmpty(line))
+            .Select(line => new Address(line))
+            .ToHashSet();
+
+        context.Logger.Info($"{_senderBlacklist.Count} addresses added to the sender blacklist.");
+    }
 
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
@@ -73,13 +99,31 @@ public class ImportFlow(
                 List<IIndexEvent> events = [];
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
+                    // Skip the spam
+                    if (receipt.Sender != null && _senderBlacklist.Contains(receipt.Sender))
+                    {
+                        return (blockWithReceipts, events);
+                    }
+
                     for (int i = 0; i < receipt.Logs?.Length; i++)
                     {
                         LogEntry log = receipt.Logs[i];
                         foreach (var parser in context.LogParsers)
                         {
-                            var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
-                            events.AddRange(parsedEvents);
+                            try
+                            {
+                                var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
+                                events.AddRange(parsedEvents);
+                            }
+                            catch (Exception e)
+                            {
+                                context.Logger.Error($"Error parsing log {log} with parser {parser}");
+                                context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
+                                context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
+                                context.Logger.Error(e.Message);
+                                context.Logger.Error(e.StackTrace);
+                                throw;
+                            }
                         }
                     }
                 }
@@ -99,6 +143,8 @@ public class ImportFlow(
 
     public async Task<Range<long>> Run(IAsyncEnumerable<long> blocksToIndex, CancellationToken? cancellationToken)
     {
+        LoadSenderBlacklist();
+
         var (sourceBlock, sinkBlock) = BuildPipeline(CancellationToken.None);
 
         long min = long.MaxValue;

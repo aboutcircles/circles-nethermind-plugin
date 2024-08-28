@@ -6,9 +6,9 @@ using Circles.Index.Query.Dto;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 

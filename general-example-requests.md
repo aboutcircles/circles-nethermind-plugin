@@ -54,7 +54,6 @@ The response generally contains the following fields:
         * `Trust`
     * `CrcV2_...`
         * `ApprovalForAll`
-        * `DiscountCost`
         * `InviteHuman`
         * `PersonalMint`
         * `RegisterGroup`

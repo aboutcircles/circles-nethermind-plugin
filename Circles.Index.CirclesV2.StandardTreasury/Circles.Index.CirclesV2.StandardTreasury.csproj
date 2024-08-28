@@ -7,13 +7,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.28.0" />
+      <Reference Include="Nethermind.Core">
+        <HintPath>..\..\..\..\.nuget\packages\nethermind.referenceassemblies\1.28.0\ref\net8.0\Nethermind.Core.dll</HintPath>
+      </Reference>
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
-      <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
     </ItemGroup>
 
 </Project>

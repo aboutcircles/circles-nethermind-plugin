@@ -53,8 +53,9 @@ public class StateMachine(
                         {
                             context.Logger.Info("Initializing: Finding the last persisted block...");
                             var lastPersistedBlock = context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
-                            
-                            context.Logger.Info($"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
+
+                            context.Logger.Info(
+                                $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
                             await TransitionTo(State.Reorg, lastPersistedBlock);
                             return;
                         }
@@ -206,7 +207,16 @@ public class StateMachine(
         }
 
         var nextBlock = lastIndexHeight + 1;
-        context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
+        if (nextBlock < context.Settings.StartBlock)
+        {
+            context.Logger.Debug($"Enumerating blocks to sync from {context.Settings.StartBlock} (StartBlock) to {toBlock}");
+            nextBlock = context.Settings.StartBlock;
+        }
+        else
+        {
+            context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
+        }
+
 
         for (long i = nextBlock; i <= toBlock; i++)
         {
