@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Index.Common;
 
 namespace Circles.Index.CirclesV2.NameRegistry;
@@ -47,8 +48,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "avatar", e => e.Avatar },
-                { "shortName", e => e.ShortName },
-                { "nonce", e => e.Nonce }
+                { "shortName", e => (BigInteger)e.ShortName },
+                { "nonce", e => (BigInteger)e.Nonce }
             });
 
         EventDtoTableMap.Add<UpdateMetadataDigest>(("CrcV2", "UpdateMetadataDigest"));
