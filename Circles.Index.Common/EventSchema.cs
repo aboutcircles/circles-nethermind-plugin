@@ -130,6 +130,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
             "uint64" => ValueTypes.Int,
             "uint72" => ValueTypes.BigInt,
             "bytes32" => ValueTypes.Bytes,
+            "bytes" => ValueTypes.Bytes,
             "uint128" => ValueTypes.BigInt,
             "uint256" => ValueTypes.BigInt,
             "string" => ValueTypes.String,
