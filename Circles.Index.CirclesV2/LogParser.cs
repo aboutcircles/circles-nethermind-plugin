@@ -50,8 +50,6 @@ public class LogParser(Address v2HubAddress) : ILogParser
             yield break;
         }
 
-        Console.WriteLine($"Parsing tx {transaction.Hash}. Data length: {transaction.Data.Value.Length}");
-
         // Parse the whole call data for a `registerHuman` call to get the inviter address and
         // create a InviteHuman event from it.
         // TODO: This is only for v0.3.6 and will be replace with an additional parameter on the InviteHuman event in the next version
@@ -64,6 +62,12 @@ public class LogParser(Address v2HubAddress) : ILogParser
                 continue;
             }
 
+            // The next 12 bytes must be zero padding.
+            if (!transaction.Data.Value[(i + callLength)..(i + callLength + 12)].Span.SequenceEqual(new byte[12]))
+            {
+                continue;
+            }
+
             // Extract the bytes for the following call signature:
             // function registerHuman(address _inviter, bytes32 _metadataDigest) external
             var inviterAddressOffset = i + callLength;
@@ -71,8 +75,12 @@ public class LogParser(Address v2HubAddress) : ILogParser
             var inviterAddress = new Address(transaction.Data.Value[inviterAddressWithoutPaddingOffset..
                 (inviterAddressWithoutPaddingOffset + 20)].ToArray());
 
-            // TODO: Usually the sender is the invitee, but if the call comes e.g. from a safe, this is no necessarily true.
+            // TODO: Usually the sender is the invitee, but this will fail e.g. in case of relayers
             var invitee = transaction.SenderAddress!;
+
+            // Console.WriteLine(
+            //     $"Found `InviteHuman` call in tx {transaction.Hash}. Inviter: {inviterAddress}, Invitee: {invitee}");
+
             if (inviterAddress == Address.Zero)
             {
                 break;
