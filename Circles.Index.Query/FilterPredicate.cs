@@ -26,6 +26,8 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             FilterType.NotIn => ConvertToEnumerable(Value)?.Any() ?? false
                 ? $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value, parameterName)})"
                 : "1=0 /* empty 'not in' filter */",
+            FilterType.IsNotNull => $"{database.QuoteIdentifier(Column)} IS NOT NULL",
+            FilterType.IsNull => $"{database.QuoteIdentifier(Column)} IS NULL",
             _ => throw new NotImplementedException()
         };
 
@@ -65,7 +67,7 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
     private IEnumerable<IDbDataParameter> CreateParameters(IDatabaseUtils database, string parameterName, object? value)
     {
         var values = ConvertToEnumerable(value).ToArray();
-        
+
         return values.Select((v, index) => database.CreateParameter($"{parameterName}_{index}", v)).ToList();
     }
 }

@@ -18,7 +18,12 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private readonly Hash256 _groupRedeemCollateralReturnTopic = new(DatabaseSchema.GroupRedeemCollateralReturn.Topic);
     private readonly Hash256 _groupRedeemCollateralBurnTopic = new(DatabaseSchema.GroupRedeemCollateralBurn.Topic);
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    {
+        return Enumerable.Empty<IIndexEvent>();
+    }
+
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log, int logIndex)
     {
         if (log.Topics.Length == 0)
         {
