@@ -11,7 +11,12 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
     private readonly Hash256 _updateMetadataDigestTopic = new(DatabaseSchema.UpdateMetadataDigest.Topic);
     private readonly Hash256 _cidV0Topic = new(DatabaseSchema.CidV0.Topic);
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    {
+        return Enumerable.Empty<IIndexEvent>();
+    }
+
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction,  TxReceipt receipt, LogEntry log, int logIndex)
     {
         if (log.Topics.Length == 0)
         {
