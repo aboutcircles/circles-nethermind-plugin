@@ -4,6 +4,7 @@ using Circles.Index.Common;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index;
 
@@ -96,6 +97,19 @@ public class ImportFlow(
         TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
             blockWithReceipts =>
             {
+                Dictionary<Hash256, Transaction> transactionsByHash = new();
+                Dictionary<Hash256, int> transactionIndexByHash = new();
+
+                for (var i = 0; i < blockWithReceipts.Block.Transactions.Length; i++)
+                {
+                    var tx = blockWithReceipts.Block.Transactions[i];
+                    if (tx.Hash != null)
+                    {
+                        transactionsByHash[tx.Hash] = tx;
+                        transactionIndexByHash[tx.Hash] = i;
+                    }
+                }
+
                 List<IIndexEvent> events = [];
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
@@ -105,6 +119,28 @@ public class ImportFlow(
                         return (blockWithReceipts, events);
                     }
 
+                    var transaction = transactionsByHash[receipt.TxHash!];
+                    var transactionIndex = transactionIndexByHash[receipt.TxHash!];
+                    try
+                    {
+                        foreach (var parser in context.LogParsers)
+                        {
+                            var parsedEvents = parser.ParseTransaction(blockWithReceipts.Block, 
+                                transactionIndex, transaction);
+
+                            events.AddRange(parsedEvents);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        context.Logger.Error($"Error parsing transaction {transaction}");
+                        context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
+                        context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
+                        context.Logger.Error(e.Message);
+                        context.Logger.Error(e.StackTrace);
+                        throw;
+                    }
+
                     for (int i = 0; i < receipt.Logs?.Length; i++)
                     {
                         LogEntry log = receipt.Logs[i];
@@ -112,7 +148,9 @@ public class ImportFlow(
                         {
                             try
                             {
-                                var parsedEvents = parser.ParseLog(blockWithReceipts.Block, receipt, log, i);
+                                var parsedEvents = parser.ParseLog(blockWithReceipts.Block,
+                                    transaction, receipt, log, i);
+
                                 events.AddRange(parsedEvents);
                             }
                             catch (Exception e)

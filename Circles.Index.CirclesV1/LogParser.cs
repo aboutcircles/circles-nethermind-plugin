@@ -18,7 +18,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
     private readonly Hash256 _hubTransferTopic = new(DatabaseSchema.HubTransfer.Topic);
     private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    {
+        return Enumerable.Empty<IIndexEvent>();
+    }
+
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log, int logIndex)
     {
         List<IIndexEvent> events = new();
         if (log.Topics.Length == 0)

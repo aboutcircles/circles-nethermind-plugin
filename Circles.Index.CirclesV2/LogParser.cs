@@ -12,8 +12,10 @@ namespace Circles.Index.CirclesV2;
 public class LogParser(Address v2HubAddress) : ILogParser
 {
     private readonly Hash256 _stoppedTopic = new(DatabaseSchema.Stopped.Topic);
+
     private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
-    private readonly Hash256 _inviteHumanTopic = new(DatabaseSchema.InviteHuman.Topic);
+
+    // private readonly Hash256 _inviteHumanTopic = new(DatabaseSchema.InviteHuman.Topic);
     private readonly Hash256 _personalMintTopic = new(DatabaseSchema.PersonalMint.Topic);
     private readonly Hash256 _registerHumanTopic = new(DatabaseSchema.RegisterHuman.Topic);
     private readonly Hash256 _registerGroupTopic = new(DatabaseSchema.RegisterGroup.Topic);
@@ -32,7 +34,60 @@ public class LogParser(Address v2HubAddress) : ILogParser
 
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private readonly byte[] _registerHumanFunctionSignature =
+        Keccak.Compute("registerHuman(address,bytes32)").Bytes[..4].ToArray();
+
+    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    {
+        if (transaction.To != v2HubAddress)
+        {
+            yield break;
+        }
+
+        if (transaction.Data == null || transaction.Data.Value.Length < 68)
+        {
+            // 68 is the size of a complete registerHuman call with arguments
+            yield break;
+        }
+
+        Console.WriteLine($"Parsing tx {transaction.Hash}. Data length: {transaction.Data.Value.Length}");
+
+        // Parse the whole call data for a `registerHuman` call to get the inviter address and
+        // create a InviteHuman event from it.
+        // TODO: This is only for v0.3.6 and will be replace with an additional parameter on the InviteHuman event in the next version
+        // Because we cannot know how the contract was called (e.g. via a safe), we simply search for the function signature.
+        int callLength = 4;
+        for (int i = 0; i < transaction.Data.Value.Length - callLength; i++)
+        {
+            if (!transaction.Data.Value[i..(i + 4)].Span.SequenceEqual(_registerHumanFunctionSignature))
+            {
+                continue;
+            }
+
+            // Extract the bytes for the following call signature:
+            // function registerHuman(address _inviter, bytes32 _metadataDigest) external
+            var inviterAddressOffset = i + callLength;
+            var inviterAddressWithoutPaddingOffset = inviterAddressOffset + 12;
+            var inviterAddress = new Address(transaction.Data.Value[inviterAddressWithoutPaddingOffset..
+                (inviterAddressWithoutPaddingOffset + 20)].ToArray());
+
+            // TODO: Usually the sender is the invitee, but if the call comes e.g. from a safe, this is no necessarily true.
+            var invitee = transaction.SenderAddress!;
+            if (inviterAddress == Address.Zero)
+            {
+                break;
+            }
+
+            yield return new InviteHuman(block.Number, (long)block.Timestamp, transactionIndex, -1,
+                transaction.Hash!.ToString(),
+                inviterAddress.ToString(), invitee.ToString());
+
+            break;
+        }
+    }
+
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         if (log.Topics.Length == 0)
         {
@@ -51,11 +106,6 @@ public class LogParser(Address v2HubAddress) : ILogParser
             if (topic == _trustTopic)
             {
                 yield return CrcV2Trust(block, receipt, log, logIndex);
-            }
-
-            if (topic == _inviteHumanTopic)
-            {
-                yield return CrcV2InviteHuman(block, receipt, log, logIndex);
             }
 
             if (topic == _personalMintTopic)
@@ -315,23 +365,6 @@ public class LogParser(Address v2HubAddress) : ILogParser
             amount,
             startPeriod,
             endPeriod);
-    }
-
-    private InviteHuman CrcV2InviteHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
-    {
-        string inviterAddress =
-            "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string inviteeAddress =
-            "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-
-        return new InviteHuman(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            inviterAddress,
-            inviteeAddress);
     }
 
     private Trust CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
