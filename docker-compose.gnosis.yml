@@ -61,7 +61,7 @@ services:
 
   consensus-gnosis:
     container_name: consensus-gnosis
-    image: sigp/lighthouse:v5.0.0
+    image: sigp/lighthouse:v5.3.0-amd64-modern
     restart: always
     networks:
       - circles-gnosis

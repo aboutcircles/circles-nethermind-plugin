@@ -152,59 +152,45 @@ public class DatabaseSchema : IDatabaseSchema
     ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-         create or replace view public.""V_CrcV2_Avatars""
-                    (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", type, ""invitedBy"", avatar,
-                     ""tokenId"", name, ""cidV0Digest"")
-        as
-            WITH avatars AS (
-                SELECT ""CrcV2_RegisterOrganization"".""blockNumber"",
-                       ""CrcV2_RegisterOrganization"".""timestamp"",
-                       ""CrcV2_RegisterOrganization"".""transactionIndex"",
-                       ""CrcV2_RegisterOrganization"".""logIndex"",
-                       ""CrcV2_RegisterOrganization"".""transactionHash"",
-                       'organization'::text AS type,
-                       NULL::text AS ""invitedBy"",
-                       ""CrcV2_RegisterOrganization"".organization AS avatar,
-                       NULL::text AS ""tokenId"",
-                       ""CrcV2_RegisterOrganization"".name
-                FROM ""CrcV2_RegisterOrganization""
-                UNION ALL
-                SELECT ""CrcV2_RegisterGroup"".""blockNumber"",
-                       ""CrcV2_RegisterGroup"".""timestamp"",
-                       ""CrcV2_RegisterGroup"".""transactionIndex"",
-                       ""CrcV2_RegisterGroup"".""logIndex"",
-                       ""CrcV2_RegisterGroup"".""transactionHash"",
-                       'group'::text AS type,
-                       NULL::text AS ""invitedBy"",
-                       ""CrcV2_RegisterGroup"".""group"" AS avatar,
-                       ""CrcV2_RegisterGroup"".""group"" AS ""tokenId"",
-                       ""CrcV2_RegisterGroup"".name
-                FROM ""CrcV2_RegisterGroup""
-                UNION ALL
-                SELECT ""CrcV2_RegisterHuman"".""blockNumber"",
-                       ""CrcV2_RegisterHuman"".""timestamp"",
-                       ""CrcV2_RegisterHuman"".""transactionIndex"",
-                       ""CrcV2_RegisterHuman"".""logIndex"",
-                       ""CrcV2_RegisterHuman"".""transactionHash"",
-                       'human'::text AS type,
-                       NULL::text AS ""invitedBy"",
-                       ""CrcV2_RegisterHuman"".avatar,
-                       ""CrcV2_RegisterHuman"".avatar AS ""tokenId"",
-                       NULL::text AS name
-                FROM ""CrcV2_RegisterHuman""
-                UNION ALL
-                SELECT ""CrcV2_InviteHuman"".""blockNumber"",
-                       ""CrcV2_InviteHuman"".""timestamp"",
-                       ""CrcV2_InviteHuman"".""transactionIndex"",
-                       ""CrcV2_InviteHuman"".""logIndex"",
-                       ""CrcV2_InviteHuman"".""transactionHash"",
-                       'human'::text AS type,
-                       ""CrcV2_InviteHuman"".inviter AS ""invitedBy"",
-                       ""CrcV2_InviteHuman"".invited,
-                       ""CrcV2_InviteHuman"".invited AS ""tokenId"",
-                       NULL::text AS name
-                FROM ""CrcV2_InviteHuman""
-            )
+            create or replace view public.""V_CrcV2_Avatars""
+                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", type, ""invitedBy"", avatar,
+                         ""tokenId"", name, ""cidV0Digest"")
+            as
+            WITH avatars AS (SELECT ""CrcV2_RegisterOrganization"".""blockNumber"",
+                                    ""CrcV2_RegisterOrganization"".""timestamp"",
+                                    ""CrcV2_RegisterOrganization"".""transactionIndex"",
+                                    ""CrcV2_RegisterOrganization"".""logIndex"",
+                                    ""CrcV2_RegisterOrganization"".""transactionHash"",
+                                    'organization'::text                      AS type,
+                                    NULL::text                                AS ""invitedBy"",
+                                    ""CrcV2_RegisterOrganization"".organization AS avatar,
+                                    NULL::text                                AS ""tokenId"",
+                                    ""CrcV2_RegisterOrganization"".name
+                             FROM ""CrcV2_RegisterOrganization""
+                             UNION ALL
+                             SELECT ""CrcV2_RegisterGroup"".""blockNumber"",
+                                    ""CrcV2_RegisterGroup"".""timestamp"",
+                                    ""CrcV2_RegisterGroup"".""transactionIndex"",
+                                    ""CrcV2_RegisterGroup"".""logIndex"",
+                                    ""CrcV2_RegisterGroup"".""transactionHash"",
+                                    'group'::text                 AS type,
+                                    NULL::text                    AS ""invitedBy"",
+                                    ""CrcV2_RegisterGroup"".""group"" AS avatar,
+                                    ""CrcV2_RegisterGroup"".""group"" AS ""tokenId"",
+                                    ""CrcV2_RegisterGroup"".name
+                             FROM ""CrcV2_RegisterGroup""
+                             UNION ALL
+                             SELECT ""CrcV2_RegisterHuman"".""blockNumber"",
+                                    ""CrcV2_RegisterHuman"".""timestamp"",
+                                    ""CrcV2_RegisterHuman"".""transactionIndex"",
+                                    ""CrcV2_RegisterHuman"".""logIndex"",
+                                    ""CrcV2_RegisterHuman"".""transactionHash"",
+                                    'human'::text                AS type,
+                                    NULL::text                   AS ""invitedBy"",
+                                    ""CrcV2_RegisterHuman"".avatar,
+                                    ""CrcV2_RegisterHuman"".avatar AS ""tokenId"",
+                                    NULL::text                   AS name
+                             FROM ""CrcV2_RegisterHuman"")
             SELECT a.""blockNumber"",
                    a.""timestamp"",
                    a.""transactionIndex"",
@@ -217,12 +203,11 @@ public class DatabaseSchema : IDatabaseSchema
                    a.name,
                    cid.""cidV0Digest""
             FROM avatars a
-                     LEFT JOIN (
-                SELECT cid_1.avatar,
-                       cid_1.""metadataDigest"" AS ""cidV0Digest"",
-                       ROW_NUMBER() OVER (PARTITION BY cid_1.avatar ORDER BY cid_1.""blockNumber"" DESC, cid_1.""transactionIndex"" DESC, cid_1.""logIndex"" DESC) as rn
-                FROM ""CrcV2_UpdateMetadataDigest"" cid_1
-            ) cid ON cid.avatar = a.avatar AND cid.rn = 1;
+                     LEFT JOIN (SELECT cid_1.avatar,
+                                       cid_1.""metadataDigest""                                                                                                   AS ""cidV0Digest"",
+                                       row_number()
+                                       OVER (PARTITION BY cid_1.avatar ORDER BY cid_1.""blockNumber"" DESC, cid_1.""transactionIndex"" DESC, cid_1.""logIndex"" DESC) AS rn
+                                FROM ""CrcV2_UpdateMetadataDigest"" cid_1) cid ON cid.avatar = a.avatar AND cid.rn = 1;
         ")
     };
 
