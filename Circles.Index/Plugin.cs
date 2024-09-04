@@ -67,7 +67,7 @@ public class Plugin : INethermindPlugin
         ILogParser[] logParsers =
         [
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
-            new CirclesV2.LogParser(settings.CirclesV2HubAddress),
+            new CirclesV2.LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
             new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
             new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
         ];

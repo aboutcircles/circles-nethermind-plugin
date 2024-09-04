@@ -88,7 +88,8 @@ public class QueryEvents(Context context)
                     : filters,
                 new[]
                 {
-                    new OrderBy("blockNumber", "ASC"), new OrderBy("transactionIndex", "ASC"),
+                    new OrderBy("blockNumber", "ASC"), 
+                    new OrderBy("transactionIndex", "ASC"),
                     new OrderBy("logIndex", "ASC")
                 },
                 null, true, int.MaxValue));
