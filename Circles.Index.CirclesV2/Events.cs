@@ -114,7 +114,7 @@ public record URI(
     UInt256 Id,
     string Value) : IIndexEvent;
 
-public record Erc20WrapperDeployed(
+public record ERC20WrapperDeployed(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
