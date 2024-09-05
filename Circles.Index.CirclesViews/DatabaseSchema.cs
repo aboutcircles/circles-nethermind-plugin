@@ -127,9 +127,7 @@ public class DatabaseSchema : IDatabaseSchema
                                            t.""tokenAddress"",
                                            t.amount,
                                            'CrcV1_Transfer' as type
-                                    FROM ""CrcV1_Transfer"" t
-                                             JOIN ""CrcV1_Signup"" s ON s.token = t.""tokenAddress"" AND s.""user"" = t.""to""
-                                    WHERE t.""from"" = '0x0000000000000000000000000000000000000000'::text)
+                                    FROM ""CrcV1_Transfer"" t)
             SELECT ""blockNumber"",
                    ""timestamp"",
                    ""transactionIndex"",
@@ -663,7 +661,8 @@ public class DatabaseSchema : IDatabaseSchema
         new("transactionHash", ValueTypes.String, true),
         new("version", ValueTypes.Int, false),
         new("type", ValueTypes.String, false),
-        new("token", ValueTypes.String, true)
+        new("token", ValueTypes.String, true),
+        new("tokenOwner", ValueTypes.String, true)
     ])
     {
         SqlMigrationItem = new (@"
