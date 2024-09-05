@@ -342,7 +342,7 @@ public class DatabaseSchema : IDatabaseSchema
     ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-            create view public.""V_CrcV2_TrustRelations""
+            create or replace view public.""V_CrcV2_TrustRelations""
                         (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", trustee, truster,
                          ""expiryTime"") as
             SELECT t.""blockNumber"",
@@ -655,6 +655,58 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static readonly EventSchema V_Crc_Tokens = new("V_Crc", "Tokens", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("version", ValueTypes.Int, false),
+        new("type", ValueTypes.String, false),
+        new("token", ValueTypes.String, true)
+    ])
+    {
+        SqlMigrationItem = new (@"
+        create or replace view ""V_Crc_Tokens""
+        as
+            select ""blockNumber"",
+                   ""timestamp"",
+                   ""transactionIndex"",
+                   ""logIndex"",
+                   ""transactionHash"",
+                   version,
+                   type,
+                   ""tokenId"" as token,
+                   ""avatar"" as ""tokenOwner""
+            from ""V_Crc_Avatars""
+            where ""tokenId"" is not null
+            union all 
+            select ""blockNumber"",
+                   ""timestamp"",
+                   ""transactionIndex"",
+                   ""logIndex"",
+                   ""transactionHash"",
+                   2,
+                   'CrcV2_ERC20WrapperDeployed_Inflationary' as type,
+                   ""erc20Wrapper"" as token,
+                   ""avatar"" as ""tokenOwner""
+            from ""CrcV2_ERC20WrapperDeployed""
+            where ""circlesType"" = 0
+            union all
+            select ""blockNumber"",
+                   ""timestamp"",
+                   ""transactionIndex"",
+                   ""logIndex"",
+                   ""transactionHash"",
+                   2,
+                   'CrcV2_ERC20WrapperDeployed_Demurraged' as type,
+                   ""erc20Wrapper"" as token,
+                   ""avatar"" as ""tokenOwner""
+            from ""CrcV2_ERC20WrapperDeployed""
+            where ""circlesType"" = 1;
+        ") 
+    };
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -705,6 +757,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV2", "BalancesByAccountAndToken"),
                 V_CrcV2_BalancesByAccountAndToken
+            },
+            {
+                ("V_Crc", "Tokens"),
+                V_Crc_Tokens
             }
         };
 }
