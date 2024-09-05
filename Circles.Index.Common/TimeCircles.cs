@@ -38,4 +38,11 @@ public static class TimeCirclesConverter
         decimal payoutAtTimestamp = GetCrcPayoutAt(ts);
         return amount / payoutAtTimestamp * 24m;
     }
+    
+    public static decimal TcToCrc(DateTime timestamp, decimal amount)
+    {
+        long ts = timestamp.Ticks / TimeSpan.TicksPerMillisecond;
+        decimal payoutAtTimestamp = GetCrcPayoutAt(ts);
+        return amount * payoutAtTimestamp / 24m;
+    }
 }
