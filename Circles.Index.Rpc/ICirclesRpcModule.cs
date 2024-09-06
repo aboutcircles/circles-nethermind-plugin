@@ -10,13 +10,15 @@ namespace Circles.Index.Rpc;
 #region DTOs
 
 public record CirclesTokenBalance(
-    UInt256 TokenId,
     string TokenAddress,
-    string Balance,
+    string TokenId,
     string TokenOwner,
     string TokenType,
-    string InflationaryBalance,
-    int Version);
+    int Version,
+    string DemurragedBalanceAttoCircles,
+    decimal DemurragedBalanceCircles,
+    string InflationaryBalanceAttoCircles,
+    decimal InflationaryBalanceCircles);
 
 public record CirclesTrustRelation(Address User, int limit);
 
@@ -30,8 +32,8 @@ public record CirclesEvent(string Event, IDictionary<string, object?> Values);
 public interface ICirclesRpcModule : IRpcModule
 {
     [JsonRpcMethod(Description = "Gets the V1 Circles balance of the specified address", IsImplemented = true)]
-    Task<ResultWrapper<string>> circles_getTotalBalance(Address address, bool? asTimeCircles = true); 
-    
+    Task<ResultWrapper<string>> circles_getTotalBalance(Address address, bool? asTimeCircles = true);
+
     [JsonRpcMethod(Description = "Gets the V2 Circles balance of the specified address", IsImplemented = true)]
     Task<ResultWrapper<string>> circlesV2_getTotalBalance(Address address, bool? asTimeCircles = true);
 
