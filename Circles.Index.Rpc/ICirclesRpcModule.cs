@@ -15,10 +15,10 @@ public record CirclesTokenBalance(
     string TokenOwner,
     string TokenType,
     int Version,
-    string DemurragedBalanceAttoCircles,
-    decimal DemurragedBalanceCircles,
-    string InflationaryBalanceAttoCircles,
-    decimal InflationaryBalanceCircles);
+    string AttoCircles,
+    decimal Circles,
+    string StaticAttoCircles,
+    decimal StaticCircles);
 
 public record CirclesTrustRelation(Address User, int limit);
 

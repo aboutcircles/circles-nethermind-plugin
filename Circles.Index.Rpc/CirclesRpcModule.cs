@@ -144,8 +144,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                     inflationaryBalanceAttoCircles.ToString(CultureInfo.InvariantCulture),
                     inflationaryBalanceCircles);
             })
-            .Where(o => o.DemurragedBalanceCircles > 0)
-            .OrderByDescending(o => o.InflationaryBalanceCircles)
+            .Where(o => o.Circles > 0)
+            .OrderByDescending(o => o.StaticCircles)
             .ToList();
 
         _pluginLogger.Info($"Token balances retrieved for account {address}: {tokenBalances.Count} tokens.");
@@ -163,7 +163,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (asTimeCircles == null || asTimeCircles == true)
         {
             var totalBalance = relevantBalances
-                .Select(o => o.DemurragedBalanceCircles)
+                .Select(o => o.Circles)
                 .Sum();
 
             _pluginLogger.Info($"Total balance for account {address}: {totalBalance}");
@@ -172,7 +172,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         else
         {
             var totalBalance = relevantBalances
-                .Select(o => o.DemurragedBalanceAttoCircles)
+                .Select(o => o.AttoCircles)
                 .Aggregate(UInt256.Zero, (acc, val) => acc + UInt256.Parse(val));
 
             _pluginLogger.Info($"Total balance for account {address}: {totalBalance}");
