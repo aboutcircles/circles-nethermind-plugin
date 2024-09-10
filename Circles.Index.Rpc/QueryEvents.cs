@@ -26,7 +26,7 @@ public class QueryEvents(Context context)
     /// <returns>An array of CirclesEvent objects</returns>
     /// <exception cref="Exception">Thrown when the zero address is queried, fromBlock is less than 0, toBlock is less than fromBlock, or toBlock is greater than the current head</exception>
     public CirclesEvent[] CirclesEvents(Address? address, long? fromBlock, long? toBlock = null,
-        FilterPredicateDto[]? additionalFilters = null)
+        FilterPredicateDto[]? additionalFilters = null, bool? sortAscending = false)
     {
         long currentHead = context.NethermindApi.BlockTree?.Head?.Number
                            ?? throw new Exception("BlockTree or Head is null");
@@ -131,9 +131,9 @@ public class QueryEvents(Context context)
                     new OrderBy("logIndex", "ASC")
                 ],
                 null, true, int.MaxValue);
-            
+
             queries.Add(query);
-            
+
             context.Logger.Info(query.ToSql(context.Database).Sql);
         }
 
@@ -169,8 +169,19 @@ public class QueryEvents(Context context)
     }
 
     private CirclesEvent[] SortEvents(
-        ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent> events)
+        ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent> events,
+        bool? sortAscending = false)
     {
+        if (sortAscending == null || sortAscending == false)
+        {
+            return events
+                .OrderByDescending(o => o.Key.BlockNo)
+                .ThenByDescending(o => o.Key.TransactionIndex)
+                .ThenByDescending(o => o.Key.LogIndex)
+                .Select(o => o.Value)
+                .ToArray();
+        }
+
         return events
             .OrderBy(o => o.Key.BlockNo)
             .ThenBy(o => o.Key.TransactionIndex)
