@@ -10,4 +10,5 @@ public record TokenInfo(
     bool IsErc20,
     bool IsErc1155,
     bool IsWrapped,
-    bool IsInflationary);
+    bool IsInflationary,
+    bool IsGroup);

@@ -122,7 +122,7 @@ public record ERC20WrapperDeployed(
     string TransactionHash,
     string Avatar,
     string Erc20Wrapper,
-    byte[] CirclesType) : IIndexEvent;
+    byte CirclesType) : IIndexEvent;
 
 public record Erc20WrapperTransfer(
     long BlockNumber,

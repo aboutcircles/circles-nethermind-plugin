@@ -350,7 +350,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "avatar", e => e.Avatar },
                 { "erc20Wrapper", e => e.Erc20Wrapper },
-                { "circlesType", e => BitConverter.ToInt64(e.CirclesType) }
+                { "circlesType", e => e.CirclesType }
             });
 
         EventDtoTableMap.Add<Erc20WrapperTransfer>(("CrcV2", "Erc20WrapperTransfer"));
