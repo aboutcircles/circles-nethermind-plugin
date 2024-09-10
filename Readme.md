@@ -424,9 +424,6 @@ Tables for batch events have an additional `batchIndex` column.
     * `amount` (BigInteger)
 
 #### CrcV2
-* `InviteHuman`
-    * `inviter` (Address)
-    * `invited` (Address)
 * `PersonalMint`
     * `human` (Address)
     * `amount` (BigInteger)
@@ -545,7 +542,8 @@ Tables for batch events have an additional `batchIndex` column.
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
 #### V_CrcV2 (Circles v2 views)
-    * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and
+    * `V_CrcV2_InviteHuman` (view combining CrcV2_Trust and CrcV2_RegisterHuman)
+    * `Avatars` (view combining `CrcV2_RegisterHuman`, `V_CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and
       `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)
@@ -612,6 +610,28 @@ The values contain at least the following fields:
 * `transactionIndex` - The index of the transaction in the block.
 * `logIndex` - The index of the log in the transaction.
 * `transactionHash` - The hash of the transaction.
+
+#### Filtering
+
+The `circles_events` method can be filtered by specifying a filter as the last parameter:
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [
+    null,
+    0,
+    null,
+    [{
+       "Type": "FilterPredicate",
+       "FilterType": "In",
+       "Column": "transactionHash",
+       "Value": ["0xd1380076b6ad2d1872951da1852c20ed3161e10f237aca27dc531795fa6867e0"]
+    }]
+  ]
+}' -H "Content-Type: application/json" https://rpc.helsinki.aboutcircles.com/
+```
 
 ### eth_subscribe("circles")
 

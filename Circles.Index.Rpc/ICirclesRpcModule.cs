@@ -1,7 +1,6 @@
 using Circles.Index.Common;
 using Circles.Index.Query.Dto;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
@@ -18,7 +17,12 @@ public record CirclesTokenBalance(
     string AttoCircles,
     decimal Circles,
     string StaticAttoCircles,
-    decimal StaticCircles);
+    decimal StaticCircles,
+    bool IsErc20,
+    bool IsErc1155,
+    bool IsWrapped,
+    bool IsInflationary,
+    bool IsGroup);
 
 public record CirclesTrustRelation(Address User, int limit);
 
@@ -51,5 +55,5 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Returns all events affecting the specified account since block N",
         IsImplemented = true)]
-    ResultWrapper<CirclesEvent[]> circles_events(Address address, long fromBlock, long? toBlock = null);
+    ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null, FilterPredicateDto[]? filters = null);
 }
