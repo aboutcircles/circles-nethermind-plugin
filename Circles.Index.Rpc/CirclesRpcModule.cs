@@ -308,10 +308,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
-    public ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null, FilterPredicateDto[]? filterPredicates = null)
+    public ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null, FilterPredicateDto[]? filterPredicates = null, bool? sortAscending = false)
     {
         var queryEvents = new QueryEvents(_indexerContext);
-        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock, filterPredicates));
+        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock, filterPredicates, sortAscending));
     }
 
     private string[] GetTokenExposureIds(Address address)
