@@ -74,8 +74,8 @@ public class DatabaseSchema : IDatabaseSchema
             new("amount", ValueTypes.BigInt, false)
         ]);
 
-    public static readonly EventSchema Erc20WrapperDeployed = EventSchema.FromSolidity("CrcV2",
-        "event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, CirclesType circlesType)");
+    public static readonly EventSchema ERC20WrapperDeployed = EventSchema.FromSolidity("CrcV2",
+        "event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)");
 
     public static readonly EventSchema DepositInflationary = EventSchema.FromSolidity("CrcV2",
         "event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)");
@@ -154,7 +154,7 @@ public class DatabaseSchema : IDatabaseSchema
             },
             {
                 ("CrcV2", "ERC20WrapperDeployed"),
-                Erc20WrapperDeployed
+                ERC20WrapperDeployed
             },
             {
                 ("CrcV2", "Erc20WrapperTransfer"),
@@ -339,9 +339,9 @@ public class DatabaseSchema : IDatabaseSchema
                 { "id", e => (BigInteger)e.Id }
             });
 
-        EventDtoTableMap.Add<Erc20WrapperDeployed>(("CrcV2", "Erc20WrapperDeployed"));
-        SchemaPropertyMap.Add(("CrcV2", "Erc20WrapperDeployed"),
-            new Dictionary<string, Func<Erc20WrapperDeployed, object?>>
+        EventDtoTableMap.Add<ERC20WrapperDeployed>(("CrcV2", "ERC20WrapperDeployed"));
+        SchemaPropertyMap.Add(("CrcV2", "ERC20WrapperDeployed"),
+            new Dictionary<string, Func<ERC20WrapperDeployed, object?>>
             {
                 { "blockNumber", e => e.BlockNumber },
                 { "timestamp", e => e.Timestamp },
@@ -350,7 +350,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionHash", e => e.TransactionHash },
                 { "avatar", e => e.Avatar },
                 { "erc20Wrapper", e => e.Erc20Wrapper },
-                { "circlesType", e => BitConverter.ToInt64(e.CirclesType) }
+                { "circlesType", e => e.CirclesType }
             });
 
         EventDtoTableMap.Add<Erc20WrapperTransfer>(("CrcV2", "Erc20WrapperTransfer"));

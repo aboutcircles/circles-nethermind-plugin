@@ -14,4 +14,14 @@
       <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
+    <ItemGroup>
+      <Reference Include="Nethermind.Int256">
+        <HintPath>..\..\..\..\.nuget\packages\nethermind.numerics.int256\1.2.0\lib\net8.0\Nethermind.Int256.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+    </ItemGroup>
+
 </Project>

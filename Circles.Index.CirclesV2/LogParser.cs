@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2;
 
-public class LogParser(Address v2HubAddress) : ILogParser
+public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogParser
 {
     private readonly Hash256 _stoppedTopic = new(DatabaseSchema.Stopped.Topic);
 
@@ -24,7 +24,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
     private readonly Hash256 _transferSingleTopic = new(DatabaseSchema.TransferSingle.Topic);
     private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
     private readonly Hash256 _uriTopic = new(DatabaseSchema.URI.Topic);
-    private readonly Hash256 _erc20WrapperDeployed = new(DatabaseSchema.Erc20WrapperDeployed.Topic);
+    private readonly Hash256 _erc20WrapperDeployed = new(DatabaseSchema.ERC20WrapperDeployed.Topic);
     private readonly Hash256 _erc20WrapperTransfer = new(DatabaseSchema.Erc20WrapperTransfer.Topic);
     private readonly Hash256 _depositInflationary = new(DatabaseSchema.DepositInflationary.Topic);
     private readonly Hash256 _withdrawInflationary = new(DatabaseSchema.WithdrawInflationary.Topic);
@@ -103,7 +103,7 @@ public class LogParser(Address v2HubAddress) : ILogParser
         }
 
         var topic = log.Topics[0];
-
+        
         if (log.LoggersAddress == v2HubAddress)
         {
             if (topic == _stoppedTopic)
@@ -159,17 +159,20 @@ public class LogParser(Address v2HubAddress) : ILogParser
                 yield return Erc1155Uri(block, receipt, log, logIndex);
             }
 
-            if (topic == _erc20WrapperDeployed)
-            {
-                yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
-            }
-
             if (topic == _streamCompletedTopic)
             {
                 foreach (var streamCompleted in StreamCompleted(block, receipt, log, logIndex))
                 {
                     yield return streamCompleted;
                 }
+            }
+        }
+
+        if (log.LoggersAddress == erc20LiftAddress)
+        {
+            if (topic == _erc20WrapperDeployed)
+            {
+                yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
             }
         }
 
@@ -204,13 +207,14 @@ public class LogParser(Address v2HubAddress) : ILogParser
 
     private IIndexEvent Erc20WrapperDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // "event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)"
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string erc20Wrapper = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        byte[] circlesType = log.Data;
+        byte circlesType = log.Data[0];
 
         Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), null);
 
-        return new Erc20WrapperDeployed(
+        return new ERC20WrapperDeployed(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
