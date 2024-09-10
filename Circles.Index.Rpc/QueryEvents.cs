@@ -133,8 +133,6 @@ public class QueryEvents(Context context)
                 null, true, int.MaxValue);
 
             queries.Add(query);
-
-            context.Logger.Info(query.ToSql(context.Database).Sql);
         }
 
         return queries;
