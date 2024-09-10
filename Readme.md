@@ -20,7 +20,7 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
         * [Reset the spaceneth node](#reset-the-spaceneth-node)
 * [Circles RPC methods](#circles-rpc-methods)
     * [circles_getTotalBalance / circlesV2_getTotalBalance](#circles_gettotalbalance--circlesv2_gettotalbalance)
-    * [circles_getTokenBalance / circlesV2_getTokenBalances](#circles_gettokenbalance--circlesv2_gettokenbalances)
+    * [circles_getTokenBalances](#circles_gettokenbalances)
     * [circles_query](#circles_query)
     * [circles_events](#circles_events)
     * [eth_subscribe("circles")](#eth_subscribecircles)
