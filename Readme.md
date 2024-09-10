@@ -302,7 +302,7 @@ curl -X POST --data '{
   "id": 1,
   "method": "circles_getTokenBalances",
   "params": [
-    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+    "0xd68193591d47740e51dfbc410da607a351b56586"
   ]
 }' -H "Content-Type: application/json" http://localhost:8545/
 ```
