@@ -1,8 +1,8 @@
 using System.Globalization;
-using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
+using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,140 +26,265 @@ public class CirclesRpcModule : ICirclesRpcModule
         _indexerContext = indexerContext;
     }
 
-    public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address, bool asTimeCircles = false)
+    private UInt256 GetBalance(IEthRpcModule rpcModule, Address token, Address account, UInt256? tokenId = null)
     {
-        using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
-        await rentedEthRpcModule.Rent();
+        string functionName = tokenId == null ? "balanceOf(address)" : "balanceOf(address,uint256)";
+        byte[] functionSelector = Keccak.Compute(functionName).Bytes.Slice(0, 4).ToArray();
+        byte[] addressBytes = account.Bytes.PadLeft(32);
+        byte[] data = functionSelector.Concat(addressBytes).ToArray();
 
-        string totalBalance = TotalBalance(rentedEthRpcModule.RpcModule!, address, asTimeCircles);
-        return ResultWrapper<string>.Success(totalBalance);
+        if (tokenId != null)
+        {
+            byte[] tokenIdBytes = tokenId.Value.PaddedBytes(32);
+            data = data.Concat(tokenIdBytes).ToArray();
+        }
+
+        var transactionCall = new TransactionForRpc { To = token, Input = data };
+        var result = rpcModule.eth_call(transactionCall);
+
+        if (result.ErrorCode != 0)
+        {
+            throw new Exception($"Couldn't get the balance of token {token} for account {account}");
+        }
+
+        byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
+        var balance = new UInt256(uint256Bytes, true);
+
+        return balance;
     }
+
+    private async Task<UInt256> FetchBalance(Address token, Address account, bool isErc20, Address hubAddress)
+    {
+        using var rpc = new RentedEthRpcModule(_indexerContext.NethermindApi);
+        await rpc.Rent();
+        var balance = isErc20
+            ? GetBalance(rpc.RpcModule!, token, account)
+            : GetBalance(rpc.RpcModule!, hubAddress, account, ConversionUtils.AddressToUInt256(token));
+
+        return balance;
+    }
+
+    private async Task<List<CirclesTokenBalance>> GetTokenBalancesForAccount(Address address, Address hubAddress)
+    {
+        var tokens = GetTokensByAccount(address);
+        var balanceTasks = tokens.ToDictionary(
+            token => token.TokenAddress,
+            token => FetchBalance(token.TokenAddress, address, token.IsErc20, hubAddress));
+
+        await Task.WhenAll(balanceTasks.Values);
+
+        var tokenBalances = tokens.Select(token =>
+            {
+                var rawBalance = balanceTasks[token.TokenAddress].Result;
+
+                UInt256 demurragedBalanceAttoCircles;
+                decimal demurragedBalanceCircles;
+                UInt256 inflationaryBalanceAttoCircles;
+                decimal inflationaryBalanceCircles;
+
+                if (token.IsInflationary)
+                {
+                    inflationaryBalanceAttoCircles = rawBalance;
+                    inflationaryBalanceCircles = ConversionUtils.AttoCirclesToCircles(rawBalance);
+
+                    demurragedBalanceCircles = ConversionUtils.CrcToTc(DateTime.Now, inflationaryBalanceCircles);
+                    demurragedBalanceAttoCircles = ConversionUtils.CirclesToAttoCircles(demurragedBalanceCircles);
+                }
+                else
+                {
+                    demurragedBalanceAttoCircles = rawBalance;
+                    demurragedBalanceCircles = ConversionUtils.AttoCirclesToCircles(rawBalance);
+
+                    inflationaryBalanceCircles = ConversionUtils.TcToCrc(DateTime.Now, demurragedBalanceCircles);
+                    inflationaryBalanceAttoCircles = ConversionUtils.CirclesToAttoCircles(inflationaryBalanceCircles);
+                }
+
+                var tokenAddress = token.TokenAddress;
+                var tokenAddressString = tokenAddress.ToString(true, false);
+                var tokenId = ConversionUtils.AddressToUInt256(tokenAddress)
+                    .ToString(CultureInfo.InvariantCulture);
+
+                return new CirclesTokenBalance(
+                    tokenAddressString,
+                    tokenId,
+                    token.TokenOwner.ToString(true, false),
+                    token.TokenType,
+                    token.Version,
+                    demurragedBalanceAttoCircles.ToString(CultureInfo.InvariantCulture),
+                    demurragedBalanceCircles,
+                    inflationaryBalanceAttoCircles.ToString(CultureInfo.InvariantCulture),
+                    inflationaryBalanceCircles,
+                    token.IsErc20,
+                    token.IsErc1155,
+                    token.IsWrapped,
+                    token.IsInflationary,
+                    token.IsGroup
+                );
+            })
+            .Where(o => o.Circles > 0)
+            .OrderByDescending(o => o.StaticCircles)
+            .ToList();
+
+        return tokenBalances;
+    }
+
+    private async Task<ResultWrapper<string>> GetTotalBalance(Address address, int version, bool? asTimeCircles)
+    {
+        var balances = await GetTokenBalancesForAccount(address, _indexerContext.Settings.CirclesV2HubAddress);
+        var relevantBalances = balances.Where(o => o.Version == version);
+
+        if (asTimeCircles == null || asTimeCircles == true)
+        {
+            var totalBalance = relevantBalances
+                .Select(o => o.Circles)
+                .Sum();
+
+            return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            var totalBalance = relevantBalances
+                .Select(o => o.StaticAttoCircles)
+                .Aggregate(UInt256.Zero, (acc, val) => acc + UInt256.Parse(val));
+
+            return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    private List<TokenInfo> GetTokensByAccount(Address address)
+    {
+        var tokenExposureRawIds = GetTokenExposureIds(address);
+
+        var erc1155TokenAddresses = tokenExposureRawIds
+            .Where(id => !id.StartsWith("0x"))
+            .Select(id => ConversionUtils.UInt256ToAddress(UInt256.Parse(id)))
+            .ToArray();
+
+        var erc20TokenAddresses = tokenExposureRawIds
+            .Where(id => id.StartsWith("0x"))
+            .Select(id => new Address(id))
+            .ToArray();
+
+        var allTokenAddresses = erc1155TokenAddresses.Concat(erc20TokenAddresses).ToArray();
+        var allTokenAddressStrings = allTokenAddresses.Select(o => o.ToString(true, false)).ToArray();
+
+        var tokenInfoByAddress = FetchTokenInfo(allTokenAddressStrings);
+
+        return allTokenAddresses.Select(token =>
+        {
+            if (!tokenInfoByAddress.TryGetValue(token, out var row))
+                throw new Exception($"Token {token} not found in token info result set");
+
+            var (isErc20, isErc1155, isWrapped, isInflationary, isGroup) = ParseTokenType(row[1]);
+            var tokenOwner = new Address(row[2]);
+            var version = int.Parse(row[3]);
+
+            return new TokenInfo(token, tokenOwner, row[1], version, isErc20, isErc1155, isWrapped, isInflationary,
+                isGroup);
+        }).ToList();
+    }
+
+    private Dictionary<Address, string[]> FetchTokenInfo(string[] allTokenAddressStrings)
+    {
+        var selectTokenInfos = new Select(
+            "V_Crc",
+            "Tokens",
+            ["token", "type", "tokenOwner", "version"],
+            [new FilterPredicate("token", FilterType.In, allTokenAddressStrings)],
+            Array.Empty<OrderBy>(),
+            int.MaxValue);
+
+        var sql = selectTokenInfos.ToSql(_indexerContext.Database);
+        var result = _indexerContext.Database.Select(sql).Rows.ToDictionary(
+            row => new Address(row[0]?.ToString() ?? throw new Exception("A token in the result set is null")),
+            row => row.Select(o => o?.ToString() ?? throw new Exception("A value in the result set is null"))
+                .ToArray());
+
+        return result;
+    }
+
+    private (bool isErc20, bool isErc1155, bool isWrapped, bool isInflationary, bool isGroup)
+        ParseTokenType(string type)
+    {
+        return type switch
+        {
+            "CrcV1_Signup" => (true, false, false, true, false),
+            "CrcV2_RegisterGroup" => (false, true, false, false, true),
+            "CrcV2_RegisterHuman" => (false, true, false, false, false),
+            "CrcV2_ERC20WrapperDeployed_Inflationary" => (true, false, true, true, false),
+            "CrcV2_ERC20WrapperDeployed_Demurraged" => (true, false, true, false, false),
+            _ => throw new Exception($"Unknown token type: {type}")
+        };
+    }
+
+    public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address, bool? asTimeCircles = true)
+        => await GetTotalBalance(address, 1, asTimeCircles);
+
+    public async Task<ResultWrapper<string>> circlesV2_getTotalBalance(Address address, bool? asTimeCircles = true)
+        => await GetTotalBalance(address, 2, asTimeCircles);
 
     public Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address)
     {
-        var sql = @"
-        select ""user"",
-               ""canSendTo"",
-               ""limit""
-        from (
-                 select ""blockNumber"",
-                        ""transactionIndex"",
-                        ""logIndex"",
-                        ""user"",
-                        ""canSendTo"",
-                        ""limit"",
-                        row_number() over (partition by ""user"", ""canSendTo"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as rn
-                 from ""CrcV1_Trust""
-             ) t
-        where rn = 1
-          and (""user"" = @address
-           or ""canSendTo"" = @address)
+        const string sql = @"
+            select ""user"",
+                   ""canSendTo"",
+                   ""limit""
+            from (
+                     select ""blockNumber"",
+                            ""transactionIndex"",
+                            ""logIndex"",
+                            ""user"",
+                            ""canSendTo"",
+                            ""limit"",
+                            row_number() over (partition by ""user"", ""canSendTo"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as rn
+                     from ""CrcV1_Trust""
+                 ) t
+            where rn = 1
+              and (""user"" = @address
+               or ""canSendTo"" = @address)
         ";
 
-        var parameterizedSql = new ParameterizedSql(sql, new[]
+        var parameters = new[]
         {
             _indexerContext.Database.CreateParameter("address", address.ToString(true, false))
-        });
+        };
 
-        var result = _indexerContext.Database.Select(parameterizedSql);
-
-        var incomingTrusts = new List<CirclesTrustRelation>();
-        var outgoingTrusts = new List<CirclesTrustRelation>();
-
-        foreach (var resultRow in result.Rows)
+        var result = _indexerContext.Database.Select(new ParameterizedSql(sql, parameters));
+        if (result.Rows == null)
         {
-            var user = new Address(resultRow[0]?.ToString() ?? throw new Exception("A user in the result set is null"));
-            var canSendTo = new Address(resultRow[1]?.ToString() ??
-                                        throw new Exception("A canSendTo in the result set is null"));
-            var limit = int.Parse(resultRow[2]?.ToString() ?? throw new Exception("A limit in the result set is null"));
-
-            if (user == address)
-            {
-                // user is the sender
-                outgoingTrusts.Add(new CirclesTrustRelation(canSendTo, limit));
-            }
-            else
-            {
-                // user is the receiver
-                incomingTrusts.Add(new CirclesTrustRelation(user, limit));
-            }
+            throw new Exception("Failed to get trust relations");
         }
 
-        var trustRelations = new CirclesTrustRelations(address, outgoingTrusts.ToArray(), incomingTrusts.ToArray());
+        var trustRelations = ParseTrustRelations(result.Rows!, address);
         return Task.FromResult(ResultWrapper<CirclesTrustRelations>.Success(trustRelations));
     }
 
-    public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address,
-        bool asTimeCircles = false)
+    private CirclesTrustRelations ParseTrustRelations(IEnumerable<object[]> rows, Address address)
     {
-        using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
-        await rentedEthRpcModule.Rent();
+        var incomingTrusts = new List<CirclesTrustRelation>();
+        var outgoingTrusts = new List<CirclesTrustRelation>();
 
-        var balances =
-            CirclesTokenBalances(rentedEthRpcModule.RpcModule!, address, asTimeCircles);
-
-        return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
-    }
-
-    public Task<ResultWrapper<string>> circlesV2_getTotalBalance(Address address, bool asTimeCircles = false)
-    {
-        using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
-        rentedEthRpcModule.Rent().Wait();
-
-        string totalBalance = TotalBalanceV2(rentedEthRpcModule.RpcModule!, address, asTimeCircles);
-        return Task.FromResult(ResultWrapper<string>.Success(totalBalance));
-    }
-
-    private string TotalBalanceV2(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
-    {
-        IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(address);
-
-        // Call the erc1155's balanceOf function for each token using _ethRpcModule.eth_call().
-        // Solidity function signature: balanceOf(address _account, uint256 _id) public view returns (uint256)
-        byte[] functionSelector = Keccak.Compute("balanceOf(address,uint256)").Bytes.Slice(0, 4).ToArray();
-        byte[] addressBytes = address.Bytes.PadLeft(32);
-
-        UInt256 totalBalance = UInt256.Zero;
-
-        foreach (UInt256 tokenId in tokenIds)
+        foreach (var row in rows)
         {
-            byte[] tokenIdBytes = tokenId.PaddedBytes(32);
-            byte[] data = functionSelector.Concat(addressBytes).Concat(tokenIdBytes).ToArray();
+            var user = new Address(row[0].ToString() ?? throw new Exception("User address is null"));
+            var canSendTo = new Address(row[1].ToString() ?? throw new Exception("CanSendTo address is null"));
+            var limit = int.Parse(row[2].ToString() ?? throw new Exception("Limit is null"));
 
-            TransactionForRpc transactionCall = new()
-            {
-                To = _indexerContext.Settings.CirclesV2HubAddress,
-                Input = data
-            };
-
-            ResultWrapper<string> result = rpcModule.eth_call(transactionCall);
-            if (result.ErrorCode != 0)
-            {
-                throw new Exception(
-                    $"Couldn't get the balance of token (hex: {tokenIdBytes.ToHexString()}; dec: {tokenId}) for account {address}. Error code: {result.ErrorCode}; Error message: {result.Result}");
-            }
-
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
-            UInt256 tokenBalance = new(uint256Bytes, true);
-            totalBalance += tokenBalance;
+            if (user == address)
+                outgoingTrusts.Add(new CirclesTrustRelation(canSendTo, limit));
+            else
+                incomingTrusts.Add(new CirclesTrustRelation(user, limit));
         }
 
-        return asTimeCircles
-            ? FormatTimeCircles(totalBalance)
-            : totalBalance.ToString(CultureInfo.InvariantCulture);
+        return new CirclesTrustRelations(address, outgoingTrusts.ToArray(), incomingTrusts.ToArray());
     }
 
-    public async Task<ResultWrapper<CirclesTokenBalanceV2[]>> circlesV2_getTokenBalances(Address address,
-        bool asTimeCircles = false)
+    public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
     {
-        using RentedEthRpcModule rentedEthRpcModule = new(_indexerContext.NethermindApi);
-        await rentedEthRpcModule.Rent();
+        var balances = await GetTokenBalancesForAccount(address,
+            _indexerContext.Settings.CirclesV2HubAddress);
 
-        var balances =
-            V2CirclesTokenBalances(rentedEthRpcModule.RpcModule!, address,
-                _indexerContext.Settings.CirclesV2HubAddress, asTimeCircles);
-
-        return ResultWrapper<CirclesTokenBalanceV2[]>.Success(balances.ToArray());
+        return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
@@ -183,241 +308,30 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
-    public ResultWrapper<CirclesEvent[]> circles_events(Address address, long fromBlock, long? toBlock = null)
+    public ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null, FilterPredicateDto[]? filterPredicates = null, bool? sortAscending = false)
     {
         var queryEvents = new QueryEvents(_indexerContext);
-        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock));
+        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock, filterPredicates, sortAscending));
     }
 
-    #region private methods
-
-    private IEnumerable<Address> TokenAddressesForAccount(Address circlesAccount)
+    private string[] GetTokenExposureIds(Address address)
     {
-        var select = new Select(
-            "CrcV1"
-            , "Transfer"
-            , new[] { "tokenAddress" }
-            , new[]
-            {
-                new FilterPredicate("to", FilterType.Equals, circlesAccount.ToString(true, false))
-            }
-            , Array.Empty<OrderBy>()
-            , null
-            , true);
+        var selectTokenExposure = new Select(
+            "V_Crc",
+            "Transfers",
+            ["id"],
+            [
+                new FilterPredicate("to", FilterType.Equals, address.ToString(true, false)),
+                new FilterPredicate("type", FilterType.NotEquals, "CrcV1_HubTransfer")
+            ],
+            Array.Empty<OrderBy>(),
+            int.MaxValue,
+            true);
 
-        var sql = select.ToSql(_indexerContext.Database);
-        return _indexerContext.Database
-            .Select(sql)
+        var sql = selectTokenExposure.ToSql(_indexerContext.Database);
+        return _indexerContext.Database.Select(sql)
             .Rows
-            .Select(o => new Address(o[0]?.ToString()
-                                     ?? throw new Exception("A token address in the result set is null"))
-            );
+            .Select(row => row[0]?.ToString() ?? throw new Exception("An id in the result set is null"))
+            .ToArray();
     }
-
-    private IDictionary<string, string> GetTokenOwners(string[] tokenAddresses)
-    {
-        // Construct a query for "V_Crc_Avatars" and select the "avatar" and "tokenId" columns.
-        // Use an IN clause to filter the results by the token addresses.
-        var inFilterValues = tokenAddresses.Select(o => o.ToLowerInvariant()).ToArray();
-        var select = new Select(
-            "V_Crc"
-            , "Avatars"
-            , new[] { "avatar", "tokenId" }
-            , new[]
-            {
-                new FilterPredicate("tokenId", FilterType.In, inFilterValues)
-            }
-            , Array.Empty<OrderBy>()
-            , null
-            , true);
-
-        var sql = select.ToSql(_indexerContext.Database);
-        var result = _indexerContext.Database.Select(sql);
-
-        var tokenOwners = new Dictionary<string, string>();
-        foreach (var row in result.Rows)
-        {
-            var avatar = row[0]?.ToString() ?? throw new Exception("An avatar in the result set is null");
-            var tokenId = row[1]?.ToString() ?? throw new Exception("A tokenId in the result set is null");
-            tokenOwners[tokenId] = avatar;
-        }
-
-        return tokenOwners;
-    }
-
-    private List<CirclesTokenBalance> CirclesTokenBalances(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
-    {
-        IEnumerable<Address> tokens = TokenAddressesForAccount(address).ToArray();
-        var tokenAddressesOfAccount = tokens.Select(o => o.ToString(true, false)).ToArray();
-        IDictionary<string, string> tokenOwners = GetTokenOwners(tokenAddressesOfAccount);
-
-        // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
-        byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
-        byte[] addressBytes = address.Bytes.PadLeft(32);
-        byte[] data = functionSelector.Concat(addressBytes).ToArray();
-
-        List<CirclesTokenBalance> balances = new();
-
-        foreach (Address token in tokens)
-        {
-            TransactionForRpc transactionCall = new()
-            {
-                To = token,
-                Input = data
-            };
-
-            ResultWrapper<string> result = rpcModule.eth_call(transactionCall);
-            if (result.ErrorCode != 0)
-            {
-                throw new Exception($"Couldn't get the balance of token {token} for account {address}");
-            }
-
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
-            UInt256 tokenBalance = new(uint256Bytes, true);
-
-            if (asTimeCircles)
-            {
-                var tcBalance = ToTimeCircles(tokenBalance);
-                balances.Add(new CirclesTokenBalance(token, tcBalance.ToString(CultureInfo.InvariantCulture),
-                    tokenOwners[token.ToString(true, false)]));
-            }
-            else
-            {
-                balances.Add(new CirclesTokenBalance(token, tokenBalance.ToString(CultureInfo.InvariantCulture),
-                    tokenOwners[token.ToString(true, false)]));
-            }
-        }
-
-        return balances;
-    }
-
-    private static decimal ToTimeCircles(UInt256 tokenBalance)
-    {
-        var balance = FormatTimeCircles(tokenBalance);
-        var tcBalance = TimeCirclesConverter.CrcToTc(DateTime.Now, decimal.Parse(balance));
-
-        return tcBalance;
-    }
-
-    private static string FormatTimeCircles(UInt256 tokenBalance)
-    {
-        var ether = BigInteger.Divide((BigInteger)tokenBalance, BigInteger.Pow(10, 18));
-        var remainder = BigInteger.Remainder((BigInteger)tokenBalance, BigInteger.Pow(10, 18));
-        var remainderString = remainder.ToString("D18").TrimEnd('0');
-
-        return remainderString.Length > 0
-            ? $"{ether}.{remainderString}"
-            : ether.ToString(CultureInfo.InvariantCulture);
-    }
-
-    private List<CirclesTokenBalanceV2> V2CirclesTokenBalances(IEthRpcModule rpcModule, Address address,
-        Address hubAddress, bool asTimeCircles)
-    {
-        IEnumerable<UInt256> tokenIds = V2TokenIdsForAccount(address);
-
-        // Call the erc1155's balanceOf function for each token using _ethRpcModule.eth_call().
-        // Solidity function signature: balanceOf(address _account, uint256 _id) public view returns (uint256)
-        byte[] functionSelector = Keccak.Compute("balanceOf(address,uint256)").Bytes.Slice(0, 4).ToArray();
-        byte[] addressBytes = address.Bytes.PadLeft(32);
-
-        var balances = new List<CirclesTokenBalanceV2>();
-
-        foreach (var tokenId in tokenIds)
-        {
-            byte[] tokenIdBytes = tokenId.PaddedBytes(32);
-            byte[] data = functionSelector.Concat(addressBytes).Concat(tokenIdBytes).ToArray();
-
-            TransactionForRpc transactionCall = new()
-            {
-                To = hubAddress,
-                Input = data
-            };
-
-            ResultWrapper<string> result = rpcModule.eth_call(transactionCall);
-            if (result.ErrorCode != 0)
-            {
-                throw new Exception(
-                    $"Couldn't get the balance of token (hex: {tokenIdBytes.ToHexString()}; dec: {tokenId}) for account {address}. Error code: {result.ErrorCode}; Error message: {result.Result}");
-            }
-
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
-            UInt256 tokenBalance = new(uint256Bytes, true);
-
-            if (asTimeCircles)
-            {
-                var tcBalance = FormatTimeCircles(tokenBalance);
-                Address tokenAddress = new(tokenIdBytes.Slice(32 - 20, 20));
-                balances.Add(new CirclesTokenBalanceV2(tokenId, tcBalance, tokenAddress.ToString(true, false)));
-            }
-            else
-            {
-                Address tokenAddress = new(tokenIdBytes.Slice(32 - 20, 20));
-                balances.Add(new CirclesTokenBalanceV2(tokenId, tokenBalance.ToString(CultureInfo.InvariantCulture),
-                    tokenAddress.ToString(true, false)));
-            }
-        }
-
-        return balances;
-    }
-
-    private IEnumerable<UInt256> V2TokenIdsForAccount(Address address)
-    {
-        var select = new Select(
-            "V_CrcV2"
-            , "Transfers"
-            , new[] { "id" }
-            , new[]
-            {
-                new FilterPredicate("to", FilterType.Equals, address.ToString(true, false))
-            }
-            , Array.Empty<OrderBy>()
-            , null
-            , true);
-
-        var sql = select.ToSql(_indexerContext.Database);
-
-        return _indexerContext.Database
-            .Select(sql)
-            .Rows
-            .Select(o => UInt256.Parse(o[0]?.ToString()
-                                       ?? throw new Exception("A token id in the result set is null"))
-            );
-    }
-
-    private string TotalBalance(IEthRpcModule rpcModule, Address address, bool asTimeCircles)
-    {
-        IEnumerable<Address> tokens = TokenAddressesForAccount(address);
-
-        // Call the erc20's balanceOf function for each token using _ethRpcModule.eth_call():
-        byte[] functionSelector = Keccak.Compute("balanceOf(address)").Bytes.Slice(0, 4).ToArray();
-        byte[] addressBytes = address.Bytes.PadLeft(32);
-        byte[] data = functionSelector.Concat(addressBytes).ToArray();
-
-        UInt256 totalBalance = UInt256.Zero;
-
-        foreach (Address token in tokens)
-        {
-            TransactionForRpc transactionCall = new()
-            {
-                To = token,
-                Input = data
-            };
-
-            ResultWrapper<string> result = rpcModule.eth_call(transactionCall);
-            if (result.ErrorCode != 0)
-            {
-                throw new Exception($"Couldn't get the balance of token {token} for account {address}");
-            }
-
-            byte[] uint256Bytes = Convert.FromHexString(result.Data.Substring(2));
-            UInt256 tokenBalance = new(uint256Bytes, true);
-            totalBalance += tokenBalance;
-        }
-
-        return asTimeCircles
-            ? ToTimeCircles(totalBalance).ToString(CultureInfo.InvariantCulture)
-            : totalBalance.ToString(CultureInfo.InvariantCulture);
-    }
-
-    #endregion
 }

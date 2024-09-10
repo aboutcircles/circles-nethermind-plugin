@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using Circles.Index.Common;
 using Circles.Index.Query;
+using Circles.Index.Query.Dto;
 using Nethermind.Core;
 
 namespace Circles.Index.Rpc;
@@ -11,19 +12,32 @@ public class QueryEvents(Context context)
     public static readonly ImmutableHashSet<string> AddressColumns = new HashSet<string>
     {
         "user", "avatar", "organization", "from", "to", "canSendTo", "account", "group", "human", "invited",
-        "inviter", "truster", "trustee"
+        "inviter", "truster", "trustee", "account"
     }.ToImmutableHashSet();
 
-    public CirclesEvent[] CirclesEvents(Address? address, long fromBlock, long? toBlock = null)
+    /// <summary>
+    /// Queries all events affecting the specified account since block N.
+    /// If 'address' is null, all events are queried.
+    /// </summary>
+    /// <param name="address">If specified, only events concerning this account are queried</param>
+    /// <param name="fromBlock">HEAD - 1000 if not specified otherwise</param>
+    /// <param name="toBlock">HEAD if not specified otherwise</param>
+    /// <param name="additionalFilters">Additional filters to apply to the query</param>
+    /// <returns>An array of CirclesEvent objects</returns>
+    /// <exception cref="Exception">Thrown when the zero address is queried, fromBlock is less than 0, toBlock is less than fromBlock, or toBlock is greater than the current head</exception>
+    public CirclesEvent[] CirclesEvents(Address? address, long? fromBlock, long? toBlock = null,
+        FilterPredicateDto[]? additionalFilters = null, bool? sortAscending = false)
     {
         long currentHead = context.NethermindApi.BlockTree?.Head?.Number
                            ?? throw new Exception("BlockTree or Head is null");
 
+        fromBlock ??= currentHead - 1000;
+
         string? addressString = address?.ToString(true, false);
 
-        ValidateInputs(addressString, fromBlock, toBlock, currentHead);
+        ValidateInputs(addressString, fromBlock.Value, toBlock, currentHead);
 
-        var queries = BuildQueries(addressString, fromBlock, toBlock);
+        var queries = BuildQueries(addressString, fromBlock.Value, toBlock, additionalFilters);
 
         var events = ExecuteQueries(queries);
 
@@ -48,7 +62,8 @@ public class QueryEvents(Context context)
                 "The toBlock parameter must be less than or equal to the current head. Leave it empty to query all blocks until the current head.");
     }
 
-    private List<Select> BuildQueries(string? address, long fromBlock, long? toBlock)
+    private List<Select> BuildQueries(string? address, long fromBlock, long? toBlock,
+        FilterPredicateDto[]? additionalFilters = null)
     {
         var queries = new List<Select>();
 
@@ -82,16 +97,44 @@ public class QueryEvents(Context context)
                 filters.Add(new FilterPredicate("blockNumber", FilterType.LessThanOrEquals, toBlock.Value));
             }
 
-            queries.Add(new Select(table.Key.Namespace, table.Key.Table, Array.Empty<string>(),
+            if (additionalFilters != null)
+            {
+                IFilterPredicate ToFilterPredicate(IFilterPredicateDto dto)
+                {
+                    if (dto.Type == "FilterPredicate")
+                    {
+                        var predicate = (FilterPredicateDto)dto;
+                        return new FilterPredicate(predicate.Column ?? throw new Exception("Column is null"),
+                            predicate.FilterType, predicate.Value);
+                    }
+
+                    if (dto.Type == "Conjunction")
+                    {
+                        var conjunction = (ConjunctionDto)dto;
+                        var predicates = conjunction.Predicates?.Select(ToFilterPredicate).ToArray();
+                        return new Conjunction(conjunction.ConjunctionType, predicates ?? []);
+                    }
+
+                    throw new ArgumentException($"Unknown filter predicate type: {dto.Type}");
+                }
+
+                filters.AddRange(additionalFilters.Select(ToFilterPredicate));
+            }
+
+            var query = new Select(table.Key.Namespace, table.Key.Table, Array.Empty<string>(),
                 filters.Count > 1
                     ? new[] { new Conjunction(ConjunctionType.And, filters.ToArray()) }
                     : filters,
-                new[]
-                {
-                    new OrderBy("blockNumber", "ASC"), new OrderBy("transactionIndex", "ASC"),
+                [
+                    new OrderBy("blockNumber", "ASC"),
+                    new OrderBy("transactionIndex", "ASC"),
                     new OrderBy("logIndex", "ASC")
-                },
-                null, true, int.MaxValue));
+                ],
+                null, true, int.MaxValue);
+
+            queries.Add(query);
+
+            context.Logger.Info(query.ToSql(context.Database).Sql);
         }
 
         return queries;
@@ -126,8 +169,19 @@ public class QueryEvents(Context context)
     }
 
     private CirclesEvent[] SortEvents(
-        ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent> events)
+        ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent> events,
+        bool? sortAscending = false)
     {
+        if (sortAscending == null || sortAscending == false)
+        {
+            return events
+                .OrderByDescending(o => o.Key.BlockNo)
+                .ThenByDescending(o => o.Key.TransactionIndex)
+                .ThenByDescending(o => o.Key.LogIndex)
+                .Select(o => o.Value)
+                .ToArray();
+        }
+
         return events
             .OrderBy(o => o.Key.BlockNo)
             .ThenBy(o => o.Key.TransactionIndex)

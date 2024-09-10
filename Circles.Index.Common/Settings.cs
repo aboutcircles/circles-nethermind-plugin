@@ -16,6 +16,10 @@ public class Settings
         ? new(Environment.GetEnvironmentVariable("V2_NAME_REGISTRY_ADDRESS")!)
         : throw new Exception("V2_NAME_REGISTRY_ADDRESS is not set.");
     
+    public readonly Address CirclesErc20LiftAddress = Environment.GetEnvironmentVariable("V2_ERC20_LIFT_ADDRESS") != null
+        ? new(Environment.GetEnvironmentVariable("V2_ERC20_LIFT_ADDRESS")!)
+        : throw new Exception("V2_ERC20_LIFT_ADDRESS is not set.");
+    
     public readonly Address CirclesStandardTreasuryAddress = Environment.GetEnvironmentVariable("V2_STANDARD_TREASURY_ADDRESS") != null
         ? new(Environment.GetEnvironmentVariable("V2_STANDARD_TREASURY_ADDRESS")!)
         : throw new Exception("V2_STANDARD_TREASURY_ADDRESS is not set.");

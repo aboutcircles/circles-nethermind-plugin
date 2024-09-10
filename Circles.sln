@@ -60,6 +60,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.Sta
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Utils", "Circles.Index.Utils\Circles.Index.Utils.csproj", "{C68CD7EC-9F4D-481E-AC4E-E063794E9488}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "protobuf-types", "protobuf-types", "{52C38C3D-390F-4EB9-B466-958EEDABB8B2}"
+	ProjectSection(SolutionItems) = preProject
+		v1.proto = v1.proto
+		common.proto = common.proto
+		v2.proto = v2.proto
+		v2.nameRegistry.proto = v2.nameRegistry.proto
+		v2.standardTreasury.proto = v2.standardTreasury.proto
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -121,5 +130,6 @@ Global
 		{33D651AB-1C61-4A06-9C02-A144E7342317} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 		{265A4516-DC59-4D8B-B097-36902108B143} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 		{EF7DA6EC-7519-4DDA-8311-0B8649219AC8} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
+		{52C38C3D-390F-4EB9-B466-958EEDABB8B2} = {B30CB76D-01EE-4E92-AEE5-27224DA53350}
 	EndGlobalSection
 EndGlobal
