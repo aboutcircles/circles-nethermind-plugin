@@ -103,7 +103,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
 
         var topic = log.Topics[0];
-        
+
         if (log.LoggersAddress == v2HubAddress)
         {
             if (topic == _stoppedTopic)
@@ -210,7 +210,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         // "event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)"
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string erc20Wrapper = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        byte circlesType = log.Data[0];
+        UInt256 circlesType = new UInt256(log.Data, true);
 
         Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), null);
 
@@ -222,7 +222,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             avatar,
             erc20Wrapper,
-            circlesType);
+            (long)(BigInteger)circlesType);
     }
 
     private URI Erc1155Uri(Block block, TxReceipt receipt, LogEntry log, int logIndex)
