@@ -274,8 +274,7 @@ curl -X POST --data '{
   "id": 1,
   "method": "circles_getTotalBalance",
   "params": [
-    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-    true
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
   ]
 }' -H "Content-Type: application/json" http://localhost:8545/
 ```
@@ -287,14 +286,13 @@ This method returns a string formatted BigInteger value. The value is the sum of
 If `asTimeCircles` is set to `true`, the value is formatted
 as [TimeCircles](https://github.com/CirclesUBI/timecircles) floating point number instead of the raw BigInteger value.
 
-### circles_getTokenBalance / circlesV2_getTokenBalances
+### circles_getTokenBalances
 
 These methods allow you to query all individual Circles (v1/v2) holdings of an address.
 
 **Signature**:
 
 * `circles_getTokenBalances(address: string, asTimeCircles: bool = false)`.
-* `circlesV2_getTokenBalances(address: string, asTimeCircles: bool = false)`.
 
 #### Example
 
@@ -304,8 +302,7 @@ curl -X POST --data '{
   "id": 1,
   "method": "circles_getTokenBalances",
   "params": [
-    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-    true
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
   ]
 }' -H "Content-Type: application/json" http://localhost:8545/
 ```

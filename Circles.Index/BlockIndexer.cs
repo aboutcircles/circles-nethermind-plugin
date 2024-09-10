@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Threading.Tasks.Dataflow;
 using Circles.Index.Common;
 using Nethermind.Blockchain;
@@ -19,30 +18,6 @@ public class ImportFlow(
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
 
-    private IReadOnlySet<Address> _senderBlacklist = new HashSet<Address>();
-
-    private void LoadSenderBlacklist()
-    {
-        var resourceName = "Circles.Index.cheatcodes.spam_accounts.csv";
-        var assembly = Assembly.GetExecutingAssembly();
-
-        using Stream? stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null)
-        {
-            Console.WriteLine($"Embedded resource not found: {resourceName}");
-            return;
-        }
-
-        using StreamReader reader = new StreamReader(stream);
-        _senderBlacklist = reader.ReadToEnd()
-            .Split(['\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.Trim())
-            .Where(line => !string.IsNullOrEmpty(line))
-            .Select(line => new Address(line))
-            .ToHashSet();
-
-        context.Logger.Info($"{_senderBlacklist.Count} addresses added to the sender blacklist.");
-    }
 
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
@@ -84,7 +59,8 @@ public class ImportFlow(
             blockTree.FindBlock,
             CreateOptions(cancellationToken, 3, 3));
 
-        TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock = new(
+        TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
+            new(
             block =>
                 new BlockWithReceipts(
                     block
@@ -113,19 +89,13 @@ public class ImportFlow(
                 List<IIndexEvent> events = [];
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
-                    // Skip the spam
-                    if (receipt.Sender != null && _senderBlacklist.Contains(receipt.Sender))
-                    {
-                        return (blockWithReceipts, events);
-                    }
-
                     var transaction = transactionsByHash[receipt.TxHash!];
                     var transactionIndex = transactionIndexByHash[receipt.TxHash!];
                     try
                     {
                         foreach (var parser in context.LogParsers)
                         {
-                            var parsedEvents = parser.ParseTransaction(blockWithReceipts.Block, 
+                            var parsedEvents = parser.ParseTransaction(blockWithReceipts.Block,
                                 transactionIndex, transaction);
 
                             events.AddRange(parsedEvents);
@@ -181,8 +151,6 @@ public class ImportFlow(
 
     public async Task<Range<long>> Run(IAsyncEnumerable<long> blocksToIndex, CancellationToken? cancellationToken)
     {
-        LoadSenderBlacklist();
-
         var (sourceBlock, sinkBlock) = BuildPipeline(CancellationToken.None);
 
         long min = long.MaxValue;
