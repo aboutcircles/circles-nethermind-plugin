@@ -42,7 +42,7 @@ services:
       - V2_STANDARD_TREASURY_ADDRESS=0xbb76CF35ec106c5c7a447246257dcfCB7244cA04
       - V2_ERC20_LIFT_ADDRESS=0xB6B79BeEfd58cf33b298A456934554cf440354aD
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
-      - START_BLOCK=12000000
+      - START_BLOCK=35700000
 
   postgres-gnosis:
     image: postgres:16
