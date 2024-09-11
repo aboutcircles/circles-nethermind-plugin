@@ -1,5 +1,6 @@
 using System.Numerics;
 using Circles.Index.Common;
+using Circles.Index.Utils;
 using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV2;
@@ -32,13 +33,38 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema Trust =
         EventSchema.FromSolidity("CrcV2",
             "event Trust(address indexed truster, address indexed trustee, uint256 expiryTime)");
+    //
+    // public static readonly EventSchema TransferSingle = EventSchema.FromSolidity(
+    //     "CrcV2",
+    //     "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 indexed id, uint256 value)");
+    public static readonly EventSchema TransferSingle = new("CrcV2", "TransferSingle", 
+        Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)").BytesToArray(), [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("transactionHash", ValueTypes.String, true),
+        new("operator", ValueTypes.Address, true),
+        new("from", ValueTypes.Address, true),
+        new("to", ValueTypes.Address, true),
+        new("id", ValueTypes.BigInt, true),
+        new("value", ValueTypes.BigInt, false),
+        new("tokenAddress", ValueTypes.Address, true)
+    ]);
 
-    public static readonly EventSchema TransferSingle = EventSchema.FromSolidity(
-        "CrcV2",
-        "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 indexed id, uint256 value)");
+    // public static readonly EventSchema URI =
+    //     EventSchema.FromSolidity("CrcV2", "event URI(string value, uint256 indexed id)");
 
-    public static readonly EventSchema URI =
-        EventSchema.FromSolidity("CrcV2", "event URI(string value, uint256 indexed id)");
+    public static readonly EventSchema URI = new EventSchema("CrcV2", "URI",
+        Keccak.Compute("URI(string,uint256)").BytesToArray(), [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("value", ValueTypes.String, true),
+            new("id", ValueTypes.BigInt, true),
+            new("tokenAddress", ValueTypes.Address, true)
+        ]);
 
     public static readonly EventSchema ApprovalForAll =
         EventSchema.FromSolidity(
@@ -57,7 +83,8 @@ public class DatabaseSchema : IDatabaseSchema
             new("from", ValueTypes.Address, true),
             new("to", ValueTypes.Address, true),
             new("id", ValueTypes.BigInt, true),
-            new("value", ValueTypes.BigInt, false)
+            new("value", ValueTypes.BigInt, false),
+            new("tokenAddress", ValueTypes.Address, true)
         ]);
 
     public static readonly EventSchema Erc20WrapperTransfer = new("CrcV2", "Erc20WrapperTransfer",
@@ -101,8 +128,9 @@ public class DatabaseSchema : IDatabaseSchema
             new("operator", ValueTypes.Address, true),
             new("from", ValueTypes.Address, true),
             new("to", ValueTypes.Address, true),
-            new("id", ValueTypes.BigInt, false),
-            new("amount", ValueTypes.BigInt, false)
+            new("id", ValueTypes.BigInt, true),
+            new("amount", ValueTypes.BigInt, false),
+            new("tokenAddress", ValueTypes.Address, true)
         ]);
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
@@ -306,7 +334,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "from", e => e.From },
                 { "to", e => e.To },
                 { "id", e => (BigInteger)e.Id },
-                { "value", e => (BigInteger)e.Value }
+                { "value", e => (BigInteger)e.Value },
+                { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
             });
 
         EventDtoTableMap.Add<TransferBatch>(("CrcV2", "TransferBatch"));
@@ -323,7 +352,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "from", e => e.From },
                 { "to", e => e.To },
                 { "id", e => (BigInteger)e.Id },
-                { "value", e => (BigInteger)e.Value }
+                { "value", e => (BigInteger)e.Value },
+                { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
             });
 
         EventDtoTableMap.Add<URI>(("CrcV2", "URI"));
@@ -336,7 +366,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
                 { "value", e => e.Value },
-                { "id", e => (BigInteger)e.Id }
+                { "id", e => (BigInteger)e.Id },
+                { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
             });
 
         EventDtoTableMap.Add<ERC20WrapperDeployed>(("CrcV2", "ERC20WrapperDeployed"));
@@ -438,7 +469,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "from", e => e.From },
                 { "to", e => e.To },
                 { "id", e => (BigInteger)e.Id },
-                { "amount", e => (BigInteger)e.Amount }
+                { "amount", e => (BigInteger)e.Amount },
+                { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
             });
     }
 }

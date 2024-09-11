@@ -103,42 +103,45 @@ public class DatabaseSchema : IDatabaseSchema
     {
         SqlMigrationItem = new SqlMigrationItem(@"
             create or replace view public.""V_CrcV1_Transfers""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""from"", ""to"", ""tokenAddress"",
-                         amount, type) as
+                    (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""from"", ""to"", ""tokenAddress"",
+                     amount, type)
+            as
             WITH ""allTransfers"" AS (SELECT ""CrcV1_HubTransfer"".""blockNumber"",
-                                           ""CrcV1_HubTransfer"".""timestamp"",
-                                           ""CrcV1_HubTransfer"".""transactionIndex"",
-                                           ""CrcV1_HubTransfer"".""logIndex"",
-                                           ""CrcV1_HubTransfer"".""transactionHash"",
-                                           ""CrcV1_HubTransfer"".""from"",
-                                           ""CrcV1_HubTransfer"".""to"",
-                                           NULL::text AS ""tokenAddress"",
-                                           ""CrcV1_HubTransfer"".amount,
-                                           'CrcV1_HubTransfer' as type
-                                    FROM ""CrcV1_HubTransfer""
-                                    UNION ALL
-                                    SELECT t.""blockNumber"",
-                                           t.""timestamp"",
-                                           t.""transactionIndex"",
-                                           t.""logIndex"",
-                                           t.""transactionHash"",
-                                           t.""from"",
-                                           t.""to"",
-                                           t.""tokenAddress"",
-                                           t.amount,
-                                           'CrcV1_Transfer' as type
-                                    FROM ""CrcV1_Transfer"" t)
-            SELECT ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""transactionHash"",
-                   ""from"",
-                   ""to"",
-                   ""tokenAddress"",
-                   amount,
-                   type
-            FROM ""allTransfers""
+                                       ""CrcV1_HubTransfer"".""timestamp"",
+                                       ""CrcV1_HubTransfer"".""transactionIndex"",
+                                       ""CrcV1_HubTransfer"".""logIndex"",
+                                       ""CrcV1_HubTransfer"".""transactionHash"",
+                                       ""CrcV1_HubTransfer"".""from"",
+                                       ""CrcV1_HubTransfer"".""to"",
+                                       NULL::text                AS ""tokenAddress"",
+                                       ""CrcV1_HubTransfer"".amount,
+                                       'CrcV1_HubTransfer'::text AS type
+                                FROM ""CrcV1_HubTransfer""
+                                UNION ALL
+                                SELECT t.""blockNumber"",
+                                       t.""timestamp"",
+                                       t.""transactionIndex"",
+                                       t.""logIndex"",
+                                       t.""transactionHash"",
+                                       t.""from"",
+                                       t.""to"",
+                                       t.""tokenAddress"",
+                                       t.amount,
+                                       'CrcV1_Transfer'::text AS type
+                                FROM ""CrcV1_Transfer"" t)
+            SELECT t.""blockNumber"",
+               t.""timestamp"",
+               t.""transactionIndex"",
+               t.""logIndex"",
+               t.""transactionHash"",
+               t.""from"",
+               t.""to"",
+               t.""tokenAddress"",
+               t.amount,
+               t.type,
+               tt.type as ""tokenType""
+            FROM ""allTransfers"" t
+            LEFT JOIN ""V_Crc_Tokens"" tt on tt.token = t.""tokenAddress""
             ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC;
         ")
     };
@@ -235,9 +238,9 @@ public class DatabaseSchema : IDatabaseSchema
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-          create or replace view public.""V_CrcV2_Transfers""
-                    (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""batchIndex"", ""transactionHash"", operator,
-                     ""from"", ""to"", id, value, type)
+            create or replace view public.""V_CrcV2_Transfers""
+                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""batchIndex"", ""transactionHash"", operator,
+                         ""from"", ""to"", id, value, type)
             as
             WITH ""allTransfers"" AS (SELECT ""CrcV2_TransferSingle"".""blockNumber"",
                                            ""CrcV2_TransferSingle"".""timestamp"",
@@ -250,7 +253,8 @@ public class DatabaseSchema : IDatabaseSchema
                                            ""CrcV2_TransferSingle"".""to"",
                                            ""CrcV2_TransferSingle"".id::text AS id,
                                            ""CrcV2_TransferSingle"".value,
-                                           'CrcV2_TransferSingle'::text AS type
+                                           'CrcV2_TransferSingle'::text    AS type,
+                                           ""tokenAddress""
                                     FROM ""CrcV2_TransferSingle""
                                     UNION ALL
                                     SELECT ""CrcV2_TransferBatch"".""blockNumber"",
@@ -264,7 +268,8 @@ public class DatabaseSchema : IDatabaseSchema
                                            ""CrcV2_TransferBatch"".""to"",
                                            ""CrcV2_TransferBatch"".id::text AS id,
                                            ""CrcV2_TransferBatch"".value,
-                                           'CrcV2_TransferBatch'::text AS type
+                                           'CrcV2_TransferBatch'::text    AS type,
+                                           ""tokenAddress""
                                     FROM ""CrcV2_TransferBatch""
                                     UNION ALL
                                     SELECT ""CrcV2_Erc20WrapperTransfer"".""blockNumber"",
@@ -278,21 +283,25 @@ public class DatabaseSchema : IDatabaseSchema
                                            ""CrcV2_Erc20WrapperTransfer"".""to"",
                                            ""CrcV2_Erc20WrapperTransfer"".""tokenAddress"" AS id,
                                            ""CrcV2_Erc20WrapperTransfer"".amount         AS value,
-                                           'CrcV2_Erc20WrapperTransfer'::text          AS type
+                                           'CrcV2_Erc20WrapperTransfer'::text          AS type,
+                                           ""tokenAddress""
                                     FROM ""CrcV2_Erc20WrapperTransfer"")
-            SELECT ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""batchIndex"",
-                   ""transactionHash"",
-                   operator,
-                   ""from"",
-                   ""to"",
-                   id,
-                   value,
-                   type
-            FROM ""allTransfers""
+            SELECT t.""blockNumber"",
+                   t.""timestamp"",
+                   t.""transactionIndex"",
+                   t.""logIndex"",
+                   t.""batchIndex"",
+                   t.""transactionHash"",
+                   t.operator,
+                   t.""from"",
+                   t.""to"",
+                   t.id,
+                   t.value,
+                   t.type,
+                   t.""tokenAddress"",
+                   tt.type as ""tokenType""
+            FROM ""allTransfers"" t
+            JOIN ""V_Crc_Tokens"" tt on tt.token = t.""tokenAddress""
             ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC;
         ")
     };
@@ -498,7 +507,8 @@ public class DatabaseSchema : IDatabaseSchema
                                            ""V_CrcV1_Transfers"".""to"",
                                            ""V_CrcV1_Transfers"".""tokenAddress"" AS id,
                                            ""V_CrcV1_Transfers"".amount         AS value,
-                                           ""V_CrcV1_Transfers"".type
+                                           ""V_CrcV1_Transfers"".type,
+                                           ""V_CrcV1_Transfers"".""tokenType""
                                     FROM ""V_CrcV1_Transfers""
                                     UNION ALL
                                     SELECT ""V_CrcV2_Transfers"".""blockNumber"",
@@ -513,7 +523,8 @@ public class DatabaseSchema : IDatabaseSchema
                                            ""V_CrcV2_Transfers"".""to"",
                                            ""V_CrcV2_Transfers"".id,
                                            ""V_CrcV2_Transfers"".value,
-                                           ""V_CrcV2_Transfers"".type
+                                           ""V_CrcV2_Transfers"".type,
+                                           ""V_CrcV2_Transfers"".""tokenType""
                                     FROM ""V_CrcV2_Transfers"")
             SELECT ""blockNumber"",
                    ""timestamp"",
@@ -527,8 +538,9 @@ public class DatabaseSchema : IDatabaseSchema
                    ""to"",
                    id,
                    value,
-                   type
-            FROM ""allTransfers"";
+                   type,
+                   ""tokenType""
+            FROM ""allTransfers"" t;
         ")
     };
 
@@ -718,16 +730,8 @@ public class DatabaseSchema : IDatabaseSchema
                 V_CrcV1_Avatars
             },
             {
-                ("V_CrcV1", "Transfers"),
-                V_CrcV1_Transfers
-            },
-            {
                 ("V_CrcV2", "Avatars"),
                 V_CrcV2_Avatars
-            },
-            {
-                ("V_CrcV2", "Transfers"),
-                V_CrcV2_Transfers
             },
             {
                 ("V_CrcV2", "TrustRelations"),
@@ -740,6 +744,18 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_Crc", "Avatars"),
                 V_Crc_Avatars
+            },
+            {
+                ("V_Crc", "Tokens"),
+                V_Crc_Tokens
+            },
+            {
+                ("V_CrcV1", "Transfers"),
+                V_CrcV1_Transfers
+            },
+            {
+                ("V_CrcV2", "Transfers"),
+                V_CrcV2_Transfers
             },
             {
                 ("V_Crc", "TrustRelations"),
@@ -756,10 +772,6 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV2", "BalancesByAccountAndToken"),
                 V_CrcV2_BalancesByAccountAndToken
-            },
-            {
-                ("V_Crc", "Tokens"),
-                V_Crc_Tokens
             }
         };
 }

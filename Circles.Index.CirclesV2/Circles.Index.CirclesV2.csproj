@@ -9,6 +9,7 @@
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
+      <ProjectReference Include="..\Circles.Index.Utils\Circles.Index.Utils.csproj" />
     </ItemGroup>
 
     <ItemGroup>
