@@ -98,7 +98,8 @@ public class DatabaseSchema : IDatabaseSchema
             new("from", ValueTypes.Address, true),
             new("to", ValueTypes.Address, true),
             new("amount", ValueTypes.BigInt, false),
-            new("type", ValueTypes.String, false)
+            new("type", ValueTypes.String, true),
+            new("tokenType", ValueTypes.String, true)
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
@@ -234,7 +235,8 @@ public class DatabaseSchema : IDatabaseSchema
             new("to", ValueTypes.Address, true),
             new("id", ValueTypes.BigInt, true),
             new("value", ValueTypes.BigInt, false),
-            new("type", ValueTypes.String, false)
+            new("type", ValueTypes.String, true),
+            new("tokenType", ValueTypes.String, true)
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
@@ -487,7 +489,8 @@ public class DatabaseSchema : IDatabaseSchema
             new("to", ValueTypes.Address, true),
             new("id", ValueTypes.BigInt, true),
             new("value", ValueTypes.BigInt, false),
-            new("type", ValueTypes.String, false)
+            new("type", ValueTypes.String, true),
+            new("tokenType", ValueTypes.String, true)
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
