@@ -4,7 +4,6 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Circles.Index.Common;
 using Circles.Index.Query.Dto;
-using NUnit.Framework.Legacy;
 
 namespace Circles.Index.Query.Tests;
 

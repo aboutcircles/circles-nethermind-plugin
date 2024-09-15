@@ -77,26 +77,51 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 var rawBalance = balanceTasks[token.TokenAddress].Result;
 
-                UInt256 demurragedBalanceAttoCircles;
-                decimal demurragedBalanceCircles;
-                UInt256 inflationaryBalanceAttoCircles;
-                decimal inflationaryBalanceCircles;
+                UInt256 attoCircles;
+                decimal cirlces;
 
-                if (token.IsInflationary)
+                UInt256 attoCrc;
+                decimal crc;
+
+                UInt256 staticAttoCircles;
+                decimal staticCircles;
+
+                if (token.TokenType == "CrcV1_Signup")
                 {
-                    inflationaryBalanceAttoCircles = rawBalance;
-                    inflationaryBalanceCircles = ConversionUtils.AttoCirclesToCircles(rawBalance);
+                    // OG CRC
+                    attoCrc = rawBalance;
+                    crc = ConversionUtils.AttoCirclesToCircles(rawBalance);
 
-                    demurragedBalanceCircles = ConversionUtils.CrcToTc(DateTime.Now, inflationaryBalanceCircles);
-                    demurragedBalanceAttoCircles = ConversionUtils.CirclesToAttoCircles(demurragedBalanceCircles);
+                    cirlces = ConversionUtils.CrcToCircles(crc);
+                    attoCircles = ConversionUtils.CirclesToAttoCircles(cirlces);
+
+                    staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces);
+                    staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles);
                 }
                 else
                 {
-                    demurragedBalanceAttoCircles = rawBalance;
-                    demurragedBalanceCircles = ConversionUtils.AttoCirclesToCircles(rawBalance);
+                    if (token.IsInflationary)
+                    {
+                        staticAttoCircles = rawBalance;
+                        staticCircles = ConversionUtils.AttoCirclesToCircles(rawBalance);
 
-                    inflationaryBalanceCircles = ConversionUtils.TcToCrc(DateTime.Now, demurragedBalanceCircles);
-                    inflationaryBalanceAttoCircles = ConversionUtils.CirclesToAttoCircles(inflationaryBalanceCircles);
+                        cirlces = ConversionUtils.StaticCirclesToCircles(staticCircles);
+                        attoCircles = ConversionUtils.CirclesToAttoCircles(cirlces);
+
+                        crc = ConversionUtils.CirclesToCrc(cirlces);
+                        attoCrc = ConversionUtils.CirclesToAttoCircles(crc);
+                    }
+                    else
+                    {
+                        attoCircles = rawBalance;
+                        cirlces = ConversionUtils.AttoCirclesToCircles(rawBalance);
+
+                        crc = ConversionUtils.CirclesToCrc(cirlces);
+                        attoCrc = ConversionUtils.CirclesToAttoCircles(crc);
+
+                        staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces);
+                        staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles);
+                    }
                 }
 
                 var tokenAddress = token.TokenAddress;
@@ -110,10 +135,12 @@ public class CirclesRpcModule : ICirclesRpcModule
                     token.TokenOwner.ToString(true, false),
                     token.TokenType,
                     token.Version,
-                    demurragedBalanceAttoCircles.ToString(CultureInfo.InvariantCulture),
-                    demurragedBalanceCircles,
-                    inflationaryBalanceAttoCircles.ToString(CultureInfo.InvariantCulture),
-                    inflationaryBalanceCircles,
+                    attoCircles.ToString(CultureInfo.InvariantCulture),
+                    cirlces,
+                    staticAttoCircles.ToString(CultureInfo.InvariantCulture),
+                    staticCircles,
+                    attoCrc.ToString(CultureInfo.InvariantCulture),
+                    crc,
                     token.IsErc20,
                     token.IsErc1155,
                     token.IsWrapped,
@@ -308,10 +335,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
-    public ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null, FilterPredicateDto[]? filterPredicates = null, bool? sortAscending = false)
+    public ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null,
+        FilterPredicateDto[]? filterPredicates = null, bool? sortAscending = false)
     {
         var queryEvents = new QueryEvents(_indexerContext);
-        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock, filterPredicates, sortAscending));
+        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock,
+            filterPredicates, sortAscending));
     }
 
     private string[] GetTokenExposureIds(Address address)
