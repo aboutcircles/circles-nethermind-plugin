@@ -18,6 +18,8 @@ public record CirclesTokenBalance(
     decimal Circles,
     string StaticAttoCircles,
     decimal StaticCircles,
+    string AttoCrc,
+    decimal Crc,
     bool IsErc20,
     bool IsErc1155,
     bool IsWrapped,
