@@ -57,5 +57,6 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Returns all events affecting the specified account since block N",
         IsImplemented = true)]
-    ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null, FilterPredicateDto[]? filters = null, bool? sortAscending = false);
+    ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null,
+        string[]? eventTypes = null, FilterPredicateDto[]? filters = null, bool? sortAscending = false);
 }

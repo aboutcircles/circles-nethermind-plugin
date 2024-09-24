@@ -19,6 +19,7 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             FilterType.LessThan => $"{database.QuoteIdentifier(Column)} < {parameterName}_0",
             FilterType.LessThanOrEquals => $"{database.QuoteIdentifier(Column)} <= {parameterName}_0",
             FilterType.Like => $"{database.QuoteIdentifier(Column)} LIKE {parameterName}_0",
+            FilterType.ILike => $"{database.QuoteIdentifier(Column)} ILIKE {parameterName}_0",
             FilterType.NotLike => $"{database.QuoteIdentifier(Column)} NOT LIKE {parameterName}_0",
             FilterType.In => ConvertToEnumerable(Value)?.Any() ?? false
                 ? $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value, parameterName)})"
