@@ -26,6 +26,9 @@ public enum FilterType
     Like,
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
+    ILike,
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     NotLike,
 
     [JsonConverter(typeof(JsonStringEnumConverter))]

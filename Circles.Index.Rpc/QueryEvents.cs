@@ -22,11 +22,12 @@ public class QueryEvents(Context context)
     /// <param name="address">If specified, only events concerning this account are queried</param>
     /// <param name="fromBlock">HEAD - 1000 if not specified otherwise</param>
     /// <param name="toBlock">HEAD if not specified otherwise</param>
-    /// <param name="additionalFilters">Additional filters to apply to the query</param>
+    /// <param name="onlyTheseTypes">An array of event types to include in the query</param>
+    /// <param name="additionalFilters">Additional filters to apply to the query. The filtered columns must be present in all queried events!</param>
     /// <returns>An array of CirclesEvent objects</returns>
     /// <exception cref="Exception">Thrown when the zero address is queried, fromBlock is less than 0, toBlock is less than fromBlock, or toBlock is greater than the current head</exception>
     public CirclesEvent[] CirclesEvents(Address? address, long? fromBlock, long? toBlock = null,
-        FilterPredicateDto[]? additionalFilters = null, bool? sortAscending = false)
+        string[]? onlyTheseTypes = null, FilterPredicateDto[]? additionalFilters = null, bool? sortAscending = false)
     {
         long currentHead = context.NethermindApi.BlockTree?.Head?.Number
                            ?? throw new Exception("BlockTree or Head is null");
@@ -37,7 +38,7 @@ public class QueryEvents(Context context)
 
         ValidateInputs(addressString, fromBlock.Value, toBlock, currentHead);
 
-        var queries = BuildQueries(addressString, fromBlock.Value, toBlock, additionalFilters);
+        var queries = BuildQueries(addressString, fromBlock.Value, toBlock, onlyTheseTypes, additionalFilters);
 
         var events = ExecuteQueries(queries);
 
@@ -63,14 +64,21 @@ public class QueryEvents(Context context)
     }
 
     private List<Select> BuildQueries(string? address, long fromBlock, long? toBlock,
-        FilterPredicateDto[]? additionalFilters = null)
+        string[]? onlyTheseTypes = null, FilterPredicateDto[]? additionalFilters = null)
     {
         var queries = new List<Select>();
 
         foreach (var table in context.Database.Schema.Tables)
         {
             if (table.Key.Namespace.StartsWith("V_") || table.Key.Namespace == "System")
+            {
                 continue;
+            }
+
+            if (onlyTheseTypes != null && !onlyTheseTypes.Contains($"{table.Key.Namespace}_{table.Key.Table}"))
+            {
+                continue;
+            }
 
             var addressColumnFilters = address == null
                 ? []
