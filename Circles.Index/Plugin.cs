@@ -26,7 +26,7 @@ public class Plugin : INethermindPlugin
 
     private StateMachine? _indexerMachine;
     private Context? _indexerContext;
-    private Task? _currentMachineExecution;
+    private int _isProcessing;
     private int _newItemsArrived;
     private long _latestHeadToIndex = -1;
 
@@ -87,8 +87,6 @@ public class Plugin : INethermindPlugin
             , _cancellationTokenSource.Token);
 
         await _indexerMachine.TransitionTo(StateMachine.State.Initial);
-
-        _currentMachineExecution = Task.CompletedTask;
 
         nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
         {
@@ -191,28 +189,46 @@ public class Plugin : INethermindPlugin
 
     private void HandleNewHead()
     {
-        if (_currentMachineExecution is { IsCompleted: false })
+        // Start the processing task if not already running
+        if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
-            // If there is an ongoing execution, we don't need to start a new one
-            return;
+            Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
         }
-
-        _currentMachineExecution = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
     }
 
     private async Task ProcessBlocksAsync()
     {
-        // This loop is to ensure that we process all the new heads that arrive while we are processing the current head
-        do
+        try
         {
-            long toIndex = Interlocked.Exchange(ref _latestHeadToIndex, -1);
-            if (toIndex == -1)
+            do
             {
-                continue;
-            }
+                _cancellationTokenSource.Token.ThrowIfCancellationRequested();
 
-            await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
-        } while (Interlocked.CompareExchange(ref _newItemsArrived, 0, 1) == 1);
+                long toIndex = Interlocked.Exchange(ref _latestHeadToIndex, -1);
+                if (toIndex == -1)
+                {
+                    continue;
+                }
+
+                await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
+
+                // As long as new items arrive, keep processing
+            } while (Interlocked.CompareExchange(ref _newItemsArrived, 0, 1) == 1);
+        }
+        catch (OperationCanceledException)
+        {
+            _indexerContext!.Logger.Info("Processing was canceled.");
+        }
+        catch (Exception e)
+        {
+            _indexerContext!.Logger.Error("Error processing blocks", e);
+            throw;
+        }
+        finally
+        {
+            // Mark processing as complete
+            Interlocked.Exchange(ref _isProcessing, 0);
+        }
     }
 
     public Task InitNetworkProtocol()
