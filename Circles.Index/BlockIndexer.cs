@@ -60,12 +60,8 @@ public class ImportFlow(
             CreateOptions(cancellationToken, 3, 3));
 
         TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
-            new(
-            block =>
-                new BlockWithReceipts(
-                    block
-                    , receiptFinder.Get(block))
-            , CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
+            new(block => new BlockWithReceipts(block, receiptFinder.Get(block))
+                , CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
 
         sourceBlock.LinkTo(receiptsSourceBlock!, new DataflowLinkOptions { PropagateCompletion = true },
             o => o != null);
@@ -151,20 +147,14 @@ public class ImportFlow(
 
     public async Task<Range<long>> Run(IAsyncEnumerable<long> blocksToIndex, CancellationToken? cancellationToken)
     {
-        var (sourceBlock, sinkBlock) = BuildPipeline(CancellationToken.None);
+        var (sourceBlock, sinkBlock) = BuildPipeline(cancellationToken ?? CancellationToken.None);
 
         long min = long.MaxValue;
         long max = long.MinValue;
 
-        if (cancellationToken == null)
+        await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
         {
-            CancellationTokenSource cts = new();
-            cancellationToken = cts.Token;
-        }
-
-        await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken.Value))
-        {
-            await sourceBlock.SendAsync(blockNo, cancellationToken.Value);
+            await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
 
             min = Math.Min(min, blockNo);
             max = Math.Max(max, blockNo);
@@ -187,6 +177,10 @@ public class ImportFlow(
 
         if (_blockBuffer.Length >= context.Settings.BlockBufferSize)
         {
+            // FLush events
+            await context.Sink.Flush();
+            
+            // Flush blocks
             await FlushBlocks();
         }
     }
