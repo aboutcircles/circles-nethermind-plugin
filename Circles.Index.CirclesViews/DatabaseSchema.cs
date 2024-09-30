@@ -781,9 +781,6 @@ public class DatabaseSchema : IDatabaseSchema
             select 'trust_count_v2', count(*)
             from ""V_CrcV2_TrustRelations""
             union all
-            select 'group_count_v2', count(*)
-            from ""V_CrcV2_Groups""
-            union all
             select 'token_count_v1', count(*)
             from ""V_Crc_Tokens""
             where version = 1
