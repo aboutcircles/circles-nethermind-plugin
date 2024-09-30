@@ -38,8 +38,11 @@ public class Plugin : INethermindPlugin
         IDatabaseSchema v2NameRegistry = new CirclesV2.NameRegistry.DatabaseSchema();
         IDatabaseSchema v2StandardTreasury = new CirclesV2.StandardTreasury.DatabaseSchema();
         IDatabaseSchema circlesViews = new CirclesViews.DatabaseSchema();
+        IDatabaseSchema metri = new Circles.Index.Metri.DatabaseSchema();
         IDatabaseSchema databaseSchema =
-            new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry, v2StandardTreasury, circlesViews]);
+            new CompositeDatabaseSchema([
+                common, v1, v2, v2NameRegistry, v2StandardTreasury, circlesViews, metri
+            ]);
 
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
@@ -54,11 +57,11 @@ public class Plugin : INethermindPlugin
             database,
             new CompositeSchemaPropertyMap([
                 v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap,
-                v2StandardTreasury.SchemaPropertyMap
+                v2StandardTreasury.SchemaPropertyMap, metri.SchemaPropertyMap
             ]),
             new CompositeEventDtoTableMap([
                 v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap,
-                v2StandardTreasury.EventDtoTableMap
+                v2StandardTreasury.EventDtoTableMap, metri.EventDtoTableMap
             ]),
             settings.EventBufferSize);
 
@@ -69,7 +72,8 @@ public class Plugin : INethermindPlugin
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
             new CirclesV2.LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
             new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
-            new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
+            new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress),
+            new Circles.Index.Metri.LogParser()
         ];
 
         _indexerContext = new Context(
@@ -184,6 +188,54 @@ public class Plugin : INethermindPlugin
         foreach (var row in rows)
         {
             CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
+        }
+
+        // Metri.PayDelayModules
+        logger.Info("Caching PayDelay modules");
+
+        var selectPayDelayModules = new Select(
+            "Metri",
+            "ModuleProxyCreation",
+            ["proxy"],
+            [new FilterPredicate("masterCopy", FilterType.Equals, Metri.LogParser.PayDelayModuleImplementation)],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        sql = selectPayDelayModules.ToSql(database);
+        result = database.Select(sql);
+        rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} PayDelay modules");
+
+        foreach (var row in rows)
+        {
+            Metri.LogParser.PayDelayModules.TryAdd(new Address(row[0]!.ToString()!), null);
+        }
+
+        // Metri.SafeProxies
+        logger.Info("Caching Safe proxies");
+
+        var selectSafeProxies = new Select(
+            "Metri",
+            "ProxyCreation",
+            ["proxy"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        sql = selectSafeProxies.ToSql(database);
+        result = database.Select(sql);
+        rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} Safe proxies");
+
+        foreach (var row in rows)
+        {
+            Metri.LogParser.SafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
         }
     }
 

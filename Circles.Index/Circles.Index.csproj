@@ -37,6 +37,7 @@
       <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
       <ProjectReference Include="..\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
+      <ProjectReference Include="..\Circles.Index.Metri\Circles.Index.Metri.csproj" />
     </ItemGroup>
 
 

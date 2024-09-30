@@ -346,7 +346,12 @@ curl -X POST --data '{
       "Table": "Avatars",
       "Limit": 100,
       "Columns": [],
-      "Filter": [],
+      "Filter": [{
+        "Type": "FilterPredicate",
+        "FilterType": "In",
+        "Column": "avatar",
+        "Value": ["0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"]
+      }],
       "Order": [
         {
           "Column": "blockNumber",
@@ -363,7 +368,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
 ```
 
 #### Response
@@ -589,7 +594,7 @@ curl -X POST --data '{
     30282299,
     null
   ]
-}' -H "Content-Type: application/json" https://rpc.helsinki.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.falkenstein.aboutcircles.com/
 ```
 
 #### Response

@@ -7,9 +7,6 @@ public class IndexPerformanceMetrics
     private long _startProcessTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     private long _startPeriodTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-    private long _totalGasUsedInPeriod = 0;
-    private long _totalGasUsed = 0;
-
     private long _totalTransactionsInPeriod = 0;
     private long _totalTransactions = 0;
 
@@ -27,14 +24,11 @@ public class IndexPerformanceMetrics
         {
             var metrics = GetAveragesOverLastPeriod();
             var output = string.Format(CultureInfo.CurrentCulture,
-                "[Metrics] Time: {0,-10} {1,-14} {2,9:n0} ({3,15:000,000,000,000}), {4,-16} {5,9:n0} ({6,15:000,000,000,000}), {7,-14} {8,9:n0} ({9,15:000,000,000,000}), {10,6} {11,9:n0} ({12,15:000,000,000,000})",
+                "[Metrics] Time: {0,-10} {1,-14} {2,9:n0} ({3,15:000,000,000,000}), {4,-16} {5,9:n0} ({6,15:000,000,000,000}), {7,-14} {8,9:n0} ({9,15:000,000,000,000})",
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds() - _startProcessTimestamp,
                 "Blocks/s:", metrics.BlocksPerSecond, _totalBlocks,
                 "Transactions/s:", metrics.TransactionsPerSecond, _totalTransactions,
-                "Logs/s:", metrics.LogsPerSecond, _totalLogs,
-                "MGas/s:", metrics.GasUsedPerSecond / 1000000, _totalGasUsed / 1000000L);
-
-            // File.AppendAllLines("logs/circles-indexer.log", new[] { output });
+                "Logs/s:", metrics.LogsPerSecond, _totalLogs);
 
             Console.WriteLine(output);
         }, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
@@ -46,10 +40,6 @@ public class IndexPerformanceMetrics
         Interlocked.Add(ref _totalLogsInPeriod, logs);
         Interlocked.Add(ref _totalLogs, logs);
 
-        var gasUsed = blockWithReceipts.Block.Transactions.Sum(tx => tx.GasLimit);
-        Interlocked.Add(ref _totalGasUsedInPeriod, gasUsed);
-        Interlocked.Add(ref _totalGasUsed, gasUsed);
-
         var transactions = blockWithReceipts.Block.Transactions.Length;
         Interlocked.Add(ref _totalTransactionsInPeriod, transactions);
         Interlocked.Add(ref _totalTransactions, transactions);
@@ -58,15 +48,12 @@ public class IndexPerformanceMetrics
         Interlocked.Increment(ref _totalBlocks);
     }
 
-    private (double GasUsedPerSecond, double TransactionsPerSecond, double BlocksPerSecond, double LogsPerSecond)
+    private (double TransactionsPerSecond, double BlocksPerSecond, double LogsPerSecond)
         GetAveragesOverLastPeriod()
     {
         long currentTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         double elapsedSecondsInPeriod = currentTimestamp - _startPeriodTimestamp;
         elapsedSecondsInPeriod = Math.Max(elapsedSecondsInPeriod, 1);
-
-        double gasUsedPerSecond = Interlocked.Read(ref _totalGasUsedInPeriod) / elapsedSecondsInPeriod;
-        Interlocked.Exchange(ref _totalGasUsedInPeriod, 0);
 
         double transactionsPerSecond =
             Interlocked.Read(ref _totalTransactionsInPeriod) / elapsedSecondsInPeriod;
@@ -80,7 +67,7 @@ public class IndexPerformanceMetrics
 
         _startPeriodTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        return (GasUsedPerSecond: gasUsedPerSecond, TransactionsPerSecond: transactionsPerSecond,
+        return (TransactionsPerSecond: transactionsPerSecond,
             BlocksPerSecond: blocksPerSecond, LogsPerSecond: logsPerSecond);
     }
 }

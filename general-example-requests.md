@@ -372,12 +372,36 @@ curl -X POST --data '{
 ```
 
 ### circles_events
-Queries all events that involve a specific address between two block numbers. 
+
+Queries all events that involve a specific address between two block numbers.
+
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": ["0x389522f8f44cd5cd835d510a17b5f65f74a46468", 9000000]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+  "params": [
+    null,           # filter for specifc address
+    0,              # from block
+    null,           # to block
+    ["CrcV2_TransferSingle", "CrcV2_Trust", "CrcV2_UpdateMetadataDigest"], # filter for specific events
+    null            # 'true' if sort should be descending
+  ]
+}' -H "Content-Type: application/json" https://rpc.falkenstein.aboutcircles.com/
+```
+
+```shell
+
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_Crc",
+      "Table": "Stats",
+      "Columns": []
+    }
+  ]
+}' -H "Content-Type: application/json" https://rpc.falkenstein.aboutcircles.com
 ```
