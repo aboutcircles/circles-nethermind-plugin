@@ -181,6 +181,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
             ValueTypes.Address => "TEXT",
             ValueTypes.Boolean => "BOOLEAN",
             ValueTypes.Bytes => "BYTEA",
+            ValueTypes.AddressArray => "TEXT[]",
             _ => throw new ArgumentException("Unsupported type")
         };
     }
@@ -195,6 +196,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
             ValueTypes.Address => NpgsqlDbType.Text,
             ValueTypes.Boolean => NpgsqlDbType.Boolean,
             ValueTypes.Bytes => NpgsqlDbType.Bytea,
+            ValueTypes.AddressArray => NpgsqlDbType.Array | NpgsqlDbType.Text,
             _ => throw new ArgumentException("Unsupported type")
         };
     }

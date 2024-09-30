@@ -11,7 +11,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
 
     public string Namespace { get; } = @namespace;
     public byte[] Topic { get; } = topic;
-    public string Table { get; } = table;
+    public string Table { get; set; } = table;
     public List<EventFieldSchema> Columns { get; } = columns;
 
     /// <summary>
@@ -37,7 +37,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
         const string prefix = "event ";
         if (!trimmedDefinition.StartsWith(prefix))
         {
-            throw new ArgumentException($"Invalid event definition. Must start with '${prefix}'.");
+            throw new ArgumentException($"Invalid event definition. Must start with '{prefix}'.");
         }
 
         var eventDefinition = trimmedDefinition.Substring(prefix.Length);
@@ -135,6 +135,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
             "uint256" => ValueTypes.BigInt,
             "string" => ValueTypes.String,
             "bool" => ValueTypes.Boolean,
+            "address[]" => ValueTypes.AddressArray,
             "CirclesType" => ValueTypes.Int,
             _ => throw new ArgumentException(
                 $"'{type}' is not supported. Please handle this event manually.")

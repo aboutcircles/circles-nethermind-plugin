@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Text;
 
 namespace Circles.Index.Common;
 
@@ -12,17 +12,9 @@ public class Sink(
 
     public readonly IDatabase Database = database;
 
-    private readonly ConcurrentDictionary<Type, long> _addedEventCounts = new();
-    private readonly ConcurrentDictionary<Type, long> _importedEventCounts = new();
-
     public async Task AddEvent(object indexEvent)
     {
         _insertBuffer.Add(indexEvent);
-
-        _addedEventCounts.AddOrUpdate(
-            indexEvent.GetType(),
-            1,
-            (_, count) => count + 1);
 
         if (_insertBuffer.Length >= batchSize)
         {
@@ -56,20 +48,28 @@ public class Sink(
                 return Task.CompletedTask;
             }
 
-            var task = Database.WriteBatch(tableId.Namespace, tableId.Table, o.Value, schemaPropertyMap);
-
-            return task.ContinueWith(p =>
-            {
-                if (p.Exception != null)
+            return Database.WriteBatch(tableId.Namespace, tableId.Table, o.Value, schemaPropertyMap)
+                .ContinueWith(t =>
                 {
-                    throw p.Exception;
-                }
+                    if (t.Exception != null)
+                    {
+                        var e = t.Exception.Flatten();
+                        e.Handle(ex =>
+                        {
+                            var sb = new StringBuilder();
+                            sb.AppendLine($"Error writing batch to {tableId.Namespace}_{tableId.Table}");
+                            sb.AppendLine($"Data: {o.Value.Count} rows:");
+                            for (int i = 0; i < o.Value.Count; i++)
+                            {
+                                sb.AppendLine($"- {i:0000}: {o.Value[i]})");
+                            }
 
-                _importedEventCounts.AddOrUpdate(
-                    o.Key,
-                    o.Value.Count,
-                    (_, count) => count + o.Value.Count);
-            });
+                            sb.AppendLine(ex.ToString());
+                            Console.WriteLine(sb.ToString());
+                            return true;
+                        });
+                    }
+                });
         });
 
         await Task.WhenAll(tasks);

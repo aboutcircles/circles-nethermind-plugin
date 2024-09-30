@@ -7,5 +7,6 @@ public enum ValueTypes
     Int = 2,
     BigInt = 3,
     String = 4,
-    Bytes = 5
+    Bytes = 5,
+    AddressArray = 6,
 }
