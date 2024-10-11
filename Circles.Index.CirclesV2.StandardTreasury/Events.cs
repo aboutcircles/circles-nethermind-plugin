@@ -12,7 +12,7 @@ public record CreateVault(
     string Group,
     string Vault) : IIndexEvent;
 
-public record GroupMintSingle(
+public record CollateralLockedSingle(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
@@ -23,7 +23,7 @@ public record GroupMintSingle(
     UInt256 Value,
     byte[] UserData) : IIndexEvent;
 
-public record GroupMintBatch(
+public record CollateralLockedBatch(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
