@@ -14,13 +14,13 @@ public class DatabaseSchema : IDatabaseSchema
         EventSchema.FromSolidity("CrcV2",
             "event CreateVault(address indexed group, address indexed vault)");
 
-    public static readonly EventSchema GroupMintSingle =
+    public static readonly EventSchema CollateralLockedSingle =
         EventSchema.FromSolidity("CrcV2",
-            "event GroupMintSingle(address indexed group, uint256 indexed id, uint256 value, bytes userData)");
+            "event CollateralLockedSingle(address indexed group, uint256 indexed id, uint256 value, bytes userData)");
 
-    public static readonly EventSchema GroupMintBatch =
-        new EventSchema("CrcV2", "GroupMintBatch",
-            Keccak.Compute("GroupMintBatch(address,uint256[],uint256[],bytes)").BytesToArray(),
+    public static readonly EventSchema CollateralLockedBatch =
+        new EventSchema("CrcV2", "CollateralLockedBatch",
+            Keccak.Compute("CollateralLockedBatch(address,uint256[],uint256[],bytes)").BytesToArray(),
             new List<EventFieldSchema>()
             {
                 new("blockNumber", ValueTypes.Int, true),
@@ -80,12 +80,12 @@ public class DatabaseSchema : IDatabaseSchema
                 CreateVault
             },
             {
-                ("CrcV2", "GroupMintSingle"),
-                GroupMintSingle
+                ("CrcV2", "CollateralLockedSingle"),
+                CollateralLockedSingle
             },
             {
-                ("CrcV2", "GroupMintBatch"),
-                GroupMintBatch
+                ("CrcV2", "CollateralLockedBatch"),
+                CollateralLockedBatch
             },
             {
                 ("CrcV2", "GroupRedeem"),
@@ -116,9 +116,9 @@ public class DatabaseSchema : IDatabaseSchema
                 { "vault", e => e.Vault }
             });
 
-        EventDtoTableMap.Add<GroupMintSingle>(("CrcV2", "GroupMintSingle"));
-        SchemaPropertyMap.Add(("CrcV2", "GroupMintSingle"),
-            new Dictionary<string, Func<GroupMintSingle, object?>>
+        EventDtoTableMap.Add<CollateralLockedSingle>(("CrcV2", "CollateralLockedSingle"));
+        SchemaPropertyMap.Add(("CrcV2", "CollateralLockedSingle"),
+            new Dictionary<string, Func<CollateralLockedSingle, object?>>
             {
                 { "blockNumber", e => e.BlockNumber },
                 { "timestamp", e => e.Timestamp },
@@ -131,9 +131,9 @@ public class DatabaseSchema : IDatabaseSchema
                 { "userData", e => e.UserData }
             });
 
-        EventDtoTableMap.Add<GroupMintBatch>(("CrcV2", "GroupMintBatch"));
-        SchemaPropertyMap.Add(("CrcV2", "GroupMintBatch"),
-            new Dictionary<string, Func<GroupMintBatch, object?>>
+        EventDtoTableMap.Add<CollateralLockedBatch>(("CrcV2", "CollateralLockedBatch"));
+        SchemaPropertyMap.Add(("CrcV2", "CollateralLockedBatch"),
+            new Dictionary<string, Func<CollateralLockedBatch, object?>>
             {
                 { "blockNumber", e => e.BlockNumber },
                 { "timestamp", e => e.Timestamp },

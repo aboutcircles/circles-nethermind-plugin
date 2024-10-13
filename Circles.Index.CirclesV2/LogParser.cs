@@ -31,6 +31,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _depositDemurraged = new(DatabaseSchema.DepositDemurraged.Topic);
     private readonly Hash256 _withdrawDemurraged = new(DatabaseSchema.WithdrawDemurraged.Topic);
     private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
+    private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
 
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
@@ -165,6 +166,11 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 {
                     yield return streamCompleted;
                 }
+            }
+
+            if (topic == _discountCostTopic)
+            {
+                yield return DiscountCost(block, receipt, log, logIndex);
             }
         }
 
@@ -350,6 +356,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private RegisterHuman CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string humanAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string inviterAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         return new RegisterHuman(
             block.Number,
@@ -357,7 +364,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            humanAddress);
+            humanAddress,
+            inviterAddress);
     }
 
     private PersonalMint CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -494,6 +502,23 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             account,
             amount,
             inflationaryAmount);
+    }
+
+    private DiscountCost DiscountCost(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        UInt256 id = new UInt256(log.Topics[2].Bytes, true);
+        UInt256 discountCost = new UInt256(log.Data, true);
+
+        return new DiscountCost(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            account,
+            id,
+            discountCost);
     }
 
     private IEnumerable<StreamCompleted> StreamCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)

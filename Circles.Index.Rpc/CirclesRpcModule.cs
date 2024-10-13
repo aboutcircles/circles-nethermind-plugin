@@ -95,7 +95,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                     cirlces = ConversionUtils.CrcToCircles(crc);
                     attoCircles = ConversionUtils.CirclesToAttoCircles(cirlces);
 
-                    staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces);
+                    staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces, DateTime.Now);
                     staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles);
                 }
                 else
@@ -119,7 +119,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                         crc = ConversionUtils.CirclesToCrc(cirlces);
                         attoCrc = ConversionUtils.CirclesToAttoCircles(crc);
 
-                        staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces);
+                        staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces, DateTime.Now);
                         staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles);
                     }
                 }

@@ -510,12 +510,12 @@ Tables for batch events have an additional `batchIndex` column.
 * `CreateVault`
     * `group` (Address)
     * `vault` (Address)
-* `GroupMintSingle`
+* `CollateralLockedSingle`
     * `group` (Address)
     * `id` (BigInteger)
     * `value` (BigInteger)
     * `userData` (Bytes)
-* `GroupMintBatch`
+* `CollateralLockedBatch`
     * `group` (Address)
     * `id` (BigInteger)
     * `value` (BigInteger)

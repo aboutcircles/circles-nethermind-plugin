@@ -12,8 +12,8 @@ namespace Circles.Index.CirclesV2.StandardTreasury;
 public class LogParser(Address standardTreasuryAddress) : ILogParser
 {
     private readonly Hash256 _createVaultTopic = new(DatabaseSchema.CreateVault.Topic);
-    private readonly Hash256 _groupMintSingleTopic = new(DatabaseSchema.GroupMintSingle.Topic);
-    private readonly Hash256 _groupMintBatchTopic = new(DatabaseSchema.GroupMintBatch.Topic);
+    private readonly Hash256 _groupMintSingleTopic = new(DatabaseSchema.CollateralLockedSingle.Topic);
+    private readonly Hash256 _groupMintBatchTopic = new(DatabaseSchema.CollateralLockedBatch.Topic);
     private readonly Hash256 _groupRedeemTopic = new(DatabaseSchema.GroupRedeem.Topic);
     private readonly Hash256 _groupRedeemCollateralReturnTopic = new(DatabaseSchema.GroupRedeemCollateralReturn.Topic);
     private readonly Hash256 _groupRedeemCollateralBurnTopic = new(DatabaseSchema.GroupRedeemCollateralBurn.Topic);
@@ -41,12 +41,12 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
             if (topic == _groupMintSingleTopic)
             {
-                yield return GroupMintSingle(block, receipt, log, logIndex);
+                yield return CollateralLockedSingle(block, receipt, log, logIndex);
             }
 
             if (topic == _groupMintBatchTopic)
             {
-                foreach (var batchEvent in GroupMintBatch(block, receipt, log, logIndex))
+                foreach (var batchEvent in CollateralLockedBatch(block, receipt, log, logIndex))
                 {
                     yield return batchEvent;
                 }
@@ -90,14 +90,14 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             vaultAddress);
     }
 
-    private GroupMintSingle GroupMintSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private CollateralLockedSingle CollateralLockedSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 id = new UInt256(log.Topics[2].Bytes, true);
         UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
         byte[] userData = log.Data.Slice(32);
 
-        return new GroupMintSingle(
+        return new CollateralLockedSingle(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
@@ -109,7 +109,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             userData);
     }
 
-    private IEnumerable<GroupMintBatch> GroupMintBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CollateralLockedBatch> CollateralLockedBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
@@ -138,7 +138,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
         for (int i = 0; i < idsLength; i++)
         {
-            yield return new GroupMintBatch(
+            yield return new CollateralLockedBatch(
                 block.Number,
                 (long)block.Timestamp,
                 receipt.Index,
