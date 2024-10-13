@@ -30,7 +30,8 @@ public record RegisterHuman(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string Avatar) : IIndexEvent;
+    string Avatar,
+    string Inviter) : IIndexEvent;
 
 public record PersonalMint(
     long BlockNumber,
@@ -187,3 +188,13 @@ public record StreamCompleted(
     string To,
     UInt256 Id,
     UInt256 Amount) : IIndexEvent;
+    
+public record DiscountCost(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Account,
+    UInt256 Id,
+    UInt256 Cost) : IIndexEvent;

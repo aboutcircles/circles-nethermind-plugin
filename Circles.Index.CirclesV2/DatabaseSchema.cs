@@ -21,7 +21,7 @@ public class DatabaseSchema : IDatabaseSchema
         "event RegisterGroup(address indexed group, address indexed mint, address indexed treasury, string indexed name, string indexed symbol)");
 
     public static readonly EventSchema RegisterHuman =
-        EventSchema.FromSolidity("CrcV2", "event RegisterHuman(address indexed avatar)");
+        EventSchema.FromSolidity("CrcV2", "event RegisterHuman(address indexed avatar, address indexed inviter)");
 
     public static readonly EventSchema RegisterOrganization =
         EventSchema.FromSolidity("CrcV2",
@@ -33,24 +33,29 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema Trust =
         EventSchema.FromSolidity("CrcV2",
             "event Trust(address indexed truster, address indexed trustee, uint256 expiryTime)");
+
+    public static readonly EventSchema DiscountCost =
+        EventSchema.FromSolidity("CrcV2",
+            "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
+
     //
     // public static readonly EventSchema TransferSingle = EventSchema.FromSolidity(
     //     "CrcV2",
     //     "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 indexed id, uint256 value)");
-    public static readonly EventSchema TransferSingle = new("CrcV2", "TransferSingle", 
+    public static readonly EventSchema TransferSingle = new("CrcV2", "TransferSingle",
         Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)").BytesToArray(), [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("operator", ValueTypes.Address, true),
-        new("from", ValueTypes.Address, true),
-        new("to", ValueTypes.Address, true),
-        new("id", ValueTypes.BigInt, true),
-        new("value", ValueTypes.BigInt, false),
-        new("tokenAddress", ValueTypes.Address, true)
-    ]);
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("operator", ValueTypes.Address, true),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("id", ValueTypes.BigInt, true),
+            new("value", ValueTypes.BigInt, false),
+            new("tokenAddress", ValueTypes.Address, true)
+        ]);
 
     // public static readonly EventSchema URI =
     //     EventSchema.FromSolidity("CrcV2", "event URI(string value, uint256 indexed id)");
@@ -207,6 +212,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "StreamCompleted"),
                 StreamCompleted
+            },
+            {
+                ("CrcV2", "DiscountCost"),
+                DiscountCost
             }
         };
 
@@ -265,7 +274,8 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionIndex", e => e.TransactionIndex },
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
-                { "avatar", e => e.Avatar }
+                { "avatar", e => e.Avatar },
+                { "inviter", e => e.Inviter }
             });
 
         EventDtoTableMap.Add<RegisterOrganization>(("CrcV2", "RegisterOrganization"));
@@ -471,6 +481,20 @@ public class DatabaseSchema : IDatabaseSchema
                 { "id", e => (BigInteger)e.Id },
                 { "amount", e => (BigInteger)e.Amount },
                 { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
+            });
+
+        EventDtoTableMap.Add<DiscountCost>(("CrcV2", "DiscountCost"));
+        SchemaPropertyMap.Add(("CrcV2", "DiscountCost"),
+            new Dictionary<string, Func<DiscountCost, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "account", e => e.Account },
+                { "id", e => (BigInteger)e.Id },
+                { "discountCost", e => (BigInteger)e.Cost }
             });
     }
 }

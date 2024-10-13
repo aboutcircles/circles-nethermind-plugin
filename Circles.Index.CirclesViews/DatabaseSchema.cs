@@ -610,6 +610,53 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static readonly EventSchema V_CrcV1_BalancesByAccountAndToken = new("V_CrcV1", "BalancesByAccountAndToken",
+        new byte[32],
+        [
+            new("account", ValueTypes.Address, true),
+            new("tokenId", ValueTypes.String, true),
+            new("tokenAddress", ValueTypes.String, true),
+            new("lastActivity", ValueTypes.Int, true),
+            new("totalBalance", ValueTypes.BigInt, true),
+        ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+            create or replace view public.""V_CrcV1_BalancesByAccountAndToken""(account, ""tokenAddress"", ""lastActivity"", ""totalBalance"", ""tokenOwner"") as
+            WITH transfers AS (SELECT ""CrcV1_Transfer"".""timestamp"",
+                                      ""CrcV1_Transfer"".""from"",
+                                      ""CrcV1_Transfer"".""to"",
+                                      ""CrcV1_Transfer"".amount AS value,
+                                      ""CrcV1_Transfer"".""tokenAddress""
+                               FROM ""CrcV1_Transfer""),
+                 ""accountBalances"" AS (SELECT all_transfers.account,
+                                              sum(all_transfers.amount)      AS balance,
+                                              max(all_transfers.""timestamp"") AS ""timestamp"",
+                                              all_transfers.""tokenAddress""
+                                       FROM (SELECT transfers.""from""  AS account,
+                                                    - transfers.value AS amount,
+                                                    transfers.""timestamp"",
+                                                    transfers.""tokenAddress""
+                                             FROM transfers
+                                             UNION ALL
+                                             SELECT transfers.""to""  AS account,
+                                                    transfers.value AS amount,
+                                                    transfers.""timestamp"",
+                                                    transfers.""tokenAddress""
+                                             FROM transfers) all_transfers
+                                       GROUP BY all_transfers.account, all_transfers.""tokenAddress"")
+            SELECT ""accountBalances"".account,
+                   ""accountBalances"".""tokenAddress"",
+                   ""accountBalances"".""timestamp"" AS ""lastActivity"",
+                   ""accountBalances"".balance     AS ""totalBalance"",
+                   ""CrcV1_Signup"".""user""         AS ""tokenOwner""
+            FROM ""accountBalances""
+                     JOIN ""CrcV1_Signup"" ON ""accountBalances"".""tokenAddress"" = ""CrcV1_Signup"".token
+            WHERE ""accountBalances"".account <> '0x0000000000000000000000000000000000000000'::text
+              AND ""accountBalances"".balance > 0::numeric;
+        ")
+    };
+
+
     public static readonly EventSchema V_CrcV2_BalancesByAccountAndToken = new("V_CrcV2", "BalancesByAccountAndToken",
         new byte[32],
         [
@@ -643,47 +690,50 @@ public class DatabaseSchema : IDatabaseSchema
             END;
             $$ LANGUAGE plpgsql;
 
-            create or replace view ""V_CrcV2_BalancesByAccountAndToken"" as
-                WITH ""transfers"" AS (
-                    SELECT ""timestamp"",
-                           ""from"",
-                           ""to"",
-                           ""id"",
-                           ""value""
-                    FROM ""CrcV2_TransferSingle""
-                    UNION ALL
-                    SELECT ""timestamp"",
-                           ""from"",
-                           ""to"",
-                           ""id"",
-                           ""value""
-                    FROM ""CrcV2_TransferBatch""
-                ), ""accountBalances"" AS (
-                    SELECT
-                        account,
-                        id,
-                        SUM(amount) AS balance,
-                        MAX(""timestamp"") AS ""timestamp""
-                    FROM (
-                             SELECT ""from"" AS account, id, -value AS amount, ""timestamp""
-                             FROM ""transfers""
-                             UNION ALL
-                             SELECT ""to"" AS account, id, value AS amount, ""timestamp""
-                             FROM ""transfers""
-                         ) AS all_transfers
-                    GROUP BY account, id
-                )
-                select account
-                     , id::text as ""tokenId""
-                     , ""accountBalances"".""timestamp"" as ""lastActivity""
-                     , floor(crc_demurrage(1675209600, ""accountBalances"".""timestamp"", balance)) as ""demurragedTotalBalance""
-                from ""accountBalances""
-                    LEFT JOIN ""CrcV2_RegisterHuman"" hum ON hum.avatar = ""account""
-                    LEFT JOIN ""CrcV2_InviteHuman"" hum2 ON hum2.invited = ""account""
-                    LEFT JOIN ""CrcV2_RegisterOrganization"" org ON org.""organization"" = ""account""
-                    LEFT JOIN ""CrcV2_RegisterGroup"" grp ON grp.""group"" = ""account""
-                WHERE ""account"" != '0x0000000000000000000000000000000000000000'
-                AND balance > 0;
+            create or replace view public.""V_CrcV2_BalancesByAccountAndToken""
+                        (account, ""tokenId"", ""tokenAddress"", ""lastActivity"", ""demurragedTotalBalance"") as
+            WITH transfers AS (SELECT ""CrcV2_TransferSingle"".""timestamp"",
+                                      ""CrcV2_TransferSingle"".""from"",
+                                      ""CrcV2_TransferSingle"".""to"",
+                                      ""CrcV2_TransferSingle"".id,
+                                      ""CrcV2_TransferSingle"".value,
+                                      ""CrcV2_TransferSingle"".""tokenAddress""
+                               FROM ""CrcV2_TransferSingle""
+                               UNION ALL
+                               SELECT ""CrcV2_TransferBatch"".""timestamp"",
+                                      ""CrcV2_TransferBatch"".""from"",
+                                      ""CrcV2_TransferBatch"".""to"",
+                                      ""CrcV2_TransferBatch"".id,
+                                      ""CrcV2_TransferBatch"".value,
+                                      ""CrcV2_TransferBatch"".""tokenAddress""
+                               FROM ""CrcV2_TransferBatch""),
+                 ""accountBalances"" AS (SELECT all_transfers.account,
+                                              all_transfers.id,
+                                              sum(all_transfers.amount)      AS balance,
+                                              max(all_transfers.""timestamp"") AS ""timestamp"",
+                                              all_transfers.""tokenAddress""
+                                       FROM (SELECT transfers.""from""  AS account,
+                                                    transfers.id,
+                                                    - transfers.value AS amount,
+                                                    transfers.""timestamp"",
+                                                    transfers.""tokenAddress""
+                                             FROM transfers
+                                             UNION ALL
+                                             SELECT transfers.""to""  AS account,
+                                                    transfers.id,
+                                                    transfers.value AS amount,
+                                                    transfers.""timestamp"",
+                                                    transfers.""tokenAddress""
+                                             FROM transfers) all_transfers
+                                       GROUP BY all_transfers.account, all_transfers.id, all_transfers.""tokenAddress"")
+            SELECT account,
+                   id::text                                                       AS ""tokenId"",
+                   ""tokenAddress"",
+                   ""timestamp""                                                    AS ""lastActivity"",
+                   floor(crc_demurrage(1675209600::bigint, ""timestamp"", balance)) AS ""demurragedTotalBalance""
+            FROM ""accountBalances""
+            WHERE account <> '0x0000000000000000000000000000000000000000'::text
+              AND balance > 0::numeric;
         ")
     };
 
@@ -863,6 +913,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV2", "Groups"),
                 V_CrcV2_Groups
+            },
+            {
+                ("V_CrcV1", "BalancesByAccountAndToken"),
+                V_CrcV1_BalancesByAccountAndToken
             },
             {
                 ("V_CrcV2", "BalancesByAccountAndToken"),
