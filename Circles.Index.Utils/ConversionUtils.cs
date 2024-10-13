@@ -7,86 +7,17 @@ namespace Circles.Index.Utils;
 
 using System;
 
-public static class DemurrageConverter
-{
-    const decimal Gamma = 0.99980133200859895743m; // Daily demurrage factor
-    const decimal Beta = 1.0001987074682146291562714890133039617432343970799554367508m;
-
-    const long DemurrageWindow = 86400; // 1 day in seconds
-    const long InflationDayZero = 1602720000L; // 15th October 2020
-
-    // Method to compute the power of Γ^i (Gamma^i)
-    public static decimal GammaPower(long i)
-    {
-        return (decimal)Math.Pow((double)Gamma, i);
-    }
-
-    public static decimal BetaPower(long i)
-    {
-        return (decimal)Math.Pow((double)Beta, i);
-    }
-
-    public static long Day(long timestamp)
-    {
-        // calculate which day the timestamp is in, rounding down
-        // note: max uint64 is 2^64 - 1, so we can safely cast the result
-        return (timestamp - InflationDayZero) / DemurrageWindow;
-    }
-
-    /// <summary>
-    /// Converts an inflationary balance to a demurraged balance.
-    /// </summary>
-    /// <param name="demurragedBalance">The demurraged balance to convert.</param>
-    /// <returns></returns>
-    public static decimal ConvertDemurragedToInflationary(decimal demurragedBalance)
-    {
-        decimal CalculateInflationaryBalance()
-        {
-            /* Solidity code:
-             *      // calculate the inflationary balance by dividing the balance by GAMMA^days
-                  // note: GAMMA < 1, so dividing by a power of it, returns a bigger number,
-                  //       so the numerical imprecision is in the least significant bits.
-                  int128 i = Math64x64.pow(BETA_64x64, _dayUpdated);
-                  return Math64x64.mulu(i, _balance);
-             */
-            var timestamp = DateTimeOffset.UnixEpoch.ToUnixTimeMilliseconds();
-            return demurragedBalance * BetaPower(Day(timestamp));
-        }
-
-        decimal inflationaryAmount = CalculateInflationaryBalance();
-        return inflationaryAmount;
-    }
-
-    public static decimal ConvertInflationaryToDemurraged(decimal inflationaryBalance)
-    {
-        /** From solidity:
-         *       // calculate the demurrage value by multiplying the value by GAMMA^days
-        // note: GAMMA < 1, so multiplying by a power of it, returns a smaller number,
-        //       so we lose the least significant bits, but our ground truth is the demurrage value,
-        //       and the inflationary value is a numerical approximation (where the least significant digits
-        //       are not reliable).
-        int128 r = Math64x64.pow(GAMMA_64x64, uint256(_day));
-        return Math64x64.mulu(r, _inflationaryValue);
-         */
-        decimal CalculateDemurragedBalance()
-        {
-            var timestamp = DateTimeOffset.UnixEpoch.ToUnixTimeMilliseconds();
-            return inflationaryBalance * GammaPower(Day(timestamp));
-        }
-
-        decimal demurragedAmount = CalculateDemurragedBalance();
-        return demurragedAmount;
-    }
-}
-
 public abstract class ConversionUtils
 {
+    private static readonly DateTime CirclesInceptionDate = new(2020, 10, 15, 0, 0, 0, DateTimeKind.Utc);
+
     private static readonly long CirclesInceptionTimestamp =
-        ConvertToUnixTimestamp(new DateTime(2020, 10, 15, 0, 0, 0, DateTimeKind.Utc));
+        ConvertToUnixTimestamp(CirclesInceptionDate);
 
     private const decimal OneDayInMilliSeconds = 86400m * 1000m;
     private const decimal OneCirclesYearInDays = 365.25m;
     private const decimal OneCirclesYearInMilliSeconds = OneCirclesYearInDays * 24m * 60m * 60m * 1000m;
+    private const decimal Beta = 1.0001987074682146291562714890133039617432343970799554367508m;
 
     public static long ConvertToUnixTimestamp(DateTime dateTime)
     {
@@ -153,10 +84,13 @@ public abstract class ConversionUtils
     /// Converts a regular v2 personal Circles balance (demurraged) to a static Circles balance (inflationary).
     /// </summary>
     /// <param name="circlesBalance"></param>
+    /// <param name="lastUpdate">The day the demurrage value was last updated since inflation_day_zero</param>
     /// <returns></returns>
-    public static decimal CirclesToStaticCircles(decimal circlesBalance)
+    public static decimal CirclesToStaticCircles(decimal circlesBalance, DateTime lastUpdate)
     {
-        return CirclesToCrc(circlesBalance) * 3;
+        var lastUpdateDay = (lastUpdate - CirclesInceptionDate).TotalDays;
+        var f = (decimal)Math.Pow((double)Beta, lastUpdateDay);
+        return f * circlesBalance;
     }
 
     /// <summary>
@@ -166,7 +100,10 @@ public abstract class ConversionUtils
     /// <returns></returns>
     public static decimal StaticCirclesToCircles(decimal staticCirclesBalance)
     {
-        return CrcToCircles(staticCirclesBalance / 3);
+        var lastUpdate = DateTime.Now;
+        var lastUpdateDay = (lastUpdate - CirclesInceptionDate).TotalDays;
+        var f = (decimal)Math.Pow((double)Beta, lastUpdateDay);
+        return staticCirclesBalance / f;
     }
 
     public static decimal AttoCirclesToCircles(UInt256 weiBalance)
