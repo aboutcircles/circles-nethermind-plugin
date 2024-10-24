@@ -3,6 +3,10 @@ using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Index.Utils;
+using Circles.Pathfinder;
+using Circles.Pathfinder.Data;
+using Circles.Pathfinder.DTOs;
+using Circles.Pathfinder.Graphs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -341,6 +345,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         var queryEvents = new QueryEvents(_indexerContext);
         return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock,
             eventTypes, filterPredicates, sortAscending));
+    }
+
+    public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
+    {
+        var loadGraph = new LoadGraph(_indexerContext.Settings.IndexDbConnectionString);
+        var graphFactory = new GraphFactory();
+        var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
+        return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
     }
 
     private string[] GetTokenExposureIds(Address address)

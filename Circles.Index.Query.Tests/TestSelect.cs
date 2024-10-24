@@ -1,4 +1,5 @@
 using System.Data;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -367,5 +368,19 @@ public class Tests
         var deserializedOrderBy = deserializedSelect.Order.First();
         Assert.That(deserializedOrderBy.Column, Is.EqualTo(orderBy.Column));
         Assert.That(deserializedOrderBy.SortOrder, Is.EqualTo(orderBy.SortOrder));
+    }
+
+    [Test]
+    public void B()
+    {
+        var t = BigInteger.Parse("238208892873504508097789456176502153024265176387")
+            * (
+                BigInteger.Parse("31556952")
+                                 - BigInteger.Parse("4142484904995219")
+            )
+            + BigInteger.Parse("238208892873504508097789456176502153024265176387")
+                               * BigInteger.Parse("4142484904995219");
+        
+        
     }
 }

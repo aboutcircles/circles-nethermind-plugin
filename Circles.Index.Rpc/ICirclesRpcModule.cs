@@ -1,5 +1,6 @@
 using Circles.Index.Common;
 using Circles.Index.Query.Dto;
+using Circles.Pathfinder.DTOs;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -59,4 +60,9 @@ public interface ICirclesRpcModule : IRpcModule
         IsImplemented = true)]
     ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null,
         string[]? eventTypes = null, FilterPredicateDto[]? filters = null, bool? sortAscending = false);
+
+    [JsonRpcMethod(
+        Description = "Tries to find a transitive transfer path between two addresses in the Circles V2 graph",
+        IsImplemented = true)]
+    Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest);
 }

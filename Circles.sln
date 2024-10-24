@@ -69,6 +69,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "protobuf-types", "protobuf-
 		v2.standardTreasury.proto = v2.standardTreasury.proto
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Pathfinder", "Circles.Pathfinder\Circles.Pathfinder.csproj", "{756580B1-2D2A-4FFE-9711-046A10853003}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -123,6 +125,10 @@ Global
 		{C68CD7EC-9F4D-481E-AC4E-E063794E9488}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C68CD7EC-9F4D-481E-AC4E-E063794E9488}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C68CD7EC-9F4D-481E-AC4E-E063794E9488}.Release|Any CPU.Build.0 = Release|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
