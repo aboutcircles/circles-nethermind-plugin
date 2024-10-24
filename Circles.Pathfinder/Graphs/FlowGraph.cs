@@ -186,7 +186,14 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode)
+    /// <summary>
+    /// Searches the graph for liquid paths from the source node to the sink node.
+    /// </summary>
+    /// <param name="sourceNode">The source</param>
+    /// <param name="sinkNode">The sink</param>
+    /// <param name="threshold">Only consider edges with more or equal flow</param>
+    /// <returns>A list of paths with flow</returns>
+    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, BigInteger threshold)
     {
         var resultPaths = new List<List<FlowEdge>>();
         var visited = new HashSet<string>();
@@ -209,6 +216,12 @@ public class FlowGraph : IGraph<FlowEdge>
                 if (edge.Flow > 0 && !visited.Contains(edge.To))
                 {
                     currentPath.Add(edge); // Add edge to the current path
+                    if (edge.Flow < threshold)
+                    {
+                        // Filter edges with less flow than the threshold
+                        continue;
+                    }
+
                     Dfs(edge.To, currentPath); // Recursively go deeper
                     currentPath.Remove(edge); // Backtrack
                 }

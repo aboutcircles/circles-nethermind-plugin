@@ -64,7 +64,9 @@ public class V2Pathfinder : IPathfinder
         var maxFlow = flowGraph.ComputeMaxFlowWithPaths(request.Source, request.Sink, targetFlow);
 
         // Extract Paths with Flow
-        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(request.Source, request.Sink);
+        // (Don't consider paths smaller than 0.1 Circles)
+        var pathsWithFlow =
+            flowGraph.ExtractPathsWithFlow(request.Source, request.Sink, BigInteger.Parse("100000000000000000"));
 
         // Collapse balance nodes to get a collapsed graph
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
