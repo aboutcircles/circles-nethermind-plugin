@@ -15,6 +15,7 @@
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
       <ProjectReference Include="..\Circles.Index.Utils\Circles.Index.Utils.csproj" />
+      <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
     </ItemGroup>
 
 </Project>

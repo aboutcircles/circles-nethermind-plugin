@@ -20,23 +20,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		x64.Dockerfile = x64.Dockerfile
 		arm64.Dockerfile = arm64.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
-		docker-compose.spaceneth.yml = docker-compose.spaceneth.yml
 		.dockerignore = .dockerignore
-		circles-chainspec.json = circles-chainspec.json
-		circles-config.cfg = circles-config.cfg
-		time_controller.py = time_controller.py
 		x64.debug.Dockerfile = x64.debug.Dockerfile
 		.env.example = .env.example
 		docker-compose.gnosis.yml = docker-compose.gnosis.yml
 		Readme.md = Readme.md
-		envs\common-smart-contract-verifier.env = envs\common-smart-contract-verifier.env
-		envs\common-blockscout.env = envs\common-blockscout.env
 		.gitmodules = .gitmodules
-		createFundedAccount.js = createFundedAccount.js
-		package.json = package.json
-		deploy.sh = deploy.sh
 		.gitignore = .gitignore
-		add-deploy-script-tp-v2-repo.sh = add-deploy-script-tp-v2-repo.sh
 		v2-example-requests.md = v2-example-requests.md
 		v1-example-requests.md = v1-example-requests.md
 		general-example-requests.md = general-example-requests.md
@@ -68,6 +58,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "protobuf-types", "protobuf-
 		v2.nameRegistry.proto = v2.nameRegistry.proto
 		v2.standardTreasury.proto = v2.standardTreasury.proto
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Pathfinder", "Circles.Pathfinder\Circles.Pathfinder.csproj", "{756580B1-2D2A-4FFE-9711-046A10853003}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -123,6 +115,10 @@ Global
 		{C68CD7EC-9F4D-481E-AC4E-E063794E9488}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C68CD7EC-9F4D-481E-AC4E-E063794E9488}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C68CD7EC-9F4D-481E-AC4E-E063794E9488}.Release|Any CPU.Build.0 = Release|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{756580B1-2D2A-4FFE-9711-046A10853003}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}

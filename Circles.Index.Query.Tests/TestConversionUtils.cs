@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Index.Utils;
 
 namespace Circles.Index.Query.Tests;
@@ -37,18 +38,6 @@ public class TestConversionUtils
     [Test]
     public void TestConvertCirclesToStaticCircles()
     {
-        var inflation = 0.07m;
-        var year = 4;
-        var baseAmount = 8m;
-        var inflatedAmount = baseAmount;
-        for (int i = 0; i < year; i++)
-        {
-            inflatedAmount *= 1 + inflation;
-        }
-
-        
-        
-        decimal circlesBalance = 20;
-        decimal staticCirclesBalance = ConversionUtils.CirclesToStaticCircles(circlesBalance, DateTime.Now);
+        decimal staticCirclesBalance = ConversionUtils.CirclesToCrc(0.13151319940322485m);
     }
 }
