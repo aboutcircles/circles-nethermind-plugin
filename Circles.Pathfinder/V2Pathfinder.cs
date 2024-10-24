@@ -148,7 +148,8 @@ public class V2Pathfinder : IPathfinder
                         currentEdge.CurrentCapacity // Adjust as needed
                     )
                     {
-                        Flow = mergedFlow
+                        Flow = mergedFlow,
+                        ReverseEdge = nextEdge.ReverseEdge
                     };
                     try
                     {
