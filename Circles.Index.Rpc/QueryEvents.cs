@@ -147,13 +147,6 @@ public class QueryEvents(Context context)
 
             queries.Add(query);
         }
-        
-        // Log all queries
-        Console.WriteLine($"Generated {queries.Count} event_queries:");
-        foreach (var query in queries)
-        {
-            Console.WriteLine(query.ToSql(context.Database));
-        }
 
         return queries;
     }
