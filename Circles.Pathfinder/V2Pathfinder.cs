@@ -40,33 +40,22 @@ public class V2Pathfinder : IPathfinder
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
 
         // Validate Source and Sink
-        if (!flowGraph.Nodes.ContainsKey(request.Source))
+        if (!trustGraph.Nodes.ContainsKey(request.Source))
         {
             throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
         }
 
-        if (!flowGraph.Nodes.ContainsKey(request.Sink))
+        if (!trustGraph.Nodes.ContainsKey(request.Sink))
         {
             throw new ArgumentException($"Sink node '{request.Sink}' does not exist in the graph.");
-        }
-
-        if (IsBalanceNode(request.Source))
-        {
-            throw new ArgumentException("Source node cannot be a balance node.");
-        }
-
-        if (IsBalanceNode(request.Sink))
-        {
-            throw new ArgumentException("Sink node cannot be a balance node.");
         }
 
         // Compute Max Flow
         var maxFlow = flowGraph.ComputeMaxFlowWithPaths(request.Source, request.Sink, targetFlow);
 
         // Extract Paths with Flow
-        // (Don't consider paths smaller than 0.1 Circles)
         var pathsWithFlow =
-            flowGraph.ExtractPathsWithFlow(request.Source, request.Sink, BigInteger.Parse("100000000000000000"));
+            flowGraph.ExtractPathsWithFlow(request.Source, request.Sink, BigInteger.Parse("0"));
 
         // Collapse balance nodes to get a collapsed graph
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
