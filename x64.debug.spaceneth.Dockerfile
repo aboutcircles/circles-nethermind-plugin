@@ -6,7 +6,7 @@ COPY . .
 RUN dotnet restore
 RUN dotnet publish -c Debug -o /circles-nethermind-plugin
 
-FROM nethermind/nethermind:1.28.0 AS base
+FROM nethermind/nethermind:1.29.1 AS base
 
 # dotnet libs
 COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json /nethermind/plugins
