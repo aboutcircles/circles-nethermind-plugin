@@ -23,7 +23,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _transferBatchTopic = new(DatabaseSchema.TransferBatch.Topic);
     private readonly Hash256 _transferSingleTopic = new(DatabaseSchema.TransferSingle.Topic);
     private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
-    private readonly Hash256 _uriTopic = new(DatabaseSchema.URI.Topic);
     private readonly Hash256 _erc20WrapperDeployed = new(DatabaseSchema.ERC20WrapperDeployed.Topic);
     private readonly Hash256 _erc20WrapperTransfer = new(DatabaseSchema.Erc20WrapperTransfer.Topic);
     private readonly Hash256 _depositInflationary = new(DatabaseSchema.DepositInflationary.Topic);

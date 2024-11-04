@@ -26,8 +26,13 @@ public class QueryEvents(Context context)
     /// <param name="additionalFilters">Additional filters to apply to the query. The filtered columns must be present in all queried events!</param>
     /// <returns>An array of CirclesEvent objects</returns>
     /// <exception cref="Exception">Thrown when the zero address is queried, fromBlock is less than 0, toBlock is less than fromBlock, or toBlock is greater than the current head</exception>
-    public CirclesEvent[] CirclesEvents(Address? address, long? fromBlock, long? toBlock = null,
-        string[]? onlyTheseTypes = null, FilterPredicateDto[]? additionalFilters = null, bool? sortAscending = false)
+    public CirclesEvent[] CirclesEvents(
+        Address? address
+        , long? fromBlock
+        , long? toBlock = null
+        , string[]? onlyTheseTypes = null
+        , FilterPredicateDto[]? additionalFilters = null
+        , bool? sortAscending = false)
     {
         long currentHead = context.NethermindApi.BlockTree?.Head?.Number
                            ?? throw new Exception("BlockTree or Head is null");
@@ -141,6 +146,13 @@ public class QueryEvents(Context context)
                 null, true, int.MaxValue);
 
             queries.Add(query);
+        }
+        
+        // Log all queries
+        Console.WriteLine($"Generated {queries.Count} event_queries:");
+        foreach (var query in queries)
+        {
+            Console.WriteLine(query.ToSql(context.Database));
         }
 
         return queries;

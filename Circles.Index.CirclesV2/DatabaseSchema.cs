@@ -57,20 +57,6 @@ public class DatabaseSchema : IDatabaseSchema
             new("tokenAddress", ValueTypes.Address, true)
         ]);
 
-    // public static readonly EventSchema URI =
-    //     EventSchema.FromSolidity("CrcV2", "event URI(string value, uint256 indexed id)");
-
-    public static readonly EventSchema URI = new EventSchema("CrcV2", "URI",
-        Keccak.Compute("URI(string,uint256)").BytesToArray(), [
-            new("blockNumber", ValueTypes.Int, true),
-            new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
-            new("value", ValueTypes.String, true),
-            new("id", ValueTypes.BigInt, true),
-            new("tokenAddress", ValueTypes.Address, true)
-        ]);
-
     public static readonly EventSchema ApprovalForAll =
         EventSchema.FromSolidity(
             "CrcV2", "event ApprovalForAll(address indexed account, address indexed operator, bool approved)");
@@ -172,10 +158,6 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "TransferSingle"),
                 TransferSingle
-            },
-            {
-                ("CrcV2", "URI"),
-                URI
             },
             {
                 ("CrcV2", "ApprovalForAll"),

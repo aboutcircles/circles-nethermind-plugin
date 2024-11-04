@@ -339,12 +339,23 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
-    public ResultWrapper<CirclesEvent[]> circles_events(Address? address, long? fromBlock, long? toBlock = null,
-        string[]? eventTypes = null, FilterPredicateDto[]? filterPredicates = null, bool? sortAscending = false)
+    public ResultWrapper<CirclesEvent[]> circles_events(
+        Address? address
+        , long? fromBlock
+        , long? toBlock = null
+        , string[]? eventTypes = null
+        , FilterPredicateDto[]? filterPredicates = null
+        , bool? sortAscending = false)
     {
         var queryEvents = new QueryEvents(_indexerContext);
-        return ResultWrapper<CirclesEvent[]>.Success(queryEvents.CirclesEvents(address, fromBlock, toBlock,
-            eventTypes, filterPredicates, sortAscending));
+        return ResultWrapper<CirclesEvent[]>.Success(
+            queryEvents.CirclesEvents(
+                address
+                , fromBlock
+                , toBlock
+                , eventTypes
+                , filterPredicates
+                , sortAscending));
     }
 
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
