@@ -366,20 +366,6 @@ public class DatabaseSchema : IDatabaseSchema
                 { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
             });
 
-        EventDtoTableMap.Add<URI>(("CrcV2", "URI"));
-        SchemaPropertyMap.Add(("CrcV2", "URI"),
-            new Dictionary<string, Func<URI, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "value", e => e.Value },
-                { "id", e => (BigInteger)e.Id },
-                { "tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false) }
-            });
-
         EventDtoTableMap.Add<ERC20WrapperDeployed>(("CrcV2", "ERC20WrapperDeployed"));
         SchemaPropertyMap.Add(("CrcV2", "ERC20WrapperDeployed"),
             new Dictionary<string, Func<ERC20WrapperDeployed, object?>>

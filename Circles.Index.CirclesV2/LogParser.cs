@@ -155,11 +155,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
             }
 
-            if (topic == _uriTopic)
-            {
-                yield return Erc1155Uri(block, receipt, log, logIndex);
-            }
-
             if (topic == _streamCompletedTopic)
             {
                 foreach (var streamCompleted in StreamCompleted(block, receipt, log, logIndex))
@@ -229,21 +224,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             avatar,
             erc20Wrapper,
             (long)(BigInteger)circlesType);
-    }
-
-    private URI Erc1155Uri(Block block, TxReceipt receipt, LogEntry log, int logIndex)
-    {
-        var tokenId = new UInt256(log.Topics[1].Bytes, true);
-        var uri = Encoding.UTF8.GetString(log.Data);
-
-        return new URI(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            tokenId,
-            uri);
     }
 
     private ApprovalForAll Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
