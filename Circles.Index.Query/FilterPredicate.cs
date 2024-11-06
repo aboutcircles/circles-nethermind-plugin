@@ -48,7 +48,15 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
     {
         if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
         {
-            return jsonElement.EnumerateArray().Select(v => (object)v.ToString());
+            return jsonElement.EnumerateArray().Select(v =>
+            {
+                if (v.ValueKind == JsonValueKind.Number)
+                {
+                    return v.GetDouble();
+                }
+
+                return (object)v.ToString();
+            });
         }
 
         if (value is IEnumerable e && value is not string)
