@@ -40,12 +40,12 @@ public class V2Pathfinder : IPathfinder
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
 
         // Validate Source and Sink
-        if (!trustGraph.Nodes.ContainsKey(request.Source))
+        if (!flowGraph.Nodes.ContainsKey(request.Source))
         {
             throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
         }
 
-        if (!trustGraph.Nodes.ContainsKey(request.Sink))
+        if (!flowGraph.Nodes.ContainsKey(request.Sink))
         {
             throw new ArgumentException($"Sink node '{request.Sink}' does not exist in the graph.");
         }
