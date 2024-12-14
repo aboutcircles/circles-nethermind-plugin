@@ -216,7 +216,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-            SELECT MAX(""blockNumber"") as block_number FROM ""{"System_Block"}""
+            SELECT MAX(""blockNumber"") as block_number FROM ""System_Block""
         ";
 
         object? result = cmd.ExecuteScalar();
@@ -235,17 +235,13 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-            SELECT (prev.""blockNumber"" + 1) AS gap_start
-            --        ,(prev.next_block_number - 1) AS gap_end
-            --        ,(prev.next_block_number - prev.""blockNumber"" - 1) AS gap_size
-            FROM (
-                     SELECT ""blockNumber"", LEAD(""blockNumber"") OVER (ORDER BY ""blockNumber"") AS next_block_number
-                     FROM (
-                              SELECT ""blockNumber"" FROM ""System_Block"" ORDER BY ""blockNumber"" DESC LIMIT 1000000
-                          ) AS sub
-                 ) AS prev
-            WHERE prev.next_block_number - prev.""blockNumber"" > 1
-            ORDER BY gap_start
+            SELECT first_gap
+            FROM generate_series(
+                (SELECT MIN(""blockNumber"") FROM ""System_Block""),
+                (SELECT MAX(""blockNumber"") FROM ""System_Block"")
+            ) AS first_gap
+            LEFT JOIN ""System_Block"" sb ON first_gap = sb.""blockNumber""
+            WHERE sb.""blockNumber"" IS NULL
             LIMIT 1;
         ";
 
@@ -266,7 +262,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
             SELECT ""blockNumber"", ""blockHash""
-            FROM ""{"System_Block"}""
+            FROM ""System_Block""
             ORDER BY ""blockNumber"" DESC
             LIMIT {count}
         ";
@@ -336,11 +332,12 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
-        await using var transaction = await connection.BeginTransactionAsync();
+        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {
             foreach (var table in Schema.Tables.Values)
             {
+                Console.WriteLine($"Deleting from {table.Namespace}_{table.Table}");
                 if (table.Namespace.StartsWith("V_"))
                 {
                     // Dirty way to skip views
@@ -349,11 +346,11 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
                 await using var command = connection.CreateCommand();
                 command.CommandText =
-                    $"DELETE FROM \"{table.Namespace}_{table.Table}\" WHERE \"{"blockNumber"}\" >= @reorgAt;";
+                    $"DELETE FROM \"{table.Namespace}_{table.Table}\" WHERE \"blockNumber\" >= @reorgAt;";
                 command.Parameters.AddWithValue("@reorgAt", reorgAt);
                 command.Transaction = transaction;
 
-                command.ExecuteNonQuery();
+                await command.ExecuteNonQueryAsync();
             }
 
             await transaction.CommitAsync();
