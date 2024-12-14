@@ -230,7 +230,11 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
     public long? FirstGap()
     {
-        using var connection = new NpgsqlConnection(connectionString);
+        var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            CommandTimeout = 120
+        };
+        using var connection = new NpgsqlConnection(connectionStringBuilder.ConnectionString);
         connection.Open();
 
         NpgsqlCommand cmd = connection.CreateCommand();
