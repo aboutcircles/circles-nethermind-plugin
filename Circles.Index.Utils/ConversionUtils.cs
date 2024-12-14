@@ -21,8 +21,8 @@ public abstract class ConversionUtils
 
     public static long ConvertToUnixTimestamp(DateTime dateTime)
     {
-        DateTime unixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        return (long)(dateTime - unixEpoch).TotalMilliseconds;
+        DateTimeOffset dateTimeOffset = dateTime;
+        return dateTimeOffset.ToUnixTimeMilliseconds();
     }
 
     public static decimal GetCrcPayoutAt(long timestamp)
@@ -100,7 +100,7 @@ public abstract class ConversionUtils
     /// <returns></returns>
     public static decimal StaticCirclesToCircles(decimal staticCirclesBalance)
     {
-        var lastUpdate = DateTime.Now;
+        var lastUpdate = DateTime.Now.ToUniversalTime();
         var lastUpdateDay = (lastUpdate - CirclesInceptionDate).TotalDays;
         var f = (decimal)Math.Pow((double)Beta, lastUpdateDay);
         return staticCirclesBalance / f;
