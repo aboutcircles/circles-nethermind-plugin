@@ -1,11 +1,9 @@
 using System.Numerics;
-using Circles.Index.CirclesV2.StandardTreasury;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using DatabaseSchema = Circles.Index.CirclesV2.StandardTreasury.DatabaseSchema;
 
 namespace Circles.Index.CirclesV2.StandardTreasury;
 
@@ -116,7 +114,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray(), true, true);
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
@@ -126,7 +124,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray(), true, true);
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();
@@ -176,86 +174,105 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private IEnumerable<GroupRedeemCollateralReturn> GroupRedeemCollateralReturn(Block block, TxReceipt receipt,
         LogEntry log, int logIndex)
     {
-        // string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        // string toAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        //
-        // int offset = 0;
-        // int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
-        // offset += 32;
-        //
-        // List<UInt256> ids = new List<UInt256>();
-        // for (int i = 0; i < idsLength; i++)
-        // {
-        //     ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
-        //     offset += 32;
-        // }
-        //
-        // int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
-        // offset += 32;
-        //
-        // List<UInt256> values = new List<UInt256>();
-        // for (int i = 0; i < valuesLength; i++)
-        // {
-        //     values.Add(new UInt256(log.Data.Slice(offset, 32), true));
-        //     offset += 32;
-        // }
-        //
-        // for (int i = 0; i < idsLength; i++)
-        // {
-        //     yield return new GroupRedeemCollateralReturn(
-        //         block.Number,
-        //         (long)block.Timestamp,
-        //         receipt.Index,
-        //         logIndex,
-        //         receipt.TxHash!.ToString(),
-        //         i,
-        //         groupAddress,
-        //         toAddress,
-        //         ids[i],
-        //         values[i]);
-        // }
-        yield break; // Don't index right now.
+        // event GroupRedeemCollateralReturn(address indexed group, address indexed to, uint256[] ids, uint256[] values)
+
+        // Extract addresses from topics:
+        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string toAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        var data = log.Data;
+
+        // The first 32 bytes is the offset to the `ids` array
+        // The second 32 bytes is the offset to the `values` array
+        // Offsets are relative to the start of `log.Data`.
+        var idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
+        var valuesOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true); ;
+
+        // Read ids array length and elements
+        int idsLength = (int)new BigInteger(data.Slice(idsOffset, 32).ToArray(), true, true);
+        int idsDataStart = idsOffset + 32;
+
+        UInt256[] ids = new UInt256[idsLength];
+        for (int i = 0; i < idsLength; i++)
+        {
+            ids[i] = new UInt256(data.Slice(idsDataStart + i * 32, 32), true);
+        }
+
+        // Read values array length and elements
+        int valuesLength = (int)new BigInteger(data.Slice(valuesOffset, 32).ToArray(), true, true);
+        int valuesDataStart = valuesOffset + 32;
+
+        UInt256[] values = new UInt256[valuesLength];
+        for (int i = 0; i < valuesLength; i++)
+        {
+            values[i] = new UInt256(data.Slice(valuesDataStart + i * 32, 32), true);
+        }
+
+        // Yield events
+        for (int i = 0; i < idsLength; i++)
+        {
+            yield return new GroupRedeemCollateralReturn(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                i,
+                groupAddress,
+                toAddress,
+                ids[i],
+                values[i]);
+        }
     }
 
     private IEnumerable<GroupRedeemCollateralBurn> GroupRedeemCollateralBurn(Block block, TxReceipt receipt,
         LogEntry log, int logIndex)
     {
-        // string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        //
-        // int offset = 0;
-        // int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
-        // offset += 32;
-        //
-        // List<UInt256> ids = new List<UInt256>();
-        // for (int i = 0; i < idsLength; i++)
-        // {
-        //     ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
-        //     offset += 32;
-        // }
-        //
-        // int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
-        // offset += 32;
-        //
-        // List<UInt256> values = new List<UInt256>();
-        // for (int i = 0; i < valuesLength; i++)
-        // {
-        //     values.Add(new UInt256(log.Data.Slice(offset, 32), true));
-        //     offset += 32;
-        // }
-        //
-        // for (int i = 0; i < idsLength; i++)
-        // {
-        //     yield return new GroupRedeemCollateralBurn(
-        //         block.Number,
-        //         (long)block.Timestamp,
-        //         receipt.Index,
-        //         logIndex,
-        //         receipt.TxHash!.ToString(),
-        //         i,
-        //         groupAddress,
-        //         ids[i],
-        //         values[i]);
-        // }
-        yield break;
+        // event GroupRedeemCollateralBurn(address indexed group, uint256[] ids, uint256[] values)
+
+        // Extract address from topics:
+        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        var data = log.Data;
+
+        // The first 32 bytes is the offset to the `ids` array
+        // The second 32 bytes is the offset to the `values` array
+        var idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
+        var valuesOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true);
+
+        // Read ids array
+        int idsLength = (int)new BigInteger(data.Slice(idsOffset, 32).ToArray(), true, true);
+        int idsDataStart = idsOffset + 32;
+
+        UInt256[] ids = new UInt256[idsLength];
+        for (int i = 0; i < idsLength; i++)
+        {
+            ids[i] = new UInt256(data.Slice(idsDataStart + i * 32, 32), true);
+        }
+
+        // Read values array
+        int valuesLength = (int)new BigInteger(data.Slice(valuesOffset, 32).ToArray(), true, true);
+        int valuesDataStart = valuesOffset + 32;
+
+        UInt256[] values = new UInt256[valuesLength];
+        for (int i = 0; i < valuesLength; i++)
+        {
+            values[i] = new UInt256(data.Slice(valuesDataStart + i * 32, 32), true);
+        }
+
+        // Yield events
+        for (int i = 0; i < idsLength; i++)
+        {
+            yield return new GroupRedeemCollateralBurn(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                i,
+                groupAddress,
+                ids[i],
+                values[i]);
+        }
     }
 }
