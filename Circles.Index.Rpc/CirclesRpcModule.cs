@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -43,7 +44,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             data = data.Concat(tokenIdBytes).ToArray();
         }
 
-        var transactionCall = new TransactionForRpc { To = token, Input = data };
+        var transactionCall = new LegacyTransactionForRpc { To = token, Input = data };
         var result = rpcModule.eth_call(transactionCall);
 
         if (result.ErrorCode != 0)

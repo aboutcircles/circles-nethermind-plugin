@@ -33,12 +33,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
         var topic = log.Topics[0];
         if (topic == _transferTopic &&
-            CirclesTokenAddresses.ContainsKey(log.LoggersAddress))
+            CirclesTokenAddresses.ContainsKey(log.Address))
         {
             events.Add(Erc20Transfer(block, receipt, log, logIndex));
         }
 
-        if (log.LoggersAddress == v1HubAddress)
+        if (log.Address == v1HubAddress)
         {
             if (topic == _signupTopic)
             {
@@ -80,7 +80,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             , receipt.Index
             , logIndex
             , receipt.TxHash!.ToString()
-            , log.LoggersAddress.ToString(true, false)
+            , log.Address.ToString(true, false)
             , from
             , to
             , value);
@@ -157,7 +157,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         for (int i = 0; i < receipt.Logs!.Length; i++)
         {
             var repeatedLogEntry = receipt.Logs[i];
-            if (repeatedLogEntry.LoggersAddress != tokenAddress)
+            if (repeatedLogEntry.Address != tokenAddress)
             {
                 continue;
             }

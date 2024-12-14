@@ -23,7 +23,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             yield break;
         }
 
-        if (log.LoggersAddress != nameRegistryAddress)
+        if (log.Address != nameRegistryAddress)
         {
             yield break;
         }
