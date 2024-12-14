@@ -104,7 +104,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
         var topic = log.Topics[0];
 
-        if (log.LoggersAddress == v2HubAddress)
+        if (log.Address == v2HubAddress)
         {
             if (topic == _stoppedTopic)
             {
@@ -168,7 +168,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             }
         }
 
-        if (log.LoggersAddress == erc20LiftAddress)
+        if (log.Address == erc20LiftAddress)
         {
             if (topic == _erc20WrapperDeployed)
             {
@@ -176,7 +176,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             }
         }
 
-        if (Erc20WrapperAddresses.ContainsKey(log.LoggersAddress))
+        if (Erc20WrapperAddresses.ContainsKey(log.Address))
         {
             if (topic == _erc20WrapperTransfer)
             {
@@ -409,7 +409,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             , receipt.Index
             , logIndex
             , receipt.TxHash!.ToString()
-            , log.LoggersAddress.ToString(true, false)
+            , log.Address.ToString(true, false)
             , from
             , to
             , amount);

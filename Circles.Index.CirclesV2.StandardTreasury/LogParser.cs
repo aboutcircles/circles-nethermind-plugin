@@ -33,7 +33,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
         var topic = log.Topics[0];
 
-        if (log.LoggersAddress == standardTreasuryAddress)
+        if (log.Address == standardTreasuryAddress)
         {
             if (topic == _createVaultTopic)
             {

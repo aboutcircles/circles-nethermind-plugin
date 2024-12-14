@@ -337,7 +337,6 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         {
             foreach (var table in Schema.Tables.Values)
             {
-                Console.WriteLine($"Deleting from {table.Namespace}_{table.Table}");
                 if (table.Namespace.StartsWith("V_"))
                 {
                     // Dirty way to skip views
@@ -350,13 +349,18 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
                 command.Parameters.AddWithValue("@reorgAt", reorgAt);
                 command.Transaction = transaction;
 
-                await command.ExecuteNonQueryAsync();
+                var rowsDeleted = await command.ExecuteNonQueryAsync();
+                if (rowsDeleted > 0)
+                {
+                    Console.WriteLine($"Deleted {rowsDeleted} rows from {table.Namespace}_{table.Table}");
+                }
             }
 
             await transaction.CommitAsync();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine($"An error occurred: {ex.Message}");
             await transaction.RollbackAsync();
             throw;
         }
