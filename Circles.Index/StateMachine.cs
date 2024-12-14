@@ -52,7 +52,9 @@ public class StateMachine(
                         case EnterState:
                         {
                             context.Logger.Info("Initializing: Finding the last persisted block...");
-                            var lastPersistedBlock = context.Database.FirstGap() ?? context.Database.LatestBlock() ?? 0;
+                            var lastPersistedBlock = context.Database.FirstGap() 
+                                                          ?? context.Database.LatestBlock() 
+                                                          ?? 0;
 
                             context.Logger.Info(
                                 $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
