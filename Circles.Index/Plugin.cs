@@ -105,10 +105,7 @@ public class Plugin : INethermindPlugin
                 }
             }
 
-            Interlocked.Exchange(ref _newItemsArrived, 1);
-            Interlocked.Exchange(ref _latestHeadToIndex, args.Block.Number);
-
-            HandleNewHead();
+            HandleNewHead(args.Block.Number);
         };
     }
 
@@ -187,15 +184,31 @@ public class Plugin : INethermindPlugin
         }
     }
 
-    private void HandleNewHead()
+    /// <summary>
+    /// Handles when a new head block is received.
+    /// It updates a buffer with the latest block number and starts the ProcessBlocksAsync task if it's not already running.
+    /// This method is non-blocking.
+    /// </summary>
+    /// <param name="blockNo">The new chain head</param>
+    private void HandleNewHead(long blockNo)
     {
-        // Start the processing task if not already running
+        // Signal that new items have arrived
+        Interlocked.Exchange(ref _newItemsArrived, 1);
+
+        // Signal which block is the new head
+        Interlocked.Exchange(ref _latestHeadToIndex, blockNo);
+
+        // Start the processing task if it's not already running
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
             Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
         }
     }
 
+    /// <summary>
+    /// Handles the latest head block (according to the value in _latestHeadToIndex) by passing it to the _indexerMachine.
+    /// If a new event arrived during processing, it will keep processing until no new events arrived and the value of _latestHeadToIndex is -1. 
+    /// </summary>
     private async Task ProcessBlocksAsync()
     {
         try
