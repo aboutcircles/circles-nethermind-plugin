@@ -66,7 +66,8 @@ public class Sink(
 
                             sb.AppendLine(ex.ToString());
                             Console.WriteLine(sb.ToString());
-                            return true;
+                            
+                            return false;
                         });
                     }
                 });

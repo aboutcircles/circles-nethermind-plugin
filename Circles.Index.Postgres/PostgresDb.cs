@@ -230,22 +230,20 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
     public long? FirstGap()
     {
-        var connectionStringBuilder = new NpgsqlConnectionStringBuilder(connectionString)
-        {
-            CommandTimeout = 120
-        };
-        using var connection = new NpgsqlConnection(connectionStringBuilder.ConnectionString);
+        using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
-            SELECT first_gap
-            FROM generate_series(
-                (SELECT MIN(""blockNumber"") FROM ""System_Block""),
-                (SELECT MAX(""blockNumber"") FROM ""System_Block"")
-            ) AS first_gap
-            LEFT JOIN ""System_Block"" sb ON first_gap = sb.""blockNumber""
-            WHERE sb.""blockNumber"" IS NULL
+            SELECT (prev.""blockNumber"" + 1) AS gap_start
+            FROM (
+                     SELECT ""blockNumber"", LEAD(""blockNumber"") OVER (ORDER BY ""blockNumber"") AS next_block_number
+                     FROM (
+                              SELECT ""blockNumber"" FROM ""System_Block"" ORDER BY ""blockNumber"" DESC LIMIT 1000000
+                          ) AS sub
+                 ) AS prev
+            WHERE prev.next_block_number - prev.""blockNumber"" > 1
+            ORDER BY gap_start
             LIMIT 1;
         ";
 
@@ -336,7 +334,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
 
-        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.Serializable);
+        await using var transaction = await connection.BeginTransactionAsync();
         try
         {
             foreach (var table in Schema.Tables.Values)
