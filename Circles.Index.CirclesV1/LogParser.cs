@@ -23,7 +23,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
         return Enumerable.Empty<IIndexEvent>();
     }
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         List<IIndexEvent> events = new();
         if (log.Topics.Length == 0)
@@ -135,40 +136,48 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
     private IEnumerable<IIndexEvent> CrcSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // Extract user address and token address from the log entry.
         string user = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         Address tokenAddress = new Address(log.Data.Slice(12));
 
+        // Generate the Signup event.
         IIndexEvent signupEvent = new Signup(
-            receipt.BlockNumber
-            , (long)block.Timestamp
-            , receipt.Index
-            , logIndex
-            , receipt.TxHash!.ToString()
-            , user
-            , tokenAddress.ToString(true, false));
+            receipt.BlockNumber,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            user,
+            tokenAddress.ToString(true, false));
 
-        CirclesTokenAddresses.TryAdd(tokenAddress, null);
+        // Attempt to register the token address. If the token is already known, skip
+        // generating the transfer event to avoid duplicates (e.g., during reorgs).
+        bool isNewToken = CirclesTokenAddresses.TryAdd(tokenAddress, null);
 
+        if (!isNewToken)
+        {
+            // If the token was already known, return only the Signup event.
+            return new[] { signupEvent };
+        }
+
+        // If the token is new, attempt to locate and generate the corresponding transfer event.
         IIndexEvent? signupBonusEvent = null;
-
-        // Every signup comes together with an Erc20 transfer (the signup bonus).
-        // Since the signup event is emitted after the transfer, the token wasn't known yet when we encountered the transfer.
-        // Look for the transfer again and process it.
         for (int i = 0; i < receipt.Logs!.Length; i++)
         {
             var repeatedLogEntry = receipt.Logs[i];
             if (repeatedLogEntry.Address != tokenAddress)
             {
-                continue;
+                continue; // Skip logs unrelated to the token address.
             }
 
             if (repeatedLogEntry.Topics[0] == _transferTopic)
             {
                 signupBonusEvent = Erc20Transfer(block, receipt, repeatedLogEntry, i);
-                break;
+                break; // Only one matching transfer event is expected.
             }
         }
 
+        // Return the Signup event, along with the Transfer event if it was found.
         return signupBonusEvent == null
             ? new[] { signupEvent }
             : new[] { signupEvent, signupBonusEvent };
