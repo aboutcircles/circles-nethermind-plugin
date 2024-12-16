@@ -86,26 +86,30 @@ public class ImportFlow(
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
                     var transaction = transactionsByHash[receipt.TxHash!];
-                    var transactionIndex = transactionIndexByHash[receipt.TxHash!];
-                    try
-                    {
-                        foreach (var parser in context.LogParsers)
-                        {
-                            var parsedEvents = parser.ParseTransaction(blockWithReceipts.Block,
-                                transactionIndex, transaction);
 
-                            events.AddRange(parsedEvents);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        context.Logger.Error($"Error parsing transaction {transaction}");
-                        context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
-                        context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
-                        context.Logger.Error(e.Message);
-                        context.Logger.Error(e.StackTrace);
-                        throw;
-                    }
+                    //
+                    // Not used right now and commented out to save some CPU cycles.
+                    // 
+                    // var transactionIndex = transactionIndexByHash[receipt.TxHash!];
+                    // try
+                    // {
+                    //     foreach (var parser in context.LogParsers)
+                    //     {
+                    //         var parsedEvents = parser.ParseTransaction(blockWithReceipts.Block,
+                    //             transactionIndex, transaction);
+                    //
+                    //         events.AddRange(parsedEvents);
+                    //     }
+                    // }
+                    // catch (Exception e)
+                    // {
+                    //     context.Logger.Error($"Error parsing transaction {transaction}");
+                    //     context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
+                    //     context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
+                    //     context.Logger.Error(e.Message);
+                    //     context.Logger.Error(e.StackTrace);
+                    //     throw;
+                    // }
 
                     for (int i = 0; i < receipt.Logs?.Length; i++)
                     {
