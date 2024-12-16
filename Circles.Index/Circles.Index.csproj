@@ -42,7 +42,6 @@
 
     <ItemGroup>
       <None Remove="cheatcodes\spam_accounts.csv" />
-      <EmbeddedResource Include="cheatcodes\spam_accounts.csv" />
     </ItemGroup>
 
 
