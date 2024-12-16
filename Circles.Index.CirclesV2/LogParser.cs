@@ -15,7 +15,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
     private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
 
-    // private readonly Hash256 _inviteHumanTopic = new(DatabaseSchema.InviteHuman.Topic);
     private readonly Hash256 _personalMintTopic = new(DatabaseSchema.PersonalMint.Topic);
     private readonly Hash256 _registerHumanTopic = new(DatabaseSchema.RegisterHuman.Topic);
     private readonly Hash256 _registerGroupTopic = new(DatabaseSchema.RegisterGroup.Topic);

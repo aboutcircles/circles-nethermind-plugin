@@ -408,8 +408,7 @@ Tables for batch events have an additional `batchIndex` column.
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
 #### V_CrcV2 (Circles v2 views)
-    * `V_CrcV2_InviteHuman` (view combining CrcV2_Trust and CrcV2_RegisterHuman)
-    * `Avatars` (view combining `CrcV2_RegisterHuman`, `V_CrcV2_InviteHuman`, `CrcV2_RegisterGroup` and
+    * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_RegisterGroup` and
       `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)

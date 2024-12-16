@@ -11,9 +11,6 @@ public class DatabaseSchema : IDatabaseSchema
 
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
 
-    public static readonly EventSchema InviteHuman =
-        EventSchema.FromSolidity("CrcV2", "event InviteHuman(address indexed inviter, address indexed invited);");
-
     public static readonly EventSchema PersonalMint = EventSchema.FromSolidity("CrcV2",
         "event PersonalMint(address indexed human, uint256 amount, uint256 startPeriod, uint256 endPeriod)");
 
@@ -38,10 +35,6 @@ public class DatabaseSchema : IDatabaseSchema
         EventSchema.FromSolidity("CrcV2",
             "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
 
-    //
-    // public static readonly EventSchema TransferSingle = EventSchema.FromSolidity(
-    //     "CrcV2",
-    //     "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 indexed id, uint256 value)");
     public static readonly EventSchema TransferSingle = new("CrcV2", "TransferSingle",
         Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)").BytesToArray(), [
             new("blockNumber", ValueTypes.Int, true),
@@ -128,10 +121,6 @@ public class DatabaseSchema : IDatabaseSchema
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
             {
-                ("CrcV2", "InviteHuman"),
-                InviteHuman
-            },
-            {
                 ("CrcV2", "PersonalMint"),
                 PersonalMint
             },
@@ -203,19 +192,6 @@ public class DatabaseSchema : IDatabaseSchema
 
     public DatabaseSchema()
     {
-        EventDtoTableMap.Add<InviteHuman>(("CrcV2", "InviteHuman"));
-        SchemaPropertyMap.Add(("CrcV2", "InviteHuman"),
-            new Dictionary<string, Func<InviteHuman, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "inviter", e => e.Inviter },
-                { "invited", e => e.Invited }
-            });
-
         EventDtoTableMap.Add<PersonalMint>(("CrcV2", "PersonalMint"));
         SchemaPropertyMap.Add(("CrcV2", "PersonalMint"),
             new Dictionary<string, Func<PersonalMint, object?>>
