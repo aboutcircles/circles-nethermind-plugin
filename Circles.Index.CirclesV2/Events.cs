@@ -44,15 +44,6 @@ public record PersonalMint(
     UInt256 StartPeriod,
     UInt256 EndPeriod) : IIndexEvent;
 
-public record InviteHuman(
-    long BlockNumber,
-    long Timestamp,
-    int TransactionIndex,
-    int LogIndex,
-    string TransactionHash,
-    string Inviter,
-    string Invited) : IIndexEvent;
-
 public record Trust(
     long BlockNumber,
     long Timestamp,

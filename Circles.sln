@@ -16,7 +16,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2", "
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB76D-01EE-4E92-AEE5-27224DA53350}"
 	ProjectSection(SolutionItems) = preProject
-		x64.debug.spaceneth.Dockerfile = x64.debug.spaceneth.Dockerfile
 		x64.Dockerfile = x64.Dockerfile
 		arm64.Dockerfile = arm64.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
