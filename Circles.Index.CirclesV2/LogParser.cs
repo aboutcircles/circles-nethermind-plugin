@@ -34,64 +34,9 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
-    private readonly byte[] _registerHumanFunctionSignature =
-        Keccak.Compute("registerHuman(address,bytes32)").Bytes[..4].ToArray();
-
     public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
     {
-        if (transaction.To != v2HubAddress)
-        {
-            yield break;
-        }
-
-        if (transaction.Data == null || transaction.Data.Value.Length < 68)
-        {
-            // 68 is the size of a complete registerHuman call with arguments
-            yield break;
-        }
-
-        // Parse the whole call data for a `registerHuman` call to get the inviter address and
-        // create a InviteHuman event from it.
-        // TODO: This is only for v0.3.6 and will be replace with an additional parameter on the InviteHuman event in the next version
-        // Because we cannot know how the contract was called (e.g. via a safe), we simply search for the function signature.
-        int callLength = 4;
-        for (int i = 0; i < transaction.Data.Value.Length - callLength; i++)
-        {
-            if (!transaction.Data.Value[i..(i + 4)].Span.SequenceEqual(_registerHumanFunctionSignature))
-            {
-                continue;
-            }
-
-            // The next 12 bytes must be zero padding.
-            if (!transaction.Data.Value[(i + callLength)..(i + callLength + 12)].Span.SequenceEqual(new byte[12]))
-            {
-                continue;
-            }
-
-            // Extract the bytes for the following call signature:
-            // function registerHuman(address _inviter, bytes32 _metadataDigest) external
-            var inviterAddressOffset = i + callLength;
-            var inviterAddressWithoutPaddingOffset = inviterAddressOffset + 12;
-            var inviterAddress = new Address(transaction.Data.Value[inviterAddressWithoutPaddingOffset..
-                (inviterAddressWithoutPaddingOffset + 20)].ToArray());
-
-            // TODO: Usually the sender is the invitee, but this will fail e.g. in case of relayers
-            var invitee = transaction.SenderAddress!;
-
-            // Console.WriteLine(
-            //     $"Found `InviteHuman` call in tx {transaction.Hash}. Inviter: {inviterAddress}, Invitee: {invitee}");
-
-            if (inviterAddress == Address.Zero)
-            {
-                break;
-            }
-
-            yield return new InviteHuman(block.Number, (long)block.Timestamp, transactionIndex, -1,
-                transaction.Hash!.ToString(),
-                inviterAddress.ToString(), invitee.ToString());
-
-            break;
-        }
+        yield break;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,

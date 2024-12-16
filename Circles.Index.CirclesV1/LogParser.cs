@@ -20,7 +20,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
     public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
     {
-        return Enumerable.Empty<IIndexEvent>();
+        yield break;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
