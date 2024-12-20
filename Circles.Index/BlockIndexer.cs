@@ -138,7 +138,7 @@ public class ImportFlow(
 
                 return (blockWithReceipts, events);
             },
-            CreateOptions(cancellationToken, Environment.ProcessorCount));
+            CreateOptions(cancellationToken, 1, 1));
 
         receiptsSourceBlock.LinkTo(parserBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
