@@ -8,7 +8,8 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.30.1" />
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.30.3" />
     </ItemGroup>
 
     <ItemGroup>
