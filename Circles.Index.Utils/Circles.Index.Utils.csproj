@@ -18,13 +18,14 @@
       <Reference Include="Nethermind.Core">
         <HintPath>..\..\..\..\.nuget\packages\nethermind.referenceassemblies\1.28.0\ref\net8.0\Nethermind.Core.dll</HintPath>
       </Reference>
-      <Reference Include="Nethermind.Int256">
-        <HintPath>..\..\..\..\.nuget\packages\nethermind.numerics.int256\1.2.0\lib\net8.0\Nethermind.Int256.dll</HintPath>
-      </Reference>
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
     </ItemGroup>
 
 </Project>
