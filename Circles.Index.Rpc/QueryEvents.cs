@@ -49,7 +49,7 @@ public class QueryEvents(Context context)
 
         var events = ExecuteQueries(queries);
 
-        var sortedEvents = SortEvents(events);
+        var sortedEvents = SortEvents(events, sortAscending);
 
         return sortedEvents;
     }
