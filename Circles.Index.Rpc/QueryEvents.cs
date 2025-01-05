@@ -24,6 +24,7 @@ public class QueryEvents(Context context)
     /// <param name="toBlock">HEAD if not specified otherwise</param>
     /// <param name="onlyTheseTypes">An array of event types to include in the query</param>
     /// <param name="additionalFilters">Additional filters to apply to the query. The filtered columns must be present in all queried events!</param>
+    /// <param name="sortAscending">If true or null, the events are sorted in ascending order</param>
     /// <returns>An array of CirclesEvent objects</returns>
     /// <exception cref="Exception">Thrown when the zero address is queried, fromBlock is less than 0, toBlock is less than fromBlock, or toBlock is greater than the current head</exception>
     public CirclesEvent[] CirclesEvents(
@@ -32,7 +33,7 @@ public class QueryEvents(Context context)
         , long? toBlock = null
         , string[]? onlyTheseTypes = null
         , FilterPredicateDto[]? additionalFilters = null
-        , bool? sortAscending = false)
+        , bool? sortAscending = true)
     {
         long currentHead = context.NethermindApi.BlockTree?.Head?.Number
                            ?? throw new Exception("BlockTree or Head is null");
@@ -43,11 +44,12 @@ public class QueryEvents(Context context)
 
         ValidateInputs(addressString, fromBlock.Value, toBlock, currentHead);
 
-        var queries = BuildQueries(addressString, fromBlock.Value, toBlock, onlyTheseTypes, additionalFilters);
+        var queries = BuildQueries(addressString, fromBlock.Value, toBlock, onlyTheseTypes, additionalFilters,
+            sortAscending == null || sortAscending.Value);
 
         var events = ExecuteQueries(queries);
 
-        var sortedEvents = SortEvents(events);
+        var sortedEvents = SortEvents(events, sortAscending);
 
         return sortedEvents;
     }
@@ -69,7 +71,7 @@ public class QueryEvents(Context context)
     }
 
     private List<Select> BuildQueries(string? address, long fromBlock, long? toBlock,
-        string[]? onlyTheseTypes = null, FilterPredicateDto[]? additionalFilters = null)
+        string[]? onlyTheseTypes = null, FilterPredicateDto[]? additionalFilters = null, bool sortAscending = true)
     {
         var queries = new List<Select>();
 
@@ -139,9 +141,9 @@ public class QueryEvents(Context context)
                     ? new[] { new Conjunction(ConjunctionType.And, filters.ToArray()) }
                     : filters,
                 [
-                    new OrderBy("blockNumber", "ASC"),
-                    new OrderBy("transactionIndex", "ASC"),
-                    new OrderBy("logIndex", "ASC")
+                    new OrderBy("blockNumber", sortAscending ? "ASC" : "DESC"),
+                    new OrderBy("transactionIndex", sortAscending ? "ASC" : "DESC"),
+                    new OrderBy("logIndex", sortAscending ? "ASC" : "DESC")
                 ],
                 null, true, int.MaxValue);
 
