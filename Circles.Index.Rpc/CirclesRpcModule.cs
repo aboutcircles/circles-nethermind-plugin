@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
@@ -10,7 +11,6 @@ using Circles.Pathfinder.Graphs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -365,6 +365,22 @@ public class CirclesRpcModule : ICirclesRpcModule
         var graphFactory = new GraphFactory();
         var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
         return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
+    }
+
+    public Task<ResultWrapper<string>> circles_health()
+    {
+        var blockHead = _indexerContext.NethermindApi.BlockTree?.Head?.Number
+                        ?? throw new Exception("BlockTree or Head is null. The node is not ready yet or not synced.");
+
+        var lastPersisted = _indexerContext.Database.LatestBlock() ?? 0;
+
+        if (blockHead - lastPersisted > 10)
+        {
+            throw new Exception(
+                $"Indexing is lagging behind. Block head: {blockHead}, last persisted: {lastPersisted}");
+        }
+
+        return Task.FromResult(ResultWrapper<string>.Success("Healthy"));
     }
 
     private string[] GetTokenExposureIds(Address address)
