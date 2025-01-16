@@ -80,13 +80,13 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
             }
 
-            // if (topic == _transferBatchTopic)
-            // {
-            //     foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
-            //     {
-            //         yield return batchEvent;
-            //     }
-            // }
+            if (topic == _transferBatchTopic)
+            {
+                foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
+                {
+                    yield return batchEvent;
+                }
+            }
 
             if (topic == _transferSingleTopic)
             {
@@ -207,20 +207,31 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             value);
     }
 
-    private IEnumerable<TransferBatch> Erc1155TransferBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<TransferBatch> Erc1155TransferBatch(
+        Block block, 
+        TxReceipt receipt, 
+        LogEntry log, 
+        int logIndex)
     {
+        var data = log.Data;
+        int idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
+        int valuesOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true);
+
         string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        int offset = 32;
-        int batchSize = (int)new BigInteger(log.Data.Slice(0, 32).ToArray());
-        for (int i = 0; i < batchSize; i++)
-        {
-            UInt256 batchId = new UInt256(log.Data.Slice(offset, 32), true);
-            UInt256 batchValue = new UInt256(log.Data.Slice(offset + 32, 32), true);
-            offset += 64;
+        var ids = DecodeUInt256Array(data.Slice(idsOffset));
+        var values = DecodeUInt256Array(data.Slice(valuesOffset));
 
+        if (ids.Count != values.Count)
+        {
+            throw new InvalidOperationException("The number of ids and values must match.");
+        }
+
+        // Yield each pair
+        for (int i = 0; i < ids.Count; i++)
+        {
             yield return new TransferBatch(
                 block.Number,
                 (long)block.Timestamp,
@@ -231,8 +242,9 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 operatorAddress,
                 fromAddress,
                 toAddress,
-                batchId,
-                batchValue);
+                ids[i],
+                values[i]
+            );
         }
     }
 
