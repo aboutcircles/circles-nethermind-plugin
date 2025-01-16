@@ -65,4 +65,9 @@ public interface ICirclesRpcModule : IRpcModule
         Description = "Tries to find a transitive transfer path between two addresses in the Circles V2 graph",
         IsImplemented = true)]
     Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest);
+
+    [JsonRpcMethod(
+        Description = "Checks if the database is available and indexing progresses as expected",
+        IsImplemented = true)]
+    Task<ResultWrapper<string>> circles_health();
 }
