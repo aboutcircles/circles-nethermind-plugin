@@ -80,13 +80,13 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
             }
 
-            if (topic == _transferBatchTopic)
-            {
-                foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
-                {
-                    yield return batchEvent;
-                }
-            }
+            // if (topic == _transferBatchTopic)
+            // {
+            //     foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
+            //     {
+            //         yield return batchEvent;
+            //     }
+            // }
 
             if (topic == _transferSingleTopic)
             {
