@@ -27,6 +27,11 @@ public class Settings
             ? new(Environment.GetEnvironmentVariable("V2_STANDARD_TREASURY_ADDRESS")!)
             : throw new Exception("V2_STANDARD_TREASURY_ADDRESS is not set.");
 
+    public readonly Address? CirclesLBPFactoryAddress =
+        Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS") != null
+            ? new(Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS")!)
+            : null;
+
     public readonly string IndexDbConnectionString =
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
