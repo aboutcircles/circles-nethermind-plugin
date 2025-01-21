@@ -32,19 +32,27 @@ public class Plugin : INethermindPlugin
 
     public async Task Init(INethermindApi nethermindApi)
     {
-        IDatabaseSchema common = new Common.DatabaseSchema();
-        IDatabaseSchema v1 = new CirclesV1.DatabaseSchema();
-        IDatabaseSchema v2 = new CirclesV2.DatabaseSchema();
-        IDatabaseSchema v2NameRegistry = new CirclesV2.NameRegistry.DatabaseSchema();
-        IDatabaseSchema v2StandardTreasury = new CirclesV2.StandardTreasury.DatabaseSchema();
-        IDatabaseSchema circlesViews = new CirclesViews.DatabaseSchema();
-        IDatabaseSchema databaseSchema =
-            new CompositeDatabaseSchema([common, v1, v2, v2NameRegistry, v2StandardTreasury, circlesViews]);
-
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
 
         Settings settings = new();
+
+        var schemas = new List<IDatabaseSchema>
+        {
+            new Common.DatabaseSchema(),
+            new CirclesV1.DatabaseSchema(),
+            new CirclesV2.DatabaseSchema(),
+            new CirclesV2.NameRegistry.DatabaseSchema(),
+            new CirclesV2.StandardTreasury.DatabaseSchema(),
+            new CirclesViews.DatabaseSchema()
+        };
+
+        if (settings.CirclesLBPFactoryAddress != null)
+        {
+            schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
+        }
+
+        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
 
         LogSettings(pluginLogger, settings, database);
@@ -52,32 +60,31 @@ public class Plugin : INethermindPlugin
 
         Sink sink = new Sink(
             database,
-            new CompositeSchemaPropertyMap([
-                v1.SchemaPropertyMap, v2.SchemaPropertyMap, v2NameRegistry.SchemaPropertyMap,
-                v2StandardTreasury.SchemaPropertyMap
-            ]),
-            new CompositeEventDtoTableMap([
-                v1.EventDtoTableMap, v2.EventDtoTableMap, v2NameRegistry.EventDtoTableMap,
-                v2StandardTreasury.EventDtoTableMap
-            ]),
+            databaseSchema.SchemaPropertyMap,
+            databaseSchema.EventDtoTableMap,
             settings.EventBufferSize);
 
         InitCaches(pluginLogger, database);
 
-        ILogParser[] logParsers =
-        [
+        var logParsers = new List<ILogParser>
+        {
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
             new CirclesV2.LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
             new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
             new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
-        ];
+        };
+
+        if (settings.CirclesLBPFactoryAddress != null)
+        {
+            logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress));
+        }
 
         _indexerContext = new Context(
             nethermindApi,
             pluginLogger,
             settings,
             database,
-            logParsers,
+            logParsers.ToArray(),
             sink);
 
         _indexerMachine = new StateMachine(
@@ -130,6 +137,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Hub address: " + settings.CirclesV2HubAddress);
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
+        pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
     }
 
