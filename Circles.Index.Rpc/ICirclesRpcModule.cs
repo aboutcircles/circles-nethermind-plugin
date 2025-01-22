@@ -33,6 +33,18 @@ public record CirclesTrustRelations(Address User, CirclesTrustRelation[] Trusts,
 
 public record CirclesEvent(string Event, IDictionary<string, object?> Values);
 
+public record Column(string Name, string Type);
+
+public class Table(string Name, string Topic)
+{
+    public Column[] Columns { get; set; } = [];
+}
+
+public class Namespace(string Name)
+{
+    public Table[] Tables { get; set; } = [];
+}
+
 #endregion
 
 [RpcModule("Circles")]
@@ -70,4 +82,9 @@ public interface ICirclesRpcModule : IRpcModule
         Description = "Checks if the database is available and indexing progresses as expected",
         IsImplemented = true)]
     Task<ResultWrapper<string>> circles_health();
+
+    [JsonRpcMethod(
+        Description = "Returns all indexed tables and columns grouped by namespace",
+        IsImplemented = true)]
+    Task<ResultWrapper<IEnumerable<Namespace>>> circles_tables();
 }
