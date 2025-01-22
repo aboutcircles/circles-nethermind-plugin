@@ -68,15 +68,19 @@
             color: #666;
         }
 
-        /* Query button + results */
-        .query-btn {
+        /* Buttons + results */
+        .buttons {
             margin: 8px 0;
+        }
+        .query-btn {
+            margin-right: 10px;
             padding: 6px 12px;
             cursor: pointer;
         }
         .query-results {
             margin-top: 10px;
         }
+
         table {
             border-collapse: collapse;
             margin: 0;
@@ -120,25 +124,7 @@
         return data.result || [];
     }
 
-    // 2) For each table, we want a "Query Table" button that calls circles_query on:
-    //    https://rpc.aboutcircles.com/
-    //
-    //    This query:
-    //    {
-    //      "jsonrpc": "2.0",
-    //      "id": 1,
-    //      "method": "circles_query",
-    //      "params": [
-    //        {
-    //          "Namespace": namespace,
-    //          "Table": tableName,
-    //          "Columns": [],
-    //          "Filter": [],
-    //          "Order": []
-    //        }
-    //      ]
-    //    }
-    //
+    // 2) Query a table (returns up to 10 rows in this example)
     async function queryTable(namespace, tableName, resultContainer) {
         const payload = {
             jsonrpc: '2.0',
@@ -216,6 +202,44 @@
         }
     }
 
+    // 3) Generate a code snippet for the fetch query with all columns
+    //    for copying to the clipboard.
+    function generateFetchCode(namespace, tableName, columns) {
+        // Build JSON object as a string, including all columns
+        const bodyObj = {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'circles_query',
+            params: [
+                {
+                    Namespace: namespace,
+                    Table: tableName,
+                    Columns: columns,
+                    Filter: [],
+                    Order: [],
+                    Limit: 10
+                }
+            ]
+        };
+
+        // Convert it to a string with indentation
+        const bodyStr = JSON.stringify(bodyObj, null, 2);
+
+        // Return a full snippet
+        return `fetch('https://rpc.aboutcircles.com/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(${bodyStr})
+})
+  .then(response => response.json())
+  .then(result => {
+    console.log('Query result:', result);
+  })
+  .catch(error => {
+    console.error('Error:', error);
+  });`;
+    }
+
     // Build collapsible structure for each namespace and table
     function createNamespaceElement(nsData) {
         const { namespace, tables } = nsData;
@@ -291,11 +315,26 @@
             colTable.appendChild(colTbody);
             tableContent.appendChild(colTable);
 
+            // We'll gather all column names into an array
+            const allColumns = tableObj.columns.map(c => c.column);
+
+            // Button container
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'buttons';
+
             // "Query Table" button
             const queryBtn = document.createElement('button');
             queryBtn.className = 'query-btn';
             queryBtn.textContent = 'Query Table';
-            tableContent.appendChild(queryBtn);
+            btnContainer.appendChild(queryBtn);
+
+            // "Copy Code" button
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'query-btn';
+            copyBtn.textContent = 'Copy Code';
+            btnContainer.appendChild(copyBtn);
+
+            tableContent.appendChild(btnContainer);
 
             // Container for the query results
             const queryResults = document.createElement('div');
@@ -307,11 +346,21 @@
                 queryTable(namespace, tableObj.table, queryResults);
             });
 
+            // Wire up the "Copy Code" button
+            copyBtn.addEventListener('click', async () => {
+                const codeSnippet = generateFetchCode(namespace, tableObj.table, allColumns);
+                try {
+                    await navigator.clipboard.writeText(codeSnippet);
+                    alert('Copied code snippet to clipboard!');
+                } catch (err) {
+                    alert('Failed to copy to clipboard: ' + err);
+                }
+            });
+
             // Toggle logic for the table
             tableHeader.addEventListener('click', (e) => {
-                // If the user clicked the "Query Table" button area, don't toggle
-                // Because the button is inside the header
-                if (e.target === queryBtn) {
+                // If the user clicked one of the buttons, don't toggle
+                if (e.target === queryBtn || e.target === copyBtn) {
                     return;
                 }
                 if (tableContent.style.display === 'none') {
