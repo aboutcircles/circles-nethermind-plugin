@@ -1,235 +1,356 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Circles Tables</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 20px;
-      background: #f8f8f8;
-    }
+    <meta charset="utf-8" />
+    <title>Circles Data Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background: #f8f8f8;
+        }
+        h1 {
+            margin-bottom: 10px;
+        }
 
-    h1 {
-      margin-bottom: 10px;
-    }
+        /* Collapsible containers for the NAMESPACES */
+        .namespace-header {
+            cursor: pointer;
+            background: #ddd;
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+        .namespace-header:hover {
+            background: #ccc;
+        }
+        .namespace-content {
+            border: 1px solid #ccc;
+            border-top: none;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #fff;
+            display: block; /* show by default */
+        }
 
-    /* Collapsible containers */
-    .collapsible-header {
-      cursor: pointer;
-      background: #ddd;
-      border: 1px solid #ccc;
-      padding: 8px;
-      margin-bottom: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-weight: bold;
-    }
-    .collapsible-header:hover {
-      background: #ccc;
-    }
+        /* Collapsible containers for the TABLES */
+        .table-header {
+            cursor: pointer;
+            margin: 10px 0 5px;
+            font-weight: bold;
+            background: #eee;
+            padding: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid #ccc;
+        }
+        .table-header:hover {
+            background: #ddd;
+        }
+        .table-content {
+            display: none; /* collapse by default */
+            border: 1px solid #ccc;
+            border-top: none;
+            padding: 6px;
+            background: #fff;
+            margin-bottom: 10px;
+        }
 
-    .collapsible-content {
-      border: 1px solid #ccc;
-      border-top: none;
-      margin-bottom: 20px;
-      padding: 10px;
-      background: #fff;
-    }
+        /* Arrow indicators */
+        .arrow {
+            margin-left: 10px;
+            font-weight: normal;
+            color: #666;
+        }
 
-    /* Small arrow indicator */
-    .arrow {
-      font-weight: normal;
-      margin-right: 10px;
-    }
+        /* Query button + results */
+        .query-btn {
+            margin: 8px 0;
+            padding: 6px 12px;
+            cursor: pointer;
+        }
+        .query-results {
+            margin-top: 10px;
+        }
+        table {
+            border-collapse: collapse;
+            margin: 0;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 6px 10px;
+        }
+        th {
+            background: #eee;
+        }
 
-    /* Table styling */
-    .table-header {
-      cursor: pointer;
-      margin: 10px 0 5px;
-      font-weight: bold;
-      display: flex;
-      justify-content: left;
-    }
-    .table-content {
-      border: 1px solid #ccc;
-      border-top: none;
-      margin-bottom: 20px;
-      padding: 0;
-      background: #fff;
-    }
-
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin: 0;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 6px 10px;
-    }
-    th {
-      background: #eee;
-    }
-
-    .error {
-      color: red;
-    }
-  </style>
+        .error {
+            color: red;
+        }
+    </style>
 </head>
 <body>
-<h1>Circles Tables Overview</h1>
-<div id="content">Loading data...</div>
+<h1>Circles Tables</h1>
+
+<div id="content">Loading table definitions…</div>
 
 <script>
-  // Fetch data from the endpoint
-  async function fetchCirclesTables() {
-    const response = await fetch('https://rpc.aboutcircles.com/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 0,
-        method: 'circles_tables',
-        params: []
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Request failed (status: ${response.status})`);
+    // 1) Fetch the list of tables from https://rpc.aboutcircles.com/:
+    async function fetchCirclesTables() {
+        const response = await fetch('https://rpc.aboutcircles.com/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 0,
+                method: 'circles_tables',
+                params: []
+            })
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to load circles_tables (status: ${response.status})`);
+        }
+        const data = await response.json();
+        return data.result || [];
     }
 
-    const data = await response.json();
-    return data.result || [];
-  }
+    // 2) For each table, we want a "Query Table" button that calls circles_query on:
+    //    https://rpc.aboutcircles.com/
+    //
+    //    This query:
+    //    {
+    //      "jsonrpc": "2.0",
+    //      "id": 1,
+    //      "method": "circles_query",
+    //      "params": [
+    //        {
+    //          "Namespace": namespace,
+    //          "Table": tableName,
+    //          "Columns": [],
+    //          "Filter": [],
+    //          "Order": []
+    //        }
+    //      ]
+    //    }
+    //
+    async function queryTable(namespace, tableName, resultContainer) {
+        const payload = {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'circles_query',
+            params: [
+                {
+                    Namespace: namespace,
+                    Table: tableName,
+                    Columns: [],
+                    Filter: [],
+                    Order: [],
+                    Limit: 10
+                }
+            ]
+        };
 
-  function createTableElement(tableObj) {
-    // Outer container for the table, including a header for clicking
-    const tableContainer = document.createElement('div');
+        try {
+            resultContainer.textContent = `Querying… (Namespace: ${namespace}, Table: ${tableName})`;
+            const resp = await fetch('https://rpc.aboutcircles.com/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!resp.ok) {
+                throw new Error(`Query request failed (status: ${resp.status})`);
+            }
+            const resultJson = await resp.json();
+            if (resultJson.error) {
+                throw new Error(resultJson.error.message || JSON.stringify(resultJson.error));
+            }
 
-    // Collapsible header
-    const header = document.createElement('div');
-    header.className = 'table-header';
-    header.textContent = `${tableObj.table} (${tableObj.topic})`;
+            const queryResult = resultJson.result;
+            // NOTE: The actual response from circles_query uses lowercase "columns" / "rows"
+            if (!queryResult || !queryResult.columns || !queryResult.rows) {
+                resultContainer.textContent = 'No results or invalid data.';
+                return;
+            }
 
-    const arrowSpan = document.createElement('span');
-    arrowSpan.className = 'arrow';
-    arrowSpan.textContent = '►'; // collapsed by default
-    header.prepend(arrowSpan);
+            const { columns, rows } = queryResult;
+            if (!rows.length) {
+                resultContainer.textContent = 'No rows returned.';
+                return;
+            }
 
-    // Content area (initially hidden)
-    const content = document.createElement('div');
-    content.className = 'table-content';
-    content.style.display = 'none';
+            // Build an HTML table for the query results
+            const table = document.createElement('table');
+            const thead = document.createElement('thead');
+            const headRow = document.createElement('tr');
+            columns.forEach(colName => {
+                const th = document.createElement('th');
+                th.textContent = colName;
+                headRow.appendChild(th);
+            });
+            thead.appendChild(headRow);
+            table.appendChild(thead);
 
-    // Build a small table for columns
-    const columnsTable = document.createElement('table');
-    const thead = document.createElement('thead');
-    thead.innerHTML = `
-        <tr>
-          <th>Column</th>
-          <th>Type</th>
-        </tr>
-      `;
-    columnsTable.appendChild(thead);
+            const tbody = document.createElement('tbody');
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                row.forEach(cellVal => {
+                    const td = document.createElement('td');
+                    td.textContent = String(cellVal);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
 
-    const tbody = document.createElement('tbody');
-    tableObj.columns.forEach(col => {
-      const row = document.createElement('tr');
-      const colCell = document.createElement('td');
-      colCell.textContent = col.column;
-
-      const typeCell = document.createElement('td');
-      typeCell.textContent = col.type;
-
-      row.appendChild(colCell);
-      row.appendChild(typeCell);
-      tbody.appendChild(row);
-    });
-
-    columnsTable.appendChild(tbody);
-    content.appendChild(columnsTable);
-
-    // Toggle logic
-    header.addEventListener('click', () => {
-      if (content.style.display === 'none') {
-        content.style.display = 'block';
-        arrowSpan.textContent = '▼'; // expanded
-      } else {
-        content.style.display = 'none';
-        arrowSpan.textContent = '►'; // collapsed
-      }
-    });
-
-    // Assemble
-    tableContainer.appendChild(header);
-    tableContainer.appendChild(content);
-    return tableContainer;
-  }
-
-  function createNamespaceElement(namespaceData) {
-    const { namespace, tables } = namespaceData;
-
-    // Container for each namespace
-    const container = document.createElement('div');
-
-    // Collapsible header for the namespace
-    const nsHeader = document.createElement('div');
-    nsHeader.className = 'collapsible-header';
-    nsHeader.textContent = `Namespace: ${namespace}`;
-
-    const arrowSpan = document.createElement('span');
-    arrowSpan.className = 'arrow';
-    arrowSpan.textContent = '▼'; // namespace open by default
-    nsHeader.appendChild(arrowSpan);
-
-    // Content area (includes all tables)
-    const nsContent = document.createElement('div');
-    nsContent.className = 'collapsible-content';
-    nsContent.style.display = 'block'; // show by default
-
-    // Build each table in a collapsible container
-    tables.forEach(tableObj => {
-      const tableElem = createTableElement(tableObj);
-      nsContent.appendChild(tableElem);
-    });
-
-    // Toggle logic for the namespace
-    nsHeader.addEventListener('click', () => {
-      if (nsContent.style.display === 'none') {
-        nsContent.style.display = 'block';
-        arrowSpan.textContent = '▼';
-      } else {
-        nsContent.style.display = 'none';
-        arrowSpan.textContent = '►';
-      }
-    });
-
-    // Assemble
-    container.appendChild(nsHeader);
-    container.appendChild(nsContent);
-
-    return container;
-  }
-
-  async function init() {
-    const content = document.getElementById('content');
-    try {
-      const result = await fetchCirclesTables();
-      content.textContent = ''; // clear loading message
-
-      result.forEach(nsData => {
-        const nsElem = createNamespaceElement(nsData);
-        content.appendChild(nsElem);
-      });
-    } catch (err) {
-      content.innerHTML = `<p class="error">Failed to load data: ${err.message}</p>`;
+            // Clear old text, display the table
+            resultContainer.innerHTML = '';
+            resultContainer.appendChild(table);
+        } catch (err) {
+            resultContainer.textContent = 'Error: ' + err.message;
+        }
     }
-  }
 
-  // On page load
-  init();
+    // Build collapsible structure for each namespace and table
+    function createNamespaceElement(nsData) {
+        const { namespace, tables } = nsData;
+
+        // Container for the namespace section
+        const container = document.createElement('div');
+
+        // Namespace header (click to expand/collapse entire namespace content)
+        const nsHeader = document.createElement('div');
+        nsHeader.className = 'namespace-header';
+        nsHeader.textContent = `Namespace: ${namespace}`;
+
+        const arrowSpan = document.createElement('span');
+        arrowSpan.className = 'arrow';
+        arrowSpan.textContent = '▼'; // open by default
+        nsHeader.appendChild(arrowSpan);
+
+        // Namespace content area
+        const nsContent = document.createElement('div');
+        nsContent.className = 'namespace-content';
+        nsContent.style.display = 'block'; // open by default
+
+        // Toggle logic for the namespace
+        nsHeader.addEventListener('click', () => {
+            if (nsContent.style.display === 'none') {
+                nsContent.style.display = 'block';
+                arrowSpan.textContent = '▼';
+            } else {
+                nsContent.style.display = 'none';
+                arrowSpan.textContent = '►';
+            }
+        });
+
+        // For each table inside this namespace:
+        tables.forEach(tableObj => {
+            const tableContainer = document.createElement('div');
+
+            // Table header (click to expand/collapse table details)
+            const tableHeader = document.createElement('div');
+            tableHeader.className = 'table-header';
+            tableHeader.textContent = `Table: ${tableObj.table}`;
+            const tableArrow = document.createElement('span');
+            tableArrow.className = 'arrow';
+            tableArrow.textContent = '►'; // collapsed by default
+            tableHeader.appendChild(tableArrow);
+
+            const tableContent = document.createElement('div');
+            tableContent.className = 'table-content';
+            tableContent.style.display = 'none';
+
+            // Add the topic display
+            const topicDiv = document.createElement('div');
+            topicDiv.textContent = `Topic: ${tableObj.topic}`;
+            tableContent.appendChild(topicDiv);
+
+            // Build a small columns table
+            const colTable = document.createElement('table');
+            const colThead = document.createElement('thead');
+            colThead.innerHTML = `<tr><th>Column</th><th>Type</th></tr>`;
+            colTable.appendChild(colThead);
+
+            const colTbody = document.createElement('tbody');
+            tableObj.columns.forEach(col => {
+                const row = document.createElement('tr');
+                const cName = document.createElement('td');
+                cName.textContent = col.column;
+                const cType = document.createElement('td');
+                cType.textContent = col.type;
+                row.appendChild(cName);
+                row.appendChild(cType);
+                colTbody.appendChild(row);
+            });
+            colTable.appendChild(colTbody);
+            tableContent.appendChild(colTable);
+
+            // "Query Table" button
+            const queryBtn = document.createElement('button');
+            queryBtn.className = 'query-btn';
+            queryBtn.textContent = 'Query Table';
+            tableContent.appendChild(queryBtn);
+
+            // Container for the query results
+            const queryResults = document.createElement('div');
+            queryResults.className = 'query-results';
+            tableContent.appendChild(queryResults);
+
+            // Wire up the "Query Table" button
+            queryBtn.addEventListener('click', () => {
+                queryTable(namespace, tableObj.table, queryResults);
+            });
+
+            // Toggle logic for the table
+            tableHeader.addEventListener('click', (e) => {
+                // If the user clicked the "Query Table" button area, don't toggle
+                // Because the button is inside the header
+                if (e.target === queryBtn) {
+                    return;
+                }
+                if (tableContent.style.display === 'none') {
+                    tableContent.style.display = 'block';
+                    tableArrow.textContent = '▼';
+                } else {
+                    tableContent.style.display = 'none';
+                    tableArrow.textContent = '►';
+                }
+            });
+
+            // Assemble everything
+            tableContainer.appendChild(tableHeader);
+            tableContainer.appendChild(tableContent);
+            nsContent.appendChild(tableContainer);
+        });
+
+        container.appendChild(nsHeader);
+        container.appendChild(nsContent);
+        return container;
+    }
+
+    async function init() {
+        const content = document.getElementById('content');
+        try {
+            const tablesData = await fetchCirclesTables();
+            content.textContent = ''; // clear the "Loading..." message
+
+            tablesData.forEach(nsData => {
+                const nsElem = createNamespaceElement(nsData);
+                content.appendChild(nsElem);
+            });
+        } catch (err) {
+            content.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+        }
+    }
+
+    // Kick things off
+    init();
 </script>
 </body>
 </html>
