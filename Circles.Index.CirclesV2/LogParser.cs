@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Numerics;
-using System.Text;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,14 +30,20 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
     private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
 
+    // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
     public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
     {
+        // Not used in this snippet
         yield break;
     }
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
+    public IEnumerable<IIndexEvent> ParseLog(
+        Block block,
+        Transaction transaction,
+        TxReceipt receipt,
+        LogEntry log,
         int logIndex)
     {
         if (log.Topics.Length == 0)
@@ -48,6 +53,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
         var topic = log.Topics[0];
 
+        // Events from the V2Hub
         if (log.Address == v2HubAddress)
         {
             if (topic == _stoppedTopic)
@@ -112,6 +118,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             }
         }
 
+        // Events from the Erc20Lift contract
         if (log.Address == erc20LiftAddress)
         {
             if (topic == _erc20WrapperDeployed)
@@ -120,6 +127,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             }
         }
 
+        // Events from known ERC20Wrapper addresses
         if (Erc20WrapperAddresses.ContainsKey(log.Address))
         {
             if (topic == _erc20WrapperTransfer)
@@ -149,9 +157,11 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
+    #region ERC20WrapperDeployed
+
     private IIndexEvent Erc20WrapperDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // "event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)"
+        // event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string erc20Wrapper = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 circlesType = new UInt256(log.Data, true);
@@ -166,11 +176,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             avatar,
             erc20Wrapper,
-            (long)(BigInteger)circlesType);
+            (long)(BigInteger)circlesType
+        );
     }
+
+    #endregion
+
+    #region ERC1155ApprovalForAll
 
     private ApprovalForAll Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event ApprovalForAll(address indexed account, address indexed operator, bool approved)
         string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string operatorAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         bool approved = new BigInteger(log.Data) == 1;
@@ -183,14 +199,22 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             account,
             operatorAddress,
-            approved);
+            approved
+        );
     }
+
+    #endregion
+
+    #region ERC1155TransferSingle
 
     private TransferSingle Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)
         string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        // Non-indexed: id (32 bytes) + value (32 bytes)
         UInt256 id = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 value = new UInt256(log.Data.Slice(32), true);
 
@@ -204,33 +228,41 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             fromAddress,
             toAddress,
             id,
-            value);
+            value
+        );
     }
 
-    private IEnumerable<TransferBatch> Erc1155TransferBatch(
-        Block block, 
-        TxReceipt receipt, 
-        LogEntry log, 
-        int logIndex)
-    {
-        var data = log.Data;
-        int idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
-        int valuesOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true);
+    #endregion
 
+    #region ERC1155TransferBatch
+
+    private IEnumerable<TransferBatch> Erc1155TransferBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)
         string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        var ids = DecodeUInt256Array(data.Slice(idsOffset));
-        var values = DecodeUInt256Array(data.Slice(valuesOffset));
-
-        if (ids.Count != values.Count)
+        // The first 2 * 32 bytes in log.Data are offsets for the two arrays: ids, values
+        var data = log.Data;
+        if (data.Length < 64)
         {
-            throw new InvalidOperationException("The number of ids and values must match.");
+            yield break;
         }
 
-        // Yield each pair
-        for (int i = 0; i < ids.Count; i++)
+        int idsOffset = LogDataParsingHelper.ParseOffset(data, 0);
+        int valuesOffset = LogDataParsingHelper.ParseOffset(data, 32);
+
+        // Now parse each array
+        UInt256[] ids = LogDataParsingHelper.ParseUInt256Array(data, idsOffset);
+        UInt256[] values = LogDataParsingHelper.ParseUInt256Array(data, valuesOffset);
+
+        if (ids.Length != values.Length)
+        {
+            throw new InvalidOperationException("The number of ids and values must match in TransferBatch.");
+        }
+
+        for (int i = 0; i < ids.Length; i++)
         {
             yield return new TransferBatch(
                 block.Number,
@@ -248,9 +280,13 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
-    private RegisterOrganization CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log,
-        int logIndex)
+    #endregion
+
+    #region RegisterOrganization
+
+    private RegisterOrganization CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event RegisterOrganization(address indexed organization, string name)
         string orgAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string orgName = LogDataStringDecoder.ReadStrings(log.Data)[0];
 
@@ -261,11 +297,23 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             logIndex,
             receipt.TxHash!.ToString(),
             orgAddress,
-            orgName);
+            orgName
+        );
     }
+
+    #endregion
+
+    #region RegisterGroup
 
     private RegisterGroup CrcV2RegisterGroup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event RegisterGroup(
+        //     address indexed group,
+        //     address indexed mintPolicy,
+        //     address indexed treasury,
+        //     string name,
+        //     string symbol
+        // )
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string mintPolicy = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string treasury = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
@@ -284,12 +332,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             mintPolicy,
             treasury,
             groupName,
-            groupSymbol);
+            groupSymbol
+        );
     }
 
+    #endregion
+
+    #region RegisterHuman
 
     private RegisterHuman CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event RegisterHuman(address indexed human, address indexed inviter)
         string humanAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string inviterAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
@@ -300,12 +353,19 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             logIndex,
             receipt.TxHash!.ToString(),
             humanAddress,
-            inviterAddress);
+            inviterAddress
+        );
     }
+
+    #endregion
+
+    #region PersonalMint
 
     private PersonalMint CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event PersonalMint(address indexed to, uint256 amount, uint256 startPeriod, uint256 endPeriod)
         string toAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
         UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 startPeriod = new UInt256(log.Data.Slice(32, 32), true);
         UInt256 endPeriod = new UInt256(log.Data.Slice(64), true);
@@ -319,14 +379,19 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             toAddress,
             amount,
             startPeriod,
-            endPeriod);
+            endPeriod
+        );
     }
+
+    #endregion
+
+    #region Trust
 
     private Trust CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event Trust(address indexed user, address indexed canSendTo, uint256 trustLimit)
         string userAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string canSendToAddress =
-            "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string canSendToAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 limit = new UInt256(log.Data, true);
 
         return new Trust(
@@ -337,11 +402,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             userAddress,
             canSendToAddress,
-            limit);
+            limit
+        );
     }
+
+    #endregion
+
+    #region Stopped
 
     private Stopped CrcV2Stopped(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event Stopped(address indexed who)
         string address = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         return new Stopped(
@@ -350,29 +421,41 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            address);
+            address
+        );
     }
+
+    #endregion
+
+    #region Erc20WrapperTransfer
 
     private Erc20WrapperTransfer Erc20WrapperTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event Erc20WrapperTransfer(address indexed from, address indexed to, uint256 value)
         string from = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string to = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 amount = new(log.Data, true);
+        UInt256 amount = new UInt256(log.Data, true);
 
         return new Erc20WrapperTransfer(
-            block.Number
-            , (long)block.Timestamp
-            , receipt.Index
-            , logIndex
-            , receipt.TxHash!.ToString()
-            , log.Address.ToString(true, false)
-            , from
-            , to
-            , amount);
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            from,
+            to,
+            amount
+        );
     }
+
+    #endregion
+
+    #region DepositInflationary
 
     private DepositInflationary DepositInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)
         string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 demurragedAmount = new UInt256(log.Data.Slice(32), true);
@@ -385,11 +468,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             account,
             amount,
-            demurragedAmount);
+            demurragedAmount
+        );
     }
+
+    #endregion
+
+    #region WithdrawInflationary
 
     private WithdrawInflationary WithdrawInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event WithdrawInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)
         string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 demurragedAmount = new UInt256(log.Data.Slice(32), true);
@@ -402,11 +491,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             account,
             amount,
-            demurragedAmount);
+            demurragedAmount
+        );
     }
+
+    #endregion
+
+    #region DepositDemurraged
 
     private DepositDemurraged DepositDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)
         string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 inflationaryAmount = new UInt256(log.Data.Slice(32), true);
@@ -419,11 +514,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             account,
             amount,
-            inflationaryAmount);
+            inflationaryAmount
+        );
     }
+
+    #endregion
+
+    #region WithdrawDemurraged
 
     private WithdrawDemurraged WithdrawDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)
         string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 amount = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 inflationaryAmount = new UInt256(log.Data.Slice(32), true);
@@ -436,14 +537,20 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             account,
             amount,
-            inflationaryAmount);
+            inflationaryAmount
+        );
     }
+
+    #endregion
+
+    #region DiscountCost
 
     private DiscountCost DiscountCost(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)
         string account = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         UInt256 id = new UInt256(log.Topics[2].Bytes, true);
-        UInt256 discountCost = new UInt256(log.Data, true);
+        UInt256 cost = new UInt256(log.Data, true);
 
         return new DiscountCost(
             block.Number,
@@ -453,30 +560,41 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             account,
             id,
-            discountCost);
+            cost
+        );
     }
+
+    #endregion
+
+    #region StreamCompleted
 
     private IEnumerable<StreamCompleted> StreamCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event StreamCompleted(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] amounts)
         string operatorAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string fromAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string toAddress = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        // Decode the data section containing the dynamic arrays
+        // log.Data has two offsets (ids, amounts)
         var data = log.Data;
-        int idsOffset = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true);
-        int amountsOffset = (int)new BigInteger(data.Slice(32, 32).ToArray(), true, true);
-        var ids = DecodeUInt256Array(data.Slice(idsOffset));
-        var amounts = DecodeUInt256Array(data.Slice(amountsOffset));
-
-        if (ids.Count != amounts.Count)
+        if (data.Length < 64)
         {
-            throw new InvalidOperationException("The number of ids and amounts must be equal.");
+            yield break;
         }
 
-        for (int i = 0; i < amounts.Count; i++)
+        int idsOffset = LogDataParsingHelper.ParseOffset(data, 0);
+        int amountsOffset = LogDataParsingHelper.ParseOffset(data, 32);
+
+        UInt256[] ids = LogDataParsingHelper.ParseUInt256Array(data, idsOffset);
+        UInt256[] amounts = LogDataParsingHelper.ParseUInt256Array(data, amountsOffset);
+
+        if (ids.Length != amounts.Length)
         {
-            // Create the event instance
+            throw new InvalidOperationException("The number of ids and amounts must match in StreamCompleted.");
+        }
+
+        for (int i = 0; i < ids.Length; i++)
+        {
             yield return new StreamCompleted(
                 block.Number,
                 (long)block.Timestamp,
@@ -493,16 +611,5 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
-    private static List<UInt256> DecodeUInt256Array(ReadOnlyMemory<byte> data)
-    {
-        List<UInt256> result = new List<UInt256>();
-        int length = (int)new BigInteger(data.Slice(0, 32).ToArray(), true, true); // First 32 bytes are the length
-        for (int i = 0; i < length; i++)
-        {
-            UInt256 value = new UInt256(data.Slice(32 + i * 32, 32).ToArray(), true); // Each element is 32 bytes
-            result.Add(value);
-        }
-
-        return result;
-    }
+    #endregion
 }
