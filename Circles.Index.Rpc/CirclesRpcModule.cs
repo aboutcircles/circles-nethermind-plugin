@@ -386,12 +386,12 @@ public class CirclesRpcModule : ICirclesRpcModule
     public Task<ResultWrapper<IEnumerable<Namespace>>> circles_tables()
     {
         var namespaces = new List<Namespace>();
-        foreach (var namepsace in _indexerContext.Database.Schema.Tables.GroupBy(o => o.Key.Namespace))
+        foreach (var @namespace in _indexerContext.Database.Schema.Tables.GroupBy(o => o.Key.Namespace))
         {
-            var namespaceDto = new Namespace(namepsace.Key);
+            var namespaceDto = new Namespace(@namespace.Key);
             namespaces.Add(namespaceDto);
 
-            foreach (var table in namepsace)
+            foreach (var table in @namespace)
             {
                 var topic = table.Value.Topic.ToHexString(true);
                 var tableDto = new Table(table.Key.Table, topic);

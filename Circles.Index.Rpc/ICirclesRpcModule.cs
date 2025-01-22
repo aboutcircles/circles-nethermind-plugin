@@ -35,13 +35,16 @@ public record CirclesEvent(string Event, IDictionary<string, object?> Values);
 
 public record Column(string Name, string Type);
 
-public class Table(string Name, string Topic)
+public class Table(string name, string topic)
 {
+    public string Name { get; set; } = name;
+    public string Topic { get; set; } = topic;
     public Column[] Columns { get; set; } = [];
 }
 
-public class Namespace(string Name)
+public class Namespace(string name)
 {
+    public string Name { get; set; } = name;
     public Table[] Tables { get; set; } = [];
 }
 
