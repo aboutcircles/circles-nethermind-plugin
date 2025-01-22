@@ -373,3 +373,18 @@ curl -X POST --data '{
   "id": 1
 }
 ```
+
+#### Get the max flow between two nodes
+```shell
+curl 'https://rpc.aboutcircles.com/' \
+ -H 'Content-Type: application/json' \
+ --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
+```
+
+
+#### Show all tables available for queries
+```shell
+curl 'https://rpc.aboutcircles.com/' \
+ -H 'Content-Type: application/json' \
+ --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_tables","params":[]}'
+```
