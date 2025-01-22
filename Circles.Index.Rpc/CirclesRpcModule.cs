@@ -383,29 +383,29 @@ public class CirclesRpcModule : ICirclesRpcModule
         return Task.FromResult(ResultWrapper<string>.Success("Healthy"));
     }
 
-    public Task<ResultWrapper<IEnumerable<Namespace>>> circles_tables()
+    public Task<ResultWrapper<IEnumerable<DatabaseNamespace>>> circles_tables()
     {
-        var namespaces = new List<Namespace>();
-        foreach (var namepsace in _indexerContext.Database.Schema.Tables.GroupBy(o => o.Key.Namespace))
+        var namespaces = new List<DatabaseNamespace>();
+        foreach (var @namespace in _indexerContext.Database.Schema.Tables.GroupBy(o => o.Key.Namespace))
         {
-            var namespaceDto = new Namespace(namepsace.Key);
+            var namespaceDto = new DatabaseNamespace(@namespace.Key);
             namespaces.Add(namespaceDto);
 
-            foreach (var table in namepsace)
+            foreach (var table in @namespace)
             {
                 var topic = table.Value.Topic.ToHexString(true);
-                var tableDto = new Table(table.Key.Table, topic);
+                var tableDto = new DatabaseTable(table.Key.Table, topic);
                 namespaceDto.Tables = namespaceDto.Tables.Append(tableDto).ToArray();
 
                 foreach (var column in table.Value.Columns)
                 {
-                    var columnDto = new Column(column.Column, column.Type.ToString());
+                    var columnDto = new DatabaseColumn(column.Column, column.Type.ToString());
                     tableDto.Columns = tableDto.Columns.Append(columnDto).ToArray();
                 }
             }
         }
 
-        return Task.FromResult(ResultWrapper<IEnumerable<Namespace>>.Success(namespaces));
+        return Task.FromResult(ResultWrapper<IEnumerable<DatabaseNamespace>>.Success(namespaces));
     }
 
     private string[] GetTokenExposureIds(Address address)
