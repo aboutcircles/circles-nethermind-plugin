@@ -5,12 +5,33 @@ using Nethermind.Core.Extensions;
 
 namespace Circles.Index.CirclesV2.LBP;
 
+/*
+   // Events
+   /// @notice Emitted when a CirclesBacking is created.
+   event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
+   /// @notice Emitted when a LBP is created.
+   event LBPDeployed(address indexed circlesBackingInstance, address indexed lbp);
+   /// @notice Emitted when a Circles backing process is initiated.
+   event CirclesBackingInitiated(
+       address indexed backer,
+       address indexed circlesBackingInstance,
+       address backingAsset,
+       address personalCirclesAddress
+   );
+   /// @notice Emitted when a Circles backing process is completed.
+   event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address indexed lbp);
+   /// @notice Emitted when a Circles backing is ended by user due to release of LP tokens.
+   event Released(address indexed backer, address indexed circlesBackingInstance, address indexed lbp);
+
+ */
+
 public class LogParser(Address factoryAddress) : ILogParser
 {
     private readonly Hash256 _circlesBackingDeployedTopic = new(DatabaseSchema.CirclesBackingDeployed.Topic);
     private readonly Hash256 _lbpDeployedTopic = new(DatabaseSchema.LBPDeployed.Topic);
     private readonly Hash256 _circlesBackingInitiatedTopic = new(DatabaseSchema.CirclesBackingInitiated.Topic);
     private readonly Hash256 _circlesBackingCompletedTopic = new(DatabaseSchema.CirclesBackingCompleted.Topic);
+    private readonly Hash256 _releasedTopic = new(DatabaseSchema.Released.Topic);
 
     public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
     {
@@ -51,6 +72,10 @@ public class LogParser(Address factoryAddress) : ILogParser
         else if (topic == _circlesBackingCompletedTopic)
         {
             yield return CirclesBackingCompleted(block, receipt, log, logIndex);
+        }
+        else if (topic == _releasedTopic)
+        {
+            yield return Released(block, receipt, log, logIndex);
         }
     }
 
@@ -126,9 +151,27 @@ public class LogParser(Address factoryAddress) : ILogParser
     {
         var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        var lbp = "0x" + log.Data.ToHexString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var lbp = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         return new CirclesBackingCompleted(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            backer,
+            circlesBackingInstance,
+            lbp
+        );
+    }
+
+    private Released Released(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var lbp = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        return new Released(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
