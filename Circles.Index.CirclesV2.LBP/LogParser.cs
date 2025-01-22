@@ -61,19 +61,23 @@ public class LogParser(Address factoryAddress) : ILogParser
         {
             yield return CirclesBackingDeployed(block, receipt, log, logIndex);
         }
-        else if (topic == _lbpDeployedTopic)
+
+        if (topic == _lbpDeployedTopic)
         {
             yield return LbpDeployed(block, receipt, log, logIndex);
         }
-        else if (topic == _circlesBackingInitiatedTopic)
+
+        if (topic == _circlesBackingInitiatedTopic)
         {
             yield return CirclesBackingInitiated(block, receipt, log, logIndex);
         }
-        else if (topic == _circlesBackingCompletedTopic)
+
+        if (topic == _circlesBackingCompletedTopic)
         {
             yield return CirclesBackingCompleted(block, receipt, log, logIndex);
         }
-        else if (topic == _releasedTopic)
+
+        if (topic == _releasedTopic)
         {
             yield return Released(block, receipt, log, logIndex);
         }
