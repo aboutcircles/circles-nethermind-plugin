@@ -33,16 +33,19 @@ public record CirclesTrustRelations(Address User, CirclesTrustRelation[] Trusts,
 
 public record CirclesEvent(string Event, IDictionary<string, object?> Values);
 
-public record Column(string Name, string Type);
+public record DatabaseColumn(string Column, string Type);
 
-public class Table(string Name, string Topic)
+public class DatabaseTable(string table, string topic)
 {
-    public Column[] Columns { get; set; } = [];
+    public string Table { get; set; } = table;
+    public string Topic { get; set; } = topic;
+    public DatabaseColumn[] Columns { get; set; } = [];
 }
 
-public class Namespace(string Name)
+public class DatabaseNamespace(string @namespace)
 {
-    public Table[] Tables { get; set; } = [];
+    public string Namespace { get; set; } = @namespace;
+    public DatabaseTable[] Tables { get; set; } = [];
 }
 
 #endregion
@@ -86,5 +89,5 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(
         Description = "Returns all indexed tables and columns grouped by namespace",
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<Namespace>>> circles_tables();
+    Task<ResultWrapper<IEnumerable<DatabaseNamespace>>> circles_tables();
 }
