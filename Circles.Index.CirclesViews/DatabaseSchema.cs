@@ -8,6 +8,78 @@ public class DatabaseSchema : IDatabaseSchema
 
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
 
+    public static readonly EventSchema V_CrcV2_TotalSupply = new("V_CrcV2", "TotalSupply", new byte[32], [
+        new("tokenAddress", ValueTypes.Address, true),
+        new("tokenId", ValueTypes.BigInt, true),
+        new("totalSupply", ValueTypes.BigInt, false),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+            create or replace view ""V_CrcV2_TotalSupply"" 
+            as
+               with combined_transfers as (
+                   select
+                       ""tokenAddress"",
+                       id,
+                       ""from"",
+                       ""to"",
+                       value
+                   from ""CrcV2_TransferSingle""
+                   union all
+                   select
+                       ""tokenAddress"",
+                       id,
+                       ""from"",
+                       ""to"",
+                       value
+                   from ""CrcV2_TransferBatch""
+               )
+               select
+                   ""tokenAddress"",
+                   ""id"" as ""tokenId"",
+                   sum(
+                           case
+                               when ""from"" = '0x0000000000000000000000000000000000000000' then value
+                               when ""to""   = '0x0000000000000000000000000000000000000000' then -value
+                               else 0
+                               end
+                   ) as total_supply
+               from combined_transfers
+               group by
+                   ""tokenAddress"",
+                   ""tokenId"";
+         ")
+    };
+
+    public static readonly EventSchema V_CrcV1_TotalSupply = new("V_CrcV1", "TotalSupply", new byte[32], [
+        new("tokenAddress", ValueTypes.Address, true),
+        new("user", ValueTypes.Address, true),
+        new("totalSupply", ValueTypes.BigInt, false),
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+                 create or replace view ""V_CrcV1_TotalSupply""
+       as
+       with t as (
+           select
+               ""tokenAddress"",
+               SUM(
+                       case
+                           when ""from"" = '0x0000000000000000000000000000000000000000' then amount
+                           when ""to""   = '0x0000000000000000000000000000000000000000' then -amount
+                           else 0
+                           end
+               ) as ""totalSupply""
+           from ""CrcV1_Transfer""
+           group by ""tokenAddress""
+       )
+       select t.""tokenAddress"",
+              s.""user"",
+              t.""totalSupply""
+       from ""t""
+       join ""CrcV1_Signup"" s on ""s"".""token"" = t.""tokenAddress"";")
+    };
+
     public static readonly EventSchema V_CrcV1_TrustRelations = new("V_CrcV1", "TrustRelations", new byte[32], [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
@@ -925,6 +997,14 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_Crc", "Stats"),
                 V_Crc_Stats
+            },
+            {
+                ("V_CrcV1", "TotalSupply"),
+                V_CrcV1_TotalSupply
+            },
+            {
+                ("V_CrcV2", "TotalSupply"),
+                V_CrcV2_TotalSupply
             }
         };
 }
