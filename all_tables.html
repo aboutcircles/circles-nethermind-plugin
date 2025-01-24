@@ -105,9 +105,11 @@
 <div id="content">Loading table definitions…</div>
 
 <script>
+    const apiURL = 'https://rpc.aboutcircles.com/';
+    
     // 1) Fetch the list of tables from https://rpc.aboutcircles.com/:
     async function fetchCirclesTables() {
-        const response = await fetch('https://rpc.aboutcircles.com/', {
+        const response = await fetch(apiURL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -144,7 +146,7 @@
 
         try {
             resultContainer.textContent = `Querying… (Namespace: ${namespace}, Table: ${tableName})`;
-            const resp = await fetch('https://rpc.aboutcircles.com/', {
+            const resp = await fetch(apiURL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -226,7 +228,7 @@
         const bodyStr = JSON.stringify(bodyObj, null, 2);
 
         // Return a full snippet
-        return `fetch('https://rpc.aboutcircles.com/', {
+        return `fetch('${apiURL}', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(${bodyStr})
