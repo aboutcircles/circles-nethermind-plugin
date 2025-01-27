@@ -1,6 +1,7 @@
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2.NameRegistry;
@@ -16,7 +17,8 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         yield break;
     }
 
-    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction,  TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         if (log.Topics.Length == 0)
         {
@@ -67,13 +69,8 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         // event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce)
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        byte[] shortNameBytes = new byte[9];
-        Array.Copy(log.Data, shortNameBytes, 9);
-        UInt256 shortName = new UInt256(shortNameBytes, true);
-
-        byte[] nonceBytes = new byte[32];
-        Array.Copy(log.Data, 9, nonceBytes, 0, 32);
-        UInt256 nonce = new UInt256(nonceBytes, true);
+        UInt256 shortName = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 nonce = new UInt256(log.Data.Slice(32, 32), true);
 
         return new RegisterShortName(
             block.Number,
