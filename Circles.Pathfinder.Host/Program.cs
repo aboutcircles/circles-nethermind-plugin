@@ -61,7 +61,7 @@ app.MapGet("/findPath", async (string from, string to, string amount, NetworkSta
                 Source = from.ToLowerInvariant(),
                 Sink = to.ToLowerInvariant(),
                 TargetFlow = amount
-            }, 0);
+            }, BigInteger.Parse(amount));
 
         return Results.Ok(pathResult);
     }
