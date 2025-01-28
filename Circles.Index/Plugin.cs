@@ -54,6 +54,9 @@ public class Plugin : INethermindPlugin
 
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
+        IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
+            ? new PostgresDb(settings.IndexReadonlyDbConnectionString, databaseSchema)
+            : database;
 
         LogSettings(pluginLogger, settings, database);
         database.Migrate();
@@ -84,6 +87,7 @@ public class Plugin : INethermindPlugin
             pluginLogger,
             settings,
             database,
+            readonlyDatabase,
             logParsers.ToArray(),
             sink);
 
@@ -131,6 +135,15 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * host: " + connectionStringBuilder.Host);
         pluginLogger.Info(" * port: " + connectionStringBuilder.Port);
         pluginLogger.Info(" * user: " + connectionStringBuilder.Username);
+
+        if (settings.IndexReadonlyDbConnectionString != null)
+        {
+            NpgsqlConnectionStringBuilder readonlyConnectionStringBuilder = new(settings.IndexReadonlyDbConnectionString);
+            pluginLogger.Info("Index database (readonly): " + readonlyConnectionStringBuilder.Database);
+            pluginLogger.Info(" * host: " + readonlyConnectionStringBuilder.Host);
+            pluginLogger.Info(" * port: " + readonlyConnectionStringBuilder.Port);
+            pluginLogger.Info(" * user: " + readonlyConnectionStringBuilder.Username);
+        }
 
         pluginLogger.Info("Contract addresses: ");
         pluginLogger.Info(" * V1 Hub address: " + settings.CirclesV1HubAddress);
@@ -209,6 +222,7 @@ public class Plugin : INethermindPlugin
         // Start the processing task if it's not already running
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
+            // TODO: Await all ProcessBlocksAsync tasks without blocking the event handler. It's important that we always get all exceptions (e.g. as aggregate exception) of all tasks.
             Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
         }
     }

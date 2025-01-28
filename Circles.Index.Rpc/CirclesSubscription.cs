@@ -38,8 +38,8 @@ public class CirclesSubscription : Subscription
                 new FilterPredicate("avatar", FilterType.Equals, param.Address?.ToString(true, false))
             ], [], 1);
 
-            var parameterizedSql = select.ToSql(context.Database);
-            var avatarInfo = context.Database.Select(parameterizedSql);
+            var parameterizedSql = select.ToSql(context.ReadonlyDatabase);
+            var avatarInfo = context.ReadonlyDatabase.Select(parameterizedSql);
             if (!avatarInfo.Rows.Any())
             {
                 throw new Exception($"The address {param.Address} is not a circles avatar.");
