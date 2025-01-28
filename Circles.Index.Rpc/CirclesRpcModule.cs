@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using Circles.Index.Common;
 using Circles.Index.Query;
@@ -361,11 +362,40 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
     {
-        var loadGraph = new LoadGraph(_indexerContext.Settings.IndexReadonlyDbConnectionString ??
-                                      _indexerContext.Settings.IndexDbConnectionString);
-        var graphFactory = new GraphFactory();
-        var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
-        return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
+        if (!string.IsNullOrWhiteSpace(_indexerContext.Settings.ExternalPathfinderUrl))
+        {
+            // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
+            var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
+            var url =
+                $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+
+            using var httpClient = new HttpClient();
+
+            // Perform the GET request to the external pathfinder
+            var response = await httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            // Expect a JSON response that can deserialize into MaxFlowResponse
+            var maxFlowResponse = await response.Content.ReadFromJsonAsync<MaxFlowResponse>();
+            if (maxFlowResponse == null)
+            {
+                throw new Exception("Failed to deserialize MaxFlowResponse from external pathfinder.");
+            }
+
+            return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse);
+        }
+        else
+        {
+            // If no external service is configured, run the local pathfinder
+            var loadGraph = new LoadGraph(
+                _indexerContext.Settings.IndexReadonlyDbConnectionString ??
+                _indexerContext.Settings.IndexDbConnectionString);
+
+            var graphFactory = new GraphFactory();
+            var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
+
+            return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
+        }
     }
 
     public ResultWrapper<string> circles_health()

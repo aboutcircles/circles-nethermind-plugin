@@ -138,7 +138,8 @@ public class Plugin : INethermindPlugin
 
         if (settings.IndexReadonlyDbConnectionString != null)
         {
-            NpgsqlConnectionStringBuilder readonlyConnectionStringBuilder = new(settings.IndexReadonlyDbConnectionString);
+            NpgsqlConnectionStringBuilder readonlyConnectionStringBuilder =
+                new(settings.IndexReadonlyDbConnectionString);
             pluginLogger.Info("Index database (readonly): " + readonlyConnectionStringBuilder.Database);
             pluginLogger.Info(" * host: " + readonlyConnectionStringBuilder.Host);
             pluginLogger.Info(" * port: " + readonlyConnectionStringBuilder.Port);
@@ -152,6 +153,12 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
+
+        if (!string.IsNullOrWhiteSpace(settings.ExternalPathfinderUrl))
+        {
+            pluginLogger.Info("Using external pathfinder");
+            pluginLogger.Info("* pathfinder url: " + settings.ExternalPathfinderUrl);
+        }
     }
 
     private static void InitCaches(InterfaceLogger logger, IDatabase database)
