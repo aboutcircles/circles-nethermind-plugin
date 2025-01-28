@@ -84,7 +84,7 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(
         Description = "Checks if the database is available and indexing progresses as expected",
         IsImplemented = true)]
-    Task<ResultWrapper<string>> circles_health();
+    ResultWrapper<string> circles_health();
 
     [JsonRpcMethod(
         Description = "Returns all indexed tables and columns grouped by namespace",

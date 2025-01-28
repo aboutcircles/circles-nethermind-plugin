@@ -8,5 +8,6 @@ public record Context(
     InterfaceLogger Logger,
     Settings Settings,
     IDatabase Database,
+    IReadonlyDatabase ReadonlyDatabase,
     ILogParser[] LogParsers,
     Sink Sink);

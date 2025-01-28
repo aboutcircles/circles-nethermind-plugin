@@ -21,7 +21,12 @@ public interface IDatabaseUtils
     IDbDataParameter CreateParameter(string? name, object? value);
 }
 
-public interface IDatabase : IDatabaseUtils
+public interface IReadonlyDatabase : IDatabaseUtils
+{
+    DatabaseQueryResult Select(ParameterizedSql select);
+}
+
+public interface IDatabase : IReadonlyDatabase
 {
     void Migrate();
     Task DeleteFromBlockOnwards(long reorgAt);
@@ -29,5 +34,4 @@ public interface IDatabase : IDatabaseUtils
     long? LatestBlock();
     long? FirstGap();
     IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count);
-    DatabaseQueryResult Select(ParameterizedSql select);
 }
