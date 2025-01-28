@@ -9,13 +9,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Content Include="..\.dockerignore">
-            <Link>.dockerignore</Link>
-        </Content>
+        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj"/>
+      <PackageReference Include="prometheus-net" Version="8.2.1" />
+      <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     </ItemGroup>
 
 </Project>
