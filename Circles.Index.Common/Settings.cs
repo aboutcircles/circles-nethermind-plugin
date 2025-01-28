@@ -36,6 +36,9 @@ public class Settings
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
 
+    public readonly string? IndexReadonlyDbConnectionString =
+        Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
+
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 0L;

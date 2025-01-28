@@ -226,8 +226,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             Array.Empty<OrderBy>(),
             int.MaxValue);
 
-        var sql = selectTokenInfos.ToSql(_indexerContext.Database);
-        var result = _indexerContext.Database.Select(sql).Rows.ToDictionary(
+        var sql = selectTokenInfos.ToSql(_indexerContext.ReadonlyDatabase);
+        var result = _indexerContext.ReadonlyDatabase.Select(sql).Rows.ToDictionary(
             row => new Address(row[0]?.ToString() ?? throw new Exception("A token in the result set is null")),
             row => row.Select(o => o?.ToString() ?? throw new Exception("A value in the result set is null"))
                 .ToArray());
@@ -278,10 +278,10 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var parameters = new[]
         {
-            _indexerContext.Database.CreateParameter("address", address.ToString(true, false))
+            _indexerContext.ReadonlyDatabase.CreateParameter("address", address.ToString(true, false))
         };
 
-        var result = _indexerContext.Database.Select(new ParameterizedSql(sql, parameters));
+        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, parameters));
         if (result.Rows == null)
         {
             throw new Exception("Failed to get trust relations");
@@ -322,7 +322,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
     {
         Select select = query.ToModel();
-        var parameterizedSql = select.ToSql(_indexerContext.Database);
+        var parameterizedSql = select.ToSql(_indexerContext.ReadonlyDatabase);
 
         StringWriter stringWriter = new();
         stringWriter.WriteLine($"circles_query(SelectDto query):");
@@ -335,7 +335,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         _pluginLogger.Info(stringWriter.ToString());
 
-        var result = _indexerContext.Database.Select(parameterizedSql);
+        var result = _indexerContext.ReadonlyDatabase.Select(parameterizedSql);
 
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
@@ -361,32 +361,33 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
     {
-        var loadGraph = new LoadGraph(_indexerContext.Settings.IndexDbConnectionString);
+        var loadGraph = new LoadGraph(_indexerContext.Settings.IndexReadonlyDbConnectionString ??
+                                      _indexerContext.Settings.IndexDbConnectionString);
         var graphFactory = new GraphFactory();
         var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
         return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
     }
 
-    public Task<ResultWrapper<string>> circles_health()
+    public ResultWrapper<string> circles_health()
     {
         var blockHead = _indexerContext.NethermindApi.BlockTree?.Head?.Number
                         ?? throw new Exception("BlockTree or Head is null. The node is not ready yet or not synced.");
 
         var lastPersisted = _indexerContext.Database.LatestBlock() ?? 0;
 
-        if (blockHead - lastPersisted > 10)
+        if (blockHead - lastPersisted >= 3)
         {
-            throw new Exception(
+            return ResultWrapper<string>.Fail(
                 $"Indexing is lagging behind. Block head: {blockHead}, last persisted: {lastPersisted}");
         }
 
-        return Task.FromResult(ResultWrapper<string>.Success("Healthy"));
+        return ResultWrapper<string>.Success("Healthy");
     }
 
     public Task<ResultWrapper<IEnumerable<DatabaseNamespace>>> circles_tables()
     {
         var namespaces = new List<DatabaseNamespace>();
-        foreach (var @namespace in _indexerContext.Database.Schema.Tables.GroupBy(o => o.Key.Namespace))
+        foreach (var @namespace in _indexerContext.ReadonlyDatabase.Schema.Tables.GroupBy(o => o.Key.Namespace))
         {
             var namespaceDto = new DatabaseNamespace(@namespace.Key);
             namespaces.Add(namespaceDto);
@@ -422,8 +423,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             int.MaxValue,
             true);
 
-        var sql = selectTokenExposure.ToSql(_indexerContext.Database);
-        return _indexerContext.Database.Select(sql)
+        var sql = selectTokenExposure.ToSql(_indexerContext.ReadonlyDatabase);
+        return _indexerContext.ReadonlyDatabase.Select(sql)
             .Rows
             .Select(row => row[0]?.ToString() ?? throw new Exception("An id in the result set is null"))
             .ToArray();
