@@ -8,13 +8,18 @@ namespace Circles.Pathfinder;
 
 public class V2Pathfinder : IPathfinder
 {
-    private readonly LoadGraph _loadGraph;
+    private readonly LoadGraph? _loadGraph;
     private readonly GraphFactory _graphFactory;
 
+    public V2Pathfinder(GraphFactory graphFactory)
+    {
+        _graphFactory = graphFactory;
+    }
+
     public V2Pathfinder(LoadGraph loadGraph, GraphFactory graphFactory)
+        : this(graphFactory)
     {
         _loadGraph = loadGraph;
-        _graphFactory = graphFactory;
     }
 
     public async Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
@@ -29,33 +34,50 @@ public class V2Pathfinder : IPathfinder
             throw new ArgumentException("TargetFlow must be a valid integer.");
         }
 
+        if (_loadGraph == null || _graphFactory == null)
+        {
+            throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
+        }
+
         // Load Trust and Balance Graphs
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
 
+        return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
+    }
+
+    public MaxFlowResponse ComputeMaxFlowWithData(
+        BalanceGraph balanceGraph,
+        TrustGraph trustGraph,
+        FlowRequest request,
+        BigInteger targetFlow)
+    {
         // Create Capacity Graph
         var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
 
         // Create Flow Graph
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
 
+        var source = request.Source?.ToLowerInvariant() ?? "";
+        var sink = request.Sink?.ToLowerInvariant() ?? "";
+
         // Validate Source and Sink
-        if (!flowGraph.Nodes.ContainsKey(request.Source))
+        if (!flowGraph.Nodes.ContainsKey(source))
         {
             throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
         }
 
-        if (!flowGraph.Nodes.ContainsKey(request.Sink))
+        if (!flowGraph.Nodes.ContainsKey(sink))
         {
             throw new ArgumentException($"Sink node '{request.Sink}' does not exist in the graph.");
         }
 
         // Compute Max Flow
-        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(request.Source, request.Sink, targetFlow);
+        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
 
         // Extract Paths with Flow
         var pathsWithFlow =
-            flowGraph.ExtractPathsWithFlow(request.Source, request.Sink, BigInteger.Parse("0"));
+            flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Parse("0"));
 
         // Collapse balance nodes to get a collapsed graph
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
