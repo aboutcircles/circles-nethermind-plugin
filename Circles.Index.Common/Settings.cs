@@ -39,6 +39,9 @@ public class Settings
     public readonly string? IndexReadonlyDbConnectionString =
         Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
 
+    public readonly string? ExternalPathfinderUrl =
+        Environment.GetEnvironmentVariable("EXTERNAL_PATHFINDER_URL");
+
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 0L;

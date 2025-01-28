@@ -3,7 +3,13 @@ using Npgsql;
 namespace Circles.Pathfinder.Data
 {
     // TODO: Use CirclesQuery<T> and remove the Npgsql dependency
-    public class LoadGraph(string connectionString)
+    public interface ILoadGraph
+    {
+        IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances();
+        IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
+    }
+
+    public class LoadGraph(string connectionString) : ILoadGraph
     {
         public IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances()
         {
