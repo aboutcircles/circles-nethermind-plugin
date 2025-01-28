@@ -75,7 +75,7 @@ public class QueryEvents(Context context)
     {
         var queries = new List<Select>();
 
-        foreach (var table in context.Database.Schema.Tables)
+        foreach (var table in context.ReadonlyDatabase.Schema.Tables)
         {
             if (table.Key.Namespace.StartsWith("V_") || table.Key.Namespace == "System")
             {
@@ -159,8 +159,8 @@ public class QueryEvents(Context context)
         var events = new ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent>();
         var tasks = queries.Select(query => Task.Run(() =>
         {
-            var sql = query.ToSql(context.Database);
-            var result = context.Database.Select(sql);
+            var sql = query.ToSql(context.ReadonlyDatabase);
+            var result = context.ReadonlyDatabase.Select(sql);
 
             foreach (var row in result.Rows)
             {

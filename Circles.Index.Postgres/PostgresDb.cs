@@ -8,10 +8,69 @@ using NpgsqlTypes;
 
 namespace Circles.Index.Postgres;
 
-public class PostgresDb(string connectionString, IDatabaseSchema schema) : IDatabase
+public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema) : IReadonlyDatabase
 {
     public IDatabaseSchema Schema { get; } = schema;
 
+    protected string ConnectionString { get; } = connectionString;
+
+    public DatabaseQueryResult Select(ParameterizedSql select)
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = select.Sql;
+        foreach (var param in select.Parameters)
+        {
+            command.Parameters.Add(param);
+        }
+
+        using var reader = command.ExecuteReader();
+
+        var resultSchema = reader.GetColumnSchema().ToArray();
+        var columnNames = new string[reader.FieldCount];
+        for (int i = 0; i < reader.FieldCount; i++)
+        {
+            columnNames[i] = reader.GetName(i);
+        }
+
+        var resultRows = new List<object?[]>();
+        while (reader.Read())
+        {
+            var row = new object?[reader.FieldCount];
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
+                {
+                    row[i] = reader.GetFieldValue<BigInteger?>(i);
+                }
+                else
+                {
+                    row[i] = reader.GetValue(i);
+                }
+
+                if (row[i] is DBNull)
+                {
+                    row[i] = null;
+                }
+            }
+
+            resultRows.Add(row);
+        }
+
+        return new DatabaseQueryResult(columnNames, resultRows);
+    }
+
+    public IDbDataParameter CreateParameter(string? name, object? value)
+    {
+        return new NpgsqlParameter(name, value);
+    }
+}
+
+public class PostgresDb(string connectionString, IDatabaseSchema schema)
+    : ReadonlyPostgresDb(connectionString, schema), IDatabase
+{
     private bool HasPrimaryKey(NpgsqlConnection connection, EventSchema table)
     {
         var checkPkSql = $@"
@@ -27,7 +86,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
     public void Migrate()
     {
-        using var connection = new NpgsqlConnection(connectionString);
+        using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
         using var transaction = connection.BeginTransaction();
@@ -99,7 +158,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         var columnTypes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
         var columnList = string.Join(", ", columnTypes.Select(o => $"\"{o.Key}\""));
 
-        await using var connection = new NpgsqlConnection(connectionString);
+        await using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
         await using var writer = await connection.BeginBinaryImportAsync(
@@ -211,7 +270,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
     public long? LatestBlock()
     {
-        using var connection = new NpgsqlConnection(connectionString);
+        using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
         NpgsqlCommand cmd = connection.CreateCommand();
@@ -230,7 +289,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
     public long? FirstGap()
     {
-        using var connection = new NpgsqlConnection(connectionString);
+        using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
         NpgsqlCommand cmd = connection.CreateCommand();
@@ -258,7 +317,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
 
     public IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count = 100)
     {
-        using var connection = new NpgsqlConnection(connectionString);
+        using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
         NpgsqlCommand cmd = connection.CreateCommand();
@@ -276,62 +335,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema) : IData
         }
     }
 
-    public DatabaseQueryResult Select(ParameterizedSql select)
-    {
-        using var connection = new NpgsqlConnection(connectionString);
-        connection.Open();
-
-        using var command = connection.CreateCommand();
-        command.CommandText = select.Sql;
-        foreach (var param in select.Parameters)
-        {
-            command.Parameters.Add(param);
-        }
-
-        using var reader = command.ExecuteReader();
-
-        var resultSchema = reader.GetColumnSchema().ToArray();
-        var columnNames = new string[reader.FieldCount];
-        for (int i = 0; i < reader.FieldCount; i++)
-        {
-            columnNames[i] = reader.GetName(i);
-        }
-
-        var resultRows = new List<object?[]>();
-        while (reader.Read())
-        {
-            var row = new object?[reader.FieldCount];
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
-                {
-                    row[i] = reader.GetFieldValue<BigInteger?>(i);
-                }
-                else
-                {
-                    row[i] = reader.GetValue(i);
-                }
-
-                if (row[i] is DBNull)
-                {
-                    row[i] = null;
-                }
-            }
-
-            resultRows.Add(row);
-        }
-
-        return new DatabaseQueryResult(columnNames, resultRows);
-    }
-
-    public IDbDataParameter CreateParameter(string? name, object? value)
-    {
-        return new NpgsqlParameter(name, value);
-    }
-
     public async Task DeleteFromBlockOnwards(long reorgAt)
     {
-        await using var connection = new NpgsqlConnection(connectionString);
+        await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
 
         await using var transaction = await connection.BeginTransactionAsync();

@@ -1,11 +1,11 @@
 ## Circles V2 RPC examples
 
-1. [circlesV2_getTotalBalance](#circlesV2_getTotalBalance) 
+1. [circlesV2_getTotalBalance](#circlesV2_getTotalBalance)
 2. [circlesV2_getTokenBalances](#circlesV2_getTokenBalances)
 3. [circles_query](#circles_query)  
-3.1. [Get the transaction history of a wallet](#get-the-transaction-history-of-a-wallet)    
-3.2. [Get a list of Circles avatars](#get-a-list-of-circles-users)  
-3.3. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)  
+   3.1. [Get the transaction history of a wallet](#get-the-transaction-history-of-a-wallet)    
+   3.2. [Get a list of Circles avatars](#get-a-list-of-circles-users)  
+   3.3. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)
 
 ### circlesV2_getTotalBalance
 
@@ -375,16 +375,33 @@ curl -X POST --data '{
 ```
 
 #### Get the max flow between two nodes
+
 ```shell
-curl 'https://rpc.aboutcircles.com/' \
+curl 'http://localhost:8545/' \
  -H 'Content-Type: application/json' \
  --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
 ```
 
-
 #### Show all tables available for queries
+
 ```shell
-curl 'https://rpc.aboutcircles.com/' \
- -H 'Content-Type: application/json' \
- --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_tables","params":[]}'
+curl 'https://rpc.aboutcircles.com/' -H 'Content-Type: application/json' --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_tables","params":[]}' | jq
+```
+
+#### Get all events of a specific type within a specific block range
+From block 38000000 to the latest block, get all events of type `CrcV1_Trust`:
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [
+    null,
+    38000000,
+    null,
+    ["CrcV1_Trust"],
+    null,
+    false
+  ]
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```

@@ -42,6 +42,7 @@ services:
       - V2_ERC20_LIFT_ADDRESS=0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5
       - V2_LBP_FACTORY_ADDRESS=0x4bB5A425a68ed73Cf0B26ce79F5EEad9103C30fc
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - START_BLOCK=12000000
 
   postgres-gnosis:
