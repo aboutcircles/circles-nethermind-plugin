@@ -66,7 +66,6 @@ public class BackgroundUpdaterService(NetworkState networkState) : BackgroundSer
             if (currentBlock <= lastBlock)
             {
                 Console.WriteLine($"Waiting for new block. Current block: {currentBlock}");
-                // Still the same block, wait and try again
                 await Task.Delay(1000, stoppingToken);
             }
             else
