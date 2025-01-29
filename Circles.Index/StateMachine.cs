@@ -52,9 +52,9 @@ public class StateMachine(
                         case EnterState:
                         {
                             context.Logger.Info("Initializing: Finding the last persisted block...");
-                            var lastPersistedBlock = context.Database.FirstGap() 
-                                                          ?? context.Database.LatestBlock() 
-                                                          ?? 0;
+                            var lastPersistedBlock = context.Database.FirstGap()
+                                                     ?? context.Database.LatestBlock()
+                                                     ?? 0;
 
                             context.Logger.Info(
                                 $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
@@ -211,7 +211,8 @@ public class StateMachine(
         var nextBlock = lastIndexHeight + 1;
         if (nextBlock < context.Settings.StartBlock)
         {
-            context.Logger.Debug($"Enumerating blocks to sync from {context.Settings.StartBlock} (StartBlock) to {toBlock}");
+            context.Logger.Debug(
+                $"Enumerating blocks to sync from {context.Settings.StartBlock} (StartBlock) to {toBlock}");
             nextBlock = context.Settings.StartBlock;
         }
         else
@@ -238,6 +239,8 @@ public class StateMachine(
 
             await context.Sink.Flush();
             await flow.FlushBlocks();
+
+            context.Database.TryUpdateCrcUiTransferHistory();
         }
         catch (TaskCanceledException)
         {

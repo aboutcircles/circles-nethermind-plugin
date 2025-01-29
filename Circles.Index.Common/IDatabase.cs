@@ -34,4 +34,10 @@ public interface IDatabase : IReadonlyDatabase
     long? LatestBlock();
     long? FirstGap();
     IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count);
+
+    /// <summary>
+    /// Calls the 'Update_Crc_UITransferHistory' stored procedure if available in the db.
+    /// </summary>
+    /// <returns>True if the stored procedure exists and was called, false otherwise.</returns>
+    bool TryUpdateCrcUiTransferHistory();
 }
