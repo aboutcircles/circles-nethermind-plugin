@@ -15,8 +15,10 @@ namespace Circles.Pathfinder.Data
         {
             var balanceQuery = @"
                 select ""demurragedTotalBalance""::text, ""account"", ""tokenAddress""
-                from ""V_CrcV2_BalancesByAccountAndToken""
-                where ""demurragedTotalBalance"" > 0;
+                from ""V_CrcV2_BalancesByAccountAndToken"" b
+                left join ""CrcV2_RegisterGroup"" g on g.""group"" = b.""tokenAddress""
+                where g.""group"" is null
+                and ""demurragedTotalBalance"" > 0;
             ";
 
             using var connection = new NpgsqlConnection(connectionString);
