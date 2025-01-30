@@ -373,4 +373,40 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             throw;
         }
     }
+
+    /// <summary>
+    /// Calls the 'Update_Crc_UITransferHistory' stored procedure if available in the db.
+    /// </summary>
+    /// <returns>True if the stored procedure exists and was called, false otherwise.</returns>
+    public bool TryUpdateCrcUiTransferHistory()
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        using (var checkCmd = connection.CreateCommand())
+        {
+            checkCmd.CommandText = @"
+            SELECT 1
+            FROM pg_catalog.pg_proc p
+            JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+            WHERE p.proname = 'Update_Crc_UITransferHistory'
+              AND n.nspname = 'public';
+            ";
+
+            var spExists = checkCmd.ExecuteScalar() != null;
+            if (!spExists)
+            {
+                return false;
+            }
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "CALL \"Update_Crc_UITransferHistory\"()";
+            command.CommandTimeout = 120;
+            command.ExecuteNonQuery();
+        }
+
+        return true;
+    }
 }
