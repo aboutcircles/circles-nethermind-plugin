@@ -170,7 +170,7 @@ public record StreamCompleted(
     string To,
     UInt256 Id,
     UInt256 Amount) : IIndexEvent;
-    
+
 public record DiscountCost(
     long BlockNumber,
     long Timestamp,
@@ -180,3 +180,16 @@ public record DiscountCost(
     string Account,
     UInt256 Id,
     UInt256 Cost) : IIndexEvent;
+
+public record GroupMint(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    int BatchIndex,
+    string TransactionHash,
+    string Sender,
+    string Receiver,
+    string Group,
+    UInt256 Collateral,
+    UInt256 Amount) : IIndexEvent;

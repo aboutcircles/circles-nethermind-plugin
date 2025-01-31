@@ -9,11 +9,13 @@ namespace Circles.Index.Rpc;
 
 public class QueryEvents(Context context)
 {
-    public static readonly ImmutableHashSet<string> AddressColumns = new HashSet<string>
+    public static ImmutableHashSet<string> GetAddressColumns(IDatabaseSchema schema)
     {
-        "user", "avatar", "organization", "from", "to", "canSendTo", "account", "group", "human", "invited",
-        "inviter", "truster", "trustee", "account"
-    }.ToImmutableHashSet();
+        return schema.Tables.SelectMany(o => o.Value.Columns)
+            .Where(o => o.Type == ValueTypes.Address)
+            .Select(o => o.Column)
+            .ToImmutableHashSet();
+    }
 
     /// <summary>
     /// Queries all events affecting the specified account since block N.
@@ -86,11 +88,13 @@ public class QueryEvents(Context context)
             {
                 continue;
             }
+            
+            var addressColumns = GetAddressColumns(context.ReadonlyDatabase.Schema);
 
             var addressColumnFilters = address == null
                 ? []
                 : table.Value.Columns
-                    .Where(column => AddressColumns.Contains(column.Column))
+                    .Where(column => addressColumns.Contains(column.Column))
                     .Select(column => new FilterPredicate(column.Column, FilterType.Equals, address))
                     .Cast<IFilterPredicate>()
                     .ToList();
