@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
@@ -20,12 +21,16 @@ public class CirclesSubscription : Subscription
     public static long SubscriberCount => _subscriberCount;
     private static long _subscriberCount;
 
+    private readonly ImmutableHashSet<string> _addressColumnNames;
+
     public CirclesSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, Context context,
         CirclesSubscriptionParams param) : base(
         jsonRpcDuplexClient)
     {
         Notification += OnNotification;
         _param = param;
+
+        _addressColumnNames = QueryEvents.GetAddressColumns(context.ReadonlyDatabase.Schema);
 
         if (param.Address == Address.Zero)
         {
@@ -101,7 +106,7 @@ public class CirclesSubscription : Subscription
 
             foreach (var circlesEventValue in circlesEvent.Values)
             {
-                if (!QueryEvents.AddressColumns.Contains(circlesEventValue.Key))
+                if (!_addressColumnNames.Contains(circlesEventValue.Key))
                 {
                     continue;
                 }

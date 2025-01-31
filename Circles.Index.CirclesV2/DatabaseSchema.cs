@@ -117,6 +117,22 @@ public class DatabaseSchema : IDatabaseSchema
             new("tokenAddress", ValueTypes.Address, true)
         ]);
 
+    public static readonly EventSchema GroupMint = new("CrcV2", "GroupMint",
+        Keccak.Compute("GroupMint(address,address,address,uint256[],uint256[])").BytesToArray(),
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("batchIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("sender", ValueTypes.Address, true),
+            new("receiver", ValueTypes.Address, true),
+            new("group", ValueTypes.Address, true),
+            new("collateral", ValueTypes.BigInt, false),
+            new("amount", ValueTypes.BigInt, false)
+        ]);
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -187,6 +203,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "DiscountCost"),
                 DiscountCost
+            },
+            {
+                ("CrcV2", "GroupMint"),
+                GroupMint
             }
         };
 
@@ -439,6 +459,23 @@ public class DatabaseSchema : IDatabaseSchema
                 { "account", e => e.Account },
                 { "id", e => (BigInteger)e.Id },
                 { "discountCost", e => (BigInteger)e.Cost }
+            });
+        
+        EventDtoTableMap.Add<GroupMint>(("CrcV2", "GroupMint"));
+        SchemaPropertyMap.Add(("CrcV2", "GroupMint"),
+            new Dictionary<string, Func<GroupMint, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "batchIndex", e => e.BatchIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "sender", e => e.Sender },
+                { "receiver", e => e.Receiver },
+                { "group", e => e.Group },
+                { "collateral", e => (BigInteger)e.Collateral },
+                { "amount", e => (BigInteger)e.Amount }
             });
     }
 }

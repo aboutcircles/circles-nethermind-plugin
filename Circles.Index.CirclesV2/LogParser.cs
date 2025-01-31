@@ -29,6 +29,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _withdrawDemurraged = new(DatabaseSchema.WithdrawDemurraged.Topic);
     private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
     private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
+    private readonly Hash256 _groupMintTopic = new(DatabaseSchema.GroupMint.Topic);
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
@@ -115,6 +116,14 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             if (topic == _discountCostTopic)
             {
                 yield return DiscountCost(block, receipt, log, logIndex);
+            }
+
+            if (topic == _groupMintTopic)
+            {
+                foreach (var groupMint in GroupMint(block, receipt, log, logIndex))
+                {
+                    yield return groupMint;
+                }
             }
         }
 
@@ -606,6 +615,60 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 fromAddress,
                 toAddress,
                 ids[i],
+                amounts[i]
+            );
+        }
+    }
+
+    #endregion
+
+    #region GroupMint
+
+    /*
+       event GroupMint(
+           address indexed sender,
+           address indexed receiver,
+           address indexed group,
+           uint256[] collateral,
+           uint256[] amounts
+       );
+    */
+    private IEnumerable<GroupMint> GroupMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string sender = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string receiver = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string group = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        var data = log.Data;
+        if (data.Length < 64)
+        {
+            yield break;
+        }
+
+        int collateralOffset = LogDataParsingHelper.ParseOffset(data, 0);
+        int amountsOffset = LogDataParsingHelper.ParseOffset(data, 32);
+
+        UInt256[] collateral = LogDataParsingHelper.ParseUInt256Array(data, collateralOffset);
+        UInt256[] amounts = LogDataParsingHelper.ParseUInt256Array(data, amountsOffset);
+
+        if (collateral.Length != amounts.Length)
+        {
+            throw new InvalidOperationException("The number of collateral and amounts must match in GroupMint.");
+        }
+
+        for (int i = 0; i < collateral.Length; i++)
+        {
+            yield return new GroupMint(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                i,
+                receipt.TxHash!.ToString(),
+                sender,
+                receiver,
+                group,
+                collateral[i],
                 amounts[i]
             );
         }
