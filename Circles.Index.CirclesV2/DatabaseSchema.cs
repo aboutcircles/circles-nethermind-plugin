@@ -133,6 +133,23 @@ public class DatabaseSchema : IDatabaseSchema
             new("amount", ValueTypes.BigInt, false)
         ]);
 
+    public static readonly EventSchema FlowEdgesScopeSingleStarted = EventSchema.FromSolidity("CrcV2",
+        "event FlowEdgesScopeSingleStarted(uint256 indexed flowEdgeId, uint16 streamId)");
+
+    // TODO: Parsing event signatures without parameters fails
+    // public static readonly EventSchema FlowEdgesScopeLastEnded = EventSchema.FromSolidity("CrcV2",
+    //     "event FlowEdgesScopeLastEnded()");
+
+    public static readonly EventSchema FlowEdgesScopeLastEnded = new("CrcV2", "FlowEdgesScopeLastEnded",
+        Keccak.Compute("FlowEdgesScopeLastEnded()").BytesToArray(),
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("transactionHash", ValueTypes.String, true)
+        ]);
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -207,8 +224,17 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "GroupMint"),
                 GroupMint
+            },
+            {
+                ("CrcV2", "FlowEdgesScopeSingleStarted"),
+                FlowEdgesScopeSingleStarted
+            },
+            {
+                ("CrcV2", "FlowEdgesScopeLastEnded"),
+                FlowEdgesScopeLastEnded
             }
         };
+
 
     public DatabaseSchema()
     {
@@ -460,7 +486,7 @@ public class DatabaseSchema : IDatabaseSchema
                 { "id", e => (BigInteger)e.Id },
                 { "discountCost", e => (BigInteger)e.Cost }
             });
-        
+
         EventDtoTableMap.Add<GroupMint>(("CrcV2", "GroupMint"));
         SchemaPropertyMap.Add(("CrcV2", "GroupMint"),
             new Dictionary<string, Func<GroupMint, object?>>
@@ -476,6 +502,30 @@ public class DatabaseSchema : IDatabaseSchema
                 { "group", e => e.Group },
                 { "collateral", e => (BigInteger)e.Collateral },
                 { "amount", e => (BigInteger)e.Amount }
+            });
+
+        EventDtoTableMap.Add<FlowEdgesScopeSingleStarted>(("CrcV2", "FlowEdgesScopeSingleStarted"));
+        SchemaPropertyMap.Add(("CrcV2", "FlowEdgesScopeSingleStarted"),
+            new Dictionary<string, Func<FlowEdgesScopeSingleStarted, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "flowEdgeId", e => (BigInteger)e.FlowEdgeId },
+                { "streamId", e => (long)e.StreamId }
+            });
+
+        EventDtoTableMap.Add<FlowEdgesScopeLastEnded>(("CrcV2", "FlowEdgesScopeLastEnded"));
+        SchemaPropertyMap.Add(("CrcV2", "FlowEdgesScopeLastEnded"),
+            new Dictionary<string, Func<FlowEdgesScopeLastEnded, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
             });
     }
 }
