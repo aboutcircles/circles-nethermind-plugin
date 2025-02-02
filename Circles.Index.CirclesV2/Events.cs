@@ -193,3 +193,19 @@ public record GroupMint(
     string Group,
     UInt256 Collateral,
     UInt256 Amount) : IIndexEvent;
+
+public record FlowEdgesScopeSingleStarted(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    UInt256 FlowEdgeId,
+    UInt16 StreamId) : IIndexEvent;
+    
+public record FlowEdgesScopeLastEnded(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash) : IIndexEvent;

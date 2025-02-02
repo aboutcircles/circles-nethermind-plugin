@@ -30,6 +30,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
     private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
     private readonly Hash256 _groupMintTopic = new(DatabaseSchema.GroupMint.Topic);
+    private readonly Hash256 _flowEdgesScopeSingleStarted = new(DatabaseSchema.FlowEdgesScopeSingleStarted.Topic);
+    private readonly Hash256 _flowEdgesScopeLastEnded = new(DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
@@ -40,6 +42,10 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         Transaction transaction,
         IReadOnlyList<IIndexEvent> events)
     {
+        /*
+         *
+         */
+
         yield break;
     }
 
@@ -127,6 +133,16 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 {
                     yield return groupMint;
                 }
+            }
+
+            if (topic == _flowEdgesScopeSingleStarted)
+            {
+                yield return FlowEdgesScopeSingleStarted(block, receipt, log, logIndex);
+            }
+
+            if (topic == _flowEdgesScopeLastEnded)
+            {
+                yield return FlowEdgesScopeLastEnded(block, receipt, log, logIndex);
             }
         }
 
@@ -603,5 +619,35 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 amounts[i]
             );
         }
+    }
+
+    private FlowEdgesScopeSingleStarted FlowEdgesScopeSingleStarted(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
+    {
+        // event FlowEdgesScopeSingleStarted(uint256 indexed flowEdgeId, uint16 streamId);
+        UInt256 flowEdgeId = new UInt256(log.Topics[1].Bytes, true);
+        UInt256 streamId = new UInt256(log.Data, true);
+
+        return new FlowEdgesScopeSingleStarted(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            flowEdgeId,
+            (UInt16)streamId
+        );
+    }
+
+    private FlowEdgesScopeLastEnded FlowEdgesScopeLastEnded(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event FlowEdgesScopeLastEnded();
+        return new FlowEdgesScopeLastEnded(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString()
+        );
     }
 }
