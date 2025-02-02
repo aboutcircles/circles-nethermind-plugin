@@ -50,3 +50,16 @@ public record Transfer(
     string From,
     string To,
     UInt256 Value) : IIndexEvent;
+    
+public record TransferSummary(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string TokenAddress,
+    string From,
+    string To,
+    UInt256 Amount,
+    int Hops,
+    string GraphJson) : IIndexEvent;

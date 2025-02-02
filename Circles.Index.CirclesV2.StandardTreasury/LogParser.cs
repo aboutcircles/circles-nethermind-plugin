@@ -27,7 +27,11 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private readonly Hash256 _groupRedeemCollateralReturnTopic = new(DatabaseSchema.GroupRedeemCollateralReturn.Topic);
     private readonly Hash256 _groupRedeemCollateralBurnTopic = new(DatabaseSchema.GroupRedeemCollateralBurn.Topic);
 
-    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    public IEnumerable<IIndexEvent> ParseTransaction(
+        Block block,
+        int transactionIndex,
+        Transaction transaction,
+        IReadOnlyList<IIndexEvent> events)
     {
         yield break;
     }
@@ -81,7 +85,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             }
         }
     }
-    
+
     private CreateVault CreateVault(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
@@ -97,7 +101,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             vaultAddress
         );
     }
-    
+
     private CollateralLockedSingle CollateralLockedSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
