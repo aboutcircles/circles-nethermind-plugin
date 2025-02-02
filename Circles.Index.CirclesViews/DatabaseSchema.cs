@@ -16,6 +16,8 @@ public class DatabaseSchema : IDatabaseSchema
         new EventFieldSchema("type", ValueTypes.String, true),
         new EventFieldSchema("timestamp", ValueTypes.Int, true),
         new EventFieldSchema("transactionHash", ValueTypes.String, true),
+        new EventFieldSchema("tokenAddress", ValueTypes.Address, true),
+        new EventFieldSchema("tokenType", ValueTypes.String, true),
         new EventFieldSchema("from", ValueTypes.Address, true),
         new EventFieldSchema("to", ValueTypes.Address, true),
         new EventFieldSchema("amount", ValueTypes.BigInt, false),

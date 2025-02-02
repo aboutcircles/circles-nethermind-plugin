@@ -34,9 +34,12 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
 
-    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    public IEnumerable<IIndexEvent> ParseTransaction(
+        Block block,
+        int transactionIndex,
+        Transaction transaction,
+        IReadOnlyList<IIndexEvent> events)
     {
-        // Not used in this snippet
         yield break;
     }
 
@@ -166,8 +169,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
-    #region ERC20WrapperDeployed
-
     private IIndexEvent Erc20WrapperDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)
@@ -189,10 +190,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region ERC1155ApprovalForAll
-
     private ApprovalForAll Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event ApprovalForAll(address indexed account, address indexed operator, bool approved)
@@ -211,10 +208,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             approved
         );
     }
-
-    #endregion
-
-    #region ERC1155TransferSingle
 
     private TransferSingle Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -240,10 +233,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             value
         );
     }
-
-    #endregion
-
-    #region ERC1155TransferBatch
 
     private IEnumerable<TransferBatch> Erc1155TransferBatch(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -289,10 +278,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
-    #endregion
-
-    #region RegisterOrganization
-
     private RegisterOrganization CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event RegisterOrganization(address indexed organization, string name)
@@ -309,10 +294,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             orgName
         );
     }
-
-    #endregion
-
-    #region RegisterGroup
 
     private RegisterGroup CrcV2RegisterGroup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -345,10 +326,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region RegisterHuman
-
     private RegisterHuman CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event RegisterHuman(address indexed human, address indexed inviter)
@@ -365,10 +342,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             inviterAddress
         );
     }
-
-    #endregion
-
-    #region PersonalMint
 
     private PersonalMint CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -392,10 +365,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region Trust
-
     private Trust CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event Trust(address indexed user, address indexed canSendTo, uint256 trustLimit)
@@ -415,10 +384,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region Stopped
-
     private Stopped CrcV2Stopped(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event Stopped(address indexed who)
@@ -433,10 +398,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             address
         );
     }
-
-    #endregion
-
-    #region Erc20WrapperTransfer
 
     private Erc20WrapperTransfer Erc20WrapperTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -458,10 +419,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region DepositInflationary
-
     private DepositInflationary DepositInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)
@@ -480,10 +437,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             demurragedAmount
         );
     }
-
-    #endregion
-
-    #region WithdrawInflationary
 
     private WithdrawInflationary WithdrawInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -504,10 +457,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region DepositDemurraged
-
     private DepositDemurraged DepositDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)
@@ -526,10 +475,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             inflationaryAmount
         );
     }
-
-    #endregion
-
-    #region WithdrawDemurraged
 
     private WithdrawDemurraged WithdrawDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -550,10 +495,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         );
     }
 
-    #endregion
-
-    #region DiscountCost
-
     private DiscountCost DiscountCost(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)
@@ -572,10 +513,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             cost
         );
     }
-
-    #endregion
-
-    #region StreamCompleted
 
     private IEnumerable<StreamCompleted> StreamCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -620,21 +557,15 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
-    #endregion
-
-    #region GroupMint
-
-    /*
-       event GroupMint(
-           address indexed sender,
-           address indexed receiver,
-           address indexed group,
-           uint256[] collateral,
-           uint256[] amounts
-       );
-    */
     private IEnumerable<GroupMint> GroupMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
+        // event GroupMint(
+        //     address indexed sender,
+        //     address indexed receiver,
+        //     address indexed group,
+        //     uint256[] collateral,
+        //     uint256[] amounts
+        // );
         string sender = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string receiver = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         string group = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
@@ -673,6 +604,4 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             );
         }
     }
-
-    #endregion
 }
