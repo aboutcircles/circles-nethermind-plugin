@@ -21,13 +21,13 @@ public class LogParser(Address v1HubAddress) : ILogParser
     private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
 
     /// <summary>
-    /// 1) Identify at most one HubTransfer + gather all Transfers.
-    /// 2) If no hub => each Transfer is a stand-alone summary (hops=1).
-    /// 3) If a hub => 
+    /// 1) Identify all HubTransfer events + gather all Transfers.
+    /// 2) If there are no hub transfers => each Transfer is a stand-alone summary (hops=1).
+    /// 3) If there are one or more hub transfers => 
     ///    - build an adjacency ignoring amounts, 
-    ///    - DFS to find *all* routes from hub.from->hub.to, 
+    ///    - for each hub, DFS to find *all* routes from hub.from->hub.to, 
     ///    - collect all edges in usedEdges, 
-    ///    - produce one TransferSummary with a JSON that has { from, to, amount, edges:[...] }, 
+    ///    - produce one TransferSummary per hub with a JSON that has { from, to, amount, edges:[...] }, 
     ///    - produce stand-alone summaries for leftover edges.
     /// </summary>
     public IEnumerable<IIndexEvent> ParseTransaction(
@@ -36,8 +36,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
         Transaction transaction,
         IReadOnlyList<IIndexEvent> events)
     {
-        // 1) Identify hubTransfer and gather Transfers
-        HubTransfer? hubTransfer = null;
+        // 1) Gather all hub transfers + gather all Transfers
+        var hubTransfers = new List<HubTransfer>();
         var allTransfers = new List<Transfer>(events.Count);
 
         for (int i = 0; i < events.Count; i++)
@@ -45,8 +45,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             switch (events[i])
             {
                 case HubTransfer ht:
-                    if (hubTransfer == null)
-                        hubTransfer = ht; // keep only the first
+                    hubTransfers.Add(ht);
                     break;
 
                 case Transfer t:
@@ -56,7 +55,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         }
 
         // 2) If no hub => each Transfer stands alone
-        if (hubTransfer == null)
+        if (hubTransfers.Count == 0)
         {
             for (int i = 0; i < allTransfers.Count; i++)
             {
@@ -81,9 +80,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             yield break;
         }
 
-        // 3) We do have a hub => build adjacency ignoring amounts.
-        //    Normalize addresses to ensure consistent matching (lowercase).
-        //    Then do a DFS collecting all edges that appear on any route from hub.from -> hub.to.
+        // 3) We do have one or more hubs => build adjacency ignoring amounts (normalize addresses).
         var adjacency = new Dictionary<string, List<Transfer>>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < allTransfers.Count; i++)
         {
@@ -93,7 +90,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             var fromLower = t.From.ToLowerInvariant();
             var toLower = t.To.ToLowerInvariant();
 
-            // Rebuild the Transfer with normalized addresses (optional, but helpful if you suspect case mismatches)
+            // Rebuild the Transfer with normalized addresses
             t = new Transfer(
                 t.BlockNumber,
                 t.Timestamp,
@@ -118,78 +115,86 @@ public class LogParser(Address v1HubAddress) : ILogParser
             allTransfers[i] = t;
         }
 
-        // Also normalize hub addresses
-        var hubFrom = hubTransfer.From.ToLowerInvariant();
-        var hubTo = hubTransfer.To.ToLowerInvariant();
+        // We'll collect globally used edges so we can exclude them from stand-alone
+        var usedEdgesGlobal = new HashSet<Transfer>();
 
-        // We'll do a DFS enumerating *all* possible routes from hubFrom -> hubTo.
-        var usedEdges = new HashSet<Transfer>();
-        var pathStack = new List<Transfer>();
-
-        void Dfs(string current, HashSet<string> visited)
+        // For each hub transfer, do a DFS to find all routes
+        foreach (var hubTransfer in hubTransfers)
         {
-            if (string.Equals(current, hubTo, StringComparison.OrdinalIgnoreCase))
+            var hubFrom = hubTransfer.From.ToLowerInvariant();
+            var hubTo = hubTransfer.To.ToLowerInvariant();
+
+            var usedEdges = new HashSet<Transfer>();
+            var pathStack = new List<Transfer>();
+
+            void Dfs(string current, HashSet<string> visited)
             {
-                // Mark everything in pathStack as used
-                for (int p = 0; p < pathStack.Count; p++)
+                if (string.Equals(current, hubTo, StringComparison.OrdinalIgnoreCase))
                 {
-                    usedEdges.Add(pathStack[p]);
+                    // Mark everything in pathStack as used
+                    for (int p = 0; p < pathStack.Count; p++)
+                    {
+                        usedEdges.Add(pathStack[p]);
+                    }
+
+                    return;
                 }
 
-                return;
+                if (!adjacency.TryGetValue(current, out var edges))
+                    return;
+
+                for (int e = 0; e < edges.Count; e++)
+                {
+                    var edge = edges[e];
+                    var next = edge.To;
+                    if (visited.Contains(next))
+                        continue;
+
+                    pathStack.Add(edge);
+                    visited.Add(next);
+
+                    Dfs(next, visited);
+
+                    // backtrack
+                    visited.Remove(next);
+                    pathStack.RemoveAt(pathStack.Count - 1);
+                }
             }
 
-            if (!adjacency.TryGetValue(current, out var edges))
-                return;
-
-            for (int e = 0; e < edges.Count; e++)
+            // DFS from hubTransfer.from
             {
-                var edge = edges[e];
-                var next = edge.To;
-                if (visited.Contains(next))
-                    continue;
-
-                pathStack.Add(edge);
-                visited.Add(next);
-
-                Dfs(next, visited);
-
-                // backtrack
-                visited.Remove(next);
-                pathStack.RemoveAt(pathStack.Count - 1);
+                var visitedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { hubFrom };
+                Dfs(hubFrom, visitedSet);
             }
+
+            // Build a JSON for this hub
+            string hubJson = BuildHubJson(hubFrom, hubTo, hubTransfer.Amount, usedEdges);
+
+            // Mark all edges from this hub in the global usedEdges
+            foreach (var edge in usedEdges)
+                usedEdgesGlobal.Add(edge);
+
+            // Produce the hub TransferSummary
+            yield return new TransferSummary(
+                hubTransfer.BlockNumber,
+                hubTransfer.Timestamp,
+                hubTransfer.TransactionIndex,
+                hubTransfer.LogIndex,
+                hubTransfer.TransactionHash,
+                Address.Zero.ToString(true, false),
+                hubTransfer.From,
+                hubTransfer.To,
+                hubTransfer.Amount,
+                usedEdges.Count,
+                hubJson
+            );
         }
 
-        // Start DFS from the hub's "from" address
-        {
-            var visitedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { hubFrom };
-            Dfs(hubFrom, visitedSet);
-        }
-
-        // 4) Build a JSON for the hub with { from, to, amount, edges: [...] }
-        string hubJson = BuildHubJson(hubFrom, hubTo, hubTransfer.Amount, usedEdges);
-
-        yield return new TransferSummary(
-            hubTransfer.BlockNumber,
-            hubTransfer.Timestamp,
-            hubTransfer.TransactionIndex,
-            hubTransfer.LogIndex,
-            hubTransfer.TransactionHash,
-            Address.Zero.ToString(true, false),
-            // Use the un-lowercased or the normalized hubFrom/hubTo as you like. 
-            // Typically we keep the original for display:
-            hubTransfer.From,
-            hubTransfer.To,
-            hubTransfer.Amount,
-            usedEdges.Count,
-            hubJson
-        );
-
-        // 5) For each Transfer not used, stand-alone
+        // 4) For each Transfer not used by any hub route, stand-alone
         for (int i = 0; i < allTransfers.Count; i++)
         {
             var t = allTransfers[i];
-            if (!usedEdges.Contains(t))
+            if (!usedEdgesGlobal.Contains(t))
             {
                 string json = BuildTransferJson(t.From, t.To, t.Value, t.TokenAddress);
 
