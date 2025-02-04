@@ -202,10 +202,21 @@ public record FlowEdgesScopeSingleStarted(
     string TransactionHash,
     UInt256 FlowEdgeId,
     UInt16 StreamId) : IIndexEvent;
-    
+
 public record FlowEdgesScopeLastEnded(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash) : IIndexEvent;
+
+public record TransferSummary(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string From,
+    string To,
+    string GraphJson // big JSON that describes all flows and edges
+) : IIndexEvent;

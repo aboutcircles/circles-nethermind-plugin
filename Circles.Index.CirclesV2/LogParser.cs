@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Numerics;
+using System.Text;
+using System.Text.Json;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,9 +13,7 @@ namespace Circles.Index.CirclesV2;
 public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogParser
 {
     private readonly Hash256 _stoppedTopic = new(DatabaseSchema.Stopped.Topic);
-
     private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
-
     private readonly Hash256 _personalMintTopic = new(DatabaseSchema.PersonalMint.Topic);
     private readonly Hash256 _registerHumanTopic = new(DatabaseSchema.RegisterHuman.Topic);
     private readonly Hash256 _registerGroupTopic = new(DatabaseSchema.RegisterGroup.Topic);
@@ -42,12 +42,227 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         Transaction transaction,
         IReadOnlyList<IIndexEvent> events)
     {
-        /*
-         *
-         */
+        // Sort events by LogIndex to ensure we process them in chronological order
+        var e = events.OrderBy(ev => ev.LogIndex).ToArray();
 
-        yield break;
+        // This stores all "active flows" so that we can produce one summary upon StreamCompleted
+        var flows = new List<FlowRecord>();
+        FlowRecord? currentFlow = null;
+
+        var lastLogIndex = -1;
+
+        // We'll iterate through all events. Whenever we see TransferSingle/TransferBatch, we either
+        // add it to the current flow (if one is active) OR emit a stand-alone summary.
+        for (int i = 0; i < e.Length; i++)
+        {
+            var evt = e[i];
+
+            switch (evt)
+            {
+                case TransferSingle ts:
+                {
+                    // If there's an active flow, we add this TransferSingle to that flow's Edges
+                    // Otherwise, produce a stand-alone TransferSummary
+                    if (currentFlow != null)
+                    {
+                        currentFlow.Edges.Add(ts);
+                    }
+                    else
+                    {
+                        yield return BuildStandaloneSummary(ts);
+                    }
+
+                    break;
+                }
+
+                case TransferBatch tb:
+                {
+                    // Typically each TransferBatch record is already one "transfer" in your system
+                    // If you want to treat each "id/value" inside TransferBatch as a separate edge,
+                    // you'd parse those out. But for simplicity, we assume TransferBatch is one event.
+                    if (currentFlow != null)
+                    {
+                        currentFlow.Edges.Add(tb);
+                    }
+                    else
+                    {
+                        yield return BuildStandaloneSummary(tb);
+                    }
+
+                    break;
+                }
+
+                case FlowEdgesScopeSingleStarted started:
+                {
+                    // Start a new flow.
+                    var flow = new FlowRecord(started.FlowEdgeId, started.StreamId);
+                    flows.Add(flow);
+                    currentFlow = flow;
+                    break;
+                }
+
+                case FlowEdgesScopeLastEnded ended:
+                {
+                    // End the current flow
+                    currentFlow = null;
+                    break;
+                }
+
+                case StreamCompleted sc:
+                {
+                    if (evt.LogIndex == lastLogIndex)
+                    {
+                        // This is the same StreamCompleted event (different batchIndex). We ignore it.
+                        break;
+                    }
+
+                    // Summarize all flows in a big JSON
+                    string graphJson = BuildGraphJson(flows);
+
+                    // Clear flows so we can handle multiple StreamCompleted in one tx if necessary
+                    flows.Clear();
+                    currentFlow = null;
+
+                    // Produce a single TransferSummary for the entire set of flows
+                    yield return new TransferSummary(
+                        block.Number,
+                        (long)block.Timestamp,
+                        transactionIndex,
+                        sc.LogIndex,
+                        sc.TransactionHash,
+                        sc.From,
+                        sc.To,
+                        graphJson
+                    );
+                    break;
+                }
+            }
+
+            lastLogIndex = evt.LogIndex;
+        }
     }
+
+    /// <summary>
+    /// Produces a stand-alone summary for a single TransferSingle or TransferBatch
+    /// that isn't part of a flow.
+    /// We mimic the shape of TransferSummary from V1, but use whichever fields you like.
+    /// </summary>
+    private TransferSummary BuildStandaloneSummary(IIndexEvent ev)
+    {
+        // Because TransferBatch and TransferSingle differ in fields, you can handle them separately:
+        // For demonstration, we only store minimal data in graphJson.
+
+        string graphJson;
+        long blockNumber, timestamp;
+        int transactionIndex, logIndex, batchIndex;
+        string transactionHash;
+
+        if (ev is TransferSingle ts)
+        {
+            blockNumber = ts.BlockNumber;
+            timestamp = ts.Timestamp;
+            transactionIndex = ts.TransactionIndex;
+            logIndex = ts.LogIndex;
+            transactionHash = ts.TransactionHash;
+
+            // Example JSON with from -> to, id/value
+            graphJson = JsonSerializer.Serialize(new
+            {
+                single = new
+                {
+                    from = ts.From,
+                    to = ts.To,
+                    id = ts.Id.ToString(),
+                    value = ts.Value.ToString()
+                }
+            });
+        }
+        else if (ev is TransferBatch tb)
+        {
+            blockNumber = tb.BlockNumber;
+            timestamp = tb.Timestamp;
+            transactionIndex = tb.TransactionIndex;
+            logIndex = tb.LogIndex;
+            transactionHash = tb.TransactionHash;
+            batchIndex = tb.BatchIndex;
+
+            graphJson = JsonSerializer.Serialize(new
+            {
+                batch = new
+                {
+                    from = tb.From,
+                    to = tb.To,
+                    id = tb.Id.ToString(),
+                    value = tb.Value.ToString()
+                }
+            });
+        }
+        else
+        {
+            // Shouldn't happen if we only call this method for Single/Batch
+            throw new InvalidOperationException("BuildStandaloneSummary called with unknown event type.");
+        }
+
+        return new TransferSummary(
+            blockNumber,
+            timestamp,
+            transactionIndex,
+            logIndex,
+            transactionHash,
+            // ev.
+            graphJson
+        );
+    }
+
+    /// <summary>
+    /// Builds a single JSON for the entire "Stream" that contains all flows and their edges.
+    /// Each flow has FlowEdgeId, StreamId, plus a list of "events" that were captured.
+    /// </summary>
+    private string BuildGraphJson(List<FlowRecord> flows)
+    {
+        using var ms = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(ms))
+        {
+            writer.WriteStartObject();
+            writer.WriteStartArray("flows");
+            foreach (var flow in flows)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("flowEdgeId", flow.FlowEdgeId.ToString());
+                writer.WriteNumber("streamId", flow.StreamId);
+                writer.WriteStartArray("events");
+                foreach (var edge in flow.Edges)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("type", edge.GetType().Name);
+
+                    // You could add the "from","to","id","value" here if you like
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
+
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    /// <summary>
+    /// Represents one "flow" started by FlowEdgesScopeSingleStarted.
+    /// We store any TransferSingle/TransferBatch in Edges until we see FlowEdgesScopeLastEnded or StreamCompleted.
+    /// </summary>
+    private class FlowRecord(UInt256 flowEdgeId, ushort streamId)
+    {
+        public UInt256 FlowEdgeId { get; } = flowEdgeId;
+        public ushort StreamId { get; } = streamId;
+        public List<IIndexEvent> Edges { get; } = new();
+    }
+
 
     public IEnumerable<IIndexEvent> ParseLog(
         Block block,
