@@ -150,6 +150,20 @@ public class DatabaseSchema : IDatabaseSchema
             new("transactionHash", ValueTypes.String, true)
         ]);
 
+    public static readonly EventSchema TransferSummary = new(
+        "CrcV2",
+        "TransferSummary",
+        new byte[32],
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("graphJson", ValueTypes.String, false)
+        ]
+    );
+
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
@@ -232,6 +246,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("CrcV2", "FlowEdgesScopeLastEnded"),
                 FlowEdgesScopeLastEnded
+            },
+            {
+                ("CrcV2", "TransferSummary"),
+                TransferSummary
             }
         };
 
@@ -526,6 +544,20 @@ public class DatabaseSchema : IDatabaseSchema
                 { "transactionIndex", e => e.TransactionIndex },
                 { "logIndex", e => e.LogIndex },
                 { "transactionHash", e => e.TransactionHash },
+            });
+
+        EventDtoTableMap.Add<TransferSummary>(("CrcV2", "TransferSummary"));
+        SchemaPropertyMap.Add(("CrcV2", "TransferSummary"),
+            new Dictionary<string, Func<TransferSummary, object?>>
+            {
+                { "blockNumber", e => e.BlockNumber },
+                { "timestamp", e => e.Timestamp },
+                { "transactionIndex", e => e.TransactionIndex },
+                { "logIndex", e => e.LogIndex },
+                { "transactionHash", e => e.TransactionHash },
+                { "from", e => e.From },
+                { "to", e => e.To },
+                { "graphJson", e => e.GraphJson }
             });
     }
 }
