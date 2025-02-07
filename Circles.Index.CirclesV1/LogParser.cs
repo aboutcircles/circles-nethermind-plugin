@@ -332,115 +332,135 @@ public class LogParser(Address v1HubAddress) : ILogParser
         return events;
     }
 
+    /// <summary>
+    /// event Transfer(address indexed from, address indexed to, uint256 value);
+    /// </summary>
     private IIndexEvent Erc20Transfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string from = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string to = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 value = new(log.Data, true);
+        // parse addresses from the 2 topics
+        string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+
+        // parse single 256-bit value from log.Data
+        UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
         return new Transfer(
-            receipt.BlockNumber
-            , (long)block.Timestamp
-            , receipt.Index
-            , logIndex
-            , receipt.TxHash!.ToString()
-            , log.Address.ToString(true, false)
-            , from
-            , to
-            , value);
+            receipt.BlockNumber,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            from,
+            to,
+            value
+        );
     }
 
+    /// <summary>
+    /// event OrganizationSignup(address indexed organization);
+    /// </summary>
     private IIndexEvent CrcOrgSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string org = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string org = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
         return new OrganizationSignup(
-            receipt.BlockNumber
-            , (long)block.Timestamp
-            , receipt.Index
-            , logIndex
-            , receipt.TxHash!.ToString()
-            , org);
+            receipt.BlockNumber,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            org
+        );
     }
 
+    /// <summary>
+    /// event Trust(address indexed canSendTo, address indexed user, uint256 limit);
+    /// </summary>
     private IIndexEvent CrcTrust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string canSendTo = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string user = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        int limit = new UInt256(log.Data, true).ToInt32(CultureInfo.InvariantCulture);
+        string canSendTo = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string user = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        int limit = (int)LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
         return new Trust(
-            receipt.BlockNumber
-            , (long)block.Timestamp
-            , receipt.Index
-            , logIndex
-            , receipt.TxHash!.ToString()
-            , user
-            , canSendTo
-            , limit);
-    }
-
-    private IIndexEvent CrcHubTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
-    {
-        string from = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string to = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 amount = new(log.Data, true);
-
-        return new HubTransfer(
-            receipt.BlockNumber
-            , (long)block.Timestamp
-            , receipt.Index
-            , logIndex
-            , receipt.TxHash!.ToString()
-            , from
-            , to
-            , amount);
-    }
-
-    private IEnumerable<IIndexEvent> CrcSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
-    {
-        // Extract user address and token address from the log entry.
-        string user = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        Address tokenAddress = new Address(log.Data.Slice(12));
-
-        // Generate the Signup event.
-        IIndexEvent signupEvent = new Signup(
             receipt.BlockNumber,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
             user,
-            tokenAddress.ToString(true, false));
+            canSendTo,
+            limit
+        );
+    }
 
-        // Attempt to register the token address. If the token is already known, skip
-        // generating the transfer event to avoid duplicates (e.g., during reorgs).
+    /// <summary>
+    /// event HubTransfer(address indexed from, address indexed to, uint256 amount);
+    /// </summary>
+    private IIndexEvent CrcHubTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        UInt256 amount = LogDataParsingHelper.ParseSingleUInt256(log.Data);
+
+        return new HubTransfer(
+            receipt.BlockNumber,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            from,
+            to,
+            amount
+        );
+    }
+
+    private IEnumerable<IIndexEvent> CrcSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string user = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+
+        if (log.Data.Length < 32)
+        {
+            throw new ArgumentException("Not enough data to parse the 'address token' in Signup event.");
+        }
+
+        Address tokenAddress = new Address(log.Data.Slice(12));
+
+        var signupEvent = new Signup(
+            receipt.BlockNumber,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            user,
+            tokenAddress.ToString(true, false)
+        );
+
+        // Attempt to register the token address
         bool isNewToken = CirclesTokenAddresses.TryAdd(tokenAddress, null);
-
         if (!isNewToken)
         {
-            // If the token was already known, return only the Signup event.
+            // Already known => only return the Signup event
             return new[] { signupEvent };
         }
 
-        // If the token is new, attempt to locate and generate the corresponding transfer event.
+        // If new, find the first matching Transfer event in this tx
         IIndexEvent? signupBonusEvent = null;
         for (int i = 0; i < receipt.Logs!.Length; i++)
         {
             var repeatedLogEntry = receipt.Logs[i];
             if (repeatedLogEntry.Address != tokenAddress)
-            {
-                continue; // Skip logs unrelated to the token address.
-            }
+                continue;
 
-            if (repeatedLogEntry.Topics[0] == _transferTopic)
+            if (repeatedLogEntry.Topics.Length > 0
+                && repeatedLogEntry.Topics[0] == _transferTopic)
             {
                 signupBonusEvent = Erc20Transfer(block, receipt, repeatedLogEntry, i);
-                break; // Only one matching transfer event is expected.
+                break;
             }
         }
 
-        // Return the Signup event, along with the Transfer event if it was found.
         return signupBonusEvent == null
             ? new[] { signupEvent }
             : new[] { signupEvent, signupBonusEvent };
