@@ -5,14 +5,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2.StandardTreasury;
-/*
-   event CreateVault(address indexed group, address indexed vault);
-   event CollateralLockedSingle(address indexed group, uint256 indexed id, uint256 value, bytes userData);
-   event CollateralLockedBatch(address indexed group, uint256[] ids, uint256[] values, bytes userData);
-   event GroupRedeem(address indexed group, uint256 indexed id, uint256 value, bytes data);
-   event GroupRedeemCollateralReturn(address indexed group, address indexed to, uint256[] ids, uint256[] values);
-   event GroupRedeemCollateralBurn(address indexed group, uint256[] ids, uint256[] values);
-*/
 
 /// <summary>
 /// Parses logs from the StandardTreasury contract address,
@@ -88,8 +80,10 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
     private CreateVault CreateVault(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string vaultAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        // event CreateVault(address indexed group, address indexed vault);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string vaultAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
 
         return new CreateVault(
             block.Number,
@@ -104,7 +98,9 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
     private CollateralLockedSingle CollateralLockedSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        // event CollateralLockedSingle(address indexed group, uint256 indexed id, uint256 value, bytes userData);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         UInt256 id = new UInt256(log.Topics[2].Bytes, true);
 
         // Non-indexed params are in log.Data
@@ -129,7 +125,9 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private IEnumerable<CollateralLockedBatch> CollateralLockedBatch(Block block, TxReceipt receipt, LogEntry log,
         int logIndex)
     {
-        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        // event CollateralLockedBatch(address indexed group, uint256[] ids, uint256[] values, bytes userData);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var data = log.Data;
 
         // We expect at least 3 offsets (one each for ids, values, userData):
@@ -180,7 +178,9 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
     private GroupRedeem GroupRedeem(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        // event GroupRedeem(address indexed group, uint256 indexed id, uint256 value, bytes data);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         UInt256 id = new UInt256(log.Topics[2].Bytes, true);
 
         UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
@@ -205,8 +205,10 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         LogEntry log,
         int logIndex)
     {
-        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        string toAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        // event GroupRedeemCollateralReturn(address indexed group, address indexed to, uint256[] ids, uint256[] values);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string toAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
 
         var data = log.Data;
         if (data.Length < 64)
@@ -251,7 +253,9 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         LogEntry log,
         int logIndex)
     {
-        string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        // event GroupRedeemCollateralBurn(address indexed group, uint256[] ids, uint256[] values);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
         var data = log.Data;
         if (data.Length < 64)

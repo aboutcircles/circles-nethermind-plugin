@@ -71,7 +71,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
     private RegisterShortName RegisterShortName(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce)
-        string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
         UInt256 shortName = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 nonce = new UInt256(log.Data.Slice(32, 32), true);
@@ -89,7 +89,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
 
     private CidV0 CidV0(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
         return new CidV0(
             block.Number,
