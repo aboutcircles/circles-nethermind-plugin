@@ -4,12 +4,8 @@ using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV1;
 
-public class DatabaseSchema : IDatabaseSchema
+public class DatabaseSchema : BaseDatabaseSchema
 {
-    public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
-
-    public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
-
     public static readonly EventSchema HubTransfer = EventSchema.FromSolidity("CrcV1",
         "event HubTransfer(address indexed from, address indexed to, uint256 amount)");
 
@@ -25,10 +21,10 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema Transfer = new("CrcV1", "Transfer",
         Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),
         [
-            new("blockNumber", ValueTypes.Int, true),
+            new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true, true),
+            new("logIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
             new("tokenAddress", ValueTypes.Address, true),
             new("from", ValueTypes.Address, true),
@@ -39,10 +35,10 @@ public class DatabaseSchema : IDatabaseSchema
     public static readonly EventSchema TransferSummary = new("CrcV1", "TransferSummary",
         new byte[32],
         [
-            new("blockNumber", ValueTypes.Int, true),
+            new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true, true),
+            new("logIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
             new("tokenAddress", ValueTypes.Address, true),
             new("from", ValueTypes.Address, true),
@@ -52,120 +48,79 @@ public class DatabaseSchema : IDatabaseSchema
             new("graphJson", ValueTypes.String, false)
         ]);
 
-    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
-        new Dictionary<(string Namespace, string Table), EventSchema>
-        {
-            {
-                ("CrcV1", "HubTransfer"),
-                HubTransfer
-            },
-            {
-                ("CrcV1", "Signup"),
-                Signup
-            },
-            {
-                ("CrcV1", "OrganizationSignup"),
-                OrganizationSignup
-            },
-            {
-                ("CrcV1", "Trust"),
-                Trust
-            },
-            {
-                ("CrcV1", "Transfer"),
-                Transfer
-            },
-            {
-                ("CrcV1", "TransferSummary"),
-                TransferSummary
-            }
-        };
-
     public DatabaseSchema()
     {
-        EventDtoTableMap.Add<Signup>(("CrcV1", "Signup"));
-        SchemaPropertyMap.Add(("CrcV1", "Signup"),
-            new Dictionary<string, Func<Signup, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "user", e => e.User },
-                { "token", e => e.Token }
-            });
+        AddMappings<Signup>(
+            ns: "CrcV1",
+            table: "Signup",
+            eventSchema: Signup,
+            databaseFieldMap:
+            [
+                ("user", e => e.User),
+                ("token", e => e.Token)
+            ]
+        );
 
-        EventDtoTableMap.Add<OrganizationSignup>(("CrcV1", "OrganizationSignup"));
-        SchemaPropertyMap.Add(("CrcV1", "OrganizationSignup"),
-            new Dictionary<string, Func<OrganizationSignup, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "organization", e => e.Organization }
-            });
+        AddMappings<OrganizationSignup>(
+            ns: "CrcV1",
+            table: "OrganizationSignup",
+            eventSchema: OrganizationSignup,
+            databaseFieldMap:
+            [
+                ("organization", e => e.Organization)
+            ]
+        );
 
-        EventDtoTableMap.Add<Trust>(("CrcV1", "Trust"));
-        SchemaPropertyMap.Add(("CrcV1", "Trust"),
-            new Dictionary<string, Func<Trust, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "canSendTo", e => e.CanSendTo },
-                { "user", e => e.User },
-                { "limit", e => e.Limit }
-            });
+        AddMappings<Trust>(
+            ns: "CrcV1",
+            table: "Trust",
+            eventSchema: Trust,
+            databaseFieldMap:
+            [
+                ("canSendTo", e => e.CanSendTo),
+                ("user", e => e.User),
+                ("limit", e => e.Limit)
+            ]
+        );
 
-        EventDtoTableMap.Add<HubTransfer>(("CrcV1", "HubTransfer"));
-        SchemaPropertyMap.Add(("CrcV1", "HubTransfer"),
-            new Dictionary<string, Func<HubTransfer, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "from", e => e.From },
-                { "to", e => e.To },
-                { "amount", e => (BigInteger)e.Amount }
-            });
+        AddMappings<HubTransfer>(
+            ns: "CrcV1",
+            table: "HubTransfer",
+            eventSchema: HubTransfer,
+            databaseFieldMap:
+            [
+                ("from", e => e.From),
+                ("to", e => e.To),
+                ("amount", e => (BigInteger)e.Amount)
+            ]
+        );
 
-        EventDtoTableMap.Add<Transfer>(("CrcV1", "Transfer"));
-        SchemaPropertyMap.Add(("CrcV1", "Transfer"),
-            new Dictionary<string, Func<Transfer, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "tokenAddress", e => e.TokenAddress },
-                { "from", e => e.From },
-                { "to", e => e.To },
-                { "amount", e => (BigInteger)e.Value }
-            });
+        AddMappings<Transfer>(
+            ns: "CrcV1",
+            table: "Transfer",
+            eventSchema: Transfer,
+            databaseFieldMap:
+            [
+                ("tokenAddress", e => e.TokenAddress),
+                ("from", e => e.From),
+                ("to", e => e.To),
+                ("amount", e => (BigInteger)e.Value)
+            ]
+        );
 
-        EventDtoTableMap.Add<TransferSummary>(("CrcV1", "TransferSummary"));
-        SchemaPropertyMap.Add(("CrcV1", "TransferSummary"),
-            new Dictionary<string, Func<TransferSummary, object?>>
-            {
-                { "blockNumber", e => e.BlockNumber },
-                { "timestamp", e => e.Timestamp },
-                { "transactionIndex", e => e.TransactionIndex },
-                { "logIndex", e => e.LogIndex },
-                { "transactionHash", e => e.TransactionHash },
-                { "tokenAddress", e => e.TokenAddress },
-                { "from", e => e.From },
-                { "to", e => e.To },
-                { "amount", e => (BigInteger)e.Amount },
-                { "hops", e => e.Hops },
-                { "graphJson", e => e.GraphJson }
-            });
+        AddMappings<TransferSummary>(
+            ns: "CrcV1",
+            table: "TransferSummary",
+            eventSchema: TransferSummary,
+            databaseFieldMap:
+            [
+                ("tokenAddress", e => e.TokenAddress),
+                ("from", e => e.From),
+                ("to", e => e.To),
+                ("amount", e => (BigInteger)e.Amount),
+                ("hops", e => e.Hops),
+                ("graphJson", e => e.GraphJson)
+            ]
+        );
     }
 }

@@ -6,4 +6,5 @@ public interface IIndexEvent
     long Timestamp { get; }
     int TransactionIndex { get; }
     int LogIndex { get; }
+    string TransactionHash { get; }
 }
