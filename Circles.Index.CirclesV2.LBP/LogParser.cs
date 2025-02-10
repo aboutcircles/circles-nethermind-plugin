@@ -33,7 +33,11 @@ public class LogParser(Address factoryAddress) : ILogParser
     private readonly Hash256 _circlesBackingCompletedTopic = new(DatabaseSchema.CirclesBackingCompleted.Topic);
     private readonly Hash256 _releasedTopic = new(DatabaseSchema.Released.Topic);
 
-    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    public IEnumerable<IIndexEvent> ParseTransaction(
+        Block block,
+        int transactionIndex,
+        Transaction transaction,
+        IReadOnlyList<IIndexEvent> events)
     {
         yield break;
     }

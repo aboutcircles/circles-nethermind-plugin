@@ -6,35 +6,35 @@ COPY . .
 RUN dotnet restore
 RUN dotnet publish -c Debug -o /circles-nethermind-plugin
 
-FROM nethermind/nethermind:1.30.3 AS base
+FROM jaensen/nethermind-debug AS base
 
 # dotnet libs
-COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Common.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Common.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV1.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV1.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.StandardTreasury.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.StandardTreasury.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.LBP.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.LBP.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Rpc.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Rpc.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Utils.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Index.Utils.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.pdb /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Common.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Common.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV1.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV1.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.NameRegistry.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.StandardTreasury.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.StandardTreasury.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.LBP.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.LBP.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Rpc.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Rpc.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Utils.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Utils.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Npgsql.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/

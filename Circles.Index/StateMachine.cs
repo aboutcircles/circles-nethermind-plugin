@@ -240,7 +240,7 @@ public class StateMachine(
             await context.Sink.Flush();
             await flow.FlushBlocks();
 
-            context.Database.TryUpdateCrcUiTransferHistory();
+            // context.Database.TryUpdateCrcUiTransferHistory();
         }
         catch (TaskCanceledException)
         {

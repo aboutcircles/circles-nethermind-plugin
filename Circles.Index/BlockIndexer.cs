@@ -18,7 +18,6 @@ public class ImportFlow(
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
 
-
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
         , int boundedCapacity = -1
@@ -48,10 +47,6 @@ public class ImportFlow(
         Metrics.LogBlockWithReceipts(data.Item1);
     }
 
-    // Config on 16 core AMD:
-    // blockSource: 3 buffer, 3 parallel
-    // findReceipts: 6 buffer, 6 parallel
-
     private (TransformBlock<long, Block?> Source, ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> Sink)
         BuildPipeline(CancellationToken cancellationToken)
     {
@@ -72,73 +67,102 @@ public class ImportFlow(
                 Dictionary<Hash256, Transaction> transactionsByHash = new();
                 Dictionary<Hash256, int> transactionIndexByHash = new();
 
-                for (var i = 0; i < blockWithReceipts.Block.Transactions.Length; i++)
+                // Index the transactions in this block
+                for (int i = 0; i < blockWithReceipts.Block.Transactions.Length; i++)
                 {
                     var tx = blockWithReceipts.Block.Transactions[i];
-                    if (tx.Hash != null)
-                    {
-                        transactionsByHash[tx.Hash] = tx;
-                        transactionIndexByHash[tx.Hash] = i;
-                    }
+                    if (tx.Hash == null) continue;
+
+                    transactionsByHash[tx.Hash] = tx;
+                    transactionIndexByHash[tx.Hash] = i;
                 }
 
-                List<IIndexEvent> events = [];
+                // We'll collect final events for the entire block in 'allEvents'
+                List<IIndexEvent> allEvents = new();
+
+                // Go through every receipt (which belongs to a transaction).
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
-                    var transaction = transactionsByHash[receipt.TxHash!];
+                    var txHash = receipt.TxHash;
+                    if (txHash == null || !transactionsByHash.TryGetValue(txHash, out var transaction))
+                        continue;
 
-                    //
-                    // Not used right now and commented out to save some CPU cycles.
-                    // 
-                    // var transactionIndex = transactionIndexByHash[receipt.TxHash!];
-                    // try
-                    // {
-                    //     foreach (var parser in context.LogParsers)
-                    //     {
-                    //         var parsedEvents = parser.ParseTransaction(blockWithReceipts.Block,
-                    //             transactionIndex, transaction);
-                    //
-                    //         events.AddRange(parsedEvents);
-                    //     }
-                    // }
-                    // catch (Exception e)
-                    // {
-                    //     context.Logger.Error($"Error parsing transaction {transaction}");
-                    //     context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
-                    //     context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
-                    //     context.Logger.Error(e.Message);
-                    //     context.Logger.Error(e.StackTrace);
-                    //     throw;
-                    // }
+                    var transactionIndex = transactionIndexByHash[txHash];
 
-                    for (int i = 0; i < receipt.Logs?.Length; i++)
+                    // A dictionary mapping each parser -> the events it produced from logs
+                    var parserToEvents = new Dictionary<ILogParser, List<IIndexEvent>>(context.LogParsers.Length);
+                    foreach (var parser in context.LogParsers)
                     {
-                        LogEntry log = receipt.Logs[i];
-                        foreach (var parser in context.LogParsers)
-                        {
-                            try
-                            {
-                                var parsedEvents = parser.ParseLog(blockWithReceipts.Block,
-                                    transaction, receipt, log, i);
+                        parserToEvents[parser] = new List<IIndexEvent>();
+                    }
 
-                                events.AddRange(parsedEvents);
-                            }
-                            catch (Exception e)
+                    // 1) Parse logs with each parser; each parser only stores in its own list
+                    if (receipt.Logs != null)
+                    {
+                        for (int logIndex = 0; logIndex < receipt.Logs.Length; logIndex++)
+                        {
+                            var logEntry = receipt.Logs[logIndex];
+                            foreach (var parser in context.LogParsers)
                             {
-                                context.Logger.Error($"Error parsing log {log} with parser {parser}");
-                                context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
-                                context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
-                                context.Logger.Error(e.Message);
-                                context.Logger.Error(e.StackTrace);
-                                throw;
+                                try
+                                {
+                                    var parsedLogEvents = parser.ParseLog(
+                                        blockWithReceipts.Block,
+                                        transaction,
+                                        receipt,
+                                        logEntry,
+                                        logIndex);
+
+                                    parserToEvents[parser].AddRange(parsedLogEvents);
+                                }
+                                catch (Exception e)
+                                {
+                                    context.Logger.Error($"Error parsing log {logEntry} with parser {parser}");
+                                    context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
+                                    context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
+                                    context.Logger.Error("Exception:", e);
+                                    throw;
+                                }
                             }
                         }
                     }
+
+                    // 2) For each parser, call ParseTransaction with the events from that parser only
+                    foreach (var parser in context.LogParsers)
+                    {
+                        try
+                        {
+                            var txEvents = parser.ParseTransaction(
+                                blockWithReceipts.Block,
+                                transactionIndex,
+                                transaction,
+                                parserToEvents[parser]);
+
+                            // Add these newly derived events to that parser's list
+                            parserToEvents[parser].AddRange(txEvents);
+                        }
+                        catch (Exception e)
+                        {
+                            context.Logger.Error($"Error parsing transaction {transaction} with parser {parser}");
+                            context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
+                            context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
+                            context.Logger.Error("Exception: ", e);
+                            throw;
+                        }
+                    }
+
+                    // 3) Combine everything from parserToEvents into our final block-level list
+                    foreach (var kvp in parserToEvents)
+                    {
+                        allEvents.AddRange(kvp.Value);
+                    }
                 }
 
-                return (blockWithReceipts, events);
+                // Finally, return (block, allEvents)
+                return (blockWithReceipts, allEvents);
             },
             CreateOptions(cancellationToken, 1, 1));
+
 
         receiptsSourceBlock.LinkTo(parserBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
@@ -183,7 +207,7 @@ public class ImportFlow(
         {
             // FLush events
             await context.Sink.Flush();
-            
+
             // Flush blocks
             await FlushBlocks();
         }

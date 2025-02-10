@@ -440,20 +440,19 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private string[] GetTokenExposureIds(Address address)
     {
-        var selectTokenExposure = new Select(
-            "V_Crc",
-            "Transfers",
-            ["id"],
-            [
-                new FilterPredicate("to", FilterType.Equals, address.ToString(true, false)),
-                new FilterPredicate("type", FilterType.NotEquals, "CrcV1_HubTransfer")
-            ],
-            Array.Empty<OrderBy>(),
-            int.MaxValue,
-            true);
+        var tokenExposure = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(@"
+            select distinct ""tokenAddress""
+            from ""CrcV1_Transfer""
+            where ""to"" = @address
+            union
+            select distinct ""tokenAddress""
+            from ""V_CrcV2_Transfers""
+            where ""to"" = @address;
+        ", [
+            _indexerContext.ReadonlyDatabase.CreateParameter("address", address.ToString(true, false))
+        ]));
 
-        var sql = selectTokenExposure.ToSql(_indexerContext.ReadonlyDatabase);
-        return _indexerContext.ReadonlyDatabase.Select(sql)
+        return tokenExposure
             .Rows
             .Select(row => row[0]?.ToString() ?? throw new Exception("An id in the result set is null"))
             .ToArray();
