@@ -79,7 +79,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
             if (parts.Length < 2)
             {
                 throw new ArgumentException(
-                    $"Invalid column definition '${columnDefinition}'. Must contain a type and a name.");
+                    $"Invalid column definition '{columnDefinition}'. Must contain a type and a name.");
             }
 
             if (i > 0)
