@@ -43,7 +43,7 @@ public class DatabaseSchema : IDatabaseSchema
                                when ""to""   = '0x0000000000000000000000000000000000000000' then -value
                                else 0
                                end
-                   ) as total_supply
+                   ) as ""totalSupply""
                from combined_transfers
                group by
                    ""tokenAddress"",
