@@ -102,57 +102,54 @@ public class LogParser(Address v1HubAddress) : ILogParser
             list.Add(t);
         }
 
-        // We'll collect globally used edges so we can exclude them from stand-alone
         var usedEdgesGlobal = new HashSet<Transfer>();
 
-        // For each hub transfer, do a DFS to find all routes
-        foreach (var hubTransfer in hubTransfers)
+        for (int h = 0; h < hubTransfers.Count; h++)
         {
+            var hubTransfer = hubTransfers[h];
             var hubFrom = hubTransfer.From.ToLowerInvariant();
             var hubTo = hubTransfer.To.ToLowerInvariant();
-
+            
             var usedEdges = new HashSet<Transfer>();
             var pathStack = new List<Transfer>();
 
             void Dfs(string current, HashSet<string> visited)
             {
-                if (string.Equals(current, hubTo, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(current, hubTo))
                 {
-                    // Mark everything in pathStack as used
                     for (int p = 0; p < pathStack.Count; p++)
                     {
                         usedEdges.Add(pathStack[p]);
                     }
-
                     return;
                 }
-
+                
                 if (!adjacency.TryGetValue(current, out var edges))
+                {
                     return;
-
+                }
+                
                 for (int e = 0; e < edges.Count; e++)
                 {
                     var edge = edges[e];
                     var next = edge.To;
                     if (visited.Contains(next))
+                    {
                         continue;
-
+                    }
                     pathStack.Add(edge);
                     visited.Add(next);
-
+                    
                     Dfs(next, visited);
-
-                    // backtrack
+                    
                     visited.Remove(next);
                     pathStack.RemoveAt(pathStack.Count - 1);
                 }
             }
 
             // DFS from hubTransfer.from
-            {
-                var visitedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { hubFrom };
-                Dfs(hubFrom, visitedSet);
-            }
+            var visitedSet = new HashSet<string>() { hubFrom };
+            Dfs(hubFrom, visitedSet);
 
             // Mark all edges from this hub in the global usedEdges
             foreach (var edge in usedEdges)
@@ -177,12 +174,22 @@ public class LogParser(Address v1HubAddress) : ILogParser
         }
 
         // 4) For each Transfer not used by any hub route, stand-alone
-        var standAloneTransfers = allTransfers.Where(o => !usedEdgesGlobal.Contains(o)).ToArray();
+        var standAloneTransfers = new List<Transfer>();
+        for (int i = 0; i < allTransfers.Count; i++)
+        {
+            var t = allTransfers[i];
+            if (!usedEdgesGlobal.Contains(t))
+            {
+                standAloneTransfers.Add(t);
+            }
+        }
+
         var standAloneTransfersJson =
             JsonSerializer.Serialize(standAloneTransfers.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
 
-        foreach (var standAloneTransfer in standAloneTransfers)
+        for (int i = 0; i < standAloneTransfers.Count; i++)
         {
+            var standAloneTransfer = standAloneTransfers[i];
             yield return new TransferSummary(
                 standAloneTransfer.BlockNumber,
                 standAloneTransfer.Timestamp,
