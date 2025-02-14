@@ -1,10 +1,8 @@
 using System.Collections.Immutable;
 using System.Numerics;
-using Circles.Index.Common;
 using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2;
 
@@ -21,6 +19,13 @@ public record NetTransfers(IEnumerable<TransferTotal> Totals);
 
 public record TransferKey(string From, string To);
 
+public record AggregationResult(
+    NetTransfers StreamTransfers,
+    List<IIndexedEventV2> StreamEvents,
+    NetTransfers NonStreamTransfers,
+    List<IIndexedEventV2> NonStreamEvents
+);
+
 /// <summary>
 /// This class aggregates all TransferSingle, TransferBatch, and Erc20WrapperTransfer
 /// events from one transaction. Then it outputs a series of "virtual" TransferSummary
@@ -29,177 +34,112 @@ public record TransferKey(string From, string To);
 /// </summary>
 public static class TransferSummaryAggregator
 {
-    public static string ConvertUInt256ToHex(UInt256 value)
+    public static AggregationResult AggregateAll(IEnumerable<IIndexedEventV2> events,
+        IDictionary<Address, long> erc20WrapperAddresses)
     {
-        return value.ToHexString(true);
-    }
-
-    public static NetTransfers GetStreamSummary(IEnumerable<IIndexedEventV2> events)
-    {
-        var streamCompletedEvents = events
-            .Where(o => o is StreamCompleted)
-            .Cast<StreamCompleted>()
-            .ToArray();
-
-        Dictionary<TransferKey, TransferTotal> sums = new Dictionary<TransferKey, TransferTotal>();
-
-        foreach (var streamCompletedEvent in streamCompletedEvents)
-        {
-            var streamKey = new TransferKey(streamCompletedEvent.From, streamCompletedEvent.To);
-            if (!sums.TryGetValue(streamKey, out var streamSum))
-            {
-                sums[streamKey] = new TransferTotal(
-                    streamKey,
-                    (BigInteger)streamCompletedEvent.Amount,
-                    ImmutableHashSet.Create(ConvertUInt256ToHex(streamCompletedEvent.Id)),
-                    1);
-            }
-            else
-            {
-                sums[streamKey] = new TransferTotal(
-                    streamKey,
-                    streamSum.Value + (BigInteger)streamCompletedEvent.Amount,
-                    streamSum.Tokens.Add(ConvertUInt256ToHex(streamCompletedEvent.Id)),
-                    streamSum.Transfers + 1);
-            }
-        }
-
-        return new NetTransfers(sums.Values);
-    }
-
-    public static IEnumerable<IIndexedEventV2> StreamEvents(IEnumerable<IIndexedEventV2> events)
-    {
-        // An event is a stream event if it's between a FlowEdgeScopeSingleStarted and StreamCompleted event.
+        var streamSums = new Dictionary<TransferKey, TransferTotal>();
+        var nonStreamSums = new Dictionary<TransferKey, TransferTotal>();
+        var streamEvents = new List<IIndexedEventV2>();
+        var nonStreamEvents = new List<IIndexedEventV2>();
         bool inStream = false;
+
         foreach (var e in events)
         {
-            switch (e)
+            if (e is FlowEdgesScopeSingleStarted)
             {
-                case FlowEdgesScopeSingleStarted _:
-                    inStream = true;
-                    break;
-                case StreamCompleted _:
-                    inStream = false;
-                    break;
+                inStream = true;
+                nonStreamEvents.Add(e);
+                continue;
+            }
+
+            if (e is StreamCompleted sc)
+            {
+                AddStreamCompleted(streamSums, sc);
+                streamEvents.Add(e);
+                inStream = false;
+                continue;
             }
 
             if (inStream)
             {
-                yield return e;
+                streamEvents.Add(e);
+            }
+            else
+            {
+                nonStreamEvents.Add(e);
+                AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses);
             }
         }
+
+        return new AggregationResult(
+            new NetTransfers(streamSums.Values),
+            streamEvents,
+            new NetTransfers(nonStreamSums.Values),
+            nonStreamEvents
+        );
     }
 
-    public static IEnumerable<IIndexedEventV2> NonStreamEvents(IEnumerable<IIndexedEventV2> events)
+    static void AddStreamCompleted(Dictionary<TransferKey, TransferTotal> sums, StreamCompleted e)
     {
-        // An event is a non-stream event if it's not between a FlowEdgeScopeSingleStarted and StreamCompleted event.
-        bool inStream = false;
-        foreach (var e in events)
+        var key = new TransferKey(e.From, e.To);
+        var amount = (BigInteger)e.Amount;
+        var token = e.Id.ToHexString(true);
+        if (!sums.TryGetValue(key, out var current))
         {
-            switch (e)
+            sums[key] = new TransferTotal(key, amount, ImmutableHashSet.Create(token), 1);
+        }
+        else
+        {
+            sums[key] = current with
             {
-                case FlowEdgesScopeSingleStarted _:
-                    inStream = true;
-                    break;
-                case StreamCompleted _:
-                    inStream = false;
-                    break;
-            }
-
-            if (!inStream)
-            {
-                yield return e;
-            }
+                Value = current.Value + amount,
+                Tokens = current.Tokens.Add(token),
+                Transfers = current.Transfers + 1
+            };
         }
     }
 
-    public static NetTransfers CalculateNetTransfers(IEnumerable<IIndexEvent> events,
+    static void AddNonStreamTransfers(Dictionary<TransferKey, TransferTotal> sums, IIndexedEventV2 e,
         IDictionary<Address, long> erc20WrapperAddresses)
     {
-        Dictionary<TransferKey, TransferTotal> sums = new Dictionary<TransferKey, TransferTotal>();
-
-        foreach (var e in events)
+        if (e is TransferSingle ts)
         {
-            switch (e)
-            {
-                case TransferSingle ts:
-                {
-                    var tsKey = new TransferKey(ts.From, ts.To);
-                    if (!sums.TryGetValue(tsKey, out var tsSum))
-                    {
-                        sums[tsKey] = new TransferTotal(
-                            tsKey,
-                            (BigInteger)ts.Value,
-                            ImmutableHashSet.Create(ConvertUInt256ToHex(ts.Id)),
-                            1);
-                    }
-                    else
-                    {
-                        sums[tsKey] = new TransferTotal(
-                            tsKey,
-                            tsSum.Value + (BigInteger)ts.Value,
-                            tsSum.Tokens.Add(ConvertUInt256ToHex(ts.Id)),
-                            tsSum.Transfers + 1);
-                    }
-
-                    break;
-                }
-                case TransferBatch tb:
-                {
-                    var tbKey = new TransferKey(tb.From, tb.To);
-                    if (!sums.TryGetValue(tbKey, out var tbSum))
-                    {
-                        sums[tbKey] = new TransferTotal(
-                            tbKey,
-                            (BigInteger)tb.Value,
-                            ImmutableHashSet.Create(ConvertUInt256ToHex(tb.Id)),
-                            1);
-                    }
-                    else
-                    {
-                        sums[tbKey] = new TransferTotal(
-                            tbKey,
-                            tbSum.Value + (BigInteger)tb.Value,
-                            tbSum.Tokens.Add(ConvertUInt256ToHex(tb.Id)),
-                            tbSum.Transfers + 1);
-                    }
-
-                    break;
-                }
-                case Erc20WrapperTransfer ewt:
-                {
-                    BigInteger value = (BigInteger)ewt.Value;
-                    if (erc20WrapperAddresses.TryGetValue(new Address(ewt.TokenAddress), out var erc20WrapperType) &&
-                        erc20WrapperType == 1)
-                    {
-                        // static wrapper. Convert to demurraged.
-                        value = (BigInteger)ConversionUtils.CirclesToAttoCircles(
-                            ConversionUtils.StaticCirclesToCircles(ConversionUtils.AttoCirclesToCircles(ewt.Value)));
-                    }
-
-                    var ewtKey = new TransferKey(ewt.From, ewt.To);
-                    if (!sums.TryGetValue(ewtKey, out var ewtSum))
-                    {
-                        sums[ewtKey] = new TransferTotal(
-                            ewtKey,
-                            value,
-                            ImmutableHashSet.Create(ewt.TokenAddress),
-                            1);
-                    }
-                    else
-                    {
-                        sums[ewtKey] = new TransferTotal(
-                            ewtKey,
-                            ewtSum.Value + value,
-                            ewtSum.Tokens.Add(ewt.TokenAddress),
-                            ewtSum.Transfers + 1);
-                    }
-
-                    break;
-                }
-            }
+            AddSum(sums, ts.From, ts.To, (BigInteger)ts.Value, ts.Id.ToHexString(true));
         }
+        else if (e is TransferBatch tb)
+        {
+            AddSum(sums, tb.From, tb.To, (BigInteger)tb.Value, tb.Id.ToHexString(true));
+        }
+        else if (e is Erc20WrapperTransfer ewt)
+        {
+            var val = (BigInteger)ewt.Value;
+            if (erc20WrapperAddresses.TryGetValue(new Address(ewt.TokenAddress), out var wrapperType) &&
+                wrapperType == 1)
+            {
+                val = (BigInteger)ConversionUtils.CirclesToAttoCircles(
+                    ConversionUtils.StaticCirclesToCircles(ConversionUtils.AttoCirclesToCircles(ewt.Value)));
+            }
 
-        return new NetTransfers(sums.Values);
+            AddSum(sums, ewt.From, ewt.To, val, ewt.TokenAddress);
+        }
+    }
+
+    static void AddSum(Dictionary<TransferKey, TransferTotal> sums, string from, string to, BigInteger value,
+        string token)
+    {
+        var key = new TransferKey(from, to);
+        if (!sums.TryGetValue(key, out var current))
+        {
+            sums[key] = new TransferTotal(key, value, ImmutableHashSet.Create(token), 1);
+        }
+        else
+        {
+            sums[key] = current with
+            {
+                Value = current.Value + value,
+                Tokens = current.Tokens.Add(token),
+                Transfers = current.Transfers + 1
+            };
+        }
     }
 }

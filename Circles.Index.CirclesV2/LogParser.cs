@@ -53,20 +53,22 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         if (events.Count == 0)
             yield break;
 
-        var eventsv2 = events.Cast<IIndexedEventV2>().ToArray();
-        var streamSummary = TransferSummaryAggregator.GetStreamSummary(eventsv2);
-        var nonStreamEvents = TransferSummaryAggregator.NonStreamEvents(eventsv2).ToArray();
-        var netTransfers = TransferSummaryAggregator.CalculateNetTransfers(nonStreamEvents, Erc20WrapperAddresses);
-
-        int syntheticLogIndex = -(streamSummary.Totals.Count() + netTransfers.Totals.Count());
-
-        if (streamSummary.Totals.Any())
+        var eventsv2 = new List<IIndexedEventV2>(events.Count);
+        foreach (var e in events)
         {
-            var streamEvents = TransferSummaryAggregator.StreamEvents(eventsv2).ToArray();
+            if (e is IIndexedEventV2 v2) eventsv2.Add(v2);
+        }
 
-            var streamEventsJson = JsonSerializer.Serialize(streamEvents, _jsonSerializerOptions);
+        if (eventsv2.Count == 0)
+            yield break;
 
-            foreach (var summary in streamSummary.Totals)
+        var result = TransferSummaryAggregator.AggregateAll(eventsv2, Erc20WrapperAddresses);
+        int syntheticLogIndex = -(result.StreamTransfers.Totals.Count() + result.NonStreamTransfers.Totals.Count());
+
+        if (result.StreamTransfers.Totals.Any())
+        {
+            var streamEventsJson = JsonSerializer.Serialize(result.StreamEvents, _jsonSerializerOptions);
+            foreach (var summary in result.StreamTransfers.Totals)
             {
                 yield return new TransferSummary(
                     block.Number,
@@ -83,10 +85,10 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             }
         }
 
-        if (netTransfers.Totals.Any())
+        if (result.NonStreamTransfers.Totals.Any())
         {
-            var nonStreamEventsJson = JsonSerializer.Serialize(nonStreamEvents, _jsonSerializerOptions);
-            foreach (var transfer in netTransfers.Totals)
+            var nonStreamEventsJson = JsonSerializer.Serialize(result.NonStreamEvents, _jsonSerializerOptions);
+            foreach (var transfer in result.NonStreamTransfers.Totals)
             {
                 yield return new TransferSummary(
                     block.Number,
