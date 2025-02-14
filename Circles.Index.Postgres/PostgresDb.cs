@@ -109,16 +109,13 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                     continue;
                 }
 
-                var additionalKeyColumns = table.Value.Columns
-                    .Where(column => column.IncludeInPrimaryKey)
-                    .Select(column => $"\"{column.Column}\"")
+                var defaultKeyColumns = new[] { "\"blockNumber\"", "\"transactionIndex\"", "\"logIndex\"" };
+                var allKeyColumns = defaultKeyColumns.Union(table.Value.Columns
+                        .Where(column => column.IncludeInPrimaryKey)
+                        .Select(column => $"\"{column.Column}\""))
                     .ToArray();
-                var additionalKeyColumnsString = string.Join(", ", additionalKeyColumns);
-                if (additionalKeyColumns.Length > 0)
-                {
-                    additionalKeyColumnsString = ", " + additionalKeyColumnsString;
-                }
 
+                var allKeyColumnsString = string.Join(", ", allKeyColumns);
                 if (table.Value is { Namespace: "System", Table: "Block" })
                 {
                     primaryKeyDdl.AppendLine(
@@ -133,7 +130,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                     }
 
                     primaryKeyDdl.AppendLine(
-                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"transactionIndex\", \"logIndex\"{additionalKeyColumnsString});");
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY ({allKeyColumnsString});");
                 }
             }
 
@@ -241,6 +238,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ValueTypes.Boolean => "BOOLEAN",
             ValueTypes.Bytes => "BYTEA",
             ValueTypes.AddressArray => "TEXT[]",
+            ValueTypes.Json => "JSON",
             _ => throw new ArgumentException("Unsupported type")
         };
     }
@@ -256,6 +254,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ValueTypes.Boolean => NpgsqlDbType.Boolean,
             ValueTypes.Bytes => NpgsqlDbType.Bytea,
             ValueTypes.AddressArray => NpgsqlDbType.Array | NpgsqlDbType.Text,
+            ValueTypes.Json => NpgsqlDbType.Json,
             _ => throw new ArgumentException("Unsupported type")
         };
     }
@@ -337,12 +336,13 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public async Task DeleteFromBlockOnwards(long reorgAt)
     {
-        await using var connection = new NpgsqlConnection(ConnectionString);
-        await connection.OpenAsync();
-
-        await using var transaction = await connection.BeginTransactionAsync();
+        NpgsqlTransaction transaction = null;
         try
         {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            await connection.OpenAsync();
+
+            transaction = await connection.BeginTransactionAsync();
             foreach (var table in Schema.Tables.Values)
             {
                 if (table.Namespace.StartsWith("V_"))
@@ -369,44 +369,16 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         catch (Exception ex)
         {
             Console.WriteLine($"An error occurred: {ex.Message}");
-            await transaction.RollbackAsync();
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+
             throw;
         }
-    }
-
-    /// <summary>
-    /// Calls the 'Update_Crc_UITransferHistory' stored procedure if available in the db.
-    /// </summary>
-    /// <returns>True if the stored procedure exists and was called, false otherwise.</returns>
-    public bool TryUpdateCrcUiTransferHistory()
-    {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
-
-        using (var checkCmd = connection.CreateCommand())
+        finally
         {
-            checkCmd.CommandText = @"
-            SELECT 1
-            FROM pg_catalog.pg_proc p
-            JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-            WHERE p.proname = 'Update_Crc_UITransferHistory'
-              AND n.nspname = 'public';
-            ";
-
-            var spExists = checkCmd.ExecuteScalar() != null;
-            if (!spExists)
-            {
-                return false;
-            }
+            transaction?.Dispose();
         }
-
-        using (var command = connection.CreateCommand())
-        {
-            command.CommandText = "CALL \"Update_Crc_UITransferHistory\"()";
-            command.CommandTimeout = 120;
-            command.ExecuteNonQuery();
-        }
-
-        return true;
     }
 }

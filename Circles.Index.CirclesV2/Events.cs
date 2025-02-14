@@ -9,8 +9,9 @@ public record RegisterOrganization(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Organization,
-    string Name) : IIndexEvent;
+    string Name) : IIndexedEventV2;
 
 public record RegisterGroup(
     long BlockNumber,
@@ -18,11 +19,12 @@ public record RegisterGroup(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Group,
     string Mint,
     string Treasury,
     string Name,
-    string Symbol) : IIndexEvent;
+    string Symbol) : IIndexedEventV2;
 
 public record RegisterHuman(
     long BlockNumber,
@@ -30,8 +32,9 @@ public record RegisterHuman(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Avatar,
-    string Inviter) : IIndexEvent;
+    string Inviter) : IIndexedEventV2;
 
 public record PersonalMint(
     long BlockNumber,
@@ -39,10 +42,11 @@ public record PersonalMint(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Human,
     UInt256 Amount,
     UInt256 StartPeriod,
-    UInt256 EndPeriod) : IIndexEvent;
+    UInt256 EndPeriod) : IIndexedEventV2;
 
 public record Trust(
     long BlockNumber,
@@ -50,9 +54,10 @@ public record Trust(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Truster,
     string Trustee,
-    UInt256 ExpiryTime) : IIndexEvent;
+    UInt256 ExpiryTime) : IIndexedEventV2;
 
 public record Stopped(
     long BlockNumber,
@@ -60,7 +65,8 @@ public record Stopped(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string Avatar) : IIndexEvent;
+    string Emitter,
+    string Avatar) : IIndexedEventV2;
 
 public record ApprovalForAll(
     long BlockNumber,
@@ -68,9 +74,10 @@ public record ApprovalForAll(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Account,
     string Operator,
-    bool Approved) : IIndexEvent;
+    bool Approved) : IIndexedEventV2;
 
 public record TransferSingle(
     long BlockNumber,
@@ -78,11 +85,12 @@ public record TransferSingle(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Operator,
     string From,
     string To,
     UInt256 Id,
-    UInt256 Value) : IIndexEvent;
+    UInt256 Value) : IIndexedEventV2;
 
 public record TransferBatch(
     long BlockNumber,
@@ -90,12 +98,13 @@ public record TransferBatch(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     int BatchIndex,
     string Operator,
     string From,
     string To,
     UInt256 Id,
-    UInt256 Value) : IIndexEvent;
+    UInt256 Value) : IIndexedEventV2;
 
 public record ERC20WrapperDeployed(
     long BlockNumber,
@@ -103,9 +112,10 @@ public record ERC20WrapperDeployed(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Avatar,
     string Erc20Wrapper,
-    long CirclesType) : IIndexEvent;
+    long CirclesType) : IIndexedEventV2;
 
 public record Erc20WrapperTransfer(
     long BlockNumber,
@@ -113,10 +123,11 @@ public record Erc20WrapperTransfer(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string TokenAddress,
     string From,
     string To,
-    UInt256 Value) : IIndexEvent;
+    UInt256 Value) : IIndexedEventV2;
 
 public record DepositInflationary(
     long BlockNumber,
@@ -124,9 +135,10 @@ public record DepositInflationary(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Account,
     UInt256 Amount,
-    UInt256 DemurragedAmount) : IIndexEvent;
+    UInt256 DemurragedAmount) : IIndexedEventV2;
 
 public record WithdrawInflationary(
     long BlockNumber,
@@ -134,9 +146,10 @@ public record WithdrawInflationary(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Account,
     UInt256 Amount,
-    UInt256 DemurragedAmount) : IIndexEvent;
+    UInt256 DemurragedAmount) : IIndexedEventV2;
 
 public record DepositDemurraged(
     long BlockNumber,
@@ -144,9 +157,10 @@ public record DepositDemurraged(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Account,
     UInt256 Amount,
-    UInt256 InflationaryAmount) : IIndexEvent;
+    UInt256 InflationaryAmount) : IIndexedEventV2;
 
 public record WithdrawDemurraged(
     long BlockNumber,
@@ -154,9 +168,10 @@ public record WithdrawDemurraged(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Account,
     UInt256 Amount,
-    UInt256 InflationaryAmount) : IIndexEvent;
+    UInt256 InflationaryAmount) : IIndexedEventV2;
 
 public record StreamCompleted(
     long BlockNumber,
@@ -165,11 +180,12 @@ public record StreamCompleted(
     int LogIndex,
     int BatchIndex,
     string TransactionHash,
+    string Emitter,
     string Operator,
     string From,
     string To,
     UInt256 Id,
-    UInt256 Amount) : IIndexEvent;
+    UInt256 Amount) : IIndexedEventV2;
 
 public record DiscountCost(
     long BlockNumber,
@@ -177,9 +193,10 @@ public record DiscountCost(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Account,
     UInt256 Id,
-    UInt256 Cost) : IIndexEvent;
+    UInt256 Cost) : IIndexedEventV2;
 
 public record GroupMint(
     long BlockNumber,
@@ -188,11 +205,12 @@ public record GroupMint(
     int LogIndex,
     int BatchIndex,
     string TransactionHash,
+    string Emitter,
     string Sender,
     string Receiver,
     string Group,
     UInt256 Collateral,
-    UInt256 Amount) : IIndexEvent;
+    UInt256 Amount) : IIndexedEventV2;
 
 public record FlowEdgesScopeSingleStarted(
     long BlockNumber,
@@ -200,15 +218,17 @@ public record FlowEdgesScopeSingleStarted(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     UInt256 FlowEdgeId,
-    UInt16 StreamId) : IIndexEvent;
+    UInt16 StreamId) : IIndexedEventV2;
 
 public record FlowEdgesScopeLastEnded(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
-    string TransactionHash) : IIndexEvent;
+    string TransactionHash,
+    string Emitter) : IIndexedEventV2;
 
 public record TransferSummary(
     long BlockNumber,
@@ -216,7 +236,9 @@ public record TransferSummary(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string From,
     string To,
-    string GraphJson // big JSON that describes all flows and edges
+    UInt256 Amount,
+    string Events
 ) : IIndexEvent;

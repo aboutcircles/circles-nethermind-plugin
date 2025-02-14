@@ -64,6 +64,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             avatar,
             metadataDigest);
     }
@@ -82,6 +83,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             avatar,
             shortName,
             nonce);
@@ -97,6 +99,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             avatar,
             log.Data);
     }

@@ -7,4 +7,5 @@ public interface IIndexEvent
     int TransactionIndex { get; }
     int LogIndex { get; }
     string TransactionHash { get; }
+    string Emitter { get; }
 }
