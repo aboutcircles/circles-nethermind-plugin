@@ -54,15 +54,15 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             yield break;
 
         var eventsv2 = events.Cast<IIndexedEventV2>().ToArray();
-        var streamSummary = TransferSummaryyAggregator.GetStreamSummary(eventsv2);
-        var nonStreamEvents = TransferSummaryyAggregator.NonStreamEvents(eventsv2).ToArray();
-        var netTransfers = TransferSummaryyAggregator.CalculateNetTransfers(nonStreamEvents);
+        var streamSummary = TransferSummaryAggregator.GetStreamSummary(eventsv2);
+        var nonStreamEvents = TransferSummaryAggregator.NonStreamEvents(eventsv2).ToArray();
+        var netTransfers = TransferSummaryAggregator.CalculateNetTransfers(nonStreamEvents, Erc20WrapperAddresses);
 
         int syntheticLogIndex = -(streamSummary.Totals.Count() + netTransfers.Totals.Count());
 
         if (streamSummary.Totals.Any())
         {
-            var streamEvents = TransferSummaryyAggregator.StreamEvents(eventsv2).ToArray();
+            var streamEvents = TransferSummaryAggregator.StreamEvents(eventsv2).ToArray();
 
             var streamEventsJson = JsonSerializer.Serialize(streamEvents, _jsonSerializerOptions);
 

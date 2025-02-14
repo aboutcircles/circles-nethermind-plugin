@@ -1,19 +1,12 @@
 using System.Collections.Immutable;
 using System.Numerics;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Circles.Index.Common;
+using Circles.Index.Utils;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2;
-
-public record TokenBalanceKey(string Account, string Token);
-
-// Summarizes all balance changes for each account and token in a transaction.
-public record NetBalanceChanges(
-    Dictionary<TokenBalanceKey, BigInteger> NetTransfersByAccountAndToken,
-    Dictionary<string, BigInteger> NetTransfersByAccount);
 
 /// <summary>
 /// Sums up all individual transfers between two addresses in one direction.
@@ -34,7 +27,7 @@ public record TransferKey(string From, string To);
 /// records that reflect net flows between real addresses (or MINT/BURN if the system
 /// net isn't zero).
 /// </summary>
-public static class TransferSummaryyAggregator
+public static class TransferSummaryAggregator
 {
     public static string ConvertUInt256ToHex(UInt256 value)
     {
@@ -120,7 +113,8 @@ public static class TransferSummaryyAggregator
         }
     }
 
-    public static NetTransfers CalculateNetTransfers(IEnumerable<IIndexEvent> events)
+    public static NetTransfers CalculateNetTransfers(IEnumerable<IIndexEvent> events,
+        IDictionary<Address, long> erc20WrapperAddresses)
     {
         Dictionary<TransferKey, TransferTotal> sums = new Dictionary<TransferKey, TransferTotal>();
 
@@ -174,12 +168,21 @@ public static class TransferSummaryyAggregator
                 }
                 case Erc20WrapperTransfer ewt:
                 {
+                    BigInteger value = (BigInteger)ewt.Value;
+                    if (erc20WrapperAddresses.TryGetValue(new Address(ewt.TokenAddress), out var erc20WrapperType) &&
+                        erc20WrapperType == 1)
+                    {
+                        // static wrapper. Convert to demurraged.
+                        value = (BigInteger)ConversionUtils.CirclesToAttoCircles(
+                            ConversionUtils.StaticCirclesToCircles(ConversionUtils.AttoCirclesToCircles(ewt.Value)));
+                    }
+
                     var ewtKey = new TransferKey(ewt.From, ewt.To);
                     if (!sums.TryGetValue(ewtKey, out var ewtSum))
                     {
                         sums[ewtKey] = new TransferTotal(
                             ewtKey,
-                            (BigInteger)ewt.Value,
+                            value,
                             ImmutableHashSet.Create(ewt.TokenAddress),
                             1);
                     }
@@ -187,7 +190,7 @@ public static class TransferSummaryyAggregator
                     {
                         sums[ewtKey] = new TransferTotal(
                             ewtKey,
-                            ewtSum.Value + (BigInteger)ewt.Value,
+                            ewtSum.Value + value,
                             ewtSum.Tokens.Add(ewt.TokenAddress),
                             ewtSum.Transfers + 1);
                     }
