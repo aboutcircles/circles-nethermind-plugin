@@ -40,12 +40,10 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("transactionIndex", ValueTypes.Int, true, true),
             new("logIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
-            new("tokenAddress", ValueTypes.Address, true),
             new("from", ValueTypes.Address, true),
             new("to", ValueTypes.Address, true),
             new("amount", ValueTypes.BigInt, false),
-            new("hops", ValueTypes.Int, false),
-            new("graphJson", ValueTypes.String, false)
+            new("events", ValueTypes.Json, false)
         ]);
 
     public DatabaseSchema()
@@ -114,12 +112,10 @@ public class DatabaseSchema : BaseDatabaseSchema
             eventSchema: TransferSummary,
             databaseFieldMap:
             [
-                ("tokenAddress", e => e.TokenAddress),
                 ("from", e => e.From),
                 ("to", e => e.To),
                 ("amount", e => (BigInteger)e.Amount),
-                ("hops", e => e.Hops),
-                ("graphJson", e => e.GraphJson)
+                ("events", e => e.Events)
             ]
         );
     }

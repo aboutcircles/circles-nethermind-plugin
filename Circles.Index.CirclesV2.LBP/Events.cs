@@ -9,6 +9,7 @@ public record CirclesBackingDeployed(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Backer,
     string CirclesBackingInstance) : IIndexEvent;
 
@@ -18,6 +19,7 @@ public record LbpDeployed(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string CirclesBackingInstance,
     string Lbp) : IIndexEvent;
 
@@ -27,6 +29,7 @@ public record CirclesBackingInitiated(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Backer,
     string CirclesBackingInstance,
     string BackingAsset,
@@ -38,6 +41,7 @@ public record CirclesBackingCompleted(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Backer,
     string CirclesBackingInstance,
     string Lbp) : IIndexEvent;
@@ -48,6 +52,7 @@ public record Released(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Backer,
     string CirclesBackingInstance,
     string Lbp) : IIndexEvent;

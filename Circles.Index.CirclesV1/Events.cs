@@ -1,4 +1,3 @@
-using Circles.Index.Common;
 using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV1;
@@ -9,8 +8,9 @@ public record Signup(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string User,
-    string Token) : IIndexEvent;
+    string Token) : IIndexedEventV1;
 
 public record OrganizationSignup(
     long BlockNumber,
@@ -18,7 +18,8 @@ public record OrganizationSignup(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string Organization) : IIndexEvent;
+    string Emitter,
+    string Organization) : IIndexedEventV1;
 
 public record Trust(
     long BlockNumber,
@@ -26,9 +27,10 @@ public record Trust(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string User,
     string CanSendTo,
-    int Limit) : IIndexEvent;
+    int Limit) : IIndexedEventV1;
 
 public record HubTransfer(
     long BlockNumber,
@@ -36,9 +38,10 @@ public record HubTransfer(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string From,
     string To,
-    UInt256 Amount) : IIndexEvent;
+    UInt256 Amount) : IIndexedEventV1;
 
 public record Transfer(
     long BlockNumber,
@@ -46,20 +49,20 @@ public record Transfer(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string TokenAddress,
     string From,
     string To,
-    UInt256 Value) : IIndexEvent;
-    
+    UInt256 Value) : IIndexedEventV1;
+
 public record TransferSummary(
     long BlockNumber,
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
-    string TokenAddress,
+    string Emitter,
     string From,
     string To,
     UInt256 Amount,
-    int Hops,
-    string GraphJson) : IIndexEvent;
+    string Events) : IIndexedEventV1;

@@ -9,6 +9,7 @@ public record RegisterShortName(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Avatar,
     UInt256 ShortName,
     UInt256 Nonce) : IIndexEvent;
@@ -19,6 +20,7 @@ public record UpdateMetadataDigest(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Avatar,
     byte[] MetadataDigest) : IIndexEvent;
 
@@ -28,5 +30,6 @@ public record CidV0(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Avatar,
     byte[] CidV0Digest) : IIndexEvent;
