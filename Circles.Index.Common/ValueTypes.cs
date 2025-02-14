@@ -9,4 +9,5 @@ public enum ValueTypes
     String = 4,
     Bytes = 5,
     AddressArray = 6,
+    Json = 7
 }

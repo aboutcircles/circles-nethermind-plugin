@@ -149,19 +149,19 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]
     );
 
-    public static readonly EventSchema TransferSummary = new(
-        "CrcV2",
-        "TransferSummary",
+    public static readonly EventSchema TransferSummary = new("CrcV2", "TransferSummary",
         new byte[32],
         [
-            new EventFieldSchema("blockNumber", ValueTypes.Int, true, true),
-            new EventFieldSchema("timestamp", ValueTypes.Int, true),
-            new EventFieldSchema("transactionIndex", ValueTypes.Int, true, true),
-            new EventFieldSchema("logIndex", ValueTypes.Int, true, true),
-            new EventFieldSchema("transactionHash", ValueTypes.String, true),
-            new EventFieldSchema("graphJson", ValueTypes.String, false)
-        ]
-    );
+            new("blockNumber", ValueTypes.Int, true, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true, true),
+            new("logIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("amount", ValueTypes.BigInt, false),
+            new("events", ValueTypes.Json, false)
+        ]);
 
     // Constructor that uses the shared helper AddMappings<>() 
     // to register each event's table and property map in one pass.
@@ -423,7 +423,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("from", e => e.From),
                 ("to", e => e.To),
-                ("graphJson", e => e.GraphJson)
+                ("amount", e => (BigInteger)e.Amount),
+                ("events", e => e.Events)
             ]
         );
     }
