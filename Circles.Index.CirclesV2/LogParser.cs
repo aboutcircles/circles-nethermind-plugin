@@ -1,12 +1,9 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-#region Later ...
-// using System.Text;
-// using System.Text.Json;
-#endregion
 
 namespace Circles.Index.CirclesV2;
 
@@ -34,7 +31,18 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _flowEdgesScopeLastEnded = new(DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
-    public static readonly ConcurrentDictionary<Address, object?> Erc20WrapperAddresses = new();
+    // Address -> CirclesType (demurraged = 0 or static = 1)
+    public static readonly ConcurrentDictionary<Address, long> Erc20WrapperAddresses = new();
+
+
+    private readonly JsonSerializerOptions _jsonSerializerOptions = new()
+    {
+        WriteIndented = false,
+        Converters =
+        {
+            new UInt256AsStringConverter()
+        }
+    };
 
     public IEnumerable<IIndexEvent> ParseTransaction(
         Block block,
@@ -42,234 +50,60 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         Transaction transaction,
         IReadOnlyList<IIndexEvent> events)
     {
-        yield break;
+        if (events.Count == 0)
+            yield break;
 
-        #region Later ...
-        // // Sort events by LogIndex to ensure we process them in chronological order
-        // var e = events.OrderBy(ev => ev.LogIndex).ToArray();
-        //
-        // // This stores all "active flows" so that we can produce one summary upon StreamCompleted
-        // var flows = new List<FlowRecord>();
-        // FlowRecord? currentFlow = null;
-        //
-        // var lastLogIndex = -1;
-        //
-        // // We'll iterate through all events. Whenever we see TransferSingle/TransferBatch, we either
-        // // add it to the current flow (if one is active) OR emit a stand-alone summary.
-        // for (int i = 0; i < e.Length; i++)
-        // {
-        //     var evt = e[i];
-        //
-        //     switch (evt)
-        //     {
-        //         case TransferSingle ts:
-        //         {
-        //             // If there's an active flow, we add this TransferSingle to that flow's Edges
-        //             // Otherwise, produce a stand-alone TransferSummary
-        //             if (currentFlow != null)
-        //             {
-        //                 currentFlow.Edges.Add(ts);
-        //             }
-        //             else
-        //             {
-        //                 yield return BuildStandaloneSummary(ts);
-        //             }
-        //
-        //             break;
-        //         }
-        //
-        //         case TransferBatch tb:
-        //         {
-        //             // Typically each TransferBatch record is already one "transfer" in your system
-        //             // If you want to treat each "id/value" inside TransferBatch as a separate edge,
-        //             // you'd parse those out. But for simplicity, we assume TransferBatch is one event.
-        //             if (currentFlow != null)
-        //             {
-        //                 currentFlow.Edges.Add(tb);
-        //             }
-        //             else
-        //             {
-        //                 yield return BuildStandaloneSummary(tb);
-        //             }
-        //
-        //             break;
-        //         }
-        //
-        //         case FlowEdgesScopeSingleStarted started:
-        //         {
-        //             // Start a new flow.
-        //             var flow = new FlowRecord(started.FlowEdgeId, started.StreamId);
-        //             flows.Add(flow);
-        //             currentFlow = flow;
-        //             break;
-        //         }
-        //
-        //         case FlowEdgesScopeLastEnded ended:
-        //         {
-        //             // End the current flow
-        //             currentFlow = null;
-        //             break;
-        //         }
-        //
-        //         case StreamCompleted sc:
-        //         {
-        //             if (evt.LogIndex == lastLogIndex)
-        //             {
-        //                 // This is the same StreamCompleted event (different batchIndex). We ignore it.
-        //                 break;
-        //             }
-        //
-        //             // Summarize all flows in a big JSON
-        //             string graphJson = BuildGraphJson(flows);
-        //
-        //             // Clear flows so we can handle multiple StreamCompleted in one tx if necessary
-        //             flows.Clear();
-        //             currentFlow = null;
-        //
-        //             // Produce a single TransferSummary for the entire set of flows
-        //             yield return new TransferSummary(
-        //                 block.Number,
-        //                 (long)block.Timestamp,
-        //                 transactionIndex,
-        //                 sc.LogIndex,
-        //                 sc.TransactionHash,
-        //                 sc.From,
-        //                 sc.To,
-        //                 graphJson
-        //             );
-        //             break;
-        //         }
-        //     }
-        //
-        //     lastLogIndex = evt.LogIndex;
-        // }
-        #endregion
+        var eventsv2 = events.Cast<IIndexedEventV2>().ToArray();
+        var streamSummary = TransferSummaryyAggregator.GetStreamSummary(eventsv2);
+        var nonStreamEvents = TransferSummaryyAggregator.NonStreamEvents(eventsv2).ToArray();
+        var netTransfers = TransferSummaryyAggregator.CalculateNetTransfers(nonStreamEvents);
+
+        int syntheticLogIndex = -(streamSummary.Totals.Count() + netTransfers.Totals.Count());
+
+        if (streamSummary.Totals.Any())
+        {
+            var streamEvents = TransferSummaryyAggregator.StreamEvents(eventsv2).ToArray();
+
+            var streamEventsJson = JsonSerializer.Serialize(streamEvents, _jsonSerializerOptions);
+
+            foreach (var summary in streamSummary.Totals)
+            {
+                yield return new TransferSummary(
+                    block.Number,
+                    (long)block.Timestamp,
+                    transactionIndex,
+                    syntheticLogIndex++,
+                    transaction.Hash!.ToString(true),
+                    "",
+                    summary.Key.From,
+                    summary.Key.To,
+                    (UInt256)summary.Value,
+                    streamEventsJson
+                );
+            }
+        }
+
+        if (netTransfers.Totals.Any())
+        {
+            var nonStreamEventsJson = JsonSerializer.Serialize(nonStreamEvents, _jsonSerializerOptions);
+            foreach (var transfer in netTransfers.Totals)
+            {
+                yield return new TransferSummary(
+                    block.Number,
+                    (long)block.Timestamp,
+                    transactionIndex,
+                    syntheticLogIndex++,
+                    transaction.Hash!.ToString(true),
+                    "",
+                    transfer.Key.From,
+                    transfer.Key.To,
+                    (UInt256)transfer.Value,
+                    nonStreamEventsJson
+                );
+            }
+        }
     }
 
-    #region Later ..
-    // /// <summary>
-    // /// Produces a stand-alone summary for a single TransferSingle or TransferBatch
-    // /// that isn't part of a flow.
-    // /// We mimic the shape of TransferSummary from V1, but use whichever fields you like.
-    // /// </summary>
-    // private TransferSummary BuildStandaloneSummary(IIndexEvent ev)
-    // {
-    //     // Because TransferBatch and TransferSingle differ in fields, you can handle them separately:
-    //     // For demonstration, we only store minimal data in graphJson.
-    //
-    //     string graphJson;
-    //     long blockNumber, timestamp;
-    //     int transactionIndex, logIndex, batchIndex;
-    //     string transactionHash;
-    //
-    //     if (ev is TransferSingle ts)
-    //     {
-    //         blockNumber = ts.BlockNumber;
-    //         timestamp = ts.Timestamp;
-    //         transactionIndex = ts.TransactionIndex;
-    //         logIndex = ts.LogIndex;
-    //         transactionHash = ts.TransactionHash;
-    //
-    //         // Example JSON with from -> to, id/value
-    //         graphJson = JsonSerializer.Serialize(new
-    //         {
-    //             single = new
-    //             {
-    //                 from = ts.From,
-    //                 to = ts.To,
-    //                 id = ts.Id.ToString(),
-    //                 value = ts.Value.ToString()
-    //             }
-    //         });
-    //     }
-    //     else if (ev is TransferBatch tb)
-    //     {
-    //         blockNumber = tb.BlockNumber;
-    //         timestamp = tb.Timestamp;
-    //         transactionIndex = tb.TransactionIndex;
-    //         logIndex = tb.LogIndex;
-    //         transactionHash = tb.TransactionHash;
-    //         batchIndex = tb.BatchIndex;
-    //
-    //         graphJson = JsonSerializer.Serialize(new
-    //         {
-    //             batch = new
-    //             {
-    //                 from = tb.From,
-    //                 to = tb.To,
-    //                 id = tb.Id.ToString(),
-    //                 value = tb.Value.ToString()
-    //             }
-    //         });
-    //     }
-    //     else
-    //     {
-    //         // Shouldn't happen if we only call this method for Single/Batch
-    //         throw new InvalidOperationException("BuildStandaloneSummary called with unknown event type.");
-    //     }
-    //
-    //     return new TransferSummary(
-    //         blockNumber,
-    //         timestamp,
-    //         transactionIndex,
-    //         logIndex,
-    //         transactionHash,
-    //         "from",
-    //         "to",
-    //         graphJson
-    //     );
-    // }
-
-    // /// <summary>
-    // /// Builds a single JSON for the entire "Stream" that contains all flows and their edges.
-    // /// Each flow has FlowEdgeId, StreamId, plus a list of "events" that were captured.
-    // /// </summary>
-    // private string BuildGraphJson(List<FlowRecord> flows)
-    // {
-    //     using var ms = new MemoryStream();
-    //     using (var writer = new Utf8JsonWriter(ms))
-    //     {
-    //         writer.WriteStartObject();
-    //         writer.WriteStartArray("flows");
-    //         foreach (var flow in flows)
-    //         {
-    //             writer.WriteStartObject();
-    //             writer.WriteString("flowEdgeId", flow.FlowEdgeId.ToString());
-    //             writer.WriteNumber("streamId", flow.StreamId);
-    //             writer.WriteStartArray("events");
-    //             foreach (var edge in flow.Edges)
-    //             {
-    //                 writer.WriteStartObject();
-    //                 writer.WriteString("type", edge.GetType().Name);
-    //
-    //                 // You could add the "from","to","id","value" here if you like
-    //                 writer.WriteEndObject();
-    //             }
-    //
-    //             writer.WriteEndArray();
-    //
-    //             writer.WriteEndObject();
-    //         }
-    //
-    //         writer.WriteEndArray();
-    //         writer.WriteEndObject();
-    //     }
-    //
-    //     return Encoding.UTF8.GetString(ms.ToArray());
-    // }
-    //
-    // /// <summary>
-    // /// Represents one "flow" started by FlowEdgesScopeSingleStarted.
-    // /// We store any TransferSingle/TransferBatch in Edges until we see FlowEdgesScopeLastEnded or StreamCompleted.
-    // /// </summary>
-    // private class FlowRecord(UInt256 flowEdgeId, ushort streamId)
-    // {
-    //     public UInt256 FlowEdgeId { get; } = flowEdgeId;
-    //     public ushort StreamId { get; } = streamId;
-    //     public List<IIndexEvent> Edges { get; } = new();
-    // }
-    #endregion
-    
     public IEnumerable<IIndexEvent> ParseLog(
         Block block,
         Transaction transaction,
@@ -418,7 +252,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         UInt256 circlesType = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
         // Mark that we know about this wrapper
-        Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), null);
+        Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), (long)circlesType);
 
         return new ERC20WrapperDeployed(
             block.Number,
@@ -426,6 +260,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             avatar,
             erc20Wrapper,
             (long)circlesType
@@ -449,6 +284,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             account,
             operatorAddress,
             approved
@@ -463,12 +299,9 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         string fromAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string toAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
 
-        // Non-indexed: 2 x 32 bytes => id, value
         var dataSpan = log.Data.AsSpan();
         if (dataSpan.Length < 64)
         {
-            // If you want to trust the data is always correct, just call the helper:
-            // or throw an exception yourself:
             throw new ArgumentException("Insufficient data for TransferSingle (needs 64 bytes).");
         }
 
@@ -481,6 +314,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             operatorAddress,
             fromAddress,
             toAddress,
@@ -502,7 +336,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             throw new ArgumentException("Insufficient data for TransferBatch (needs at least 64 bytes).");
         }
 
-        // parse the offset to the ids array
         int idsOffset = LogDataParsingHelper.ParseOffset(dataSpan, 0);
         int valuesOffset = LogDataParsingHelper.ParseOffset(dataSpan, 32);
 
@@ -522,6 +355,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 receipt.Index,
                 logIndex,
                 receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
                 i,
                 operatorAddress,
                 fromAddress,
@@ -536,9 +370,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     {
         // event RegisterOrganization(address indexed organization, string name)
         string orgAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-
-        // e.g. your "LogDataStringDecoder.ReadStrings(log.Data)"
-        // That method presumably does its own offset/length checks or will throw if invalid
         string orgName = LogDataStringDecoder.ReadStrings(log.Data)[0];
 
         return new RegisterOrganization(
@@ -547,6 +378,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             orgAddress,
             orgName
         );
@@ -560,7 +392,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         string mintPolicy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string treasury = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
 
-        // again, strings from your existing decoder
         string[] stringData = LogDataStringDecoder.ReadStrings(log.Data);
         string groupName = stringData[0];
         string groupSymbol = stringData[1];
@@ -571,6 +402,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             groupAddress,
             mintPolicy,
             treasury,
@@ -591,6 +423,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             humanAddress,
             inviterAddress
         );
@@ -617,6 +450,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             toAddress,
             amount,
             startPeriod,
@@ -638,6 +472,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             userAddress,
             canSendToAddress,
             limit
@@ -655,6 +490,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             address
         );
     }
@@ -674,6 +510,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             log.Address.ToString(true, false),
             from,
             to,
@@ -701,6 +538,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             account,
             amount,
             demurraged
@@ -727,6 +565,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             account,
             amount,
             demurraged
@@ -753,6 +592,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             account,
             amount,
             inflation
@@ -779,6 +619,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             account,
             amount,
             inflation
@@ -799,6 +640,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             account,
             id,
             cost
@@ -839,6 +681,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 logIndex,
                 i,
                 receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
                 operatorAddress,
                 fromAddress,
                 toAddress,
@@ -882,6 +725,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 logIndex,
                 i,
                 receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
                 sender,
                 receiver,
                 group,
@@ -891,14 +735,14 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
     }
 
-    private FlowEdgesScopeSingleStarted FlowEdgesScopeSingleStarted(Block block, TxReceipt receipt, LogEntry log,
+    private FlowEdgesScopeSingleStarted FlowEdgesScopeSingleStarted(
+        Block block,
+        TxReceipt receipt,
+        LogEntry log,
         int logIndex)
     {
         // event FlowEdgesScopeSingleStarted(uint256 indexed flowEdgeId, uint16 streamId);
-        // Parse the flowEdgeId from the second topic:
         UInt256 flowEdgeId = new UInt256(log.Topics[1].Bytes, true);
-
-        // parse the single 32 bytes in log.Data => streamId
         UInt256 streamId = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
         return new FlowEdgesScopeSingleStarted(
@@ -907,12 +751,17 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
             flowEdgeId,
             (ushort)streamId
         );
     }
 
-    private FlowEdgesScopeLastEnded FlowEdgesScopeLastEnded(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private FlowEdgesScopeLastEnded FlowEdgesScopeLastEnded(
+        Block block,
+        TxReceipt receipt,
+        LogEntry log,
+        int logIndex)
     {
         // event FlowEdgesScopeLastEnded();
         return new FlowEdgesScopeLastEnded(
@@ -920,7 +769,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
-            receipt.TxHash!.ToString()
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false)
         );
     }
 }

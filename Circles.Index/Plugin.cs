@@ -193,7 +193,7 @@ public class Plugin : INethermindPlugin
         var selectErc20WrapperDeployed = new Select(
             "CrcV2",
             "ERC20WrapperDeployed",
-            ["erc20Wrapper"],
+            ["erc20Wrapper", "circlesType"],
             [],
             [],
             int.MaxValue,
@@ -208,7 +208,7 @@ public class Plugin : INethermindPlugin
 
         foreach (var row in rows)
         {
-            CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
+            CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
         }
     }
 
