@@ -88,9 +88,8 @@ public class QueryEvents(Context context)
             {
                 continue;
             }
-            
-            var addressColumns = GetAddressColumns(context.ReadonlyDatabase.Schema);
 
+            var addressColumns = GetAddressColumns(context.ReadonlyDatabase.Schema);
             var addressColumnFilters = address == null
                 ? []
                 : table.Value.Columns
@@ -98,6 +97,12 @@ public class QueryEvents(Context context)
                     .Select(column => new FilterPredicate(column.Column, FilterType.Equals, address))
                     .Cast<IFilterPredicate>()
                     .ToList();
+            
+            if (address != null && addressColumnFilters.Count == 0)
+            {
+                // If the table does not contain any address columns, skip it
+                continue;
+            }
 
             var filters = new List<IFilterPredicate>
             {
@@ -149,7 +154,7 @@ public class QueryEvents(Context context)
                     new OrderBy("transactionIndex", sortAscending ? "ASC" : "DESC"),
                     new OrderBy("logIndex", sortAscending ? "ASC" : "DESC")
                 ],
-                null, true, int.MaxValue);
+                null, false, int.MaxValue);
 
             queries.Add(query);
         }

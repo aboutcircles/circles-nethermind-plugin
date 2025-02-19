@@ -43,7 +43,7 @@ public class DatabaseSchema : IDatabaseSchema
                                when ""to""   = '0x0000000000000000000000000000000000000000' then -value
                                else 0
                                end
-                   ) as total_supply
+                   ) as ""totalSupply""
                from combined_transfers
                group by
                    ""tokenAddress"",
@@ -619,6 +619,45 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
+    public static readonly EventSchema V_Crc_TransferSummary = new("V_Crc", "TransferSummary",
+        new byte[32],
+        [
+            new("blockNumber", ValueTypes.Int, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true),
+            new("logIndex", ValueTypes.Int, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("version", ValueTypes.Int, false),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("value", ValueTypes.BigInt, false),
+            new("events", ValueTypes.Json, false)
+        ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+            create or replace view ""V_Crc_TransferSummary"" as
+                with a as (
+                    select 1 as version, *
+                    from ""CrcV1_TransferSummary""
+                    union all 
+                    select 2 as version, *
+                    from ""CrcV2_TransferSummary""
+                )
+                select ""blockNumber"",
+                       timestamp,
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       ""transactionHash"",
+                       version,
+                       ""from"",
+                       ""to"",
+                       amount as value,
+                       events
+                from a
+                order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc;
+        ")
+    };
+
     public static readonly EventSchema V_CrcV2_Groups = new("V_CrcV2", "Groups", new byte[32], [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
@@ -1005,6 +1044,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_CrcV2", "TotalSupply"),
                 V_CrcV2_TotalSupply
+            },
+            {
+                ("V_Crc", "TransferSummary"),
+                V_Crc_TransferSummary
             }
         };
 }
