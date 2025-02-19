@@ -8,8 +8,8 @@
         <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
         <Copyright>Gnosis Service GmbH</Copyright>
         <Product>Circles</Product>
-        <AssemblyVersion>1.11.24</AssemblyVersion>
-        <FileVersion>1.11.24</FileVersion>
+        <AssemblyVersion>1.12.0</AssemblyVersion>
+        <FileVersion>1.12.0</FileVersion>
     </PropertyGroup>
 
 
