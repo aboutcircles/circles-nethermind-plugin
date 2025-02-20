@@ -52,6 +52,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
         }
 
+        if (settings.CMGroupDeployer != null)
+        {
+            schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
+        }
+
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
@@ -80,6 +85,11 @@ public class Plugin : INethermindPlugin
         if (settings.CirclesLBPFactoryAddress != null)
         {
             logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress));
+        }
+
+        if (settings.CMGroupDeployer != null)
+        {
+            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer));
         }
 
         _indexerContext = new Context(
@@ -152,6 +162,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
+        pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployer);
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         if (!string.IsNullOrWhiteSpace(settings.ExternalPathfinderUrl))

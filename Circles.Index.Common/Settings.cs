@@ -32,6 +32,11 @@ public class Settings
             ? new(Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS")!)
             : null;
 
+    public readonly Address? CMGroupDeployer =
+        Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER") != null
+            ? new(Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")!)
+            : null;
+
     public readonly string IndexDbConnectionString =
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
