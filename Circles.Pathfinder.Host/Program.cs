@@ -47,11 +47,13 @@ app.Use((context, next) =>
 app.UseHttpMetrics();
 app.MapMetrics();
 
-// Route with query params: /findPath?from=A&to=B&amount=123
+// Route with query params: /findPath?from=A&to=B&amount=123&fromTokens=token1,token2&toTokens=token3,token4
 app.MapGet("/findPath", async (
     string from,
     string to,
     string amount,
+    string[]? fromTokens,
+    string[]? toTokens,
     NetworkState stateContainer,
     SemaphoreSlim semaphore
 ) =>
@@ -84,7 +86,9 @@ app.MapGet("/findPath", async (
             {
                 Source = from.ToLowerInvariant(),
                 Sink = to.ToLowerInvariant(),
-                TargetFlow = amount
+                TargetFlow = amount,
+                FromTokens = fromTokens?.ToList(),
+                ToTokens = toTokens?.ToList()
             },
             BigInteger.Parse(amount)
         );

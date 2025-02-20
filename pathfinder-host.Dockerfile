@@ -2,7 +2,9 @@
 WORKDIR /src
 
 COPY . .
-
+RUN find . -type f -name "._*" -delete && \
+    find . -type f -name "*.cs" -exec dos2unix {} \;
+    
 RUN dotnet restore
 RUN dotnet publish -c Release -o /circles-nethermind-plugin
 

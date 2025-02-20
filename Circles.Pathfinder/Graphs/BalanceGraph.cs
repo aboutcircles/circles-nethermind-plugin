@@ -11,6 +11,15 @@ public class BalanceGraph : IGraph<CapacityEdge>
     public IDictionary<string, BalanceNode> BalanceNodes { get; } = new Dictionary<string, BalanceNode>();
     public IDictionary<string, AvatarNode> AvatarNodes { get; } = new Dictionary<string, AvatarNode>();
 
+    private readonly List<string>? _fromTokens;
+    private readonly string? _sourceAddress;
+
+    public BalanceGraph(List<string>? fromTokens = null, string? sourceAddress = null)
+    {
+        _fromTokens = fromTokens?.Select(t => t.ToLowerInvariant()).ToList();
+        _sourceAddress = sourceAddress?.ToLowerInvariant();
+    }
+
     public void AddAvatar(string avatarAddress)
     {
         Nodes.Add(avatarAddress, new AvatarNode(avatarAddress));
@@ -20,6 +29,16 @@ public class BalanceGraph : IGraph<CapacityEdge>
     {
         address = address.ToLower();
         token = token.ToLower();
+
+        // For source address, only add balances of specified tokens
+        if (_sourceAddress != null && address == _sourceAddress)
+        {
+            if (_fromTokens != null && !_fromTokens.Contains(token))
+            {
+                return;
+            }
+        }
+
         if (!AvatarNodes.ContainsKey(address))
         {
             AvatarNodes.Add(address, new AvatarNode(address));
