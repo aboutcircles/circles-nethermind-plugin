@@ -58,20 +58,51 @@ app.MapGet("/findPath", async (
     SemaphoreSlim semaphore
 ) =>
 {
+    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph, List<string> fromTokens, string source)
+    {
+        var filteredGraph = new BalanceGraph(fromTokens, source);
+        foreach (var avatarNode in originalGraph.AvatarNodes.Values)
+        {
+            filteredGraph.AddAvatar(avatarNode.Address);
+        }
+        foreach (var balanceNode in originalGraph.BalanceNodes.Values)
+        {
+            filteredGraph.AddBalance(
+                balanceNode.HolderAddress,
+                balanceNode.Token,
+                balanceNode.Amount
+            );
+        }
+        return filteredGraph;
+    }
+
+    static TrustGraph CreateFilteredTrustGraph(TrustGraph originalGraph, List<string> toTokens, string sink)
+    {
+        var filteredGraph = new TrustGraph(toTokens, sink);
+        foreach (var avatarNode in originalGraph.AvatarNodes.Values)
+        {
+            filteredGraph.AddAvatar(avatarNode.Address);
+        }
+        foreach (var edge in originalGraph.Edges)
+        {
+            filteredGraph.AddTrustEdge(edge.From, edge.To);
+        }
+        return filteredGraph;
+    }
+
     if (!semaphore.Wait(0))
     {
         FindPathMetrics.RejectedRequestsCounter.Inc();
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
-    // If we got here, we have a permit. We'll increment our gauge by +1.
     FindPathMetrics.InFlightRequestsGauge.Inc();
     try
     {
         if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to) || string.IsNullOrEmpty(amount))
             return Results.BadRequest("from, to, and amount must be provided.");
 
-        if (!BigInteger.TryParse(amount, out _))
+        if (!BigInteger.TryParse(amount, out var targetFlow))
             return Results.BadRequest("amount must be a valid integer.");
 
         if (stateContainer.BalanceGraph == null || stateContainer.TrustGraph == null)
@@ -79,25 +110,31 @@ app.MapGet("/findPath", async (
 
         var graphFactory = new GraphFactory();
         var pathfinder = new V2Pathfinder(graphFactory);
-        var pathResult = pathfinder.ComputeMaxFlowWithData(
-            stateContainer.BalanceGraph,
-            stateContainer.TrustGraph,
-            new FlowRequest
-            {
-                Source = from.ToLowerInvariant(),
-                Sink = to.ToLowerInvariant(),
-                TargetFlow = amount,
-                FromTokens = fromTokens?.ToList(),
-                ToTokens = toTokens?.ToList()
-            },
-            BigInteger.Parse(amount)
-        );
+        
+        var request = new FlowRequest
+        {
+            Source = from.ToLowerInvariant(),
+            Sink = to.ToLowerInvariant(),
+            TargetFlow = amount,
+            FromTokens = fromTokens?.ToList(),
+            ToTokens = toTokens?.ToList()
+        };
+
+        // Only create filtered graphs if filters are specified
+        var balanceGraph = (fromTokens != null && fromTokens.Length > 0) 
+            ? CreateFilteredBalanceGraph(stateContainer.BalanceGraph, request.FromTokens!, request.Source)
+            : stateContainer.BalanceGraph;
+
+        var trustGraph = (toTokens != null && toTokens.Length > 0)
+            ? CreateFilteredTrustGraph(stateContainer.TrustGraph, request.ToTokens!, request.Sink)
+            : stateContainer.TrustGraph;
+
+        var pathResult = pathfinder.ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
 
         return Results.Ok(pathResult);
     }
     finally
     {
-        // Release the concurrency permit and decrement in-flight gauge
         semaphore.Release();
         FindPathMetrics.InFlightRequestsGauge.Dec();
     }

@@ -30,11 +30,11 @@ public class TrustGraph : IGraph<TrustEdge>
         truster = truster.ToLower();
         trustee = trustee.ToLower();
 
-        // If this trust relation involves the sink receiving trust
-        if (_sinkAddress != null && trustee == _sinkAddress)
+        // If this trust relation involves the sink trusting s
+        if (_sinkAddress != null && truster == _sinkAddress)
         {
-            // If we have toTokens filter and the token (truster) is not in toTokens, skip
-            if (_toTokens != null && !_toTokens.Contains(truster))
+            // If we have toTokens filter and the token (trustee) is not in toTokens, skip
+            if (_toTokens != null && !_toTokens.Contains(trustee))
             {
                 return;
             }
