@@ -1,3 +1,4 @@
+// V2Pathfinder.cs
 using System.Numerics;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
@@ -39,9 +40,9 @@ public class V2Pathfinder : IPathfinder
             throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
         }
 
-        // Load Trust and Balance Graphs
-        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
-        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
+        // Load Trust and Balance Graphs - filtering happens internally based on request
+        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph, request);
+        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph, request);
 
         return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
     }
@@ -52,14 +53,14 @@ public class V2Pathfinder : IPathfinder
         FlowRequest request,
         BigInteger targetFlow)
     {
-        // Create Capacity Graph
+        var source = request.Source?.ToLowerInvariant() ?? "";
+        var sink = request.Sink?.ToLowerInvariant() ?? "";
+
+        // Create Capacity Graph (filtering is already done in balanceGraph and trustGraph)
         var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
 
         // Create Flow Graph
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
-
-        var source = request.Source?.ToLowerInvariant() ?? "";
-        var sink = request.Sink?.ToLowerInvariant() ?? "";
 
         // Validate Source and Sink
         if (!flowGraph.Nodes.ContainsKey(source))
@@ -76,8 +77,7 @@ public class V2Pathfinder : IPathfinder
         var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
 
         // Extract Paths with Flow
-        var pathsWithFlow =
-            flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Parse("0"));
+        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Parse("0"));
 
         // Collapse balance nodes to get a collapsed graph
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
@@ -112,8 +112,6 @@ public class V2Pathfinder : IPathfinder
     /// <summary>
     /// Collapses balance nodes in the paths and returns a collapsed flow graph.
     /// </summary>
-    /// <param name="pathsWithFlow">The list of paths with flow.</param>
-    /// <returns>A FlowGraph with balance nodes collapsed.</returns>
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
         var collapsedGraph = new FlowGraph();
@@ -148,15 +146,13 @@ public class V2Pathfinder : IPathfinder
                 if (IsBalanceNode(currentEdge.To) && nextEdge != null && nextEdge.From == currentEdge.To)
                 {
                     // We are at a balance node, so we need to collapse it by merging currentEdge and nextEdge
-
-                    // The flow through the balance node is limited by both the incoming and outgoing flows
                     var mergedFlow = BigInteger.Min(currentEdge.Flow, nextEdge.Flow);
 
                     var mergedEdge = new FlowEdge(
                         currentEdge.From,
                         nextEdge.To,
                         nextEdge.Token,
-                        currentEdge.CurrentCapacity // Adjust as needed
+                        currentEdge.CurrentCapacity
                     )
                     {
                         Flow = mergedFlow,
@@ -170,11 +166,7 @@ public class V2Pathfinder : IPathfinder
                     catch (Exception e)
                     {
                         Console.WriteLine(e.Message);
-
-                        // Log the stack trace
                         Console.WriteLine(e.StackTrace);
-
-                        // Unpack the inner exception(s) recursively
                         while (e.InnerException != null)
                         {
                             e = e.InnerException;
@@ -187,17 +179,12 @@ public class V2Pathfinder : IPathfinder
                 {
                     try
                     {
-                        // If not a balance node, add the current edge to the collapsed graph
                         collapsedGraph.AddFlowEdge(collapsedGraph, currentEdge);
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine(e.Message);
-
-                        // Log the stack trace
                         Console.WriteLine(e.StackTrace);
-
-                        // Unpack the inner exception(s) recursively
                         while (e.InnerException != null)
                         {
                             e = e.InnerException;
@@ -214,8 +201,6 @@ public class V2Pathfinder : IPathfinder
     /// <summary>
     /// Determines if a given node address is a balance node.
     /// </summary>
-    /// <param name="nodeAddress">The node address to check.</param>
-    /// <returns>True if it's a balance node; otherwise, false.</returns>
     private bool IsBalanceNode(string nodeAddress)
     {
         return nodeAddress.Contains("-");

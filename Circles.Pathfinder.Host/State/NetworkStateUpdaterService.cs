@@ -38,13 +38,15 @@ public class NetworkStateUpdaterService(NetworkState networkState) : BackgroundS
 
             var p1 = Task.Run(() =>
             {
-                var trustGraph = graphFactory.V2TrustGraph(loadGraph);
+                // Pass null request to get full graph for network state
+                var trustGraph = graphFactory.V2TrustGraph(loadGraph, null);
                 networkState.Replace(trustGraph, networkState.BalanceGraph);
             }, stoppingToken);
 
             var p2 = Task.Run(() =>
             {
-                var balanceGraph = graphFactory.V2BalanceGraph(loadGraph);
+                // Pass null request to get full graph for network state
+                var balanceGraph = graphFactory.V2BalanceGraph(loadGraph, null);
                 networkState.Replace(networkState.TrustGraph, balanceGraph);
             }, stoppingToken);
 
