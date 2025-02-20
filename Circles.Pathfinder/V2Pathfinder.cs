@@ -1,4 +1,3 @@
-// V2Pathfinder.cs
 using System.Numerics;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
