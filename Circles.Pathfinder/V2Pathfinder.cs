@@ -39,7 +39,7 @@ public class V2Pathfinder : IPathfinder
             throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
         }
 
-        // Load Trust and Balance Graphs - filtering happens internally based on request
+        // Load Trust and Balance Graphs
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph, request);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph, request);
 
@@ -55,7 +55,7 @@ public class V2Pathfinder : IPathfinder
         var source = request.Source?.ToLowerInvariant() ?? "";
         var sink = request.Sink?.ToLowerInvariant() ?? "";
 
-        // Create Capacity Graph (filtering is already done in balanceGraph and trustGraph)
+        // Create Capacity Graph
         var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
 
         // Create Flow Graph

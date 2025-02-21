@@ -58,6 +58,7 @@ app.MapGet("/findPath", async (
     SemaphoreSlim semaphore
 ) =>
 {
+    // Auxiliary method to create a filtered balance graph
     static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph, List<string> fromTokens, string source)
     {
         var filteredGraph = new BalanceGraph(fromTokens, source);
@@ -76,6 +77,7 @@ app.MapGet("/findPath", async (
         return filteredGraph;
     }
 
+    // Auxiliary method to create a filtered trust graph
     static TrustGraph CreateFilteredTrustGraph(TrustGraph originalGraph, List<string> toTokens, string sink)
     {
         var filteredGraph = new TrustGraph(toTokens, sink);
