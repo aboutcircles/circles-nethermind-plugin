@@ -12,17 +12,50 @@ public class TrustGraph : IGraph<TrustEdge>
     private readonly List<string>? _toTokens;
     private readonly string? _sinkAddress;
 
+    private const string VIRTUAL_SINK_SUFFIX = "_virtual_sink";
+    private string? _virtualSinkAddress;
+    private string? _sourceAddress;
+
     public TrustGraph(List<string>? toTokens = null, string? sinkAddress = null)
     {
         _toTokens = toTokens?.Select(t => t.ToLowerInvariant()).ToList();
         _sinkAddress = sinkAddress?.ToLowerInvariant();
     }
 
+    // Method to set up virtual sink when needed
+    public void SetupVirtualSinkIfNeeded(string sourceAddress)
+    {
+        _sourceAddress = sourceAddress.ToLowerInvariant();
+        
+        // Create virtual sink if source and sink are the same
+        if (_sourceAddress == _sinkAddress)
+        {
+            _virtualSinkAddress = _sourceAddress + VIRTUAL_SINK_SUFFIX;
+            AddAvatar(_virtualSinkAddress);
+            
+            // If toTokens specified, make virtual sink trust them
+            if (_toTokens != null && _toTokens.Any())
+            {
+                foreach (var token in _toTokens)
+                {
+                    AddTrustEdge(_virtualSinkAddress, token);
+                }
+            }
+        }
+    }
+
+    // Method to get the virtual sink address if it exists
+    public string? GetVirtualSinkAddress() => _virtualSinkAddress;
+
     public void AddAvatar(string avatarAddress)
     {
-        var avatar = new AvatarNode(avatarAddress);
-        AvatarNodes.Add(avatarAddress, avatar);
-        Nodes.Add(avatarAddress, avatar);
+        avatarAddress = avatarAddress.ToLower();
+        if (!AvatarNodes.ContainsKey(avatarAddress))
+        {
+            var avatar = new AvatarNode(avatarAddress);
+            AvatarNodes.Add(avatarAddress, avatar);
+            Nodes.Add(avatarAddress, avatar);
+        }
     }
 
     public void AddTrustEdge(string truster, string trustee)
@@ -30,7 +63,7 @@ public class TrustGraph : IGraph<TrustEdge>
         truster = truster.ToLower();
         trustee = trustee.ToLower();
 
-        // If this trust relation involves the sink trusting s
+        // If this trust relation involves the sink trusting
         if (_sinkAddress != null && truster == _sinkAddress)
         {
             // If we have toTokens filter and the token (trustee) is not in toTokens, skip
