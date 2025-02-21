@@ -54,6 +54,13 @@ public class V2Pathfinder : IPathfinder
     {
         var source = request.Source?.ToLowerInvariant() ?? "";
         var sink = request.Sink?.ToLowerInvariant() ?? "";
+        
+        // Set up virtual sink if needed
+        trustGraph.SetupVirtualSinkIfNeeded(source);
+        var virtualSink = trustGraph.GetVirtualSinkAddress();
+
+        // Use virtual sink if it exists
+        var effectiveSink = virtualSink ?? sink;
 
         // Create Capacity Graph
         var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
@@ -67,16 +74,32 @@ public class V2Pathfinder : IPathfinder
             throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
         }
 
-        if (!flowGraph.Nodes.ContainsKey(sink))
+        if (!flowGraph.Nodes.ContainsKey(effectiveSink))
         {
-            throw new ArgumentException($"Sink node '{request.Sink}' does not exist in the graph.");
+            throw new ArgumentException($"Sink node '{(virtualSink != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
         }
 
         // Compute Max Flow
-        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
+        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, targetFlow);
 
         // Extract Paths with Flow
-        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Parse("0"));
+        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, BigInteger.Parse("0"));
+
+        // If using virtual sink, replace it with the actual sink in the paths
+        if (virtualSink != null)
+        {
+            pathsWithFlow = pathsWithFlow.Select(path =>
+                path.Select(edge => new FlowEdge(
+                    edge.From == virtualSink ? sink : edge.From,
+                    edge.To == virtualSink ? sink : edge.To,
+                    edge.Token,
+                    edge.InitialCapacity)
+                {
+                    Flow = edge.Flow,
+                    CurrentCapacity = edge.CurrentCapacity
+                }).ToList()
+            ).ToList();
+        }
 
         // Collapse balance nodes to get a collapsed graph
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
