@@ -18,14 +18,14 @@ public class TrustGraph : IGraph<TrustEdge>
 
     public TrustGraph(List<string>? toTokens = null, string? sinkAddress = null)
     {
-        _toTokens = toTokens?.Select(t => t.ToLowerInvariant()).ToList();
-        _sinkAddress = sinkAddress?.ToLowerInvariant();
+        _toTokens = toTokens?.Select(t => t.ToLower()).ToList();
+        _sinkAddress = sinkAddress?.ToLower();
     }
 
     // Method to set up virtual sink when needed
     public void SetupVirtualSinkIfNeeded(string sourceAddress)
     {
-        _sourceAddress = sourceAddress.ToLowerInvariant();
+        _sourceAddress = sourceAddress.ToLower();
         
         // Create virtual sink if source and sink are the same
         if (_sourceAddress == _sinkAddress)
@@ -35,7 +35,7 @@ public class TrustGraph : IGraph<TrustEdge>
             AddAvatar(_virtualSinkAddress);
             
             // If toTokens specified, make virtual sink trust them ONLY if the real sink trusts them
-            if (_toTokens != null && _toTokens.Any())
+            if (_toTokens.Any() && _toTokens.Any())
             {
                 foreach (var token in _toTokens)
                 {
@@ -59,8 +59,8 @@ public class TrustGraph : IGraph<TrustEdge>
     // Helper method to check if a trust edge exists
     private bool HasTrustEdge(string truster, string trustee)
     {
-        truster = truster.ToLowerInvariant();
-        trustee = trustee.ToLowerInvariant();
+        truster = truster.ToLower();
+        trustee = trustee.ToLower();
         
         return Edges.Any(edge => edge.From == truster && edge.To == trustee);
     }
@@ -68,7 +68,7 @@ public class TrustGraph : IGraph<TrustEdge>
     // Helper method to check if a node has any outgoing edges
     public bool HasAnyOutgoingEdges(string nodeAddress)
     {
-        nodeAddress = nodeAddress.ToLowerInvariant();
+        nodeAddress = nodeAddress.ToLower();
         return Edges.Any(edge => edge.From == nodeAddress);
     }
 

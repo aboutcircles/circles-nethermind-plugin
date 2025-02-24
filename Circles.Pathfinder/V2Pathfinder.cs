@@ -39,10 +39,13 @@ public class V2Pathfinder : IPathfinder
             throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
         }
 
+        Console.WriteLine($"Requests Source: { request.Source?.ToLower()}");
+        Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
         // Load Trust and Balance Graphs
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph, request);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph, request);
 
+        
         return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
     }
 
@@ -52,8 +55,8 @@ public class V2Pathfinder : IPathfinder
         FlowRequest request,
         BigInteger targetFlow)
     {
-        var source = request.Source?.ToLowerInvariant() ?? "";
-        var sink = request.Sink?.ToLowerInvariant() ?? "";
+        var source = request.Source?.ToLower() ?? "";
+        var sink = request.Sink?.ToLower() ?? "";
         
         // Set up virtual sink if needed
         trustGraph.SetupVirtualSinkIfNeeded(source);
@@ -124,10 +127,10 @@ public class V2Pathfinder : IPathfinder
             }
 
             // Skip self-transfers that were created due to virtual sink
-            if (source == sink && edge.From == source && edge.To == source)
-            {
-                continue;
-            }
+          //  if (source == sink && edge.From == source && edge.To == source)
+          //  {
+          //      continue;
+          //  }
             
             transferSteps.Add(new TransferPathStep
             {

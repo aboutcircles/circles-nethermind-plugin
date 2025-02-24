@@ -39,7 +39,7 @@ public class GraphFactory
     /// <returns>A balance graph containing all v2 balances and holders.</returns>
     public BalanceGraph V2BalanceGraph(LoadGraph loadGraph, FlowRequest? request = null)
     {
-        var graph = new BalanceGraph(request?.FromTokens, request?.Source);
+        var graph = new BalanceGraph(request?.FromTokens, request?.Source, request?.ToTokens, request?.Sink);
         var balances = loadGraph.LoadV2Balances().ToArray();
         
         foreach (var balance in balances)
@@ -103,7 +103,7 @@ public class GraphFactory
 
         foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
         {
-            string tokenIssuer = balanceNode.Token.ToLowerInvariant();
+            string tokenIssuer = balanceNode.Token.ToLower();
             if (trusteeToTrusters.TryGetValue(tokenIssuer, out var acceptingNodes))
             {
                 foreach (var acceptingNode in acceptingNodes)

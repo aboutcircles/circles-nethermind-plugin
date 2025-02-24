@@ -59,9 +59,9 @@ app.MapGet("/findPath", async (
 ) =>
 {
     // Auxiliary method to create a filtered balance graph
-    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph, List<string> fromTokens, string source)
+    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph, List<string> fromTokens, string source, List<string>? toTokens = null, string? sink = null)
     {
-        var filteredGraph = new BalanceGraph(fromTokens, source);
+        var filteredGraph = new BalanceGraph(fromTokens, source, toTokens, sink);
         foreach (var avatarNode in originalGraph.AvatarNodes.Values)
         {
             filteredGraph.AddAvatar(avatarNode.Address);
@@ -115,16 +115,21 @@ app.MapGet("/findPath", async (
         
         var request = new FlowRequest
         {
-            Source = from.ToLowerInvariant(),
-            Sink = to.ToLowerInvariant(),
+            Source = from.ToLower(),
+            Sink = to.ToLower(),
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList()
         };
 
         // Only create filtered graphs if filters are specified
-        var balanceGraph = (fromTokens != null && fromTokens.Length > 0) 
-            ? CreateFilteredBalanceGraph(stateContainer.BalanceGraph, request.FromTokens!, request.Source)
+        var balanceGraph = ((fromTokens != null && fromTokens.Length > 0) || (request.Source == request.Sink))
+            ? CreateFilteredBalanceGraph(
+                stateContainer.BalanceGraph, 
+                request.FromTokens!, 
+                request.Source, 
+                request.ToTokens, 
+                request.Sink)
             : stateContainer.BalanceGraph;
 
         var trustGraph = (toTokens != null && toTokens.Length > 0)
