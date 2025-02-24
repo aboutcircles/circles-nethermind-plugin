@@ -29,7 +29,7 @@ namespace Circles.Pathfinder.Data
 
         public IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances()
         {
-            var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
+            var balanceQuery = LoadQueryFromResource("balanceQueryWrap.sql");
 
             using var connection = new NpgsqlConnection(connectionString);
             connection.Open();
@@ -49,7 +49,7 @@ namespace Circles.Pathfinder.Data
 
         public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
         {
-            var trustQuery = LoadQueryFromResource("trustQuery.sql");
+            var trustQuery = LoadQueryFromResource("trustQueryWrap.sql");
 
             using var connection = new NpgsqlConnection(connectionString);
             connection.Open();

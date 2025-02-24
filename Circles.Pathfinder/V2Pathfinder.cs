@@ -59,6 +59,13 @@ public class V2Pathfinder : IPathfinder
         trustGraph.SetupVirtualSinkIfNeeded(source);
         var virtualSink = trustGraph.GetVirtualSinkAddress();
 
+        // Check if virtual sink exists but has no outgoing edges
+        if (virtualSink != null && !trustGraph.HasAnyOutgoingEdges(virtualSink))
+        {
+            // Return empty response with zero flow
+            return new MaxFlowResponse("0", new List<TransferPathStep>());
+        }
+
         // Use virtual sink if it exists
         var effectiveSink = virtualSink ?? sink;
 
