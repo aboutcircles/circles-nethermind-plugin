@@ -30,18 +30,46 @@ public class TrustGraph : IGraph<TrustEdge>
         // Create virtual sink if source and sink are the same
         if (_sourceAddress == _sinkAddress)
         {
+            bool anyTrusted = false;
             _virtualSinkAddress = _sourceAddress + VIRTUAL_SINK_SUFFIX;
             AddAvatar(_virtualSinkAddress);
             
-            // If toTokens specified, make virtual sink trust them
+            // If toTokens specified, make virtual sink trust them ONLY if the real sink trusts them
             if (_toTokens != null && _toTokens.Any())
             {
                 foreach (var token in _toTokens)
                 {
-                    AddTrustEdge(_virtualSinkAddress, token);
+                    // Only add trust edge if the source/sink already trusts this token
+                    if (HasTrustEdge(_sourceAddress, token))
+                    {
+                        AddTrustEdge(_virtualSinkAddress, token);
+                        anyTrusted = true;
+                    }
                 }
             }
+            
+            // If no tokens are trusted, don't use virtual sink
+            if (!anyTrusted)
+            {
+                _virtualSinkAddress = null;
+            }
         }
+    }
+
+    // Helper method to check if a trust edge exists
+    private bool HasTrustEdge(string truster, string trustee)
+    {
+        truster = truster.ToLowerInvariant();
+        trustee = trustee.ToLowerInvariant();
+        
+        return Edges.Any(edge => edge.From == truster && edge.To == trustee);
+    }
+
+    // Helper method to check if a node has any outgoing edges
+    public bool HasAnyOutgoingEdges(string nodeAddress)
+    {
+        nodeAddress = nodeAddress.ToLowerInvariant();
+        return Edges.Any(edge => edge.From == nodeAddress);
     }
 
     // Method to get the virtual sink address if it exists
