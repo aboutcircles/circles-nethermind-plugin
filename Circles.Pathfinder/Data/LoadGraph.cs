@@ -1,4 +1,5 @@
 using Npgsql;
+using System.Reflection;
 
 namespace Circles.Pathfinder.Data
 {
@@ -11,15 +12,24 @@ namespace Circles.Pathfinder.Data
 
     public class LoadGraph(string connectionString) : ILoadGraph
     {
+        private string LoadQueryFromResource(string fileName)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = $"Circles.Pathfinder.Data.Queries.{fileName}";
+            
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                throw new FileNotFoundException($"SQL query resource not found: {resourceName}");
+            }
+            
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         public IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances()
         {
-            var balanceQuery = @"
-                select ""demurragedTotalBalance""::text, ""account"", ""tokenAddress""
-                from ""V_CrcV2_BalancesByAccountAndToken"" b
-                left join ""CrcV2_RegisterGroup"" g on g.""group"" = b.""tokenAddress""
-                where g.""group"" is null
-                and ""demurragedTotalBalance"" > 0;
-            ";
+            var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
 
             using var connection = new NpgsqlConnection(connectionString);
             connection.Open();
@@ -39,10 +49,7 @@ namespace Circles.Pathfinder.Data
 
         public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
         {
-            var trustQuery = @"
-                select truster, trustee
-                from ""V_CrcV2_TrustRelations"";
-            ";
+            var trustQuery = LoadQueryFromResource("trustQuery.sql");
 
             using var connection = new NpgsqlConnection(connectionString);
             connection.Open();

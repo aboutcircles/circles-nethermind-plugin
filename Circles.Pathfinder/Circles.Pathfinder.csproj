@@ -10,4 +10,11 @@
       <PackageReference Include="Npgsql" Version="9.0.2" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="Data\Queries\balanceQuery.sql" />
+      <None Remove="Data\Queries\trustQuery.sql" />
+      <EmbeddedResource Include="Data\Queries\balanceQuery.sql" />
+      <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
+    </ItemGroup> 
+
 </Project>
