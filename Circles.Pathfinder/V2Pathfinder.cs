@@ -39,10 +39,13 @@ public class V2Pathfinder : IPathfinder
             throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
         }
 
+        Console.WriteLine($"Requests Source: { request.Source?.ToLower()}");
+        Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
         // Load Trust and Balance Graphs
-        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
-        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
+        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph, request);
+        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph, request);
 
+        
         return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
     }
 
@@ -52,14 +55,28 @@ public class V2Pathfinder : IPathfinder
         FlowRequest request,
         BigInteger targetFlow)
     {
+        var source = request.Source?.ToLower() ?? "";
+        var sink = request.Sink?.ToLower() ?? "";
+        
+        // Set up virtual sink if needed
+        trustGraph.SetupVirtualSinkIfNeeded(source);
+        var virtualSink = trustGraph.GetVirtualSinkAddress();
+
+        // Check if virtual sink exists but has no outgoing edges
+        if (virtualSink != null && !trustGraph.HasAnyOutgoingEdges(virtualSink))
+        {
+            // Return empty response with zero flow
+            return new MaxFlowResponse("0", new List<TransferPathStep>());
+        }
+
+        // Use virtual sink if it exists
+        var effectiveSink = virtualSink ?? sink;
+
         // Create Capacity Graph
         var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
 
         // Create Flow Graph
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
-
-        var source = request.Source?.ToLowerInvariant() ?? "";
-        var sink = request.Sink?.ToLowerInvariant() ?? "";
 
         // Validate Source and Sink
         if (!flowGraph.Nodes.ContainsKey(source))
@@ -67,17 +84,32 @@ public class V2Pathfinder : IPathfinder
             throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
         }
 
-        if (!flowGraph.Nodes.ContainsKey(sink))
+        if (!flowGraph.Nodes.ContainsKey(effectiveSink))
         {
-            throw new ArgumentException($"Sink node '{request.Sink}' does not exist in the graph.");
+            throw new ArgumentException($"Sink node '{(virtualSink != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
         }
 
         // Compute Max Flow
-        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
+        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, targetFlow);
 
         // Extract Paths with Flow
-        var pathsWithFlow =
-            flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Parse("0"));
+        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, BigInteger.Parse("0"));
+
+        // If using virtual sink, replace it with the actual sink in the paths
+        if (virtualSink != null)
+        {
+            pathsWithFlow = pathsWithFlow.Select(path =>
+                path.Select(edge => new FlowEdge(
+                    edge.From == virtualSink ? sink : edge.From,
+                    edge.To == virtualSink ? sink : edge.To,
+                    edge.Token,
+                    edge.InitialCapacity)
+                {
+                    Flow = edge.Flow,
+                    CurrentCapacity = edge.CurrentCapacity
+                }).ToList()
+            ).ToList();
+        }
 
         // Collapse balance nodes to get a collapsed graph
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
@@ -93,7 +125,7 @@ public class V2Pathfinder : IPathfinder
                 // Filter reverse edges
                 continue;
             }
-
+            
             transferSteps.Add(new TransferPathStep
             {
                 From = edge.From,
@@ -156,7 +188,7 @@ public class V2Pathfinder : IPathfinder
                         currentEdge.From,
                         nextEdge.To,
                         nextEdge.Token,
-                        currentEdge.CurrentCapacity // Adjust as needed
+                        currentEdge.CurrentCapacity
                     )
                     {
                         Flow = mergedFlow,

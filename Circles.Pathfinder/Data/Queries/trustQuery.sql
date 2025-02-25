@@ -1,0 +1,1 @@
+SELECT truster, trustee FROM "V_CrcV2_TrustRelations"
