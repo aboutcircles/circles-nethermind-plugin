@@ -99,6 +99,7 @@ app.MapGet("/findPath", async (
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
+    // If we got here, we have a permit. We'll increment our gauge by +1.
     FindPathMetrics.InFlightRequestsGauge.Inc();
     try
     {
@@ -156,6 +157,7 @@ app.MapGet("/findPath", async (
     }
     finally
     {
+        // Release the concurrency permit and decrement in-flight gauge
         semaphore.Release();
         FindPathMetrics.InFlightRequestsGauge.Dec();
     }
