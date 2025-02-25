@@ -26,15 +26,19 @@ The Pathfinder service has been extended with new filtering capabilities and vir
 ## 2. Virtual Sink Functionality
 
 ### Purpose
-Handles scenarios where source and sink nodes are the same, enabling token-to-token conversions within the same account.
+The virtual sink addresses scenarios where the source and sink nodes are the same address. This is essential for enabling token-to-token conversions within the same account. By creating a virtual sink in the graph, we are able to take advantage of the full implementation of the MaxFlow algorithm
 
 ### Implementation Details
-- **Location**: Implemented in `TrustGraph.cs`
+- **Location**: Primarily implemented in `TrustGraph.cs`
 - **Key Components**:
   ```csharp
   private const string VIRTUAL_SINK_SUFFIX = "_virtual_sink";
   private string? _virtualSinkAddress;
+  private string? _sourceAddress;
+  
   public void SetupVirtualSinkIfNeeded(string sourceAddress)
+  public string? GetVirtualSinkAddress()
+  private bool HasTrustEdge(string truster, string trustee)
   ```
 
 ### Behavior
@@ -50,57 +54,64 @@ Handles scenarios where source and sink nodes are the same, enabling token-to-to
    - Uses virtual sink as the effective sink during path finding
    - Final paths are transformed to replace virtual sink with actual sink address
 
-### Edge Cases and Limitations
-
 #### Self-Loop Prevention
 - Current Implementation:
   ```csharp
-  if (source == sink && edge.From == source && edge.To == source)
+  // Case 1: When source and sink are the same, don't add balances for tokens that are in toTokens
+  if (_sourceAddress != null && _sinkAddress != null && 
+      _sourceAddress == _sinkAddress && address == _sourceAddress && 
+      _toTokens.Any() && _toTokens.Contains(token))
   {
-      continue;
+      return; 
   }
   ```
-- **Known Issue**: While this prevents self-loops, it might remove potentially valid flows that could be pushed through other paths
-- **Future Enhancement**: Consider preventing balances of `toTokens` in source node when `source = sink` during graph construction
+- This approach prevents self-loops by filtering out token balances for tokens in `toTokens`
+- The rationale is that if the user already has Token B and wants to convert Token A to Token B, we shouldn't consider the existing Token B balance as a potential source for the conversion
 
 #### Token Requirements
-- `toTokens` must be specified when using virtual sink
-- `fromTokens` remains optional
-- Without `toTokens`, conversion targets are undefined
+- `toTokens` must be specified when using virtual sink (critical requirement)
+- Without destination tokens specified, the system cannot determine valid conversion targets
+- `fromTokens` remains optional but helps optimize the process by limiting the search space
+
 
 ## 3. ERC20 Token Wrapping Support
 
-### Trust Query Enhancement
-- **Purpose**: Support wrapped ERC20 tokens
-- **Implementation**: Modified trust query to include ERC20 wrapper relationships
-- **SQL Changes**:
-  ```sql
-  SELECT truster, trustee FROM "V_CrcV2_TrustRelations"
-  UNION ALL
-  SELECT t1.truster, t2."erc20Wrapper" AS trustee 
-  FROM "V_CrcV2_TrustRelations" t1
-  INNER JOIN "CrcV2_ERC20WrapperDeployed" t2
-  ON t2.avatar = t1.trustee
+### Balance/Trust Query Enhancement
+- **Purpose**: Support wrapped CRC20 tokens
+- **Implementation**: `trustQueryWrap.sql`, `balanceQueryWrap.sql`
+- **Behavior**: All accounts will now support both ERC1155 and CRC20 tokens. CRC20 tokens will retain their addresses and remain distinct from ERC1155 tokens. They will be introduced into the trust graph as nodes trusted only by the addresses that trust the avatar that deployed the wrap token. This setup enables the construction of a capacity graph, allowing the flow of CRC20 tokens from accounts holding them to accounts that trust the corresponding avatar.
+
+
+## 4. Dual Graph Loading
+
+### Purpose
+Support pathfinding with both regular and wrapped token transfers.
+
+### Implementation Details
+- **Location**: Implemented in `NetworkState.cs` and `NetworkStateUpdaterService.cs`
+- **Key Components**:
+  ```csharp
+  // Regular graphs (without wrapped tokens)
+  public TrustGraph? TrustGraph => _trustGraph;
+  public BalanceGraph? BalanceGraph => _balanceGraph;
+  
+  // Wrapped graphs (with wrapped tokens)
+  public TrustGraph? WrappedTrustGraph => _wrappedTrustGraph;
+  public BalanceGraph? WrappedBalanceGraph => _wrappedBalanceGraph;
   ```
 
-### Balance Query Enhancement
-- **Purpose**: Handle wrapped token balances
-- **Implementation**: Updated balance query to consider ERC20 wrapper accounts
-- **Impact**: Enables pathfinding through wrapped token paths
+### Behavior
+   - Graphs are loaded in parallel tasks
+   - Selection determined by `withWrap` parameter in requests
+   - Default behavior uses non-wrapped graphs when parameter is omitted
+   ```csharp
+   bool useWrappedTokens = withWrap ?? false;
+   var balanceGraph = useWrappedTokens 
+       ? stateContainer.WrappedBalanceGraph 
+       : stateContainer.BalanceGraph;
+   ```
 
-## 4. Performance Considerations
-
-### Graph Construction
-- Token filtering happens during graph construction
-- No runtime performance impact during pathfinding
-- Memory usage optimized by loading only necessary edges
-
-### Virtual Sink Impact
-- Minimal overhead from additional node
-- Path transformation cost is negligible
-- No significant impact on pathfinding algorithm performance
-
-## 5. API Changes
+## 6. API Changes
 
 ### New Parameters
 ```csharp
@@ -111,6 +122,7 @@ public class FlowRequest
     public string? TargetFlow { get; set; }
     public List<string>? FromTokens { get; set; }
     public List<string>? ToTokens { get; set; }
+    public bool? WithWrap { get; set; }
 }
 ```
 
