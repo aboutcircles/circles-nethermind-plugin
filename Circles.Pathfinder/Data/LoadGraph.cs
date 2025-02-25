@@ -8,12 +8,29 @@ namespace Circles.Pathfinder.Data
     {
         IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances();
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
+        bool WithWrap { get; }
     }
 
-    public class LoadGraph(string connectionString) : ILoadGraph
+    public class LoadGraph : ILoadGraph
     {
-        private string LoadQueryFromResource(string fileName)
+        private readonly string _connectionString;
+        private readonly bool _withWrap;
+
+        public bool WithWrap => _withWrap;
+
+        public LoadGraph(string connectionString, bool withWrap = false)
         {
+            _connectionString = connectionString;
+            _withWrap = withWrap;
+        }
+
+        private string LoadQueryFromResource(string baseFileName)
+        {
+            // Determine which SQL file to use based on _withWrap flag
+            string fileName = _withWrap 
+                ? $"{baseFileName}Wrap.sql" 
+                : $"{baseFileName}.sql";
+            
             var assembly = Assembly.GetExecutingAssembly();
             var resourceName = $"Circles.Pathfinder.Data.Queries.{fileName}";
             
@@ -29,9 +46,10 @@ namespace Circles.Pathfinder.Data
 
         public IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances()
         {
-            var balanceQuery = LoadQueryFromResource("balanceQueryWrap.sql");
+            // Load the appropriate query based on _withWrap flag
+            var balanceQuery = LoadQueryFromResource("balanceQuery");
 
-            using var connection = new NpgsqlConnection(connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
@@ -49,9 +67,10 @@ namespace Circles.Pathfinder.Data
 
         public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
         {
-            var trustQuery = LoadQueryFromResource("trustQueryWrap.sql");
+            // Load the appropriate query based on _withWrap flag
+            var trustQuery = LoadQueryFromResource("trustQuery");
 
-            using var connection = new NpgsqlConnection(connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(trustQuery, connection);
