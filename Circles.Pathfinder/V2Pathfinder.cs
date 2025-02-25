@@ -125,12 +125,6 @@ public class V2Pathfinder : IPathfinder
                 // Filter reverse edges
                 continue;
             }
-
-            // Skip self-transfers that were created due to virtual sink
-          //  if (source == sink && edge.From == source && edge.To == source)
-          //  {
-          //      continue;
-          //  }
             
             transferSteps.Add(new TransferPathStep
             {
