@@ -144,6 +144,8 @@ public class V2Pathfinder : IPathfinder
     /// <summary>
     /// Collapses balance nodes in the paths and returns a collapsed flow graph.
     /// </summary>
+    /// <param name="pathsWithFlow">The list of paths with flow.</param>
+    /// <returns>A FlowGraph with balance nodes collapsed.</returns>
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
         var collapsedGraph = new FlowGraph();
@@ -178,6 +180,8 @@ public class V2Pathfinder : IPathfinder
                 if (IsBalanceNode(currentEdge.To) && nextEdge != null && nextEdge.From == currentEdge.To)
                 {
                     // We are at a balance node, so we need to collapse it by merging currentEdge and nextEdge
+
+                    // The flow through the balance node is limited by both the incoming and outgoing flows
                     var mergedFlow = BigInteger.Min(currentEdge.Flow, nextEdge.Flow);
 
                     var mergedEdge = new FlowEdge(
@@ -198,7 +202,11 @@ public class V2Pathfinder : IPathfinder
                     catch (Exception e)
                     {
                         Console.WriteLine(e.Message);
+
+                        // Log the stack trace
                         Console.WriteLine(e.StackTrace);
+
+                        // Unpack the inner exception(s) recursively
                         while (e.InnerException != null)
                         {
                             e = e.InnerException;
@@ -211,12 +219,17 @@ public class V2Pathfinder : IPathfinder
                 {
                     try
                     {
+                        // If not a balance node, add the current edge to the collapsed graph
                         collapsedGraph.AddFlowEdge(collapsedGraph, currentEdge);
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine(e.Message);
+
+                        // Log the stack trace
                         Console.WriteLine(e.StackTrace);
+
+                        // Unpack the inner exception(s) recursively
                         while (e.InnerException != null)
                         {
                             e = e.InnerException;
@@ -233,6 +246,8 @@ public class V2Pathfinder : IPathfinder
     /// <summary>
     /// Determines if a given node address is a balance node.
     /// </summary>
+    /// <param name="nodeAddress">The node address to check.</param>
+    /// <returns>True if it's a balance node; otherwise, false.</returns>
     private bool IsBalanceNode(string nodeAddress)
     {
         return nodeAddress.Contains("-");
