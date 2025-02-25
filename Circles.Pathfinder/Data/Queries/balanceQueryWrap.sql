@@ -32,7 +32,7 @@ current_crc20_balances AS (
             ON t2.user = t1."to"
         WHERE
             t1.operator IS NULL
-    )
+    ) AS t
     GROUP BY 2, 3
 ),
 
@@ -50,7 +50,7 @@ FROM (
         ,floor(crc_demurrage(1675209600::bigint, "timestamp", balance)) AS "demurragedTotalBalance"
     FROM
         current_crc20_balances
-)
+) AS t
 WHERE "demurragedTotalBalance" > 0
 )
 
