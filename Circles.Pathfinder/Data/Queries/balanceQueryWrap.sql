@@ -11,13 +11,11 @@ current_crc20_balances AS (
             t1."timestamp"
             ,t1."from" AS account
             ,t1."tokenAddress"
-            ,-t1.value AS diff
-        FROM public."V_CrcV2_Transfers" t1
+            ,-t1.amount AS diff
+        FROM public."CrcV2_Erc20WrapperTransfer" t1
         INNER JOIN 
-            public."V_CrcV1_Avatars" t2
-            ON t2.user = t1."from"
-        WHERE
-            t1.operator IS NULL
+            public."V_CrcV2_Avatars" t2
+            ON t2.avatar = t1."from"
         
         UNION ALL
         
@@ -25,13 +23,11 @@ current_crc20_balances AS (
             t1."timestamp"
             ,t1."to" AS account
             ,t1."tokenAddress"
-            ,t1.value AS diff
-        FROM public."V_CrcV2_Transfers" t1
+            ,t1.amount AS diff
+        FROM public."CrcV2_Erc20WrapperTransfer" t1
         INNER JOIN 
-            public."V_CrcV1_Avatars" t2
-            ON t2.user = t1."to"
-        WHERE
-            t1.operator IS NULL
+            public."V_CrcV2_Avatars" t2
+            ON t2.avatar = t1."to"
     ) AS t
     GROUP BY 2, 3
 ),
