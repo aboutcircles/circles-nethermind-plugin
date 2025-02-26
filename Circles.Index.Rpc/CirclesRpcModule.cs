@@ -365,8 +365,23 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
             var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
-            var url =
-                $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+            var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+
+            // Add the new parameters if they are set
+            if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
+            {
+                url += $"&fromTokens={string.Join(",", flowRequest.FromTokens)}";
+            }
+            
+            if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
+            {
+                url += $"&toTokens={string.Join(",", flowRequest.ToTokens)}";
+            }
+            
+            if (flowRequest.WithWrap.HasValue)
+            {
+                url += $"&withWrap={flowRequest.WithWrap.Value}";
+            }
 
             using var httpClient = new HttpClient();
 
@@ -388,7 +403,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             // If no external service is configured, run the local pathfinder
             var loadGraph = new LoadGraph(
                 _indexerContext.Settings.IndexReadonlyDbConnectionString ??
-                _indexerContext.Settings.IndexDbConnectionString);
+                _indexerContext.Settings.IndexDbConnectionString,
+                flowRequest.WithWrap ?? false);  // Pass the withWrap parameter to LoadGraph
 
             var graphFactory = new GraphFactory();
             var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
