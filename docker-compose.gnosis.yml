@@ -2,7 +2,7 @@ services:
   nethermind-gnosis:
     build:
       context: .
-      dockerfile: x64.Dockerfile
+      dockerfile: x64.debug.Dockerfile
     restart: unless-stopped
     depends_on:
       - postgres-gnosis
@@ -45,7 +45,7 @@ services:
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - START_BLOCK=12000000
-      - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
+#      - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
   
   pathfinder:
     build:
@@ -57,7 +57,7 @@ services:
     networks:
       - circles-gnosis
     ports:
-      - 8080:8080
+      - 8081:8080
     environment:
       - CIRCLES_RPC_URL=http://nethermind-gnosis:8545
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};

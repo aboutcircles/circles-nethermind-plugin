@@ -18,9 +18,9 @@ public class BalanceGraph : IGraph<CapacityEdge>
 
     public BalanceGraph(List<string>? fromTokens = null, string? sourceAddress = null, List<string>? toTokens = null, string? sinkAddress = null)
     {
-        _fromTokens = fromTokens?.Select(t => t.ToLower()).ToList();
+        _fromTokens = fromTokens?.Select(t => t.ToLower()).ToList() ?? [];
         _sourceAddress = sourceAddress?.ToLower();
-        _toTokens = toTokens?.Select(t => t.ToLower()).ToList();
+        _toTokens = toTokens?.Select(t => t.ToLower()).ToList() ?? [];
         _sinkAddress = sinkAddress?.ToLower();
     }
 
