@@ -370,12 +370,19 @@ public class CirclesRpcModule : ICirclesRpcModule
             // Add the new parameters if they are set
             if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
             {
-                url += $"&fromTokens={string.Join(",", flowRequest.FromTokens)}";
+                foreach (var token in flowRequest.FromTokens)
+                {
+                    url += $"&fromTokens={token}";
+                }
+
             }
             
             if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
             {
-                url += $"&toTokens={string.Join(",", flowRequest.ToTokens)}";
+                foreach (var token in flowRequest.ToTokens)
+                {
+                    url += $"&toTokens={token}";
+                }
             }
             
             if (flowRequest.WithWrap.HasValue)
