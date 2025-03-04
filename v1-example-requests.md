@@ -116,8 +116,8 @@ curl -X POST --data '{
   "method": "circles_query",
   "params": [
     {
-      "Namespace": "V_CrcV1",
-      "Table": "TrustRelations",
+      "Namespace": "CrcV2",
+      "Table": "Stopped",
       "Columns": [],
       "Filter": [
         {
@@ -126,36 +126,16 @@ curl -X POST --data '{
           "Predicates": [
               {
                 "Type": "FilterPredicate",
-                "FilterType": "In",
-                "Column": "user",
-                "Value": ["0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"]
-              },
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "In",
-                "Column": "canSendTo",
+                "FilterType": "Equals",
+                "Column": "avatar",
                 "Value": ["0xf3dbe5f4b9bae6038a44e2cd01c49bd5d5544a37"]
               }
           ]
         }
-      ],
-      "Order": [
-        {
-          "Column": "blockNumber",
-          "SortOrder": "DESC"
-        },
-        {
-          "Column": "transactionIndex",
-          "SortOrder": "DESC"
-        },
-        {
-          "Column": "logIndex",
-          "SortOrder": "DESC"
-        }
       ]
     }
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -306,4 +286,14 @@ curl -X POST --data '{
   },
   "id": 1
 }
+```
+
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_health",
+  "params": []
+}' -H "Content-Type: application/json" http://localhost:8545/
 ```

@@ -48,6 +48,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         Block block,
         int transactionIndex,
         Transaction transaction,
+        TxReceipt receipt,
         IReadOnlyList<IIndexEvent> events)
     {
         if (events.Count == 0)
