@@ -241,7 +241,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 
         AddMappings<AddedOwner>(
             ns: "Safe",
-            table: "SafeAddedOwner",
+            table: "AddedOwner",
             eventSchema: AddedOwner,
             databaseFieldMap:
             [
@@ -252,7 +252,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 
         AddMappings<RemovedOwner>(
             ns: "Safe",
-            table: "SafeRemovedOwner",
+            table: "RemovedOwner",
             eventSchema: RemovedOwner,
             databaseFieldMap:
             [
