@@ -1,4 +1,5 @@
-﻿using Circles.Index.Common;
+﻿using System.Collections.Concurrent;
+using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query;
 using Circles.Index.Rpc;
@@ -57,6 +58,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
         }
 
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            schemas.Add(new Circles.Index.Safe.DatabaseSchema());
+        }
+
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
@@ -72,7 +78,7 @@ public class Plugin : INethermindPlugin
             databaseSchema.EventDtoTableMap,
             settings.EventBufferSize);
 
-        InitCaches(pluginLogger, database);
+        InitCaches(pluginLogger, database, settings);
 
         var logParsers = new List<ILogParser>
         {
@@ -92,6 +98,14 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer));
         }
 
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
+        }
+
+
+        var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
+
         _indexerContext = new Context(
             nethermindApi,
             pluginLogger,
@@ -99,7 +113,8 @@ public class Plugin : INethermindPlugin
             database,
             readonlyDatabase,
             logParsers.ToArray(),
-            sink);
+            sink,
+            liveTables);
 
         _indexerMachine = new StateMachine(
             _indexerContext
@@ -163,6 +178,9 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
         pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployer);
+        pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
+        pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
+            settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         if (!string.IsNullOrWhiteSpace(settings.ExternalPathfinderUrl))
@@ -172,7 +190,7 @@ public class Plugin : INethermindPlugin
         }
     }
 
-    private static void InitCaches(InterfaceLogger logger, IDatabase database)
+    private static void InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         logger.Info("Caching Circles token addresses");
 
@@ -220,6 +238,36 @@ public class Plugin : INethermindPlugin
         foreach (var row in rows)
         {
             CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
+        }
+
+        logger.Info("Caching erc20 wrapper addresses done");
+
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            logger.Info("Caching ProxyCreation events");
+
+            var selectSafeProxyCreation = new Select(
+                "Safe",
+                "ProxyCreation",
+                ["proxy"],
+                [],
+                [],
+                int.MaxValue,
+                false,
+                int.MaxValue);
+
+            sql = selectSafeProxyCreation.ToSql(database);
+            result = database.Select(sql);
+            rows = result.Rows.ToArray();
+
+            logger.Info($" * Found {rows.Length} ProxyCreation events");
+
+            foreach (var row in rows)
+            {
+                Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
+            }
+
+            logger.Info("Caching ProxyCreation events done");
         }
     }
 

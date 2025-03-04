@@ -41,6 +41,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         Block block,
         int transactionIndex,
         Transaction transaction,
+        TxReceipt receipt,
         IReadOnlyList<IIndexEvent> events)
     {
         // 1) Gather all hub transfers + gather all Transfers

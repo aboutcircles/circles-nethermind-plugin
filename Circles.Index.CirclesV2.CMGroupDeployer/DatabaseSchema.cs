@@ -47,6 +47,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         Block block,
         int transactionIndex,
         Transaction transaction,
+        TxReceipt receipt,
         IReadOnlyList<IIndexEvent> events)
     {
         yield break;

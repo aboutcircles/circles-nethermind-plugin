@@ -36,6 +36,13 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER") != null
             ? new(Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")!)
             : null;
+    
+    public readonly Address[] SafeProxyFactoryAddresses =
+        Environment.GetEnvironmentVariable("SAFE_PROXY_FACTORY_ADDRESSES") != null
+            ? Environment.GetEnvironmentVariable("SAFE_PROXY_FACTORY_ADDRESSES")!.Split(',')
+                .Select(x => new Address(x.Trim()))
+                .ToArray()
+            : [];
 
     public readonly string IndexDbConnectionString =
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")

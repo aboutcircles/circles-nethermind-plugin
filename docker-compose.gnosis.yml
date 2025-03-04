@@ -2,7 +2,7 @@ services:
   nethermind-gnosis:
     build:
       context: .
-      dockerfile: x64.debug.Dockerfile
+      dockerfile: x64.Dockerfile
     restart: unless-stopped
     depends_on:
       - postgres-gnosis
@@ -42,10 +42,16 @@ services:
       - V2_ERC20_LIFT_ADDRESS=0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5
       - V2_LBP_FACTORY_ADDRESS=0x4bB5A425a68ed73Cf0B26ce79F5EEad9103C30fc
       - V2_CMGROUP_DEPLOYER=0x55785b41703728f1F1F05E77e22B13c3FCc9ce65
-      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
-      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+      # Circles safe proxy factory address (original circles safe factory): 0x8b4404DE0CaECE4b966a9959f134f0eFDa636156
+      # Safe Proxy Factory v1.0.0: 0x12302fE9c02ff50939BaAaaf415fc226C078613C
+      # Safe Proxy Factory v1.1.1: 0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B
+      # Safe Proxy Factory v1.3.0: 0xA6B71E26C5e0845f74C812102Ca7114b6a896Ab2
+      # Safe Proxy Factory v1.4.1: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+      - SAFE_PROXY_FACTORY_ADDRESSES=0x8b4404DE0CaECE4b966a9959f134f0eFDa636156,0x12302fE9c02ff50939BaAaaf415fc226C078613C,0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B,0xA6B71E26C5e0845f74C812102Ca7114b6a896Ab2,0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;
       - START_BLOCK=12000000
-#      - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
+      - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
   
   pathfinder:
     build:
