@@ -109,25 +109,33 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                     continue;
                 }
 
-                var defaultKeyColumns = new[] { "\"blockNumber\"", "\"transactionIndex\"", "\"logIndex\"" };
-                var allKeyColumns = defaultKeyColumns.Union(table.Value.Columns
-                        .Where(column => column.IncludeInPrimaryKey)
-                        .Select(column => $"\"{column.Column}\""))
-                    .ToArray();
-
-                var allKeyColumnsString = string.Join(", ", allKeyColumns);
-                if (table.Value is { Namespace: "System", Table: "Block" })
+                if (table.Value is
+                    {
+                        Namespace: Common.DatabaseSchema.SystemNamespace,
+                        Table: Common.DatabaseSchema.BlockTable
+                    })
                 {
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\");");
                 }
-                else
+                else if (table.Value is
+                         {
+                             Namespace: Common.DatabaseSchema.SystemNamespace,
+                             Table: Common.DatabaseSchema.EventTableHeadTable
+                         })
                 {
-                    if (table.Value.Namespace.StartsWith("V_"))
-                    {
-                        // Dirty way to skip indexes and primary keys for views
-                        continue;
-                    }
+                    primaryKeyDdl.AppendLine(
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"tableName\");");
+                }
+                else if (!table.Value.Namespace.StartsWith("V_"))
+                {
+                    var defaultKeyColumns = new[] { "\"blockNumber\"", "\"transactionIndex\"", "\"logIndex\"" };
+                    var allKeyColumns = defaultKeyColumns.Union(table.Value.Columns
+                            .Where(column => column.IncludeInPrimaryKey)
+                            .Select(column => $"\"{column.Column}\""))
+                        .ToArray();
+
+                    var allKeyColumnsString = string.Join(", ", allKeyColumns);
 
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY ({allKeyColumnsString});");
@@ -380,5 +388,124 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         {
             transaction?.Dispose();
         }
+    }
+
+
+    /// <summary>
+    /// Upsert a single (tableName -> blockNumber) mapping.
+    /// </summary>
+    public void SetEventTableHead(string tableName, long blockNumber)
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        const string sql = @"
+            INSERT INTO ""System_EventTableHead"" (""tableName"", ""blockNumber"")
+            VALUES (@tableName, @blockNumber)
+            ON CONFLICT (""tableName"")
+                DO UPDATE SET ""blockNumber"" = EXCLUDED.""blockNumber"";
+        ";
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("@tableName", tableName);
+        cmd.Parameters.AddWithValue("@blockNumber", blockNumber);
+
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Returns the block number for a table, or null if not found.
+    /// </summary>
+    public long? GetEventTableHead(string tableName)
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        const string sql = @"
+            SELECT ""blockNumber""
+            FROM ""System_EventTableHead""
+            WHERE ""tableName"" = @tableName;
+        ";
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("@tableName", tableName);
+
+        object? result = cmd.ExecuteScalar();
+        return result is long l ? l : null;
+    }
+
+    /// <summary>
+    /// Upsert multiple (tableName -> blockNumber) mappings in a single transaction.
+    /// </summary>
+    public void SetEventTableHeads(IDictionary<string, long> mappings)
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            const string sql = @"
+                INSERT INTO ""System_EventTableHead"" (""tableName"", ""blockNumber"")
+                VALUES (@tableName, @blockNumber)
+                ON CONFLICT (""tableName"")
+                    DO UPDATE SET ""blockNumber"" = EXCLUDED.""blockNumber"";
+            ";
+
+            using var cmd = connection.CreateCommand();
+            cmd.Transaction = transaction;
+            cmd.CommandText = sql;
+
+            // Reuse parameters for each iteration
+            var paramTable = cmd.CreateParameter();
+            paramTable.ParameterName = "@tableName";
+            cmd.Parameters.Add(paramTable);
+
+            var paramBlock = cmd.CreateParameter();
+            paramBlock.ParameterName = "@blockNumber";
+            cmd.Parameters.Add(paramBlock);
+
+            foreach (var (tName, blockNum) in mappings)
+            {
+                paramTable.Value = tName;
+                paramBlock.Value = blockNum;
+                cmd.ExecuteNonQuery();
+            }
+
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Returns all (tableName -> blockNumber) mappings.
+    /// </summary>
+    public IDictionary<string, long> GetEventTableHeads()
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        const string sql = @"
+            SELECT ""tableName"", ""blockNumber""
+            FROM ""System_EventTableHead"";
+        ";
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+
+        using var reader = cmd.ExecuteReader();
+        var result = new Dictionary<string, long>();
+        while (reader.Read())
+        {
+            result.Add(reader.GetString(0), reader.GetInt64(1));
+        }
+
+        return result;
     }
 }

@@ -18,5 +18,6 @@ public interface ILogParser
         Block block,
         int transactionIndex,
         Transaction transaction,
+        TxReceipt receipt,
         IReadOnlyList<IIndexEvent> events);
 }

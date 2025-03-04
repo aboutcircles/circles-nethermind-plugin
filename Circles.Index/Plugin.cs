@@ -1,4 +1,5 @@
-﻿using Circles.Index.Common;
+﻿using System.Collections.Concurrent;
+using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query;
 using Circles.Index.Rpc;
@@ -57,6 +58,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
         }
 
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            schemas.Add(new Circles.Index.Safe.DatabaseSchema());
+        }
+
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
@@ -92,6 +98,14 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer));
         }
 
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
+        }
+        
+        
+        var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
+
         _indexerContext = new Context(
             nethermindApi,
             pluginLogger,
@@ -99,7 +113,8 @@ public class Plugin : INethermindPlugin
             database,
             readonlyDatabase,
             logParsers.ToArray(),
-            sink);
+            sink,
+            liveTables);
 
         _indexerMachine = new StateMachine(
             _indexerContext

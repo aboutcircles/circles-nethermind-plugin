@@ -4,9 +4,14 @@ using Nethermind.Core;
 namespace Circles.Index.Common;
 
 public record BlockWithEventCounts(Block Block, IDictionary<string, int> EventCounts);
+public record EventTableHead(string TableName, int BlockNumber);
 
 public class DatabaseSchema : IDatabaseSchema
 {
+    public const string SystemNamespace = "System";
+    public const string BlockTable = "Block";
+    public const string EventTableHeadTable = "EventTableHead";
+    
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
 
@@ -21,6 +26,13 @@ public class DatabaseSchema : IDatabaseSchema
                     new("blockHash", ValueTypes.String, false),
                     new("eventCounts", ValueTypes.String, false)
                 ])
+            },
+            {
+                ("System", "EventTableHead"),
+                new EventSchema("System", "EventTableHead", new byte[32], [
+                    new ("tableName", ValueTypes.String, false),
+                    new ("blockNumber", ValueTypes.Int, false)
+                ])
             }
         };
 
@@ -32,6 +44,11 @@ public class DatabaseSchema : IDatabaseSchema
             { "timestamp", o => (long)o.Block.Timestamp },
             { "blockHash", o => o.Block.Hash!.ToString() },
             { "eventCounts", o => JsonSerializer.Serialize(o.EventCounts) }
+        });
+        SchemaPropertyMap.Add(("System", "EventTableHead"), new Dictionary<string, Func<EventTableHead, object?>>
+        {
+            { "tableName", rec => rec.TableName },
+            { "blockNumber", rec => rec.BlockNumber }
         });
     }
 }
