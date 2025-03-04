@@ -78,7 +78,7 @@ public class Plugin : INethermindPlugin
             databaseSchema.EventDtoTableMap,
             settings.EventBufferSize);
 
-        InitCaches(pluginLogger, database);
+        InitCaches(pluginLogger, database, settings);
 
         var logParsers = new List<ILogParser>
         {
@@ -102,8 +102,8 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
         }
-        
-        
+
+
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
 
         _indexerContext = new Context(
@@ -190,7 +190,7 @@ public class Plugin : INethermindPlugin
         }
     }
 
-    private static void InitCaches(InterfaceLogger logger, IDatabase database)
+    private static void InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         logger.Info("Caching Circles token addresses");
 
@@ -242,31 +242,33 @@ public class Plugin : INethermindPlugin
 
         logger.Info("Caching erc20 wrapper addresses done");
 
-
-        logger.Info("Caching ProxyCreation events");
-
-        var selectSafeProxyCreation = new Select(
-            "Safe",
-            "ProxyCreation",
-            ["proxy"],
-            [],
-            [],
-            int.MaxValue,
-            false,
-            int.MaxValue);
-
-        sql = selectSafeProxyCreation.ToSql(database);
-        result = database.Select(sql);
-        rows = result.Rows.ToArray();
-
-        logger.Info($" * Found {rows.Length} ProxyCreation events");
-
-        foreach (var row in rows)
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
-            Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
-        }
+            logger.Info("Caching ProxyCreation events");
 
-        logger.Info("Caching ProxyCreation events done");
+            var selectSafeProxyCreation = new Select(
+                "Safe",
+                "ProxyCreation",
+                ["proxy"],
+                [],
+                [],
+                int.MaxValue,
+                false,
+                int.MaxValue);
+
+            sql = selectSafeProxyCreation.ToSql(database);
+            result = database.Select(sql);
+            rows = result.Rows.ToArray();
+
+            logger.Info($" * Found {rows.Length} ProxyCreation events");
+
+            foreach (var row in rows)
+            {
+                Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
+            }
+
+            logger.Info("Caching ProxyCreation events done");
+        }
     }
 
     /// <summary>
