@@ -136,6 +136,7 @@ public class ImportFlow(
                                 blockWithReceipts.Block,
                                 transactionIndex,
                                 transaction,
+                                receipt,
                                 parserToEvents[parser]);
 
                             // Add these newly derived events to that parser's list
