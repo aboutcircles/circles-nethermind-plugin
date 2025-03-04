@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Collections.Concurrent;
+using System.Numerics;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,7 +16,7 @@ public record ProxyCreation(
     string TransactionHash,
     string Emitter,
     string Proxy,
-    string Singleton
+    string? Singleton
 ) : IIndexEvent;
 
 public record SafeSetup(
@@ -83,14 +84,34 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]
     );
 
-    public static readonly EventSchema AddedOwner = EventSchema.FromSolidity(
+    public static readonly EventSchema AddedOwner = new(
         "Safe",
-        "event AddedOwner(address indexed owner)"
+        "AddedOwner",
+        Keccak.Compute("AddedOwner(address)").BytesToArray(),
+        [
+            new("blockNumber", ValueTypes.Int, true, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true, true),
+            new("logIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("safeAddress", ValueTypes.Address, true),
+            new("owner", ValueTypes.Address, true),
+        ]
     );
 
-    public static readonly EventSchema RemovedOwner = EventSchema.FromSolidity(
+    public static readonly EventSchema RemovedOwner = new(
         "Safe",
-        "event RemovedOwner(address indexed owner)"
+        "RemovedOwner",
+        Keccak.Compute("RemovedOwner(address)").BytesToArray(),
+        [
+            new("blockNumber", ValueTypes.Int, true, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true, true),
+            new("logIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("safeAddress", ValueTypes.Address, true),
+            new("owner", ValueTypes.Address, true),
+        ]
     );
 
     public DatabaseSchema()
@@ -128,6 +149,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             eventSchema: AddedOwner,
             databaseFieldMap:
             [
+                ("safeAddress", e => e.SafeAddress),
                 ("owner", e => e.Owner)
             ]
         );
@@ -138,6 +160,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             eventSchema: RemovedOwner,
             databaseFieldMap:
             [
+                ("safeAddress", e => e.SafeAddress),
                 ("owner", e => e.Owner)
             ]
         );
@@ -146,10 +169,12 @@ public class DatabaseSchema : BaseDatabaseSchema
 
 public class LogParser(Address[] factoryAddresses) : ILogParser
 {
+    public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
+
     private readonly HashSet<Address> _factoryAddresses = new(factoryAddresses);
-    private readonly HashSet<Address> _knownSafeProxies = new();
 
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
+    private readonly Hash256 _legacyCrcProxyCreationTopic = Keccak.Compute("ProxyCreation(address)");
     private readonly Hash256 _safeSetupTopic = new(DatabaseSchema.SafeSetup.Topic);
     private readonly Hash256 _addedOwnerTopic = new(DatabaseSchema.AddedOwner.Topic);
     private readonly Hash256 _removedOwnerTopic = new(DatabaseSchema.RemovedOwner.Topic);
@@ -179,7 +204,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
             var log = receipt.Logs[i];
             var topic = log.Topics[0];
 
-            if (_knownSafeProxies.Contains(log.Address))
+            if (KnownSafeProxies.ContainsKey(log.Address))
             {
                 if (topic == _safeSetupTopic)
                 {
@@ -225,15 +250,15 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
 
         if (_factoryAddresses.Contains(log.Address))
         {
-            if (topic == _proxyCreationTopic)
+            if (topic == _proxyCreationTopic || topic == _legacyCrcProxyCreationTopic)
             {
                 var evt = ProxyCreation(block, receipt, log, logIndex);
-                _knownSafeProxies.Add(new Address(evt.Proxy));
+                KnownSafeProxies.TryAdd(new Address(evt.Proxy), null);
                 yield return evt;
             }
         }
 
-        if (_knownSafeProxies.Contains(log.Address))
+        if (KnownSafeProxies.ContainsKey(log.Address))
         {
             if (topic == _safeSetupTopic)
             {
@@ -260,13 +285,17 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
         int logIndex)
     {
         string proxy = "";
-        string singleton = "";
+        string? singleton = null;
 
         if (log.Topics.Length == 1)
         {
+            // event ProxyCreation(address proxy);
             // event ProxyCreation(address proxy, address singleton);
             proxy = new Address(log.Data.Slice(12, 20)).ToString(true, false);
-            singleton = new Address(log.Data.Slice(44)).ToString(true, false);
+            if (log.Data.Length > 32)
+            {
+                singleton = new Address(log.Data.Slice(44)).ToString(true, false);
+            }
         }
         else if (log.Topics.Length == 2)
         {
@@ -276,7 +305,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
         }
         else
         {
-            throw new Exception("WTF?");
+            throw new Exception("Unsupported ProxyCreation event format");
         }
 
         return new ProxyCreation(
