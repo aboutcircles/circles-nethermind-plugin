@@ -104,6 +104,12 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             StringBuilder primaryKeyDdl = new StringBuilder();
             foreach (var table in Schema.Tables)
             {
+                if (table.Key.Namespace.StartsWith("V_"))
+                {
+                    // Skip views
+                    continue;
+                }
+
                 if (HasPrimaryKey(connection, table.Value))
                 {
                     continue;
@@ -127,7 +133,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"tableName\");");
                 }
-                else if (!table.Value.Namespace.StartsWith("V_"))
+                else
                 {
                     var defaultKeyColumns = new[] { "\"blockNumber\"", "\"transactionIndex\"", "\"logIndex\"" };
                     var allKeyColumns = defaultKeyColumns.Union(table.Value.Columns
