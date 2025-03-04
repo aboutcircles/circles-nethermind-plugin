@@ -114,6 +114,102 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]
     );
 
+    public static readonly EventSchema V_Safe_Owners = new("V_Safe", "Owners", new byte[32], [
+        new("blockNumber", ValueTypes.Int, true),
+        new("timestamp", ValueTypes.Int, true),
+        new("transactionIndex", ValueTypes.Int, true),
+        new("logIndex", ValueTypes.Int, true),
+        new("safeAddress", ValueTypes.Address, true),
+        new("owner", ValueTypes.Address, true)
+    ])
+    {
+        SqlMigrationItem = new SqlMigrationItem(@"
+            create or replace view ""V_Safe_Owners"" AS
+                WITH events AS (
+                    SELECT
+                        ""safeAddress"",
+                        ""owner"",
+                        ""blockNumber"",
+                        ""timestamp"",
+                        ""transactionIndex"",
+                        ""logIndex"",
+                        1 AS init_count,
+                        0 AS add_count,
+                        0 AS remove_count
+                    FROM ""Safe_SafeSetup""
+                
+                    UNION ALL
+                
+                    SELECT
+                        ""safeAddress"",
+                        ""owner"",
+                        ""blockNumber"",
+                        ""timestamp"",
+                        ""transactionIndex"",
+                        ""logIndex"",
+                        0 AS init_count,
+                        1 AS add_count,
+                        0 AS remove_count
+                    FROM ""Safe_AddedOwner""
+                
+                    UNION ALL
+                
+                    SELECT
+                        ""safeAddress"",
+                        ""owner"",
+                        ""blockNumber"",
+                        ""timestamp"",
+                        ""transactionIndex"",
+                        ""logIndex"",
+                        0 AS init_count,
+                        0 AS add_count,
+                        1 AS remove_count
+                    FROM ""Safe_RemovedOwner""
+                ),
+                final_owners AS (
+                    SELECT
+                        ""safeAddress"",
+                        ""owner"",
+                        SUM(init_count) + SUM(add_count) - SUM(remove_count) AS final_count
+                    FROM events
+                    GROUP BY 1, 2
+                    HAVING SUM(init_count) + SUM(add_count) - SUM(remove_count) > 0
+                ),
+                
+                -- For each (safeAddress, owner) pair, select the event with the highest block/tx/log
+                -- i.e., the most recent event that changed that pair.
+                last_change AS (
+                    SELECT DISTINCT ON (""safeAddress"", ""owner"")
+                        ""safeAddress"",
+                        ""owner"",
+                        ""blockNumber"",
+                        ""timestamp"",
+                        ""transactionIndex"",
+                        ""logIndex""
+                    FROM events
+                    ORDER BY
+                        ""safeAddress"",
+                        ""owner"",
+                        ""blockNumber"" DESC,
+                        ""timestamp"" DESC,
+                        ""transactionIndex"" DESC,
+                        ""logIndex"" DESC
+                )
+                SELECT
+                    l.""blockNumber"",     
+                    l.""timestamp"",       
+                    l.""transactionIndex"",
+                    l.""logIndex"",        
+                    f.""safeAddress"",
+                    f.""owner""
+                FROM final_owners f
+                         JOIN last_change l
+                              ON f.""safeAddress"" = l.""safeAddress""
+                                  AND f.""owner""       = l.""owner""
+                ORDER BY f.""safeAddress"", f.""owner"";
+         ")
+    };
+
     public DatabaseSchema()
     {
         AddMappings<ProxyCreation>(
@@ -164,6 +260,8 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("owner", e => e.Owner)
             ]
         );
+
+        Tables.Add(("V_Safe", "Owners"), V_Safe_Owners);
     }
 }
 
