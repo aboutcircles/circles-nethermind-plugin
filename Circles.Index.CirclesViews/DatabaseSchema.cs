@@ -8,6 +8,75 @@ public class DatabaseSchema : IDatabaseSchema
 
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
 
+    /*
+     *
+     */
+    public static readonly EventSchema V_CrcV2_GroupVaultBalancesByToken = new("V_CrcV2", "GroupVaultBalancesByToken",
+        new byte[32], [
+            new("vault", ValueTypes.Address, true),
+            new("id", ValueTypes.BigInt, true),
+            new("balance", ValueTypes.BigInt, true),
+        ])
+    {
+        SqlMigrationItem = new(@"
+            CREATE OR REPLACE VIEW ""V_CrcV2_GroupVaultBalancesByToken"" AS
+               WITH all_events AS (
+                   -- CollateralLockedSingle inflows
+                   SELECT
+                       cv.vault,
+                       cls.id,
+                       SUM(cls.value) AS value_in,
+                       0               AS value_out
+                   FROM ""CrcV2_CollateralLockedSingle"" cls
+                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = cls.""group""
+                   GROUP BY cv.vault, cls.id
+               
+                   UNION ALL
+               
+                   -- CollateralLockedBatch inflows
+                   SELECT
+                       cv.vault,
+                       clb.id,
+                       SUM(clb.value) AS value_in,
+                       0               AS value_out
+                   FROM ""CrcV2_CollateralLockedBatch"" clb
+                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = clb.""group""
+                   GROUP BY cv.vault, clb.id
+               
+                   UNION ALL
+               
+                   -- GroupRedeemCollateralReturn outflows
+                   SELECT
+                       cv.vault,
+                       grcr.id,
+                       0               AS value_in,
+                       SUM(grcr.value) AS value_out
+                   FROM ""CrcV2_GroupRedeemCollateralReturn"" grcr
+                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcr.""group""
+                   GROUP BY cv.vault, grcr.id
+               
+                   UNION ALL
+               
+                   -- GroupRedeemCollateralBurn outflows
+                   SELECT
+                       cv.vault,
+                       grcb.id,
+                       0               AS value_in,
+                       SUM(grcb.value) AS value_out
+                   FROM ""CrcV2_GroupRedeemCollateralBurn"" grcb
+                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcb.""group""
+                   GROUP BY cv.vault, grcb.id
+               )
+               SELECT
+                   vault,
+                   id,
+                   (SUM(value_in) - SUM(value_out)) AS balance
+               FROM all_events e
+               GROUP BY vault, id
+               ORDER BY vault, id;")
+    };
+
+
     public static readonly EventSchema V_CrcV2_TotalSupply = new("V_CrcV2", "TotalSupply", new byte[32], [
         new("tokenAddress", ValueTypes.Address, true),
         new("tokenId", ValueTypes.BigInt, true),
@@ -1048,6 +1117,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_Crc", "TransferSummary"),
                 V_Crc_TransferSummary
+            },
+            {
+                ("V_CrcV2", "GroupVaultBalancesByToken"),
+                V_CrcV2_GroupVaultBalancesByToken
             }
         };
 }
