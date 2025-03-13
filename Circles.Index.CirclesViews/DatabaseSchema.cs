@@ -8,6 +8,86 @@ public class DatabaseSchema : IDatabaseSchema
 
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
 
+    /*
+     *
+     */
+    public static readonly EventSchema V_CrcV2_GroupVaultBalancesByToken = new("V_CrcV2", "GroupVaultBalancesByToken",
+        new byte[32], [
+            new("vault", ValueTypes.Address, true),
+            new("id", ValueTypes.BigInt, true),
+            new("balance", ValueTypes.BigInt, true),
+        ])
+    {
+        SqlMigrationItem = new(@"
+            CREATE OR REPLACE VIEW ""V_CrcV2_GroupVaultBalancesByToken"" AS
+                WITH events AS (
+                    -- 1) CollateralLockedSingle inflows
+                    SELECT
+                        cv.vault,
+                        cls.id,
+                        cls.""timestamp"",
+                        cls.value AS amount
+                    FROM ""CrcV2_CollateralLockedSingle"" cls
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = cls.""group""
+                
+                    UNION ALL
+                
+                    -- 2) CollateralLockedBatch inflows
+                    SELECT
+                        cv.vault,
+                        clb.id,
+                        clb.""timestamp"",
+                        clb.value AS amount
+                    FROM ""CrcV2_CollateralLockedBatch"" clb
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = clb.""group""
+                
+                    UNION ALL
+                
+                    -- 3) GroupRedeemCollateralReturn outflows (negative)
+                    SELECT
+                        cv.vault,
+                        grcr.id,
+                        grcr.""timestamp"",
+                        -grcr.value AS amount
+                    FROM ""CrcV2_GroupRedeemCollateralReturn"" grcr
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcr.""group""
+                
+                    UNION ALL
+                
+                    -- 4) GroupRedeemCollateralBurn outflows (negative)
+                    SELECT
+                        cv.vault,
+                        grcb.id,
+                        grcb.""timestamp"",
+                        -grcb.value AS amount
+                    FROM ""CrcV2_GroupRedeemCollateralBurn"" grcb
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcb.""group""
+                ),
+                     grouped AS (
+                         -- Sum net balances & track the max timestamp per (vault, tokenId)
+                         SELECT
+                             vault,
+                             id,
+                             SUM(amount) AS balance,
+                             MAX(""timestamp"") AS ""lastActivity""
+                         FROM events
+                         GROUP BY vault, id
+                     )
+                SELECT
+                    vault,
+                    id,
+                    FLOOR(
+                            crc_demurrage(
+                            1675209600::bigint,
+                            ""lastActivity"",
+                            balance
+                            )
+                    ) AS ""balance""
+                FROM grouped
+                ORDER BY vault, id;")
+    };
+
+
     public static readonly EventSchema V_CrcV2_TotalSupply = new("V_CrcV2", "TotalSupply", new byte[32], [
         new("tokenAddress", ValueTypes.Address, true),
         new("tokenId", ValueTypes.BigInt, true),
@@ -1048,6 +1128,10 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 ("V_Crc", "TransferSummary"),
                 V_Crc_TransferSummary
+            },
+            {
+                ("V_CrcV2", "GroupVaultBalancesByToken"),
+                V_CrcV2_GroupVaultBalancesByToken
             }
         };
 }
