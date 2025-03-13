@@ -1,34 +1,65 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Circles.Index.CirclesV2.CMGroupDeployer;
+using Circles.Index.CirclesV2.Hub;
+using Circles.Index.CirclesV2.LBP;
+using Circles.Index.CirclesV2.NameRegistry;
+using Circles.Index.CirclesV2.StandardTreasury;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Circles.Index.CirclesV2.Hub;
+namespace Circles.Index.CirclesV2;
 
-public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogParser
+public class LogParser(
+    Address v2HubAddress, 
+    Address erc20LiftAddress, 
+    Address nameRegistryAddress,
+    Address standardTreasuryAddress,
+    Address? cmGroupDeployerAddress, 
+    Address? lbpFactoryAddress) : ILogParser
 {
-    private readonly Hash256 _stoppedTopic = new(DatabaseSchema.Stopped.Topic);
-    private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
-    private readonly Hash256 _personalMintTopic = new(DatabaseSchema.PersonalMint.Topic);
-    private readonly Hash256 _registerHumanTopic = new(DatabaseSchema.RegisterHuman.Topic);
-    private readonly Hash256 _registerGroupTopic = new(DatabaseSchema.RegisterGroup.Topic);
-    private readonly Hash256 _registerOrganizationTopic = new(DatabaseSchema.RegisterOrganization.Topic);
-    private readonly Hash256 _transferBatchTopic = new(DatabaseSchema.TransferBatch.Topic);
-    private readonly Hash256 _transferSingleTopic = new(DatabaseSchema.TransferSingle.Topic);
-    private readonly Hash256 _approvalForAllTopic = new(DatabaseSchema.ApprovalForAll.Topic);
-    private readonly Hash256 _erc20WrapperDeployed = new(DatabaseSchema.ERC20WrapperDeployed.Topic);
-    private readonly Hash256 _erc20WrapperTransfer = new(DatabaseSchema.Erc20WrapperTransfer.Topic);
-    private readonly Hash256 _depositInflationary = new(DatabaseSchema.DepositInflationary.Topic);
-    private readonly Hash256 _withdrawInflationary = new(DatabaseSchema.WithdrawInflationary.Topic);
-    private readonly Hash256 _depositDemurraged = new(DatabaseSchema.DepositDemurraged.Topic);
-    private readonly Hash256 _withdrawDemurraged = new(DatabaseSchema.WithdrawDemurraged.Topic);
-    private readonly Hash256 _streamCompletedTopic = new(DatabaseSchema.StreamCompleted.Topic);
-    private readonly Hash256 _discountCostTopic = new(DatabaseSchema.DiscountCost.Topic);
-    private readonly Hash256 _groupMintTopic = new(DatabaseSchema.GroupMint.Topic);
-    private readonly Hash256 _flowEdgesScopeSingleStarted = new(DatabaseSchema.FlowEdgesScopeSingleStarted.Topic);
-    private readonly Hash256 _flowEdgesScopeLastEnded = new(DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
+    private readonly Hash256 _stoppedTopic = new(Hub.DatabaseSchema.Stopped.Topic);
+    private readonly Hash256 _trustTopic = new(Hub.DatabaseSchema.Trust.Topic);
+    private readonly Hash256 _personalMintTopic = new(Hub.DatabaseSchema.PersonalMint.Topic);
+    private readonly Hash256 _registerHumanTopic = new(Hub.DatabaseSchema.RegisterHuman.Topic);
+    private readonly Hash256 _registerGroupTopic = new(Hub.DatabaseSchema.RegisterGroup.Topic);
+    private readonly Hash256 _registerOrganizationTopic = new(Hub.DatabaseSchema.RegisterOrganization.Topic);
+    private readonly Hash256 _transferBatchTopic = new(Hub.DatabaseSchema.TransferBatch.Topic);
+    private readonly Hash256 _transferSingleTopic = new(Hub.DatabaseSchema.TransferSingle.Topic);
+    private readonly Hash256 _approvalForAllTopic = new(Hub.DatabaseSchema.ApprovalForAll.Topic);
+    private readonly Hash256 _erc20WrapperDeployed = new(Hub.DatabaseSchema.ERC20WrapperDeployed.Topic);
+    private readonly Hash256 _erc20WrapperTransfer = new(Hub.DatabaseSchema.Erc20WrapperTransfer.Topic);
+    private readonly Hash256 _depositInflationary = new(Hub.DatabaseSchema.DepositInflationary.Topic);
+    private readonly Hash256 _withdrawInflationary = new(Hub.DatabaseSchema.WithdrawInflationary.Topic);
+    private readonly Hash256 _depositDemurraged = new(Hub.DatabaseSchema.DepositDemurraged.Topic);
+    private readonly Hash256 _withdrawDemurraged = new(Hub.DatabaseSchema.WithdrawDemurraged.Topic);
+    private readonly Hash256 _streamCompletedTopic = new(Hub.DatabaseSchema.StreamCompleted.Topic);
+    private readonly Hash256 _discountCostTopic = new(Hub.DatabaseSchema.DiscountCost.Topic);
+    private readonly Hash256 _groupMintTopic = new(Hub.DatabaseSchema.GroupMint.Topic);
+    private readonly Hash256 _flowEdgesScopeSingleStarted = new(Hub.DatabaseSchema.FlowEdgesScopeSingleStarted.Topic);
+    private readonly Hash256 _flowEdgesScopeLastEnded = new(Hub.DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
+
+    private readonly Hash256 _cmGroupCreatedTopic = new(CMGroupDeployer.DatabaseSchema.CMGroupCreated.Topic);
+    
+    private readonly Hash256 _circlesBackingDeployedTopic = new(LBP.DatabaseSchema.CirclesBackingDeployed.Topic);
+    private readonly Hash256 _lbpDeployedTopic = new(LBP.DatabaseSchema.LBPDeployed.Topic);
+    private readonly Hash256 _circlesBackingInitiatedTopic = new(LBP.DatabaseSchema.CirclesBackingInitiated.Topic);
+    private readonly Hash256 _circlesBackingCompletedTopic = new(LBP.DatabaseSchema.CirclesBackingCompleted.Topic);
+    private readonly Hash256 _releasedTopic = new(LBP.DatabaseSchema.Released.Topic);
+    
+    private readonly Hash256 _registerShortNameTopic = new(NameRegistry.DatabaseSchema.RegisterShortName.Topic);
+    private readonly Hash256 _updateMetadataDigestTopic = new(NameRegistry.DatabaseSchema.UpdateMetadataDigest.Topic);
+    private readonly Hash256 _cidV0Topic = new(NameRegistry.DatabaseSchema.CidV0.Topic);
+    
+    private readonly Hash256 _createVaultTopic = new(StandardTreasury.DatabaseSchema.CreateVault.Topic);
+    private readonly Hash256 _groupMintSingleTopic = new(StandardTreasury.DatabaseSchema.CollateralLockedSingle.Topic);
+    private readonly Hash256 _groupMintBatchTopic = new(StandardTreasury.DatabaseSchema.CollateralLockedBatch.Topic);
+    private readonly Hash256 _groupRedeemTopic = new(StandardTreasury.DatabaseSchema.GroupRedeem.Topic);
+    private readonly Hash256 _groupRedeemCollateralReturnTopic = new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralReturn.Topic);
+    private readonly Hash256 _groupRedeemCollateralBurnTopic = new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralBurn.Topic);
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
@@ -239,6 +270,97 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             if (topic == _withdrawInflationary)
             {
                 yield return WithdrawInflationary(block, receipt, log, logIndex);
+            }
+        }
+
+        if (cmGroupDeployerAddress != null && log.Address == cmGroupDeployerAddress)
+        {
+            if (topic == _cmGroupCreatedTopic)
+            {
+                yield return CMGroupCreated(block, receipt, log, logIndex);
+            }
+        }
+        
+        if (lbpFactoryAddress != null && log.Address != lbpFactoryAddress)
+        {
+            if (topic == _circlesBackingDeployedTopic)
+            {
+                yield return CirclesBackingDeployed(block, receipt, log, logIndex);
+            }
+
+            if (topic == _lbpDeployedTopic)
+            {
+                yield return LbpDeployed(block, receipt, log, logIndex);
+            }
+
+            if (topic == _circlesBackingInitiatedTopic)
+            {
+                yield return CirclesBackingInitiated(block, receipt, log, logIndex);
+            }
+
+            if (topic == _circlesBackingCompletedTopic)
+            {
+                yield return CirclesBackingCompleted(block, receipt, log, logIndex);
+            }
+
+            if (topic == _releasedTopic)
+            {
+                yield return Released(block, receipt, log, logIndex);
+            }
+        }
+
+        if (log.Address != nameRegistryAddress)
+        {
+            if (topic == _registerShortNameTopic)
+            {
+                yield return RegisterShortName(block, receipt, log, logIndex);
+            }
+
+            if (topic == _updateMetadataDigestTopic)
+            {
+                yield return UpdateMetadataDigest(block, receipt, log, logIndex);
+            }
+
+            if (topic == _cidV0Topic)
+            {
+                yield return CidV0(block, receipt, log, logIndex);
+            }
+        }
+
+        if (log.Address == standardTreasuryAddress)
+        {
+            if (topic == _createVaultTopic)
+            {
+                yield return CreateVault(block, receipt, log, logIndex);
+            }
+            else if (topic == _groupMintSingleTopic)
+            {
+                yield return CollateralLockedSingle(block, receipt, log, logIndex);
+            }
+            else if (topic == _groupMintBatchTopic)
+            {
+                foreach (var batchEvent in CollateralLockedBatch(block, receipt, log, logIndex))
+                {
+                    yield return batchEvent;
+                }
+            }
+            else if (topic == _groupRedeemTopic)
+            {
+                yield return GroupRedeem(block, receipt, log, logIndex);
+            }
+            else if (topic == _groupRedeemCollateralReturnTopic)
+            {
+                foreach (var returnEvent in GroupRedeemCollateralReturn(block, receipt, log, logIndex))
+                {
+                    yield return returnEvent;
+                }
+            }
+            else if (topic == _groupRedeemCollateralBurnTopic)
+            {
+                foreach (var burnEvent in GroupRedeemCollateralBurn(block, receipt, log, logIndex))
+                {
+                    yield return burnEvent;
+                }
             }
         }
     }
@@ -775,5 +897,407 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false)
         );
+    }
+
+    // event CMGroupCreated(address indexed proxy, address indexed owner, address indexed mintHandler, address redemptionHandler);
+    private CMGroupCreated CMGroupCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string proxy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string owner = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
+        string redemptionHandler = new Address(log.Data.Slice(12)).ToString(true, false);
+
+        return new CMGroupCreated(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            proxy,
+            owner,
+            mintHandler,
+            redemptionHandler
+        );
+    }
+    
+    // event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
+    private CirclesBackingDeployed CirclesBackingDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        return new CirclesBackingDeployed(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            backer,
+            circlesBackingInstance
+        );
+    }
+
+    // event LBPDeployed(address indexed circlesBackingInstance, address indexed lbp);
+    private LbpDeployed LbpDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        var circlesBackingInstance = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var lbp = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        return new LbpDeployed(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            circlesBackingInstance,
+            lbp
+        );
+    }
+
+    // event CirclesBackingInitiated(address indexed backer, address indexed circlesBackingInstance, address backingAsset, address personalCirclesAddress);
+    private CirclesBackingInitiated CirclesBackingInitiated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        var data = log.Data;
+        var backingAssetBytes = data[0..32];
+        var personalCirclesAddressBytes = data[32..64];
+
+        var backingAsset = "0x" + BitConverter
+            .ToString(backingAssetBytes[12..32])
+            .Replace("-", "")
+            .ToLowerInvariant();
+
+        var personalCirclesAddress = "0x" + BitConverter
+            .ToString(personalCirclesAddressBytes[12..32])
+            .Replace("-", "")
+            .ToLowerInvariant();
+
+        return new CirclesBackingInitiated(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            backer,
+            circlesBackingInstance,
+            backingAsset,
+            personalCirclesAddress
+        );
+    }
+
+    // event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address lbp);
+    private CirclesBackingCompleted CirclesBackingCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var lbp = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        return new CirclesBackingCompleted(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            backer,
+            circlesBackingInstance,
+            lbp
+        );
+    }
+
+    private Released Released(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var lbp = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+
+        return new Released(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            backer,
+            circlesBackingInstance,
+            lbp
+        );
+    }
+
+    private UpdateMetadataDigest UpdateMetadataDigest(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event UpdateMetadataDigest(address indexed avatar, bytes32 metadataDigest)
+        string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        byte[] metadataDigest = log.Data;
+
+        return new UpdateMetadataDigest(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            avatar,
+            metadataDigest);
+    }
+
+    private RegisterShortName RegisterShortName(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce)
+        string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+
+        UInt256 shortName = new UInt256(log.Data.Slice(0, 32), true);
+        UInt256 nonce = new UInt256(log.Data.Slice(32, 32), true);
+
+        return new RegisterShortName(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            avatar,
+            shortName,
+            nonce);
+    }
+
+    private CidV0 CidV0(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+
+        return new CidV0(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            avatar,
+            log.Data);
+    }
+    private CreateVault CreateVault(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event CreateVault(address indexed group, address indexed vault);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string vaultAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+
+        return new CreateVault(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            groupAddress,
+            vaultAddress
+        );
+    }
+
+    private CollateralLockedSingle CollateralLockedSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event CollateralLockedSingle(address indexed group, uint256 indexed id, uint256 value, bytes userData);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        UInt256 id = new UInt256(log.Topics[2].Bytes, true);
+
+        // Non-indexed params are in log.Data
+        //  - first 32 bytes => value
+        //  - remainder => userData
+        UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
+        byte[] userData = log.Data.Slice(32).ToArray();
+
+        return new CollateralLockedSingle(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            groupAddress,
+            id,
+            value,
+            userData
+        );
+    }
+
+    private IEnumerable<CollateralLockedBatch> CollateralLockedBatch(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
+    {
+        // event CollateralLockedBatch(address indexed group, uint256[] ids, uint256[] values, bytes userData);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        var data = log.Data;
+
+        // We expect at least 3 offsets (one each for ids, values, userData):
+        //  - [0..31] => offset to ids
+        //  - [32..63] => offset to values
+        //  - [64..95] => offset to userData
+        if (data.Length < 96)
+        {
+            throw new ArgumentException("Log data is too short to contain offsets");
+        }
+
+        // Parse each offset
+        int idsOffset = LogDataParsingHelper.ParseOffset(data, 0);
+        int valuesOffset = LogDataParsingHelper.ParseOffset(data, 32);
+        int userDataOffset = LogDataParsingHelper.ParseOffset(data, 64);
+
+        if (idsOffset < 0 || valuesOffset < 0 || userDataOffset < 0)
+        {
+            throw new ArgumentException("Failed to parse offsets");
+        }
+
+        // Parse arrays/bytes from each offset
+        UInt256[] ids = LogDataParsingHelper.ParseUInt256Array(data, idsOffset);
+        UInt256[] values = LogDataParsingHelper.ParseUInt256Array(data, valuesOffset);
+        byte[] userDataBytes = LogDataParsingHelper.ParseBytes(data, userDataOffset);
+
+        // Typically, you can yield a single event that has all arrays,
+        // but your existing pattern yields one event per (id, value).
+        for (int i = 0; i < ids.Length; i++)
+        {
+            // If there are fewer values than ids, default to zero
+            var val = i < values.Length ? values[i] : UInt256.Zero;
+
+            yield return new CollateralLockedBatch(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
+                i,
+                groupAddress,
+                ids[i],
+                val,
+                userDataBytes
+            );
+        }
+    }
+
+    private GroupRedeem GroupRedeem(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        // event GroupRedeem(address indexed group, uint256 indexed id, uint256 value, bytes data);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        UInt256 id = new UInt256(log.Topics[2].Bytes, true);
+
+        UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
+        byte[] dataBytes = log.Data.Slice(32).ToArray();
+
+        return new GroupRedeem(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToString(true, false),
+            groupAddress,
+            id,
+            value,
+            dataBytes
+        );
+    }
+
+    private IEnumerable<GroupRedeemCollateralReturn> GroupRedeemCollateralReturn(
+        Block block,
+        TxReceipt receipt,
+        LogEntry log,
+        int logIndex)
+    {
+        // event GroupRedeemCollateralReturn(address indexed group, address indexed to, uint256[] ids, uint256[] values);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string toAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+
+        var data = log.Data;
+        if (data.Length < 64)
+        {
+            throw new ArgumentException("Log data is too short to contain offsets");
+        }
+
+        // offsets to ids and values
+        int idsOffset = LogDataParsingHelper.ParseOffset(data, 0);
+        int valuesOffset = LogDataParsingHelper.ParseOffset(data, 32);
+
+        if (idsOffset < 0 || valuesOffset < 0)
+        {
+            throw new ArgumentException("Failed to parse offsets");
+        }
+
+        UInt256[] ids = LogDataParsingHelper.ParseUInt256Array(data, idsOffset);
+        UInt256[] values = LogDataParsingHelper.ParseUInt256Array(data, valuesOffset);
+
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var val = i < values.Length ? values[i] : UInt256.Zero;
+
+            yield return new GroupRedeemCollateralReturn(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
+                i,
+                groupAddress,
+                toAddress,
+                ids[i],
+                val
+            );
+        }
+    }
+
+    private IEnumerable<GroupRedeemCollateralBurn> GroupRedeemCollateralBurn(
+        Block block,
+        TxReceipt receipt,
+        LogEntry log,
+        int logIndex)
+    {
+        // event GroupRedeemCollateralBurn(address indexed group, uint256[] ids, uint256[] values);
+
+        string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+
+        var data = log.Data;
+        if (data.Length < 64)
+        {
+            yield break;
+        }
+
+        int idsOffset = LogDataParsingHelper.ParseOffset(data, 0);
+        int valuesOffset = LogDataParsingHelper.ParseOffset(data, 32);
+
+        if (idsOffset < 0 || valuesOffset < 0)
+        {
+            yield break;
+        }
+
+        UInt256[] ids = LogDataParsingHelper.ParseUInt256Array(data, idsOffset);
+        UInt256[] values = LogDataParsingHelper.ParseUInt256Array(data, valuesOffset);
+
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var val = i < values.Length ? values[i] : UInt256.Zero;
+
+            yield return new GroupRedeemCollateralBurn(
+                block.Number,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
+                i,
+                groupAddress,
+                ids[i],
+                val
+            );
+        }
     }
 }

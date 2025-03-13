@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using Circles.Index.CirclesV2;
 using Circles.Index.CirclesV2.Hub;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
@@ -85,20 +86,14 @@ public class Plugin : INethermindPlugin
         var logParsers = new List<ILogParser>
         {
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
-            new LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
-            new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
-            new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
+            new LogParser(
+                settings.CirclesV2HubAddress,
+                settings.CirclesErc20LiftAddress,
+                settings.CirclesNameRegistryAddress,
+                settings.CirclesStandardTreasuryAddress,
+                settings.CMGroupDeployer,
+                settings.CirclesLBPFactoryAddress)
         };
-
-        if (settings.CirclesLBPFactoryAddress != null)
-        {
-            logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress));
-        }
-
-        if (settings.CMGroupDeployer != null)
-        {
-            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer));
-        }
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
