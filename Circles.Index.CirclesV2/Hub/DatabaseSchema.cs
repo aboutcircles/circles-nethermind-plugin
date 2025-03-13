@@ -3,7 +3,7 @@ using Circles.Index.Common;
 using Circles.Index.Utils;
 using Nethermind.Core.Crypto;
 
-namespace Circles.Index.CirclesV2;
+namespace Circles.Index.CirclesV2.Hub;
 
 public class DatabaseSchema : BaseDatabaseSchema
 {

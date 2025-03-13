@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using Circles.Index.CirclesV2.Hub;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query;
@@ -11,6 +12,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Npgsql;
+using DatabaseSchema = Circles.Index.CirclesV2.Hub.DatabaseSchema;
 
 namespace Circles.Index;
 
@@ -42,7 +44,7 @@ public class Plugin : INethermindPlugin
         {
             new Common.DatabaseSchema(),
             new CirclesV1.DatabaseSchema(),
-            new CirclesV2.DatabaseSchema(),
+            new DatabaseSchema(),
             new CirclesV2.NameRegistry.DatabaseSchema(),
             new CirclesV2.StandardTreasury.DatabaseSchema(),
             new CirclesViews.DatabaseSchema()
@@ -83,7 +85,7 @@ public class Plugin : INethermindPlugin
         var logParsers = new List<ILogParser>
         {
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
-            new CirclesV2.LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
+            new LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
             new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
             new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
         };
@@ -237,7 +239,7 @@ public class Plugin : INethermindPlugin
 
         foreach (var row in rows)
         {
-            CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
+            LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
         }
 
         logger.Info("Caching erc20 wrapper addresses done");

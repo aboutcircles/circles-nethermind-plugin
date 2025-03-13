@@ -1,7 +1,7 @@
 using Circles.Index.Common;
 using Nethermind.Int256;
 
-namespace Circles.Index.CirclesV2;
+namespace Circles.Index.CirclesV2.Hub;
 
 public record RegisterOrganization(
     long BlockNumber,

@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Circles.Index.CirclesV2;
+namespace Circles.Index.CirclesV2.Hub;
 
 public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogParser
 {

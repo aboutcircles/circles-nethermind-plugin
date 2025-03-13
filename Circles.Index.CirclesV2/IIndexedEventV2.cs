@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Circles.Index.CirclesV2.Hub;
 using Circles.Index.Common;
 
 namespace Circles.Index.CirclesV2;

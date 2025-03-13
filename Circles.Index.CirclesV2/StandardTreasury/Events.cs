@@ -11,7 +11,7 @@ public record CreateVault(
     string TransactionHash,
     string Emitter,
     string Group,
-    string Vault) : IIndexEvent;
+    string Vault) : IIndexedEventV2;
 
 public record CollateralLockedSingle(
     long BlockNumber,
@@ -23,7 +23,7 @@ public record CollateralLockedSingle(
     string Group,
     UInt256 Id,
     UInt256 Value,
-    byte[] UserData) : IIndexEvent;
+    byte[] UserData) : IIndexedEventV2;
 
 public record CollateralLockedBatch(
     long BlockNumber,
@@ -36,7 +36,7 @@ public record CollateralLockedBatch(
     string Group,
     UInt256 Id,
     UInt256 Value,
-    byte[] UserData) : IIndexEvent;
+    byte[] UserData) : IIndexedEventV2;
 
 public record GroupRedeem(
     long BlockNumber,
@@ -48,7 +48,7 @@ public record GroupRedeem(
     string Group,
     UInt256 Id,
     UInt256 Value,
-    byte[] Data) : IIndexEvent;
+    byte[] Data) : IIndexedEventV2;
 
 public record GroupRedeemCollateralReturn(
     long BlockNumber,
@@ -61,7 +61,7 @@ public record GroupRedeemCollateralReturn(
     string Group,
     string To,
     UInt256 Id,
-    UInt256 Value) : IIndexEvent;
+    UInt256 Value) : IIndexedEventV2;
 
 public record GroupRedeemCollateralBurn(
     long BlockNumber,
@@ -73,4 +73,4 @@ public record GroupRedeemCollateralBurn(
     int BatchIndex,
     string Group,
     UInt256 Id,
-    UInt256 Value) : IIndexEvent;
+    UInt256 Value) : IIndexedEventV2;

@@ -11,7 +11,7 @@ public record CirclesBackingDeployed(
     string TransactionHash,
     string Emitter,
     string Backer,
-    string CirclesBackingInstance) : IIndexEvent;
+    string CirclesBackingInstance) : IIndexedEventV2;
 
 public record LbpDeployed(
     long BlockNumber,
@@ -21,7 +21,7 @@ public record LbpDeployed(
     string TransactionHash,
     string Emitter,
     string CirclesBackingInstance,
-    string Lbp) : IIndexEvent;
+    string Lbp) : IIndexedEventV2;
 
 public record CirclesBackingInitiated(
     long BlockNumber,
@@ -33,7 +33,7 @@ public record CirclesBackingInitiated(
     string Backer,
     string CirclesBackingInstance,
     string BackingAsset,
-    string PersonalCirclesAddress) : IIndexEvent;
+    string PersonalCirclesAddress) : IIndexedEventV2;
 
 public record CirclesBackingCompleted(
     long BlockNumber,
@@ -44,7 +44,7 @@ public record CirclesBackingCompleted(
     string Emitter,
     string Backer,
     string CirclesBackingInstance,
-    string Lbp) : IIndexEvent;
+    string Lbp) : IIndexedEventV2;
 
 public record Released(
     long BlockNumber,
@@ -55,4 +55,4 @@ public record Released(
     string Emitter,
     string Backer,
     string CirclesBackingInstance,
-    string Lbp) : IIndexEvent;
+    string Lbp) : IIndexedEventV2;

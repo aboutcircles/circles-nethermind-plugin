@@ -12,7 +12,7 @@ public record RegisterShortName(
     string Emitter,
     string Avatar,
     UInt256 ShortName,
-    UInt256 Nonce) : IIndexEvent;
+    UInt256 Nonce) : IIndexedEventV2;
 
 public record UpdateMetadataDigest(
     long BlockNumber,
@@ -22,7 +22,7 @@ public record UpdateMetadataDigest(
     string TransactionHash,
     string Emitter,
     string Avatar,
-    byte[] MetadataDigest) : IIndexEvent;
+    byte[] MetadataDigest) : IIndexedEventV2;
 
 public record CidV0(
     long BlockNumber,
@@ -32,4 +32,4 @@ public record CidV0(
     string TransactionHash,
     string Emitter,
     string Avatar,
-    byte[] CidV0Digest) : IIndexEvent;
+    byte[] CidV0Digest) : IIndexedEventV2;

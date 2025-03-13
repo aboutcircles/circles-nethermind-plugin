@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Numerics;
+using Circles.Index.CirclesV2.Hub;
 using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
