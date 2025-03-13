@@ -20,60 +20,71 @@ public class DatabaseSchema : IDatabaseSchema
     {
         SqlMigrationItem = new(@"
             CREATE OR REPLACE VIEW ""V_CrcV2_GroupVaultBalancesByToken"" AS
-               WITH all_events AS (
-                   -- CollateralLockedSingle inflows
-                   SELECT
-                       cv.vault,
-                       cls.id,
-                       SUM(cls.value) AS value_in,
-                       0               AS value_out
-                   FROM ""CrcV2_CollateralLockedSingle"" cls
-                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = cls.""group""
-                   GROUP BY cv.vault, cls.id
-               
-                   UNION ALL
-               
-                   -- CollateralLockedBatch inflows
-                   SELECT
-                       cv.vault,
-                       clb.id,
-                       SUM(clb.value) AS value_in,
-                       0               AS value_out
-                   FROM ""CrcV2_CollateralLockedBatch"" clb
-                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = clb.""group""
-                   GROUP BY cv.vault, clb.id
-               
-                   UNION ALL
-               
-                   -- GroupRedeemCollateralReturn outflows
-                   SELECT
-                       cv.vault,
-                       grcr.id,
-                       0               AS value_in,
-                       SUM(grcr.value) AS value_out
-                   FROM ""CrcV2_GroupRedeemCollateralReturn"" grcr
-                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcr.""group""
-                   GROUP BY cv.vault, grcr.id
-               
-                   UNION ALL
-               
-                   -- GroupRedeemCollateralBurn outflows
-                   SELECT
-                       cv.vault,
-                       grcb.id,
-                       0               AS value_in,
-                       SUM(grcb.value) AS value_out
-                   FROM ""CrcV2_GroupRedeemCollateralBurn"" grcb
-                            JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcb.""group""
-                   GROUP BY cv.vault, grcb.id
-               )
-               SELECT
-                   vault,
-                   id,
-                   (SUM(value_in) - SUM(value_out)) AS balance
-               FROM all_events e
-               GROUP BY vault, id
-               ORDER BY vault, id;")
+                WITH events AS (
+                    -- 1) CollateralLockedSingle inflows
+                    SELECT
+                        cv.vault,
+                        cls.id,
+                        cls.""timestamp"",
+                        cls.value AS amount
+                    FROM ""CrcV2_CollateralLockedSingle"" cls
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = cls.""group""
+                
+                    UNION ALL
+                
+                    -- 2) CollateralLockedBatch inflows
+                    SELECT
+                        cv.vault,
+                        clb.id,
+                        clb.""timestamp"",
+                        clb.value AS amount
+                    FROM ""CrcV2_CollateralLockedBatch"" clb
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = clb.""group""
+                
+                    UNION ALL
+                
+                    -- 3) GroupRedeemCollateralReturn outflows (negative)
+                    SELECT
+                        cv.vault,
+                        grcr.id,
+                        grcr.""timestamp"",
+                        -grcr.value AS amount
+                    FROM ""CrcV2_GroupRedeemCollateralReturn"" grcr
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcr.""group""
+                
+                    UNION ALL
+                
+                    -- 4) GroupRedeemCollateralBurn outflows (negative)
+                    SELECT
+                        cv.vault,
+                        grcb.id,
+                        grcb.""timestamp"",
+                        -grcb.value AS amount
+                    FROM ""CrcV2_GroupRedeemCollateralBurn"" grcb
+                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcb.""group""
+                ),
+                     grouped AS (
+                         -- Sum net balances & track the max timestamp per (vault, tokenId)
+                         SELECT
+                             vault,
+                             id,
+                             SUM(amount) AS balance,
+                             MAX(""timestamp"") AS ""lastActivity""
+                         FROM events
+                         GROUP BY vault, id
+                     )
+                SELECT
+                    vault,
+                    id,
+                    FLOOR(
+                            crc_demurrage(
+                            1675209600::bigint,
+                            ""lastActivity"",
+                            balance
+                            )
+                    ) AS ""balance""
+                FROM grouped
+                ORDER BY vault, id;")
     };
 
 
