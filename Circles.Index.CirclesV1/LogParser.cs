@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Circles.Index.Common;
+using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -81,7 +82,10 @@ public class LogParser(Address v1HubAddress) : ILogParser
                     t.Emitter,
                     t.From,
                     t.To,
-                    t.Value,
+                    ConversionUtils.CirclesToAttoCircles(
+                        ConversionUtils.CrcToCircles(
+                            ConversionUtils.AttoCirclesToCircles(t.Value),
+                            t.Timestamp)),
                     allTransferJson
                 );
             }
@@ -110,7 +114,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             var hubTransfer = hubTransfers[h];
             var hubFrom = hubTransfer.From.ToLowerInvariant();
             var hubTo = hubTransfer.To.ToLowerInvariant();
-            
+
             var usedEdges = new HashSet<Transfer>();
             var pathStack = new List<Transfer>();
 
@@ -122,14 +126,15 @@ public class LogParser(Address v1HubAddress) : ILogParser
                     {
                         usedEdges.Add(pathStack[p]);
                     }
+
                     return;
                 }
-                
+
                 if (!adjacency.TryGetValue(current, out var edges))
                 {
                     return;
                 }
-                
+
                 for (int e = 0; e < edges.Count; e++)
                 {
                     var edge = edges[e];
@@ -138,11 +143,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
                     {
                         continue;
                     }
+
                     pathStack.Add(edge);
                     visited.Add(next);
-                    
+
                     Dfs(next, visited);
-                    
+
                     visited.Remove(next);
                     pathStack.RemoveAt(pathStack.Count - 1);
                 }
@@ -169,7 +175,10 @@ public class LogParser(Address v1HubAddress) : ILogParser
                 hubTransfer.Emitter,
                 hubTransfer.From,
                 hubTransfer.To,
-                hubTransfer.Amount,
+                ConversionUtils.CirclesToAttoCircles(
+                    ConversionUtils.CrcToCircles(
+                        ConversionUtils.AttoCirclesToCircles(hubTransfer.Amount),
+                        hubTransfer.Timestamp)),
                 hubTransferEdgesJson
             );
         }
@@ -200,7 +209,10 @@ public class LogParser(Address v1HubAddress) : ILogParser
                 standAloneTransfer.Emitter,
                 standAloneTransfer.From,
                 standAloneTransfer.To,
-                standAloneTransfer.Value,
+                ConversionUtils.CirclesToAttoCircles(
+                    ConversionUtils.CrcToCircles(
+                        ConversionUtils.AttoCirclesToCircles(standAloneTransfer.Value),
+                        standAloneTransfer.Timestamp)),
                 standAloneTransfersJson
             );
         }

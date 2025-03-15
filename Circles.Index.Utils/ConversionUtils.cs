@@ -54,10 +54,12 @@ public abstract class ConversionUtils
     /// Converts a v1 inflationary CRC balance to a v2 personal Circles balance (demurraged).
     /// </summary>
     /// <param name="crcBalance"></param>
+    /// <param name="timestampInSeconds"></param>
     /// <returns></returns>
-    public static decimal CrcToCircles(decimal crcBalance)
+    public static decimal CrcToCircles(decimal crcBalance, long? timestampInSeconds = null)
     {
-        long ts = ConvertToUnixTimestamp(DateTime.Now);
+        long ts = timestampInSeconds * 1000
+                  ?? ConvertToUnixTimestamp(DateTime.Now);
 
         decimal payoutAtTimestamp = GetCrcPayoutAt(ts);
         decimal result = crcBalance / payoutAtTimestamp * 24m;
