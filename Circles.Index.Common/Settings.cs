@@ -32,10 +32,12 @@ public class Settings
             ? new(Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS")!)
             : null;
 
-    public readonly Address? CMGroupDeployer =
+    public readonly Address[] CMGroupDeployers =
         Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER") != null
-            ? new(Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")!)
-            : null;
+            ? Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")!.Split(',')
+                .Select(x => new Address(x.Trim()))
+                .ToArray()
+            : [];
     
     public readonly Address[] SafeProxyFactoryAddresses =
         Environment.GetEnvironmentVariable("SAFE_PROXY_FACTORY_ADDRESSES") != null

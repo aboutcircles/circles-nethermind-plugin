@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Circles.Index.CirclesV2;
-using Circles.Index.CirclesV2.Hub;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query;
@@ -56,7 +56,7 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
         }
 
-        if (settings.CMGroupDeployer != null)
+        if (settings.CMGroupDeployers.Length > 0)
         {
             schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
         }
@@ -91,7 +91,7 @@ public class Plugin : INethermindPlugin
                 settings.CirclesErc20LiftAddress,
                 settings.CirclesNameRegistryAddress,
                 settings.CirclesStandardTreasuryAddress,
-                settings.CMGroupDeployer,
+                settings.CMGroupDeployers!.ToImmutableHashSet(),
                 settings.CirclesLBPFactoryAddress)
         };
 
@@ -99,7 +99,6 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
         }
-
 
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
 
@@ -174,7 +173,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
-        pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployer);
+        pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployers);
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
             settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
@@ -336,8 +335,6 @@ public class Plugin : INethermindPlugin
 
     public async Task InitRpcModules()
     {
-        await Task.Delay(5000);
-
         if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
         {
             throw new Exception("_indexerContext.NethermindApi.RpcModuleProvider is not set");

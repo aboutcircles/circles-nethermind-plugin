@@ -12,7 +12,7 @@ public record CMGroupCreated(
     string Proxy,
     string Owner,
     string MintHandler,
-    string RedemptionHandler) : IIndexEvent;
+    string RedemptionHandler) : IIndexedEventV2;
 
 public class DatabaseSchema : BaseDatabaseSchema
 {

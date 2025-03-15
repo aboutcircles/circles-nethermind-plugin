@@ -117,7 +117,7 @@ public class ImportFlow(
                                 }
                                 catch (Exception e)
                                 {
-                                    context.Logger.Error($"Error parsing log {logEntry} with parser {parser}");
+                                    context.Logger.Error($"Error parsing log entry ({blockWithReceipts.Block.Number}, {transactionIndex}, {logIndex}) with parser {parser}");
                                     context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
                                     context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
                                     context.Logger.Error("Exception:", e);

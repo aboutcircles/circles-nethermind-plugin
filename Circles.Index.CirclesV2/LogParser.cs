@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Text.Json;
 using Circles.Index.CirclesV2.CMGroupDeployer;
 using Circles.Index.CirclesV2.Hub;
@@ -14,11 +15,11 @@ using Nethermind.Int256;
 namespace Circles.Index.CirclesV2;
 
 public class LogParser(
-    Address v2HubAddress, 
-    Address erc20LiftAddress, 
+    Address v2HubAddress,
+    Address erc20LiftAddress,
     Address nameRegistryAddress,
     Address standardTreasuryAddress,
-    Address? cmGroupDeployerAddress, 
+    ImmutableHashSet<Address>? cmGroupDeployerAddresses,
     Address? lbpFactoryAddress) : ILogParser
 {
     private readonly Hash256 _stoppedTopic = new(Hub.DatabaseSchema.Stopped.Topic);
@@ -43,23 +44,27 @@ public class LogParser(
     private readonly Hash256 _flowEdgesScopeLastEnded = new(Hub.DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
 
     private readonly Hash256 _cmGroupCreatedTopic = new(CMGroupDeployer.DatabaseSchema.CMGroupCreated.Topic);
-    
+
     private readonly Hash256 _circlesBackingDeployedTopic = new(LBP.DatabaseSchema.CirclesBackingDeployed.Topic);
     private readonly Hash256 _lbpDeployedTopic = new(LBP.DatabaseSchema.LBPDeployed.Topic);
     private readonly Hash256 _circlesBackingInitiatedTopic = new(LBP.DatabaseSchema.CirclesBackingInitiated.Topic);
     private readonly Hash256 _circlesBackingCompletedTopic = new(LBP.DatabaseSchema.CirclesBackingCompleted.Topic);
     private readonly Hash256 _releasedTopic = new(LBP.DatabaseSchema.Released.Topic);
-    
+
     private readonly Hash256 _registerShortNameTopic = new(NameRegistry.DatabaseSchema.RegisterShortName.Topic);
     private readonly Hash256 _updateMetadataDigestTopic = new(NameRegistry.DatabaseSchema.UpdateMetadataDigest.Topic);
     private readonly Hash256 _cidV0Topic = new(NameRegistry.DatabaseSchema.CidV0.Topic);
-    
+
     private readonly Hash256 _createVaultTopic = new(StandardTreasury.DatabaseSchema.CreateVault.Topic);
     private readonly Hash256 _groupMintSingleTopic = new(StandardTreasury.DatabaseSchema.CollateralLockedSingle.Topic);
     private readonly Hash256 _groupMintBatchTopic = new(StandardTreasury.DatabaseSchema.CollateralLockedBatch.Topic);
     private readonly Hash256 _groupRedeemTopic = new(StandardTreasury.DatabaseSchema.GroupRedeem.Topic);
-    private readonly Hash256 _groupRedeemCollateralReturnTopic = new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralReturn.Topic);
-    private readonly Hash256 _groupRedeemCollateralBurnTopic = new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralBurn.Topic);
+
+    private readonly Hash256 _groupRedeemCollateralReturnTopic =
+        new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralReturn.Topic);
+
+    private readonly Hash256 _groupRedeemCollateralBurnTopic =
+        new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralBurn.Topic);
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
@@ -243,73 +248,9 @@ public class LogParser(
                 yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
             }
         }
-
-        // Events from known ERC20Wrapper addresses
-        if (Erc20WrapperAddresses.ContainsKey(log.Address))
-        {
-            if (topic == _erc20WrapperTransfer)
-            {
-                yield return Erc20WrapperTransfer(block, receipt, log, logIndex);
-            }
-
-            if (topic == _depositDemurraged)
-            {
-                yield return DepositDemurraged(block, receipt, log, logIndex);
-            }
-
-            if (topic == _withdrawDemurraged)
-            {
-                yield return WithdrawDemurraged(block, receipt, log, logIndex);
-            }
-
-            if (topic == _depositInflationary)
-            {
-                yield return DepositInflationary(block, receipt, log, logIndex);
-            }
-
-            if (topic == _withdrawInflationary)
-            {
-                yield return WithdrawInflationary(block, receipt, log, logIndex);
-            }
-        }
-
-        if (cmGroupDeployerAddress != null && log.Address == cmGroupDeployerAddress)
-        {
-            if (topic == _cmGroupCreatedTopic)
-            {
-                yield return CMGroupCreated(block, receipt, log, logIndex);
-            }
-        }
         
-        if (lbpFactoryAddress != null && log.Address != lbpFactoryAddress)
-        {
-            if (topic == _circlesBackingDeployedTopic)
-            {
-                yield return CirclesBackingDeployed(block, receipt, log, logIndex);
-            }
-
-            if (topic == _lbpDeployedTopic)
-            {
-                yield return LbpDeployed(block, receipt, log, logIndex);
-            }
-
-            if (topic == _circlesBackingInitiatedTopic)
-            {
-                yield return CirclesBackingInitiated(block, receipt, log, logIndex);
-            }
-
-            if (topic == _circlesBackingCompletedTopic)
-            {
-                yield return CirclesBackingCompleted(block, receipt, log, logIndex);
-            }
-
-            if (topic == _releasedTopic)
-            {
-                yield return Released(block, receipt, log, logIndex);
-            }
-        }
-
-        if (log.Address != nameRegistryAddress)
+        // Events from the NameRegistry contract
+        if (log.Address == nameRegistryAddress)
         {
             if (topic == _registerShortNameTopic)
             {
@@ -327,6 +268,7 @@ public class LogParser(
             }
         }
 
+        // events from the StandardTreasuryAddress
         if (log.Address == standardTreasuryAddress)
         {
             if (topic == _createVaultTopic)
@@ -361,6 +303,71 @@ public class LogParser(
                 {
                     yield return burnEvent;
                 }
+            }
+        }
+
+        // Events from known ERC20Wrapper addresses
+        if (Erc20WrapperAddresses.ContainsKey(log.Address))
+        {
+            if (topic == _erc20WrapperTransfer)
+            {
+                yield return Erc20WrapperTransfer(block, receipt, log, logIndex);
+            }
+
+            if (topic == _depositDemurraged)
+            {
+                yield return DepositDemurraged(block, receipt, log, logIndex);
+            }
+
+            if (topic == _withdrawDemurraged)
+            {
+                yield return WithdrawDemurraged(block, receipt, log, logIndex);
+            }
+
+            if (topic == _depositInflationary)
+            {
+                yield return DepositInflationary(block, receipt, log, logIndex);
+            }
+
+            if (topic == _withdrawInflationary)
+            {
+                yield return WithdrawInflationary(block, receipt, log, logIndex);
+            }
+        }
+
+        if (cmGroupDeployerAddresses != null && cmGroupDeployerAddresses.Contains(log.Address))
+        {
+            if (topic == _cmGroupCreatedTopic)
+            {
+                yield return CMGroupCreated(block, receipt, log, logIndex);
+            }
+        }
+
+        if (lbpFactoryAddress != null && log.Address == lbpFactoryAddress)
+        {
+            if (topic == _circlesBackingDeployedTopic)
+            {
+                yield return CirclesBackingDeployed(block, receipt, log, logIndex);
+            }
+
+            if (topic == _lbpDeployedTopic)
+            {
+                yield return LbpDeployed(block, receipt, log, logIndex);
+            }
+
+            if (topic == _circlesBackingInitiatedTopic)
+            {
+                yield return CirclesBackingInitiated(block, receipt, log, logIndex);
+            }
+
+            if (topic == _circlesBackingCompletedTopic)
+            {
+                yield return CirclesBackingCompleted(block, receipt, log, logIndex);
+            }
+
+            if (topic == _releasedTopic)
+            {
+                yield return Released(block, receipt, log, logIndex);
             }
         }
     }
@@ -920,7 +927,7 @@ public class LogParser(
             redemptionHandler
         );
     }
-    
+
     // event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
     private CirclesBackingDeployed CirclesBackingDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
@@ -996,7 +1003,9 @@ public class LogParser(
     {
         var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        var lbp = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
+        var lbp = log.Topics.Length > 3
+            ? "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength)
+            : new Address(log.Data.Slice(12)).ToString(true, false);
 
         return new CirclesBackingCompleted(
             block.Number,
@@ -1081,6 +1090,7 @@ public class LogParser(
             avatar,
             log.Data);
     }
+
     private CreateVault CreateVault(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event CreateVault(address indexed group, address indexed vault);
