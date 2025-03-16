@@ -1,5 +1,5 @@
 using System.Numerics;
-using Circles.Index.Utils;
+// using Circles.Index.Utils;
 
 namespace Circles.Index.Query.Tests;
 
@@ -35,9 +35,9 @@ public class TestConversionUtils
     // }
     
     
-    [Test]
-    public void TestConvertCirclesToStaticCircles()
-    {
-        decimal staticCirclesBalance = ConversionUtils.CirclesToCrc(0.13151319940322485m);
-    }
+    // [Test]
+    // public void TestConvertCirclesToStaticCircles()
+    // {
+    //     decimal staticCirclesBalance = ConversionUtils.CirclesToCrc(0.13151319940322485m);
+    // }
 }

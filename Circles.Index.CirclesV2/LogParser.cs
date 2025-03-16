@@ -6,6 +6,7 @@ using Circles.Index.CirclesV2.Hub;
 using Circles.Index.CirclesV2.LBP;
 using Circles.Index.CirclesV2.NameRegistry;
 using Circles.Index.CirclesV2.StandardTreasury;
+using Circles.Index.CirclesV2.Decoders;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -69,7 +70,6 @@ public class LogParser(
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
     public static readonly ConcurrentDictionary<Address, long> Erc20WrapperAddresses = new();
-
 
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -139,6 +139,15 @@ public class LogParser(
                     (UInt256)transfer.Value,
                     nonStreamEventsJson
                 );
+            }
+        }
+
+        if (result.StreamTransfers.Totals.Any() || result.NonStreamTransfers.Totals.Any())
+        {
+            var additionalTxData = AdditionalDataExtractor.ExtractAdditionalData(transaction);
+            if (additionalTxData.Length > 0)
+            {
+                Console.WriteLine($"Additional data for tx {transaction.Hash}: {additionalTxData.ToHexString()}");
             }
         }
     }
@@ -248,7 +257,7 @@ public class LogParser(
                 yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
             }
         }
-        
+
         // Events from the NameRegistry contract
         if (log.Address == nameRegistryAddress)
         {
