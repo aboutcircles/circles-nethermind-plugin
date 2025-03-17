@@ -39,7 +39,13 @@ public class GraphFactory
     /// <returns>A balance graph containing all v2 balances and holders.</returns>
     public BalanceGraph V2BalanceGraph(LoadGraph loadGraph, FlowRequest? request = null)
     {
-        var graph = new BalanceGraph(request?.FromTokens, request?.Source, request?.ToTokens, request?.Sink);
+        var graph = new BalanceGraph(
+            request?.FromTokens, 
+            request?.Source, 
+            request?.ToTokens, 
+            request?.Sink, 
+            request?.WithWrap);
+            
         var balances = loadGraph.LoadV2Balances().ToArray();
         
         foreach (var balance in balances)
@@ -49,7 +55,11 @@ public class GraphFactory
                 graph.AddAvatar(balance.Account);
             }
 
-            graph.AddBalance(balance.Account, balance.TokenAddress, BigInteger.Parse(balance.Balance));
+            graph.AddBalance(
+                balance.Account, 
+                balance.TokenAddress, 
+                BigInteger.Parse(balance.Balance), 
+                balance.IsWrapped); 
         }
 
         return graph;
