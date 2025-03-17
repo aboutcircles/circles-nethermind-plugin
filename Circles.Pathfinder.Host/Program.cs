@@ -60,9 +60,15 @@ app.MapGet("/findPath", async (
 ) =>
 {
     // Auxiliary method to create a filtered balance graph
-    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph, List<string> fromTokens, string source, List<string>? toTokens = null, string? sink = null)
+    static BalanceGraph CreateFilteredBalanceGraph(
+        BalanceGraph originalGraph, 
+        List<string> fromTokens, 
+        string source, 
+        List<string>? toTokens = null, 
+        string? sink = null,
+        bool? withWrap = null)
     {
-        var filteredGraph = new BalanceGraph(fromTokens, source, toTokens, sink);
+        var filteredGraph = new BalanceGraph(fromTokens, source, toTokens, sink, withWrap);
         foreach (var avatarNode in originalGraph.AvatarNodes.Values)
         {
             filteredGraph.AddAvatar(avatarNode.Address);
@@ -72,7 +78,8 @@ app.MapGet("/findPath", async (
             filteredGraph.AddBalance(
                 balanceNode.HolderAddress,
                 balanceNode.Token,
-                balanceNode.Amount
+                balanceNode.Amount,
+                balanceNode.IsWrapped 
             );
         }
         return filteredGraph;
@@ -109,20 +116,12 @@ app.MapGet("/findPath", async (
         if (!BigInteger.TryParse(amount, out var targetFlow))
             return Results.BadRequest("amount must be a valid integer.");
 
-        // Use withWrap parameter to select the appropriate graph
-        bool useWrappedTokens = withWrap ?? false; // Default to false (non-wrapped) if not specified
-        
-        // Select the appropriate graphs based on withWrap parameter
-        var balanceGraph = useWrappedTokens 
-            ? stateContainer.WrappedBalanceGraph 
-            : stateContainer.BalanceGraph;
-        
-        var trustGraph = useWrappedTokens 
-            ? stateContainer.WrappedTrustGraph 
-            : stateContainer.TrustGraph;
+        // Get graphs from state container
+        var balanceGraph = stateContainer.BalanceGraph;
+        var trustGraph = stateContainer.TrustGraph;
 
         if (balanceGraph == null || trustGraph == null)
-            return Results.BadRequest($"Requested graphs (withWrap={useWrappedTokens}) are not loaded yet.");
+            return Results.BadRequest("Graphs are not loaded yet.");
 
         var graphFactory = new GraphFactory();
         var pathfinder = new V2Pathfinder(graphFactory);
@@ -137,14 +136,16 @@ app.MapGet("/findPath", async (
             WithWrap = withWrap
         };
 
-        // Only create filtered graphs if filters are specified
-        var filteredBalanceGraph = ((fromTokens != null && fromTokens.Length > 0) || (request.Source == request.Sink))
+        // Create filtered copies of the graphs based on request parameters
+        // Balance graph filtering will handle the withWrap parameter internally
+        var filteredBalanceGraph = ((fromTokens != null && fromTokens.Length > 0) || (request.Source == request.Sink) || (request.WithWrap != null))
             ? CreateFilteredBalanceGraph(
                 balanceGraph, 
                 request.FromTokens!, 
                 request.Source, 
                 request.ToTokens, 
-                request.Sink)
+                request.Sink,
+                request.WithWrap)
             : balanceGraph;
 
         var filteredTrustGraph = (toTokens != null && toTokens.Length > 0)

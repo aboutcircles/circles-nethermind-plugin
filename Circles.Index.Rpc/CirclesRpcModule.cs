@@ -410,8 +410,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             // If no external service is configured, run the local pathfinder
             var loadGraph = new LoadGraph(
                 _indexerContext.Settings.IndexReadonlyDbConnectionString ??
-                _indexerContext.Settings.IndexDbConnectionString,
-                flowRequest.WithWrap ?? false);  // Pass the withWrap parameter to LoadGraph
+                _indexerContext.Settings.IndexDbConnectionString); 
 
             var graphFactory = new GraphFactory();
             var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
