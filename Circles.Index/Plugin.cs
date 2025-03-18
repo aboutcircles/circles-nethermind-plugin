@@ -177,7 +177,8 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
-        pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployer);
+        pluginLogger.Info(" * V2 CMGroup Deployer address: " + string.Join(", ",
+            settings.CMGroupDeployer.Select(o => o.ToString(true, false))));
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
             settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
