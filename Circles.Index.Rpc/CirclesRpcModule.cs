@@ -446,7 +446,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             foreach (var table in @namespace)
             {
-                var topic = table.Value.Topic.ToHexString(true);
+                var topic = table.Value.Topic.ToString(true);
                 var tableDto = new DatabaseTable(table.Key.Table, topic);
                 namespaceDto.Tables = namespaceDto.Tables.Append(tableDto).ToArray();
 

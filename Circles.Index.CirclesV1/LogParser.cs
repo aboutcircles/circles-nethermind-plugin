@@ -1,23 +1,24 @@
-using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Text.Json;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Circles.Index.Utils;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV1;
 
-public class LogParser(Address v1HubAddress) : ILogParser
+public class LogParser : ILogParser
 {
-    public static readonly ConcurrentDictionary<Address, object?> CirclesTokenAddresses = new();
+    private readonly UInt256 _signupBonus = UInt256.Parse("50000000000000000000");
+    private readonly string _zeroAddress = "0x0000000000000000000000000000000000000000";
 
-    private readonly Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic);
-    private readonly Hash256 _signupTopic = new(DatabaseSchema.Signup.Topic);
-    private readonly Hash256 _organizationSignupTopic = new(DatabaseSchema.OrganizationSignup.Topic);
-    private readonly Hash256 _hubTransferTopic = new(DatabaseSchema.HubTransfer.Topic);
-    private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
+    private readonly ImmutableArray<KnownContract> _knownContracts = ImmutableArray<KnownContract>.Empty;
+
+    public readonly KnownContract HubContract;
+    public readonly KnownContract TokenContract;
 
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -27,6 +28,112 @@ public class LogParser(Address v1HubAddress) : ILogParser
             new UInt256AsStringConverter()
         }
     };
+
+    public LogParser(Address v1HubAddress)
+    {
+        HubContract = new KnownContract("CrcV1", "Hub", [v1HubAddress], [
+            (DatabaseSchema.Signup.Topic, CrcSignup),
+            (DatabaseSchema.OrganizationSignup.Topic, CrcOrgSignup),
+            (DatabaseSchema.HubTransfer.Topic, CrcHubTransfer),
+            (DatabaseSchema.Trust.Topic, CrcTrust),
+        ]);
+        _knownContracts = _knownContracts.Add(HubContract);
+
+        TokenContract = new KnownContract("CrcV1", "Token", [], [
+            (DatabaseSchema.Transfer.Topic, Erc20Transfer)
+        ]);
+        _knownContracts = _knownContracts.Add(TokenContract);
+    }
+
+    public Task Init(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        logger.Info("Caching Circles token addresses");
+
+        var selectSignups = new Select(
+            "CrcV1",
+            "Signup",
+            ["token"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectSignups.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} Circles token addresses");
+
+        TokenContract.AddInstances(rows.Select(row => new Address(row[0]!.ToString()!)));
+
+        logger.Info("Caching Circles token addresses done");
+
+        return Task.CompletedTask;
+    }
+
+    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
+        int logIndex)
+    {
+        if (log.Topics.Length == 0)
+        {
+            yield break;
+        }
+
+        var topic = log.Topics[0];
+
+        for (int i = 0; i < _knownContracts.Length; i++)
+        {
+            var knownContract = _knownContracts[i];
+
+            // Check if the contract has a parser for the topic
+            if (!knownContract.TryGetParser(topic, out var parseLogDelegate) || parseLogDelegate == null)
+            {
+                continue;
+            }
+
+            // Check if we know the address
+            if (!knownContract.IsKnownAddress(log.Address))
+            {
+                continue;
+            }
+
+            // Parse the log using the appropriate parser
+            foreach (var ev in parseLogDelegate(block, receipt, log, logIndex))
+            {
+                switch (ev)
+                {
+                    case Signup signup:
+                        // The Signup event announces a new Circles token. However, the initial bonus Transfer (50 CRC) 
+                        // occurs before this announcement, causing it to be missed. To address this, explicitly search 
+                        // the current transaction logs for this bonus Transfer. Also handle cases where the token might 
+                        // already be known due to blockchain reorgs, ensuring no duplicate processing.
+                        var signupBonusTransfer = receipt.Logs?
+                            .Where(logEntry => logEntry.Topics.Length > 0
+                                               && logEntry.Topics[0] == DatabaseSchema.Transfer.Topic
+                                               && !TokenContract.IsKnownAddress(logEntry.Address))
+                            .SelectMany(logEntry => Erc20Transfer(block, receipt, logEntry, logIndex))
+                            .Cast<Transfer>()
+                            .FirstOrDefault(transfer => transfer.From == _zeroAddress
+                                                        && transfer.To == signup.User
+                                                        && transfer.Value == _signupBonus);
+                        // First return the Signup event
+                        yield return ev;
+
+                        // Then return the bonus Transfer event if found
+                        if (signupBonusTransfer != null)
+                        {
+                            yield return signupBonusTransfer;
+                        }
+
+                        break;
+                    default:
+                        yield return ev;
+                        break;
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// 1) Identify all HubTransfer events + gather all Transfers.
@@ -38,18 +145,17 @@ public class LogParser(Address v1HubAddress) : ILogParser
     ///    - produce one TransferSummary per hub with a JSON that has { from, to, amount, edges:[...] }, 
     ///    - produce stand-alone summaries for leftover edges.
     /// </summary>
-    public IEnumerable<IIndexEvent> ParseTransaction(
+    public IEnumerable<Either<IIndexEvent, IParsedCallData>> ParseTransaction(
         Block block,
-        int transactionIndex,
         Transaction transaction,
         TxReceipt receipt,
-        IReadOnlyList<IIndexEvent> events)
+        IIndexEvent[] events)
     {
         // 1) Gather all hub transfers + gather all Transfers
         var hubTransfers = new List<HubTransfer>();
-        var allTransfers = new List<Transfer>(events.Count);
+        var allTransfers = new List<Transfer>(events.Length);
 
-        for (int i = 0; i < events.Count; i++)
+        for (int i = 0; i < events.Length; i++)
         {
             switch (events[i])
             {
@@ -73,11 +179,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
             {
                 var t = allTransfers[i];
 
-                yield return new TransferSummary(
+                yield return Either<IIndexEvent, IParsedCallData>.FromLeft(new TransferSummary(
                     t.BlockNumber,
                     t.Timestamp,
                     t.TransactionIndex,
                     t.LogIndex,
+                    0,
                     t.TransactionHash,
                     t.Emitter,
                     t.From,
@@ -87,7 +194,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
                             ConversionUtils.AttoCirclesToCircles(t.Value),
                             t.Timestamp)),
                     allTransferJson
-                );
+                ));
             }
 
             yield break;
@@ -166,11 +273,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
             var hubTransferEdgesJson =
                 JsonSerializer.Serialize(usedEdges.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
 
-            yield return new TransferSummary(
+            yield return Either<IIndexEvent, IParsedCallData>.FromLeft(new TransferSummary(
                 hubTransfer.BlockNumber,
                 hubTransfer.Timestamp,
                 hubTransfer.TransactionIndex,
                 hubTransfer.LogIndex,
+                0,
                 hubTransfer.TransactionHash,
                 hubTransfer.Emitter,
                 hubTransfer.From,
@@ -180,7 +288,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
                         ConversionUtils.AttoCirclesToCircles(hubTransfer.Amount),
                         hubTransfer.Timestamp)),
                 hubTransferEdgesJson
-            );
+            ));
         }
 
         // 4) For each Transfer not used by any hub route, stand-alone
@@ -200,11 +308,13 @@ public class LogParser(Address v1HubAddress) : ILogParser
         for (int i = 0; i < standAloneTransfers.Count; i++)
         {
             var standAloneTransfer = standAloneTransfers[i];
-            yield return new TransferSummary(
+            
+            yield return Either<IIndexEvent, IParsedCallData>.FromLeft(new TransferSummary(
                 standAloneTransfer.BlockNumber,
                 standAloneTransfer.Timestamp,
                 standAloneTransfer.TransactionIndex,
                 standAloneTransfer.LogIndex,
+                0,
                 standAloneTransfer.TransactionHash,
                 standAloneTransfer.Emitter,
                 standAloneTransfer.From,
@@ -214,60 +324,14 @@ public class LogParser(Address v1HubAddress) : ILogParser
                         ConversionUtils.AttoCirclesToCircles(standAloneTransfer.Value),
                         standAloneTransfer.Timestamp)),
                 standAloneTransfersJson
-            );
+            ));
         }
-    }
-
-    public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
-        int logIndex)
-    {
-        List<IIndexEvent> events = new();
-        if (log.Topics.Length == 0)
-        {
-            return events;
-        }
-
-        var topic = log.Topics[0];
-        if (topic == _transferTopic &&
-            CirclesTokenAddresses.ContainsKey(log.Address))
-        {
-            events.Add(Erc20Transfer(block, receipt, log, logIndex));
-        }
-
-        if (log.Address == v1HubAddress)
-        {
-            if (topic == _signupTopic)
-            {
-                var signupEvents = CrcSignup(block, receipt, log, logIndex);
-                foreach (var signupEvent in signupEvents)
-                {
-                    events.Add(signupEvent);
-                }
-            }
-
-            if (topic == _organizationSignupTopic)
-            {
-                events.Add(CrcOrgSignup(block, receipt, log, logIndex));
-            }
-
-            if (topic == _hubTransferTopic)
-            {
-                events.Add(CrcHubTransfer(block, receipt, log, logIndex));
-            }
-
-            if (topic == _trustTopic)
-            {
-                events.Add(CrcTrust(block, receipt, log, logIndex));
-            }
-        }
-
-        return events;
     }
 
     /// <summary>
     /// event Transfer(address indexed from, address indexed to, uint256 value);
     /// </summary>
-    private IIndexEvent Erc20Transfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static IEnumerable<IIndexEvent> Erc20Transfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // parse addresses from the 2 topics
         string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -276,11 +340,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
         // parse single 256-bit value from log.Data
         UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new Transfer(
+        yield return new Transfer(
             receipt.BlockNumber,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             log.Address.ToString(true, false),
@@ -293,15 +358,16 @@ public class LogParser(Address v1HubAddress) : ILogParser
     /// <summary>
     /// event OrganizationSignup(address indexed organization);
     /// </summary>
-    private IIndexEvent CrcOrgSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static IEnumerable<IIndexEvent> CrcOrgSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string org = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
-        return new OrganizationSignup(
+        yield return new OrganizationSignup(
             receipt.BlockNumber,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             org
@@ -311,17 +377,18 @@ public class LogParser(Address v1HubAddress) : ILogParser
     /// <summary>
     /// event Trust(address indexed canSendTo, address indexed user, uint256 limit);
     /// </summary>
-    private IIndexEvent CrcTrust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static IEnumerable<IIndexEvent> CrcTrust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string canSendTo = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string user = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         int limit = (int)LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new Trust(
+        yield return new Trust(
             receipt.BlockNumber,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             user,
@@ -333,17 +400,18 @@ public class LogParser(Address v1HubAddress) : ILogParser
     /// <summary>
     /// event HubTransfer(address indexed from, address indexed to, uint256 amount);
     /// </summary>
-    private IIndexEvent CrcHubTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static IEnumerable<IIndexEvent> CrcHubTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         UInt256 amount = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new HubTransfer(
+        yield return new HubTransfer(
             receipt.BlockNumber,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             from,
@@ -352,7 +420,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         );
     }
 
-    private IEnumerable<IIndexEvent> CrcSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static IEnumerable<IIndexEvent> CrcSignup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string user = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
@@ -363,43 +431,16 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
         Address tokenAddress = new Address(log.Data.Slice(12));
 
-        var signupEvent = new Signup(
+        yield return new Signup(
             receipt.BlockNumber,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             user,
             tokenAddress.ToString(true, false)
         );
-
-        // Attempt to register the token address
-        bool isNewToken = CirclesTokenAddresses.TryAdd(tokenAddress, null);
-        if (!isNewToken)
-        {
-            // Already known => only return the Signup event
-            return new[] { signupEvent };
-        }
-
-        // If new, find the first matching Transfer event in this tx
-        IIndexEvent? signupBonusEvent = null;
-        for (int i = 0; i < receipt.Logs!.Length; i++)
-        {
-            var repeatedLogEntry = receipt.Logs[i];
-            if (repeatedLogEntry.Address != tokenAddress)
-                continue;
-
-            if (repeatedLogEntry.Topics.Length > 0
-                && repeatedLogEntry.Topics[0] == _transferTopic)
-            {
-                signupBonusEvent = Erc20Transfer(block, receipt, repeatedLogEntry, i);
-                break;
-            }
-        }
-
-        return signupBonusEvent == null
-            ? new[] { signupEvent }
-            : new[] { signupEvent, signupBonusEvent };
     }
 }

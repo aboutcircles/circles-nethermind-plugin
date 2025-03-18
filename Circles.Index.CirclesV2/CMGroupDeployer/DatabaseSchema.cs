@@ -7,6 +7,7 @@ public record CMGroupCreated(
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
+    int BatchIndex,
     string TransactionHash,
     string Emitter,
     string Proxy,

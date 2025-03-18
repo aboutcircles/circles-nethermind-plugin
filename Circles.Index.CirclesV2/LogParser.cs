@@ -1,5 +1,6 @@
-using System.Collections.Concurrent;
+using System.Collections;
 using System.Collections.Immutable;
+using System.Numerics;
 using System.Text.Json;
 using Circles.Index.CirclesV2.CMGroupDeployer;
 using Circles.Index.CirclesV2.Hub;
@@ -8,68 +9,64 @@ using Circles.Index.CirclesV2.NameRegistry;
 using Circles.Index.CirclesV2.StandardTreasury;
 using Circles.Index.CirclesV2.Decoders;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2;
 
-public class LogParser(
-    Address v2HubAddress,
-    Address erc20LiftAddress,
-    Address nameRegistryAddress,
-    Address standardTreasuryAddress,
-    ImmutableHashSet<Address>? cmGroupDeployerAddresses,
-    Address? lbpFactoryAddress) : ILogParser
+// Example "operateFlowMatrix" call-data structure:
+public record ParsedOperateFlowMatrix(
+    string FunctionName,
+    string[] FlowVertices,
+    FlowEdge[] FlowEdges,
+    StreamStruct[] Streams,
+    byte[] PackedCoordinates
+) : IParsedCallData;
+
+// For ERC-1155 single transfer:
+public record ParsedSafeTransferFrom(
+    string FunctionName,
+    string From,
+    string To,
+    UInt256 TokenId,
+    UInt256 Amount,
+    byte[] Data
+) : IParsedCallData;
+
+// For ERC-1155 batch transfer:
+public record ParsedSafeBatchTransferFrom(
+    string FunctionName,
+    string From,
+    string To,
+    UInt256[] Ids,
+    UInt256[] Amounts,
+    byte[] Data
+) : IParsedCallData;
+
+// A couple of helper records mirroring your CirclesHubDecoder “FlowEdge” and “StreamStruct”:
+public record FlowEdge(ushort StreamSinkId, UInt256 Amount);
+
+public record StreamStruct(
+    ushort SourceCoordinate,
+    ushort[] FlowEdgeIds,
+    byte[] Data
+);
+
+public class LogParser : ILogParser
 {
-    private readonly Hash256 _stoppedTopic = new(Hub.DatabaseSchema.Stopped.Topic);
-    private readonly Hash256 _trustTopic = new(Hub.DatabaseSchema.Trust.Topic);
-    private readonly Hash256 _personalMintTopic = new(Hub.DatabaseSchema.PersonalMint.Topic);
-    private readonly Hash256 _registerHumanTopic = new(Hub.DatabaseSchema.RegisterHuman.Topic);
-    private readonly Hash256 _registerGroupTopic = new(Hub.DatabaseSchema.RegisterGroup.Topic);
-    private readonly Hash256 _registerOrganizationTopic = new(Hub.DatabaseSchema.RegisterOrganization.Topic);
-    private readonly Hash256 _transferBatchTopic = new(Hub.DatabaseSchema.TransferBatch.Topic);
-    private readonly Hash256 _transferSingleTopic = new(Hub.DatabaseSchema.TransferSingle.Topic);
-    private readonly Hash256 _approvalForAllTopic = new(Hub.DatabaseSchema.ApprovalForAll.Topic);
-    private readonly Hash256 _erc20WrapperDeployed = new(Hub.DatabaseSchema.ERC20WrapperDeployed.Topic);
-    private readonly Hash256 _erc20WrapperTransfer = new(Hub.DatabaseSchema.Erc20WrapperTransfer.Topic);
-    private readonly Hash256 _depositInflationary = new(Hub.DatabaseSchema.DepositInflationary.Topic);
-    private readonly Hash256 _withdrawInflationary = new(Hub.DatabaseSchema.WithdrawInflationary.Topic);
-    private readonly Hash256 _depositDemurraged = new(Hub.DatabaseSchema.DepositDemurraged.Topic);
-    private readonly Hash256 _withdrawDemurraged = new(Hub.DatabaseSchema.WithdrawDemurraged.Topic);
-    private readonly Hash256 _streamCompletedTopic = new(Hub.DatabaseSchema.StreamCompleted.Topic);
-    private readonly Hash256 _discountCostTopic = new(Hub.DatabaseSchema.DiscountCost.Topic);
-    private readonly Hash256 _groupMintTopic = new(Hub.DatabaseSchema.GroupMint.Topic);
-    private readonly Hash256 _flowEdgesScopeSingleStarted = new(Hub.DatabaseSchema.FlowEdgesScopeSingleStarted.Topic);
-    private readonly Hash256 _flowEdgesScopeLastEnded = new(Hub.DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
+    private readonly ImmutableArray<KnownContract> _knownContracts = ImmutableArray<KnownContract>.Empty;
 
-    private readonly Hash256 _cmGroupCreatedTopic = new(CMGroupDeployer.DatabaseSchema.CMGroupCreated.Topic);
-
-    private readonly Hash256 _circlesBackingDeployedTopic = new(LBP.DatabaseSchema.CirclesBackingDeployed.Topic);
-    private readonly Hash256 _lbpDeployedTopic = new(LBP.DatabaseSchema.LBPDeployed.Topic);
-    private readonly Hash256 _circlesBackingInitiatedTopic = new(LBP.DatabaseSchema.CirclesBackingInitiated.Topic);
-    private readonly Hash256 _circlesBackingCompletedTopic = new(LBP.DatabaseSchema.CirclesBackingCompleted.Topic);
-    private readonly Hash256 _releasedTopic = new(LBP.DatabaseSchema.Released.Topic);
-
-    private readonly Hash256 _registerShortNameTopic = new(NameRegistry.DatabaseSchema.RegisterShortName.Topic);
-    private readonly Hash256 _updateMetadataDigestTopic = new(NameRegistry.DatabaseSchema.UpdateMetadataDigest.Topic);
-    private readonly Hash256 _cidV0Topic = new(NameRegistry.DatabaseSchema.CidV0.Topic);
-
-    private readonly Hash256 _createVaultTopic = new(StandardTreasury.DatabaseSchema.CreateVault.Topic);
-    private readonly Hash256 _groupMintSingleTopic = new(StandardTreasury.DatabaseSchema.CollateralLockedSingle.Topic);
-    private readonly Hash256 _groupMintBatchTopic = new(StandardTreasury.DatabaseSchema.CollateralLockedBatch.Topic);
-    private readonly Hash256 _groupRedeemTopic = new(StandardTreasury.DatabaseSchema.GroupRedeem.Topic);
-
-    private readonly Hash256 _groupRedeemCollateralReturnTopic =
-        new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralReturn.Topic);
-
-    private readonly Hash256 _groupRedeemCollateralBurnTopic =
-        new(StandardTreasury.DatabaseSchema.GroupRedeemCollateralBurn.Topic);
-
-    // Tracks whether a specific address is recognized as an ERC20Wrapper contract
-    // Address -> CirclesType (demurraged = 0 or static = 1)
-    public static readonly ConcurrentDictionary<Address, long> Erc20WrapperAddresses = new();
+    public readonly KnownContract HubContract;
+    public readonly KnownContract Erc20LiftContract;
+    public readonly KnownContract DemurrageCircles;
+    public readonly KnownContract InflationaryCircles;
+    public readonly KnownContract NameRegistryContract;
+    public readonly KnownContract StandardTreasuryContract;
+    public readonly KnownContract? CmGroupDeployerContract;
+    public readonly KnownContract? LbpFactoryContract;
 
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -80,76 +77,302 @@ public class LogParser(
         }
     };
 
-    public IEnumerable<IIndexEvent> ParseTransaction(
-        Block block,
-        int transactionIndex,
-        Transaction transaction,
-        TxReceipt receipt,
-        IReadOnlyList<IIndexEvent> events)
+    public LogParser(Address v2HubAddress,
+        Address erc20LiftAddress,
+        Address nameRegistryAddress,
+        Address standardTreasuryAddress,
+        Address[] cmGroupDeployerAddresses,
+        Address? lbpFactoryAddress)
     {
-        if (events.Count == 0)
-            yield break;
-
-        var eventsv2 = new List<IIndexedEventV2>(events.Count);
-        foreach (var e in events)
+        var tryParseOperateFlowMatrix = new Func<byte[], int, IEnumerable<IParsedCallData>>((data, offset) =>
         {
-            if (e is IIndexedEventV2 v2) eventsv2.Add(v2);
-        }
+            // We'll parse a single operateFlowMatrix(...) call from the raw `data` (including the selector),
+            // starting at the given byte offset. If decoding fails, we return an empty list.
 
-        if (eventsv2.Count == 0)
-            yield break;
+            // The function signature is 0x0d22d9b5, so the first 4 bytes are the selector.
+            // We skip those 4 bytes => arguments start at offset+4.
 
-        var result = TransferSummaryAggregator.AggregateAll(eventsv2, Erc20WrapperAddresses);
-        int syntheticLogIndex = -(result.StreamTransfers.Totals.Count() + result.NonStreamTransfers.Totals.Count());
+            // The function has 4 arguments (all dynamic in standard ABI):
+            //   1) address[] _flowVertices
+            //   2) (uint16, uint192)[] _flow
+            //   3) (uint16, uint16[], bytes)[] _streams
+            //   4) bytes _packedCoordinates
+            // Each argument is a 32-byte “offset” (since they’re dynamic).
+            // So we read four “words” to get the offsets, then decode each region.
 
-        if (result.StreamTransfers.Totals.Any())
-        {
-            var streamEventsJson = JsonSerializer.Serialize(result.StreamEvents, _jsonSerializerOptions);
-            foreach (var summary in result.StreamTransfers.Totals)
+            // For convenience, we define some local helpers:
+            static BigInteger ToBigInt(ReadOnlySpan<byte> span)
             {
-                yield return new TransferSummary(
-                    block.Number,
-                    (long)block.Timestamp,
-                    transactionIndex,
-                    syntheticLogIndex++,
-                    transaction.Hash!.ToString(true),
-                    "",
-                    summary.Key.From,
-                    summary.Key.To,
-                    (UInt256)summary.Value,
-                    streamEventsJson
-                );
+                // same style as event parsing (big-endian from 0..32)
+                return new BigInteger(span, isBigEndian: true);
             }
+
+            static string ToAddress(ReadOnlySpan<byte> word32)
+            {
+                // “address” is last 20 bytes of the 32-byte word
+                var addressBytes = word32[^20..]; // slice last 20
+                return "0x" + BitConverter.ToString(addressBytes.ToArray()).Replace("-", "").ToLower();
+            }
+
+            List<IParsedCallData> results = new();
+
+            try
+            {
+                // 1) We need to ensure at least 4 * 32 bytes after the selector
+                int minNeeded = 4 * 32;
+                if (data.Length < offset + 4 + minNeeded)
+                    return results; // not enough data
+
+                // read the four offset-words
+                // each word is 32 bytes => data[(offset + 4 + i*32) .. (offset + 4 + (i+1)*32)]
+                ReadOnlySpan<byte> arg0OffsetBytes = data.AsSpan(offset + 4 + 0 * 32, 32);
+                ReadOnlySpan<byte> arg1OffsetBytes = data.AsSpan(offset + 4 + 1 * 32, 32);
+                ReadOnlySpan<byte> arg2OffsetBytes = data.AsSpan(offset + 4 + 2 * 32, 32);
+                ReadOnlySpan<byte> arg3OffsetBytes = data.AsSpan(offset + 4 + 3 * 32, 32);
+
+                BigInteger offsetFlowVertices = ToBigInt(arg0OffsetBytes);
+                BigInteger offsetFlow = ToBigInt(arg1OffsetBytes);
+                BigInteger offsetStreams = ToBigInt(arg2OffsetBytes);
+                BigInteger offsetPackedCoords = ToBigInt(arg3OffsetBytes);
+
+                // decode each parameter
+                var flowVertices = DecodeAddressArray(data, offset, offsetFlowVertices);
+                var flowEdges = DecodeFlowEdgesArray(data, offset, offsetFlow);
+                var streams = DecodeStreamsArray(data, offset, offsetStreams);
+                var packedCoords = DecodeBytes(data, offset, (int)offsetPackedCoords);
+
+                results.Add(new ParsedOperateFlowMatrix("operateFlowMatrix", flowVertices, flowEdges, streams,
+                    packedCoords));
+            }
+            catch
+            {
+                // If something fails, we skip. 
+                // You might want to log the error; for now we just return empty.
+            }
+
+            return results;
+        });
+
+        var tryParseSafeTransferFrom = new Func<byte[], int, IEnumerable<IParsedCallData>>((data, offset) =>
+        {
+            // single “safeTransferFrom” call => 5 arguments:
+            //   (address from, address to, uint256 id, uint256 amount, bytes data)
+            // each argument is 32 bytes except the last which is dynamic => an offset to the actual bytes.
+
+            List<IParsedCallData> results = new();
+
+            static BigInteger ToBigInt(ReadOnlySpan<byte> span)
+                => new BigInteger(span, isBigEndian: true);
+
+            static string ToAddress(ReadOnlySpan<byte> word32)
+                => "0x" + BitConverter.ToString(word32[^20..].ToArray()).Replace("-", "").ToLower();
+
+            try
+            {
+                // we skip 4 bytes for the selector
+                // then we read 5 “words” => need at least 5*32 = 160 bytes
+                int minNeeded = 5 * 32;
+                if (data.Length < offset + 4 + minNeeded)
+                    return results;
+
+                var fromWord = data.AsSpan(offset + 4 + 0 * 32, 32);
+                var toWord = data.AsSpan(offset + 4 + 1 * 32, 32);
+                var idWord = data.AsSpan(offset + 4 + 2 * 32, 32);
+                var amtWord = data.AsSpan(offset + 4 + 3 * 32, 32);
+                var dataOffset = data.AsSpan(offset + 4 + 4 * 32, 32);
+
+                string from = ToAddress(fromWord);
+                string to = ToAddress(toWord);
+                var tokenId = (UInt256)ToBigInt(idWord);
+                var amount = (UInt256)ToBigInt(amtWord);
+                var dataOff = (int)ToBigInt(dataOffset); // just cast, we assume it fits
+
+                byte[] extraData = Array.Empty<byte>();
+                if (dataOff != 0)
+                {
+                    extraData = DecodeBytes(data, offset, dataOff);
+                }
+
+                results.Add(new ParsedSafeTransferFrom("safeTransaferFrom", from, to, tokenId, amount, extraData));
+            }
+            catch
+            {
+                // ignore errors
+            }
+
+            return results;
+        });
+
+        var tryParseSafeBatchTransferFrom = new Func<byte[], int, IEnumerable<IParsedCallData>>((data, offset) =>
+        {
+            // single “safeBatchTransferFrom” => 5 arguments:
+            //    (address from, address to, uint256[] ids, uint256[] amounts, bytes data)
+            // each argument is 32 bytes => offset to a dynamic region
+
+            List<IParsedCallData> results = new();
+
+            static BigInteger ToBigInt(ReadOnlySpan<byte> span)
+                => new BigInteger(span, isBigEndian: true);
+
+            static string ToAddress(ReadOnlySpan<byte> word32)
+                => "0x" + BitConverter.ToString(word32[^20..].ToArray()).Replace("-", "").ToLower();
+
+            try
+            {
+                int minNeeded = 5 * 32;
+                if (data.Length < offset + 4 + minNeeded)
+                    return results;
+
+                var fromWord = data.AsSpan(offset + 4 + 0 * 32, 32);
+                var toWord = data.AsSpan(offset + 4 + 1 * 32, 32);
+                var idsOffset = data.AsSpan(offset + 4 + 2 * 32, 32);
+                var amtsOffset = data.AsSpan(offset + 4 + 3 * 32, 32);
+                var dataOffset = data.AsSpan(offset + 4 + 4 * 32, 32);
+
+                string from = ToAddress(fromWord);
+                string to = ToAddress(toWord);
+
+                var idsOffVal = (int)ToBigInt(idsOffset);
+                var amtOffVal = (int)ToBigInt(amtsOffset);
+                var dataOffVal = (int)ToBigInt(dataOffset);
+
+                var ids = DecodeUint256Array(data, offset, idsOffVal);
+                var amounts = DecodeUint256Array(data, offset, amtOffVal);
+                var extraData = Array.Empty<byte>();
+                if (dataOffVal != 0)
+                {
+                    extraData = DecodeBytes(data, offset, dataOffVal);
+                }
+
+                results.Add(
+                    new ParsedSafeBatchTransferFrom("safeBatchTransaferFrom", from, to, ids, amounts, extraData));
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return results;
+        });
+
+        HubContract = new("CrcV2", "Hub", [v2HubAddress], [
+            (Hub.DatabaseSchema.Stopped.Topic, CrcV2Stopped),
+            (Hub.DatabaseSchema.Trust.Topic, CrcV2Trust),
+            (Hub.DatabaseSchema.PersonalMint.Topic, CrcV2PersonalMint),
+            (Hub.DatabaseSchema.RegisterHuman.Topic, CrcV2RegisterHuman),
+            (Hub.DatabaseSchema.RegisterGroup.Topic, CrcV2RegisterGroup),
+            (Hub.DatabaseSchema.RegisterOrganization.Topic, CrcV2RegisterOrganization),
+            (Hub.DatabaseSchema.TransferBatch.Topic, Erc1155TransferBatch),
+            (Hub.DatabaseSchema.TransferSingle.Topic, Erc1155TransferSingle),
+            (Hub.DatabaseSchema.ApprovalForAll.Topic, Erc1155ApprovalForAll),
+            (Hub.DatabaseSchema.GroupMint.Topic, GroupMint),
+            (Hub.DatabaseSchema.StreamCompleted.Topic, StreamCompleted),
+            (Hub.DatabaseSchema.DiscountCost.Topic, DiscountCost),
+            (Hub.DatabaseSchema.FlowEdgesScopeSingleStarted.Topic, FlowEdgesScopeSingleStarted),
+            (Hub.DatabaseSchema.FlowEdgesScopeLastEnded.Topic, FlowEdgesScopeLastEnded)
+        ], [
+            new("operateFlowMatrix", [0x0d, 0x22, 0xd9, 0xb5], tryParseOperateFlowMatrix),
+            new("safeTransferFrom", [0xf2, 0x42, 0x43, 0x2a], tryParseSafeTransferFrom),
+            new("safeBatchTransferFrom", [0x2e, 0xb2, 0xc2, 0xd6], tryParseSafeBatchTransferFrom)
+        ]);
+        _knownContracts = _knownContracts.Add(HubContract);
+
+        Erc20LiftContract = new("CrcV2", "Erc20Lift", [erc20LiftAddress], [
+            (Hub.DatabaseSchema.ERC20WrapperDeployed.Topic, Erc20WrapperDeployed)
+        ]);
+        _knownContracts = _knownContracts.Add(Erc20LiftContract);
+
+        DemurrageCircles = new("CrcV2", "DemurrageCircles", [], [
+            (Hub.DatabaseSchema.Erc20WrapperTransfer.Topic, Erc20WrapperTransfer),
+            (Hub.DatabaseSchema.DepositDemurraged.Topic, DepositDemurraged),
+            (Hub.DatabaseSchema.WithdrawDemurraged.Topic, WithdrawDemurraged)
+        ]);
+        _knownContracts = _knownContracts.Add(DemurrageCircles);
+
+        InflationaryCircles = new("CrcV2", "InflationaryCircles", [], [
+            (Hub.DatabaseSchema.Erc20WrapperTransfer.Topic, Erc20WrapperTransfer),
+            (Hub.DatabaseSchema.DepositInflationary.Topic, DepositInflationary),
+            (Hub.DatabaseSchema.WithdrawInflationary.Topic, WithdrawInflationary)
+        ]);
+        _knownContracts = _knownContracts.Add(InflationaryCircles);
+
+        NameRegistryContract = new("CrcV2", "NameRegistry", [nameRegistryAddress], [
+            (NameRegistry.DatabaseSchema.RegisterShortName.Topic, RegisterShortName),
+            (NameRegistry.DatabaseSchema.UpdateMetadataDigest.Topic, UpdateMetadataDigest),
+            (NameRegistry.DatabaseSchema.CidV0.Topic, CidV0)
+        ]);
+        _knownContracts = _knownContracts.Add(NameRegistryContract);
+
+        StandardTreasuryContract = new("CrcV2", "StandardTreasury", [standardTreasuryAddress], [
+            (StandardTreasury.DatabaseSchema.CreateVault.Topic, CreateVault),
+            (StandardTreasury.DatabaseSchema.CollateralLockedSingle.Topic, CollateralLockedSingle),
+            (StandardTreasury.DatabaseSchema.CollateralLockedBatch.Topic, CollateralLockedBatch),
+            (StandardTreasury.DatabaseSchema.GroupRedeem.Topic, GroupRedeem),
+            (StandardTreasury.DatabaseSchema.GroupRedeemCollateralReturn.Topic, GroupRedeemCollateralReturn),
+            (StandardTreasury.DatabaseSchema.GroupRedeemCollateralBurn.Topic, GroupRedeemCollateralBurn)
+        ]);
+        _knownContracts = _knownContracts.Add(StandardTreasuryContract);
+
+        if (cmGroupDeployerAddresses.Length > 0)
+        {
+            var cmGroupDeployer = new KnownContract("CrcV2", "CmGroupDeployer", cmGroupDeployerAddresses, [
+                (CMGroupDeployer.DatabaseSchema.CMGroupCreated.Topic, CMGroupCreated)
+            ]);
+            CmGroupDeployerContract = cmGroupDeployer;
+            _knownContracts = _knownContracts.Add(CmGroupDeployerContract);
         }
 
-        if (result.NonStreamTransfers.Totals.Any())
+        if (lbpFactoryAddress != null)
         {
-            var nonStreamEventsJson = JsonSerializer.Serialize(result.NonStreamEvents, _jsonSerializerOptions);
-            foreach (var transfer in result.NonStreamTransfers.Totals)
-            {
-                yield return new TransferSummary(
-                    block.Number,
-                    (long)block.Timestamp,
-                    transactionIndex,
-                    syntheticLogIndex++,
-                    transaction.Hash!.ToString(true),
-                    "",
-                    transfer.Key.From,
-                    transfer.Key.To,
-                    (UInt256)transfer.Value,
-                    nonStreamEventsJson
-                );
-            }
+            var lbpFactory = new KnownContract("CrcV2", "LbpFactory", [lbpFactoryAddress], [
+                (LBP.DatabaseSchema.CirclesBackingDeployed.Topic, CirclesBackingDeployed),
+                (LBP.DatabaseSchema.LBPDeployed.Topic, LbpDeployed),
+                (LBP.DatabaseSchema.CirclesBackingInitiated.Topic, CirclesBackingInitiated),
+                (LBP.DatabaseSchema.CirclesBackingCompleted.Topic, CirclesBackingCompleted),
+                (LBP.DatabaseSchema.Released.Topic, Released)
+            ]);
+            LbpFactoryContract = lbpFactory;
+            _knownContracts = _knownContracts.Add(LbpFactoryContract);
         }
+    }
 
-        if (result.StreamTransfers.Totals.Any() || result.NonStreamTransfers.Totals.Any())
-        {
-            var additionalTxData = AdditionalDataExtractor.ExtractAdditionalData(transaction);
-            if (additionalTxData.Length > 0)
-            {
-                Console.WriteLine($"Additional data for tx {transaction.Hash}: {additionalTxData.ToHexString()}");
-            }
-        }
+    public Task Init(
+        InterfaceLogger logger,
+        IDatabase database,
+        Settings settings)
+    {
+        logger.Info("Caching erc20 wrapper addresses");
+
+        var selectErc20WrapperDeployed = new Select(
+            "CrcV2",
+            "ERC20WrapperDeployed",
+            ["erc20Wrapper", "circlesType"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectErc20WrapperDeployed.ToSql(database);
+        var result = database.Select(sql);
+        object?[][] rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
+
+        DemurrageCircles.AddInstances(
+            rows.Where(row => (long)row[1]! == 0L)
+                .Select(row => new Address(row[0]!.ToString()!)));
+
+        logger.Info($"   * {DemurrageCircles.Instances.Count} demurraged");
+
+        InflationaryCircles.AddInstances(
+            rows.Where(row => (long)row[1]! == 1L)
+                .Select(row => new Address(row[0]!.ToString()!)));
+
+        logger.Info($"   * {InflationaryCircles.Instances.Count} inflationary");
+        logger.Info("Caching erc20 wrapper addresses done");
+
+        return Task.CompletedTask;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(
@@ -166,222 +389,157 @@ public class LogParser(
 
         var topic = log.Topics[0];
 
-        // Events from the V2Hub
-        if (log.Address == v2HubAddress)
+        for (int i = 0; i < _knownContracts.Length; i++)
         {
-            if (topic == _stoppedTopic)
+            var knownContract = _knownContracts[i];
+
+            // Check if the contract has a parser for the topic
+            if (!knownContract.TryGetParser(topic, out var parseLogDelegate) || parseLogDelegate == null)
             {
-                yield return CrcV2Stopped(block, receipt, log, logIndex);
+                continue;
             }
 
-            if (topic == _trustTopic)
+            // Check if we know the address
+            if (!knownContract.IsKnownAddress(log.Address))
             {
-                yield return CrcV2Trust(block, receipt, log, logIndex);
+                continue;
             }
 
-            if (topic == _personalMintTopic)
+            // Parse the log using the appropriate parser
+            foreach (var ev in parseLogDelegate(block, receipt, log, logIndex))
             {
-                yield return CrcV2PersonalMint(block, receipt, log, logIndex);
-            }
-
-            if (topic == _registerHumanTopic)
-            {
-                yield return CrcV2RegisterHuman(block, receipt, log, logIndex);
-            }
-
-            if (topic == _registerGroupTopic)
-            {
-                yield return CrcV2RegisterGroup(block, receipt, log, logIndex);
-            }
-
-            if (topic == _registerOrganizationTopic)
-            {
-                yield return CrcV2RegisterOrganization(block, receipt, log, logIndex);
-            }
-
-            if (topic == _transferBatchTopic)
-            {
-                foreach (var batchEvent in Erc1155TransferBatch(block, receipt, log, logIndex))
+                switch (ev)
                 {
-                    yield return batchEvent;
+                    // If we encounter a ERC20WrapperDeployed event, add the wrapper address to the list of known wrapper instances.
+                    case ERC20WrapperDeployed { CirclesType: 0L } demurrageWrapperDeployed:
+                        DemurrageCircles.AddInstances([new Address(demurrageWrapperDeployed.Erc20Wrapper)]);
+                        break;
+                    case ERC20WrapperDeployed { CirclesType: 1L } inflationaryWrapperDeployed:
+                        InflationaryCircles.AddInstances([new Address(inflationaryWrapperDeployed.Erc20Wrapper)]);
+                        break;
                 }
-            }
 
-            if (topic == _transferSingleTopic)
-            {
-                yield return Erc1155TransferSingle(block, receipt, log, logIndex);
-            }
-
-            if (topic == _approvalForAllTopic)
-            {
-                yield return Erc1155ApprovalForAll(block, receipt, log, logIndex);
-            }
-
-            if (topic == _streamCompletedTopic)
-            {
-                foreach (var streamCompleted in StreamCompleted(block, receipt, log, logIndex))
-                {
-                    yield return streamCompleted;
-                }
-            }
-
-            if (topic == _discountCostTopic)
-            {
-                yield return DiscountCost(block, receipt, log, logIndex);
-            }
-
-            if (topic == _groupMintTopic)
-            {
-                foreach (var groupMint in GroupMint(block, receipt, log, logIndex))
-                {
-                    yield return groupMint;
-                }
-            }
-
-            if (topic == _flowEdgesScopeSingleStarted)
-            {
-                yield return FlowEdgesScopeSingleStarted(block, receipt, log, logIndex);
-            }
-
-            if (topic == _flowEdgesScopeLastEnded)
-            {
-                yield return FlowEdgesScopeLastEnded(block, receipt, log, logIndex);
-            }
-        }
-
-        // Events from the Erc20Lift contract
-        if (log.Address == erc20LiftAddress)
-        {
-            if (topic == _erc20WrapperDeployed)
-            {
-                yield return Erc20WrapperDeployed(block, receipt, log, logIndex);
-            }
-        }
-
-        // Events from the NameRegistry contract
-        if (log.Address == nameRegistryAddress)
-        {
-            if (topic == _registerShortNameTopic)
-            {
-                yield return RegisterShortName(block, receipt, log, logIndex);
-            }
-
-            if (topic == _updateMetadataDigestTopic)
-            {
-                yield return UpdateMetadataDigest(block, receipt, log, logIndex);
-            }
-
-            if (topic == _cidV0Topic)
-            {
-                yield return CidV0(block, receipt, log, logIndex);
-            }
-        }
-
-        // events from the StandardTreasuryAddress
-        if (log.Address == standardTreasuryAddress)
-        {
-            if (topic == _createVaultTopic)
-            {
-                yield return CreateVault(block, receipt, log, logIndex);
-            }
-            else if (topic == _groupMintSingleTopic)
-            {
-                yield return CollateralLockedSingle(block, receipt, log, logIndex);
-            }
-            else if (topic == _groupMintBatchTopic)
-            {
-                foreach (var batchEvent in CollateralLockedBatch(block, receipt, log, logIndex))
-                {
-                    yield return batchEvent;
-                }
-            }
-            else if (topic == _groupRedeemTopic)
-            {
-                yield return GroupRedeem(block, receipt, log, logIndex);
-            }
-            else if (topic == _groupRedeemCollateralReturnTopic)
-            {
-                foreach (var returnEvent in GroupRedeemCollateralReturn(block, receipt, log, logIndex))
-                {
-                    yield return returnEvent;
-                }
-            }
-            else if (topic == _groupRedeemCollateralBurnTopic)
-            {
-                foreach (var burnEvent in GroupRedeemCollateralBurn(block, receipt, log, logIndex))
-                {
-                    yield return burnEvent;
-                }
-            }
-        }
-
-        // Events from known ERC20Wrapper addresses
-        if (Erc20WrapperAddresses.ContainsKey(log.Address))
-        {
-            if (topic == _erc20WrapperTransfer)
-            {
-                yield return Erc20WrapperTransfer(block, receipt, log, logIndex);
-            }
-
-            if (topic == _depositDemurraged)
-            {
-                yield return DepositDemurraged(block, receipt, log, logIndex);
-            }
-
-            if (topic == _withdrawDemurraged)
-            {
-                yield return WithdrawDemurraged(block, receipt, log, logIndex);
-            }
-
-            if (topic == _depositInflationary)
-            {
-                yield return DepositInflationary(block, receipt, log, logIndex);
-            }
-
-            if (topic == _withdrawInflationary)
-            {
-                yield return WithdrawInflationary(block, receipt, log, logIndex);
-            }
-        }
-
-        if (cmGroupDeployerAddresses != null && cmGroupDeployerAddresses.Contains(log.Address))
-        {
-            if (topic == _cmGroupCreatedTopic)
-            {
-                yield return CMGroupCreated(block, receipt, log, logIndex);
-            }
-        }
-
-        if (lbpFactoryAddress != null && log.Address == lbpFactoryAddress)
-        {
-            if (topic == _circlesBackingDeployedTopic)
-            {
-                yield return CirclesBackingDeployed(block, receipt, log, logIndex);
-            }
-
-            if (topic == _lbpDeployedTopic)
-            {
-                yield return LbpDeployed(block, receipt, log, logIndex);
-            }
-
-            if (topic == _circlesBackingInitiatedTopic)
-            {
-                yield return CirclesBackingInitiated(block, receipt, log, logIndex);
-            }
-
-            if (topic == _circlesBackingCompletedTopic)
-            {
-                yield return CirclesBackingCompleted(block, receipt, log, logIndex);
-            }
-
-            if (topic == _releasedTopic)
-            {
-                yield return Released(block, receipt, log, logIndex);
+                yield return ev;
             }
         }
     }
 
-    private IIndexEvent Erc20WrapperDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    public IEnumerable<Either<IIndexEvent, IParsedCallData>> ParseTransaction(
+        Block block,
+        Transaction transaction,
+        TxReceipt receipt,
+        IIndexEvent[] events)
+    {
+        if (events.Length == 0)
+        {
+            yield break;
+        }
+
+        if (transaction.Data != null)
+        {
+            var transactionData = transaction.Data.Value;
+            for (int i = 0; i < _knownContracts.Length; i++)
+            {
+                var knownContract = _knownContracts[i];
+                if (knownContract.KnownFunctions.Length == 0)
+                {
+                    continue;
+                }
+
+                for (var j = 0; j < knownContract.KnownFunctions.Length; j++)
+                {
+                    var knownFunction = knownContract.KnownFunctions[j];
+
+                    var offsets = transactionData.FindOccurrences(knownFunction.SelectorUint32);
+                    if (offsets.Length == 0)
+                        continue;
+
+                    foreach (var offset in offsets)
+                    {
+                        IEnumerable<IParsedCallData>? decoded;
+                        try
+                        {
+                            decoded = knownFunction.Decoder(transactionData.ToArray(), offset);
+                        }
+                        catch (Exception e)
+                        {
+                            // log and skip
+                            Console.WriteLine(
+                                $"Error decoding {knownFunction.FunctionName} at offset {offset}: {e.Message}");
+                            continue;
+                        }
+
+                        foreach (var e in decoded)
+                        {
+                            yield return Either<IIndexEvent, IParsedCallData>.FromRight(e);
+                        }
+                    }
+                }
+            }
+        }
+
+        var eventsv2 = new List<IIndexedEventV2>(events.Length);
+        foreach (var e in events)
+        {
+            if (e is IIndexedEventV2 v2) eventsv2.Add(v2);
+        }
+
+        if (eventsv2.Count == 0)
+            yield break;
+
+
+        var result = TransferSummaryAggregator.AggregateAll(eventsv2, InflationaryCircles.Instances);
+        int syntheticLogIndex = -(result.StreamTransfers.Totals.Count() + result.NonStreamTransfers.Totals.Count());
+
+        if (result.StreamTransfers.Totals.Any())
+        {
+            var streamEventsJson = JsonSerializer.Serialize(result.StreamEvents, _jsonSerializerOptions);
+            foreach (var summary in result.StreamTransfers.Totals)
+            {
+                yield return Either<IIndexEvent, IParsedCallData>.FromLeft(new TransferSummary(
+                    block.Number,
+                    (long)block.Timestamp,
+                    receipt.Index,
+                    syntheticLogIndex++,
+                    0,
+                    transaction.Hash!.ToString(true),
+                    "",
+                    summary.Key.From,
+                    summary.Key.To,
+                    (UInt256)summary.Value,
+                    streamEventsJson
+                ));
+            }
+        }
+
+        if (result.NonStreamTransfers.Totals.Any())
+        {
+            var nonStreamEventsJson = JsonSerializer.Serialize(result.NonStreamEvents, _jsonSerializerOptions);
+            foreach (var transfer in result.NonStreamTransfers.Totals)
+            {
+                yield return Either<IIndexEvent, IParsedCallData>.FromLeft(new TransferSummary(
+                    block.Number,
+                    (long)block.Timestamp,
+                    receipt.Index,
+                    syntheticLogIndex++,
+                    0,
+                    transaction.Hash!.ToString(true),
+                    "",
+                    transfer.Key.From,
+                    transfer.Key.To,
+                    (UInt256)transfer.Value,
+                    nonStreamEventsJson
+                ));
+            }
+        }
+
+        if (transaction.Data == null)
+        {
+            yield break;
+        }
+    }
+
+    private IEnumerable<IIndexEvent> Erc20WrapperDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event ERC20WrapperDeployed(address indexed avatar, address indexed erc20Wrapper, uint8 circlesType)
 
@@ -392,14 +550,12 @@ public class LogParser(
         // Parse the single uint256 from log.Data => circlesType
         UInt256 circlesType = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        // Mark that we know about this wrapper
-        Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), (long)circlesType);
-
-        return new ERC20WrapperDeployed(
+        yield return new ERC20WrapperDeployed(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             avatar,
@@ -408,7 +564,8 @@ public class LogParser(
         );
     }
 
-    private ApprovalForAll Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<ApprovalForAll> Erc1155ApprovalForAll(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event ApprovalForAll(address indexed account, address indexed operator, bool approved)
 
@@ -419,11 +576,12 @@ public class LogParser(
         UInt256 raw = LogDataParsingHelper.ParseSingleUInt256(log.Data);
         bool approved = !raw.IsZero;
 
-        return new ApprovalForAll(
+        yield return new ApprovalForAll(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             account,
@@ -432,7 +590,8 @@ public class LogParser(
         );
     }
 
-    private TransferSingle Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<TransferSingle> Erc1155TransferSingle(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)
 
@@ -449,11 +608,12 @@ public class LogParser(
         var id = new UInt256(dataSpan.Slice(0, 32), true);
         var value = new UInt256(dataSpan.Slice(32, 32), true);
 
-        return new TransferSingle(
+        yield return new TransferSingle(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             operatorAddress,
@@ -507,17 +667,19 @@ public class LogParser(
         }
     }
 
-    private RegisterOrganization CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<RegisterOrganization> CrcV2RegisterOrganization(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event RegisterOrganization(address indexed organization, string name)
         string orgAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string orgName = LogDataStringDecoder.ReadStrings(log.Data)[0];
 
-        return new RegisterOrganization(
+        yield return new RegisterOrganization(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             orgAddress,
@@ -525,7 +687,7 @@ public class LogParser(
         );
     }
 
-    private RegisterGroup CrcV2RegisterGroup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<RegisterGroup> CrcV2RegisterGroup(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event RegisterGroup(address indexed group, address indexed mintPolicy, address indexed treasury, string name, string symbol)
 
@@ -537,11 +699,12 @@ public class LogParser(
         string groupName = stringData[0];
         string groupSymbol = stringData[1];
 
-        return new RegisterGroup(
+        yield return new RegisterGroup(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             groupAddress,
@@ -552,17 +715,18 @@ public class LogParser(
         );
     }
 
-    private RegisterHuman CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<RegisterHuman> CrcV2RegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event RegisterHuman(address indexed human, address indexed inviter)
         string humanAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string inviterAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
 
-        return new RegisterHuman(
+        yield return new RegisterHuman(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             humanAddress,
@@ -570,7 +734,7 @@ public class LogParser(
         );
     }
 
-    private PersonalMint CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<PersonalMint> CrcV2PersonalMint(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event PersonalMint(address indexed to, uint256 amount, uint256 startPeriod, uint256 endPeriod)
         string toAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -585,11 +749,12 @@ public class LogParser(
         var startPeriod = new UInt256(dataSpan.Slice(32, 32), true);
         var endPeriod = new UInt256(dataSpan.Slice(64, 32), true);
 
-        return new PersonalMint(
+        yield return new PersonalMint(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             toAddress,
@@ -599,7 +764,7 @@ public class LogParser(
         );
     }
 
-    private Trust CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<Trust> CrcV2Trust(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event Trust(address indexed user, address indexed canSendTo, uint256 trustLimit)
         string userAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -607,11 +772,12 @@ public class LogParser(
 
         UInt256 limit = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new Trust(
+        yield return new Trust(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             userAddress,
@@ -620,23 +786,25 @@ public class LogParser(
         );
     }
 
-    private Stopped CrcV2Stopped(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<Stopped> CrcV2Stopped(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event Stopped(address indexed who)
         string address = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
-        return new Stopped(
+        yield return new Stopped(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             address
         );
     }
 
-    private Erc20WrapperTransfer Erc20WrapperTransfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<Erc20WrapperTransfer> Erc20WrapperTransfer(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event Erc20WrapperTransfer(address indexed from, address indexed to, uint256 value)
 
@@ -645,11 +813,12 @@ public class LogParser(
 
         UInt256 amount = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new Erc20WrapperTransfer(
+        yield return new Erc20WrapperTransfer(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             log.Address.ToString(true, false),
@@ -659,7 +828,8 @@ public class LogParser(
         );
     }
 
-    private DepositInflationary DepositInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<DepositInflationary> DepositInflationary(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event DepositInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)
         string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -673,11 +843,12 @@ public class LogParser(
         var amount = new UInt256(dataSpan.Slice(0, 32), true);
         var demurraged = new UInt256(dataSpan.Slice(32, 32), true);
 
-        return new DepositInflationary(
+        yield return new DepositInflationary(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             account,
@@ -686,7 +857,8 @@ public class LogParser(
         );
     }
 
-    private WithdrawInflationary WithdrawInflationary(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<WithdrawInflationary> WithdrawInflationary(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event WithdrawInflationary(address indexed account, uint256 amount, uint256 demurragedAmount)
         string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -700,11 +872,12 @@ public class LogParser(
         var amount = new UInt256(dataSpan.Slice(0, 32), true);
         var demurraged = new UInt256(dataSpan.Slice(32, 32), true);
 
-        return new WithdrawInflationary(
+        yield return new WithdrawInflationary(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             account,
@@ -713,7 +886,7 @@ public class LogParser(
         );
     }
 
-    private DepositDemurraged DepositDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<DepositDemurraged> DepositDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event DepositDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)
         string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -727,11 +900,12 @@ public class LogParser(
         var amount = new UInt256(dataSpan.Slice(0, 32), true);
         var inflation = new UInt256(dataSpan.Slice(32, 32), true);
 
-        return new DepositDemurraged(
+        yield return new DepositDemurraged(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             account,
@@ -740,7 +914,8 @@ public class LogParser(
         );
     }
 
-    private WithdrawDemurraged WithdrawDemurraged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<WithdrawDemurraged> WithdrawDemurraged(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)
         string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -754,11 +929,12 @@ public class LogParser(
         var amount = new UInt256(dataSpan.Slice(0, 32), true);
         var inflation = new UInt256(dataSpan.Slice(32, 32), true);
 
-        return new WithdrawDemurraged(
+        yield return new WithdrawDemurraged(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             account,
@@ -767,7 +943,7 @@ public class LogParser(
         );
     }
 
-    private DiscountCost DiscountCost(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<DiscountCost> DiscountCost(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)
         string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -775,11 +951,12 @@ public class LogParser(
 
         UInt256 cost = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new DiscountCost(
+        yield return new DiscountCost(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             account,
@@ -876,7 +1053,7 @@ public class LogParser(
         }
     }
 
-    private FlowEdgesScopeSingleStarted FlowEdgesScopeSingleStarted(
+    private IEnumerable<FlowEdgesScopeSingleStarted> FlowEdgesScopeSingleStarted(
         Block block,
         TxReceipt receipt,
         LogEntry log,
@@ -886,11 +1063,12 @@ public class LogParser(
         UInt256 flowEdgeId = new UInt256(log.Topics[1].Bytes, true);
         UInt256 streamId = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        return new FlowEdgesScopeSingleStarted(
+        yield return new FlowEdgesScopeSingleStarted(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             flowEdgeId,
@@ -898,36 +1076,38 @@ public class LogParser(
         );
     }
 
-    private FlowEdgesScopeLastEnded FlowEdgesScopeLastEnded(
+    private IEnumerable<FlowEdgesScopeLastEnded> FlowEdgesScopeLastEnded(
         Block block,
         TxReceipt receipt,
         LogEntry log,
         int logIndex)
     {
         // event FlowEdgesScopeLastEnded();
-        return new FlowEdgesScopeLastEnded(
+        yield return new FlowEdgesScopeLastEnded(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false)
         );
     }
 
     // event CMGroupCreated(address indexed proxy, address indexed owner, address indexed mintHandler, address redemptionHandler);
-    private CMGroupCreated CMGroupCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CMGroupCreated> CMGroupCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string proxy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string owner = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
         string redemptionHandler = new Address(log.Data.Slice(12)).ToString(true, false);
 
-        return new CMGroupCreated(
+        yield return new CMGroupCreated(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             proxy,
@@ -938,16 +1118,18 @@ public class LogParser(
     }
 
     // event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance);
-    private CirclesBackingDeployed CirclesBackingDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CirclesBackingDeployed> CirclesBackingDeployed(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        return new CirclesBackingDeployed(
+        yield return new CirclesBackingDeployed(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             backer,
@@ -956,16 +1138,17 @@ public class LogParser(
     }
 
     // event LBPDeployed(address indexed circlesBackingInstance, address indexed lbp);
-    private LbpDeployed LbpDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<LbpDeployed> LbpDeployed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         var circlesBackingInstance = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var lbp = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        return new LbpDeployed(
+        yield return new LbpDeployed(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             circlesBackingInstance,
@@ -974,7 +1157,8 @@ public class LogParser(
     }
 
     // event CirclesBackingInitiated(address indexed backer, address indexed circlesBackingInstance, address backingAsset, address personalCirclesAddress);
-    private CirclesBackingInitiated CirclesBackingInitiated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CirclesBackingInitiated> CirclesBackingInitiated(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
@@ -993,11 +1177,12 @@ public class LogParser(
             .Replace("-", "")
             .ToLowerInvariant();
 
-        return new CirclesBackingInitiated(
+        yield return new CirclesBackingInitiated(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             backer,
@@ -1008,7 +1193,8 @@ public class LogParser(
     }
 
     // event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address lbp);
-    private CirclesBackingCompleted CirclesBackingCompleted(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CirclesBackingCompleted> CirclesBackingCompleted(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
@@ -1016,11 +1202,12 @@ public class LogParser(
             ? "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength)
             : new Address(log.Data.Slice(12)).ToString(true, false);
 
-        return new CirclesBackingCompleted(
+        yield return new CirclesBackingCompleted(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             backer,
@@ -1029,17 +1216,18 @@ public class LogParser(
         );
     }
 
-    private Released Released(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<Released> Released(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         var backer = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var circlesBackingInstance = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         var lbp = "0x" + log.Topics[3].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
-        return new Released(
+        yield return new Released(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             backer,
@@ -1048,24 +1236,26 @@ public class LogParser(
         );
     }
 
-    private UpdateMetadataDigest UpdateMetadataDigest(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<UpdateMetadataDigest> UpdateMetadataDigest(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event UpdateMetadataDigest(address indexed avatar, bytes32 metadataDigest)
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         byte[] metadataDigest = log.Data;
 
-        return new UpdateMetadataDigest(
+        yield return new UpdateMetadataDigest(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             avatar,
             metadataDigest);
     }
 
-    private RegisterShortName RegisterShortName(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<RegisterShortName> RegisterShortName(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce)
         string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
@@ -1073,11 +1263,12 @@ public class LogParser(
         UInt256 shortName = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 nonce = new UInt256(log.Data.Slice(32, 32), true);
 
-        return new RegisterShortName(
+        yield return new RegisterShortName(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             avatar,
@@ -1085,33 +1276,35 @@ public class LogParser(
             nonce);
     }
 
-    private CidV0 CidV0(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CidV0> CidV0(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
-        return new CidV0(
+        yield return new CidV0(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             avatar,
             log.Data);
     }
 
-    private CreateVault CreateVault(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CreateVault> CreateVault(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event CreateVault(address indexed group, address indexed vault);
 
         string groupAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string vaultAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
 
-        return new CreateVault(
+        yield return new CreateVault(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             groupAddress,
@@ -1119,7 +1312,8 @@ public class LogParser(
         );
     }
 
-    private CollateralLockedSingle CollateralLockedSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<CollateralLockedSingle> CollateralLockedSingle(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
         // event CollateralLockedSingle(address indexed group, uint256 indexed id, uint256 value, bytes userData);
 
@@ -1132,11 +1326,12 @@ public class LogParser(
         UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
         byte[] userData = log.Data.Slice(32).ToArray();
 
-        return new CollateralLockedSingle(
+        yield return new CollateralLockedSingle(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             groupAddress,
@@ -1201,7 +1396,7 @@ public class LogParser(
         }
     }
 
-    private GroupRedeem GroupRedeem(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IEnumerable<GroupRedeem> GroupRedeem(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         // event GroupRedeem(address indexed group, uint256 indexed id, uint256 value, bytes data);
 
@@ -1211,11 +1406,12 @@ public class LogParser(
         UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
         byte[] dataBytes = log.Data.Slice(32).ToArray();
 
-        return new GroupRedeem(
+        yield return new GroupRedeem(
             block.Number,
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             groupAddress,
@@ -1318,5 +1514,175 @@ public class LogParser(
                 val
             );
         }
+    }
+
+    private static byte[] DecodeBytes(byte[] fullData, int baseOffset, int dynamicOffset)
+    {
+        // dynamicOffset is relative to (baseOffset + 4) from standard solidity ABI
+        // so the actual start is: (baseOffset + 4 + dynamicOffset)
+        int start = baseOffset + 4 + dynamicOffset;
+        if (start + 32 > fullData.Length)
+            return Array.Empty<byte>();
+
+        // first 32 bytes = length
+        ReadOnlySpan<byte> lengthWord = fullData.AsSpan(start, 32);
+        int lengthVal = (int)new BigInteger(lengthWord, isBigEndian: true);
+
+        int dataStart = start + 32;
+        if (dataStart + lengthVal > fullData.Length)
+            return Array.Empty<byte>();
+
+        return fullData[dataStart..(dataStart + lengthVal)];
+    }
+
+    private static UInt256[] DecodeUint256Array(byte[] fullData, int baseOffset, int dynamicOffset)
+    {
+        if (dynamicOffset == 0)
+            return Array.Empty<UInt256>();
+
+        int start = baseOffset + 4 + dynamicOffset;
+        if (start + 32 > fullData.Length)
+            return Array.Empty<UInt256>();
+
+        // array length
+        ReadOnlySpan<byte> lengthWord = fullData.AsSpan(start, 32);
+        int arrayLen = (int)new BigInteger(lengthWord, isBigEndian: true);
+
+        var result = new UInt256[arrayLen];
+        int elementsStart = start + 32;
+        for (int i = 0; i < arrayLen; i++)
+        {
+            int pos = elementsStart + i * 32;
+            if (pos + 32 > fullData.Length) break;
+
+            result[i] = new UInt256(fullData.AsSpan(pos, 32), true);
+        }
+
+        return result;
+    }
+
+    // For address[] in operateFlowMatrix:
+    private static string[] DecodeAddressArray(byte[] fullData, int baseOffset, BigInteger offsetVal)
+    {
+        if (offsetVal == 0)
+            return Array.Empty<string>();
+
+        int start = (int)(baseOffset + 4 + offsetVal);
+        if (start + 32 > fullData.Length)
+            return Array.Empty<string>();
+
+        int lengthVal = (int)new BigInteger(fullData.AsSpan(start, 32), isBigEndian: true);
+        string[] addresses = new string[lengthVal];
+
+        int elementsStart = start + 32;
+        for (int i = 0; i < lengthVal; i++)
+        {
+            int pos = elementsStart + i * 32;
+            if (pos + 32 > fullData.Length) break;
+
+            var word32 = fullData.AsSpan(pos, 32);
+            var last20 = word32[^20..];
+            addresses[i] = "0x" + BitConverter.ToString(last20.ToArray()).Replace("-", "").ToLower();
+        }
+
+        return addresses;
+    }
+
+    // For (uint16,uint192)[] flow edges:
+    private static FlowEdge[] DecodeFlowEdgesArray(byte[] fullData, int baseOffset, BigInteger offsetVal)
+    {
+        if (offsetVal == 0)
+            return Array.Empty<FlowEdge>();
+
+        int start = (int)(baseOffset + 4 + offsetVal);
+        if (start + 32 > fullData.Length)
+            return Array.Empty<FlowEdge>();
+
+        int lengthVal = (int)new BigInteger(fullData.AsSpan(start, 32), isBigEndian: true);
+        var result = new FlowEdge[lengthVal];
+
+        // each element is 2 * 32 bytes => 64 bytes
+        int elementsStart = start + 32;
+        for (int i = 0; i < lengthVal; i++)
+        {
+            int pos = elementsStart + i * 64;
+            if (pos + 64 > fullData.Length) break;
+
+            var word0 = fullData.AsSpan(pos, 32);
+            var word1 = fullData.AsSpan(pos + 32, 32);
+
+            ushort sinkId = (ushort)(new BigInteger(word0, isBigEndian: true) & 0xFFFF);
+            var amount = new UInt256(word1, true);
+
+            result[i] = new FlowEdge(sinkId, amount);
+        }
+
+        return result;
+    }
+
+    // For (uint16 sourceCoordinate, uint16[] flowEdgeIds, bytes data)[] streams:
+    private static StreamStruct[] DecodeStreamsArray(byte[] fullData, int baseOffset, BigInteger offsetVal)
+    {
+        if (offsetVal == 0)
+            return Array.Empty<StreamStruct>();
+
+        int start = (int)(baseOffset + 4 + offsetVal);
+        if (start + 32 > fullData.Length)
+            return Array.Empty<StreamStruct>();
+
+        int lengthVal = (int)new BigInteger(fullData.AsSpan(start, 32), isBigEndian: true);
+        var result = new StreamStruct[lengthVal];
+
+        // each stream is 3 * 32 bytes = 96
+        int elementsStart = start + 32;
+        for (int i = 0; i < lengthVal; i++)
+        {
+            int pos = elementsStart + i * 96;
+            if (pos + 96 > fullData.Length) break;
+
+            // field0 => sourceCoordinate (uint16 in bottom of a 32-byte word)
+            var field0 = fullData.AsSpan(pos, 32);
+            ushort sourceCoord = (ushort)(new BigInteger(field0, isBigEndian: true) & 0xFFFF);
+
+            // field1 => offset for flowEdgeIds
+            var field1 = fullData.AsSpan(pos + 32, 32);
+            int offsetFlowEdgeIds = (int)new BigInteger(field1, isBigEndian: true);
+
+            // field2 => offset for data
+            var field2 = fullData.AsSpan(pos + 64, 32);
+            int offsetData = (int)new BigInteger(field2, isBigEndian: true);
+
+            // decode the array of uint16
+            ushort[] flowEdgeIds = DecodeUint16Array(fullData, baseOffset, offsetFlowEdgeIds);
+            // decode the dynamic bytes
+            byte[] dataBytes = DecodeBytes(fullData, baseOffset, offsetData);
+
+            result[i] = new StreamStruct(sourceCoord, flowEdgeIds, dataBytes);
+        }
+
+        return result;
+    }
+
+    private static ushort[] DecodeUint16Array(byte[] fullData, int baseOffset, int offsetVal)
+    {
+        if (offsetVal == 0) return Array.Empty<ushort>();
+
+        int start = baseOffset + 4 + offsetVal;
+        if (start + 32 > fullData.Length) return Array.Empty<ushort>();
+
+        int lengthVal = (int)new BigInteger(fullData.AsSpan(start, 32), isBigEndian: true);
+        var array = new ushort[lengthVal];
+
+        int elementsStart = start + 32;
+        for (int i = 0; i < lengthVal; i++)
+        {
+            int pos = elementsStart + i * 32;
+            if (pos + 32 > fullData.Length) break;
+
+            var word = new BigInteger(fullData.AsSpan(pos, 32), isBigEndian: true);
+            array[i] = (ushort)(word & 0xFFFF);
+        }
+
+        return array;
     }
 }

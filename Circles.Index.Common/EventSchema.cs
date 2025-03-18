@@ -5,12 +5,12 @@ namespace Circles.Index.Common;
 
 public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, bool IncludeInPrimaryKey = false);
 
-public class EventSchema(string @namespace, string table, byte[] topic, List<EventFieldSchema> columns)
+public class EventSchema(string @namespace, string table, Hash256 topic, List<EventFieldSchema> columns)
 {
     public SqlMigrationItem? SqlMigrationItem { get; set; }
 
     public string Namespace { get; } = @namespace;
-    public byte[] Topic { get; } = topic;
+    public Hash256 Topic { get; } = topic;
     public string Table { get; set; } = table;
     public List<EventFieldSchema> Columns { get; } = columns;
 
@@ -116,7 +116,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
         eventTopic.Append(')');
 
         Hash256 topic = Keccak.Compute(eventTopic.ToString());
-        return new EventSchema(@namespace, eventName, topic.Bytes.ToArray(), columns);
+        return new EventSchema(@namespace, eventName, topic, columns);
     }
 
     private static ValueTypes MapSolidityType(string type)

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Common;
 
@@ -20,7 +21,7 @@ public class DatabaseSchema : IDatabaseSchema
         {
             {
                 ("System", "Block"),
-                new EventSchema("System", "Block", new byte[32], [
+                new EventSchema("System", "Block", new Hash256(new byte[32]), [
                     new("blockNumber", ValueTypes.Int, false),
                     new("timestamp", ValueTypes.Int, true),
                     new("blockHash", ValueTypes.String, false),
@@ -29,7 +30,7 @@ public class DatabaseSchema : IDatabaseSchema
             },
             {
                 ("System", "EventTableHead"),
-                new EventSchema("System", "EventTableHead", new byte[32], [
+                new EventSchema("System", "EventTableHead", new Hash256(new byte[32]), [
                     new ("tableName", ValueTypes.String, false),
                     new ("blockNumber", ValueTypes.Int, false)
                 ])

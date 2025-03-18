@@ -19,7 +19,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema CollateralLockedBatch = new(
         "CrcV2",
         "CollateralLockedBatch",
-        Keccak.Compute("CollateralLockedBatch(address,uint256[],uint256[],bytes)").BytesToArray(),
+        Keccak.Compute("CollateralLockedBatch(address,uint256[],uint256[],bytes)"),
         new List<EventFieldSchema>
         {
             new("blockNumber", ValueTypes.Int, true, true),
@@ -43,7 +43,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema GroupRedeemCollateralReturn = new(
         "CrcV2",
         "GroupRedeemCollateralReturn",
-        Keccak.Compute("GroupRedeemCollateralReturn(address,address,uint256[],uint256[])").BytesToArray(),
+        Keccak.Compute("GroupRedeemCollateralReturn(address,address,uint256[],uint256[])"),
         new List<EventFieldSchema>
         {
             new("blockNumber", ValueTypes.Int, true, true),
@@ -62,7 +62,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema GroupRedeemCollateralBurn = new(
         "CrcV2",
         "GroupRedeemCollateralBurn",
-        Keccak.Compute("GroupRedeemCollateralBurn(address,uint256[],uint256[])").BytesToArray(),
+        Keccak.Compute("GroupRedeemCollateralBurn(address,uint256[],uint256[])"),
         new List<EventFieldSchema>
         {
             new("blockNumber", ValueTypes.Int, true, true),

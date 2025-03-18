@@ -35,8 +35,9 @@ public record AggregationResult(
 /// </summary>
 public static class TransferSummaryAggregator
 {
-    public static AggregationResult AggregateAll(IEnumerable<IIndexedEventV2> events,
-        IDictionary<Address, long> erc20WrapperAddresses)
+    public static AggregationResult AggregateAll(
+        IEnumerable<IIndexedEventV2> events,
+        ISet<Address> inflationaryCirclesAddresses)
     {
         var streamSums = new Dictionary<TransferKey, TransferTotal>();
         var nonStreamSums = new Dictionary<TransferKey, TransferTotal>();
@@ -68,7 +69,7 @@ public static class TransferSummaryAggregator
             else
             {
                 nonStreamEvents.Add(e);
-                AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses);
+                AddNonStreamTransfers(nonStreamSums, e, inflationaryCirclesAddresses);
             }
         }
 
@@ -100,8 +101,10 @@ public static class TransferSummaryAggregator
         }
     }
 
-    static void AddNonStreamTransfers(Dictionary<TransferKey, TransferTotal> sums, IIndexedEventV2 e,
-        IDictionary<Address, long> erc20WrapperAddresses)
+    static void AddNonStreamTransfers(
+        Dictionary<TransferKey, TransferTotal> sums,
+        IIndexedEventV2 e,
+        ISet<Address> inflationaryCirclesAddresses)
     {
         if (e is TransferSingle ts)
         {
@@ -114,8 +117,7 @@ public static class TransferSummaryAggregator
         else if (e is Erc20WrapperTransfer ewt)
         {
             var val = (BigInteger)ewt.Value;
-            if (erc20WrapperAddresses.TryGetValue(new Address(ewt.TokenAddress), out var wrapperType) &&
-                wrapperType == 1)
+            if (inflationaryCirclesAddresses.Contains(new Address(ewt.TokenAddress)))
             {
                 val = (BigInteger)ConversionUtils.CirclesToAttoCircles(
                     ConversionUtils.StaticCirclesToCircles(ConversionUtils.AttoCirclesToCircles(ewt.Value)));

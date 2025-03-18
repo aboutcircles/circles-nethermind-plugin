@@ -1,10 +1,12 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.Safe;
 
@@ -13,6 +15,7 @@ public record ProxyCreation(
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
+    int BatchIndex,
     string TransactionHash,
     string Emitter,
     string Proxy,
@@ -40,6 +43,7 @@ public record AddedOwner(
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
+    int BatchIndex,
     string TransactionHash,
     string Emitter,
     string SafeAddress,
@@ -51,6 +55,7 @@ public record RemovedOwner(
     long Timestamp,
     int TransactionIndex,
     int LogIndex,
+    int BatchIndex,
     string TransactionHash,
     string Emitter,
     string SafeAddress,
@@ -67,7 +72,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema SafeSetup = new(
         "Safe",
         "SafeSetup",
-        Keccak.Compute("SafeSetup(address,address[],uint256,address,address)").BytesToArray(),
+        Keccak.Compute("SafeSetup(address,address[],uint256,address,address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -87,7 +92,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema AddedOwner = new(
         "Safe",
         "AddedOwner",
-        Keccak.Compute("AddedOwner(address)").BytesToArray(),
+        Keccak.Compute("AddedOwner(address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -102,7 +107,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema RemovedOwner = new(
         "Safe",
         "RemovedOwner",
-        Keccak.Compute("RemovedOwner(address)").BytesToArray(),
+        Keccak.Compute("RemovedOwner(address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -114,7 +119,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]
     );
 
-    public static readonly EventSchema V_Safe_Owners = new("V_Safe", "Owners", new byte[32], [
+    public static readonly EventSchema V_Safe_Owners = new("V_Safe", "Owners", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -277,12 +282,41 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
     private readonly Hash256 _addedOwnerTopic = new(DatabaseSchema.AddedOwner.Topic);
     private readonly Hash256 _removedOwnerTopic = new(DatabaseSchema.RemovedOwner.Topic);
 
-    public IEnumerable<IIndexEvent> ParseTransaction(
+    public Task Init(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        logger.Info("Caching ProxyCreation events");
+
+        var selectSafeProxyCreation = new Select(
+            "Safe",
+            "ProxyCreation",
+            ["proxy"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectSafeProxyCreation.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} ProxyCreation events");
+
+        foreach (var row in rows)
+        {
+            KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
+        }
+
+        logger.Info("Caching ProxyCreation events done");
+
+        return Task.CompletedTask;
+    }
+
+    public IEnumerable<Either<IIndexEvent, IParsedCallData>> ParseTransaction(
         Block block,
-        int transactionIndex,
         Transaction transaction,
         TxReceipt receipt,
-        IReadOnlyList<IIndexEvent> events)
+        IIndexEvent[] events)
     {
         // Depending on the log index, the SafeSetup or Added/RemovedOwner event might be emitted before the ProxyCreation event.
         // In that case, we need to wait for the ProxyCreation event to be parsed before we can parse the SafeSetup event.
@@ -310,7 +344,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                     {
                         if (!eventsHashSet.Contains(safeSetupEvent))
                         {
-                            yield return safeSetupEvent;
+                            yield return Either<IIndexEvent, IParsedCallData>.FromLeft(safeSetupEvent);
                         }
                     }
                 }
@@ -319,7 +353,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                     var addedOwner = AddedOwner(block, transaction, receipt, log, i);
                     if (!eventsHashSet.Contains(addedOwner))
                     {
-                        yield return addedOwner;
+                        yield return Either<IIndexEvent, IParsedCallData>.FromLeft(addedOwner);
                     }
                 }
                 else if (topic == _removedOwnerTopic)
@@ -327,7 +361,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                     var removedOwner = RemovedOwner(block, transaction, receipt, log, i);
                     if (!eventsHashSet.Contains(removedOwner))
                     {
-                        yield return removedOwner;
+                        yield return Either<IIndexEvent, IParsedCallData>.FromLeft(removedOwner);
                     }
                 }
             }
@@ -411,6 +445,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
             (long)block.Timestamp,
             receipt.Index,
             logIndex,
+            0,
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             proxy,
@@ -485,6 +520,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                 (long)block.Timestamp,
                 receipt.Index,
                 logIndex,
+                0,
                 receipt.TxHash!.ToString(),
                 safeAddr,
                 safeAddr,
@@ -502,6 +538,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                 (long)block.Timestamp,
                 receipt.Index,
                 logIndex,
+                0,
                 receipt.TxHash!.ToString(),
                 safeAddr,
                 safeAddr,
@@ -531,6 +568,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                 (long)block.Timestamp,
                 receipt.Index,
                 logIndex,
+                0,
                 receipt.TxHash!.ToString(),
                 safeAddr,
                 safeAddr,
@@ -548,6 +586,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
                 (long)block.Timestamp,
                 receipt.Index,
                 logIndex,
+                0,
                 receipt.TxHash!.ToString(),
                 safeAddr,
                 safeAddr,

@@ -32,7 +32,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
 
     public static readonly EventSchema TransferSingle = new("CrcV2", "TransferSingle",
-        Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)").BytesToArray(), [
+        Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -51,7 +51,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             "CrcV2", "event ApprovalForAll(address indexed account, address indexed operator, bool approved)");
 
     public static readonly EventSchema TransferBatch = new("CrcV2", "TransferBatch",
-        Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])").BytesToArray(),
+        Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -68,7 +68,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema Erc20WrapperTransfer = new("CrcV2", "Erc20WrapperTransfer",
-        Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),
+        Keccak.Compute("Transfer(address,address,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -97,7 +97,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
 
     public static readonly EventSchema StreamCompleted = new("CrcV2", "StreamCompleted",
-        Keccak.Compute("StreamCompleted(address,address,address,uint256[],uint256[])").BytesToArray(),
+        Keccak.Compute("StreamCompleted(address,address,address,uint256[],uint256[])"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -116,7 +116,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema GroupMint = new(
         "CrcV2",
         "GroupMint",
-        Keccak.Compute("GroupMint(address,address,address,uint256[],uint256[])").BytesToArray(),
+        Keccak.Compute("GroupMint(address,address,address,uint256[],uint256[])"),
         [
             new EventFieldSchema("blockNumber", ValueTypes.Int, true, true),
             new EventFieldSchema("timestamp", ValueTypes.Int, true),
@@ -139,7 +139,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema FlowEdgesScopeLastEnded = new(
         "CrcV2",
         "FlowEdgesScopeLastEnded",
-        Keccak.Compute("FlowEdgesScopeLastEnded()").BytesToArray(),
+        Keccak.Compute("FlowEdgesScopeLastEnded()"),
         [
             new EventFieldSchema("blockNumber", ValueTypes.Int, true, true),
             new EventFieldSchema("timestamp", ValueTypes.Int, true),
@@ -150,7 +150,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     );
 
     public static readonly EventSchema TransferSummary = new("CrcV2", "TransferSummary",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -162,6 +162,20 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("amount", ValueTypes.BigInt, false),
             new("events", ValueTypes.Json, false)
         ]);
+
+    // public static readonly EventSchema TransferData = new("CrcV2", "TransferData",
+    //     new byte[32],
+    //     [
+    //         new("blockNumber", ValueTypes.Int, true, true),
+    //         new("timestamp", ValueTypes.Int, true),
+    //         new("transactionIndex", ValueTypes.Int, true, true),
+    //         new("logIndex", ValueTypes.Int, true, true),
+    //         new("transactionHash", ValueTypes.String, true),
+    //         new("from", ValueTypes.Address, true),
+    //         new("to", ValueTypes.Address, true),
+    //         new("amount", ValueTypes.BigInt, false),
+    //         new("events", ValueTypes.Json, false)
+    //     ]);
 
     // Constructor that uses the shared helper AddMappings<>() 
     // to register each event's table and property map in one pass.

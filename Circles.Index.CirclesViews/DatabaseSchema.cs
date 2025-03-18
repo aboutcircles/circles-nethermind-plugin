@@ -1,4 +1,5 @@
 using Circles.Index.Common;
+using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesViews;
 
@@ -12,7 +13,7 @@ public class DatabaseSchema : IDatabaseSchema
      *
      */
     public static readonly EventSchema V_CrcV2_GroupVaultBalancesByToken = new("V_CrcV2", "GroupVaultBalancesByToken",
-        new byte[32], [
+        new Hash256(new byte[32]), [
             new("vault", ValueTypes.Address, true),
             new("id", ValueTypes.BigInt, true),
             new("balance", ValueTypes.BigInt, true),
@@ -88,7 +89,7 @@ public class DatabaseSchema : IDatabaseSchema
     };
 
 
-    public static readonly EventSchema V_CrcV2_TotalSupply = new("V_CrcV2", "TotalSupply", new byte[32], [
+    public static readonly EventSchema V_CrcV2_TotalSupply = new("V_CrcV2", "TotalSupply", new Hash256(new byte[32]), [
         new("tokenAddress", ValueTypes.Address, true),
         new("tokenId", ValueTypes.BigInt, true),
         new("totalSupply", ValueTypes.BigInt, false),
@@ -131,7 +132,7 @@ public class DatabaseSchema : IDatabaseSchema
          ")
     };
 
-    public static readonly EventSchema V_CrcV1_TotalSupply = new("V_CrcV1", "TotalSupply", new byte[32], [
+    public static readonly EventSchema V_CrcV1_TotalSupply = new("V_CrcV1", "TotalSupply", new Hash256(new byte[32]), [
         new("tokenAddress", ValueTypes.Address, true),
         new("user", ValueTypes.Address, true),
         new("totalSupply", ValueTypes.BigInt, false),
@@ -160,7 +161,7 @@ public class DatabaseSchema : IDatabaseSchema
        join ""CrcV1_Signup"" s on ""s"".""token"" = t.""tokenAddress"";")
     };
 
-    public static readonly EventSchema V_CrcV1_TrustRelations = new("V_CrcV1", "TrustRelations", new byte[32], [
+    public static readonly EventSchema V_CrcV1_TrustRelations = new("V_CrcV1", "TrustRelations", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -201,7 +202,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_CrcV1_Avatars = new("V_CrcV1", "Avatars", new byte[32], [
+    public static readonly EventSchema V_CrcV1_Avatars = new("V_CrcV1", "Avatars", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -240,7 +241,7 @@ public class DatabaseSchema : IDatabaseSchema
     /// All Circles v1 hub transfers + personal minting
     /// </summary>
     public static readonly EventSchema V_CrcV1_Transfers = new("V_CrcV1", "Transfers",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),
@@ -299,7 +300,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_CrcV2_Avatars = new("V_CrcV2", "Avatars", new byte[32], [
+    public static readonly EventSchema V_CrcV2_Avatars = new("V_CrcV2", "Avatars", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -374,7 +375,7 @@ public class DatabaseSchema : IDatabaseSchema
     };
 
     public static readonly EventSchema V_CrcV2_Transfers = new("V_CrcV2", "Transfers",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),
@@ -460,7 +461,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_CrcV2_GroupMemberships = new("V_CrcV2", "GroupMemberships", new byte[32], [
+    public static readonly EventSchema V_CrcV2_GroupMemberships = new("V_CrcV2", "GroupMemberships", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -490,7 +491,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_CrcV2_TrustRelations = new("V_CrcV2", "TrustRelations", new byte[32], [
+    public static readonly EventSchema V_CrcV2_TrustRelations = new("V_CrcV2", "TrustRelations", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -532,7 +533,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_Crc_TrustRelations = new("V_Crc", "TrustRelations", new byte[32], [
+    public static readonly EventSchema V_Crc_TrustRelations = new("V_Crc", "TrustRelations", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -576,7 +577,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_Crc_Avatars = new("V_Crc", "Avatars", new byte[32], [
+    public static readonly EventSchema V_Crc_Avatars = new("V_Crc", "Avatars", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -627,7 +628,7 @@ public class DatabaseSchema : IDatabaseSchema
     };
 
     public static readonly EventSchema V_Crc_Transfers = new("V_Crc", "Transfers",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),
@@ -700,7 +701,7 @@ public class DatabaseSchema : IDatabaseSchema
     };
 
     public static readonly EventSchema V_Crc_TransferSummary = new("V_Crc", "TransferSummary",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("blockNumber", ValueTypes.Int, true),
             new("timestamp", ValueTypes.Int, true),
@@ -738,7 +739,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_CrcV2_Groups = new("V_CrcV2", "Groups", new byte[32], [
+    public static readonly EventSchema V_CrcV2_Groups = new("V_CrcV2", "Groups", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -802,7 +803,7 @@ public class DatabaseSchema : IDatabaseSchema
     };
 
     public static readonly EventSchema V_CrcV1_BalancesByAccountAndToken = new("V_CrcV1", "BalancesByAccountAndToken",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("account", ValueTypes.Address, true),
             new("tokenId", ValueTypes.String, true),
@@ -849,7 +850,7 @@ public class DatabaseSchema : IDatabaseSchema
 
 
     public static readonly EventSchema V_CrcV2_BalancesByAccountAndToken = new("V_CrcV2", "BalancesByAccountAndToken",
-        new byte[32],
+        new Hash256(new byte[32]),
         [
             new("account", ValueTypes.Address, true),
             new("tokenId", ValueTypes.String, true),
@@ -928,7 +929,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_Crc_Tokens = new("V_Crc", "Tokens", new byte[32], [
+    public static readonly EventSchema V_Crc_Tokens = new("V_Crc", "Tokens", new Hash256(new byte[32]), [
         new("blockNumber", ValueTypes.Int, true),
         new("timestamp", ValueTypes.Int, true),
         new("transactionIndex", ValueTypes.Int, true),
@@ -981,7 +982,7 @@ public class DatabaseSchema : IDatabaseSchema
         ")
     };
 
-    public static readonly EventSchema V_Crc_Stats = new("V_Crc", "Stats", new byte[32], [
+    public static readonly EventSchema V_Crc_Stats = new("V_Crc", "Stats", new Hash256(new byte[32]), [
         new("measure", ValueTypes.String, false),
         new("value", ValueTypes.Int, false)
     ])

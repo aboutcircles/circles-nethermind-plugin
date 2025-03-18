@@ -1,19 +1,13 @@
 ﻿using System.Collections.Concurrent;
-using System.Collections.Immutable;
-using Circles.Index.CirclesV2;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
-using Circles.Index.Query;
 using Circles.Index.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Npgsql;
-using DatabaseSchema = Circles.Index.CirclesV2.Hub.DatabaseSchema;
 
 namespace Circles.Index;
 
@@ -45,7 +39,7 @@ public class Plugin : INethermindPlugin
         {
             new Common.DatabaseSchema(),
             new CirclesV1.DatabaseSchema(),
-            new DatabaseSchema(),
+            new CirclesV2.Hub.DatabaseSchema(),
             new CirclesV2.NameRegistry.DatabaseSchema(),
             new CirclesV2.StandardTreasury.DatabaseSchema(),
             new CirclesViews.DatabaseSchema()
@@ -81,23 +75,31 @@ public class Plugin : INethermindPlugin
             databaseSchema.EventDtoTableMap,
             settings.EventBufferSize);
 
-        InitCaches(pluginLogger, database, settings);
+        var v1LogParser = new CirclesV1.LogParser(settings.CirclesV1HubAddress);
+        await v1LogParser.Init(pluginLogger, database, settings);
+
+        var v2LogParser = new CirclesV2.LogParser(
+            settings.CirclesV2HubAddress,
+            settings.CirclesErc20LiftAddress,
+            settings.CirclesNameRegistryAddress,
+            settings.CirclesStandardTreasuryAddress,
+            settings.CMGroupDeployers,
+            settings.CirclesLBPFactoryAddress);
+
+        await v2LogParser.Init(pluginLogger, database, settings);
 
         var logParsers = new List<ILogParser>
         {
-            new CirclesV1.LogParser(settings.CirclesV1HubAddress),
-            new LogParser(
-                settings.CirclesV2HubAddress,
-                settings.CirclesErc20LiftAddress,
-                settings.CirclesNameRegistryAddress,
-                settings.CirclesStandardTreasuryAddress,
-                settings.CMGroupDeployers!.ToImmutableHashSet(),
-                settings.CirclesLBPFactoryAddress)
+            v1LogParser,
+            v2LogParser
         };
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
-            logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
+            var safeLogParser = new Safe.LogParser(settings.SafeProxyFactoryAddresses);
+            await safeLogParser.Init(pluginLogger, database, settings);
+
+            logParsers.Add(safeLogParser);
         }
 
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
@@ -148,7 +150,7 @@ public class Plugin : INethermindPlugin
         foreach (var databaseSchemaTable in database.Schema.Tables)
         {
             pluginLogger.Info(
-                $" * Topic: {databaseSchemaTable.Value.Topic.ToHexString()}; Name: {databaseSchemaTable.Key.Namespace}_{databaseSchemaTable.Key.Table}");
+                $" * Topic: {databaseSchemaTable.Value.Topic}; Name: {databaseSchemaTable.Key.Namespace}_{databaseSchemaTable.Key.Table}");
         }
 
         NpgsqlConnectionStringBuilder connectionStringBuilder = new(settings.IndexDbConnectionString);
@@ -173,97 +175,17 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
-        pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployers);
+        pluginLogger.Info(" * V2 CMGroup Deployer address: " +
+                          string.Join(", ", settings.CMGroupDeployers.Select(o => o.ToString(true, false))));
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
-        pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
-            settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
-        // pluginLogger.Info("Start index from: " + settings.StartBlock);
+        pluginLogger.Info(" * Safe Proxy Factory addresses: " +
+                          string.Join(", ", settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
+        pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         if (!string.IsNullOrWhiteSpace(settings.ExternalPathfinderUrl))
         {
             pluginLogger.Info("Using external pathfinder");
             pluginLogger.Info("* pathfinder url: " + settings.ExternalPathfinderUrl);
-        }
-    }
-
-    private static void InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
-    {
-        logger.Info("Caching Circles token addresses");
-
-        var selectSignups = new Select(
-            "CrcV1",
-            "Signup",
-            ["token"],
-            [],
-            [],
-            int.MaxValue,
-            false,
-            int.MaxValue);
-
-        var sql = selectSignups.ToSql(database);
-        var result = database.Select(sql);
-        var rows = result.Rows.ToArray();
-
-        logger.Info($" * Found {rows.Length} Circles token addresses");
-
-        foreach (var row in rows)
-        {
-            CirclesV1.LogParser.CirclesTokenAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
-        }
-
-        logger.Info("Caching Circles token addresses done");
-
-        logger.Info("Caching erc20 wrapper addresses");
-
-        var selectErc20WrapperDeployed = new Select(
-            "CrcV2",
-            "ERC20WrapperDeployed",
-            ["erc20Wrapper", "circlesType"],
-            [],
-            [],
-            int.MaxValue,
-            false,
-            int.MaxValue);
-
-        sql = selectErc20WrapperDeployed.ToSql(database);
-        result = database.Select(sql);
-        rows = result.Rows.ToArray();
-
-        logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
-
-        foreach (var row in rows)
-        {
-            LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
-        }
-
-        logger.Info("Caching erc20 wrapper addresses done");
-
-        if (settings.SafeProxyFactoryAddresses.Length > 0)
-        {
-            logger.Info("Caching ProxyCreation events");
-
-            var selectSafeProxyCreation = new Select(
-                "Safe",
-                "ProxyCreation",
-                ["proxy"],
-                [],
-                [],
-                int.MaxValue,
-                false,
-                int.MaxValue);
-
-            sql = selectSafeProxyCreation.ToSql(database);
-            result = database.Select(sql);
-            rows = result.Rows.ToArray();
-
-            logger.Info($" * Found {rows.Length} ProxyCreation events");
-
-            foreach (var row in rows)
-            {
-                Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
-            }
-
-            logger.Info("Caching ProxyCreation events done");
         }
     }
 
@@ -333,7 +255,7 @@ public class Plugin : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
         if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
         {
@@ -343,8 +265,7 @@ public class Plugin : INethermindPlugin
         var (getFromAPi, _) = _indexerContext.NethermindApi.ForRpc;
 
         CirclesRpcModule circlesRpcModule = new(_indexerContext);
-        getFromAPi.RpcModuleProvider?.Register(
-            new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
+        getFromAPi.RpcModuleProvider?.Register(new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
         if (getFromAPi.SubscriptionFactory == null)
         {
@@ -354,6 +275,8 @@ public class Plugin : INethermindPlugin
         getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
             (client, param) => new CirclesSubscription(client, _indexerContext, param));
+
+        return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync()
