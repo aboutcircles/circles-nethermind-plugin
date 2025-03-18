@@ -53,7 +53,7 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
         }
 
-        if (settings.CMGroupDeployer != null)
+        if (settings.CMGroupDeployer.Length > 0)
         {
             schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
         }
@@ -93,9 +93,9 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress));
         }
 
-        if (settings.CMGroupDeployer != null)
+        if (settings.CMGroupDeployer.Length > 0)
         {
-            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer));
+            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToHashSet()));
         }
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
