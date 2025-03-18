@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Immutable;
 using System.Numerics;
 using System.Text.Json;
@@ -11,6 +10,7 @@ using Circles.Index.CirclesV2.Decoders;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -315,8 +315,15 @@ public class LogParser : ILogParser
 
         if (cmGroupDeployerAddresses.Length > 0)
         {
+            var cmGroupCreatedTopicNew =
+                Keccak.Compute("CMGroupCreated(address,address,address,address,address)");
+
+            var cmGroupCreatedTopicOld =
+                Keccak.Compute("CMGroupCreated(address,address,address,address)");
+
             var cmGroupDeployer = new KnownContract("CrcV2", "CmGroupDeployer", cmGroupDeployerAddresses, [
-                (CMGroupDeployer.DatabaseSchema.CMGroupCreated.Topic, CMGroupCreated)
+                (cmGroupCreatedTopicOld, CMGroupCreated),
+                (cmGroupCreatedTopicNew, CMGroupCreated)
             ]);
             CmGroupDeployerContract = cmGroupDeployer;
             _knownContracts = _knownContracts.Add(CmGroupDeployerContract);
@@ -1100,7 +1107,9 @@ public class LogParser : ILogParser
         string proxy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string owner = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
-        string redemptionHandler = new Address(log.Data.Slice(12)).ToString(true, false);
+        string redemptionHandler = new Address(log.Data.Slice(12, 20)).ToString(true, false);
+        string liquidityProvider =
+            log.Data.Length == 64 ? new Address(log.Data.Slice(44, 20)).ToString(true, false) : "";
 
         yield return new CMGroupCreated(
             block.Number,
@@ -1113,7 +1122,8 @@ public class LogParser : ILogParser
             proxy,
             owner,
             mintHandler,
-            redemptionHandler
+            redemptionHandler,
+            liquidityProvider
         );
     }
 
