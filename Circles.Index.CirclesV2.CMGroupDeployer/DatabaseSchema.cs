@@ -39,7 +39,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     }
 }
 
-public class LogParser(Address deployerAddress) : ILogParser
+public class LogParser(HashSet<Address> deployerAddress) : ILogParser
 {
     private readonly Hash256 _cmGroupCreatedTopic = new(DatabaseSchema.CMGroupCreated.Topic);
 
@@ -60,8 +60,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         LogEntry log,
         int logIndex)
     {
-        if (log.Topics.Length == 0
-            || log.Address != deployerAddress)
+        if (log.Topics.Length == 0 || !deployerAddress.Contains(log.Address))
         {
             yield break;
         }
