@@ -60,13 +60,14 @@ app.MapGet("/findPath", async (
 ) =>
 {
     // Auxiliary method to create a filtered balance graph
-    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph, List<string> fromTokens, string source, List<string>? toTokens = null, string? sink = null)
+    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph)
     {
-        var filteredGraph = new BalanceGraph(fromTokens, source, toTokens, sink);
+        var filteredGraph = new BalanceGraph();
         foreach (var avatarNode in originalGraph.AvatarNodes.Values)
         {
             filteredGraph.AddAvatar(avatarNode.Address);
         }
+
         foreach (var balanceNode in originalGraph.BalanceNodes.Values)
         {
             filteredGraph.AddBalance(
@@ -75,21 +76,24 @@ app.MapGet("/findPath", async (
                 balanceNode.Amount
             );
         }
+
         return filteredGraph;
     }
 
     // Auxiliary method to create a filtered trust graph
-    static TrustGraph CreateFilteredTrustGraph(TrustGraph originalGraph, List<string> toTokens, string sink)
+    static TrustGraph CreateFilteredTrustGraph(TrustGraph originalGraph, string sink)
     {
-        var filteredGraph = new TrustGraph(toTokens, sink);
+        var filteredGraph = new TrustGraph();
         foreach (var avatarNode in originalGraph.AvatarNodes.Values)
         {
             filteredGraph.AddAvatar(avatarNode.Address);
         }
+
         foreach (var edge in originalGraph.Edges)
         {
             filteredGraph.AddTrustEdge(edge.From, edge.To);
         }
+
         return filteredGraph;
     }
 
@@ -111,47 +115,39 @@ app.MapGet("/findPath", async (
 
         // Use withWrap parameter to select the appropriate graph
         bool useWrappedTokens = withWrap ?? false; // Default to false (non-wrapped) if not specified
-        
+
         // Select the appropriate graphs based on withWrap parameter
-        var balanceGraph = useWrappedTokens 
-            ? stateContainer.WrappedBalanceGraph 
+        var balanceGraph = useWrappedTokens
+            ? stateContainer.WrappedBalanceGraph
             : stateContainer.BalanceGraph;
-        
-        var trustGraph = useWrappedTokens 
-            ? stateContainer.WrappedTrustGraph 
+
+        var trustGraph = useWrappedTokens
+            ? stateContainer.WrappedTrustGraph
             : stateContainer.TrustGraph;
 
         if (balanceGraph == null || trustGraph == null)
             return Results.BadRequest($"Requested graphs (withWrap={useWrappedTokens}) are not loaded yet.");
 
         var graphFactory = new GraphFactory();
-        var pathfinder = new V2Pathfinder(graphFactory);
-        
+        var capacityGraph = graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
+        var pathfinder = new V2Pathfinder(trustGraph, capacityGraph, graphFactory);
+
         var request = new FlowRequest
         {
             Source = from.ToLower(),
             Sink = to.ToLower(),
-            TargetFlow = amount,
-            FromTokens = fromTokens?.ToList(),
-            ToTokens = toTokens?.ToList(),
-            WithWrap = withWrap
+            TargetFlow = amount
         };
 
         // Only create filtered graphs if filters are specified
-        var filteredBalanceGraph = ((fromTokens != null && fromTokens.Length > 0) || (request.Source == request.Sink))
-            ? CreateFilteredBalanceGraph(
-                balanceGraph, 
-                request.FromTokens!, 
-                request.Source, 
-                request.ToTokens, 
-                request.Sink)
-            : balanceGraph;
+        var filteredBalanceGraph = balanceGraph;
 
         var filteredTrustGraph = (toTokens != null && toTokens.Length > 0)
-            ? CreateFilteredTrustGraph(trustGraph, request.ToTokens!, request.Sink)
+            ? CreateFilteredTrustGraph(trustGraph, request.Sink)
             : trustGraph;
 
-        var pathResult = pathfinder.ComputeMaxFlowWithData(filteredBalanceGraph, filteredTrustGraph, request, targetFlow);
+        var pathResult =
+            pathfinder.ComputeMaxFlow( /*filteredBalanceGraph, filteredTrustGraph,*/ request /*, targetFlow*/);
 
         return Results.Ok(pathResult);
     }

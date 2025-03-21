@@ -1,255 +1,116 @@
+using System.Diagnostics;
 using System.Numerics;
-using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
 
 namespace Circles.Pathfinder;
 
-public class V2Pathfinder : IPathfinder
+public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, GraphFactory graphFactory)
 {
-    private readonly LoadGraph? _loadGraph;
-    private readonly GraphFactory _graphFactory;
-
-    public V2Pathfinder(GraphFactory graphFactory)
-    {
-        _graphFactory = graphFactory;
-    }
-
-    public V2Pathfinder(LoadGraph loadGraph, GraphFactory graphFactory)
-        : this(graphFactory)
-    {
-        _loadGraph = loadGraph;
-    }
-
     public async Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
     {
-        if (string.IsNullOrEmpty(request.Source) || string.IsNullOrEmpty(request.Sink))
-        {
-            throw new ArgumentException("Source and Sink must be provided.");
-        }
+        var source = request.Source?.ToLowerInvariant() ?? throw new ArgumentException("Source must be provided.");
+        var sink = request.Sink?.ToLowerInvariant() ?? throw new ArgumentException("Sink must be provided.");
+        var targetFlowStr = request.TargetFlow ?? throw new ArgumentException("TargetFlow must be provided.");
 
-        if (!BigInteger.TryParse(request.TargetFlow, out var targetFlow))
+        if (!BigInteger.TryParse(targetFlowStr, out var targetFlow))
         {
             throw new ArgumentException("TargetFlow must be a valid integer.");
         }
 
-        if (_loadGraph == null || _graphFactory == null)
-        {
-            throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
-        }
+        // Build the flow graph
+        var flowGraph = graphFactory.CreateFlowGraph(capacityGraph);
 
-        Console.WriteLine($"Requests Source: { request.Source?.ToLower()}");
-        Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
-        // Load Trust and Balance Graphs
-        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph, request);
-        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph, request);
+        // Check existence
+        if (!trustGraph.Nodes.ContainsKey(source))
+            throw new ArgumentException($"Source node '{source}' does not exist in the graph.");
+        if (!trustGraph.Nodes.ContainsKey(sink))
+            throw new ArgumentException($"Sink node '{sink}' does not exist in the graph.");
 
-        
-        return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
-    }
+        // Run max flow
+        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
 
-    public MaxFlowResponse ComputeMaxFlowWithData(
-        BalanceGraph balanceGraph,
-        TrustGraph trustGraph,
-        FlowRequest request,
-        BigInteger targetFlow)
-    {
-        var source = request.Source?.ToLower() ?? "";
-        var sink = request.Sink?.ToLower() ?? "";
-        
-        // Set up virtual sink if needed
-        trustGraph.SetupVirtualSinkIfNeeded(source);
-        var virtualSink = trustGraph.GetVirtualSinkAddress();
+        // Now decompose the final flows into disjoint paths
+        var allPaths = flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Zero);
 
-        // Check if virtual sink exists but has no outgoing edges
-        if (virtualSink != null && !trustGraph.HasAnyOutgoingEdges(virtualSink))
-        {
-            // Return empty response with zero flow
-            return new MaxFlowResponse("0", new List<TransferPathStep>());
-        }
-
-        // Use virtual sink if it exists
-        var effectiveSink = virtualSink ?? sink;
-
-        // Create Capacity Graph
-        var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
-
-        // Create Flow Graph
-        var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
-
-        // Validate Source and Sink
-        if (!flowGraph.Nodes.ContainsKey(source))
-        {
-            throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
-        }
-
-        if (!flowGraph.Nodes.ContainsKey(effectiveSink))
-        {
-            throw new ArgumentException($"Sink node '{(virtualSink != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
-        }
-
-        // Compute Max Flow
-        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, targetFlow);
-
-        // Extract Paths with Flow
-        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, BigInteger.Parse("0"));
-
-        // If using virtual sink, replace it with the actual sink in the paths
-        if (virtualSink != null)
-        {
-            pathsWithFlow = pathsWithFlow.Select(path =>
-                path.Select(edge => new FlowEdge(
-                    edge.From == virtualSink ? sink : edge.From,
-                    edge.To == virtualSink ? sink : edge.To,
-                    edge.Token,
-                    edge.InitialCapacity)
-                {
-                    Flow = edge.Flow,
-                    CurrentCapacity = edge.CurrentCapacity
-                }).ToList()
-            ).ToList();
-        }
-
-        // Collapse balance nodes to get a collapsed graph
-        var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
-
-        // Create transfer steps from the collapsed graph
+        // Convert each path into "collapsed" edges that skip balance nodes
         var transferSteps = new List<TransferPathStep>();
-
-        foreach (var edge in collapsedGraph.Edges)
+        foreach (var pathEdges in allPaths)
         {
-            // For each edge, create a transfer step
-            if (edge.Flow == BigInteger.Zero)
+            // Collapse any intermediate "balance nodes" in this single path
+            var collapsedEdges = CollapseBalanceNodesInPath(pathEdges);
+
+            // Turn each collapsed edge into a TransferPathStep
+            foreach (var e in collapsedEdges)
             {
-                // Filter reverse edges
-                continue;
+                transferSteps.Add(new TransferPathStep
+                {
+                    From = e.From,
+                    To = e.To,
+                    TokenOwner = e.Token,
+                    Value = e.Flow.ToString()
+                });
             }
-            
-            transferSteps.Add(new TransferPathStep
-            {
-                From = edge.From,
-                To = edge.To,
-                TokenOwner = edge.Token,
-                Value = edge.Flow.ToString()
-            });
         }
 
-        // Prepare the response
-        var response = new MaxFlowResponse(maxFlow.ToString(), transferSteps);
+        // Build final response
+        var response = new MaxFlowResponse(
+            maxFlow.ToString(),
+            transferSteps
+        );
 
         return response;
     }
 
     /// <summary>
-    /// Collapses balance nodes in the paths and returns a collapsed flow graph.
+    /// Collapse consecutive edges that pass through a single balance node in a single path.
+    /// For example, if path is [A -> bal-XYZ, bal-XYZ -> B], we merge them into [A -> B].
+    /// The returned edge has the same Flow, and token = second edge's token (or however you prefer).
     /// </summary>
-    /// <param name="pathsWithFlow">The list of paths with flow.</param>
-    /// <returns>A FlowGraph with balance nodes collapsed.</returns>
-    private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
+    private List<FlowEdge> CollapseBalanceNodesInPath(List<FlowEdge> pathEdges)
     {
-        var collapsedGraph = new FlowGraph();
-
-        // 1. Collect all avatar nodes
-        var avatars = new HashSet<string>();
-        pathsWithFlow.ForEach(o => o.ForEach(p =>
+        var result = new List<FlowEdge>();
+        int i = 0;
+        while (i < pathEdges.Count)
         {
-            if (!IsBalanceNode(p.From))
+            var current = pathEdges[i];
+            // If the current edge’s "to" is a balance node, and it is immediately followed
+            // by an edge from that same balance node to something else, we can merge them.
+            if (i + 1 < pathEdges.Count)
             {
-                avatars.Add(p.From);
-            }
-
-            if (!IsBalanceNode(p.To))
-            {
-                avatars.Add(p.To);
-            }
-        }));
-        foreach (var avatar in avatars)
-        {
-            collapsedGraph.AddAvatar(avatar);
-        }
-
-        // 2. Remove all balance nodes, fuse the ends together, and add that edge to the new flow graph
-        pathsWithFlow.ForEach(o =>
-        {
-            for (int i = 0; i < o.Count; i++)
-            {
-                var currentEdge = o[i];
-                var nextEdge = i < o.Count - 1 ? o[i + 1] : null;
-
-                if (IsBalanceNode(currentEdge.To) && nextEdge != null && nextEdge.From == currentEdge.To)
+                var next = pathEdges[i + 1];
+                bool canMerge = IsBalanceNode(current.To) && (current.To == next.From);
+                if (canMerge)
                 {
-                    // We are at a balance node, so we need to collapse it by merging currentEdge and nextEdge
+                    // Flow on this path is uniform, so they have the same "pathFlow." 
+                    // We’ll just keep the same flow as either edge (they’re identical).
+                    BigInteger mergedFlow = current.Flow; 
+                    // Token can be from 'next' if you want. Or from 'current' if that’s your rule.
+                    // Typically you'd keep 'next.Token' if the second edge is the "real" token movement:
+                    string token = next.Token; 
 
-                    // The flow through the balance node is limited by both the incoming and outgoing flows
-                    var mergedFlow = BigInteger.Min(currentEdge.Flow, nextEdge.Flow);
-
-                    var mergedEdge = new FlowEdge(
-                        currentEdge.From,
-                        nextEdge.To,
-                        nextEdge.Token,
-                        currentEdge.CurrentCapacity
-                    )
+                    // Create a merged edge from current.From -> next.To
+                    var mergedEdge = new FlowEdge(current.From, next.To, token, BigInteger.Zero)
                     {
-                        Flow = mergedFlow,
-                        ReverseEdge = nextEdge.ReverseEdge
+                        Flow = mergedFlow
                     };
-                    try
-                    {
-                        collapsedGraph.AddFlowEdge(collapsedGraph, mergedEdge);
-                        i++; // Skip the nextEdge since we have merged it
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message);
+                    result.Add(mergedEdge);
 
-                        // Log the stack trace
-                        Console.WriteLine(e.StackTrace);
-
-                        // Unpack the inner exception(s) recursively
-                        while (e.InnerException != null)
-                        {
-                            e = e.InnerException;
-                            Console.WriteLine(e.Message);
-                            Console.WriteLine(e.StackTrace);
-                        }
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        // If not a balance node, add the current edge to the collapsed graph
-                        collapsedGraph.AddFlowEdge(collapsedGraph, currentEdge);
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message);
-
-                        // Log the stack trace
-                        Console.WriteLine(e.StackTrace);
-
-                        // Unpack the inner exception(s) recursively
-                        while (e.InnerException != null)
-                        {
-                            e = e.InnerException;
-                            Console.WriteLine(e.Message);
-                            Console.WriteLine(e.StackTrace);
-                        }
-                    }
+                    i += 2; // skip both edges
+                    continue;
                 }
             }
-        });
-        return collapsedGraph;
+            // Otherwise, just keep current edge
+            result.Add(current);
+            i += 1;
+        }
+        return result;
     }
 
-    /// <summary>
-    /// Determines if a given node address is a balance node.
-    /// </summary>
-    /// <param name="nodeAddress">The node address to check.</param>
-    /// <returns>True if it's a balance node; otherwise, false.</returns>
-    private bool IsBalanceNode(string nodeAddress)
+    private bool IsBalanceNode(string address)
     {
-        return nodeAddress.Contains("-");
+        // e.g. if your balance nodes have a dash, or do some other check
+        return address.Contains("-");
     }
 }
