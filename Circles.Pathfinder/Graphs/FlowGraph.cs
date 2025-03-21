@@ -22,8 +22,10 @@ public class FlowGraph : IGraph<FlowEdge>
 
     public void AddBalanceNode(string address, string token, BigInteger amount)
     {
-        var balanceNode = new BalanceNode(address, token, amount);
-        balanceNode.Address = address;
+        var balanceNode = new BalanceNode(address, token, amount)
+        {
+            Address = address
+        };
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
@@ -68,22 +70,26 @@ public class FlowGraph : IGraph<FlowEdge>
             to = Nodes[toNode.Address];
         }
 
+        // Avoid duplicates
         if (from.OutEdges.Any(o => o.To == to.Address && (o as FlowEdge)?.Flow == flowEdge.Flow))
         {
             return;
         }
-
         if (to.InEdges.Any(o => o.From == from.Address && (o as FlowEdge)?.Flow == flowEdge.Flow))
         {
             return;
         }
 
-        var newFlowEdge = new FlowEdge(from.Address, to.Address, flowEdge.Token, flowEdge.CurrentCapacity);
-        newFlowEdge.Flow = flowEdge.Flow;
+        var newFlowEdge = new FlowEdge(from.Address, to.Address, flowEdge.Token, flowEdge.CurrentCapacity)
+        {
+            Flow = flowEdge.Flow
+        };
 
         var newReverseEdge = new FlowEdge(to.Address, from.Address, flowEdge.Token,
-            flowEdge.ReverseEdge?.CurrentCapacity ?? BigInteger.Zero);
-        newReverseEdge.Flow = flowEdge.ReverseEdge?.Flow ?? BigInteger.Zero;
+            flowEdge.ReverseEdge?.CurrentCapacity ?? BigInteger.Zero)
+        {
+            Flow = flowEdge.ReverseEdge?.Flow ?? BigInteger.Zero
+        };
 
         newFlowEdge.ReverseEdge = newReverseEdge;
         newReverseEdge.ReverseEdge = newFlowEdge;
@@ -117,17 +123,16 @@ public class FlowGraph : IGraph<FlowEdge>
         var token = capacityEdge.Token;
         var capacity = capacityEdge.InitialCapacity;
 
-        // Create edge and reverse edge
         var edge = new FlowEdge(from, to, token, capacity);
         Edges.Add(edge);
 
-        var reverseEdge = new FlowEdge(to, from, token, 0);
+        var reverseEdge = new FlowEdge(to, from, token, BigInteger.Zero);
         Edges.Add(reverseEdge);
 
         edge.ReverseEdge = reverseEdge;
         reverseEdge.ReverseEdge = edge;
 
-        // Create nodes if they don't exist
+        // Ensure nodes exist
         var fromNode = capacityGraph.Nodes[from];
         if (fromNode is AvatarNode)
         {
@@ -148,90 +153,136 @@ public class FlowGraph : IGraph<FlowEdge>
             AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount);
         }
 
-        // manage adjacency lists
-        if (AvatarNodes.TryGetValue(from, out var node))
+        // adjacency
+        if (AvatarNodes.TryGetValue(from, out var nodeA))
         {
-            node.OutEdges.Add(edge);
+            nodeA.OutEdges.Add(edge);
         }
-        else if (BalanceNodes.TryGetValue(from, out var balanceNode))
+        else if (BalanceNodes.TryGetValue(from, out var balA))
         {
-            balanceNode.OutEdges.Add(edge);
-        }
-
-        if (AvatarNodes.TryGetValue(to, out var avatarNode))
-        {
-            avatarNode.InEdges.Add(edge);
-        }
-        else if (BalanceNodes.TryGetValue(to, out var balanceNode))
-        {
-            balanceNode.InEdges.Add(edge);
+            balA.OutEdges.Add(edge);
         }
 
-        if (AvatarNodes.TryGetValue(to, out var avatarNode2))
+        if (AvatarNodes.TryGetValue(to, out var nodeB))
         {
-            avatarNode2.OutEdges.Add(reverseEdge);
+            nodeB.InEdges.Add(edge);
         }
-        else if (BalanceNodes.TryGetValue(to, out var balanceNode2))
+        else if (BalanceNodes.TryGetValue(to, out var balB))
         {
-            balanceNode2.OutEdges.Add(reverseEdge);
+            balB.InEdges.Add(edge);
         }
 
-        if (AvatarNodes.TryGetValue(from, out var node2))
+        // adjacency for reverse
+        if (AvatarNodes.TryGetValue(to, out var nodeC))
         {
-            node2.InEdges.Add(reverseEdge);
+            nodeC.OutEdges.Add(reverseEdge);
         }
-        else if (BalanceNodes.TryGetValue(from, out var balanceNode2))
+        else if (BalanceNodes.TryGetValue(to, out var balC))
         {
-            balanceNode2.InEdges.Add(reverseEdge);
+            balC.OutEdges.Add(reverseEdge);
+        }
+
+        if (AvatarNodes.TryGetValue(from, out var nodeD))
+        {
+            nodeD.InEdges.Add(reverseEdge);
+        }
+        else if (BalanceNodes.TryGetValue(from, out var balD))
+        {
+            balD.InEdges.Add(reverseEdge);
         }
     }
 
     /// <summary>
-    /// Searches the graph for liquid paths from the source node to the sink node.
+    /// Performs a proper flow decomposition: repeatedly finds a path from source to sink
+    /// in the flow network (only edges with e.Flow > 0), removes the min flow from each 
+    /// edge on that path, and stores that as one path. Returns all disjoint paths.
     /// </summary>
-    /// <param name="sourceNode">The source</param>
-    /// <param name="sinkNode">The sink</param>
-    /// <param name="threshold">Only consider edges with more or equal flow</param>
-    /// <returns>A list of paths with flow</returns>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, BigInteger threshold)
+    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, BigInteger minFlowThreshold)
     {
         var resultPaths = new List<List<FlowEdge>>();
-        var visited = new HashSet<string>();
 
-        // A helper method to perform DFS and collect paths with positive flow
-        void Dfs(string currentNode, List<FlowEdge> currentPath)
+        // Build adjacency lists containing only edges with positive flow
+        var adjacency = new Dictionary<string, List<FlowEdge>>();
+        foreach (var e in Edges)
         {
-            if (currentNode == sinkNode)
+            if (e.Flow <= 0) continue;
+            if (!adjacency.ContainsKey(e.From))
+                adjacency[e.From] = new List<FlowEdge>();
+            adjacency[e.From].Add(e);
+        }
+
+        while (true)
+        {
+            // BFS to find path from source -> sink
+            var queue = new Queue<string>();
+            var visited = new HashSet<string>();
+            var parent = new Dictionary<string, FlowEdge>();
+
+            queue.Enqueue(sourceNode);
+            visited.Add(sourceNode);
+
+            bool foundSink = false;
+            while (queue.Count > 0 && !foundSink)
             {
-                resultPaths.Add(new List<FlowEdge>(currentPath)); // Store a copy of the path
-                return;
-            }
+                var current = queue.Dequeue();
+                if (!adjacency.ContainsKey(current)) continue;
 
-            if (!Nodes.TryGetValue(currentNode, out var node)) return;
-
-            visited.Add(currentNode);
-
-            foreach (var edge in node.OutEdges.OfType<FlowEdge>())
-            {
-                if (edge.Flow > 0 && !visited.Contains(edge.To))
+                foreach (var edge in adjacency[current])
                 {
-                    currentPath.Add(edge); // Add edge to the current path
-                    if (edge.Flow < threshold)
-                    {
-                        // Filter edges with less flow than the threshold
-                        continue;
-                    }
+                    if (visited.Contains(edge.To)) continue;
+                    if (edge.Flow < minFlowThreshold) continue; // usually minFlowThreshold=0
+                        
+                    visited.Add(edge.To);
+                    parent[edge.To] = edge;
 
-                    Dfs(edge.To, currentPath); // Recursively go deeper
-                    currentPath.Remove(edge); // Backtrack
+                    if (edge.To == sinkNode)
+                    {
+                        foundSink = true;
+                        break;
+                    }
+                    queue.Enqueue(edge.To);
                 }
             }
 
-            visited.Remove(currentNode);
-        }
+            if (!foundSink) break; // no more augmenting paths
 
-        // Start DFS from the source node
-        Dfs(sourceNode, new List<FlowEdge>());
+            // Reconstruct path by backtracking from sinkNode -> sourceNode
+            var pathEdges = new List<FlowEdge>();
+            string node = sinkNode;
+            while (node != sourceNode)
+            {
+                var e = parent[node];
+                pathEdges.Add(e);
+                node = e.From;
+            }
+            pathEdges.Reverse();
+
+            // The path flow is the min edge.Flow along that path
+            BigInteger pathFlow = pathEdges.Min(e => e.Flow);
+
+            // Build a copy of the path with each edge having Flow=pathFlow
+            var onePath = new List<FlowEdge>();
+            foreach (var e in pathEdges)
+            {
+                var copy = new FlowEdge(e.From, e.To, e.Token, e.CurrentCapacity)
+                {
+                    Flow = pathFlow
+                };
+                onePath.Add(copy);
+            }
+            resultPaths.Add(onePath);
+
+            // Subtract pathFlow from each edge in the path
+            foreach (var e in pathEdges)
+            {
+                e.Flow -= pathFlow;
+                // If e.Flow <= 0, remove it from adjacency so BFS won't use it next time
+                if (e.Flow <= 0 && adjacency.ContainsKey(e.From))
+                {
+                    adjacency[e.From].Remove(e);
+                }
+            }
+        }
 
         return resultPaths;
     }

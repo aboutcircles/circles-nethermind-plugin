@@ -35,8 +35,8 @@ public class NetworkStateUpdaterService : BackgroundService
         // Create two LoadGraph instances:
         // - Default (non-wrapped) with withWrap=false
         // - Wrapped with withWrap=true
-        var loadGraphDefault = new LoadGraph(_settings.IndexReadonlyDbConnectionString, false);
-        var loadGraphWrapped = new LoadGraph(_settings.IndexReadonlyDbConnectionString, true);
+        var loadGraphDefault = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
+        var loadGraphWrapped = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
         var graphFactory = new GraphFactory();
 
         var lastBlock = 0L;
@@ -48,12 +48,12 @@ public class NetworkStateUpdaterService : BackgroundService
 
             // Load all four graphs in parallel
             var tasks = new List<Task>();
-            
+
             // Task 1: Load default (non-wrapped) trust graph
             tasks.Add(Task.Run(() =>
             {
                 // Pass null request to get full graph for network state
-                var trustGraph = graphFactory.V2TrustGraph(loadGraphDefault, null);
+                var trustGraph = graphFactory.V2TrustGraph(loadGraphDefault);
                 _networkState.Replace(trustGraph: trustGraph);
             }, stoppingToken));
 
@@ -61,23 +61,23 @@ public class NetworkStateUpdaterService : BackgroundService
             tasks.Add(Task.Run(() =>
             {
                 // Pass null request to get full graph for network state
-                var balanceGraph = graphFactory.V2BalanceGraph(loadGraphDefault, null);
+                var balanceGraph = graphFactory.V2BalanceGraph(loadGraphDefault);
                 _networkState.Replace(balanceGraph: balanceGraph);
             }, stoppingToken));
-            
+
             // Task 3: Load wrapped trust graph
             tasks.Add(Task.Run(() =>
             {
                 // Pass null request to get full graph for network state
-                var trustGraph = graphFactory.V2TrustGraph(loadGraphWrapped, null);
+                var trustGraph = graphFactory.V2TrustGraph(loadGraphWrapped);
                 _networkState.Replace(wrappedTrustGraph: trustGraph);
             }, stoppingToken));
-            
+
             // Task 4: Load wrapped balance graph
             tasks.Add(Task.Run(() =>
             {
                 // Pass null request to get full graph for network state
-                var balanceGraph = graphFactory.V2BalanceGraph(loadGraphWrapped, null);
+                var balanceGraph = graphFactory.V2BalanceGraph(loadGraphWrapped);
                 _networkState.Replace(wrappedBalanceGraph: balanceGraph);
             }, stoppingToken));
 
