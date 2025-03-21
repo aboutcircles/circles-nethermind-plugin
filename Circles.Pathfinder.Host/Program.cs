@@ -1,3 +1,4 @@
+using Microsoft.OpenApi.Models;
 using System.Numerics;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
@@ -21,6 +22,18 @@ Console.WriteLine($"* Circles RPC URL: {settings.CirclesRpcUrl}");
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
+// Add Swagger services
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v2", new OpenApiInfo
+    {
+        Title = "Circles Pathfinder API",
+        Version = "v2",
+        Description = "API for finding optimal transfer paths in the Circles network",
+    });
+});
+
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     // Add custom JSON config if needed
@@ -33,6 +46,14 @@ builder.Services.AddSingleton<NetworkState>();
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 
 var app = builder.Build();
+
+// Add Swagger middleware configurations
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v2/swagger.json", "Circles Pathfinder API V2");
+    c.RoutePrefix = "swagger";
+});
 
 // Middleware to disable caching for all responses
 app.Use((context, next) =>
@@ -161,6 +182,12 @@ app.MapGet("/findPath", async (
         semaphore.Release();
         FindPathMetrics.InFlightRequestsGauge.Dec();
     }
-});
+})
+.WithName("FindPath")
+.WithTags("Pathfinding")
+.WithDescription("Finds the optimal path for transferring Circles tokens between addresses")
+.Produces<MaxFlowResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status503ServiceUnavailable);
 
 app.Run();
