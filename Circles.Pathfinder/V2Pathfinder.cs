@@ -1,4 +1,4 @@
-using System.Numerics;
+using System.Diagnostics;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
@@ -10,6 +10,9 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
 {
     public async Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
     {
+        Stopwatch sw = new();
+        sw.Start();
+        
         var source = request.Source?.ToLowerInvariant() ?? throw new ArgumentException("Source must be provided.");
         var sink = request.Sink?.ToLowerInvariant() ?? throw new ArgumentException("Sink must be provided.");
         var targetFlowStr = request.TargetFlow ?? throw new ArgumentException("TargetFlow must be provided.");
@@ -59,6 +62,9 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
             maxFlow.ToString(),
             transferSteps
         );
+        
+        sw.Stop();
+        Console.WriteLine($"TIMING: V2Pathfinder.ComputeMaxFlow took {sw.ElapsedMilliseconds}ms");
 
         return response;
     }
