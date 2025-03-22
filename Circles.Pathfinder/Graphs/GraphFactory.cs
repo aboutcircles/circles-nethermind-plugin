@@ -1,5 +1,5 @@
-using System.Numerics;
 using Circles.Pathfinder.Data;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs
 {
@@ -46,7 +46,7 @@ namespace Circles.Pathfinder.Graphs
                     graph.AddAvatar(balance.Account);
                 }
 
-                graph.AddBalance(balance.Account, balance.TokenAddress, BigInteger.Parse(balance.Balance));
+                graph.AddBalance(balance.Account, balance.TokenAddress, UInt256.Parse(balance.Balance));
             }
 
             return graph;

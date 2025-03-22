@@ -1,8 +1,8 @@
-using System.Diagnostics;
 using System.Numerics;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder;
 
@@ -14,7 +14,7 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
         var sink = request.Sink?.ToLowerInvariant() ?? throw new ArgumentException("Sink must be provided.");
         var targetFlowStr = request.TargetFlow ?? throw new ArgumentException("TargetFlow must be provided.");
 
-        if (!BigInteger.TryParse(targetFlowStr, out var targetFlow))
+        if (!UInt256.TryParse(targetFlowStr, out var targetFlow))
         {
             throw new ArgumentException("TargetFlow must be a valid integer.");
         }
@@ -32,7 +32,7 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
         var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
 
         // Now decompose the final flows into disjoint paths
-        var allPaths = flowGraph.ExtractPathsWithFlow(source, sink, BigInteger.Zero);
+        var allPaths = flowGraph.ExtractPathsWithFlow(source, sink, UInt256.Zero);
 
         // Convert each path into "collapsed" edges that skip balance nodes
         var transferSteps = new List<TransferPathStep>();
@@ -85,13 +85,11 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
                 {
                     // Flow on this path is uniform, so they have the same "pathFlow." 
                     // We’ll just keep the same flow as either edge (they’re identical).
-                    BigInteger mergedFlow = current.Flow; 
-                    // Token can be from 'next' if you want. Or from 'current' if that’s your rule.
-                    // Typically you'd keep 'next.Token' if the second edge is the "real" token movement:
-                    string token = next.Token; 
+                    UInt256 mergedFlow = current.Flow;
+                    string token = next.Token;
 
                     // Create a merged edge from current.From -> next.To
-                    var mergedEdge = new FlowEdge(current.From, next.To, token, BigInteger.Zero)
+                    var mergedEdge = new FlowEdge(current.From, next.To, token, UInt256.Zero)
                     {
                         Flow = mergedFlow
                     };
@@ -101,10 +99,12 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
                     continue;
                 }
             }
+
             // Otherwise, just keep current edge
             result.Add(current);
             i += 1;
         }
+
         return result;
     }
 
