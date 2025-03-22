@@ -28,15 +28,7 @@ COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.dll /nethermind/
 COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins
 
-COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/ortools.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/re2.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/utf8_validity.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/zlib1.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/libprotobuf.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/highs.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/google-ortools-native.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/abseil_dll.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/runtimes/linux-x64/native/* /nethermind/plugins/
