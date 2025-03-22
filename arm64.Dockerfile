@@ -31,4 +31,4 @@ COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
-COPY --from=build /circles-nethermind-plugin/runtimes/linux-x64/native/* /nethermind/plugins/
+COPY --from=build /circles-nethermind-plugin/runtimes/linux-arm64/native/* /nethermind/plugins/
