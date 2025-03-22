@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Google.OrTools.Graph;
 using Circles.Pathfinder.Edges;
 using Nethermind.Int256;
@@ -16,6 +17,9 @@ public static class GraphExtensions
         string sink,
         UInt256 targetFlow)
     {
+        Stopwatch sw = new();
+        sw.Start();
+
         // 1) Determine largest capacity or targetFlow
         UInt256 maxCap = UInt256.Zero;
         foreach (var e in graph.Edges)
@@ -110,6 +114,9 @@ public static class GraphExtensions
                 edge.ReverseEdge.CurrentCapacity += realEdgeFlow;
             }
         }
+
+        sw.Stop();
+        Console.WriteLine($"TIMING: GraphExtensions.ComputeMaxFlowWithPaths: {sw.ElapsedMilliseconds}ms");
 
         return realFlow;
     }

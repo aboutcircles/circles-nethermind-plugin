@@ -1,4 +1,4 @@
-using System.Numerics;
+using System.Diagnostics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
 using Nethermind.Int256;
@@ -201,6 +201,9 @@ public class FlowGraph : IGraph<FlowEdge>
     /// </summary>
     public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, UInt256 minFlowThreshold)
     {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+        
         var resultPaths = new List<List<FlowEdge>>();
 
         // Build adjacency lists containing only edges with positive flow
@@ -298,6 +301,9 @@ public class FlowGraph : IGraph<FlowEdge>
                 }
             }
         }
+        
+        sw.Stop();
+        Console.WriteLine($"TIMING: FlowGraph.ExtractPathsWithFlow took {sw.ElapsedMilliseconds}ms");
 
         return resultPaths;
     }
