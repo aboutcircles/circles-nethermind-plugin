@@ -8,11 +8,11 @@ namespace Circles.Pathfinder.Edges;
 /// </summary>
 public class FlowEdge : CapacityEdge
 {
-    public UInt256 CurrentCapacity { get; set; }
-    public UInt256 Flow { get; set; }
+    public long CurrentCapacity { get; set; }
+    public long Flow { get; set; }
     public FlowEdge? ReverseEdge { get; set; }
 
-    public FlowEdge(string from, string to, string token, UInt256 initialCapacity)
+    public FlowEdge(string from, string to, string token, long initialCapacity)
         : base(from, to, token, initialCapacity)
     {
         CurrentCapacity = initialCapacity;

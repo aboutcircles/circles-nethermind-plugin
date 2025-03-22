@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
@@ -12,7 +13,7 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
     {
         Stopwatch sw = new();
         sw.Start();
-        
+
         var source = request.Source?.ToLowerInvariant() ?? throw new ArgumentException("Source must be provided.");
         var sink = request.Sink?.ToLowerInvariant() ?? throw new ArgumentException("Sink must be provided.");
         var targetFlowStr = request.TargetFlow ?? throw new ArgumentException("TargetFlow must be provided.");
@@ -32,10 +33,10 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
             throw new ArgumentException($"Sink node '{sink}' does not exist in the graph.");
 
         // Run max flow
-        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow);
+        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, sink, targetFlow.TruncateToInt64());
 
         // Now decompose the final flows into disjoint paths
-        var allPaths = flowGraph.ExtractPathsWithFlow(source, sink, UInt256.Zero);
+        var allPaths = flowGraph.ExtractPathsWithFlow(source, sink, 0L);
 
         // Convert each path into "collapsed" edges that skip balance nodes
         var transferSteps = new List<TransferPathStep>();
@@ -52,17 +53,17 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
                     From = e.From,
                     To = e.To,
                     TokenOwner = e.Token,
-                    Value = e.Flow.ToString()
+                    Value = e.Flow.BlowUpToUInt256().ToString(CultureInfo.InvariantCulture)
                 });
             }
         }
 
         // Build final response
         var response = new MaxFlowResponse(
-            maxFlow.ToString(),
+            maxFlow.BlowUpToUInt256().ToString(CultureInfo.InvariantCulture),
             transferSteps
         );
-        
+
         sw.Stop();
         Console.WriteLine($"TIMING: V2Pathfinder.ComputeMaxFlow took {sw.ElapsedMilliseconds}ms");
 
@@ -91,11 +92,11 @@ public class V2Pathfinder(TrustGraph trustGraph, CapacityGraph capacityGraph, Gr
                 {
                     // Flow on this path is uniform, so they have the same "pathFlow." 
                     // We’ll just keep the same flow as either edge (they’re identical).
-                    UInt256 mergedFlow = current.Flow;
+                    long mergedFlow = current.Flow;
                     string token = next.Token;
 
                     // Create a merged edge from current.From -> next.To
-                    var mergedEdge = new FlowEdge(current.From, next.To, token, UInt256.Zero)
+                    var mergedEdge = new FlowEdge(current.From, next.To, token, 0L)
                     {
                         Flow = mergedFlow
                     };
