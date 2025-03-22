@@ -1,6 +1,7 @@
 using System.Numerics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
@@ -20,7 +21,7 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, BigInteger amount)
+    public void AddBalanceNode(string address, string token, UInt256 amount)
     {
         var balanceNode = new BalanceNode(address, token, amount)
         {
@@ -75,6 +76,7 @@ public class FlowGraph : IGraph<FlowEdge>
         {
             return;
         }
+
         if (to.InEdges.Any(o => o.From == from.Address && (o as FlowEdge)?.Flow == flowEdge.Flow))
         {
             return;
@@ -86,9 +88,9 @@ public class FlowGraph : IGraph<FlowEdge>
         };
 
         var newReverseEdge = new FlowEdge(to.Address, from.Address, flowEdge.Token,
-            flowEdge.ReverseEdge?.CurrentCapacity ?? BigInteger.Zero)
+            flowEdge.ReverseEdge?.CurrentCapacity ?? UInt256.Zero)
         {
-            Flow = flowEdge.ReverseEdge?.Flow ?? BigInteger.Zero
+            Flow = flowEdge.ReverseEdge?.Flow ?? UInt256.Zero
         };
 
         newFlowEdge.ReverseEdge = newReverseEdge;
@@ -126,7 +128,7 @@ public class FlowGraph : IGraph<FlowEdge>
         var edge = new FlowEdge(from, to, token, capacity);
         Edges.Add(edge);
 
-        var reverseEdge = new FlowEdge(to, from, token, BigInteger.Zero);
+        var reverseEdge = new FlowEdge(to, from, token, UInt256.Zero);
         Edges.Add(reverseEdge);
 
         edge.ReverseEdge = reverseEdge;
@@ -197,7 +199,7 @@ public class FlowGraph : IGraph<FlowEdge>
     /// in the flow network (only edges with e.Flow > 0), removes the min flow from each 
     /// edge on that path, and stores that as one path. Returns all disjoint paths.
     /// </summary>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, BigInteger minFlowThreshold)
+    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, UInt256 minFlowThreshold)
     {
         var resultPaths = new List<List<FlowEdge>>();
 
@@ -207,7 +209,10 @@ public class FlowGraph : IGraph<FlowEdge>
         {
             if (e.Flow <= 0) continue;
             if (!adjacency.ContainsKey(e.From))
+            {
                 adjacency[e.From] = new List<FlowEdge>();
+            }
+
             adjacency[e.From].Add(e);
         }
 
@@ -225,13 +230,16 @@ public class FlowGraph : IGraph<FlowEdge>
             while (queue.Count > 0 && !foundSink)
             {
                 var current = queue.Dequeue();
-                if (!adjacency.ContainsKey(current)) continue;
+                if (!adjacency.TryGetValue(current, out var value))
+                {
+                    continue;
+                }
 
-                foreach (var edge in adjacency[current])
+                foreach (var edge in value)
                 {
                     if (visited.Contains(edge.To)) continue;
                     if (edge.Flow < minFlowThreshold) continue; // usually minFlowThreshold=0
-                        
+
                     visited.Add(edge.To);
                     parent[edge.To] = edge;
 
@@ -240,11 +248,15 @@ public class FlowGraph : IGraph<FlowEdge>
                         foundSink = true;
                         break;
                     }
+
                     queue.Enqueue(edge.To);
                 }
             }
 
-            if (!foundSink) break; // no more augmenting paths
+            if (!foundSink)
+            {
+                break; // no more augmenting paths
+            }
 
             // Reconstruct path by backtracking from sinkNode -> sourceNode
             var pathEdges = new List<FlowEdge>();
@@ -255,10 +267,11 @@ public class FlowGraph : IGraph<FlowEdge>
                 pathEdges.Add(e);
                 node = e.From;
             }
+
             pathEdges.Reverse();
 
             // The path flow is the min edge.Flow along that path
-            BigInteger pathFlow = pathEdges.Min(e => e.Flow);
+            UInt256 pathFlow = pathEdges.Min(e => e.Flow);
 
             // Build a copy of the path with each edge having Flow=pathFlow
             var onePath = new List<FlowEdge>();
@@ -270,12 +283,14 @@ public class FlowGraph : IGraph<FlowEdge>
                 };
                 onePath.Add(copy);
             }
+
             resultPaths.Add(onePath);
 
             // Subtract pathFlow from each edge in the path
             foreach (var e in pathEdges)
             {
                 e.Flow -= pathFlow;
+
                 // If e.Flow <= 0, remove it from adjacency so BFS won't use it next time
                 if (e.Flow <= 0 && adjacency.ContainsKey(e.From))
                 {

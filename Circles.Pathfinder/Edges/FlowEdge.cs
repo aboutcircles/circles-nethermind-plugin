@@ -1,4 +1,5 @@
 using System.Numerics;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Edges;
 
@@ -7,11 +8,11 @@ namespace Circles.Pathfinder.Edges;
 /// </summary>
 public class FlowEdge : CapacityEdge
 {
-    public BigInteger CurrentCapacity { get; set; }
-    public BigInteger Flow { get; set; }
+    public UInt256 CurrentCapacity { get; set; }
+    public UInt256 Flow { get; set; }
     public FlowEdge? ReverseEdge { get; set; }
 
-    public FlowEdge(string from, string to, string token, BigInteger initialCapacity)
+    public FlowEdge(string from, string to, string token, UInt256 initialCapacity)
         : base(from, to, token, initialCapacity)
     {
         CurrentCapacity = initialCapacity;

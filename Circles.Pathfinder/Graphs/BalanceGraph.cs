@@ -1,6 +1,6 @@
-using System.Numerics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
@@ -16,7 +16,7 @@ public class BalanceGraph : IGraph<CapacityEdge>
         Nodes.Add(avatarAddress, new AvatarNode(avatarAddress));
     }
 
-    public void AddBalance(string address, string token, BigInteger balance)
+    public void AddBalance(string address, string token, UInt256 balance)
     {
         address = address.ToLower();
         token = token.ToLower();

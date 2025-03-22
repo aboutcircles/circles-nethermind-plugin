@@ -1,4 +1,4 @@
-using System.Numerics;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Edges;
 
@@ -8,9 +8,9 @@ namespace Circles.Pathfinder.Edges;
 public class CapacityEdge : Edge
 {
     public string Token { get; }
-    public BigInteger InitialCapacity { get; }
+    public UInt256 InitialCapacity { get; }
 
-    public CapacityEdge(string from, string to, string token, BigInteger initialCapacity) : base(from, to)
+    public CapacityEdge(string from, string to, string token, UInt256 initialCapacity) : base(from, to)
     {
         Token = token;
         InitialCapacity = initialCapacity;

@@ -8,6 +8,7 @@
 
     <ItemGroup>
       <PackageReference Include="Google.OrTools" Version="9.12.4544" />
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0" />
       <PackageReference Include="Npgsql" Version="9.0.2" />
     </ItemGroup>
 
@@ -20,6 +21,12 @@
       <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
       <EmbeddedResource Include="Data\Queries\balanceQueryWrap.sql" />
       <EmbeddedResource Include="Data\Queries\trustQueryWrap.sql" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="Nethermind.Int256">
+        <HintPath>..\..\..\..\.nuget\packages\nethermind.numerics.int256\1.2.0\lib\net8.0\Nethermind.Int256.dll</HintPath>
+      </Reference>
     </ItemGroup> 
 
 </Project>
