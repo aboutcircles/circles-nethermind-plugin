@@ -53,10 +53,7 @@ public static class GraphExtensions
         var maxFlowSolver = new MaxFlow();
 
         // 5) Scale targetFlow for superSource->realSource
-        UInt256 scaledTf = (shift > 0) ? (targetFlow >> shift) : targetFlow;
-        long tfCapacity = scaledTf > (UInt256)long.MaxValue
-            ? long.MaxValue
-            : (long)scaledTf;
+        UInt256 scaledTf = shift > 0 ? targetFlow >> shift : targetFlow;
 
         if (!nodeIndices.ContainsKey(source) || !nodeIndices.ContainsKey(sink))
         {
@@ -67,7 +64,7 @@ public static class GraphExtensions
         int sinkIndex = nodeIndices[sink];
 
         // 6) superSource->realSource arc
-        maxFlowSolver.AddArcWithCapacity(superSourceIndex, realSourceIndex, tfCapacity);
+        maxFlowSolver.AddArcWithCapacity(superSourceIndex, realSourceIndex, (long)scaledTf);
 
         // 7) Add arcs for each edge
         var edgeToArc = new Dictionary<FlowEdge, int>();
@@ -76,15 +73,11 @@ public static class GraphExtensions
             int fromIdx = nodeIndices[edge.From];
             int toIdx = nodeIndices[edge.To];
 
-            UInt256 scaledCap = (shift > 0)
-                ? (edge.CurrentCapacity >> shift)
+            UInt256 scaledCap = shift > 0
+                ? edge.CurrentCapacity >> shift
                 : edge.CurrentCapacity;
 
-            long cap = scaledCap > (UInt256)long.MaxValue
-                ? long.MaxValue
-                : (long)scaledCap;
-
-            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(fromIdx, toIdx, cap);
+            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(fromIdx, toIdx, (long)scaledCap);
         }
 
         // 8) Solve from superSource->sink
