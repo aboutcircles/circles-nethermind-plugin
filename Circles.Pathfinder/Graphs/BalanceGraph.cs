@@ -16,7 +16,7 @@ public class BalanceGraph : IGraph<CapacityEdge>
         Nodes.Add(avatarAddress, new AvatarNode(avatarAddress));
     }
 
-    public void AddBalance(string address, string token, UInt256 balance)
+    public void AddBalance(string address, string token, long balance)
     {
         address = address.ToLower();
         token = token.ToLower();

@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
-using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
@@ -21,7 +20,7 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, UInt256 amount)
+    public void AddBalanceNode(string address, string token, long amount)
     {
         var balanceNode = new BalanceNode(address, token, amount)
         {
@@ -88,9 +87,9 @@ public class FlowGraph : IGraph<FlowEdge>
         };
 
         var newReverseEdge = new FlowEdge(to.Address, from.Address, flowEdge.Token,
-            flowEdge.ReverseEdge?.CurrentCapacity ?? UInt256.Zero)
+            flowEdge.ReverseEdge?.CurrentCapacity ?? 0L)
         {
-            Flow = flowEdge.ReverseEdge?.Flow ?? UInt256.Zero
+            Flow = flowEdge.ReverseEdge?.Flow ?? 0L
         };
 
         newFlowEdge.ReverseEdge = newReverseEdge;
@@ -128,7 +127,7 @@ public class FlowGraph : IGraph<FlowEdge>
         var edge = new FlowEdge(from, to, token, capacity);
         Edges.Add(edge);
 
-        var reverseEdge = new FlowEdge(to, from, token, UInt256.Zero);
+        var reverseEdge = new FlowEdge(to, from, token, 0L);
         Edges.Add(reverseEdge);
 
         edge.ReverseEdge = reverseEdge;
@@ -199,7 +198,7 @@ public class FlowGraph : IGraph<FlowEdge>
     /// in the flow network (only edges with e.Flow > 0), removes the min flow from each 
     /// edge on that path, and stores that as one path. Returns all disjoint paths.
     /// </summary>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, UInt256 minFlowThreshold)
+    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, long minFlowThreshold)
     {
         Stopwatch sw = new Stopwatch();
         sw.Start();
@@ -274,7 +273,7 @@ public class FlowGraph : IGraph<FlowEdge>
             pathEdges.Reverse();
 
             // The path flow is the min edge.Flow along that path
-            UInt256 pathFlow = pathEdges.Min(e => e.Flow);
+            long pathFlow = pathEdges.Min(e => e.Flow);
 
             // Build a copy of the path with each edge having Flow=pathFlow
             var onePath = new List<FlowEdge>();

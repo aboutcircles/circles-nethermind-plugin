@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Google.OrTools.Graph;
 using Circles.Pathfinder.Edges;
-using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
@@ -11,33 +10,14 @@ public static class GraphExtensions
     /// Computes max flow via a super source. If the network can push targetFlow, 
     /// the flow will match it exactly. Otherwise, it's lower.
     /// </summary>
-    public static UInt256 ComputeMaxFlowWithPaths(
+    public static long ComputeMaxFlowWithPaths(
         this FlowGraph graph,
         string source,
         string sink,
-        UInt256 targetFlow)
+        long targetFlow)
     {
         Stopwatch sw = new();
         sw.Start();
-
-        // 1) Determine largest capacity or targetFlow
-        UInt256 maxCap = UInt256.Zero;
-        foreach (var e in graph.Edges)
-        {
-            if (e.CurrentCapacity > maxCap)
-            {
-                maxCap = e.CurrentCapacity;
-            }
-        }
-
-        if (targetFlow > maxCap)
-        {
-            maxCap = targetFlow;
-        }
-
-        // 2) Shift if bitLen > 63
-        int bitLen = maxCap.BitLen;
-        int shift = bitLen > 63 ? bitLen - 63 : 0;
 
         // 3) Map nodes
         var nodeIndices = new Dictionary<string, int>();
@@ -53,7 +33,6 @@ public static class GraphExtensions
         var maxFlowSolver = new MaxFlow();
 
         // 5) Scale targetFlow for superSource->realSource
-        UInt256 scaledTf = shift > 0 ? targetFlow >> shift : targetFlow;
 
         if (!nodeIndices.ContainsKey(source) || !nodeIndices.ContainsKey(sink))
         {
@@ -64,7 +43,7 @@ public static class GraphExtensions
         int sinkIndex = nodeIndices[sink];
 
         // 6) superSource->realSource arc
-        maxFlowSolver.AddArcWithCapacity(superSourceIndex, realSourceIndex, (long)scaledTf);
+        maxFlowSolver.AddArcWithCapacity(superSourceIndex, realSourceIndex, targetFlow);
 
         // 7) Add arcs for each edge
         var edgeToArc = new Dictionary<FlowEdge, int>();
@@ -73,11 +52,7 @@ public static class GraphExtensions
             int fromIdx = nodeIndices[edge.From];
             int toIdx = nodeIndices[edge.To];
 
-            UInt256 scaledCap = shift > 0
-                ? edge.CurrentCapacity >> shift
-                : edge.CurrentCapacity;
-
-            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(fromIdx, toIdx, (long)scaledCap);
+            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(fromIdx, toIdx, edge.CurrentCapacity);
         }
 
         // 8) Solve from superSource->sink
@@ -88,29 +63,23 @@ public static class GraphExtensions
         }
 
         long scaledFlowVal = maxFlowSolver.OptimalFlow();
-        UInt256 realFlow = shift > 0
-            ? (UInt256)scaledFlowVal << shift
-            : (UInt256)scaledFlowVal;
 
         // 9) Store each edge’s flow
         foreach (var edge in graph.Edges)
         {
             long arcFlow = maxFlowSolver.Flow(edgeToArc[edge]);
-            UInt256 realEdgeFlow = shift > 0
-                ? (UInt256)arcFlow << shift
-                : (UInt256)arcFlow;
 
-            edge.Flow += realEdgeFlow; // accumulate flow
-            edge.CurrentCapacity -= realEdgeFlow;
+            edge.Flow += arcFlow; // accumulate flow
+            edge.CurrentCapacity -= arcFlow;
             if (edge.ReverseEdge != null)
             {
-                edge.ReverseEdge.CurrentCapacity += realEdgeFlow;
+                edge.ReverseEdge.CurrentCapacity += arcFlow;
             }
         }
 
         sw.Stop();
         Console.WriteLine($"TIMING: GraphExtensions.ComputeMaxFlowWithPaths: {sw.ElapsedMilliseconds}ms");
 
-        return realFlow;
+        return scaledFlowVal;
     }
 }

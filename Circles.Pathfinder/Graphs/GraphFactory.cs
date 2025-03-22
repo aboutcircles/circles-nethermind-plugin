@@ -46,7 +46,8 @@ namespace Circles.Pathfinder.Graphs
                     graph.AddAvatar(balance.Account);
                 }
 
-                graph.AddBalance(balance.Account, balance.TokenAddress, UInt256.Parse(balance.Balance));
+                var uint256Balance = UInt256.Parse(balance.Balance);
+                graph.AddBalance(balance.Account, balance.TokenAddress, uint256Balance.TruncateToInt64());
             }
 
             return graph;
