@@ -56,12 +56,9 @@ SELECT
 	,"tokenAddress"
 	,FALSE AS "isWrapped"
 FROM 
-	"V_CrcV2_BalancesByAccountAndToken" b
-LEFT JOIN 
-	"CrcV2_RegisterGroup" g 
-	ON g."group" = b."tokenAddress"
-WHERE 
-	g."group" is null AND "demurragedTotalBalance" > 0
+	"V_CrcV2_BalancesByAccountAndToken" 
+WHERE
+	"demurragedTotalBalance" > 0
 
 UNION ALL 
 
