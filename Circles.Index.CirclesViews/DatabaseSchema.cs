@@ -853,6 +853,7 @@ public class DatabaseSchema : IDatabaseSchema
         [
             new("account", ValueTypes.Address, true),
             new("tokenId", ValueTypes.String, true),
+            new("tokenAddress", ValueTypes.String, true),
             new("lastActivity", ValueTypes.Int, true),
             new("demurragedTotalBalance", ValueTypes.BigInt, true),
         ])
