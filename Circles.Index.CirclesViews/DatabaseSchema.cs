@@ -805,10 +805,10 @@ public class DatabaseSchema : IDatabaseSchema
         new byte[32],
         [
             new("account", ValueTypes.Address, true),
-            new("tokenId", ValueTypes.String, true),
             new("tokenAddress", ValueTypes.String, true),
             new("lastActivity", ValueTypes.Int, true),
             new("totalBalance", ValueTypes.BigInt, true),
+            new("tokenOwner", ValueTypes.String, true)
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
