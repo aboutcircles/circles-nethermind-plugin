@@ -42,8 +42,8 @@ public class V2Pathfinder : IPathfinder
         Console.WriteLine($"Requests Source: { request.Source?.ToLower()}");
         Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
         // Load Trust and Balance Graphs
-        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph, request);
-        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph, request);
+        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
+        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
 
         
         return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
@@ -73,7 +73,7 @@ public class V2Pathfinder : IPathfinder
         var effectiveSink = virtualSink ?? sink;
 
         // Create Capacity Graph
-        var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
+        var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph, request);
 
         // Create Flow Graph
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
