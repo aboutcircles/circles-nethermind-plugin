@@ -59,47 +59,6 @@ app.MapGet("/findPath", async (
     SemaphoreSlim semaphore
 ) =>
 {
-    // Auxiliary method to create a filtered balance graph
-    static BalanceGraph CreateFilteredBalanceGraph(
-        BalanceGraph originalGraph, 
-        List<string> fromTokens, 
-        string source, 
-        List<string>? toTokens = null, 
-        string? sink = null,
-        bool? withWrap = null)
-    {
-        var filteredGraph = new BalanceGraph(fromTokens, source, toTokens, sink, withWrap);
-        foreach (var avatarNode in originalGraph.AvatarNodes.Values)
-        {
-            filteredGraph.AddAvatar(avatarNode.Address);
-        }
-        foreach (var balanceNode in originalGraph.BalanceNodes.Values)
-        {
-            filteredGraph.AddBalance(
-                balanceNode.HolderAddress,
-                balanceNode.Token,
-                balanceNode.Amount,
-                balanceNode.IsWrapped 
-            );
-        }
-        return filteredGraph;
-    }
-
-    // Auxiliary method to create a filtered trust graph
-    static TrustGraph CreateFilteredTrustGraph(TrustGraph originalGraph, List<string> toTokens, string sink)
-    {
-        var filteredGraph = new TrustGraph(toTokens, sink);
-        foreach (var avatarNode in originalGraph.AvatarNodes.Values)
-        {
-            filteredGraph.AddAvatar(avatarNode.Address);
-        }
-        foreach (var edge in originalGraph.Edges)
-        {
-            filteredGraph.AddTrustEdge(edge.From, edge.To);
-        }
-        return filteredGraph;
-    }
-
     if (!semaphore.Wait(0))
     {
         FindPathMetrics.RejectedRequestsCounter.Inc();
@@ -136,23 +95,8 @@ app.MapGet("/findPath", async (
             WithWrap = withWrap
         };
 
-        // Create filtered copies of the graphs based on request parameters
-        // Balance graph filtering will handle the withWrap parameter internally
-        var filteredBalanceGraph = ((fromTokens != null && fromTokens.Length > 0) || (request.Source == request.Sink) || (request.WithWrap != null))
-            ? CreateFilteredBalanceGraph(
-                balanceGraph, 
-                request.FromTokens!, 
-                request.Source, 
-                request.ToTokens, 
-                request.Sink,
-                request.WithWrap)
-            : balanceGraph;
 
-        var filteredTrustGraph = (toTokens != null && toTokens.Length > 0)
-            ? CreateFilteredTrustGraph(trustGraph, request.ToTokens!, request.Sink)
-            : trustGraph;
-
-        var pathResult = pathfinder.ComputeMaxFlowWithData(filteredBalanceGraph, filteredTrustGraph, request, targetFlow);
+        var pathResult = pathfinder.ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
 
         return Results.Ok(pathResult);
     }

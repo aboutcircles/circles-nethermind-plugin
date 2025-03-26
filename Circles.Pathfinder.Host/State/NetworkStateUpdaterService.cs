@@ -50,7 +50,7 @@ public class NetworkStateUpdaterService : BackgroundService
             tasks.Add(Task.Run(() =>
             {
                 // Pass null request to get full graph for network state
-                var trustGraph = graphFactory.V2TrustGraph(loadGraph, null);
+                var trustGraph = graphFactory.V2TrustGraph(loadGraph);
                 _networkState.Replace(trustGraph: trustGraph);
             }, stoppingToken));
 
@@ -58,7 +58,7 @@ public class NetworkStateUpdaterService : BackgroundService
             tasks.Add(Task.Run(() =>
             {
                 // Pass null request to get full graph for network state
-                var balanceGraph = graphFactory.V2BalanceGraph(loadGraph, null);
+                var balanceGraph = graphFactory.V2BalanceGraph(loadGraph);
                 _networkState.Replace(balanceGraph: balanceGraph);
             }, stoppingToken));
 

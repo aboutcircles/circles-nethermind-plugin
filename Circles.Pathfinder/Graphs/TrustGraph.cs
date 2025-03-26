@@ -16,12 +16,6 @@ public class TrustGraph : IGraph<TrustEdge>
     private string? _virtualSinkAddress;
     private string? _sourceAddress;
 
-    public TrustGraph(List<string>? toTokens = null, string? sinkAddress = null)
-    {
-        _toTokens = toTokens?.Select(t => t.ToLower()).ToList();
-        _sinkAddress = sinkAddress?.ToLower();
-    }
-
     // Method to set up virtual sink when needed
     public void SetupVirtualSinkIfNeeded(string sourceAddress)
     {
@@ -90,16 +84,6 @@ public class TrustGraph : IGraph<TrustEdge>
     {
         truster = truster.ToLower();
         trustee = trustee.ToLower();
-
-        // If this trust relation involves the sink trusting
-        if (_sinkAddress != null && truster == _sinkAddress)
-        {
-            // If we have toTokens filter and the token (trustee) is not in toTokens, skip
-            if (_toTokens != null && !_toTokens.Contains(trustee))
-            {
-                return;
-            }
-        }
 
         if (!AvatarNodes.TryGetValue(truster, out var trusterNode))
         {
