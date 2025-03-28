@@ -23,7 +23,7 @@ public class BalanceGraph : IGraph<CapacityEdge>
         Nodes.Add(avatarAddress, new AvatarNode(avatarAddress));
     }
 
-    public void AddBalance(string address, string token, BigInteger balance, bool isWrapped = false)
+    public void AddBalance(string address, string token, long balance, bool isWrapped = false)
     {
         address = address.ToLower();
         token = token.ToLower();

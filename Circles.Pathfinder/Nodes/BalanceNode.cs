@@ -1,19 +1,11 @@
-using System.Numerics;
-
 namespace Circles.Pathfinder.Nodes;
 
-public class BalanceNode : Node
+public class BalanceNode(string address, string token, long amount, bool isWrapped = false)
+    : Node(address + "-" + token)
 {
-    public string Token { get; }
-    public BigInteger Amount { get; }
-    public bool IsWrapped { get; }
+    public string Token { get; } = token;
+    public long Amount { get; } = amount;
+    public bool IsWrapped { get; } = isWrapped;
 
     public string HolderAddress => Address.Split("-")[0];
-
-    public BalanceNode(string address, string token, BigInteger amount, bool isWrapped = false) : base(address + "-" + token)
-    {
-        Token = token;
-        Amount = amount;
-        IsWrapped = isWrapped;
-    }
 }
