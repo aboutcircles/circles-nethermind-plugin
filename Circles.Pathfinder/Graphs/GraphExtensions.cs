@@ -1,4 +1,5 @@
-using System.Numerics;
+using System.Diagnostics;
+using Google.OrTools.Graph;
 using Circles.Pathfinder.Edges;
 
 namespace Circles.Pathfinder.Graphs;
@@ -6,114 +7,79 @@ namespace Circles.Pathfinder.Graphs;
 public static class GraphExtensions
 {
     /// <summary>
-    /// Computes the maximum flow from source to sink in the FlowGraph and collects all augmenting paths.
-    /// Stops when the target flow is met and prunes the flow to exactly match the target.
+    /// Computes max flow via a super source. If the network can push targetFlow, 
+    /// the flow will match it exactly. Otherwise, it's lower.
     /// </summary>
-    /// <param name="graph">The flow graph instance.</param>
-    /// <param name="source">The source node identifier.</param>
-    /// <param name="sink">The sink node identifier.</param>
-    /// <param name="targetFlow">The desired flow value to reach.</param>
-    /// <returns>The total flow value up to the target flow.</returns>
     public static long ComputeMaxFlowWithPaths(
         this FlowGraph graph,
         string source,
         string sink,
         long targetFlow)
     {
-        long maxFlow = 0;
+        Stopwatch sw = new();
+        sw.Start();
 
-        while (true)
+        // 3) Map nodes
+        var nodeIndices = new Dictionary<string, int>();
+        int nodeIndex = 0;
+        foreach (var node in graph.Nodes.Values)
         {
-            // Use BFS to find an augmenting path
-            var (path, pathFlow) = graph.Bfs(source, sink);
+            nodeIndices[node.Address] = nodeIndex++;
+        }
 
-            if (pathFlow == 0)
+        int superSourceIndex = nodeIndex++;
+
+        // 4) Create solver
+        var maxFlowSolver = new MaxFlow();
+
+        // 5) Scale targetFlow for superSource->realSource
+
+        if (!nodeIndices.ContainsKey(source) || !nodeIndices.ContainsKey(sink))
+        {
+            throw new ArgumentException("Source or sink not in node map.");
+        }
+
+        int realSourceIndex = nodeIndices[source];
+        int sinkIndex = nodeIndices[sink];
+
+        // 6) superSource->realSource arc
+        maxFlowSolver.AddArcWithCapacity(superSourceIndex, realSourceIndex, targetFlow);
+
+        // 7) Add arcs for each edge
+        var edgeToArc = new Dictionary<FlowEdge, int>();
+        foreach (var edge in graph.Edges)
+        {
+            int fromIdx = nodeIndices[edge.From];
+            int toIdx = nodeIndices[edge.To];
+
+            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(fromIdx, toIdx, edge.CurrentCapacity);
+        }
+
+        // 8) Solve from superSource->sink
+        var status = maxFlowSolver.Solve(superSourceIndex, sinkIndex);
+        if (status != MaxFlow.Status.OPTIMAL)
+        {
+            throw new Exception($"Max flow not optimal: {status}");
+        }
+
+        long scaledFlowVal = maxFlowSolver.OptimalFlow();
+
+        // 9) Store each edge’s flow
+        foreach (var edge in graph.Edges)
+        {
+            long arcFlow = maxFlowSolver.Flow(edgeToArc[edge]);
+
+            edge.Flow += arcFlow; // accumulate flow
+            edge.CurrentCapacity -= arcFlow;
+            if (edge.ReverseEdge != null)
             {
-                break; // No more augmenting paths
-            }
-
-            // Calculate how much more flow we need
-            long remainingFlow = targetFlow - maxFlow;
-
-            // If the pathFlow exceeds the remaining targetFlow, prune it to the remaining amount
-            if (pathFlow > remainingFlow)
-            {
-                pathFlow = remainingFlow;
-            }
-
-            // Update the flow and capacities along the path
-            foreach (var edge in path)
-            {
-                edge.Flow += pathFlow;
-                edge.CurrentCapacity -= pathFlow;
-
-                if (edge.ReverseEdge != null)
-                {
-                    edge.ReverseEdge.CurrentCapacity += pathFlow;
-                }
-            }
-
-            // Update the accumulated maxFlow
-            maxFlow += pathFlow;
-
-            // Stop if we've reached the target flow exactly
-            if (maxFlow >= targetFlow)
-            {
-                break;
+                edge.ReverseEdge.CurrentCapacity += arcFlow;
             }
         }
 
-        // Return the accumulated flow, limited to the targetFlow
-        return maxFlow;
-    }
+        sw.Stop();
+        Console.WriteLine($"TIMING: GraphExtensions.ComputeMaxFlowWithPaths: {sw.ElapsedMilliseconds}ms");
 
-    /// <summary>
-    /// Finds the shortest augmenting path in the FlowGraph using BFS and calculates the flow that can be pushed through it.
-    /// </summary>
-    /// <param name="graph">The flow graph instance.</param>
-    /// <param name="source">The source node identifier.</param>
-    /// <param name="sink">The sink node identifier.</param>
-    /// <returns>A tuple containing the list of edges constituting the path and the flow that can be pushed through this path.</returns>
-    private static (List<FlowEdge> path, long flow) Bfs(this FlowGraph graph, string source, string sink)
-    {
-        var visited = new HashSet<string>();
-        var queue = new Queue<(string node, List<FlowEdge> path)>();
-        visited.Add(source);
-        queue.Enqueue((source, new List<FlowEdge>()));
-
-        while (queue.Count > 0)
-        {
-            var (currentNode, currentPath) = queue.Dequeue();
-
-            // Check if the current node has outgoing edges
-            if (!graph.Nodes.TryGetValue(currentNode, out var node))
-            {
-                continue;
-            }
-
-            // Iterate through all outgoing edges of the current node
-            foreach (var edge in node.OutEdges.OfType<FlowEdge>())
-            {
-                if (edge.CurrentCapacity > 0 && !visited.Contains(edge.To))
-                {
-                    // Append the current edge to the path
-                    var newPath = new List<FlowEdge>(currentPath) { edge };
-
-                    // If the sink is reached, return the path immediately
-                    if (edge.To == sink)
-                    {
-                        long pathFlow = newPath.Min(e => e.CurrentCapacity);
-                        return (newPath, pathFlow);
-                    }
-
-                    // Otherwise, continue traversing
-                    visited.Add(edge.To);
-                    queue.Enqueue((edge.To, newPath));
-                }
-            }
-        }
-
-        // No valid path found
-        return (new List<FlowEdge>(), 0);
+        return scaledFlowVal;
     }
 }

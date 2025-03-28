@@ -1,5 +1,3 @@
-using System.Numerics;
-
 namespace Circles.Pathfinder.Edges;
 
 /// <summary>
