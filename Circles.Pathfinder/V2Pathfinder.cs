@@ -1,8 +1,11 @@
+using System.Globalization;
 using System.Numerics;
+using Circles.Index.Utils;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder;
 
@@ -17,9 +20,9 @@ public class V2Pathfinder : IPathfinder
     }
 
     public V2Pathfinder(LoadGraph loadGraph, GraphFactory graphFactory)
-        : this(graphFactory)
     {
         _loadGraph = loadGraph;
+        _graphFactory = graphFactory;
     }
 
     public async Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
@@ -29,7 +32,12 @@ public class V2Pathfinder : IPathfinder
             throw new ArgumentException("Source and Sink must be provided.");
         }
 
-        if (!BigInteger.TryParse(request.TargetFlow, out var targetFlow))
+        if (request.TargetFlow == null)
+        {
+            throw new ArgumentException("TargetFlow must be provided.");
+        }
+
+        if (!UInt256.TryParse(request.TargetFlow, out var targetFlow))
         {
             throw new ArgumentException("TargetFlow must be a valid integer.");
         }
@@ -39,13 +47,13 @@ public class V2Pathfinder : IPathfinder
             throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
         }
 
-        Console.WriteLine($"Requests Source: { request.Source?.ToLower()}");
+        Console.WriteLine($"Requests Source: {request.Source?.ToLower()}");
         Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
         // Load Trust and Balance Graphs
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
 
-        
+
         return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
     }
 
@@ -53,11 +61,11 @@ public class V2Pathfinder : IPathfinder
         BalanceGraph balanceGraph,
         TrustGraph trustGraph,
         FlowRequest request,
-        BigInteger targetFlow)
+        UInt256 targetFlow)
     {
         var source = request.Source?.ToLower() ?? "";
         var sink = request.Sink?.ToLower() ?? "";
-        
+
         // Set up virtual sink if needed
         trustGraph.SetupVirtualSinkIfNeeded(source);
         var virtualSink = trustGraph.GetVirtualSinkAddress();
@@ -86,14 +94,16 @@ public class V2Pathfinder : IPathfinder
 
         if (!flowGraph.Nodes.ContainsKey(effectiveSink))
         {
-            throw new ArgumentException($"Sink node '{(virtualSink != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
+            throw new ArgumentException(
+                $"Sink node '{(virtualSink != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
         }
 
         // Compute Max Flow
-        var maxFlow = flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, targetFlow);
+        var maxFlow =
+            flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, ConversionUtils.TruncateToInt64(targetFlow));
 
         // Extract Paths with Flow
-        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, BigInteger.Parse("0"));
+        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, 0L);
 
         // If using virtual sink, replace it with the actual sink in the paths
         if (virtualSink != null)
@@ -125,18 +135,20 @@ public class V2Pathfinder : IPathfinder
                 // Filter reverse edges
                 continue;
             }
-            
+
             transferSteps.Add(new TransferPathStep
             {
                 From = edge.From,
                 To = edge.To,
                 TokenOwner = edge.Token,
-                Value = edge.Flow.ToString()
+                Value = ConversionUtils.BlowUpToUInt256(edge.Flow).ToString(CultureInfo.InvariantCulture)
             });
         }
 
         // Prepare the response
-        var response = new MaxFlowResponse(maxFlow.ToString(), transferSteps);
+        var response =
+            new MaxFlowResponse(ConversionUtils.BlowUpToUInt256(maxFlow).ToString(CultureInfo.InvariantCulture),
+                transferSteps);
 
         return response;
     }
@@ -182,7 +194,7 @@ public class V2Pathfinder : IPathfinder
                     // We are at a balance node, so we need to collapse it by merging currentEdge and nextEdge
 
                     // The flow through the balance node is limited by both the incoming and outgoing flows
-                    var mergedFlow = BigInteger.Min(currentEdge.Flow, nextEdge.Flow);
+                    var mergedFlow = Math.Min(currentEdge.Flow, nextEdge.Flow);
 
                     var mergedEdge = new FlowEdge(
                         currentEdge.From,

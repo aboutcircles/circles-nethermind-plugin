@@ -8,9 +8,9 @@ namespace Circles.Pathfinder.Edges;
 public class CapacityEdge : Edge
 {
     public string Token { get; }
-    public BigInteger InitialCapacity { get; }
+    public long InitialCapacity { get; }
 
-    public CapacityEdge(string from, string to, string token, BigInteger initialCapacity) : base(from, to)
+    public CapacityEdge(string from, string to, string token, long initialCapacity) : base(from, to)
     {
         Token = token;
         InitialCapacity = initialCapacity;

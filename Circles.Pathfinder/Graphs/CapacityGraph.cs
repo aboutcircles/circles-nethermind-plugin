@@ -21,7 +21,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, BigInteger amount)
+    public void AddBalanceNode(string address, string token, long amount)
     {
         address = address.ToLower();
         token = token.ToLower();
@@ -32,7 +32,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
 
-    public void AddCapacityEdge(string from, string to, string token, BigInteger capacity)
+    public void AddCapacityEdge(string from, string to, string token, long capacity)
     {
         from = from.ToLower();
         to = to.ToLower();

@@ -20,7 +20,7 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, BigInteger amount)
+    public void AddBalanceNode(string address, string token, long amount)
     {
         var balanceNode = new BalanceNode(address, token, amount);
         balanceNode.Address = address;
@@ -82,8 +82,8 @@ public class FlowGraph : IGraph<FlowEdge>
         newFlowEdge.Flow = flowEdge.Flow;
 
         var newReverseEdge = new FlowEdge(to.Address, from.Address, flowEdge.Token,
-            flowEdge.ReverseEdge?.CurrentCapacity ?? BigInteger.Zero);
-        newReverseEdge.Flow = flowEdge.ReverseEdge?.Flow ?? BigInteger.Zero;
+            flowEdge.ReverseEdge?.CurrentCapacity ?? 0L);
+        newReverseEdge.Flow = flowEdge.ReverseEdge?.Flow ?? 0L;
 
         newFlowEdge.ReverseEdge = newReverseEdge;
         newReverseEdge.ReverseEdge = newFlowEdge;
@@ -193,7 +193,7 @@ public class FlowGraph : IGraph<FlowEdge>
     /// <param name="sinkNode">The sink</param>
     /// <param name="threshold">Only consider edges with more or equal flow</param>
     /// <returns>A list of paths with flow</returns>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, BigInteger threshold)
+    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, long threshold)
     {
         var resultPaths = new List<List<FlowEdge>>();
         var visited = new HashSet<string>();

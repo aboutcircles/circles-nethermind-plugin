@@ -54,7 +54,7 @@ public class GraphFactory
             graph.AddBalance(
                 balance.Account,
                 balance.TokenAddress,
-                BigInteger.Parse(balance.Balance),
+                long.Parse(balance.Balance),
                 balance.IsWrapped);
         }
 

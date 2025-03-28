@@ -1,9 +1,11 @@
 using System.Numerics;
+using Circles.Index.Utils;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
+using Nethermind.Int256;
 using Npgsql;
 using Prometheus;
 
@@ -72,7 +74,7 @@ app.MapGet("/findPath", async (
         if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to) || string.IsNullOrEmpty(amount))
             return Results.BadRequest("from, to, and amount must be provided.");
 
-        if (!BigInteger.TryParse(amount, out var targetFlow))
+        if (!UInt256.TryParse(amount, out var targetFlow))
             return Results.BadRequest("amount must be a valid integer.");
 
         // Get graphs from state container
@@ -84,7 +86,7 @@ app.MapGet("/findPath", async (
 
         var graphFactory = new GraphFactory();
         var pathfinder = new V2Pathfinder(graphFactory);
-        
+
         var request = new FlowRequest
         {
             Source = from.ToLower(),

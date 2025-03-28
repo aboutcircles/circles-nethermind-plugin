@@ -14,13 +14,13 @@ public static class GraphExtensions
     /// <param name="sink">The sink node identifier.</param>
     /// <param name="targetFlow">The desired flow value to reach.</param>
     /// <returns>The total flow value up to the target flow.</returns>
-    public static BigInteger ComputeMaxFlowWithPaths(
+    public static long ComputeMaxFlowWithPaths(
         this FlowGraph graph,
         string source,
         string sink,
-        BigInteger targetFlow)
+        long targetFlow)
     {
-        BigInteger maxFlow = 0;
+        long maxFlow = 0;
 
         while (true)
         {
@@ -33,7 +33,7 @@ public static class GraphExtensions
             }
 
             // Calculate how much more flow we need
-            BigInteger remainingFlow = targetFlow - maxFlow;
+            long remainingFlow = targetFlow - maxFlow;
 
             // If the pathFlow exceeds the remaining targetFlow, prune it to the remaining amount
             if (pathFlow > remainingFlow)
@@ -74,7 +74,7 @@ public static class GraphExtensions
     /// <param name="source">The source node identifier.</param>
     /// <param name="sink">The sink node identifier.</param>
     /// <returns>A tuple containing the list of edges constituting the path and the flow that can be pushed through this path.</returns>
-    private static (List<FlowEdge> path, BigInteger flow) Bfs(this FlowGraph graph, string source, string sink)
+    private static (List<FlowEdge> path, long flow) Bfs(this FlowGraph graph, string source, string sink)
     {
         var visited = new HashSet<string>();
         var queue = new Queue<(string node, List<FlowEdge> path)>();
@@ -102,7 +102,7 @@ public static class GraphExtensions
                     // If the sink is reached, return the path immediately
                     if (edge.To == sink)
                     {
-                        BigInteger pathFlow = newPath.Min(e => e.CurrentCapacity);
+                        long pathFlow = newPath.Min(e => e.CurrentCapacity);
                         return (newPath, pathFlow);
                     }
 
