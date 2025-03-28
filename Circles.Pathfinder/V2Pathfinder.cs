@@ -66,27 +66,18 @@ public class V2Pathfinder : IPathfinder
         var source = request.Source?.ToLower() ?? "";
         var sink = request.Sink?.ToLower() ?? "";
 
-        // Set up virtual sink if needed
-        trustGraph.SetupVirtualSinkIfNeeded(source);
-        var virtualSink = trustGraph.GetVirtualSinkAddress();
+        request.WithWrap ??= false;
 
-        // Check if virtual sink exists but has no outgoing edges
-        if (virtualSink != null && !trustGraph.HasAnyOutgoingEdges(virtualSink))
-        {
-            // Return empty response with zero flow
-            return new MaxFlowResponse("0", new List<TransferPathStep>());
-        }
-
-        // Use virtual sink if it exists
-        var effectiveSink = virtualSink ?? sink;
-
-        // Create Capacity Graph
+        // Create capacity graph
         var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph, request);
 
-        // Create Flow Graph
+        // If we created a virtual sink inside capacityGraph, use that as the sink
+        var effectiveSink = capacityGraph.VirtualSinkAddress ?? sink;
+
+        // Build flow graph
         var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
 
-        // Validate Source and Sink
+        // Validate source + sink
         if (!flowGraph.Nodes.ContainsKey(source))
         {
             throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
@@ -95,63 +86,68 @@ public class V2Pathfinder : IPathfinder
         if (!flowGraph.Nodes.ContainsKey(effectiveSink))
         {
             throw new ArgumentException(
-                $"Sink node '{(virtualSink != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
+                $"Sink node '{(capacityGraph.VirtualSinkAddress != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
         }
 
-        // Compute Max Flow
+        // Compute max flow
         var maxFlow =
             flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, ConversionUtils.TruncateToInt64(targetFlow));
 
-        // Extract Paths with Flow
+        // Extract the paths
         var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, 0L);
 
-        // If using virtual sink, replace it with the actual sink in the paths
-        if (virtualSink != null)
+        // If we had a virtual sink, rewrite it as the real sink in final edges 
+        if (capacityGraph.VirtualSinkAddress != null)
         {
-            pathsWithFlow = pathsWithFlow.Select(path =>
-                path.Select(edge => new FlowEdge(
-                    edge.From == virtualSink ? sink : edge.From,
-                    edge.To == virtualSink ? sink : edge.To,
-                    edge.Token,
-                    edge.InitialCapacity)
-                {
-                    Flow = edge.Flow,
-                    CurrentCapacity = edge.CurrentCapacity
-                }).ToList()
-            ).ToList();
+            pathsWithFlow = pathsWithFlow
+                .Select(path =>
+                    path.Select(edge => new FlowEdge(
+                            edge.From == capacityGraph.VirtualSinkAddress ? sink : edge.From,
+                            edge.To == capacityGraph.VirtualSinkAddress ? sink : edge.To,
+                            edge.Token,
+                            edge.InitialCapacity)
+                        {
+                            Flow = edge.Flow,
+                            CurrentCapacity = edge.CurrentCapacity
+                        })
+                        .ToList()
+                ).ToList();
         }
 
-        // Collapse balance nodes to get a collapsed graph
+        // Collapse balance nodes, etc. (same as your existing logic)
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
 
-        // Create transfer steps from the collapsed graph
+        // Build TransferPathStep list
         var transferSteps = new List<TransferPathStep>();
-
         foreach (var edge in collapsedGraph.Edges)
         {
-            // For each edge, create a transfer step
-            if (edge.Flow == BigInteger.Zero)
-            {
-                // Filter reverse edges
+            if (edge.Flow == 0)
                 continue;
-            }
 
             transferSteps.Add(new TransferPathStep
             {
                 From = edge.From,
                 To = edge.To,
                 TokenOwner = edge.Token,
-                Value = ConversionUtils.BlowUpToUInt256(edge.Flow).ToString(CultureInfo.InvariantCulture)
+                Value = edge.Flow
+                    .ToString(CultureInfo.InvariantCulture)
             });
         }
 
-        // Prepare the response
-        var response =
-            new MaxFlowResponse(ConversionUtils.BlowUpToUInt256(maxFlow).ToString(CultureInfo.InvariantCulture),
-                transferSteps);
+        var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
+        Console.WriteLine($"-----------------------------------");
+        Console.WriteLine($"Target flow: {targetFlow}");
+        Console.WriteLine($"Max flow: {maxFlow}");
+        Console.WriteLine($"Total value: {totalValue}");
 
+        // Return
+        var response = new MaxFlowResponse(
+            maxFlow.ToString(CultureInfo.InvariantCulture),
+            transferSteps
+        );
         return response;
     }
+
 
     /// <summary>
     /// Collapses balance nodes in the paths and returns a collapsed flow graph.

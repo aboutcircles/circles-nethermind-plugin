@@ -53,7 +53,7 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
         }
 
-        if (settings.CMGroupDeployer != null)
+        if (settings.CMGroupDeployer.Length > 0)
         {
             schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
         }
@@ -93,9 +93,9 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress));
         }
 
-        if (settings.CMGroupDeployer != null)
+        if (settings.CMGroupDeployer.Length > 0)
         {
-            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer));
+            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToHashSet()));
         }
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
@@ -177,7 +177,8 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
         pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
-        pluginLogger.Info(" * V2 CMGroup Deployer address: " + settings.CMGroupDeployer);
+        pluginLogger.Info(" * V2 CMGroup Deployer address: " + string.Join(", ",
+            settings.CMGroupDeployer.Select(o => o.ToString(true, false))));
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
             settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));

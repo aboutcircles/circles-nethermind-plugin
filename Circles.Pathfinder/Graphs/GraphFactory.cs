@@ -7,6 +7,8 @@ namespace Circles.Pathfinder.Graphs;
 
 public class GraphFactory
 {
+    private const string VIRTUAL_SINK_SUFFIX = "_virtual_sink";
+
     /// <summary>
     /// Loads all v2 trust edges from the database and creates a trust graph from them.
     /// </summary>
@@ -64,9 +66,11 @@ public class GraphFactory
 
     /// <summary>
     /// Takes a balance graph and a trust graph and creates a capacity graph from them.
+    /// Also sets up a "virtual sink" if source == sink and toTokens are specified.
     /// </summary>
     /// <param name="balanceGraph">The balance graph to use.</param>
     /// <param name="trustGraph">The trust graph to use.</param>
+    /// <param name="request">Flow request parameters.</param>
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
     public CapacityGraph CreateCapacityGraph(BalanceGraph balanceGraph, TrustGraph trustGraph, FlowRequest request)
     {
@@ -79,25 +83,18 @@ public class GraphFactory
         stringWriter.WriteLine($"WithWrap: {request.WithWrap}");
         Console.WriteLine(stringWriter.ToString());
 
-        // Take the balance and trust graphs and create a capacity graph.
-        // 1. Create a unified list of nodes from both graphs
-        // 2. Leave the capacity edges from the balance graph in place
-        // 3. Create more capacity edges based on the trust graph:
-        //    - For each balance, check if there is a node that is willing to accept the balance (is trusting the token issuer)
-        //    - If there is, create a capacity edge from the balance node to the accepting node
-
         var capacityGraph = new CapacityGraph();
 
-        var sourceEqualsSink = request.Source == request.Sink;
+        // For convenience
+        var sourceEqualsSink = (request.Source == request.Sink);
+        var toTokensFilter = request.ToTokens?.ToHashSet() ?? new HashSet<string>();
+        var fromTokensFilter = request.FromTokens?.ToHashSet() ?? new HashSet<string>();
+
         Console.WriteLine($"Source equals sink: {sourceEqualsSink}");
-
-        var toTokensFilter = request.ToTokens?.ToHashSet() ?? [];
         Console.WriteLine($"To tokens filter: {toTokensFilter.Count}");
-
-        var fromTokensFilter = request.FromTokens?.ToHashSet() ?? [];
         Console.WriteLine($"From tokens filter: {fromTokensFilter.Count}");
 
-        // Step 1: Create a unified list of nodes from both graphs
+        // STEP 1: Create a unified list of nodes from both graphs
         foreach (var avatar in balanceGraph.AvatarNodes.Values)
         {
             capacityGraph.AddAvatar(avatar.Address);
@@ -111,35 +108,50 @@ public class GraphFactory
         // Add BalanceNodes
         foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
         {
-            // Case 1: When source and sink are the same, don't add balances for tokens that are in toTokens
             var isSource = balanceNode.HolderAddress == request.Source;
+
+            // Case 1: skip certain balances if source == sink
             if (sourceEqualsSink && isSource && toTokensFilter.Count > 0 && toTokensFilter.Contains(balanceNode.Token))
             {
                 Console.WriteLine($"Skipping balance node (case 1) {balanceNode.Address}");
                 continue;
             }
 
-            // Case 2: When fromTokens is specified, only include specified tokens for source address
+            // Case 2: If fromTokens is specified, only include those tokens for the source address
             if (isSource && fromTokensFilter.Count > 0 && !fromTokensFilter.Contains(balanceNode.Token))
             {
                 Console.WriteLine($"Skipping balance node (case 2) {balanceNode.Address}");
                 continue;
             }
 
-            // Case 3: Filter wrapped tokens, only isWrapped tokens for source address are kept
-            if (balanceNode.IsWrapped && (request.WithWrap == false ||
-                                          (request.WithWrap == true && balanceNode.HolderAddress != request.Source)))
+            // Case 3: Filter out wrapped tokens if request.WithWrap = false
+            if (balanceNode.IsWrapped && (request.WithWrap == null || request.WithWrap == false))
             {
                 Console.WriteLine($"Skipping balance node (case 3) {balanceNode.Address}");
+                continue;
+            }
+
+            // Case 4: Filter out wrapped tokens not held by the source
+            if (balanceNode.IsWrapped && balanceNode.HolderAddress != request.Source)
+            {
+                Console.WriteLine($"Skipping balance node (case 4) {balanceNode.Address}");
                 continue;
             }
 
             capacityGraph.AddBalanceNode(balanceNode.Address, balanceNode.Token, balanceNode.Amount);
         }
 
-        // Step 2: Leave the capacity edges from the balance graph in place
+        // STEP 2: Copy capacity edges from the BalanceGraph
         foreach (var capacityEdge in balanceGraph.Edges)
         {
+            if (!capacityGraph.Nodes.ContainsKey(capacityEdge.From)
+                || !capacityGraph.Nodes.ContainsKey(capacityEdge.To))
+            {
+                Console.WriteLine(
+                    $"Skipping capacity edge (node not found. Case: 1) {capacityEdge.From} -> {capacityEdge.To}");
+                continue;
+            }
+
             capacityGraph.AddCapacityEdge(
                 capacityEdge.From,
                 capacityEdge.To,
@@ -148,21 +160,18 @@ public class GraphFactory
             );
         }
 
-        // Step 3: Create more capacity edges based on the trust graph
-        // Optimization: Precompute a trustee-to-trusters lookup dictionary
+        // STEP 3: Create capacity edges based on the trust graph
+        // Precompute trustee->trusters for quick lookups
         var trusteeToTrusters = new Dictionary<string, List<string>>();
         foreach (var edge in trustGraph.Edges)
         {
-            // If this trust relation involves the sink trusting
-            if (edge.From == request.Sink)
+            // Example filter: If the sink is the one trusting,
+            // and we have a toTokens filter, skip any trust to a token not in toTokens
+            if (edge.From == request.Sink && toTokensFilter.Count > 0 && !toTokensFilter.Contains(edge.To))
             {
-                // If we have toTokens filter and the token (trustee) is not in toTokens, skip
-                if (toTokensFilter.Count > 0 && !toTokensFilter.Contains(edge.To))
-                {
-                    Console.WriteLine(
-                        $"Skipping trust edge (edge.From == request.Sink && not in filter) {edge.From} -> {edge.To}");
-                    continue;
-                }
+                Console.WriteLine(
+                    $"Skipping trust edge (sink trusts {edge.To} but not in toTokens) {edge.From} -> {edge.To}");
+                continue;
             }
 
             if (!trusteeToTrusters.TryGetValue(edge.To, out var trusters))
@@ -174,15 +183,25 @@ public class GraphFactory
             trusters.Add(edge.From);
         }
 
+        // For every balance node, see if there's a trust edge from token -> some node
         foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
         {
-            string tokenIssuer = balanceNode.Token.ToLower();
+            var tokenIssuer = balanceNode.Token.ToLower();
             if (trusteeToTrusters.TryGetValue(tokenIssuer, out var acceptingNodes))
             {
                 foreach (var acceptingNode in acceptingNodes)
                 {
+                    // Avoid self edges
                     if (acceptingNode == balanceNode.HolderAddress)
                         continue;
+
+                    if (!capacityGraph.Nodes.ContainsKey(balanceNode.Address)
+                        || !capacityGraph.Nodes.ContainsKey(acceptingNode))
+                    {
+                        Console.WriteLine(
+                            $"Skipping capacity edge (node not found. Case: 2) {balanceNode.Address} -> {acceptingNode}");
+                        continue;
+                    }
 
                     capacityGraph.AddCapacityEdge(
                         balanceNode.Address,
@@ -194,7 +213,58 @@ public class GraphFactory
             }
         }
 
+        // STEP 4: Setup Virtual Sink if needed (i.e. if source == sink)
+        //         so that we only add capacity edges for tokens actually trusted by the real sink.
+        if (sourceEqualsSink && !string.IsNullOrEmpty(request.Source))
+        {
+            var lowerSource = request.Source.ToLower();
+            var virtualSinkAddress = lowerSource + VIRTUAL_SINK_SUFFIX;
+
+            capacityGraph.AddAvatar(virtualSinkAddress);
+
+            bool anyTrusted = false;
+            // Only add edges for tokens that the real sink actually trusts
+            if (request.ToTokens != null && request.ToTokens.Count > 0)
+            {
+                foreach (var token in request.ToTokens)
+                {
+                    if (HasTrustEdge(trustGraph, lowerSource, token.ToLower()))
+                    {
+                        // Decide which direction to add. Usually we do "virtualSink -> token" 
+                        // or "token -> virtualSink" depending on how your flow is set up.
+                        // Typically you'd do token -> sink, so let's do:
+                        capacityGraph.AddCapacityEdge(token.ToLower(), virtualSinkAddress, token.ToLower(),
+                            long.MaxValue);
+                        anyTrusted = true;
+                    }
+                }
+            }
+
+            if (!anyTrusted)
+            {
+                // No tokens ended up being trusted => remove the virtual sink
+                capacityGraph.AvatarNodes.Remove(virtualSinkAddress);
+                capacityGraph.Nodes.Remove(virtualSinkAddress);
+            }
+            else
+            {
+                // Store a reference on the capacity graph itself
+                capacityGraph.VirtualSinkAddress = virtualSinkAddress;
+            }
+        }
+
+        // Done
         return capacityGraph;
+    }
+
+    /// <summary>
+    /// Simple helper to see if the "truster -> trustee" relationship exists in the trust graph.
+    /// </summary>
+    private bool HasTrustEdge(TrustGraph trustGraph, string truster, string trustee)
+    {
+        return trustGraph.Edges.Any(e =>
+            e.From.Equals(truster, StringComparison.OrdinalIgnoreCase) &&
+            e.To.Equals(trustee, StringComparison.OrdinalIgnoreCase));
     }
 
     public FlowGraph CreateFlowGraph(CapacityGraph capacityGraph)
