@@ -1,6 +1,7 @@
-using System.Numerics;
+using Circles.Index.Utils;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
@@ -54,7 +55,7 @@ public class GraphFactory
             graph.AddBalance(
                 balance.Account,
                 balance.TokenAddress,
-                long.Parse(balance.Balance),
+                ConversionUtils.TruncateToInt64(UInt256.Parse(balance.Balance)),
                 balance.IsWrapped);
         }
 
@@ -158,7 +159,8 @@ public class GraphFactory
                 // If we have toTokens filter and the token (trustee) is not in toTokens, skip
                 if (toTokensFilter.Count > 0 && !toTokensFilter.Contains(edge.To))
                 {
-                    Console.WriteLine($"Skipping trust edge (edge.From == request.Sink && not in filter) {edge.From} -> {edge.To}");
+                    Console.WriteLine(
+                        $"Skipping trust edge (edge.From == request.Sink && not in filter) {edge.From} -> {edge.To}");
                     continue;
                 }
             }
