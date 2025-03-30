@@ -319,6 +319,49 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
+    public Task<ResultWrapper<Address[]>> circles_getCommonTrust(
+        Address address1,
+        Address address2,
+        int? version = null)
+    {
+        var v1Sql = @"
+            select trustee
+            from ""V_Crc_TrustRelations""
+            where truster in (@address1, @address2)
+            and trustee not in (@address1, @address2)
+            and version = 1
+            group by trustee
+            having count(truster) > 1
+        ";
+
+        var v2Sql = @"
+            select trustee
+            from ""V_Crc_TrustRelations""
+            where truster in (@address1, @address2)
+            and trustee not in (@address1, @address2)
+            and version = 2
+            group by trustee
+            having count(truster) > 1
+        ";
+
+        var sql = version == 1
+            ? v1Sql
+            : version == 2
+                ? v2Sql
+                : $"{v1Sql} union {v2Sql}";
+
+        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, [
+            _indexerContext.ReadonlyDatabase.CreateParameter("address1", address1.ToString(true, false)),
+            _indexerContext.ReadonlyDatabase.CreateParameter("address2", address2.ToString(true, false))
+        ]));
+
+        var commonTrust = result.Rows
+            .Select(row => new Address(row[0]?.ToString() ?? throw new Exception("Address is null")))
+            .ToArray();
+
+        return Task.FromResult(ResultWrapper<Address[]>.Success(commonTrust));
+    }
+
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
     {
         Select select = query.ToModel();
@@ -365,7 +408,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
             var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
-            var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+            var url =
+                $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
 
             // // Add the new parameters if they are set
             // if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
@@ -410,7 +454,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             // If no external service is configured, run the local pathfinder
             var loadGraph = new LoadGraph(
                 _indexerContext.Settings.IndexReadonlyDbConnectionString ??
-                _indexerContext.Settings.IndexDbConnectionString);  // Pass the withWrap parameter to LoadGraph
+                _indexerContext.Settings.IndexDbConnectionString); // Pass the withWrap parameter to LoadGraph
 
             var graphFactory = new GraphFactory();
             var trustGraph = graphFactory.V2TrustGraph(loadGraph);
