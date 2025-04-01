@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Numerics;
 using Circles.Index.Utils;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
@@ -25,7 +24,7 @@ public class V2Pathfinder : IPathfinder
         _graphFactory = graphFactory;
     }
 
-    public async Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
+    public Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
     {
         if (string.IsNullOrEmpty(request.Source) || string.IsNullOrEmpty(request.Sink))
         {
@@ -53,8 +52,9 @@ public class V2Pathfinder : IPathfinder
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
 
+        var maxFlowResponse = ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
 
-        return ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
+        return Task.FromResult(maxFlowResponse);
     }
 
     public MaxFlowResponse ComputeMaxFlowWithData(
@@ -91,12 +91,12 @@ public class V2Pathfinder : IPathfinder
 
         // Compute max flow
         var maxFlow = ConversionUtils.BlowUpToUInt256(
-                        flowGraph.ComputeMaxFlowWithPaths(
-                            source, 
-                            effectiveSink, 
-                            ConversionUtils.TruncateToInt64(targetFlow)
-                        )
-                    );
+            flowGraph.ComputeMaxFlowWithPaths(
+                source,
+                effectiveSink,
+                ConversionUtils.TruncateToInt64(targetFlow)
+            )
+        );
 
         // Extract the paths
         var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, 0L);

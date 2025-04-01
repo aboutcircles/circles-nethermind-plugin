@@ -74,6 +74,15 @@ public class GraphFactory
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
     public CapacityGraph CreateCapacityGraph(BalanceGraph balanceGraph, TrustGraph trustGraph, FlowRequest request)
     {
+        // We'll count occurrences of skip cases and log them at the end
+        int skipBalanceCase1 = 0;
+        int skipBalanceCase2 = 0;
+        int skipBalanceCase3a = 0;
+        int skipBalanceCase3b = 0;
+        int skipCapEdgeCase1 = 0;
+        int skipCapEdgeCase2 = 0;
+        int skipTrustEdgeSinkTokens = 0;
+
         var stringWriter = new StringWriter();
         stringWriter.WriteLine("Creating capacity graph...");
         stringWriter.WriteLine($"Source: {request.Source}");
@@ -88,14 +97,14 @@ public class GraphFactory
         // For convenience
         var sourceEqualsSink = (request.Source == request.Sink);
         var toTokensFilter = request.ToTokens?
-            .Select(t => t.ToLower())
-            .ToHashSet() 
-            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                 .Select(t => t.ToLower())
+                                 .ToHashSet()
+                             ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var fromTokensFilter = request.FromTokens?
-            .Select(t => t.ToLower())
-            .ToHashSet() 
-            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                   .Select(t => t.ToLower())
+                                   .ToHashSet()
+                               ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         Console.WriteLine($"Source equals sink: {sourceEqualsSink}");
         Console.WriteLine($"To tokens filter: {toTokensFilter.Count}");
@@ -120,28 +129,28 @@ public class GraphFactory
             // Case 1: skip certain balances if source == sink
             if (sourceEqualsSink && isSource && toTokensFilter.Count > 0 && toTokensFilter.Contains(balanceNode.Token))
             {
-                Console.WriteLine($"Skipping balance node (case 1) {balanceNode.Address}");
+                skipBalanceCase1++;
                 continue;
             }
 
             // Case 2: If fromTokens is specified, only include those tokens for the source address
             if (isSource && fromTokensFilter.Count > 0 && !fromTokensFilter.Contains(balanceNode.Token))
             {
-                Console.WriteLine($"Skipping balance node (case 2) {balanceNode.Address}");
+                skipBalanceCase2++;
                 continue;
             }
 
             // Case 3a: Filter out wrapped tokens if request.WithWrap = false
             if (balanceNode.IsWrapped && (request.WithWrap == null || request.WithWrap == false))
             {
-                Console.WriteLine($"Skipping balance node (case 3a) {balanceNode.Address}");
+                skipBalanceCase3a++;
                 continue;
             }
 
             // Case 3b: Filter out wrapped tokens not held by the source
             if (balanceNode.IsWrapped && balanceNode.HolderAddress != request.Source)
             {
-                Console.WriteLine($"Skipping balance node (case 3b) {balanceNode.Address}");
+                skipBalanceCase3b++;
                 continue;
             }
 
@@ -154,8 +163,7 @@ public class GraphFactory
             if (!capacityGraph.Nodes.ContainsKey(capacityEdge.From)
                 || !capacityGraph.Nodes.ContainsKey(capacityEdge.To))
             {
-                Console.WriteLine(
-                    $"Skipping capacity edge (node not found. Case: 1) {capacityEdge.From} -> {capacityEdge.To}");
+                skipCapEdgeCase1++;
                 continue;
             }
 
@@ -176,8 +184,7 @@ public class GraphFactory
             // and we have a toTokens filter, skip any trust to a token not in toTokens
             if (edge.From == request.Sink && toTokensFilter.Count > 0 && !toTokensFilter.Contains(edge.To))
             {
-                Console.WriteLine(
-                    $"Skipping trust edge (sink trusts {edge.To} but not in toTokens) {edge.From} -> {edge.To}");
+                skipTrustEdgeSinkTokens++;
                 continue;
             }
 
@@ -205,8 +212,7 @@ public class GraphFactory
                     if (!capacityGraph.Nodes.ContainsKey(balanceNode.Address)
                         || !capacityGraph.Nodes.ContainsKey(acceptingNode))
                     {
-                        Console.WriteLine(
-                            $"Skipping capacity edge (node not found. Case: 2) {balanceNode.Address} -> {acceptingNode}");
+                        skipCapEdgeCase2++;
                         continue;
                     }
 
@@ -237,9 +243,6 @@ public class GraphFactory
                 {
                     if (HasTrustEdge(trustGraph, lowerSource, token.ToLower()))
                     {
-                        // Decide which direction to add. Usually we do "virtualSink -> token" 
-                        // or "token -> virtualSink" depending on how your flow is set up.
-                        // Typically you'd do token -> sink, so let's do:
                         capacityGraph.AddCapacityEdge(token.ToLower(), virtualSinkAddress, token.ToLower(),
                             long.MaxValue);
                         anyTrusted = true;
@@ -259,6 +262,15 @@ public class GraphFactory
                 capacityGraph.VirtualSinkAddress = virtualSinkAddress;
             }
         }
+
+        // After all the skipping logic, print out our aggregated counts
+        Console.WriteLine($"Skipped balance nodes (case 1): {skipBalanceCase1}");
+        Console.WriteLine($"Skipped balance nodes (case 2): {skipBalanceCase2}");
+        Console.WriteLine($"Skipped balance nodes (case 3a): {skipBalanceCase3a}");
+        Console.WriteLine($"Skipped balance nodes (case 3b): {skipBalanceCase3b}");
+        Console.WriteLine($"Skipped capacity edges (node not found. Case: 1): {skipCapEdgeCase1}");
+        Console.WriteLine($"Skipped capacity edges (node not found. Case: 2): {skipCapEdgeCase2}");
+        Console.WriteLine($"Skipped trust edges (sink trusts token but not in toTokens): {skipTrustEdgeSinkTokens}");
 
         // Done
         return capacityGraph;
