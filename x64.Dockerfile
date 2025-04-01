@@ -8,12 +8,9 @@ RUN find . -type f -name "._*" -delete && \
 RUN dotnet restore
 RUN dotnet publish -c Release -o /circles-nethermind-plugin
 
-RUN ls -l  /circles-nethermind-plugin/
-
 FROM nethermind/nethermind:1.31.4 AS base
 
 # dotnet libs
-
 COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Common.dll /nethermind/plugins

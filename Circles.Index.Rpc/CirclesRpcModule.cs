@@ -408,31 +408,30 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
             var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
-            var url =
-                $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+            var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
 
-            // // Add the new parameters if they are set
-            // if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
-            // {
-            //     foreach (var token in flowRequest.FromTokens)
-            //     {
-            //         url += $"&fromTokens={token}";
-            //     }
-            //
-            // }
-            //
-            // if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
-            // {
-            //     foreach (var token in flowRequest.ToTokens)
-            //     {
-            //         url += $"&toTokens={token}";
-            //     }
-            // }
-            //
-            // if (flowRequest.WithWrap.HasValue)
-            // {
-            //     url += $"&withWrap={flowRequest.WithWrap.Value}";
-            // }
+            // Add the new parameters if they are set
+            if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
+            {
+                foreach (var token in flowRequest.FromTokens)
+                {
+                    url += $"&fromTokens={token}";
+                }
+
+            }
+            
+            if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
+            {
+                foreach (var token in flowRequest.ToTokens)
+                {
+                    url += $"&toTokens={token}";
+                }
+            }
+            
+            if (flowRequest.WithWrap.HasValue)
+            {
+                url += $"&withWrap={flowRequest.WithWrap.Value}";
+            }
 
             using var httpClient = new HttpClient();
 
@@ -454,13 +453,10 @@ public class CirclesRpcModule : ICirclesRpcModule
             // If no external service is configured, run the local pathfinder
             var loadGraph = new LoadGraph(
                 _indexerContext.Settings.IndexReadonlyDbConnectionString ??
-                _indexerContext.Settings.IndexDbConnectionString); // Pass the withWrap parameter to LoadGraph
+                _indexerContext.Settings.IndexDbConnectionString); 
 
             var graphFactory = new GraphFactory();
-            var trustGraph = graphFactory.V2TrustGraph(loadGraph);
-            var balanceGraph = graphFactory.V2BalanceGraph(loadGraph);
-            var capacityGraph = graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
-            var pathfinder = new V2Pathfinder(trustGraph, capacityGraph, graphFactory);
+            var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
 
             return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
         }

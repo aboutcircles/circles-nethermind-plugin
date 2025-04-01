@@ -78,40 +78,19 @@ The virtual sink addresses scenarios where the source and sink nodes are the sam
 
 ### Balance/Trust Query Enhancement
 - **Purpose**: Support wrapped CRC20 tokens
-- **Implementation**: `trustQueryWrap.sql`, `balanceQueryWrap.sql`
+- **Implementation**: Added in `BalanceGraph.cs`
 - **Behavior**: All accounts will now support both ERC1155 and CRC20 tokens. CRC20 tokens will retain their addresses and remain distinct from ERC1155 tokens. They will be introduced into the trust graph as nodes trusted only by the addresses that trust the avatar that deployed the wrap token. This setup enables the construction of a capacity graph, allowing the flow of CRC20 tokens from accounts holding them to accounts that trust the corresponding avatar.
+```csharp
+ // Case 3: Filter wrapped tokens, only isWrapped tokens for source address are kept
+if ( isWrapped && (_withWrap == false || (_withWrap == true && address != _sourceAddress)) )
+{
+    return; 
+}
+```
+`BalanceNode` will now have a new property IsWrapped
 
 
-## 4. Dual Graph Loading
-
-### Purpose
-Support pathfinding with both regular and wrapped token transfers.
-
-### Implementation Details
-- **Location**: Implemented in `NetworkState.cs` and `NetworkStateUpdaterService.cs`
-- **Key Components**:
-  ```csharp
-  // Regular graphs (without wrapped tokens)
-  public TrustGraph? TrustGraph => _trustGraph;
-  public BalanceGraph? BalanceGraph => _balanceGraph;
-  
-  // Wrapped graphs (with wrapped tokens)
-  public TrustGraph? WrappedTrustGraph => _wrappedTrustGraph;
-  public BalanceGraph? WrappedBalanceGraph => _wrappedBalanceGraph;
-  ```
-
-### Behavior
-   - Graphs are loaded in parallel tasks
-   - Selection determined by `withWrap` parameter in requests
-   - Default behavior uses non-wrapped graphs when parameter is omitted
-   ```csharp
-   bool useWrappedTokens = withWrap ?? false;
-   var balanceGraph = useWrappedTokens 
-       ? stateContainer.WrappedBalanceGraph 
-       : stateContainer.BalanceGraph;
-   ```
-
-## 6. API Changes
+## 4. API Changes
 
 ### New Parameters
 ```csharp
