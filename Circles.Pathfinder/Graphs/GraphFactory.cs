@@ -87,8 +87,15 @@ public class GraphFactory
 
         // For convenience
         var sourceEqualsSink = (request.Source == request.Sink);
-        var toTokensFilter = request.ToTokens?.ToHashSet() ?? new HashSet<string>();
-        var fromTokensFilter = request.FromTokens?.ToHashSet() ?? new HashSet<string>();
+        var toTokensFilter = request.ToTokens?
+            .Select(t => t.ToLower())
+            .ToHashSet() 
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var fromTokensFilter = request.FromTokens?
+            .Select(t => t.ToLower())
+            .ToHashSet() 
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         Console.WriteLine($"Source equals sink: {sourceEqualsSink}");
         Console.WriteLine($"To tokens filter: {toTokensFilter.Count}");
@@ -124,17 +131,17 @@ public class GraphFactory
                 continue;
             }
 
-            // Case 3: Filter out wrapped tokens if request.WithWrap = false
+            // Case 3a: Filter out wrapped tokens if request.WithWrap = false
             if (balanceNode.IsWrapped && (request.WithWrap == null || request.WithWrap == false))
             {
-                Console.WriteLine($"Skipping balance node (case 3) {balanceNode.Address}");
+                Console.WriteLine($"Skipping balance node (case 3a) {balanceNode.Address}");
                 continue;
             }
 
-            // Case 4: Filter out wrapped tokens not held by the source
+            // Case 3b: Filter out wrapped tokens not held by the source
             if (balanceNode.IsWrapped && balanceNode.HolderAddress != request.Source)
             {
-                Console.WriteLine($"Skipping balance node (case 4) {balanceNode.Address}");
+                Console.WriteLine($"Skipping balance node (case 3b) {balanceNode.Address}");
                 continue;
             }
 
