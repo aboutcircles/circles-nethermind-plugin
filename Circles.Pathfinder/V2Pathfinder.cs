@@ -90,8 +90,13 @@ public class V2Pathfinder : IPathfinder
         }
 
         // Compute max flow
-        var maxFlow =
-            flowGraph.ComputeMaxFlowWithPaths(source, effectiveSink, ConversionUtils.TruncateToInt64(targetFlow));
+        var maxFlow = ConversionUtils.BlowUpToUInt256(
+                        flowGraph.ComputeMaxFlowWithPaths(
+                            source, 
+                            effectiveSink, 
+                            ConversionUtils.TruncateToInt64(targetFlow)
+                        )
+                    );
 
         // Extract the paths
         var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, 0L);
@@ -132,16 +137,16 @@ public class V2Pathfinder : IPathfinder
                 From = edge.From,
                 To = edge.To,
                 TokenOwner = edge.Token,
-                Value = edge.Flow
+                Value = ConversionUtils.BlowUpToUInt256(edge.Flow)
                     .ToString(CultureInfo.InvariantCulture)
             });
         }
 
-        var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
+      //  var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
         Console.WriteLine($"-----------------------------------");
         Console.WriteLine($"Target flow: {targetFlow}");
         Console.WriteLine($"Max flow: {maxFlow}");
-        Console.WriteLine($"Total value: {totalValue}");
+      //  Console.WriteLine($"Total value: {totalValue}");
 
         // Return
         var response = new MaxFlowResponse(
