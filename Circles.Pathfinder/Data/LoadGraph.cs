@@ -1,27 +1,45 @@
 using Npgsql;
+using System.Reflection;
 
 namespace Circles.Pathfinder.Data
 {
     // TODO: Use CirclesQuery<T> and remove the Npgsql dependency
     public interface ILoadGraph
     {
-        IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances();
+        IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped)> LoadV2Balances();
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
     }
 
-    public class LoadGraph(string connectionString) : ILoadGraph
+    public class LoadGraph : ILoadGraph
     {
-        public IEnumerable<(string Balance, string Account, string TokenAddress)> LoadV2Balances()
-        {
-            var balanceQuery = @"
-                select ""demurragedTotalBalance""::text, ""account"", ""tokenAddress""
-                from ""V_CrcV2_BalancesByAccountAndToken"" b
-                left join ""CrcV2_RegisterGroup"" g on g.""group"" = b.""tokenAddress""
-                where g.""group"" is null
-                and ""demurragedTotalBalance"" > 0;
-            ";
+        private readonly string _connectionString;
 
-            using var connection = new NpgsqlConnection(connectionString);
+        public LoadGraph(string connectionString)
+        {
+            _connectionString = connectionString;
+        }
+
+        private string LoadQueryFromResource(string resourceName)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var fullResourceName = $"Circles.Pathfinder.Data.Queries.{resourceName}";
+            
+            using var stream = assembly.GetManifestResourceStream(fullResourceName);
+            if (stream == null)
+            {
+                throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
+            }
+            
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
+        public IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped)> LoadV2Balances()
+        {
+            // We now only have one balance query that includes the isWrapped column
+            var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
+
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
@@ -32,19 +50,18 @@ namespace Circles.Pathfinder.Data
                 var balance = reader.GetString(0);
                 var account = reader.GetString(1);
                 var tokenAddress = reader.GetString(2);
+                var isWrapped = reader.GetBoolean(3);
 
-                yield return (balance, account, tokenAddress);
+                yield return (balance, account, tokenAddress, isWrapped);
             }
         }
 
         public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
         {
-            var trustQuery = @"
-                select truster, trustee
-                from ""V_CrcV2_TrustRelations"";
-            ";
+            // We now only have one trust query that includes wrap tokens
+            var trustQuery = LoadQueryFromResource("trustQuery.sql");
 
-            using var connection = new NpgsqlConnection(connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(trustQuery, connection);

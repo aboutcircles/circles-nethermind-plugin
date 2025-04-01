@@ -11,6 +11,9 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public IDictionary<string, BalanceNode> BalanceNodes { get; } = new Dictionary<string, BalanceNode>();
     public HashSet<CapacityEdge> Edges { get; } = new();
 
+    public string? VirtualSinkAddress { get; set; }
+    public string? SourceAddress { get; }
+
     public void AddAvatar(string avatarAddress)
     {
         avatarAddress = avatarAddress.ToLower();
@@ -41,7 +44,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
         var edge = new CapacityEdge(from, to, token, capacity);
         Edges.Add(edge);
 
-        // Optionally, you can manage adjacency lists if needed
+        // Manage adjacency lists
         if (AvatarNodes.TryGetValue(from, out var node))
         {
             node.OutEdges.Add(edge);

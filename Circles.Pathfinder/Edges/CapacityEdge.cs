@@ -1,5 +1,3 @@
-using Nethermind.Int256;
-
 namespace Circles.Pathfinder.Edges;
 
 /// <summary>

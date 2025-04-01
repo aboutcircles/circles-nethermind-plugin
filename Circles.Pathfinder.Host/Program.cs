@@ -1,9 +1,11 @@
 using System.Numerics;
+using Circles.Index.Utils;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
+using Nethermind.Int256;
 using Npgsql;
 using Prometheus;
 
@@ -59,44 +61,6 @@ app.MapGet("/findPath", async (
     SemaphoreSlim semaphore
 ) =>
 {
-    // Auxiliary method to create a filtered balance graph
-    static BalanceGraph CreateFilteredBalanceGraph(BalanceGraph originalGraph)
-    {
-        var filteredGraph = new BalanceGraph();
-        foreach (var avatarNode in originalGraph.AvatarNodes.Values)
-        {
-            filteredGraph.AddAvatar(avatarNode.Address);
-        }
-
-        foreach (var balanceNode in originalGraph.BalanceNodes.Values)
-        {
-            filteredGraph.AddBalance(
-                balanceNode.HolderAddress,
-                balanceNode.Token,
-                balanceNode.Amount
-            );
-        }
-
-        return filteredGraph;
-    }
-
-    // Auxiliary method to create a filtered trust graph
-    static TrustGraph CreateFilteredTrustGraph(TrustGraph originalGraph, string sink)
-    {
-        var filteredGraph = new TrustGraph();
-        foreach (var avatarNode in originalGraph.AvatarNodes.Values)
-        {
-            filteredGraph.AddAvatar(avatarNode.Address);
-        }
-
-        foreach (var edge in originalGraph.Edges)
-        {
-            filteredGraph.AddTrustEdge(edge.From, edge.To);
-        }
-
-        return filteredGraph;
-    }
-
     if (!semaphore.Wait(0))
     {
         FindPathMetrics.RejectedRequestsCounter.Inc();
@@ -110,44 +74,31 @@ app.MapGet("/findPath", async (
         if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to) || string.IsNullOrEmpty(amount))
             return Results.BadRequest("from, to, and amount must be provided.");
 
-        if (!BigInteger.TryParse(amount, out var targetFlow))
+        if (!UInt256.TryParse(amount, out var targetFlow))
             return Results.BadRequest("amount must be a valid integer.");
 
-        // Use withWrap parameter to select the appropriate graph
-        bool useWrappedTokens = withWrap ?? false; // Default to false (non-wrapped) if not specified
-
-        // Select the appropriate graphs based on withWrap parameter
-        var balanceGraph = useWrappedTokens
-            ? stateContainer.WrappedBalanceGraph
-            : stateContainer.BalanceGraph;
-
-        var trustGraph = useWrappedTokens
-            ? stateContainer.WrappedTrustGraph
-            : stateContainer.TrustGraph;
+        // Get graphs from state container
+        var balanceGraph = stateContainer.BalanceGraph;
+        var trustGraph = stateContainer.TrustGraph;
 
         if (balanceGraph == null || trustGraph == null)
-            return Results.BadRequest($"Requested graphs (withWrap={useWrappedTokens}) are not loaded yet.");
+            return Results.BadRequest("Graphs are not loaded yet.");
 
         var graphFactory = new GraphFactory();
-        var capacityGraph = graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
-        var pathfinder = new V2Pathfinder(trustGraph, capacityGraph, graphFactory);
+        var pathfinder = new V2Pathfinder(graphFactory);
 
         var request = new FlowRequest
         {
             Source = from.ToLower(),
             Sink = to.ToLower(),
-            TargetFlow = amount
+            TargetFlow = amount,
+            FromTokens = fromTokens?.ToList(),
+            ToTokens = toTokens?.ToList(),
+            WithWrap = withWrap
         };
 
-        // Only create filtered graphs if filters are specified
-        var filteredBalanceGraph = balanceGraph;
 
-        var filteredTrustGraph = (toTokens != null && toTokens.Length > 0)
-            ? CreateFilteredTrustGraph(trustGraph, request.Sink)
-            : trustGraph;
-
-        var pathResult =
-            pathfinder.ComputeMaxFlow( /*filteredBalanceGraph, filteredTrustGraph,*/ request /*, targetFlow*/);
+        var pathResult = pathfinder.ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
 
         return Results.Ok(pathResult);
     }
