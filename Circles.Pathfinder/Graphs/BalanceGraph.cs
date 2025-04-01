@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
 
@@ -26,8 +27,7 @@ public class BalanceGraph : IGraph<CapacityEdge>
     {
         address = address.ToLower();
         token = token.ToLower();
-
-
+        
         if (!AvatarNodes.ContainsKey(address))
         {
             AvatarNodes.Add(address, new AvatarNode(address));

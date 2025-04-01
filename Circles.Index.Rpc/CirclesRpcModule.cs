@@ -319,6 +319,49 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
+    public Task<ResultWrapper<Address[]>> circles_getCommonTrust(
+        Address address1,
+        Address address2,
+        int? version = null)
+    {
+        var v1Sql = @"
+            select trustee
+            from ""V_Crc_TrustRelations""
+            where truster in (@address1, @address2)
+            and trustee not in (@address1, @address2)
+            and version = 1
+            group by trustee
+            having count(truster) > 1
+        ";
+
+        var v2Sql = @"
+            select trustee
+            from ""V_Crc_TrustRelations""
+            where truster in (@address1, @address2)
+            and trustee not in (@address1, @address2)
+            and version = 2
+            group by trustee
+            having count(truster) > 1
+        ";
+
+        var sql = version == 1
+            ? v1Sql
+            : version == 2
+                ? v2Sql
+                : $"{v1Sql} union {v2Sql}";
+
+        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, [
+            _indexerContext.ReadonlyDatabase.CreateParameter("address1", address1.ToString(true, false)),
+            _indexerContext.ReadonlyDatabase.CreateParameter("address2", address2.ToString(true, false))
+        ]));
+
+        var commonTrust = result.Rows
+            .Select(row => new Address(row[0]?.ToString() ?? throw new Exception("Address is null")))
+            .ToArray();
+
+        return Task.FromResult(ResultWrapper<Address[]>.Success(commonTrust));
+    }
+
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
     {
         Select select = query.ToModel();

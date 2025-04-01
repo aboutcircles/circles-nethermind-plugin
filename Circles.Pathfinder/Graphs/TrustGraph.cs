@@ -11,13 +11,9 @@ public class TrustGraph : IGraph<TrustEdge>
 
     public void AddAvatar(string avatarAddress)
     {
-        avatarAddress = avatarAddress.ToLower();
-        if (!AvatarNodes.ContainsKey(avatarAddress))
-        {
-            var avatar = new AvatarNode(avatarAddress);
-            AvatarNodes.Add(avatarAddress, avatar);
-            Nodes.Add(avatarAddress, avatar);
-        }
+        var avatar = new AvatarNode(avatarAddress);
+        AvatarNodes.Add(avatarAddress, avatar);
+        Nodes.Add(avatarAddress, avatar);
     }
 
     public void AddTrustEdge(string truster, string trustee)

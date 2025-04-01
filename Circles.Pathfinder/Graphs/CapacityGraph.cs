@@ -1,5 +1,6 @@
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
