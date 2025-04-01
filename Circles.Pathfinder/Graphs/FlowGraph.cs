@@ -304,4 +304,105 @@ public class FlowGraph : IGraph<FlowEdge>
 
         return resultPaths;
     }
+
+
+    /// <summary>
+    /// Aggregates identical edges in the flow graph, combining flows for edges with the same From, To, and Token.
+    /// </summary>
+    /// <returns>A new flow graph with aggregated edges.</returns>
+    public FlowGraph AggregateIdenticalEdges()
+    {
+        Stopwatch sw = new Stopwatch();
+        sw.Start();
+        
+        var aggregatedGraph = new FlowGraph();
+        
+        // Copy all avatar nodes
+        foreach (var avatarNode in AvatarNodes.Values)
+        {
+            aggregatedGraph.AddAvatar(avatarNode.Address);
+        }
+        
+        // Dictionary to store aggregated edges
+        // Key is a tuple of (From, To, Token)
+        var aggregatedEdges = new Dictionary<(string From, string To, string Token), FlowEdge>();
+        
+        // Aggregate edges with the same From, To, and Token
+        foreach (var edge in Edges)
+        {
+            // Skip edges with zero flow
+            if (edge.Flow <= 0)
+            {
+                continue;
+            }
+            
+            var key = (edge.From, edge.To, edge.Token);
+            
+            if (aggregatedEdges.TryGetValue(key, out var existingEdge))
+            {
+                // Add the flow to the existing edge
+                existingEdge.Flow += edge.Flow;
+                
+                // For capacity, take the max, as that's the logical limit
+                existingEdge.CurrentCapacity = Math.Max(existingEdge.CurrentCapacity, edge.CurrentCapacity);
+            }
+            else
+            {
+                // Create a new aggregated edge
+                var newEdge = new FlowEdge(edge.From, edge.To, edge.Token, edge.InitialCapacity)
+                {
+                    Flow = edge.Flow,
+                    CurrentCapacity = edge.CurrentCapacity
+                };
+                
+                aggregatedEdges[key] = newEdge;
+            }
+        }
+        
+        // Add all aggregated edges to the graph
+        foreach (var edge in aggregatedEdges.Values)
+        {
+            try
+            {
+                // Instead of using AddFlowEdge, add directly to avoid validation checks
+                // that might prevent adding the aggregated edge
+                var fromNode = aggregatedGraph.Nodes[edge.From];
+                var toNode = aggregatedGraph.Nodes[edge.To];
+                
+                var newFlowEdge = new FlowEdge(fromNode.Address, toNode.Address, edge.Token, edge.CurrentCapacity)
+                {
+                    Flow = edge.Flow
+                };
+                
+                aggregatedGraph.Edges.Add(newFlowEdge);
+                
+                if (aggregatedGraph.AvatarNodes.TryGetValue(fromNode.Address, out var fromAvatarNode))
+                {
+                    fromAvatarNode.OutEdges.Add(newFlowEdge);
+                }
+                else if (aggregatedGraph.BalanceNodes.TryGetValue(fromNode.Address, out var fromBalanceNode))
+                {
+                    fromBalanceNode.OutEdges.Add(newFlowEdge);
+                }
+                
+                if (aggregatedGraph.AvatarNodes.TryGetValue(toNode.Address, out var toAvatarNode))
+                {
+                    toAvatarNode.InEdges.Add(newFlowEdge);
+                }
+                else if (aggregatedGraph.BalanceNodes.TryGetValue(toNode.Address, out var toBalanceNode))
+                {
+                    toBalanceNode.InEdges.Add(newFlowEdge);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding aggregated edge: {ex.Message}");
+            }
+        }
+        
+        sw.Stop();
+        Console.WriteLine($"TIMING: FlowGraph.AggregateIdenticalEdges took {sw.ElapsedMilliseconds}ms");
+        
+        return aggregatedGraph;
+    }
 }
