@@ -192,9 +192,7 @@ public class FlowGraph : IGraph<FlowEdge>
     }
 
     /// <summary>
-    /// Performs a proper flow decomposition: repeatedly finds a path from source to sink
-    /// in the flow network (only edges with e.Flow > 0), removes the min flow from each 
-    /// edge on that path, and stores that as one path. Returns all disjoint paths.
+    /// Searches the graph for liquid paths from the source node to the sink node.
     /// </summary>
     public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, long minFlowThreshold)
     {

@@ -12,7 +12,10 @@ public class PathfinderTests
     {
         var loadGraph = new LoadGraph("Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres");
         var graphFactory = new GraphFactory();
-        var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
+        var trustGraph = graphFactory.V2TrustGraph(loadGraph);
+        var balanceGraph = graphFactory.V2BalanceGraph(loadGraph);
+        var capacityGraph = graphFactory.CreateCapacityGraph(balanceGraph, trustGraph);
+        var pathfinder = new V2Pathfinder(trustGraph, capacityGraph, graphFactory);
         var flowRequest = new FlowRequest
         {
             Source = "0x32e69894af3a7d1124baa2d9f1fcd38d9d58fe4a",

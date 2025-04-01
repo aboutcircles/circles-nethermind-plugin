@@ -66,6 +66,10 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Gets the balance of each V1 Circles token the specified address holds",
         IsImplemented = true)]
     Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address);
+    
+    [JsonRpcMethod(Description = "Gets the common trust between two addresses. If version is specified, it will only return trusts with the specified version. If version is not specified, it will return all trusts.",
+        IsImplemented = true)]
+    Task<ResultWrapper<Address[]>> circles_getCommonTrust(Address address1, Address address2, int? version = null);
 
     [JsonRpcMethod(Description = "Queries the data of one Circles index table",
         IsImplemented = true)]
