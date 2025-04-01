@@ -114,12 +114,15 @@ public class V2Pathfinder : IPathfinder
                 ).ToList();
         }
 
-        // Collapse balance nodes, etc. (same as your existing logic)
+        // Collapse balance nodes, etc. 
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
+
+        // Aggregate identical edges (from, to, token) 
+        var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
 
         // Build TransferPathStep list
         var transferSteps = new List<TransferPathStep>();
-        foreach (var edge in collapsedGraph.Edges)
+        foreach (var edge in aggregatedGraph.Edges)
         {
             if (edge.Flow == 0)
                 continue;
