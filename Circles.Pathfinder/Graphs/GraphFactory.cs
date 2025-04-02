@@ -227,32 +227,27 @@ public class GraphFactory
         }
 
         // STEP 4: Setup Virtual Sink if needed (i.e. if source == sink)
-        //         so that we only add capacity edges for tokens actually trusted by the real sink.
-        if (sourceEqualsSink && !string.IsNullOrEmpty(request.Source))
+        //         so that we only add capacity edges for tokens accepted by other users
+        if (sourceEqualsSink && !string.IsNullOrEmpty(request.Source) && request.ToTokens?.Count > 0)
         {
             var lowerSource = request.Source.ToLower();
             var virtualSinkAddress = lowerSource + VIRTUAL_SINK_SUFFIX;
-
+            
+            // Add the virtual sink node
             capacityGraph.AddAvatar(virtualSinkAddress);
-
-            bool anyTrusted = false;
-            // Only add edges for tokens that the real sink actually trusts
-            if (request.ToTokens != null && request.ToTokens.Count > 0)
+            
+            // Track if any capacity edges were actually added to the virtual sink
+            bool anyEdgesAdded = SetupVirtualSinkEdges(
+                capacityGraph,
+                trustGraph,
+                balanceGraph,
+                request.ToTokens,
+                virtualSinkAddress
+            );
+            
+            // Clean up if no edges were added
+            if (!anyEdgesAdded)
             {
-                foreach (var token in request.ToTokens)
-                {
-                    if (HasTrustEdge(trustGraph, lowerSource, token.ToLower()))
-                    {
-                        capacityGraph.AddCapacityEdge(token.ToLower(), virtualSinkAddress, token.ToLower(),
-                            long.MaxValue);
-                        anyTrusted = true;
-                    }
-                }
-            }
-
-            if (!anyTrusted)
-            {
-                // No tokens ended up being trusted => remove the virtual sink
                 capacityGraph.AvatarNodes.Remove(virtualSinkAddress);
                 capacityGraph.Nodes.Remove(virtualSinkAddress);
             }
@@ -277,6 +272,56 @@ public class GraphFactory
     }
 
     /// <summary>
+    /// Sets up the virtual sink edges for tokens that the user trusts
+    /// </summary>
+    /// <returns>True if any edges were added, false otherwise</returns>
+    private bool SetupVirtualSinkEdges(
+        CapacityGraph capacityGraph,
+        TrustGraph trustGraph,
+        BalanceGraph balanceGraph,
+        List<string> toTokens,
+        string virtualSinkAddress)
+    {
+        bool anyEdgesAdded = false;
+        
+        // Process each destination token
+        foreach (var tokenAddress in toTokens)
+        {
+            var token = tokenAddress.ToLower();
+            
+            // Find all accounts that trust this token
+            var accountsTrustingToken = trustGraph.Edges
+                .Where(e => e.To.Equals(token, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.From.ToLower())
+                .ToList();
+                
+            foreach (var accountAddress in accountsTrustingToken)
+            {
+                // Skip if the account is the token itself
+                if (accountAddress == token)
+                    continue;
+                    
+                // Skip if the account already has a balance of this token
+                // This prevents self-loops
+                if (HasBalanceEdge(balanceGraph, accountAddress, token))
+                    continue;
+                    
+                // Add capacity edge from the account to the virtual sink
+                capacityGraph.AddCapacityEdge(
+                    accountAddress,
+                    virtualSinkAddress,
+                    token,
+                    long.MaxValue
+                );
+                
+                anyEdgesAdded = true;
+            }
+        }
+        
+        return anyEdgesAdded;
+    }
+
+    /// <summary>
     /// Simple helper to see if the "truster -> trustee" relationship exists in the trust graph.
     /// </summary>
     private bool HasTrustEdge(TrustGraph trustGraph, string truster, string trustee)
@@ -284,6 +329,16 @@ public class GraphFactory
         return trustGraph.Edges.Any(e =>
             e.From.Equals(truster, StringComparison.OrdinalIgnoreCase) &&
             e.To.Equals(trustee, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Checks if an account has a balance of a specific token.
+    /// </summary>
+    private bool HasBalanceEdge(BalanceGraph balanceGraph, string from, string token)
+    {
+        return balanceGraph.Edges.Any(e =>
+            e.From.Equals(from, StringComparison.OrdinalIgnoreCase) &&
+            e.Token.Equals(token, StringComparison.OrdinalIgnoreCase));
     }
 
     public FlowGraph CreateFlowGraph(CapacityGraph capacityGraph)
