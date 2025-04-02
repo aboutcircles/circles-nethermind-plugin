@@ -227,7 +227,7 @@ public class GraphFactory
         }
 
         // STEP 4: Setup Virtual Sink if needed (i.e. if source == sink)
-        //         so that we only add capacity edges for tokens accepted by other users
+        //         so that we only add capacity edges for tokens actually trusted by the real sink.
         if (sourceEqualsSink && !string.IsNullOrEmpty(request.Source) && request.ToTokens?.Count > 0)
         {
             var lowerSource = request.Source.ToLower();
