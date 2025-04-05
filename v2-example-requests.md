@@ -405,3 +405,16 @@ curl -X POST --data '{
   ]
 }' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
+
+#### Get common trust relations
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getCommonTrust",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7", "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```

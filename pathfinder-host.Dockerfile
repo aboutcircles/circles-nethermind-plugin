@@ -8,8 +8,7 @@ RUN find . -type f -name "._*" -delete && \
 RUN dotnet restore
 RUN dotnet publish -c Release -o /circles-nethermind-plugin
 
-
-FROM build AS final
+FROM mcr.microsoft.com/dotnet/aspnet:latest AS final
 WORKDIR /app
 COPY --from=build /circles-nethermind-plugin .
 ENTRYPOINT ["dotnet", "Circles.Pathfinder.Host.dll"]

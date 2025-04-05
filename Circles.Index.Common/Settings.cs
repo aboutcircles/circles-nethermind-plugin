@@ -38,7 +38,7 @@ public class Settings
                 .Select(x => new Address(x.Trim()))
                 .ToArray()
             : [];
-    
+
     public readonly Address[] SafeProxyFactoryAddresses =
         Environment.GetEnvironmentVariable("SAFE_PROXY_FACTORY_ADDRESSES") != null
             ? Environment.GetEnvironmentVariable("SAFE_PROXY_FACTORY_ADDRESSES")!.Split(',')
@@ -55,6 +55,10 @@ public class Settings
 
     public readonly string? ExternalPathfinderUrl =
         Environment.GetEnvironmentVariable("EXTERNAL_PATHFINDER_URL");
+
+    public readonly Address? CirclesV1NameRegistry = Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS") != null
+        ? new(Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS")!)
+        : null;
 
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)

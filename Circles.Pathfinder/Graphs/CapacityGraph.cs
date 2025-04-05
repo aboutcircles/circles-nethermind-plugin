@@ -1,6 +1,6 @@
-using System.Numerics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
@@ -10,6 +10,9 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public IDictionary<string, AvatarNode> AvatarNodes { get; } = new Dictionary<string, AvatarNode>();
     public IDictionary<string, BalanceNode> BalanceNodes { get; } = new Dictionary<string, BalanceNode>();
     public HashSet<CapacityEdge> Edges { get; } = new();
+
+    public string? VirtualSinkAddress { get; set; }
+    public string? SourceAddress { get; }
 
     public void AddAvatar(string avatarAddress)
     {
@@ -21,7 +24,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, BigInteger amount)
+    public void AddBalanceNode(string address, string token, long amount)
     {
         address = address.ToLower();
         token = token.ToLower();
@@ -32,7 +35,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
 
-    public void AddCapacityEdge(string from, string to, string token, BigInteger capacity)
+    public void AddCapacityEdge(string from, string to, string token, long capacity)
     {
         from = from.ToLower();
         to = to.ToLower();
@@ -41,7 +44,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
         var edge = new CapacityEdge(from, to, token, capacity);
         Edges.Add(edge);
 
-        // Optionally, you can manage adjacency lists if needed
+        // Manage adjacency lists
         if (AvatarNodes.TryGetValue(from, out var node))
         {
             node.OutEdges.Add(edge);
