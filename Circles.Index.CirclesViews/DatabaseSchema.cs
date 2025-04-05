@@ -212,8 +212,8 @@ public class DatabaseSchema : IDatabaseSchema
     ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV1_Avatars""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", type, ""user"", token) as
+        create or replace view ""V_CrcV1_Avatars"" (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", type, ""user"", token, ""cidV0Digest"") as
+        WITH a AS (
             SELECT ""CrcV1_Signup"".""blockNumber"",
                    ""CrcV1_Signup"".""timestamp"",
                    ""CrcV1_Signup"".""transactionIndex"",
@@ -232,8 +232,24 @@ public class DatabaseSchema : IDatabaseSchema
                    'CrcV1_OrganizationSignup'::text        AS type,
                    ""CrcV1_OrganizationSignup"".organization AS ""user"",
                    NULL::text                              AS token
-            FROM ""CrcV1_OrganizationSignup"";
-        ")
+            FROM ""CrcV1_OrganizationSignup""
+            )
+            select ""blockNumber""
+                 , timestamp
+                 , ""transactionIndex""
+                 , ""logIndex""
+                 , ""transactionHash""
+                 , type
+                 , ""user""
+                 , token
+                 , ""cidV0Digest""
+            from a
+            LEFT JOIN (SELECT cid_1.avatar,
+                           cid_1.""metadataDigest""                                                                                                   AS ""cidV0Digest"",
+                           row_number()
+                           OVER (PARTITION BY cid_1.avatar ORDER BY cid_1.""blockNumber"" DESC, cid_1.""transactionIndex"" DESC, cid_1.""logIndex"" DESC) AS rn
+                    FROM ""CrcV1_UpdateMetadataDigest"" cid_1) cid ON cid.avatar = a.""user"" AND cid.rn = 1;
+                    ")
     };
 
     /// <summary>
@@ -592,7 +608,7 @@ public class DatabaseSchema : IDatabaseSchema
     ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_Crc_Avatars""
+            create or replace view ""V_Crc_Avatars""
                         (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", version, type, ""invitedBy"",
                          avatar, ""tokenId"", name, ""cidV0Digest"")
             as
@@ -621,7 +637,7 @@ public class DatabaseSchema : IDatabaseSchema
                    ""V_CrcV1_Avatars"".""user"" AS avatar,
                    ""V_CrcV1_Avatars"".token  AS ""tokenId"",
                    NULL::text               AS name,
-                   NULL::bytea              AS ""cidV0Digest""
+                   ""cidV0Digest""            AS ""cidV0Digest""
             FROM ""V_CrcV1_Avatars"";
         ")
     };
@@ -805,10 +821,10 @@ public class DatabaseSchema : IDatabaseSchema
         new byte[32],
         [
             new("account", ValueTypes.Address, true),
-            new("tokenId", ValueTypes.String, true),
             new("tokenAddress", ValueTypes.String, true),
             new("lastActivity", ValueTypes.Int, true),
             new("totalBalance", ValueTypes.BigInt, true),
+            new("tokenOwner", ValueTypes.String, true)
         ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
@@ -853,6 +869,7 @@ public class DatabaseSchema : IDatabaseSchema
         [
             new("account", ValueTypes.Address, true),
             new("tokenId", ValueTypes.String, true),
+            new("tokenAddress", ValueTypes.String, true),
             new("lastActivity", ValueTypes.Int, true),
             new("demurragedTotalBalance", ValueTypes.BigInt, true),
         ])

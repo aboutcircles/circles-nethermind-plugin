@@ -44,166 +44,167 @@ public class LogParser(Address v1HubAddress) : ILogParser
         TxReceipt receipt,
         IReadOnlyList<IIndexEvent> events)
     {
-        // 1) Gather all hub transfers + gather all Transfers
-        var hubTransfers = new List<HubTransfer>();
-        var allTransfers = new List<Transfer>(events.Count);
-
-        for (int i = 0; i < events.Count; i++)
-        {
-            switch (events[i])
-            {
-                case HubTransfer ht:
-                    hubTransfers.Add(ht);
-                    break;
-
-                case Transfer t:
-                    allTransfers.Add(t);
-                    break;
-            }
-        }
-
-        // 2) If no hub => each Transfer stands alone
-        if (hubTransfers.Count == 0)
-        {
-            var allTransferJson =
-                JsonSerializer.Serialize(allTransfers.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
-
-            for (int i = 0; i < allTransfers.Count; i++)
-            {
-                var t = allTransfers[i];
-
-                yield return new TransferSummary(
-                    t.BlockNumber,
-                    t.Timestamp,
-                    t.TransactionIndex,
-                    t.LogIndex,
-                    t.TransactionHash,
-                    t.Emitter,
-                    t.From,
-                    t.To,
-                    t.Value,
-                    allTransferJson
-                );
-            }
-
-            yield break;
-        }
-
-        // 3) We do have one or more hubs => build adjacency.
-        var adjacency = new Dictionary<string, List<Transfer>>();
-        for (int i = 0; i < allTransfers.Count; i++)
-        {
-            var t = allTransfers[i];
-            if (!adjacency.TryGetValue(t.From, out var list))
-            {
-                list = new List<Transfer>();
-                adjacency[t.From] = list;
-            }
-
-            list.Add(t);
-        }
-
-        var usedEdgesGlobal = new HashSet<Transfer>();
-
-        for (int h = 0; h < hubTransfers.Count; h++)
-        {
-            var hubTransfer = hubTransfers[h];
-            var hubFrom = hubTransfer.From.ToLowerInvariant();
-            var hubTo = hubTransfer.To.ToLowerInvariant();
-            
-            var usedEdges = new HashSet<Transfer>();
-            var pathStack = new List<Transfer>();
-
-            void Dfs(string current, HashSet<string> visited)
-            {
-                if (string.Equals(current, hubTo))
-                {
-                    for (int p = 0; p < pathStack.Count; p++)
-                    {
-                        usedEdges.Add(pathStack[p]);
-                    }
-                    return;
-                }
-                
-                if (!adjacency.TryGetValue(current, out var edges))
-                {
-                    return;
-                }
-                
-                for (int e = 0; e < edges.Count; e++)
-                {
-                    var edge = edges[e];
-                    var next = edge.To;
-                    if (visited.Contains(next))
-                    {
-                        continue;
-                    }
-                    pathStack.Add(edge);
-                    visited.Add(next);
-                    
-                    Dfs(next, visited);
-                    
-                    visited.Remove(next);
-                    pathStack.RemoveAt(pathStack.Count - 1);
-                }
-            }
-
-            // DFS from hubTransfer.from
-            var visitedSet = new HashSet<string>() { hubFrom };
-            Dfs(hubFrom, visitedSet);
-
-            // Mark all edges from this hub in the global usedEdges
-            foreach (var edge in usedEdges)
-                usedEdgesGlobal.Add(edge);
-
-            // Produce the hub TransferSummary
-            var hubTransferEdgesJson =
-                JsonSerializer.Serialize(usedEdges.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
-
-            yield return new TransferSummary(
-                hubTransfer.BlockNumber,
-                hubTransfer.Timestamp,
-                hubTransfer.TransactionIndex,
-                hubTransfer.LogIndex,
-                hubTransfer.TransactionHash,
-                hubTransfer.Emitter,
-                hubTransfer.From,
-                hubTransfer.To,
-                hubTransfer.Amount,
-                hubTransferEdgesJson
-            );
-        }
-
-        // 4) For each Transfer not used by any hub route, stand-alone
-        var standAloneTransfers = new List<Transfer>();
-        for (int i = 0; i < allTransfers.Count; i++)
-        {
-            var t = allTransfers[i];
-            if (!usedEdgesGlobal.Contains(t))
-            {
-                standAloneTransfers.Add(t);
-            }
-        }
-
-        var standAloneTransfersJson =
-            JsonSerializer.Serialize(standAloneTransfers.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
-
-        for (int i = 0; i < standAloneTransfers.Count; i++)
-        {
-            var standAloneTransfer = standAloneTransfers[i];
-            yield return new TransferSummary(
-                standAloneTransfer.BlockNumber,
-                standAloneTransfer.Timestamp,
-                standAloneTransfer.TransactionIndex,
-                standAloneTransfer.LogIndex,
-                standAloneTransfer.TransactionHash,
-                standAloneTransfer.Emitter,
-                standAloneTransfer.From,
-                standAloneTransfer.To,
-                standAloneTransfer.Value,
-                standAloneTransfersJson
-            );
-        }
+        // // 1) Gather all hub transfers + gather all Transfers
+        // var hubTransfers = new List<HubTransfer>();
+        // var allTransfers = new List<Transfer>(events.Count);
+        //
+        // for (int i = 0; i < events.Count; i++)
+        // {
+        //     switch (events[i])
+        //     {
+        //         case HubTransfer ht:
+        //             hubTransfers.Add(ht);
+        //             break;
+        //
+        //         case Transfer t:
+        //             allTransfers.Add(t);
+        //             break;
+        //     }
+        // }
+        //
+        // // 2) If no hub => each Transfer stands alone
+        // if (hubTransfers.Count == 0)
+        // {
+        //     var allTransferJson =
+        //         JsonSerializer.Serialize(allTransfers.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
+        //
+        //     for (int i = 0; i < allTransfers.Count; i++)
+        //     {
+        //         var t = allTransfers[i];
+        //
+        //         yield return new TransferSummary(
+        //             t.BlockNumber,
+        //             t.Timestamp,
+        //             t.TransactionIndex,
+        //             t.LogIndex,
+        //             t.TransactionHash,
+        //             t.Emitter,
+        //             t.From,
+        //             t.To,
+        //             t.Value,
+        //             allTransferJson
+        //         );
+        //     }
+        //
+        //     yield break;
+        // }
+        //
+        // // 3) We do have one or more hubs => build adjacency.
+        // var adjacency = new Dictionary<string, List<Transfer>>();
+        // for (int i = 0; i < allTransfers.Count; i++)
+        // {
+        //     var t = allTransfers[i];
+        //     if (!adjacency.TryGetValue(t.From, out var list))
+        //     {
+        //         list = new List<Transfer>();
+        //         adjacency[t.From] = list;
+        //     }
+        //
+        //     list.Add(t);
+        // }
+        //
+        // var usedEdgesGlobal = new HashSet<Transfer>();
+        //
+        // for (int h = 0; h < hubTransfers.Count; h++)
+        // {
+        //     var hubTransfer = hubTransfers[h];
+        //     var hubFrom = hubTransfer.From.ToLowerInvariant();
+        //     var hubTo = hubTransfer.To.ToLowerInvariant();
+        //     
+        //     var usedEdges = new HashSet<Transfer>();
+        //     var pathStack = new List<Transfer>();
+        //
+        //     void Dfs(string current, HashSet<string> visited)
+        //     {
+        //         if (string.Equals(current, hubTo))
+        //         {
+        //             for (int p = 0; p < pathStack.Count; p++)
+        //             {
+        //                 usedEdges.Add(pathStack[p]);
+        //             }
+        //             return;
+        //         }
+        //         
+        //         if (!adjacency.TryGetValue(current, out var edges))
+        //         {
+        //             return;
+        //         }
+        //         
+        //         for (int e = 0; e < edges.Count; e++)
+        //         {
+        //             var edge = edges[e];
+        //             var next = edge.To;
+        //             if (visited.Contains(next))
+        //             {
+        //                 continue;
+        //             }
+        //             pathStack.Add(edge);
+        //             visited.Add(next);
+        //             
+        //             Dfs(next, visited);
+        //             
+        //             visited.Remove(next);
+        //             pathStack.RemoveAt(pathStack.Count - 1);
+        //         }
+        //     }
+        //
+        //     // DFS from hubTransfer.from
+        //     var visitedSet = new HashSet<string>() { hubFrom };
+        //     Dfs(hubFrom, visitedSet);
+        //
+        //     // Mark all edges from this hub in the global usedEdges
+        //     foreach (var edge in usedEdges)
+        //         usedEdgesGlobal.Add(edge);
+        //
+        //     // Produce the hub TransferSummary
+        //     var hubTransferEdgesJson =
+        //         JsonSerializer.Serialize(usedEdges.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
+        //
+        //     yield return new TransferSummary(
+        //         hubTransfer.BlockNumber,
+        //         hubTransfer.Timestamp,
+        //         hubTransfer.TransactionIndex,
+        //         hubTransfer.LogIndex,
+        //         hubTransfer.TransactionHash,
+        //         hubTransfer.Emitter,
+        //         hubTransfer.From,
+        //         hubTransfer.To,
+        //         hubTransfer.Amount,
+        //         hubTransferEdgesJson
+        //     );
+        // }
+        //
+        // // 4) For each Transfer not used by any hub route, stand-alone
+        // var standAloneTransfers = new List<Transfer>();
+        // for (int i = 0; i < allTransfers.Count; i++)
+        // {
+        //     var t = allTransfers[i];
+        //     if (!usedEdgesGlobal.Contains(t))
+        //     {
+        //         standAloneTransfers.Add(t);
+        //     }
+        // }
+        //
+        // var standAloneTransfersJson =
+        //     JsonSerializer.Serialize(standAloneTransfers.Cast<IIndexedEventV1>(), _jsonSerializerOptions);
+        //
+        // for (int i = 0; i < standAloneTransfers.Count; i++)
+        // {
+        //     var standAloneTransfer = standAloneTransfers[i];
+        //     yield return new TransferSummary(
+        //         standAloneTransfer.BlockNumber,
+        //         standAloneTransfer.Timestamp,
+        //         standAloneTransfer.TransactionIndex,
+        //         standAloneTransfer.LogIndex,
+        //         standAloneTransfer.TransactionHash,
+        //         standAloneTransfer.Emitter,
+        //         standAloneTransfer.From,
+        //         standAloneTransfer.To,
+        //         standAloneTransfer.Value,
+        //         standAloneTransfersJson
+        //     );
+        // }
+        yield break;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,

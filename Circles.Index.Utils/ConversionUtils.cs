@@ -19,6 +19,27 @@ public abstract class ConversionUtils
     private const decimal OneCirclesYearInMilliSeconds = OneCirclesYearInDays * 24m * 60m * 60m * 1000m;
     private const decimal Beta = 1.0001987074682146291562714890133039617432343970799554367508m;
 
+    private static readonly UInt256 Factor = UInt256.Parse("1000000000000"); // 10^12
+
+    // Convert Wei (1e18 base) to an integer with 6 decimals of precision (divide by 10^12).
+    public static long TruncateToInt64(UInt256 wei)
+    {
+        // Discard 12 decimals
+        UInt256 truncated = wei / Factor;
+
+        // Clamp if above long.MaxValue
+        if (truncated > (UInt256)long.MaxValue)
+            truncated = (UInt256)long.MaxValue;
+
+        return (long)truncated;
+    }
+
+    // Convert the 6-decimal integer back to Wei by multiplying by 10^12.
+    public static UInt256 BlowUpToUInt256(long sixDecimalValue)
+    {
+        return (UInt256)sixDecimalValue * Factor;
+    }
+    
     public static long ConvertToUnixTimestamp(DateTime dateTime)
     {
         DateTimeOffset dateTimeOffset = dateTime;

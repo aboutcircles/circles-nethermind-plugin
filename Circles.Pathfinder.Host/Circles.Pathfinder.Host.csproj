@@ -6,8 +6,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <InvariantGlobalization>true</InvariantGlobalization>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-        <AssemblyVersion>1.13.7</AssemblyVersion>
-        <FileVersion>1.13.7</FileVersion>
+        <AssemblyVersion>1.15.0</AssemblyVersion>
+        <FileVersion>1.15.0</FileVersion>
     </PropertyGroup>
 
     <ItemGroup>
@@ -17,6 +17,12 @@
     <ItemGroup>
       <PackageReference Include="prometheus-net" Version="8.2.1" />
       <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="Nethermind.Int256">
+        <HintPath>..\..\..\..\.nuget\packages\nethermind.numerics.int256\1.2.0\lib\net8.0\Nethermind.Int256.dll</HintPath>
+      </Reference>
     </ItemGroup>
 
 </Project>

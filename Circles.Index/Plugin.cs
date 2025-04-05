@@ -42,6 +42,7 @@ public class Plugin : INethermindPlugin
         {
             new Common.DatabaseSchema(),
             new CirclesV1.DatabaseSchema(),
+            new CirclesV1.NameRegistry.DatabaseSchema(),
             new CirclesV2.DatabaseSchema(),
             new CirclesV2.NameRegistry.DatabaseSchema(),
             new CirclesV2.StandardTreasury.DatabaseSchema(),
@@ -103,6 +104,10 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
         }
 
+        if (settings.CirclesV1NameRegistry != null)
+        {
+            logParsers.Add(new CirclesV1.NameRegistry.LogParser(settings.CirclesV1NameRegistry));
+        }
 
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
 
@@ -173,6 +178,7 @@ public class Plugin : INethermindPlugin
 
         pluginLogger.Info("Contract addresses: ");
         pluginLogger.Info(" * V1 Hub address: " + settings.CirclesV1HubAddress);
+        pluginLogger.Info(" * V1 Name Registry address: " + settings.CirclesV1NameRegistry);
         pluginLogger.Info(" * V2 Hub address: " + settings.CirclesV2HubAddress);
         pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
         pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
@@ -338,10 +344,8 @@ public class Plugin : INethermindPlugin
         return Task.CompletedTask;
     }
 
-    public async Task InitRpcModules()
+    public Task InitRpcModules()
     {
-        await Task.Delay(5000);
-
         if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
         {
             throw new Exception("_indexerContext.NethermindApi.RpcModuleProvider is not set");
@@ -361,6 +365,8 @@ public class Plugin : INethermindPlugin
         getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
             (client, param) => new CirclesSubscription(client, _indexerContext, param));
+
+        return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync()
