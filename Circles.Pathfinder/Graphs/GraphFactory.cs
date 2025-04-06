@@ -322,16 +322,6 @@ public class GraphFactory
     }
 
     /// <summary>
-    /// Simple helper to see if the "truster -> trustee" relationship exists in the trust graph.
-    /// </summary>
-    private bool HasTrustEdge(TrustGraph trustGraph, string truster, string trustee)
-    {
-        return trustGraph.Edges.Any(e =>
-            e.From.Equals(truster, StringComparison.OrdinalIgnoreCase) &&
-            e.To.Equals(trustee, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
     /// Checks if an account has a balance of a specific token.
     /// </summary>
     private bool HasBalanceEdge(BalanceGraph balanceGraph, string from, string token)
