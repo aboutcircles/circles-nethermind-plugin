@@ -53,7 +53,7 @@ current_crc20_demurraged_balances AS (
 	        ON t1."erc20Wrapper" = current_crc20_balances."tokenAddress"
 	) AS t
 	WHERE "demurragedTotalBalance" > 0
-)
+), z as (
 
 SELECT 
 	"demurragedTotalBalance"::text
@@ -75,3 +75,6 @@ SELECT
 	,TRUE AS "isWrapped"
     ,CASE "circlesType" WHEN 0 THEN 'demurraged' ELSE 'static' END
     FROM current_crc20_demurraged_balances
+)
+select *
+from z

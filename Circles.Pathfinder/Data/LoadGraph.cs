@@ -64,8 +64,18 @@ namespace Circles.Pathfinder.Data
                     // Convert to Circles
                     var staticAttoCircles = ConversionUtils.AttoCirclesToCircles(UInt256.Parse(balance));
                     var demurragedCircles = ConversionUtils.StaticCirclesToCircles(staticAttoCircles);
+                    if (demurragedCircles == 0)
+                    {
+                        continue;
+                    }
+
                     balance = ConversionUtils.CirclesToAttoCircles(demurragedCircles)
                         .ToString(CultureInfo.InvariantCulture);
+                }
+
+                if (balance == "0")
+                {
+                    continue;
                 }
 
                 yield return (balance, account, tokenAddress, isWrapped, type == "static");
