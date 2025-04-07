@@ -183,44 +183,82 @@ public class V2Pathfinder : IPathfinder
     /// </summary>
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
-        FlowGraph capacityGraph = new FlowGraph();
-
+        var collapsedGraph = new FlowGraph();
+        var avatarNodes = new HashSet<string>();
+        
+        // Collect avatar nodes
         foreach (var path in pathsWithFlow)
         {
-            var filteredPath = path.Where(o => IsBalanceNode(o.From)).ToList();
-
-            // Now create new edges that consider just the avatar node IDs:
-            filteredPath.ForEach(c =>
+            foreach (var edge in path)
             {
-                var splitId = c.From.Split('-');
-                var balanceHolder = splitId[0];
-                var token = splitId[1];
+                if (!IsBalanceNode(edge.From))
+                    avatarNodes.Add(edge.From);
+                if (!IsBalanceNode(edge.To))
+                    avatarNodes.Add(edge.To);
+            }
+        }
+        
+        // Add avatar nodes to the new graph
+        foreach (var avatar in avatarNodes)
+            collapsedGraph.AddAvatar(avatar);
+        
+        // Dictionary to accumulate flows: (sourceAvatar, targetAvatar, token) -> totalFlow
+        var avatarFlows = new Dictionary<(string from, string to, string token), long>();
+        
+        // Process each path and aggregate flows
+        foreach (var path in pathsWithFlow)
+        {
+            for (int i = 0; i < path.Count; i++)
+            {
+                var edge = path[i];
+                
+                // Identify the 'avatar' address and the token
+                string fromAvatar = IsBalanceNode(edge.From) ? edge.From.Split('-')[0] : edge.From;
+                string toAvatar   = IsBalanceNode(edge.To)   ? edge.To.Split('-')[0]   : edge.To;
+                string token      = IsBalanceNode(edge.From) ? edge.From.Split('-')[1] : edge.Token;
 
-                if (!capacityGraph.AvatarNodes.ContainsKey(balanceHolder))
+                // If there's a "balance node" chain, merge flows via the minimum value
+                if (IsBalanceNode(edge.To) && i + 1 < path.Count && path[i + 1].From == edge.To)
                 {
-                    capacityGraph.AddAvatar(balanceHolder);
+                    var nextEdge = path[++i];  // Move to the next edge immediately
+                    string nextTo = IsBalanceNode(nextEdge.To) ? nextEdge.To.Split('-')[0] : nextEdge.To;
+                    
+                    long flow = Math.Min(edge.Flow, nextEdge.Flow);
+                    var key = (fromAvatar, nextTo, token);
+                    avatarFlows[key] = avatarFlows.TryGetValue(key, out var existingFlow)
+                        ? existingFlow + flow
+                        : flow;
                 }
-
-                if (!capacityGraph.AvatarNodes.ContainsKey(c.To))
+                else
                 {
-                    capacityGraph.AddAvatar(c.To);
+                    // Direct edge flow
+                    var key = (fromAvatar, toAvatar, token);
+                    avatarFlows[key] = avatarFlows.TryGetValue(key, out var existingFlow)
+                        ? existingFlow + edge.Flow
+                        : edge.Flow;
                 }
-
-                var edge = new FlowEdge(balanceHolder, c.To, token, c.InitialCapacity)
-                {
-                    Flow = c.Flow,
-                    CurrentCapacity = c.CurrentCapacity
-                };
-
-                capacityGraph.Edges.Add(edge);
-
-                // Maintain the adjacency
-                capacityGraph.AvatarNodes[balanceHolder].OutEdges.Add(edge);
-                capacityGraph.AvatarNodes[c.To].InEdges.Add(edge);
-            });
+            }
         }
 
-        return capacityGraph;
+        // Build the collapsed edges from the aggregated flows
+        foreach (var kvp in avatarFlows)
+        {
+            var (key, flowAmount) = (kvp.Key, kvp.Value);
+            if (flowAmount <= 0) continue;  
+            
+            var (from, to, token) = key;
+            var newEdge = new FlowEdge(from, to, token, long.MaxValue)
+            {
+                Flow = flowAmount,
+                CurrentCapacity = long.MaxValue - flowAmount
+            };
+            
+            collapsedGraph.Edges.Add(newEdge);
+            collapsedGraph.AvatarNodes[from].OutEdges.Add(newEdge);
+            collapsedGraph.AvatarNodes[to].InEdges.Add(newEdge);
+        }
+
+        return collapsedGraph;
     }
 
     /// <summary>
