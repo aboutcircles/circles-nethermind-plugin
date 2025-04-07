@@ -132,57 +132,32 @@ public class V2Pathfinder : IPathfinder
             pathsWithFlow);
 
         // Collapse balance nodes, etc. 
-        var collapsedPathsWithFlow = CollapseBalanceNodes(pathsWithFlow);
+        var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
 
-        FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] collapsedGraph", source, sink, collapsedPathsWithFlow);
-
-        // Find edges with the same from and to
-        var sameFromAndTo = collapsedPathsWithFlow
-            .SelectMany(o => o)
-            .GroupBy(o => (o.From, o.To))
-            .Where(o => o.Count() > 1)
-            .ToList();
-        
-        Console.WriteLine($"[Circles.V2Pathfinder] Potential to reduce steps: {sameFromAndTo.Count}");
-
-        var transferSteps = new List<TransferPathStep>();
-        foreach (var path in collapsedPathsWithFlow)
-        {
-            foreach (var step in path)
-            {
-                transferSteps.Add(new TransferPathStep
-                {
-                    From = step.From,
-                    To = step.To,
-                    TokenOwner = step.Token,
-                    Value = ConversionUtils.BlowUpToUInt256(step.Flow).ToString(CultureInfo.InvariantCulture)
-                });
-            }
-        }
+        FlowLogger.LogFlowGraphFlow("[Circles.V2Pathfinder] collapsedGraph", source, sink, collapsedGraph);
 
         // Aggregate identical edges (from, to, token) 
-        // var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
-        //
-        // FlowLogger.LogFlowGraphFlow("[Circles.V2Pathfinder] aggregatedGraph", source, sink, collapsedGraph);
+        var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
 
-        // Build TransferPathStep list
-        // var transferSteps = new List<TransferPathStep>();
-        // foreach (var edge in aggregatedGraph.Edges)
-        // {
-        //     if (edge.Flow == 0)
-        //         continue;
-        //
-        //     transferSteps.Add(new TransferPathStep
-        //     {
-        //         From = edge.From,
-        //         To = edge.To,
-        //         TokenOwner = edge.Token,
-        //         Value = ConversionUtils.BlowUpToUInt256(edge.Flow)
-        //             .ToString(CultureInfo.InvariantCulture)
-        //     });
-        // }
-        //
-        // FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] transferSteps", source, sink, transferSteps);
+        FlowLogger.LogFlowGraphFlow("[Circles.V2Pathfinder] aggregatedGraph", source, sink, aggregatedGraph);
+
+        var transferSteps = new List<TransferPathStep>();
+        foreach (var edge in aggregatedGraph.Edges)
+        {
+            if (edge.Flow == 0)
+                continue;
+
+            transferSteps.Add(new TransferPathStep
+            {
+                From = edge.From,
+                To = edge.To,
+                TokenOwner = edge.Token,
+                Value = ConversionUtils.BlowUpToUInt256(edge.Flow)
+                    .ToString(CultureInfo.InvariantCulture)
+            });
+        }
+
+        FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] transferSteps", source, sink, transferSteps);
 
         //  var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
         Console.WriteLine($"-----------------------------------");
@@ -206,35 +181,46 @@ public class V2Pathfinder : IPathfinder
     /// <returns>A FlowGraph with balance nodes collapsed.</returns>
     /// <summary>
     /// </summary>
-    private List<List<FlowEdge>> CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
+    private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
-        var collapsedPaths = new List<List<FlowEdge>>();
+        FlowGraph capacityGraph = new FlowGraph();
 
         foreach (var path in pathsWithFlow)
         {
             var filteredPath = path.Where(o => IsBalanceNode(o.From)).ToList();
 
             // Now create new edges that consider just the avatar node IDs:
-            List<FlowEdge> avatarOnlyPath = filteredPath.Aggregate(new List<FlowEdge>(), (p, c) =>
+            filteredPath.ForEach(c =>
             {
                 var splitId = c.From.Split('-');
                 var balanceHolder = splitId[0];
                 var token = splitId[1];
 
-                p.Add(new FlowEdge(balanceHolder, c.To, token, c.InitialCapacity)
+                if (!capacityGraph.AvatarNodes.ContainsKey(balanceHolder))
+                {
+                    capacityGraph.AddAvatar(balanceHolder);
+                }
+
+                if (!capacityGraph.AvatarNodes.ContainsKey(c.To))
+                {
+                    capacityGraph.AddAvatar(c.To);
+                }
+
+                var edge = new FlowEdge(balanceHolder, c.To, token, c.InitialCapacity)
                 {
                     Flow = c.Flow,
-                    CurrentCapacity = c.CurrentCapacity,
-                    ReverseEdge = c.ReverseEdge
-                });
+                    CurrentCapacity = c.CurrentCapacity
+                };
 
-                return p;
+                capacityGraph.Edges.Add(edge);
+
+                // Maintain the adjacency
+                capacityGraph.AvatarNodes[balanceHolder].OutEdges.Add(edge);
+                capacityGraph.AvatarNodes[c.To].InEdges.Add(edge);
             });
-
-            collapsedPaths.Add(avatarOnlyPath);
         }
 
-        return collapsedPaths;
+        return capacityGraph;
     }
 
     /// <summary>
