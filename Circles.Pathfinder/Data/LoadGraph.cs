@@ -1,12 +1,17 @@
+using System.Globalization;
 using Npgsql;
 using System.Reflection;
+using Circles.Index.Utils;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Data
 {
     // TODO: Use CirclesQuery<T> and remove the Npgsql dependency
     public interface ILoadGraph
     {
-        IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped)> LoadV2Balances();
+        IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped, bool IsStatic)>
+            LoadV2Balances();
+
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
     }
 
@@ -23,18 +28,19 @@ namespace Circles.Pathfinder.Data
         {
             var assembly = Assembly.GetExecutingAssembly();
             var fullResourceName = $"Circles.Pathfinder.Data.Queries.{resourceName}";
-            
+
             using var stream = assembly.GetManifestResourceStream(fullResourceName);
             if (stream == null)
             {
                 throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
             }
-            
+
             using var reader = new StreamReader(stream);
             return reader.ReadToEnd();
         }
 
-        public IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped)> LoadV2Balances()
+        public IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped, bool IsStatic)>
+            LoadV2Balances()
         {
             // We now only have one balance query that includes the isWrapped column
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
@@ -51,8 +57,18 @@ namespace Circles.Pathfinder.Data
                 var account = reader.GetString(1);
                 var tokenAddress = reader.GetString(2);
                 var isWrapped = reader.GetBoolean(3);
+                var type = reader.GetString(4);
 
-                yield return (balance, account, tokenAddress, isWrapped);
+                if (type == "static")
+                {
+                    // Convert to Circles
+                    var staticAttoCircles = ConversionUtils.AttoCirclesToCircles(UInt256.Parse(balance));
+                    var demurragedCircles = ConversionUtils.StaticCirclesToCircles(staticAttoCircles);
+                    balance = ConversionUtils.CirclesToAttoCircles(demurragedCircles)
+                        .ToString(CultureInfo.InvariantCulture);
+                }
+
+                yield return (balance, account, tokenAddress, isWrapped, type == "static");
             }
         }
 

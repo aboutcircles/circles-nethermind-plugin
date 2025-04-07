@@ -58,7 +58,8 @@ public class GraphFactory
                 balance.Account,
                 balance.TokenAddress,
                 ConversionUtils.TruncateToInt64(UInt256.Parse(balance.Balance)),
-                balance.IsWrapped);
+                balance.IsWrapped,
+                balance.IsStatic);
         }
 
         return graph;
@@ -154,7 +155,7 @@ public class GraphFactory
                 continue;
             }
 
-            capacityGraph.AddBalanceNode(balanceNode.Address, balanceNode.Token, balanceNode.Amount);
+            capacityGraph.AddBalanceNode(balanceNode.Address, balanceNode.Token, balanceNode.Amount, balanceNode.IsWrapped, balanceNode.IsStatic);
         }
 
         // STEP 2: Copy capacity edges from the BalanceGraph
@@ -232,10 +233,10 @@ public class GraphFactory
         {
             var lowerSource = request.Source.ToLower();
             var virtualSinkAddress = lowerSource + VIRTUAL_SINK_SUFFIX;
-            
+
             // Add the virtual sink node
             capacityGraph.AddAvatar(virtualSinkAddress);
-            
+
             // Track if any capacity edges were actually added to the virtual sink
             bool anyEdgesAdded = SetupVirtualSinkEdges(
                 capacityGraph,
@@ -244,7 +245,7 @@ public class GraphFactory
                 request.ToTokens,
                 virtualSinkAddress
             );
-            
+
             // Clean up if no edges were added
             if (!anyEdgesAdded)
             {
@@ -283,29 +284,29 @@ public class GraphFactory
         string virtualSinkAddress)
     {
         bool anyEdgesAdded = false;
-        
+
         // Process each destination token
         foreach (var tokenAddress in toTokens)
         {
             var token = tokenAddress.ToLower();
-            
+
             // Find all accounts that trust this token
             var accountsTrustingToken = trustGraph.Edges
                 .Where(e => e.To.Equals(token, StringComparison.OrdinalIgnoreCase))
                 .Select(e => e.From.ToLower())
                 .ToList();
-                
+
             foreach (var accountAddress in accountsTrustingToken)
             {
                 // Skip if the account is the token itself
                 if (accountAddress == token)
                     continue;
-                    
+
                 // Skip if the account already has a balance of this token
                 // This prevents self-loops
                 if (HasBalanceEdge(balanceGraph, accountAddress, token))
                     continue;
-                    
+
                 // Add capacity edge from the account to the virtual sink
                 capacityGraph.AddCapacityEdge(
                     accountAddress,
@@ -313,11 +314,11 @@ public class GraphFactory
                     token,
                     long.MaxValue
                 );
-                
+
                 anyEdgesAdded = true;
             }
         }
-        
+
         return anyEdgesAdded;
     }
 
