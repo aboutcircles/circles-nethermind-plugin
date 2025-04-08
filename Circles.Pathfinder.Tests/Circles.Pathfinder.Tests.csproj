@@ -33,4 +33,16 @@
       <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="TestData\*">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="TestData\" />
+      <Folder Include="Utils\" />
+      <Folder Include="Fixtures\" />
+    </ItemGroup>
+
 </Project>
