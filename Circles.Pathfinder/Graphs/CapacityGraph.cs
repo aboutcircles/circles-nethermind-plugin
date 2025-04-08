@@ -24,12 +24,12 @@ public class CapacityGraph : IGraph<CapacityEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, long amount)
+    public void AddBalanceNode(string address, string token, long amount, bool isWrapped, bool isStatic)
     {
         address = address.ToLower();
         token = token.ToLower();
         
-        var balanceNode = new BalanceNode(address, token, amount);
+        var balanceNode = new BalanceNode(address, token, amount, isWrapped, isStatic);
         balanceNode.Address = address;
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);

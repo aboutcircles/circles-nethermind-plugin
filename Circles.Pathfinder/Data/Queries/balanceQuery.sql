@@ -37,24 +37,30 @@ current_crc20_demurraged_balances AS (
 	    "demurragedTotalBalance"::text
 	    ,account AS "account"
 	    ,"tokenAddress"
+	    ,"circlesType"
 	FROM (
 	    SELECT
-	        "timestamp" AS "lastActivity"
+            current_crc20_balances."timestamp" AS "lastActivity"
 	        ,account
 	        ,"tokenAddress"
 	        ,balance
-	        ,floor(crc_demurrage(1675209600::bigint, "timestamp", balance)) AS "demurragedTotalBalance"
+	        ,floor(crc_demurrage(1675209600::bigint, current_crc20_balances."timestamp", balance)) AS "demurragedTotalBalance"
+	        ,t1."circlesType"
 	    FROM
 	        current_crc20_balances
+	    JOIN 
+            public."CrcV2_ERC20WrapperDeployed" t1 
+	        ON t1."erc20Wrapper" = current_crc20_balances."tokenAddress"
 	) AS t
 	WHERE "demurragedTotalBalance" > 0
-)
+), z as (
 
 SELECT 
 	"demurragedTotalBalance"::text
 	,"account"
 	,"tokenAddress"
 	,FALSE AS "isWrapped"
+    ,'demurraged' AS "circlesType"
 FROM 
 	"V_CrcV2_BalancesByAccountAndToken" 
 WHERE
@@ -67,4 +73,8 @@ SELECT
 	,"account"
 	,"tokenAddress"
 	,TRUE AS "isWrapped"
-FROM current_crc20_demurraged_balances
+    ,CASE "circlesType" WHEN 0 THEN 'demurraged' ELSE 'static' END
+    FROM current_crc20_demurraged_balances
+)
+select *
+from z
