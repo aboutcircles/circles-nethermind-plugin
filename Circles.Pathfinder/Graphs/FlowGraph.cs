@@ -20,9 +20,9 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, long amount)
+    public void AddBalanceNode(string address, string token, long amount, bool isWrapped, bool isStatic)
     {
-        var balanceNode = new BalanceNode(address, token, amount);
+        var balanceNode = new BalanceNode(address, token, amount, isWrapped, isStatic);
         balanceNode.Address = address;
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
@@ -47,7 +47,7 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (fromNode is BalanceNode fromBalance)
             {
-                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount);
+                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped, fromBalance.IsStatic);
             }
 
             from = Nodes[fromNode.Address];
@@ -62,7 +62,7 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (toNode is BalanceNode toBalance)
             {
-                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount);
+                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped, toBalance.IsStatic);
             }
 
             to = Nodes[toNode.Address];
@@ -137,7 +137,7 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (fromNode is BalanceNode fromBalance)
             {
-                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount);
+                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped, fromBalance.IsStatic);
             }
         }
 
@@ -149,7 +149,7 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (toNode is BalanceNode toBalance)
             {
-                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount);
+                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped, toBalance.IsStatic);
             }
         }
 
