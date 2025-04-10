@@ -290,6 +290,15 @@ public class GraphFactory
         {
             var token = tokenAddress.ToLower();
 
+            bool isWrapped = balanceGraph.BalanceNodes.Values
+            .Any(bn => bn.Token.Equals(token, StringComparison.OrdinalIgnoreCase) && bn.IsWrapped);
+            
+            if (isWrapped)
+            {
+                Console.WriteLine($"Skipping wrapped token {token} for virtual sink)");
+                continue;
+            }
+
             // Find all accounts that trust this token
             var accountsTrustingToken = trustGraph.Edges
                 .Where(e => e.To.Equals(token, StringComparison.OrdinalIgnoreCase))
