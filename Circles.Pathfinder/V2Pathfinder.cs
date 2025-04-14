@@ -47,8 +47,8 @@ public class V2Pathfinder : IPathfinder
             throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
         }
 
-        Console.WriteLine($"Requests Source: {request.Source?.ToLower()}");
-        Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
+      //  Console.WriteLine($"Requests Source: {request.Source?.ToLower()}");
+      //  Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
         // Load Trust and Balance Graphs
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
@@ -99,14 +99,15 @@ public class V2Pathfinder : IPathfinder
             )
         );
 
-        Console.WriteLine($"[Circles.V2Pathfinder] Max flow from {source} to {sink}: {maxFlow} (target: {targetFlow})");
+       // Console.WriteLine($"[Circles.V2Pathfinder] Max flow from {source} to {sink}: {maxFlow} (target: {targetFlow})");
 
         // Extract the paths
         var pathsWithFlow = flowGraph.ExtractPathsWithFlow(source, effectiveSink, 0L);
 
         FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] pathsWithFlow before VirtualSink processing", source,
             sink, pathsWithFlow);
-
+        
+    
         // If we had a virtual sink, rewrite it as the real sink in final edges 
         if (capacityGraph.VirtualSinkAddress != null)
         {
@@ -130,11 +131,12 @@ public class V2Pathfinder : IPathfinder
             source,
             sink,
             pathsWithFlow);
-
+    
         // Collapse balance nodes, etc. 
         var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
 
         FlowLogger.LogFlowGraphFlow("[Circles.V2Pathfinder] collapsedGraph", source, sink, collapsedGraph);
+        
 
         // Aggregate identical edges (from, to, token) 
         var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
@@ -160,9 +162,9 @@ public class V2Pathfinder : IPathfinder
         FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] transferSteps", source, sink, transferSteps);
 
         //  var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
-        Console.WriteLine($"-----------------------------------");
-        Console.WriteLine($"Target flow: {targetFlow}");
-        Console.WriteLine($"Max flow: {maxFlow}");
+      //  Console.WriteLine($"-----------------------------------");
+      //  Console.WriteLine($"Target flow: {targetFlow}");
+      //  Console.WriteLine($"Max flow: {maxFlow}");
         //  Console.WriteLine($"Total value: {totalValue}");
 
         // Return
