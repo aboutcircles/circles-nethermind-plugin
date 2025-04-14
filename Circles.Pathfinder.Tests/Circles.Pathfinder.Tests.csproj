@@ -34,15 +34,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Update="TestData\*">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <None Update="pathfinder-test-cases.json">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </None>
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="TestData\" />
-      <Folder Include="Utils\" />
-      <Folder Include="Fixtures\" />
-    </ItemGroup>
+  </ItemGroup>
 
 </Project>
