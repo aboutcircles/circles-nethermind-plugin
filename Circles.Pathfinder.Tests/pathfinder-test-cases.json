@@ -1,0 +1,113 @@
+[
+    {
+      "name": "BasicPath-1",
+      "description": "Basic path with no filters",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+      "targetFlow": "1000000000000000000000",
+      "fromTokens": [],
+      "toTokens": [],
+      "withWrap": false
+    },
+    {
+        "name": "BasicPathMaxFlow", 
+        "description": "Basic path with no filters. MaxFlow",
+        "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": [],
+        "toTokens": [],
+        "withWrap": false
+    },
+    {
+        "name": "BasicPathMaxFlowWithWrap", 
+        "description": "Basic path with no filters. MaxFlow with wrap",
+        "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": [],
+        "toTokens": [],
+        "withWrap": true
+    },
+    {
+      "name": "PathWithFromTokensFilter-1",
+      "description": "Path with FromTokens filter",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+      "targetFlow": "100000000000000000000000000000",
+      "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+      "toTokens": [],
+      "withWrap": false
+    },
+    {
+        "name": "PathWithFromTokensFilter-2",
+        "description": "Path with FromTokens filter",
+        "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7","0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+        "toTokens": [],
+        "withWrap": false
+    },
+    {
+      "name": "PathWithToTokensFilter-1",
+      "description": "Path with ToTokens filter",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+      "targetFlow": "100000000000000000000000000000",
+      "fromTokens": [],
+      "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+      "withWrap": false
+    },
+    {
+        "name": "PathWithToTokensFilter-2",
+        "description": "Path with ToTokens filter",
+        "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": [],
+        "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0","0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+        "withWrap": false
+    },
+    {
+        "name": "PathWithFrom&ToTokensFilter",
+        "description": "Path with FromTokens & ToTokens filter",
+        "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+        "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0","0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+        "withWrap": false
+    },
+
+    {
+      "name": "SelfConversionWithToTokensFilter",
+      "description": "Self-conversion",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "targetFlow": "100000000000000000000000000000",
+      "fromTokens": [],
+      "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+      "withWrap": false
+    },
+    {
+        "name": "SelfConversionWithToTokensFilter-2",
+        "description": "Self-conversion",
+        "source": "0x42cEDde51198D1773590311E2A340DC06B24cB37",
+        "sink": "0x42cEDde51198D1773590311E2A340DC06B24cB37",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": [],
+        "toTokens": ["0x42cEDde51198D1773590311E2A340DC06B24cB37"],
+        "withWrap": false
+      },
+    {
+        "name": "SelfConversionWithToTokensFilterWithWrap",
+        "description": "Self-conversion with wrap",
+        "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "targetFlow": "100000000000000000000000000000",
+        "fromTokens": [],
+        "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+        "withWrap": true
+      }
+  ]

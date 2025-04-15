@@ -1,0 +1,6 @@
+<Project>
+    <PropertyGroup>
+        <!-- Suppress all warnings for tests -->
+        <NoWarn>CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8619;CS8620;CS8625;CS0219;NU1904;MSB3245</NoWarn>
+    </PropertyGroup>
+</Project>
