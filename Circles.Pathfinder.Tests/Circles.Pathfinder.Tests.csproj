@@ -33,4 +33,10 @@
       <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="pathfinder-test-cases.json">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+  </ItemGroup>
+
 </Project>
