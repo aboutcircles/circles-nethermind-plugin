@@ -49,7 +49,9 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
-            using var reader = command.ExecuteReader();
+            using var reader = command.ExecuteReader(); 
+            
+            var now = DateTime.UtcNow;
 
             while (reader.Read())
             {
@@ -63,7 +65,7 @@ namespace Circles.Pathfinder.Data
                 {
                     // Convert to Circles
                     var staticAttoCircles = ConversionUtils.AttoCirclesToCircles(UInt256.Parse(balance));
-                    var demurragedCircles = ConversionUtils.StaticCirclesToCircles(staticAttoCircles);
+                    var demurragedCircles = ConversionUtils.StaticCirclesToCircles(staticAttoCircles, now);
                     if (demurragedCircles == 0)
                     {
                         continue;

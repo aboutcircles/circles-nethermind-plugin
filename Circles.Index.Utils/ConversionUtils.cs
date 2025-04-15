@@ -109,7 +109,7 @@ public abstract class ConversionUtils
     /// <returns></returns>
     public static decimal CirclesToStaticCircles(decimal circlesBalance, DateTime lastUpdate)
     {
-        var lastUpdateDay = (lastUpdate - CirclesInceptionDate).TotalDays;
+        var lastUpdateDay = Math.Floor((lastUpdate - CirclesInceptionDate).TotalDays);
         var f = (decimal)Math.Pow((double)Beta, lastUpdateDay);
         return f * circlesBalance;
     }
@@ -118,11 +118,12 @@ public abstract class ConversionUtils
     /// Converts a static Circles balance (inflationary) to a regular v2 personal Circles balance (demurraged).
     /// </summary>
     /// <param name="staticCirclesBalance"></param>
+    /// <param name="lastUpdate"></param>
     /// <returns></returns>
-    public static decimal StaticCirclesToCircles(decimal staticCirclesBalance)
+    public static decimal StaticCirclesToCircles(decimal staticCirclesBalance, DateTime? lastUpdate = null)
     {
-        var lastUpdate = DateTime.Now.ToUniversalTime();
-        var lastUpdateDay = (lastUpdate - CirclesInceptionDate).TotalDays;
+        var lastUpdate_ = (lastUpdate ?? DateTime.Now).ToUniversalTime();
+        var lastUpdateDay = Math.Floor((lastUpdate_ - CirclesInceptionDate).TotalDays);
         var f = (decimal)Math.Pow((double)Beta, lastUpdateDay);
         return staticCirclesBalance / f;
     }
@@ -148,6 +149,12 @@ public abstract class ConversionUtils
         return (UInt256)bigint;
     }
 
+    public static long TimestampToCirclesDay(DateTime timestamp)
+    {
+        var day = (timestamp - CirclesInceptionDate).TotalDays;
+        return (long)Math.Floor(day);
+    }
+    
     public static UInt256 AddressToUInt256(Address address)
     {
         return new(address.Bytes, true);
