@@ -286,6 +286,25 @@ public class Plugin : INethermindPlugin
 
             logger.Info("Caching ProxyCreation events done");
         }
+
+        if (settings.BaseGroupDeployer != null)
+        {
+            logger.Info("Caching BaseGroupCreated events");
+            
+            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false, int.MaxValue);
+            sql = baseGroupsQuery.ToSql(database);
+            result = database.Select(sql);
+            rows = result.Rows.ToArray();
+            
+            logger.Info($" * Found {rows.Length} BaseGroupCreated events");
+
+            foreach (var row in rows)
+            {
+                CirclesV2.BaseGroupDeployer.LogParser.BaseGroupsCreated.TryAdd(new Address(row[0]!.ToString()!), null);
+            }
+            
+            logger.Info("Caching BaseGroupCreated events done");
+        }
     }
 
     /// <summary>
