@@ -78,4 +78,7 @@ public class Settings
     // public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
     //     ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
     //     : 12541946L;
+    public readonly Address? BaseGroupDeployer = Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER") != null
+        ? new Address(Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")!)
+        : null;
 }

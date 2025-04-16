@@ -64,6 +64,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.Safe.DatabaseSchema());
         }
 
+        if (settings.BaseGroupDeployer != null)
+        {
+            schemas.Add(new Circles.Index.CirclesV2.BaseGroupDeployer.DatabaseSchema());
+        }
+
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
@@ -107,6 +112,11 @@ public class Plugin : INethermindPlugin
         if (settings.CirclesV1NameRegistry != null)
         {
             logParsers.Add(new CirclesV1.NameRegistry.LogParser(settings.CirclesV1NameRegistry));
+        }
+
+        if (settings.BaseGroupDeployer != null)
+        {
+            logParsers.Add(new CirclesV2.BaseGroupDeployer.LogParser(settings.BaseGroupDeployer));
         }
 
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
