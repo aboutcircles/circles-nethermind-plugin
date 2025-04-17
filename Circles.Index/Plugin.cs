@@ -64,6 +64,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.Safe.DatabaseSchema());
         }
 
+        if (settings.BaseGroupDeployer != null)
+        {
+            schemas.Add(new Circles.Index.CirclesV2.BaseGroupDeployer.DatabaseSchema());
+        }
+
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
@@ -107,6 +112,11 @@ public class Plugin : INethermindPlugin
         if (settings.CirclesV1NameRegistry != null)
         {
             logParsers.Add(new CirclesV1.NameRegistry.LogParser(settings.CirclesV1NameRegistry));
+        }
+
+        if (settings.BaseGroupDeployer != null)
+        {
+            logParsers.Add(new CirclesV2.BaseGroupDeployer.LogParser(settings.BaseGroupDeployer));
         }
 
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
@@ -275,6 +285,25 @@ public class Plugin : INethermindPlugin
             }
 
             logger.Info("Caching ProxyCreation events done");
+        }
+
+        if (settings.BaseGroupDeployer != null)
+        {
+            logger.Info("Caching BaseGroupCreated events");
+            
+            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false, int.MaxValue);
+            sql = baseGroupsQuery.ToSql(database);
+            result = database.Select(sql);
+            rows = result.Rows.ToArray();
+            
+            logger.Info($" * Found {rows.Length} BaseGroupCreated events");
+
+            foreach (var row in rows)
+            {
+                CirclesV2.BaseGroupDeployer.LogParser.BaseGroupsCreated.TryAdd(new Address(row[0]!.ToString()!), null);
+            }
+            
+            logger.Info("Caching BaseGroupCreated events done");
         }
     }
 
