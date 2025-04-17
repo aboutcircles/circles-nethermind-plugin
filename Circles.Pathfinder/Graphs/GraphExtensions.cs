@@ -64,6 +64,44 @@ public static class GraphExtensions
 
         long scaledFlowVal = maxFlowSolver.OptimalFlow();
 
+        // Check if any flow is actually going from source to other nodes or directly to sink
+        bool hasRealFlow = false;
+        for (int i = 0; i < maxFlowSolver.NumArcs(); ++i)
+        {
+            int tail = maxFlowSolver.Tail(i);
+            int head = maxFlowSolver.Head(i);
+            long flow = maxFlowSolver.Flow(i);
+            
+            // Skip the superSource->source arc
+            if (tail == superSourceIndex)
+                continue;
+                
+            // If any other arc has flow, then we have a real path
+            if (flow > 0)
+            {
+                hasRealFlow = true;
+                break;
+            }
+        }
+
+        // If there's no real flow in the network, return 0
+        if (!hasRealFlow)
+        {
+            Console.WriteLine("No actual flow paths found in the network. Returning max flow = 0.");
+            // Reset flows to zero since we're returning zero flow
+            foreach (var edge in graph.Edges)
+            {
+                edge.Flow = 0;
+                edge.CurrentCapacity = edge.InitialCapacity;
+                if (edge.ReverseEdge != null)
+                {
+                    edge.ReverseEdge.Flow = 0;
+                    edge.ReverseEdge.CurrentCapacity = 0;
+                }
+            }
+            return 0;
+        }
+
         // 9) Store each edge’s flow
         foreach (var edge in graph.Edges)
         {

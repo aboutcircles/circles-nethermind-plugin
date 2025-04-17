@@ -162,9 +162,9 @@ public class V2Pathfinder : IPathfinder
         FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] transferSteps", source, sink, transferSteps);
 
         //  var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
-      //  Console.WriteLine($"-----------------------------------");
-      //  Console.WriteLine($"Target flow: {targetFlow}");
-      //  Console.WriteLine($"Max flow: {maxFlow}");
+        Console.WriteLine($"-----------------------------------");
+        Console.WriteLine($"Target flow: {targetFlow}");
+        Console.WriteLine($"Max flow: {maxFlow}");
         //  Console.WriteLine($"Total value: {totalValue}");
 
         // Return
