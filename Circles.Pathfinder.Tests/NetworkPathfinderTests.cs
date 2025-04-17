@@ -405,6 +405,42 @@ public class NetworkPathfinderTests
             {
                 Console.WriteLine($"\n{ConsoleColors.Yellow}NO PATH FOUND:{ConsoleColors.Reset} No valid path exists between source and sink with the given constraints.");
                 // This is now considered a valid case, not a failure
+              //  return;
+                // FLOW ZERO CONSISTENCY CHECK
+                Console.WriteLine($"\n{ConsoleColors.Magenta}FLOW ZERO CONSISTENCY CHECK:{ConsoleColors.Reset}");
+                bool flowZeroConsistencyPassed = true;
+
+                // Consistency check: if there are no transfers, maxFlow must be zero
+                if (result.Transfers.Count == 0 && result.MaxFlow != "0")
+                {
+                    Console.WriteLine($"{ConsoleColors.Red}INCONSISTENT STATE:{ConsoleColors.Reset} No transfers found but MaxFlow is not zero ({result.MaxFlow})");
+                    flowZeroConsistencyPassed = false;
+                }
+
+                // Consistency check: if maxFlow is zero, there should be no transfers
+                if (result.MaxFlow == "0" && result.Transfers.Count > 0)
+                {
+                    Console.WriteLine($"{ConsoleColors.Red}INCONSISTENT STATE:{ConsoleColors.Reset} MaxFlow is zero but {result.Transfers.Count} transfers were found");
+                    flowZeroConsistencyPassed = false;
+                }
+
+                Console.WriteLine($"Check: {(flowZeroConsistencyPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+                if (!flowZeroConsistencyPassed)
+                {
+                    validationPassed = false;
+                }
+
+                // Finally, assert if the entire validation succeeded.
+                if (validationPassed)
+                {
+                    Console.WriteLine($"\n{ConsoleColors.Green}Test completed successfully!{ConsoleColors.Reset}");
+                }
+                else
+                {
+                    Console.WriteLine($"\n{ConsoleColors.Red}Test failed due to one or more validation errors!{ConsoleColors.Reset}");
+                }
+
+                Assert.That(validationPassed, Is.True, "One or more validation checks failed.");
                 return;
             }
             
@@ -714,6 +750,7 @@ public class NetworkPathfinderTests
             {
                 Console.WriteLine($"\n{ConsoleColors.Red}Wrapped token validation skipped - graphs not loaded{ConsoleColors.Reset}");
             }
+
             
             // Finally, assert if the entire validation succeeded.
             if (validationPassed)

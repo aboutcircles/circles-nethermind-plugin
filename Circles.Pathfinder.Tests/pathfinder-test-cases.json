@@ -109,5 +109,31 @@
         "fromTokens": [],
         "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
         "withWrap": true
-      }
+    },
+    {
+        "name": "test-1",
+        "description": "Self-conversion with wrap",
+        "source": "0x3162085b7B2Ef572956F785A7Fec90a653A1e65d",
+        "sink": "0x3162085b7B2Ef572956F785A7Fec90a653A1e65d",
+        "targetFlow": "13038000000000000",
+        "fromTokens": ["0xc0d871bd13ebdf5c4ff059d8243fb38210608bd6",
+                "0x457ece12084cb7ab908623cbedd1843a6dc958d1",
+                "0x2cabc867a6c4a32846677e74b3f75df055e01f21",
+                "0x159e6881e6ec370b46f2fe9fe75cbdfd8f7877b4",
+                "0x5b10e15404c490892ebb6a2c7a22bb594c32e9e8",
+                "0xc4071f2324628634e619d02710abeec170b8ffa1",
+                "0x2ce85e0d3b5b875441ba84d4865ac99578688202",
+                "0xb88c41994d635b5a10cdc9621e4736b3a56b1e5b",
+                "0x3e8276616d598e237181978b1e83c592ed33004c",
+                "0xd9bad5c83d61c6613e51b8236b637bddeb48b6d7",
+                "0xf48554937f18885c7f15c432c596b5843648231d",
+                "0x57928fb15ffb7303b65edc326dc4dc38150008e1",
+                "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+                "0x009626daded5e90aecee30ad3ebf2b3e510fe256",
+                "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+                "0x42cedde51198d1773590311e2a340dc06b24cb37",
+                "0x3a91df8d30899ed14946232c0a28468a69cb8de5"],
+        "toTokens": [],
+        "withWrap": true
+    }
   ]
