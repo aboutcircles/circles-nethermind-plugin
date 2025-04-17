@@ -761,59 +761,92 @@ public class DatabaseSchema : IDatabaseSchema
         new("logIndex", ValueTypes.Int, true),
         new("transactionHash", ValueTypes.String, true),
         new("group", ValueTypes.Address, true),
-        new("mint", ValueTypes.Address, true),
+        new("type", ValueTypes.String, true),
+        new("owner", ValueTypes.Address, true),
+        new("mintPolicy", ValueTypes.Address, true),
+        new("mintHandler", ValueTypes.Address, true),
         new("treasury", ValueTypes.Address, true),
+        new("service", ValueTypes.Address, true),
+        new("feeCollection", ValueTypes.Address, true),
+        new("memberCount", ValueTypes.Int, true),
         new("name", ValueTypes.String, true),
         new("symbol", ValueTypes.String, true),
-        new("cidV0Digest", ValueTypes.Bytes, true),
-        new("memberCount", ValueTypes.Int, true),
-        new("trustedCount", ValueTypes.Int, true),
+        new("cidV0Digest", ValueTypes.Bytes, true)
     ])
     {
         SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV2_Groups""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""group"", mint, treasury, name,
-                         symbol, ""cidV0Digest"", ""memberCount"", ""trustedCount"")
-            as
-                WITH latestmetadata AS (
-                    SELECT u.avatar,
-                           u.""metadataDigest"",
-                           u.""blockNumber"",
-                           u.""transactionIndex"",
-                           u.""logIndex"",
-                           row_number()
-                           OVER (PARTITION BY u.avatar ORDER BY u.""blockNumber"" DESC, u.""transactionIndex"" DESC, u.""logIndex"" DESC) AS rn
-                    FROM ""CrcV2_UpdateMetadataDigest"" u
+            DROP VIEW IF EXISTS ""V_CrcV2_Groups"";
+            CREATE OR REPLACE VIEW ""V_CrcV2_Groups""
+            AS
+                WITH latest_owner AS (
+                    SELECT DISTINCT ON (emitter) *
+                    FROM ""CrcV2_BaseGroupOwnerUpdated""
+                    ORDER BY emitter,
+                          ""blockNumber""      DESC,
+                          ""transactionIndex"" DESC,
+                          ""logIndex""         DESC
+                ),
+                latest_service AS (
+                    SELECT DISTINCT ON (emitter) *
+                    FROM ""CrcV2_BaseGroupServiceUpdated""
+                    ORDER BY emitter,
+                             ""blockNumber""      DESC,
+                             ""transactionIndex"" DESC,
+                             ""logIndex""         DESC
+                ),
+                latest_cid AS (
+                    SELECT DISTINCT ON (avatar) *
+                    FROM ""CrcV2_UpdateMetadataDigest""
+                    ORDER BY avatar,
+                             ""blockNumber""      DESC,
+                             ""transactionIndex"" DESC,
+                             ""logIndex""         DESC
+                ),
+                latest_fee AS (
+                    SELECT DISTINCT ON (emitter) *
+                    FROM ""CrcV2_BaseGroupFeeCollectionUpdated""
+                    ORDER BY emitter,
+                          ""blockNumber""      DESC,
+                          ""transactionIndex"" DESC,
+                          ""logIndex""         DESC
+                ),
+                member_counts AS (
+                    SELECT bgc.""group"", count(*) as ""memberCount""
+                    FROM ""CrcV2_RegisterGroup"" bgc
+                    JOIN ""V_CrcV2_TrustRelations"" tr on tr.truster = bgc.""group""
+                    GROUP BY bgc.""group"" 
                 )
-                SELECT g.""blockNumber"",
-                       g.""timestamp"",
-                       g.""transactionIndex"",
-                       g.""logIndex"",
-                       g.""transactionHash"",
-                       g.""group"",
-                       g.mint,
-                       g.treasury,
-                       g.name,
-                       g.symbol,
-                       lm.""metadataDigest""       AS ""cidV0Digest"",
-                       count(""outTrust"".trustee) AS ""memberCount"",
-                       count(""inTrust"".truster)  AS ""trustedCount""
-                FROM ""CrcV2_RegisterGroup"" g
-                    JOIN latestmetadata lm ON g.""group"" = lm.avatar
-                    LEFT JOIN ""V_CrcV2_TrustRelations"" ""outTrust"" on ""outTrust"".truster = g.""group""
-                    LEFT JOIN ""V_CrcV2_TrustRelations"" ""inTrust"" on ""inTrust"".trustee = g.""group""
-                WHERE lm.rn = 1
-                GROUP BY g.""blockNumber"",
-                         g.""timestamp"",
-                         g.""transactionIndex"",
-                         g.""logIndex"",
-                         g.""transactionHash"",
-                         g.""group"",
-                         g.mint,
-                         g.treasury,
-                         g.name,
-                         g.symbol,
-                         lm.""metadataDigest"";
+                SELECT
+                    c.""blockNumber"",
+                    c.""timestamp"",
+                    c.""transactionIndex"",
+                    c.""logIndex"",
+                    c.""transactionHash"",
+                    c.""group"",
+                    CASE WHEN cm.proxy IS NOT NULL
+                         THEN 'CrcV2_CMGroupCreated'
+                         WHEN bg.""group"" IS NOT NULL
+                         THEN 'CrcV2_BaseGroupCreated'
+                         ELSE 'CrcV2_RegisterGroup'
+                    END AS type,
+                    COALESCE(cm.owner, o.owner) as owner,
+                    c.""mint"" as ""mintPolicy"",
+                    COALESCE(cm.""mintHandler"", bg.""mintHandler"") as ""mintHandler"",
+                    c.treasury,
+                    s.""newService""                      AS service,
+                    f.""feeCollection"",
+                    COALESCE(m.""memberCount"", 0)        AS ""memberCount"",
+                    c.name,
+                    c.symbol,
+                    ci.""metadataDigest"" as ""cidV0Digest""
+                FROM       ""CrcV2_RegisterGroup"" c
+                LEFT JOIN  latest_owner             o ON o.emitter  = c.""group""
+                LEFT JOIN  latest_service           s ON s.emitter  = c.""group""
+                LEFT JOIN  latest_fee               f ON f.emitter  = c.""group""
+                LEFT JOIN  member_counts            m ON m.""group""  = c.""group""
+                LEFT JOIN  latest_cid               ci ON ci.avatar = c.""group""
+                LEFT JOIN  ""CrcV2_CMGroupCreated""   cm ON cm.proxy  = c.""group""
+                LEFT JOIN  ""CrcV2_BaseGroupCreated"" bg ON bg.""group"" = c.""group"";
         ")
     };
 
