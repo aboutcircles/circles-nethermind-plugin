@@ -46,6 +46,8 @@ public class Plugin : INethermindPlugin
             new CirclesV2.DatabaseSchema(),
             new CirclesV2.NameRegistry.DatabaseSchema(),
             new CirclesV2.StandardTreasury.DatabaseSchema(),
+            new CirclesV2.CMGroupDeployer.DatabaseSchema(),
+            new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
             new CirclesViews.DatabaseSchema()
         };
 
@@ -54,19 +56,9 @@ public class Plugin : INethermindPlugin
             schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
         }
 
-        if (settings.CMGroupDeployer.Length > 0)
-        {
-            schemas.Add(new Circles.Index.CirclesV2.CMGroupDeployer.DatabaseSchema());
-        }
-
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
             schemas.Add(new Circles.Index.Safe.DatabaseSchema());
-        }
-
-        if (settings.BaseGroupDeployer != null)
-        {
-            schemas.Add(new Circles.Index.CirclesV2.BaseGroupDeployer.DatabaseSchema());
         }
 
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
@@ -101,12 +93,12 @@ public class Plugin : INethermindPlugin
 
         if (settings.CMGroupDeployer.Length > 0)
         {
-            logParsers.Add(new Circles.Index.CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToHashSet()));
+            logParsers.Add(new CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToHashSet()));
         }
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
-            logParsers.Add(new Circles.Index.Safe.LogParser(settings.SafeProxyFactoryAddresses));
+            logParsers.Add(new Safe.LogParser(settings.SafeProxyFactoryAddresses));
         }
 
         if (settings.CirclesV1NameRegistry != null)
@@ -290,19 +282,20 @@ public class Plugin : INethermindPlugin
         if (settings.BaseGroupDeployer != null)
         {
             logger.Info("Caching BaseGroupCreated events");
-            
-            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false, int.MaxValue);
+
+            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false,
+                int.MaxValue);
             sql = baseGroupsQuery.ToSql(database);
             result = database.Select(sql);
             rows = result.Rows.ToArray();
-            
+
             logger.Info($" * Found {rows.Length} BaseGroupCreated events");
 
             foreach (var row in rows)
             {
                 CirclesV2.BaseGroupDeployer.LogParser.BaseGroupsCreated.TryAdd(new Address(row[0]!.ToString()!), null);
             }
-            
+
             logger.Info("Caching BaseGroupCreated events done");
         }
     }
