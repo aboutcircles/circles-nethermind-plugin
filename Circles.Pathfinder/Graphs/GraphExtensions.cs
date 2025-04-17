@@ -69,7 +69,6 @@ public static class GraphExtensions
         for (int i = 0; i < maxFlowSolver.NumArcs(); ++i)
         {
             int tail = maxFlowSolver.Tail(i);
-            int head = maxFlowSolver.Head(i);
             long flow = maxFlowSolver.Flow(i);
             
             // Skip the superSource->source arc
@@ -88,17 +87,6 @@ public static class GraphExtensions
         if (!hasRealFlow)
         {
             Console.WriteLine("No actual flow paths found in the network. Returning max flow = 0.");
-            // Reset flows to zero since we're returning zero flow
-            foreach (var edge in graph.Edges)
-            {
-                edge.Flow = 0;
-                edge.CurrentCapacity = edge.InitialCapacity;
-                if (edge.ReverseEdge != null)
-                {
-                    edge.ReverseEdge.Flow = 0;
-                    edge.ReverseEdge.CurrentCapacity = 0;
-                }
-            }
             return 0;
         }
 
