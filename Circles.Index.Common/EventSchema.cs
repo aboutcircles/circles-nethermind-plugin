@@ -31,7 +31,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
     /// <remarks>
     /// Doesn't support all Solidity types yet (most notably arrays). Please handle events with these types manually.
     /// </remarks>
-    public static EventSchema FromSolidity(string @namespace, string solidityEventDefinition)
+    public static EventSchema FromSolidity(string @namespace, string solidityEventDefinition, string? tableNameOverride = null)
     {
         var trimmedDefinition = solidityEventDefinition.Trim();
         const string prefix = "event ";
@@ -116,7 +116,7 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
         eventTopic.Append(')');
 
         Hash256 topic = Keccak.Compute(eventTopic.ToString());
-        return new EventSchema(@namespace, eventName, topic.Bytes.ToArray(), columns);
+        return new EventSchema(@namespace, tableNameOverride ?? eventName, topic.Bytes.ToArray(), columns);
     }
 
     private static ValueTypes MapSolidityType(string type)
