@@ -17,7 +17,6 @@ combined_transfers as (
         value
     from "CrcV2_TransferBatch"
 )
-
 select
     "tokenAddress",
     "id" as "tokenId",

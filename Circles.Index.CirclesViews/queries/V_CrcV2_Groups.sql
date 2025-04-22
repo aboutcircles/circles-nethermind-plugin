@@ -13,7 +13,6 @@ latestmetadata AS (
         OVER (PARTITION BY u.avatar ORDER BY u."blockNumber" DESC, u."transactionIndex" DESC, u."logIndex" DESC) AS rn
     FROM "CrcV2_UpdateMetadataDigest" u
 )
-
 SELECT 
     g."blockNumber",
     g."timestamp",

@@ -1,7 +1,6 @@
 create or replace view "V_Crc_Avatars"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "transactionHash", 
     version, type, "invitedBy", avatar, "tokenId", name, "cidV0Digest") as
-
 SELECT 
     "V_CrcV2_Avatars"."blockNumber",
     "V_CrcV2_Avatars"."timestamp",

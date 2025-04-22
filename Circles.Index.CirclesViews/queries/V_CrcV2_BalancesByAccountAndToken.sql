@@ -45,7 +45,6 @@ transfers AS (
     ) all_transfers
     GROUP BY all_transfers.account, all_transfers.id, all_transfers."tokenAddress"
 )
-
 SELECT 
     account,
     id::text                                                       AS "tokenId",

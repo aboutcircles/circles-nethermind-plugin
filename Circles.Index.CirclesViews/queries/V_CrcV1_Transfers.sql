@@ -27,7 +27,6 @@ WITH "allTransfers" AS (
         'CrcV1_Transfer'::text AS type
     FROM "CrcV1_Transfer" t
 )
-
 SELECT t."blockNumber",
     t."timestamp",
     t."transactionIndex",

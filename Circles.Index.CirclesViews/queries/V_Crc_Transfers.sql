@@ -1,7 +1,6 @@
 create or replace view public."V_Crc_Transfers"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "batchIndex", 
     "transactionHash", version, operator, "from", "to", id, value, type) as
-
 WITH 
 "allTransfers" AS (
     SELECT 
