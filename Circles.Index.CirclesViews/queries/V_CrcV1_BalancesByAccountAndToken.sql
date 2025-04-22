@@ -32,7 +32,6 @@ transfers AS (
     ) all_transfers
     GROUP BY all_transfers.account, all_transfers."tokenAddress"
 )
-
 SELECT "accountBalances".account,
         "accountBalances"."tokenAddress",
         "accountBalances"."timestamp" AS "lastActivity",
