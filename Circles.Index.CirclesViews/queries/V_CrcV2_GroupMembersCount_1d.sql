@@ -3,8 +3,7 @@
 -- timestamp:ValueTypes.BigInt:true
 -- value:ValueTypes.Int:true
 
-CREATE VIEW "V_CrcV2_GroupMembersCount_1d" AS
-
+create or replace view "V_CrcV2_GroupMembersCount_1d" ("group", "timestamp", "value") as
 WITH
 
 members_1d AS (
