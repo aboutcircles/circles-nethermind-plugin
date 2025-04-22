@@ -3,6 +3,7 @@
 -- tokenId:ValueTypes.String:true
 -- tokenAddress:ValueTypes.String:true
 -- lastActivity:ValueTypes.Int:true
+-- totalBalance:ValueTypes.BigInt:true
 -- demurragedTotalBalance:ValueTypes.BigInt:true
 
 CREATE OR REPLACE FUNCTION crc_day("inflationDayZero" bigint, "timestamp" bigint)
@@ -29,7 +30,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 create or replace view public."V_CrcV2_BalancesByAccountAndToken"
-    (account, "tokenId", "tokenAddress", "lastActivity", "demurragedTotalBalance") as
+    (account, "tokenId", "tokenAddress", "lastActivity", "totalBalance", "demurragedTotalBalance") as
 WITH 
 transfers AS (
     SELECT 
@@ -80,6 +81,7 @@ SELECT
     id::text                                                       AS "tokenId",
     "tokenAddress",
     "timestamp"                                                    AS "lastActivity",
+    balance                                                        AS "totalBalance",
     floor(crc_demurrage(1675209600::bigint, "timestamp", balance)) AS "demurragedTotalBalance"
 FROM "accountBalances"
 WHERE account <> '0x0000000000000000000000000000000000000000'::text
