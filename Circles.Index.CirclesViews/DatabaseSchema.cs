@@ -325,7 +325,7 @@ public class DatabaseSchema : IDatabaseSchema
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
-             {
+            {
                 ("System", "Functions"),
                 DatabaseFunctions
             },

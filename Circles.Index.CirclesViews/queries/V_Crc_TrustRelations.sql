@@ -1,7 +1,6 @@
 create or replace view public."V_Crc_TrustRelations"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "transactionHash", 
     version, trustee, truster, "expiryTime", "limit") as
-
 SELECT 
     "V_CrcV2_TrustRelations"."blockNumber",
     "V_CrcV2_TrustRelations"."timestamp",

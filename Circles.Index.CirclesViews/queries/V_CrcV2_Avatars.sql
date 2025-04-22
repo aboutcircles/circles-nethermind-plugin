@@ -39,7 +39,6 @@ avatars AS (
         'CrcV2_RegisterHuman'        as type
     FROM "CrcV2_RegisterHuman"
 )
-
 SELECT a."blockNumber",
         a."timestamp",
         a."transactionIndex",
