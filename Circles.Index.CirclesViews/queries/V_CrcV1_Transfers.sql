@@ -1,3 +1,15 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- transactionHash:ValueTypes.String:true
+-- from:ValueTypes.Address:true
+-- to:ValueTypes.Address:true
+-- amount:ValueTypes.BigInt:false
+-- type:ValueTypes.String:true
+-- tokenType:ValueTypes.String:true
+
 create or replace view public."V_CrcV1_Transfers" (
     "blockNumber", timestamp, "transactionIndex", 
     "logIndex", "transactionHash", "from", "to", 

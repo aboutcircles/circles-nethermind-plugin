@@ -1,3 +1,8 @@
+-- COLUMNS:
+-- vault:ValueTypes.Address:true
+-- id:ValueTypes.BigInt:true
+-- balance:ValueTypes.BigInt:true
+
 CREATE OR REPLACE VIEW "V_CrcV2_GroupVaultBalancesByToken" AS
 WITH events AS (
     -- 1) CollateralLockedSingle inflows

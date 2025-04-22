@@ -1,3 +1,12 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- transactionHash:ValueTypes.String:true
+-- user:ValueTypes.Address:true
+-- token:ValueTypes.Address:true
+
 create or replace view "V_CrcV1_Avatars" 
     ("blockNumber", timestamp, "transactionIndex", "logIndex", 
     "transactionHash", type, "user", token, "cidV0Digest") as

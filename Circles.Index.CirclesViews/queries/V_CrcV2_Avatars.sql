@@ -1,3 +1,16 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- transactionHash:ValueTypes.String:true
+-- type:ValueTypes.String:false
+-- invitedBy:ValueTypes.String:false
+-- avatar:ValueTypes.String:false
+-- tokenId:ValueTypes.String:false
+-- name:ValueTypes.String:false
+-- cidV0Digest:ValueTypes.Bytes:false
+
 create or replace view public."V_CrcV2_Avatars"
         ("blockNumber", timestamp, "transactionIndex", "logIndex",
             "transactionHash", type, "invitedBy", avatar, "tokenId", name, "cidV0Digest") as

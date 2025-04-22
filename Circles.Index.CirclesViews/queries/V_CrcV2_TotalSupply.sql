@@ -1,3 +1,8 @@
+-- COLUMNS:
+-- tokenAddress:ValueTypes.Address:true
+-- tokenId:ValueTypes.BigInt:true
+-- totalSupply:ValueTypes.BigInt:true
+
 create or replace view "V_CrcV2_TotalSupply" as
 with 
 combined_transfers as (
