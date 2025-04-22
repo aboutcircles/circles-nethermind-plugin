@@ -6,6 +6,10 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+     <ItemGroup>
+      <EmbeddedResource Include="queries\*.sql" />
+    </ItemGroup>
+
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
     </ItemGroup>
