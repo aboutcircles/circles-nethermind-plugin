@@ -1,3 +1,10 @@
+-- COLUMNS:
+-- account:ValueTypes.Address:true
+-- tokenAddress:ValueTypes.String:true
+-- lastActivity:ValueTypes.Int:true
+-- totalBalance:ValueTypes.BigInt:true
+-- tokenOwner:ValueTypes.String:true
+
 create or replace view public."V_CrcV1_BalancesByAccountAndToken"(account, "tokenAddress", "lastActivity", "totalBalance", "tokenOwner") as
 WITH 
 transfers AS (
