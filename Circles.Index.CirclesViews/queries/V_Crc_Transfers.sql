@@ -37,7 +37,6 @@ WITH
         "V_CrcV2_Transfers"."tokenType"
     FROM "V_CrcV2_Transfers"
 )
-
 SELECT 
     "blockNumber",
     "timestamp",
