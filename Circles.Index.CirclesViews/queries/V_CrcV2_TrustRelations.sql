@@ -1,3 +1,14 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- batchIndex:ValueTypes.Int:true:true
+-- transactionHash:ValueTypes.String:true
+-- trustee:ValueTypes.Address:true
+-- truster:ValueTypes.Address:true
+-- expiryTime:ValueTypes.BigInt:true
+
 create or replace view public."V_CrcV2_TrustRelations"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "transactionHash", trustee, truster,
         "expiryTime") as

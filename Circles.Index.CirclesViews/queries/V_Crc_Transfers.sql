@@ -1,3 +1,19 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- batchIndex:ValueTypes.Int:true:true
+-- transactionHash:ValueTypes.String:true
+-- version:ValueTypes.Int:false
+-- operator:ValueTypes.Address:true
+-- from:ValueTypes.Address:true
+-- to:ValueTypes.Address:true
+-- id:ValueTypes.BigInt:true
+-- value:ValueTypes.BigInt:false
+-- type:ValueTypes.String:true
+-- tokenType:ValueTypes.String:true
+
 create or replace view public."V_Crc_Transfers"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "batchIndex", 
     "transactionHash", version, operator, "from", "to", id, value, type) as

@@ -1,3 +1,14 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- transactionHash:ValueTypes.String:true
+-- version:ValueTypes.Int:false
+-- type:ValueTypes.String:false
+-- token:ValueTypes.String:true
+-- tokenOwner:ValueTypes.String:true
+
 create or replace view "V_Crc_Tokens" as
 select 
     "blockNumber",
