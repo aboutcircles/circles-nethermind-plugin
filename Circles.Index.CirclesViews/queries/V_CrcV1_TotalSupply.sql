@@ -1,3 +1,8 @@
+-- COLUMNS:
+-- tokenAddress:ValueTypes.String:true
+-- user:ValueTypes.Address:true
+-- totalSupply:ValueTypes.BigInt:false
+
 create or replace view "V_CrcV1_TotalSupply" as
 with 
 t as (

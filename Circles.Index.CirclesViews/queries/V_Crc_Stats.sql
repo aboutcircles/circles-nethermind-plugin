@@ -1,3 +1,7 @@
+-- COLUMNS:
+-- measure:ValueTypes.String:false
+-- value:ValueTypes.Int:false
+
 create or replace view "V_Crc_Stats"("measure", "value") as
 select 'avatar_count_v1' as measure, count("user") as value
 from "V_CrcV1_Avatars"

@@ -1,3 +1,13 @@
+-- COLUMNS:
+-- blockNumber:ValueTypes.Int:true
+-- timestamp:ValueTypes.Int:true
+-- transactionIndex:ValueTypes.Int:true
+-- logIndex:ValueTypes.Int:true
+-- transactionHash:ValueTypes.String:true
+-- group:ValueTypes.Address:true
+-- member:ValueTypes.Address:true
+-- expiryTime:ValueTypes.BigInt:true
+
 create or replace view public."V_CrcV2_GroupMemberships"
     ("blockNumber", timestamp, "transactionIndex", "logIndex", "transactionHash", "group", member,
         "expiryTime", "memberType") as

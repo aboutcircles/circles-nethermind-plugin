@@ -1,3 +1,10 @@
+-- COLUMNS:
+-- account:ValueTypes.Address:true
+-- tokenId:ValueTypes.String:true
+-- tokenAddress:ValueTypes.String:true
+-- lastActivity:ValueTypes.Int:true
+-- demurragedTotalBalance:ValueTypes.BigInt:true
+
 CREATE OR REPLACE FUNCTION crc_day("inflationDayZero" bigint, "timestamp" bigint)
 RETURNS bigint AS $$
 DECLARE
