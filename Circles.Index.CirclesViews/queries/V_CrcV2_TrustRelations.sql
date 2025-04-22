@@ -12,7 +12,7 @@ SELECT
     "expiryTime"
 FROM (
     SELECT 
-        "CrcV2_Trust"."blockNumber",ß
+        "CrcV2_Trust"."blockNumber",
         "CrcV2_Trust"."timestamp",
         "CrcV2_Trust"."transactionIndex",
         "CrcV2_Trust"."logIndex",

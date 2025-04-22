@@ -22,7 +22,6 @@ WITH a AS (
             NULL::text                              AS token
     FROM "CrcV1_OrganizationSignup"
 )
-
 select 
     "blockNumber"
     , timestamp

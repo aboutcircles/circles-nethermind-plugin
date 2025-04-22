@@ -13,7 +13,6 @@ t as (
     from "CrcV1_Transfer"
     group by "tokenAddress"
 )
-
 select 
     t."tokenAddress",
     s."user",

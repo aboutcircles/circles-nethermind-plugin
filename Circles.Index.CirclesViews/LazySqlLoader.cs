@@ -20,7 +20,7 @@ public static class LazySqlLoader
         return SqlCache.GetOrAdd(fileName, key => 
         {
             var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = $"Circles.Index.CirclesViews.Sql.{key}";
+            var resourceName = $"Circles.Index.CirclesViews.queries.{key}";
             
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)

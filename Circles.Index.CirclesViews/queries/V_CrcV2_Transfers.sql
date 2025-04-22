@@ -48,7 +48,6 @@ WITH
             "tokenAddress"
     FROM "CrcV2_Erc20WrapperTransfer"
 )
-
 SELECT 
     t."blockNumber",
     t."timestamp",
