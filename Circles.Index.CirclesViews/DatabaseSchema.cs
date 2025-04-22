@@ -24,12 +24,6 @@ public class DatabaseSchema : IDatabaseSchema
         return reader.ReadToEnd();
     }
 
-    // Define a schema for the database functions
-    public static readonly EventSchema DatabaseFunctions = new("System", "Functions", new byte[32], [])
-    {
-        SqlMigrationItem = new SqlMigrationItem(LazySqlLoader.LoadSql("functions.sql"))
-    };
-
     public static readonly EventSchema V_CrcV2_GroupVaultBalancesByToken = new("V_CrcV2", "GroupVaultBalancesByToken",
         new byte[32], [
             new("vault", ValueTypes.Address, true),
@@ -325,10 +319,6 @@ public class DatabaseSchema : IDatabaseSchema
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
-            {
-                ("System", "Functions"),
-                DatabaseFunctions
-            },
             {
                 ("V_CrcV1", "TrustRelations"),
                 V_CrcV1_TrustRelations

@@ -18,4 +18,4 @@ select
     s."user",
     t."totalSupply"
 from "t"
-join "CrcV1_Signup" s on "s"."token" = t."tokenAddress";")
+join "CrcV1_Signup" s on "s"."token" = t."tokenAddress";
