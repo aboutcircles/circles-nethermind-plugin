@@ -5,7 +5,7 @@
 -- amountLocked:ValueTypes.BigInt:true
 
 
-create or replace view public."V_CrcV2_GroupCollateralBalanceDiffByToken"
+create or replace view public."V_CrcV2_GroupCollateralDiffByToken"
     ("timestamp", "group", "id", "amountLocked") as
 WITH
 

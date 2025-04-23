@@ -42,8 +42,8 @@ public class DatabaseSchema : IDatabaseSchema
 
         ("V_CrcV2", "GroupTokenHoldersBalance"),
         ("V_CrcV2", "GroupTokenSupply"),
-        ("V_CrcV2", "GroupCollateralBalanceDiffByToken"),
-        ("V_CrcV2", "GroupCollateralBalanceByToken")
+        ("V_CrcV2", "GroupCollateralDiffByToken"),
+        ("V_CrcV2", "GroupCollateralByToken")
  
     };
     
