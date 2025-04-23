@@ -41,7 +41,10 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "GroupMembersCount_1d"),
 
         ("V_CrcV2", "GroupTokenHoldersBalance"),
-        ("V_CrcV2", "GroupTokenSupply")
+        ("V_CrcV2", "GroupTokenSupply"),
+        ("V_CrcV2", "GroupCollateralBalanceDiffByToken"),
+        ("V_CrcV2", "GroupCollateralBalanceByToken")
+ 
     };
     
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
