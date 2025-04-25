@@ -4,8 +4,11 @@
 -- minted:ValueTypes.BigInt:true
 -- redeemed:ValueTypes.BigInt:true
 -- supply:ValueTypes.BigInt:true
+-- demurragedMinted:ValueTypes.BigInt:true
+-- demurragedRedeemed:ValueTypes.BigInt:true
+-- demurragedSupply:ValueTypes.BigInt:true
 
-create or replace view "V_CrcV2_GroupMintRedeem_1h" ("group", "timestamp", "minted", "redeemed", "supply") as
+create or replace view "V_CrcV2_GroupMintRedeem_1h" ("group", "timestamp", "minted", "redeemed", "supply", "demurragedMinted", "demurragedRedeemed", "demurragedSupply") as
 
 WITH
 
@@ -60,15 +63,26 @@ calendar AS (
 )
 
 
-SELECT 
-	t1."group"
-	,t1."timestamp"
-	,COALESCE(t2."minted", 0) AS "minted"
-	,COALESCE(t2."redeemed", 0) AS "redeemed"
-	,SUM(COALESCE(t2."minted", 0) + COALESCE(t2."redeemed", 0)) OVER (PARTITION BY t1."group" ORDER BY t1."timestamp") AS "supply"
-FROM 
-	calendar t1
-LEFT JOIN
-	group_actions t2
-	ON t2."group" = t1."group"
-	AND t2."timestamp" = t1."timestamp"
+SELECT
+	"group"
+	,"timestamp"
+	,"minted"
+	,"redeemed"
+	,"supply"
+	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "minted")) AS "demurragedMinted"
+	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "redeemed")) AS "demurragedRedeemed"
+	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "supply")) AS "demurragedSupply"
+FROM (
+    SELECT 
+        t1."group"
+        ,t1."timestamp"
+        ,COALESCE(t2."minted", 0) AS "minted"
+        ,COALESCE(t2."redeemed", 0) AS "redeemed"
+        ,SUM(COALESCE(t2."minted", 0) + COALESCE(t2."redeemed", 0)) OVER (PARTITION BY t1."group" ORDER BY t1."timestamp") AS "supply"
+    FROM 
+        calendar t1
+    LEFT JOIN
+        group_actions t2
+        ON t2."group" = t1."group"
+        AND t2."timestamp" = t1."timestamp"
+)
