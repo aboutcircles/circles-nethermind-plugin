@@ -46,7 +46,11 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "GroupCollateralByToken"),
 
         ("V_CrcV2", "Erc20BalancerVaultBalance_1h"),
-        ("V_CrcV2", "Erc20BalancerVaultBalance_1d")
+        ("V_CrcV2", "Erc20BalancerVaultBalance_1d"),
+
+        ("V_CrcV2", "GroupMintRedeem_1h"),
+        ("V_CrcV2", "GroupMintRedeem_1d")
+        
         
  
     };
