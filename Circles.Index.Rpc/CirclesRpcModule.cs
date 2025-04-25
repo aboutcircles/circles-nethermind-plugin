@@ -410,7 +410,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
             var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
 
-            // Add the new parameters if they are set
+            // Add the parameters if they are set
             if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
             {
                 foreach (var token in flowRequest.FromTokens)
@@ -425,6 +425,22 @@ public class CirclesRpcModule : ICirclesRpcModule
                 foreach (var token in flowRequest.ToTokens)
                 {
                     url += $"&toTokens={token}";
+                }
+            }
+
+            if (flowRequest.ExcludedFromTokens != null && flowRequest.ExcludedFromTokens.Any())
+            {
+                foreach (var token in flowRequest.ExcludedFromTokens)
+                {
+                    url += $"&excludedFromTokens={token}";
+                }
+            }
+            
+            if (flowRequest.ExcludedToTokens != null && flowRequest.ExcludedToTokens.Any())
+            {
+                foreach (var token in flowRequest.ExcludedToTokens)
+                {
+                    url += $"&excludedToTokens={token}";
                 }
             }
             

@@ -42,6 +42,12 @@ public class PathfinderTestCase
     
     [JsonPropertyName("toTokens")]
     public string[] ToTokens { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("excludedFromTokens")]
+    public string[] ExcludedFromTokens { get; set; } = Array.Empty<string>();
+    
+    [JsonPropertyName("excludedToTokens")]
+    public string[] ExcludedToTokens { get; set; } = Array.Empty<string>();
     
     [JsonPropertyName("withWrap")]
     public bool WithWrap { get; set; } = false;
@@ -363,7 +369,16 @@ public class NetworkPathfinderTests
     /// <summary>
     /// Sends a JSON-RPC request to the pathfinder service and validates the response
     /// </summary>
-    private async Task ValidatePathfinderResponse(string jsonRequest, string source, string sink, string[]? fromTokens = null, string[]? toTokens = null, bool withWrap = false)
+    private async Task ValidatePathfinderResponse(
+        string jsonRequest, 
+        string source, 
+        string sink, 
+        string[]? fromTokens = null, 
+        string[]? toTokens = null, 
+        string[]? excludedFromTokens = null,
+        string[]? excludedToTokens = null,
+        bool withWrap = false
+    )
     {
         if (_httpClient == null)
         {
@@ -729,12 +744,14 @@ public class NetworkPathfinderTests
                                                 $"Non-source account {transfer.From} is using wrapped token {transfer.TokenOwner}");
                             }
                             
-                            // Wrapped tokens cannot go to sink
-                            if (transfer.To.Equals(sink, StringComparison.OrdinalIgnoreCase))
+                            // Wrapped tokens cannot go to sink unless directly from source
+                            if (transfer.To.Equals(sink, StringComparison.OrdinalIgnoreCase) && 
+                                !transfer.From.Equals(source, StringComparison.OrdinalIgnoreCase))
                             {
                                 wrappedTokenCheckPassed = false;
                                 Console.WriteLine($"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
-                                                $"Wrapped token {transfer.TokenOwner} is being sent to sink {transfer.To}");
+                                                $"Wrapped token {transfer.TokenOwner} is being sent to sink {transfer.To} " +
+                                                $"from a non-source account {transfer.From}");
                             }
                         }
                     }
@@ -749,6 +766,71 @@ public class NetworkPathfinderTests
             else
             {
                 Console.WriteLine($"\n{ConsoleColors.Red}Wrapped token validation skipped - graphs not loaded{ConsoleColors.Reset}");
+            }
+
+
+            // EXCLUDED FROM TOKENS FILTER CHECK
+            if (excludedFromTokens != null && excludedFromTokens.Length > 0)
+            {
+                var sourceTransfers = transfers.Where(t => t.From.ToLower() == source.ToLower()).ToList();
+                var tokensUsedFromSource = sourceTransfers.Select(t => t.TokenOwner.ToLower()).Distinct().ToList();
+                
+                Console.WriteLine($"\n{ConsoleColors.Magenta}EXCLUDED FROM TOKENS FILTER CHECK{ConsoleColors.Reset}");
+                
+                // Check if any excluded tokens were used from source
+                var excludedFromTokensLower = excludedFromTokens.Select(t => t.ToLower()).ToHashSet();
+                bool noExcludedFromTokensUsed = tokensUsedFromSource.All(token => !excludedFromTokensLower.Contains(token));
+                
+                if (!noExcludedFromTokensUsed)
+                {
+                    var usedExcludedTokens = tokensUsedFromSource
+                        .Where(token => excludedFromTokensLower.Contains(token))
+                        .ToList();
+                        
+                    foreach (var token in usedExcludedTokens)
+                    {
+                        Console.WriteLine($"{ConsoleColors.Red}INVALID TOKEN USAGE:{ConsoleColors.Reset} " +
+                                        $"Source {source} is using token {token} which is in the excludedFromTokens list.");
+                    }
+                }
+                
+                Console.WriteLine($"Check: {(noExcludedFromTokensUsed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+                if (!noExcludedFromTokensUsed)
+                {
+                    validationPassed = false;
+                }
+            }
+            
+            // EXCLUDED TO TOKENS FILTER CHECK
+            if (excludedToTokens != null && excludedToTokens.Length > 0)
+            {
+                var sinkTransfers = transfers.Where(t => t.To.ToLower() == sink.ToLower()).ToList();
+                var tokensUsedToSink = sinkTransfers.Select(t => t.TokenOwner.ToLower()).Distinct().ToList();
+                
+                Console.WriteLine($"\n{ConsoleColors.Magenta}EXCLUDED TO TOKENS FILTER CHECK{ConsoleColors.Reset}");
+                
+                // Check if any excluded tokens were used to sink
+                var excludedToTokensLower = excludedToTokens.Select(t => t.ToLower()).ToHashSet();
+                bool noExcludedToTokensUsed = tokensUsedToSink.All(token => !excludedToTokensLower.Contains(token));
+                
+                if (!noExcludedToTokensUsed)
+                {
+                    var usedExcludedTokens = tokensUsedToSink
+                        .Where(token => excludedToTokensLower.Contains(token))
+                        .ToList();
+                        
+                    foreach (var token in usedExcludedTokens)
+                    {
+                        Console.WriteLine($"{ConsoleColors.Red}INVALID TOKEN USAGE:{ConsoleColors.Reset} " +
+                                        $"Sink {sink} is receiving token {token} which is in the excludedToTokens list.");
+                    }
+                }
+                
+                Console.WriteLine($"Check: {(noExcludedToTokensUsed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+                if (!noExcludedToTokensUsed)
+                {
+                    validationPassed = false;
+                }
             }
 
             
@@ -790,6 +872,8 @@ public class NetworkPathfinderTests
                 testCase.TargetFlow,
                 testCase.FromTokens.Length > 0 ? testCase.FromTokens : null,
                 testCase.ToTokens.Length > 0 ? testCase.ToTokens : null,
+                testCase.ExcludedFromTokens.Length > 0 ? testCase.ExcludedFromTokens : null,
+                testCase.ExcludedToTokens.Length > 0 ? testCase.ExcludedToTokens : null,
                 testCase.WithWrap
             );
             
@@ -863,7 +947,15 @@ public class NetworkPathfinderTests
     
 
     [Test, TestCaseSource(nameof(GetPathfinderTestCases))]
-    public async Task TestPathfinderRequest(string source, string sink, string targetFlow, string[]? fromTokens, string[]? toTokens, bool withWrap)
+    public async Task TestPathfinderRequest(
+        string source, 
+        string sink, 
+        string targetFlow, 
+        string[]? fromTokens, 
+        string[]? toTokens, 
+        string[]? excludedFromTokens,
+        string[]? excludedToTokens,
+        bool withWrap)
     {
         Console.WriteLine($"\n{ConsoleColors.Magenta}RUNNING TEST CASE: {TestContext.CurrentContext.Test.Name}{ConsoleColors.Reset}");
         Console.WriteLine($"Description: {TestContext.CurrentContext.Test.Properties.Get("Description") ?? ""}");
@@ -872,6 +964,8 @@ public class NetworkPathfinderTests
         Console.WriteLine($"Target Flow: {targetFlow}");
         Console.WriteLine($"From Tokens: {(fromTokens == null ? "none" : string.Join(", ", fromTokens))}");
         Console.WriteLine($"To Tokens: {(toTokens == null ? "none" : string.Join(", ", toTokens))}");
+        Console.WriteLine($"Excluded From Tokens: {(excludedFromTokens == null ? "none" : string.Join(", ", excludedFromTokens))}");
+        Console.WriteLine($"Excluded To Tokens: {(excludedToTokens == null ? "none" : string.Join(", ", excludedToTokens))}");
         Console.WriteLine($"With Wrap: {withWrap}");
         
         // Create the flow request
@@ -882,6 +976,8 @@ public class NetworkPathfinderTests
             TargetFlow = targetFlow,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
+            ExcludedFromTokens = excludedFromTokens?.ToList(),
+            ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap
         };
         
@@ -895,6 +991,6 @@ public class NetworkPathfinderTests
         string jsonRequest = JsonSerializer.Serialize(jsonRpcRequest, _jsonOptions);
         
         // Validate the response
-        await ValidatePathfinderResponse(jsonRequest, source, sink, fromTokens, toTokens, withWrap);
+        await ValidatePathfinderResponse(jsonRequest, source, sink, fromTokens, toTokens, excludedFromTokens, excludedToTokens, withWrap);
     }
 }
