@@ -56,6 +56,8 @@ app.MapGet("/findPath", async (
     string amount,
     string[]? fromTokens,
     string[]? toTokens,
+    string[]? excludedFromTokens,
+    string[]? excludedToTokens,
     bool? withWrap,
     NetworkState stateContainer,
     SemaphoreSlim semaphore
@@ -94,6 +96,8 @@ app.MapGet("/findPath", async (
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
+            ExcludedFromTokens = excludedFromTokens?.ToList(),
+            ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap
         };
 

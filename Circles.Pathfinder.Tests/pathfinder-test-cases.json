@@ -7,6 +7,8 @@
       "targetFlow": "1000000000000000000000",
       "fromTokens": [],
       "toTokens": [],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
       "withWrap": false
     },
     {
@@ -17,6 +19,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": [],
         "toTokens": [],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": false
     },
     {
@@ -27,6 +31,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": [],
         "toTokens": [],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": true
     },
     {
@@ -37,6 +43,8 @@
       "targetFlow": "100000000000000000000000000000",
       "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
       "toTokens": [],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
       "withWrap": false
     },
     {
@@ -47,6 +55,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7","0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
         "toTokens": [],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": false
     },
     {
@@ -57,6 +67,8 @@
       "targetFlow": "100000000000000000000000000000",
       "fromTokens": [],
       "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
       "withWrap": false
     },
     {
@@ -67,6 +79,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": [],
         "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0","0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": false
     },
     {
@@ -77,6 +91,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
         "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0","0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": false
     },
 
@@ -88,6 +104,8 @@
       "targetFlow": "100000000000000000000000000000",
       "fromTokens": [],
       "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
       "withWrap": false
     },
     {
@@ -98,6 +116,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": [],
         "toTokens": ["0x42cEDde51198D1773590311E2A340DC06B24cB37"],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": false
       },
     {
@@ -108,6 +128,8 @@
         "targetFlow": "100000000000000000000000000000",
         "fromTokens": [],
         "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": true
     },
     {
@@ -134,6 +156,32 @@
                 "0x42cedde51198d1773590311e2a340dc06b24cb37",
                 "0x3a91df8d30899ed14946232c0a28468a69cb8de5"],
         "toTokens": [],
+        "excludedFromTokens": [],
+        "excludedToTokens": [],
         "withWrap": true
+    },
+    {
+      "name": "BasicFromExclusion",
+      "description": "Basic path single from exclusion",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+      "targetFlow": "1000000000000000000000",
+      "fromTokens": [],
+      "toTokens": [],
+      "excludedFromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+      "excludedToTokens": [],
+      "withWrap": false
+    },
+    {
+      "name": "BasicToExclusion",
+      "description": "Basic path single to exclusion",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+      "targetFlow": "1000000000000000000000",
+      "fromTokens": [],
+      "toTokens": [],
+      "excludedFromTokens": [],
+      "excludedToTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+      "withWrap": false
     }
   ]
