@@ -729,14 +729,12 @@ public class NetworkPathfinderTests
                                                 $"Non-source account {transfer.From} is using wrapped token {transfer.TokenOwner}");
                             }
                             
-                            // Wrapped tokens cannot go to sink unless directly from source
-                            if (transfer.To.Equals(sink, StringComparison.OrdinalIgnoreCase) && 
-                                !transfer.From.Equals(source, StringComparison.OrdinalIgnoreCase))
+                            // Wrapped tokens cannot go to sink
+                            if (transfer.To.Equals(sink, StringComparison.OrdinalIgnoreCase))
                             {
                                 wrappedTokenCheckPassed = false;
                                 Console.WriteLine($"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
-                                                $"Wrapped token {transfer.TokenOwner} is being sent to sink {transfer.To} " +
-                                                $"from a non-source account {transfer.From}");
+                                                $"Wrapped token {transfer.TokenOwner} is being sent to sink {transfer.To}");
                             }
                         }
                     }
