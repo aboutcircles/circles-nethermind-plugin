@@ -1,1187 +1,354 @@
 using Circles.Index.Common;
+using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace Circles.Index.CirclesViews;
 
 public class DatabaseSchema : IDatabaseSchema
 {
+    // Define the order of view dependencies
+    private static readonly (string Namespace, string Table)[] ViewDependencyOrder = new[]
+    {
+        // Base views come first
+        ("V_CrcV1", "Avatars"),
+        ("V_CrcV2", "Avatars"),
+        ("V_Crc", "Avatars"),
+        
+        // Next tier of views
+        ("V_CrcV1", "TrustRelations"),
+        ("V_CrcV2", "TrustRelations"),
+        ("V_Crc", "TrustRelations"),
+        ("V_Crc", "Tokens"),
+        
+        // Transfers and related views
+        ("V_CrcV1", "Transfers"),
+        ("V_CrcV2", "Transfers"),
+        ("V_Crc", "Transfers"),
+        ("V_Crc", "TransferSummary"),
+        
+        // Balance views
+        ("V_CrcV1", "BalancesByAccountAndToken"),
+        ("V_CrcV2", "BalancesByAccountAndToken"),
+        
+        // Other views
+        ("V_CrcV2", "Groups"),
+        ("V_CrcV2", "GroupMemberships"),
+        ("V_CrcV2", "GroupVaultBalancesByToken"),
+        ("V_CrcV1", "TotalSupply"),
+        ("V_CrcV2", "TotalSupply"),
+        ("V_Crc", "Stats"),
+        ("V_CrcV2", "GroupMembersCount_1h"),
+        ("V_CrcV2", "GroupMembersCount_1d"),
+
+        ("V_CrcV2", "GroupTokenHoldersBalance"),
+        ("V_CrcV2", "GroupTokenSupply"),
+        ("V_CrcV2", "GroupCollateralDiffByToken"),
+        ("V_CrcV2", "GroupCollateralByToken"),
+
+        ("V_CrcV2", "Erc20BalancerVaultBalance_1h"),
+        ("V_CrcV2", "Erc20BalancerVaultBalance_1d"),
+
+        ("V_CrcV2", "GroupMintRedeem_1h"),
+        ("V_CrcV2", "GroupMintRedeem_1d")
+        
+        
+ 
+    };
+    
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
-
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
+    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
 
-    /*
-     *
-     */
-    public static readonly EventSchema V_CrcV2_GroupVaultBalancesByToken = new("V_CrcV2", "GroupVaultBalancesByToken",
-        new byte[32], [
-            new("vault", ValueTypes.Address, true),
-            new("id", ValueTypes.BigInt, true),
-            new("balance", ValueTypes.BigInt, true),
-        ])
+    public DatabaseSchema()
     {
-        SqlMigrationItem = new(@"
-            CREATE OR REPLACE VIEW ""V_CrcV2_GroupVaultBalancesByToken"" AS
-                WITH events AS (
-                    -- 1) CollateralLockedSingle inflows
-                    SELECT
-                        cv.vault,
-                        cls.id,
-                        cls.""timestamp"",
-                        cls.value AS amount
-                    FROM ""CrcV2_CollateralLockedSingle"" cls
-                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = cls.""group""
-                
-                    UNION ALL
-                
-                    -- 2) CollateralLockedBatch inflows
-                    SELECT
-                        cv.vault,
-                        clb.id,
-                        clb.""timestamp"",
-                        clb.value AS amount
-                    FROM ""CrcV2_CollateralLockedBatch"" clb
-                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = clb.""group""
-                
-                    UNION ALL
-                
-                    -- 3) GroupRedeemCollateralReturn outflows (negative)
-                    SELECT
-                        cv.vault,
-                        grcr.id,
-                        grcr.""timestamp"",
-                        -grcr.value AS amount
-                    FROM ""CrcV2_GroupRedeemCollateralReturn"" grcr
-                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcr.""group""
-                
-                    UNION ALL
-                
-                    -- 4) GroupRedeemCollateralBurn outflows (negative)
-                    SELECT
-                        cv.vault,
-                        grcb.id,
-                        grcb.""timestamp"",
-                        -grcb.value AS amount
-                    FROM ""CrcV2_GroupRedeemCollateralBurn"" grcb
-                             JOIN ""CrcV2_CreateVault"" cv ON cv.""group"" = grcb.""group""
-                ),
-                     grouped AS (
-                         -- Sum net balances & track the max timestamp per (vault, tokenId)
-                         SELECT
-                             vault,
-                             id,
-                             SUM(amount) AS balance,
-                             MAX(""timestamp"") AS ""lastActivity""
-                         FROM events
-                         GROUP BY vault, id
-                     )
-                SELECT
-                    vault,
-                    id,
-                    FLOOR(
-                            crc_demurrage(
-                            1675209600::bigint,
-                            ""lastActivity"",
-                            balance
-                            )
-                    ) AS ""balance""
-                FROM grouped
-                ORDER BY vault, id;")
-    };
+        Tables = DiscoverAndBuildSchemas();
+    }
 
-
-    public static readonly EventSchema V_CrcV2_TotalSupply = new("V_CrcV2", "TotalSupply", new byte[32], [
-        new("tokenAddress", ValueTypes.Address, true),
-        new("tokenId", ValueTypes.BigInt, true),
-        new("totalSupply", ValueTypes.BigInt, false),
-    ])
+    private IDictionary<(string Namespace, string Table), EventSchema> DiscoverAndBuildSchemas()
     {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view ""V_CrcV2_TotalSupply"" 
-            as
-               with combined_transfers as (
-                   select
-                       ""tokenAddress"",
-                       id,
-                       ""from"",
-                       ""to"",
-                       value
-                   from ""CrcV2_TransferSingle""
-                   union all
-                   select
-                       ""tokenAddress"",
-                       id,
-                       ""from"",
-                       ""to"",
-                       value
-                   from ""CrcV2_TransferBatch""
-               )
-               select
-                   ""tokenAddress"",
-                   ""id"" as ""tokenId"",
-                   sum(
-                           case
-                               when ""from"" = '0x0000000000000000000000000000000000000000' then value
-                               when ""to""   = '0x0000000000000000000000000000000000000000' then -value
-                               else 0
-                               end
-                   ) as ""totalSupply""
-               from combined_transfers
-               group by
-                   ""tokenAddress"",
-                   ""tokenId"";
-         ")
-    };
+        // Use an ordered dictionary to maintain insertion order
+        var result = new Dictionary<(string Namespace, string Table), EventSchema>();
+        
+        // Discover all SQL resources
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceNames = assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith("Circles.Index.CirclesViews.queries.") && name.EndsWith(".sql"))
+            .ToList();
+            
+        // Create a mapping of (namespace, table) to resource name
+        var resourceMapping = new Dictionary<(string Namespace, string Table), string>();
+        foreach (var resourceName in resourceNames)
+        {
+            var schemaInfo = ExtractSchemaInfoFromResourceName(resourceName);
+            if (schemaInfo != null)
+            {
+                resourceMapping[schemaInfo.Value] = resourceName;
+            }
+        }
+        
+        // First, build schemas in the predefined order
+        foreach (var key in ViewDependencyOrder)
+        {
+            if (resourceMapping.TryGetValue(key, out var resourceName))
+            {
+                var schema = BuildSchemaFromSql(key.Namespace, key.Table, resourceName);
+                result[key] = schema;
+                
+                // Remove from mapping to track which ones we've processed
+                resourceMapping.Remove(key);
+            }
+        }
+        
+        // Then, add any remaining schemas that weren't in the predefined order
+        foreach (var (key, resourceName) in resourceMapping)
+        {
+            var schema = BuildSchemaFromSql(key.Namespace, key.Table, resourceName);
+            result[key] = schema;
+        }
+        
+        return result;
+    }
 
-    public static readonly EventSchema V_CrcV1_TotalSupply = new("V_CrcV1", "TotalSupply", new byte[32], [
-        new("tokenAddress", ValueTypes.Address, true),
-        new("user", ValueTypes.Address, true),
-        new("totalSupply", ValueTypes.BigInt, false),
-    ])
+    private (string Namespace, string Table)? ExtractSchemaInfoFromResourceName(string resourceName)
     {
-        SqlMigrationItem = new SqlMigrationItem(@"
-                 create or replace view ""V_CrcV1_TotalSupply""
-       as
-       with t as (
-           select
-               ""tokenAddress"",
-               SUM(
-                       case
-                           when ""from"" = '0x0000000000000000000000000000000000000000' then amount
-                           when ""to""   = '0x0000000000000000000000000000000000000000' then -amount
-                           else 0
-                           end
-               ) as ""totalSupply""
-           from ""CrcV1_Transfer""
-           group by ""tokenAddress""
-       )
-       select t.""tokenAddress"",
-              s.""user"",
-              t.""totalSupply""
-       from ""t""
-       join ""CrcV1_Signup"" s on ""s"".""token"" = t.""tokenAddress"";")
-    };
+        // Extract the file name without path and extension
+        string fileName = resourceName.Replace("Circles.Index.CirclesViews.queries.", "").Replace(".sql", "");
+        
+        // Pattern to match view names like V_CrcV2_Avatars, V_Crc_Stats, etc.
+        var pattern = new Regex(@"^(V_[A-Za-z0-9]+)_(.+)$");
+        var match = pattern.Match(fileName);
+        
+        if (match.Success)
+        {
+            string ns = match.Groups[1].Value;
+            string table = match.Groups[2].Value;
+            return (ns, table);
+        }
+        
+        return null;
+    }
 
-    public static readonly EventSchema V_CrcV1_TrustRelations = new("V_CrcV1", "TrustRelations", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("batchIndex", ValueTypes.Int, true, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("user", ValueTypes.Address, true),
-        new("canSendTo", ValueTypes.Address, true),
-        new("limit", ValueTypes.Int, false),
-    ])
+    private EventSchema BuildSchemaFromSql(string ns, string table, string resourceName)
     {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV1_TrustRelations""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""user"", ""canSendTo"",
-                         ""limit"") as
-            SELECT ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""transactionHash"",
-                   ""user"",
-                   ""canSendTo"",
-                   ""limit""
-            FROM (SELECT ""CrcV1_Trust"".""blockNumber"",
-                         ""CrcV1_Trust"".""timestamp"",
-                         ""CrcV1_Trust"".""transactionIndex"",
-                         ""CrcV1_Trust"".""logIndex"",
-                         ""CrcV1_Trust"".""transactionHash"",
-                         ""CrcV1_Trust"".""user"",
-                         ""CrcV1_Trust"".""canSendTo"",
-                         ""CrcV1_Trust"".""limit"",
-                         row_number()
-                         OVER (PARTITION BY ""CrcV1_Trust"".""user"", ""CrcV1_Trust"".""canSendTo"" ORDER BY ""CrcV1_Trust"".""blockNumber"" DESC, ""CrcV1_Trust"".""transactionIndex"" DESC, ""CrcV1_Trust"".""logIndex"" DESC) AS rn
-                  FROM ""CrcV1_Trust"") t
-            WHERE rn = 1
-              AND ""limit"" > 0::numeric
-            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC;
-        ")
-    };
-
-    public static readonly EventSchema V_CrcV1_Avatars = new("V_CrcV1", "Avatars", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("user", ValueTypes.Address, true),
-        new("token", ValueTypes.Address, true),
-    ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-        create or replace view ""V_CrcV1_Avatars"" (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", type, ""user"", token, ""cidV0Digest"") as
-        WITH a AS (
-            SELECT ""CrcV1_Signup"".""blockNumber"",
-                   ""CrcV1_Signup"".""timestamp"",
-                   ""CrcV1_Signup"".""transactionIndex"",
-                   ""CrcV1_Signup"".""logIndex"",
-                   ""CrcV1_Signup"".""transactionHash"",
-                   'CrcV1_Signup'::text AS type,
-                   ""CrcV1_Signup"".""user"",
-                   ""CrcV1_Signup"".token
-            FROM ""CrcV1_Signup""
-            UNION ALL
-            SELECT ""CrcV1_OrganizationSignup"".""blockNumber"",
-                   ""CrcV1_OrganizationSignup"".""timestamp"",
-                   ""CrcV1_OrganizationSignup"".""transactionIndex"",
-                   ""CrcV1_OrganizationSignup"".""logIndex"",
-                   ""CrcV1_OrganizationSignup"".""transactionHash"",
-                   'CrcV1_OrganizationSignup'::text        AS type,
-                   ""CrcV1_OrganizationSignup"".organization AS ""user"",
-                   NULL::text                              AS token
-            FROM ""CrcV1_OrganizationSignup""
-            )
-            select ""blockNumber""
-                 , timestamp
-                 , ""transactionIndex""
-                 , ""logIndex""
-                 , ""transactionHash""
-                 , type
-                 , ""user""
-                 , token
-                 , ""cidV0Digest""
-            from a
-            LEFT JOIN (SELECT cid_1.avatar,
-                           cid_1.""metadataDigest""                                                                                                   AS ""cidV0Digest"",
-                           row_number()
-                           OVER (PARTITION BY cid_1.avatar ORDER BY cid_1.""blockNumber"" DESC, cid_1.""transactionIndex"" DESC, cid_1.""logIndex"" DESC) AS rn
-                    FROM ""CrcV1_UpdateMetadataDigest"" cid_1) cid ON cid.avatar = a.""user"" AND cid.rn = 1;
-                    ")
-    };
+        // Extract SQL content
+        string sqlContent = LoadSqlFromResource(resourceName.Replace("Circles.Index.CirclesViews.queries.", ""));
+        
+        // Try to extract columns from SQL comments first
+        var columns = ParseColumnsFromMultilineComments(sqlContent);
+        
+        // If no columns were found in comments, try to parse from the SQL itself
+        if (columns.Count == 0)
+        {
+            columns = ParseColumnsFromSql(sqlContent);
+        }
+        
+        // For the migration SQL, we need to strip the column definition comments
+        // to avoid SQL syntax errors when executing the script
+        string cleanSqlForMigration = StripColumnDefinitionComments(sqlContent);
+        
+        // Create the schema
+        var schema = new EventSchema(ns, table, new byte[32], columns)
+        {
+            SqlMigrationItem = new SqlMigrationItem(cleanSqlForMigration)
+        };
+        
+        return schema;
+    }
 
     /// <summary>
-    /// All Circles v1 hub transfers + personal minting
+    /// Strips the column definition comments from the SQL to avoid syntax errors
+    /// when executing the SQL script directly
     /// </summary>
-    public static readonly EventSchema V_CrcV1_Transfers = new("V_CrcV1", "Transfers",
-        new byte[32],
-        [
-            new("blockNumber", ValueTypes.Int, true),
-            new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
-            new("transactionHash", ValueTypes.String, true),
-            new("from", ValueTypes.Address, true),
-            new("to", ValueTypes.Address, true),
-            new("amount", ValueTypes.BigInt, false),
-            new("type", ValueTypes.String, true),
-            new("tokenType", ValueTypes.String, true)
-        ])
+    private string StripColumnDefinitionComments(string sql)
     {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV1_Transfers""
-                    (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""from"", ""to"", ""tokenAddress"",
-                     amount, type)
-            as
-            WITH ""allTransfers"" AS (SELECT ""CrcV1_HubTransfer"".""blockNumber"",
-                                       ""CrcV1_HubTransfer"".""timestamp"",
-                                       ""CrcV1_HubTransfer"".""transactionIndex"",
-                                       ""CrcV1_HubTransfer"".""logIndex"",
-                                       ""CrcV1_HubTransfer"".""transactionHash"",
-                                       ""CrcV1_HubTransfer"".""from"",
-                                       ""CrcV1_HubTransfer"".""to"",
-                                       NULL::text                AS ""tokenAddress"",
-                                       ""CrcV1_HubTransfer"".amount,
-                                       'CrcV1_HubTransfer'::text AS type
-                                FROM ""CrcV1_HubTransfer""
-                                UNION ALL
-                                SELECT t.""blockNumber"",
-                                       t.""timestamp"",
-                                       t.""transactionIndex"",
-                                       t.""logIndex"",
-                                       t.""transactionHash"",
-                                       t.""from"",
-                                       t.""to"",
-                                       t.""tokenAddress"",
-                                       t.amount,
-                                       'CrcV1_Transfer'::text AS type
-                                FROM ""CrcV1_Transfer"" t)
-            SELECT t.""blockNumber"",
-               t.""timestamp"",
-               t.""transactionIndex"",
-               t.""logIndex"",
-               t.""transactionHash"",
-               t.""from"",
-               t.""to"",
-               t.""tokenAddress"",
-               t.amount,
-               t.type,
-               tt.type as ""tokenType""
-            FROM ""allTransfers"" t
-            LEFT JOIN ""V_Crc_Tokens"" tt on tt.token = t.""tokenAddress""
-            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC;
-        ")
-    };
+        // Remove the COLUMNS: header line
+        sql = Regex.Replace(sql, @"--\s*COLUMNS:\s*(\r?\n|$)", "", RegexOptions.Multiline);
+        
+        // Remove any column definition lines
+        sql = Regex.Replace(sql, @"--\s*[^:]+:ValueTypes\.[^:]+:(true|false)(?::(true|false))?(\r?\n|$)", "", RegexOptions.Multiline);
+        
+        return sql;
+    }
 
-    public static readonly EventSchema V_CrcV2_Avatars = new("V_CrcV2", "Avatars", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("type", ValueTypes.String, false),
-        new("invitedBy", ValueTypes.String, false),
-        new("avatar", ValueTypes.String, false),
-        new("tokenId", ValueTypes.String, false),
-        new("name", ValueTypes.String, false),
-        new("cidV0Digest", ValueTypes.Bytes, false),
-    ])
+    private List<EventFieldSchema> ParseColumnsFromMultilineComments(string sql)
     {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV2_Avatars""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", type, ""invitedBy"", avatar,
-                         ""tokenId"", name, ""cidV0Digest"")
-            as
-            WITH avatars AS (SELECT ""CrcV2_RegisterOrganization"".""blockNumber"",
-                                    ""CrcV2_RegisterOrganization"".""timestamp"",
-                                    ""CrcV2_RegisterOrganization"".""transactionIndex"",
-                                    ""CrcV2_RegisterOrganization"".""logIndex"",
-                                    ""CrcV2_RegisterOrganization"".""transactionHash"",
-                                    NULL::text                                AS ""invitedBy"",
-                                    ""CrcV2_RegisterOrganization"".organization AS avatar,
-                                    NULL::text                                AS ""tokenId"",
-                                    ""CrcV2_RegisterOrganization"".name,
-                                    'CrcV2_RegisterOrganization'              as type
-                             FROM ""CrcV2_RegisterOrganization""
-                             UNION ALL
-                             SELECT ""CrcV2_RegisterGroup"".""blockNumber"",
-                                    ""CrcV2_RegisterGroup"".""timestamp"",
-                                    ""CrcV2_RegisterGroup"".""transactionIndex"",
-                                    ""CrcV2_RegisterGroup"".""logIndex"",
-                                    ""CrcV2_RegisterGroup"".""transactionHash"",
-                                    NULL::text                    AS ""invitedBy"",
-                                    ""CrcV2_RegisterGroup"".""group"" AS avatar,
-                                    ""CrcV2_RegisterGroup"".""group"" AS ""tokenId"",
-                                    ""CrcV2_RegisterGroup"".name,
-                                    'CrcV2_RegisterGroup'         as type
-                             FROM ""CrcV2_RegisterGroup""
-                             UNION ALL
-                             SELECT ""CrcV2_RegisterHuman"".""blockNumber"",
-                                    ""CrcV2_RegisterHuman"".""timestamp"",
-                                    ""CrcV2_RegisterHuman"".""transactionIndex"",
-                                    ""CrcV2_RegisterHuman"".""logIndex"",
-                                    ""CrcV2_RegisterHuman"".""transactionHash"",
-                                    NULL::text                   AS ""invitedBy"",
-                                    ""CrcV2_RegisterHuman"".avatar,
-                                    ""CrcV2_RegisterHuman"".avatar AS ""tokenId"",
-                                    NULL::text                   AS name,
-                                    'CrcV2_RegisterHuman'        as type
-                             FROM ""CrcV2_RegisterHuman"")
-            SELECT a.""blockNumber"",
-                   a.""timestamp"",
-                   a.""transactionIndex"",
-                   a.""logIndex"",
-                   a.""transactionHash"",
-                   a.type,
-                   a.""invitedBy"",
-                   a.avatar,
-                   a.""tokenId"",
-                   a.name,
-                   cid.""cidV0Digest""
-            FROM avatars a
-                     LEFT JOIN (SELECT cid_1.avatar,
-                                       cid_1.""metadataDigest""                                                                                                   AS ""cidV0Digest"",
-                                       row_number()
-                                       OVER (PARTITION BY cid_1.avatar ORDER BY cid_1.""blockNumber"" DESC, cid_1.""transactionIndex"" DESC, cid_1.""logIndex"" DESC) AS rn
-                                FROM ""CrcV2_UpdateMetadataDigest"" cid_1) cid ON cid.avatar = a.avatar AND cid.rn = 1;
-        ")
-    };
-
-    public static readonly EventSchema V_CrcV2_Transfers = new("V_CrcV2", "Transfers",
-        new byte[32],
-        [
-            new("blockNumber", ValueTypes.Int, true),
-            new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
-            new("batchIndex", ValueTypes.Int, true, true),
-            new("transactionHash", ValueTypes.String, true),
-            new("operator", ValueTypes.Address, true),
-            new("from", ValueTypes.Address, true),
-            new("to", ValueTypes.Address, true),
-            new("id", ValueTypes.BigInt, true),
-            new("value", ValueTypes.BigInt, false),
-            new("type", ValueTypes.String, true),
-            new("tokenType", ValueTypes.String, true)
-        ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV2_Transfers""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""batchIndex"", ""transactionHash"", operator,
-                         ""from"", ""to"", id, value, type)
-            as
-            WITH ""allTransfers"" AS (SELECT ""CrcV2_TransferSingle"".""blockNumber"",
-                                           ""CrcV2_TransferSingle"".""timestamp"",
-                                           ""CrcV2_TransferSingle"".""transactionIndex"",
-                                           ""CrcV2_TransferSingle"".""logIndex"",
-                                           0                               AS ""batchIndex"",
-                                           ""CrcV2_TransferSingle"".""transactionHash"",
-                                           ""CrcV2_TransferSingle"".operator,
-                                           ""CrcV2_TransferSingle"".""from"",
-                                           ""CrcV2_TransferSingle"".""to"",
-                                           ""CrcV2_TransferSingle"".id::text AS id,
-                                           ""CrcV2_TransferSingle"".value,
-                                           'CrcV2_TransferSingle'::text    AS type,
-                                           ""tokenAddress""
-                                    FROM ""CrcV2_TransferSingle""
-                                    UNION ALL
-                                    SELECT ""CrcV2_TransferBatch"".""blockNumber"",
-                                           ""CrcV2_TransferBatch"".""timestamp"",
-                                           ""CrcV2_TransferBatch"".""transactionIndex"",
-                                           ""CrcV2_TransferBatch"".""logIndex"",
-                                           ""CrcV2_TransferBatch"".""batchIndex"",
-                                           ""CrcV2_TransferBatch"".""transactionHash"",
-                                           ""CrcV2_TransferBatch"".operator,
-                                           ""CrcV2_TransferBatch"".""from"",
-                                           ""CrcV2_TransferBatch"".""to"",
-                                           ""CrcV2_TransferBatch"".id::text AS id,
-                                           ""CrcV2_TransferBatch"".value,
-                                           'CrcV2_TransferBatch'::text    AS type,
-                                           ""tokenAddress""
-                                    FROM ""CrcV2_TransferBatch""
-                                    UNION ALL
-                                    SELECT ""CrcV2_Erc20WrapperTransfer"".""blockNumber"",
-                                           ""CrcV2_Erc20WrapperTransfer"".""timestamp"",
-                                           ""CrcV2_Erc20WrapperTransfer"".""transactionIndex"",
-                                           ""CrcV2_Erc20WrapperTransfer"".""logIndex"",
-                                           0                                           AS ""batchIndex"",
-                                           ""CrcV2_Erc20WrapperTransfer"".""transactionHash"",
-                                           NULL::text                                  AS operator,
-                                           ""CrcV2_Erc20WrapperTransfer"".""from"",
-                                           ""CrcV2_Erc20WrapperTransfer"".""to"",
-                                           ""CrcV2_Erc20WrapperTransfer"".""tokenAddress"" AS id,
-                                           ""CrcV2_Erc20WrapperTransfer"".amount         AS value,
-                                           'CrcV2_Erc20WrapperTransfer'::text          AS type,
-                                           ""tokenAddress""
-                                    FROM ""CrcV2_Erc20WrapperTransfer"")
-            SELECT t.""blockNumber"",
-                   t.""timestamp"",
-                   t.""transactionIndex"",
-                   t.""logIndex"",
-                   t.""batchIndex"",
-                   t.""transactionHash"",
-                   t.operator,
-                   t.""from"",
-                   t.""to"",
-                   t.id,
-                   t.value,
-                   t.type,
-                   t.""tokenAddress"",
-                   tt.type as ""tokenType""
-            FROM ""allTransfers"" t
-            JOIN ""V_Crc_Tokens"" tt on tt.token = t.""tokenAddress""
-            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC;
-        ")
-    };
-
-    public static readonly EventSchema V_CrcV2_GroupMemberships = new("V_CrcV2", "GroupMemberships", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("group", ValueTypes.Address, true),
-        new("member", ValueTypes.Address, true),
-        new("expiryTime", ValueTypes.BigInt, true),
-    ])
-    {
-        SqlMigrationItem = new(@"
-            create or replace view public.""V_CrcV2_GroupMemberships""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", ""group"", member,
-                         ""expiryTime"", ""memberType"") as
-            SELECT t.""blockNumber"",
-                   t.""timestamp"",
-                   t.""transactionIndex"",
-                   t.""logIndex"",
-                   t.""transactionHash"",
-                   t.truster AS ""group"",
-                   t.trustee AS member,
-                   t.""expiryTime"",
-                   a.type as ""memberType""
-            FROM ""V_CrcV2_TrustRelations"" t
-                     JOIN ""CrcV2_RegisterGroup"" g ON t.truster = g.""group""
-                     JOIN ""V_CrcV2_Avatars"" a ON a.avatar = t.trustee;
-        ")
-    };
-
-    public static readonly EventSchema V_CrcV2_TrustRelations = new("V_CrcV2", "TrustRelations", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("batchIndex", ValueTypes.Int, true, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("trustee", ValueTypes.Address, true),
-        new("truster", ValueTypes.Address, true),
-        new("expiryTime", ValueTypes.BigInt, true),
-    ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV2_TrustRelations""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", trustee, truster,
-                         ""expiryTime"") as
-            SELECT t.""blockNumber"",
-                   t.""timestamp"",
-                   t.""transactionIndex"",
-                   t.""logIndex"",
-                   t.""transactionHash"",
-                   trustee,
-                   truster,
-                   ""expiryTime""
-            FROM (SELECT ""CrcV2_Trust"".""blockNumber"",
-                         ""CrcV2_Trust"".""timestamp"",
-                         ""CrcV2_Trust"".""transactionIndex"",
-                         ""CrcV2_Trust"".""logIndex"",
-                         ""CrcV2_Trust"".""transactionHash"",
-                         ""CrcV2_Trust"".truster,
-                         ""CrcV2_Trust"".trustee,
-                         ""CrcV2_Trust"".""expiryTime"",
-                         row_number()
-                         OVER (PARTITION BY ""CrcV2_Trust"".truster, ""CrcV2_Trust"".trustee ORDER BY ""CrcV2_Trust"".""blockNumber"" DESC, ""CrcV2_Trust"".""transactionIndex"" DESC, ""CrcV2_Trust"".""logIndex"" DESC) AS rn
-                  FROM ""CrcV2_Trust"") t
-            WHERE rn = 1
-              AND ""expiryTime"" > ((SELECT max(""System_Block"".""timestamp"") AS max
-                                   FROM ""System_Block""))::numeric
-            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC;
-        ")
-    };
-
-    public static readonly EventSchema V_Crc_TrustRelations = new("V_Crc", "TrustRelations", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("version", ValueTypes.Int, false),
-        new("trustee", ValueTypes.String, false),
-        new("truster", ValueTypes.String, false),
-        new("expiryTime", ValueTypes.Int, false),
-        new("limit", ValueTypes.Int, false)
-    ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_Crc_TrustRelations""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", version, trustee, truster,
-                         ""expiryTime"", ""limit"")
-            as
-            SELECT ""V_CrcV2_TrustRelations"".""blockNumber"",
-                   ""V_CrcV2_TrustRelations"".""timestamp"",
-                   ""V_CrcV2_TrustRelations"".""transactionIndex"",
-                   ""V_CrcV2_TrustRelations"".""logIndex"",
-                   ""V_CrcV2_TrustRelations"".""transactionHash"",
-                   2             AS version,
-                   ""V_CrcV2_TrustRelations"".trustee,
-                   ""V_CrcV2_TrustRelations"".truster,
-                   ""V_CrcV2_TrustRelations"".""expiryTime"",
-                   NULL::numeric AS ""limit""
-            FROM ""V_CrcV2_TrustRelations""
-            UNION ALL
-            SELECT ""V_CrcV1_TrustRelations"".""blockNumber"",
-                   ""V_CrcV1_TrustRelations"".""timestamp"",
-                   ""V_CrcV1_TrustRelations"".""transactionIndex"",
-                   ""V_CrcV1_TrustRelations"".""logIndex"",
-                   ""V_CrcV1_TrustRelations"".""transactionHash"",
-                   1                                    AS version,
-                   ""V_CrcV1_TrustRelations"".""user""      AS trustee,
-                   ""V_CrcV1_TrustRelations"".""canSendTo"" AS truster,
-                   NULL::numeric                        AS ""expiryTime"",
-                   ""V_CrcV1_TrustRelations"".""limit""
-            FROM ""V_CrcV1_TrustRelations"";
-        ")
-    };
-
-    public static readonly EventSchema V_Crc_Avatars = new("V_Crc", "Avatars", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("version", ValueTypes.Int, false),
-        new("type", ValueTypes.String, false),
-        new("invitedBy", ValueTypes.String, false),
-        new("avatar", ValueTypes.String, false),
-        new("tokenId", ValueTypes.String, false),
-        new("name", ValueTypes.String, false),
-        new("cidV0Digest", ValueTypes.Bytes, false),
-    ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view ""V_Crc_Avatars""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""transactionHash"", version, type, ""invitedBy"",
-                         avatar, ""tokenId"", name, ""cidV0Digest"")
-            as
-            SELECT ""V_CrcV2_Avatars"".""blockNumber"",
-                   ""V_CrcV2_Avatars"".""timestamp"",
-                   ""V_CrcV2_Avatars"".""transactionIndex"",
-                   ""V_CrcV2_Avatars"".""logIndex"",
-                   ""V_CrcV2_Avatars"".""transactionHash"",
-                   2 AS version,
-                   ""V_CrcV2_Avatars"".type,
-                   ""V_CrcV2_Avatars"".""invitedBy"",
-                   ""V_CrcV2_Avatars"".avatar,
-                   ""V_CrcV2_Avatars"".""tokenId"",
-                   ""V_CrcV2_Avatars"".name,
-                   ""V_CrcV2_Avatars"".""cidV0Digest""
-            FROM ""V_CrcV2_Avatars""
-            UNION ALL
-            SELECT ""V_CrcV1_Avatars"".""blockNumber"",
-                   ""V_CrcV1_Avatars"".""timestamp"",
-                   ""V_CrcV1_Avatars"".""transactionIndex"",
-                   ""V_CrcV1_Avatars"".""logIndex"",
-                   ""V_CrcV1_Avatars"".""transactionHash"",
-                   1                        AS version,
-                   ""V_CrcV1_Avatars"".type,
-                   NULL::text               AS ""invitedBy"",
-                   ""V_CrcV1_Avatars"".""user"" AS avatar,
-                   ""V_CrcV1_Avatars"".token  AS ""tokenId"",
-                   NULL::text               AS name,
-                   ""cidV0Digest""            AS ""cidV0Digest""
-            FROM ""V_CrcV1_Avatars"";
-        ")
-    };
-
-    public static readonly EventSchema V_Crc_Transfers = new("V_Crc", "Transfers",
-        new byte[32],
-        [
-            new("blockNumber", ValueTypes.Int, true),
-            new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
-            new("batchIndex", ValueTypes.Int, true, true),
-            new("transactionHash", ValueTypes.String, true),
-            new("version", ValueTypes.Int, false),
-            new("operator", ValueTypes.Address, true),
-            new("from", ValueTypes.Address, true),
-            new("to", ValueTypes.Address, true),
-            new("id", ValueTypes.BigInt, true),
-            new("value", ValueTypes.BigInt, false),
-            new("type", ValueTypes.String, true),
-            new("tokenType", ValueTypes.String, true)
-        ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_Crc_Transfers""
-                        (""blockNumber"", timestamp, ""transactionIndex"", ""logIndex"", ""batchIndex"", ""transactionHash"", version,
-                         operator, ""from"", ""to"", id, value, type)
-            as
-            WITH ""allTransfers"" AS (SELECT ""V_CrcV1_Transfers"".""blockNumber"",
-                                           ""V_CrcV1_Transfers"".""timestamp"",
-                                           ""V_CrcV1_Transfers"".""transactionIndex"",
-                                           ""V_CrcV1_Transfers"".""logIndex"",
-                                           0                                  AS ""batchIndex"",
-                                           ""V_CrcV1_Transfers"".""transactionHash"",
-                                           1                                  AS version,
-                                           NULL::text                         AS operator,
-                                           ""V_CrcV1_Transfers"".""from"",
-                                           ""V_CrcV1_Transfers"".""to"",
-                                           ""V_CrcV1_Transfers"".""tokenAddress"" AS id,
-                                           ""V_CrcV1_Transfers"".amount         AS value,
-                                           ""V_CrcV1_Transfers"".type,
-                                           ""V_CrcV1_Transfers"".""tokenType""
-                                    FROM ""V_CrcV1_Transfers""
-                                    UNION ALL
-                                    SELECT ""V_CrcV2_Transfers"".""blockNumber"",
-                                           ""V_CrcV2_Transfers"".""timestamp"",
-                                           ""V_CrcV2_Transfers"".""transactionIndex"",
-                                           ""V_CrcV2_Transfers"".""logIndex"",
-                                           ""V_CrcV2_Transfers"".""batchIndex"",
-                                           ""V_CrcV2_Transfers"".""transactionHash"",
-                                           2 AS version,
-                                           ""V_CrcV2_Transfers"".operator,
-                                           ""V_CrcV2_Transfers"".""from"",
-                                           ""V_CrcV2_Transfers"".""to"",
-                                           ""V_CrcV2_Transfers"".id,
-                                           ""V_CrcV2_Transfers"".value,
-                                           ""V_CrcV2_Transfers"".type,
-                                           ""V_CrcV2_Transfers"".""tokenType""
-                                    FROM ""V_CrcV2_Transfers"")
-            SELECT ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""batchIndex"",
-                   ""transactionHash"",
-                   version,
-                   operator,
-                   ""from"",
-                   ""to"",
-                   id,
-                   value,
-                   type,
-                   ""tokenType""
-            FROM ""allTransfers"" t;
-        ")
-    };
-
-    public static readonly EventSchema V_Crc_TransferSummary = new("V_Crc", "TransferSummary",
-        new byte[32],
-        [
-            new("blockNumber", ValueTypes.Int, true),
-            new("timestamp", ValueTypes.Int, true),
-            new("transactionIndex", ValueTypes.Int, true),
-            new("logIndex", ValueTypes.Int, true),
-            new("transactionHash", ValueTypes.String, true),
-            new("version", ValueTypes.Int, false),
-            new("from", ValueTypes.Address, true),
-            new("to", ValueTypes.Address, true),
-            new("value", ValueTypes.BigInt, false),
-            new("events", ValueTypes.Json, false)
-        ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view ""V_Crc_TransferSummary"" as
-                with a as (
-                    select 1 as version, *
-                    from ""CrcV1_TransferSummary""
-                    union all 
-                    select 2 as version, *
-                    from ""CrcV2_TransferSummary""
-                )
-                select ""blockNumber"",
-                       timestamp,
-                       ""transactionIndex"",
-                       ""logIndex"",
-                       ""transactionHash"",
-                       version,
-                       ""from"",
-                       ""to"",
-                       amount as value,
-                       events
-                from a
-                order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc;
-        ")
-    };
-
-    public static readonly EventSchema V_CrcV2_Groups = new("V_CrcV2", "Groups", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("group", ValueTypes.Address, true),
-        new("type", ValueTypes.String, true),
-        new("owner", ValueTypes.Address, true),
-        new("mintPolicy", ValueTypes.Address, true),
-        new("mintHandler", ValueTypes.Address, true),
-        new("treasury", ValueTypes.Address, true),
-        new("service", ValueTypes.Address, true),
-        new("feeCollection", ValueTypes.Address, true),
-        new("memberCount", ValueTypes.Int, true),
-        new("name", ValueTypes.String, true),
-        new("symbol", ValueTypes.String, true),
-        new("cidV0Digest", ValueTypes.Bytes, true)
-    ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            DROP VIEW IF EXISTS ""V_CrcV2_Groups"";
-            CREATE OR REPLACE VIEW ""V_CrcV2_Groups""
-            AS
-                WITH latest_owner AS (
-                    SELECT DISTINCT ON (emitter) *
-                    FROM ""CrcV2_BaseGroupOwnerUpdated""
-                    ORDER BY emitter,
-                          ""blockNumber""      DESC,
-                          ""transactionIndex"" DESC,
-                          ""logIndex""         DESC
-                ),
-                latest_service AS (
-                    SELECT DISTINCT ON (emitter) *
-                    FROM ""CrcV2_BaseGroupServiceUpdated""
-                    ORDER BY emitter,
-                             ""blockNumber""      DESC,
-                             ""transactionIndex"" DESC,
-                             ""logIndex""         DESC
-                ),
-                latest_cid AS (
-                    SELECT DISTINCT ON (avatar) *
-                    FROM ""CrcV2_UpdateMetadataDigest""
-                    ORDER BY avatar,
-                             ""blockNumber""      DESC,
-                             ""transactionIndex"" DESC,
-                             ""logIndex""         DESC
-                ),
-                latest_fee AS (
-                    SELECT DISTINCT ON (emitter) *
-                    FROM ""CrcV2_BaseGroupFeeCollectionUpdated""
-                    ORDER BY emitter,
-                          ""blockNumber""      DESC,
-                          ""transactionIndex"" DESC,
-                          ""logIndex""         DESC
-                ),
-                member_counts AS (
-                    SELECT bgc.""group"", count(*) as ""memberCount""
-                    FROM ""CrcV2_RegisterGroup"" bgc
-                    JOIN ""V_CrcV2_TrustRelations"" tr on tr.truster = bgc.""group""
-                    GROUP BY bgc.""group"" 
-                )
-                SELECT
-                    c.""blockNumber"",
-                    c.""timestamp"",
-                    c.""transactionIndex"",
-                    c.""logIndex"",
-                    c.""transactionHash"",
-                    c.""group"",
-                    CASE WHEN cm.proxy IS NOT NULL
-                         THEN 'CrcV2_CMGroupCreated'
-                         WHEN bg.""group"" IS NOT NULL
-                         THEN 'CrcV2_BaseGroupCreated'
-                         ELSE 'CrcV2_RegisterGroup'
-                    END AS type,
-                    COALESCE(cm.owner, o.owner) as owner,
-                    c.""mint"" as ""mintPolicy"",
-                    COALESCE(cm.""mintHandler"", bg.""mintHandler"") as ""mintHandler"",
-                    c.treasury,
-                    s.""newService""                      AS service,
-                    f.""feeCollection"",
-                    COALESCE(m.""memberCount"", 0)        AS ""memberCount"",
-                    c.name,
-                    c.symbol,
-                    ci.""metadataDigest"" as ""cidV0Digest""
-                FROM       ""CrcV2_RegisterGroup"" c
-                LEFT JOIN  latest_owner             o ON o.emitter  = c.""group""
-                LEFT JOIN  latest_service           s ON s.emitter  = c.""group""
-                LEFT JOIN  latest_fee               f ON f.emitter  = c.""group""
-                LEFT JOIN  member_counts            m ON m.""group""  = c.""group""
-                LEFT JOIN  latest_cid               ci ON ci.avatar = c.""group""
-                LEFT JOIN  ""CrcV2_CMGroupCreated""   cm ON cm.proxy  = c.""group""
-                LEFT JOIN  ""CrcV2_BaseGroupCreated"" bg ON bg.""group"" = c.""group"";
-        ")
-    };
-
-    public static readonly EventSchema V_CrcV1_BalancesByAccountAndToken = new("V_CrcV1", "BalancesByAccountAndToken",
-        new byte[32],
-        [
-            new("account", ValueTypes.Address, true),
-            new("tokenAddress", ValueTypes.String, true),
-            new("lastActivity", ValueTypes.Int, true),
-            new("totalBalance", ValueTypes.BigInt, true),
-            new("tokenOwner", ValueTypes.String, true)
-        ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            create or replace view public.""V_CrcV1_BalancesByAccountAndToken""(account, ""tokenAddress"", ""lastActivity"", ""totalBalance"", ""tokenOwner"") as
-            WITH transfers AS (SELECT ""CrcV1_Transfer"".""timestamp"",
-                                      ""CrcV1_Transfer"".""from"",
-                                      ""CrcV1_Transfer"".""to"",
-                                      ""CrcV1_Transfer"".amount AS value,
-                                      ""CrcV1_Transfer"".""tokenAddress""
-                               FROM ""CrcV1_Transfer""),
-                 ""accountBalances"" AS (SELECT all_transfers.account,
-                                              sum(all_transfers.amount)      AS balance,
-                                              max(all_transfers.""timestamp"") AS ""timestamp"",
-                                              all_transfers.""tokenAddress""
-                                       FROM (SELECT transfers.""from""  AS account,
-                                                    - transfers.value AS amount,
-                                                    transfers.""timestamp"",
-                                                    transfers.""tokenAddress""
-                                             FROM transfers
-                                             UNION ALL
-                                             SELECT transfers.""to""  AS account,
-                                                    transfers.value AS amount,
-                                                    transfers.""timestamp"",
-                                                    transfers.""tokenAddress""
-                                             FROM transfers) all_transfers
-                                       GROUP BY all_transfers.account, all_transfers.""tokenAddress"")
-            SELECT ""accountBalances"".account,
-                   ""accountBalances"".""tokenAddress"",
-                   ""accountBalances"".""timestamp"" AS ""lastActivity"",
-                   ""accountBalances"".balance     AS ""totalBalance"",
-                   ""CrcV1_Signup"".""user""         AS ""tokenOwner""
-            FROM ""accountBalances""
-                     JOIN ""CrcV1_Signup"" ON ""accountBalances"".""tokenAddress"" = ""CrcV1_Signup"".token
-            WHERE ""accountBalances"".account <> '0x0000000000000000000000000000000000000000'::text
-              AND ""accountBalances"".balance > 0::numeric;
-        ")
-    };
-
-
-    public static readonly EventSchema V_CrcV2_BalancesByAccountAndToken = new("V_CrcV2", "BalancesByAccountAndToken",
-        new byte[32],
-        [
-            new("account", ValueTypes.Address, true),
-            new("tokenId", ValueTypes.String, true),
-            new("tokenAddress", ValueTypes.String, true),
-            new("lastActivity", ValueTypes.Int, true),
-            new("demurragedTotalBalance", ValueTypes.BigInt, true),
-        ])
-    {
-        SqlMigrationItem = new SqlMigrationItem(@"
-            CREATE OR REPLACE FUNCTION crc_day(""inflationDayZero"" bigint, ""timestamp"" bigint)
-                RETURNS bigint AS $$
-            DECLARE
-                DEMURRAGE_WINDOW bigint := 86400;
-            BEGIN
-                RETURN (""timestamp"" - ""inflationDayZero"") / DEMURRAGE_WINDOW;
-            END;
-            $$ LANGUAGE plpgsql;
-
-            CREATE OR REPLACE FUNCTION crc_demurrage(""inflationDayZero"" bigint, ""timestamp"" bigint, ""value"" numeric)
-                RETURNS numeric AS $$
-            DECLARE
-                _day_last_interaction bigint;
-                _now bigint := EXTRACT(EPOCH FROM NOW())::bigint;
-                _day_now bigint;
-                _gamma numeric := 0.9998013320085989574306481700129226782902039065082930593676448873;
-            BEGIN
-                _day_last_interaction := crc_day(""inflationDayZero"", ""timestamp"");
-                _day_now := crc_day(""inflationDayZero"", _now);
-                return (value * POWER(_gamma, _day_now - _day_last_interaction));
-            END;
-            $$ LANGUAGE plpgsql;
-
-            create or replace view public.""V_CrcV2_BalancesByAccountAndToken""
-                        (account, ""tokenId"", ""tokenAddress"", ""lastActivity"", ""demurragedTotalBalance"") as
-            WITH transfers AS (SELECT ""CrcV2_TransferSingle"".""timestamp"",
-                                      ""CrcV2_TransferSingle"".""from"",
-                                      ""CrcV2_TransferSingle"".""to"",
-                                      ""CrcV2_TransferSingle"".id,
-                                      ""CrcV2_TransferSingle"".value,
-                                      ""CrcV2_TransferSingle"".""tokenAddress""
-                               FROM ""CrcV2_TransferSingle""
-                               UNION ALL
-                               SELECT ""CrcV2_TransferBatch"".""timestamp"",
-                                      ""CrcV2_TransferBatch"".""from"",
-                                      ""CrcV2_TransferBatch"".""to"",
-                                      ""CrcV2_TransferBatch"".id,
-                                      ""CrcV2_TransferBatch"".value,
-                                      ""CrcV2_TransferBatch"".""tokenAddress""
-                               FROM ""CrcV2_TransferBatch""),
-                 ""accountBalances"" AS (SELECT all_transfers.account,
-                                              all_transfers.id,
-                                              sum(all_transfers.amount)      AS balance,
-                                              max(all_transfers.""timestamp"") AS ""timestamp"",
-                                              all_transfers.""tokenAddress""
-                                       FROM (SELECT transfers.""from""  AS account,
-                                                    transfers.id,
-                                                    - transfers.value AS amount,
-                                                    transfers.""timestamp"",
-                                                    transfers.""tokenAddress""
-                                             FROM transfers
-                                             UNION ALL
-                                             SELECT transfers.""to""  AS account,
-                                                    transfers.id,
-                                                    transfers.value AS amount,
-                                                    transfers.""timestamp"",
-                                                    transfers.""tokenAddress""
-                                             FROM transfers) all_transfers
-                                       GROUP BY all_transfers.account, all_transfers.id, all_transfers.""tokenAddress"")
-            SELECT account,
-                   id::text                                                       AS ""tokenId"",
-                   ""tokenAddress"",
-                   ""timestamp""                                                    AS ""lastActivity"",
-                   floor(crc_demurrage(1675209600::bigint, ""timestamp"", balance)) AS ""demurragedTotalBalance""
-            FROM ""accountBalances""
-            WHERE account <> '0x0000000000000000000000000000000000000000'::text
-              AND balance > 0::numeric;
-        ")
-    };
-
-    public static readonly EventSchema V_Crc_Tokens = new("V_Crc", "Tokens", new byte[32], [
-        new("blockNumber", ValueTypes.Int, true),
-        new("timestamp", ValueTypes.Int, true),
-        new("transactionIndex", ValueTypes.Int, true),
-        new("logIndex", ValueTypes.Int, true),
-        new("transactionHash", ValueTypes.String, true),
-        new("version", ValueTypes.Int, false),
-        new("type", ValueTypes.String, false),
-        new("token", ValueTypes.String, true),
-        new("tokenOwner", ValueTypes.String, true)
-    ])
-    {
-        SqlMigrationItem = new(@"
-        create or replace view ""V_Crc_Tokens""
-        as
-            select ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""transactionHash"",
-                   version,
-                   type,
-                   ""tokenId"" as token,
-                   ""avatar"" as ""tokenOwner""
-            from ""V_Crc_Avatars""
-            where ""tokenId"" is not null
-            union all 
-            select ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""transactionHash"",
-                   2,
-                   'CrcV2_ERC20WrapperDeployed_Inflationary' as type,
-                   ""erc20Wrapper"" as token,
-                   ""avatar"" as ""tokenOwner""
-            from ""CrcV2_ERC20WrapperDeployed""
-            where ""circlesType"" = 1
-            union all
-            select ""blockNumber"",
-                   ""timestamp"",
-                   ""transactionIndex"",
-                   ""logIndex"",
-                   ""transactionHash"",
-                   2,
-                   'CrcV2_ERC20WrapperDeployed_Demurraged' as type,
-                   ""erc20Wrapper"" as token,
-                   ""avatar"" as ""tokenOwner""
-            from ""CrcV2_ERC20WrapperDeployed""
-            where ""circlesType"" = 0;
-        ")
-    };
-
-    public static readonly EventSchema V_Crc_Stats = new("V_Crc", "Stats", new byte[32], [
-        new("measure", ValueTypes.String, false),
-        new("value", ValueTypes.Int, false)
-    ])
-    {
-        SqlMigrationItem = new(@"
-        create or replace view ""V_Crc_Stats""(""measure"", ""value"") 
-        as
-            select 'avatar_count_v1' as measure, count(""user"") as value
-            from ""V_CrcV1_Avatars""
-            union all
-            select 'organization_count_v1' as measure, count(""user"") as value
-            from ""V_CrcV1_Avatars""
-            where token is null
-            union all
-            select 'human_count_v1' as measure, count(""user"") as value
-            from ""V_CrcV1_Avatars""
-            where token is not null
-            union all
-            select 'avatar_count_v2', count(""avatar"")
-            from ""V_CrcV2_Avatars""
-            union all
-            select 'organization_count_v2', count(organization)
-            from ""CrcV2_RegisterOrganization""
-            union all
-            select 'human_count_v2', count(avatar)
-            from ""CrcV2_RegisterHuman""
-            union all
-            select 'group_count_v2', count(""group"")
-            from ""CrcV2_RegisterGroup""
-            union all
-            select 'trust_count_v1',
-                   (SELECT COUNT(*)
-                    FROM (SELECT DISTINCT ON (""user"", ""canSendTo"") ""user"", ""canSendTo"", ""limit""
-                          FROM ""CrcV1_Trust""
-                          ORDER BY ""user"", ""canSendTo"", ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) t
-                    WHERE ""limit"" > 0)
-            union all
-            select 'trust_count_v2', count(*)
-            from ""V_CrcV2_TrustRelations""
-            union all
-            select 'token_count_v1', count(*)
-            from ""V_Crc_Tokens""
-            where version = 1
-            union all
-            select 'token_count_v2', count(*)
-            from ""V_Crc_Tokens""
-            where version = 2
-            union all
-            select 'transitive_transfer_count_v1', count(*)
-            from ""CrcV1_HubTransfer""
-            union all
-            select 'transitive_transfer_count_v2', count(*)
-            from ""CrcV2_StreamCompleted""
-            union all 
-            select 'circles_transfer_count_v1', count(*)
-            from ""CrcV1_Transfer""
-            union all 
-            select 'circles_transfer_count_v2', (
-                select sum(t.value) from (
-                  select count(*) as value
-                  from ""CrcV2_TransferSingle""
-                  union all
-                  select count(*)
-                  from ""CrcV2_TransferBatch""
-                ) as t
-            )
-            union all 
-            select 'erc20_wrapper_token_count_v2', count(*)
-            from ""CrcV2_ERC20WrapperDeployed"";
-        ")
-    };
-
-    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } =
-        new Dictionary<(string Namespace, string Table), EventSchema>
+        var columns = new List<EventFieldSchema>();
+        
+        // Look for column definitions in a multiline comment block
+        // Format:
+        // -- COLUMNS:
+        // -- columnName:ValueTypes.Type:isRequired[:isNullable]
+        // -- columnName2:ValueTypes.Type2:isRequired2[:isNullable2]
+        // -- ...
+        
+        // First check if we have a COLUMNS: marker
+        var headerPattern = new Regex(@"--\s*COLUMNS:\s*$", RegexOptions.Multiline);
+        var headerMatch = headerPattern.Match(sql);
+        
+        if (headerMatch.Success)
         {
+            // Find the position of the header
+            int headerPos = headerMatch.Index + headerMatch.Length;
+            
+            // Extract all column definition lines that follow
+            // This regex now explicitly captures the optional 4th parameter
+            var columnLinePattern = new Regex(@"--\s*(.*?):(ValueTypes\.[A-Za-z]+):(true|false)(?::(true|false))?", 
+                RegexOptions.Multiline);
+            
+            var matches = columnLinePattern.Matches(sql, headerPos);
+            
+            foreach (Match match in matches)
             {
-                ("V_CrcV1", "TrustRelations"),
-                V_CrcV1_TrustRelations
-            },
-            {
-                ("V_CrcV1", "Avatars"),
-                V_CrcV1_Avatars
-            },
-            {
-                ("V_CrcV2", "Avatars"),
-                V_CrcV2_Avatars
-            },
-            {
-                ("V_CrcV2", "TrustRelations"),
-                V_CrcV2_TrustRelations
-            },
-            {
-                ("V_CrcV2", "GroupMemberships"),
-                V_CrcV2_GroupMemberships
-            },
-            {
-                ("V_Crc", "Avatars"),
-                V_Crc_Avatars
-            },
-            {
-                ("V_Crc", "Tokens"),
-                V_Crc_Tokens
-            },
-            {
-                ("V_CrcV1", "Transfers"),
-                V_CrcV1_Transfers
-            },
-            {
-                ("V_CrcV2", "Transfers"),
-                V_CrcV2_Transfers
-            },
-            {
-                ("V_Crc", "TrustRelations"),
-                V_Crc_TrustRelations
-            },
-            {
-                ("V_Crc", "Transfers"),
-                V_Crc_Transfers
-            },
-            {
-                ("V_CrcV2", "Groups"),
-                V_CrcV2_Groups
-            },
-            {
-                ("V_CrcV1", "BalancesByAccountAndToken"),
-                V_CrcV1_BalancesByAccountAndToken
-            },
-            {
-                ("V_CrcV2", "BalancesByAccountAndToken"),
-                V_CrcV2_BalancesByAccountAndToken
-            },
-            {
-                ("V_Crc", "Stats"),
-                V_Crc_Stats
-            },
-            {
-                ("V_CrcV1", "TotalSupply"),
-                V_CrcV1_TotalSupply
-            },
-            {
-                ("V_CrcV2", "TotalSupply"),
-                V_CrcV2_TotalSupply
-            },
-            {
-                ("V_Crc", "TransferSummary"),
-                V_Crc_TransferSummary
-            },
-            {
-                ("V_CrcV2", "GroupVaultBalancesByToken"),
-                V_CrcV2_GroupVaultBalancesByToken
+                if (match.Groups.Count >= 4)
+                {
+                    string columnName = match.Groups[1].Value.Trim();
+                    string valueTypeStr = match.Groups[2].Value.Trim();
+                    bool isRequired = bool.Parse(match.Groups[3].Value.Trim());
+                    
+                    // The 4th group (isNullable) is optional
+                    bool isNullable = match.Groups.Count >= 5 && match.Groups[4].Success && 
+                                     bool.Parse(match.Groups[4].Value.Trim());
+                    
+                    // Parse the ValueTypes enum
+                    if (Enum.TryParse(valueTypeStr.Replace("ValueTypes.", ""), out ValueTypes valueType))
+                    {
+                        // Create EventFieldSchema instance
+                        columns.Add(new EventFieldSchema(columnName, valueType, isRequired, isNullable));
+                    }
+                }
             }
-        };
+        }
+        
+        return columns;
+    }
+
+    private List<EventFieldSchema> ParseColumnsFromSql(string sql)
+    {
+        var columns = new List<EventFieldSchema>();
+        
+        // Try to parse the column information from CREATE or REPLACE VIEW statement
+        var pattern = new Regex(@"(?:create\s+or\s+replace\s+view\s+.*?\s*\(\s*)(.*?)(?:\)\s+as)", 
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            
+        var match = pattern.Match(sql);
+        if (match.Success)
+        {
+            string columnDefinitions = match.Groups[1].Value;
+            var columnPairs = columnDefinitions.Split(',')
+                .Select(c => c.Trim())
+                .Where(c => !string.IsNullOrEmpty(c));
+                
+            foreach (var columnPair in columnPairs)
+            {
+                // Clean up quotes and extract column name
+                string columnName = columnPair
+                    .Replace("\"", "")
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault() ?? "";
+                    
+                if (!string.IsNullOrEmpty(columnName))
+                {
+                    // Try to infer the type based on naming conventions
+                    var valueType = InferValueTypeFromColumnName(columnName);
+                    
+                    // Check if this is likely a nullable column based on naming conventions
+                    bool isNullable = InferIsNullableFromColumnName(columnName);
+                    
+                    // Create EventFieldSchema instance
+                    columns.Add(new EventFieldSchema(columnName, valueType, true, isNullable));
+                }
+            }
+        }
+        
+        // If no columns were found or parsing failed, add a default set of common columns
+        if (columns.Count == 0)
+        {
+            columns.Add(new EventFieldSchema("blockNumber", ValueTypes.Int, true));
+            columns.Add(new EventFieldSchema("timestamp", ValueTypes.Int, true));
+            columns.Add(new EventFieldSchema("transactionIndex", ValueTypes.Int, true));
+            columns.Add(new EventFieldSchema("logIndex", ValueTypes.Int, true));
+            columns.Add(new EventFieldSchema("transactionHash", ValueTypes.String, true));
+        }
+        
+        return columns;
+    }
+
+    private ValueTypes InferValueTypeFromColumnName(string columnName)
+    {
+        // Simple rule-based type inference
+        columnName = columnName.ToLower();
+        
+        if (columnName.Contains("address") || columnName == "from" || columnName == "to" || 
+            columnName == "operator" || columnName == "truster" || columnName == "trustee" || 
+            columnName == "avatar" || columnName == "token" || columnName == "tokenaddress" || 
+            columnName == "group")
+        {
+            return ValueTypes.Address;
+        }
+        
+        if (columnName.Contains("amount") || columnName.Contains("balance") || 
+            columnName.Contains("value") || columnName.Contains("supply") ||
+            columnName == "id" || columnName.EndsWith("id") || 
+            columnName.Contains("time") && !columnName.Equals("timestamp"))
+        {
+            return ValueTypes.BigInt;
+        }
+        
+        if (columnName == "blocknumber" || columnName == "timestamp" || 
+            columnName == "transactionindex" || columnName == "logindex" || 
+            columnName == "batchindex" || columnName == "limit" || columnName == "version" ||
+            columnName == "count" || columnName.Contains("count"))
+        {
+            return ValueTypes.Int;
+        }
+        
+        if (columnName.Contains("digest") || columnName.Contains("bytes"))
+        {
+            return ValueTypes.Bytes;
+        }
+        
+        if (columnName == "events" || columnName.Contains("json"))
+        {
+            return ValueTypes.Json;
+        }
+        
+        // Default to string for everything else
+        return ValueTypes.String;
+    }
+    
+    private bool InferIsNullableFromColumnName(string columnName)
+    {
+        // Special case for batchIndex which is known to be nullable
+        if (columnName.ToLower() == "batchindex")
+        {
+            return true;
+        }
+        
+        // By default, assume columns are not nullable
+        return false;
+    }
+
+    private string LoadSqlFromResource(string resourceName)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var fullResourceName = $"Circles.Index.CirclesViews.queries.{resourceName}";
+
+        using var stream = assembly.GetManifestResourceStream(fullResourceName);
+        if (stream == null)
+        {
+            throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
+        }
+
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    // The SQL loader function - delegating to LazySqlLoader
+    public static class SqlLoader
+    {
+        public static string LoadSql(string resourceName)
+        {
+            return LazySqlLoader.LoadSql(resourceName);
+        }
+    }
 }
