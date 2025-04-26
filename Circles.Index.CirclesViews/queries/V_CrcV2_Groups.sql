@@ -17,7 +17,6 @@
 -- symbol:ValueTypes.String:true
 -- cidV0Digest:ValueTypes.Bytes:true
 
-DROP VIEW IF EXISTS "V_CrcV2_Groups";
 CREATE OR REPLACE VIEW "V_CrcV2_Groups"
 AS
     WITH latest_owner AS (
