@@ -75,11 +75,13 @@ public class GraphFactory
     {
         // Initialize counters for skipped nodes/edges
         int skipBalanceCase2 = 0;    // fromTokens filter
+        int skipBalanceCase2b = 0;   // excludedFromTokens filter
         int skipBalanceCase3a = 0;   // withWrap=false filter
         int skipBalanceCase3b = 0;   // wrapped tokens not held by source
         int skipCapEdgeCase1 = 0;    // nodes not in capacity graph
         int skipCapEdgeCase2 = 0;    // trust-based edges missing nodes
         int skipTrustEdgeSinkTokens = 0; // sink->token trust filtered by toTokens
+        int skipTrustEdgeSinkExcludedTokens = 0; // sink->token trust filtered by excludedToTokens
 
         LogRequestInfo(request);
 
@@ -93,6 +95,16 @@ public class GraphFactory
                             ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var fromTokensFilter = request.FromTokens?
+                                .Select(t => t.ToLower())
+                                .ToHashSet()
+                            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        var excludedFromTokensFilter = request.ExcludedFromTokens?
+                                .Select(t => t.ToLower())
+                                .ToHashSet()
+                            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            
+        var excludedToTokensFilter = request.ExcludedToTokens?
                                 .Select(t => t.ToLower())
                                 .ToHashSet()
                             ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -118,7 +130,9 @@ public class GraphFactory
             sourceEqualsSink,
             fromTokensFilter,
             toTokensFilter,
-            ref skipBalanceCase2, 
+            excludedFromTokensFilter,
+            ref skipBalanceCase2,
+            ref skipBalanceCase2b,
             ref skipBalanceCase3a, 
             ref skipBalanceCase3b);
 
@@ -133,7 +147,8 @@ public class GraphFactory
 
         // STEP 6: Create account trust dictionary for efficient lookups
         var accountTrusts = BuildAccountTrustDictionary(
-            trustGraph, request.Sink, toTokensFilter, ref skipTrustEdgeSinkTokens);
+            trustGraph, request.Sink, toTokensFilter, excludedToTokensFilter, 
+            ref skipTrustEdgeSinkTokens, ref skipTrustEdgeSinkExcludedTokens);
 
         // STEP 7: Add virtual sink edges if using virtual sink
         bool anyVirtualSinkEdgesAdded = false;
@@ -158,8 +173,9 @@ public class GraphFactory
 
         // Log statistics about filtering
         LogFilteringStatistics(
-            skipBalanceCase2, skipBalanceCase3a, skipBalanceCase3b,
-            skipCapEdgeCase1, skipCapEdgeCase2, skipTrustEdgeSinkTokens);
+            skipBalanceCase2, skipBalanceCase2b, skipBalanceCase3a, skipBalanceCase3b,
+            skipCapEdgeCase1, skipCapEdgeCase2, skipTrustEdgeSinkTokens, skipTrustEdgeSinkExcludedTokens);
+
 
         return capacityGraph;
     }
@@ -183,6 +199,8 @@ public class GraphFactory
         Console.WriteLine($"Sink: {request.Sink}");
         Console.WriteLine($"ToTokens: {request.ToTokens?.Count ?? 0}");
         Console.WriteLine($"FromTokens: {request.FromTokens?.Count ?? 0}");
+        Console.WriteLine($"ExcludedFromTokens: {request.ExcludedFromTokens?.Count ?? 0}");
+        Console.WriteLine($"ExcludedToTokens: {request.ExcludedToTokens?.Count ?? 0}");
         Console.WriteLine($"WithWrap: {request.WithWrap}");
     }
 
@@ -240,7 +258,9 @@ public class GraphFactory
         bool sourceEqualsSink,
         HashSet<string> fromTokensFilter,
         HashSet<string> toTokensFilter,
+        HashSet<string> excludedFromTokensFilter,
         ref int skipBalanceCase2,
+        ref int skipBalanceCase2b,
         ref int skipBalanceCase3a,
         ref int skipBalanceCase3b)
     {
@@ -261,6 +281,13 @@ public class GraphFactory
             if (isSource && fromTokensFilter.Count > 0 && !fromTokensFilter.Contains(balanceNode.Token.ToLower()))
             {
                 skipBalanceCase2++;
+                continue;
+            }
+
+            // Case 2b: If excludedFromTokens is specified, exclude those tokens for the source address
+            if (isSource && excludedFromTokensFilter.Count > 0 && excludedFromTokensFilter.Contains(balanceNode.Token.ToLower()))
+            {
+                skipBalanceCase2b++;
                 continue;
             }
 
@@ -329,7 +356,9 @@ public class GraphFactory
         TrustGraph trustGraph,
         string sinkAddress,
         HashSet<string> toTokensFilter,
-        ref int skipTrustEdgeSinkTokens)
+        HashSet<string> excludedToTokensFilter,
+        ref int skipTrustEdgeSinkTokens,
+        ref int skipTrustEdgeSinkExcludedTokens)
     {
         var accountTrusts = new Dictionary<string, HashSet<string>>();
         
@@ -343,6 +372,16 @@ public class GraphFactory
                 skipTrustEdgeSinkTokens++;
                 continue;
             }
+
+            // Skip trust edges from sink -> tokens in excludedToTokens
+            if (edge.From.Equals(sinkAddress, StringComparison.OrdinalIgnoreCase)
+                && excludedToTokensFilter.Count > 0
+                && excludedToTokensFilter.Contains(edge.To.ToLower()))
+            {
+                skipTrustEdgeSinkExcludedTokens++;
+                continue;
+            }
+
 
             var fromLower = edge.From.ToLower();
             var toLower = edge.To.ToLower();
@@ -451,19 +490,24 @@ public class GraphFactory
 
     private void LogFilteringStatistics(
         int skipBalanceCase2,
+        int skipBalanceCase2b,
         int skipBalanceCase3a,
         int skipBalanceCase3b,
         int skipCapEdgeCase1,
         int skipCapEdgeCase2,
-        int skipTrustEdgeSinkTokens)
+        int skipTrustEdgeSinkTokens,
+        int skipTrustEdgeSinkExcludedTokens)
     {
-        Console.WriteLine($"Skipped balance nodes (case 1): [SOURCE=SINK toTokens skip]"); // Now used again
+        Console.WriteLine($"Skipped balance nodes (case 1): [SOURCE=SINK toTokens skip]");
         Console.WriteLine($"Skipped balance nodes (case 2): {skipBalanceCase2}");
+        Console.WriteLine($"Skipped balance nodes (case 2b): {skipBalanceCase2b}");
         Console.WriteLine($"Skipped balance nodes (case 3a): {skipBalanceCase3a}");
         Console.WriteLine($"Skipped balance nodes (case 3b): {skipBalanceCase3b}");
         Console.WriteLine($"Skipped capacity edges (node not found. Case: 1): {skipCapEdgeCase1}");
         Console.WriteLine($"Skipped capacity edges (node not found. Case: 2): {skipCapEdgeCase2}");
         Console.WriteLine($"Skipped trust edges (sink trusts token but not in toTokens): {skipTrustEdgeSinkTokens}");
+        Console.WriteLine($"Skipped trust edges (sink trusts token in excludedToTokens): {skipTrustEdgeSinkExcludedTokens}");
+
     }
 
     #endregion
