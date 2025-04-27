@@ -1,7 +1,7 @@
+using System.Collections.Immutable;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Circles.Index.CirclesV2.LBP;
 
@@ -25,7 +25,7 @@ namespace Circles.Index.CirclesV2.LBP;
 
  */
 
-public class LogParser(Address factoryAddress) : ILogParser
+public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
     private readonly Hash256 _circlesBackingDeployedTopic = new(DatabaseSchema.CirclesBackingDeployed.Topic);
     private readonly Hash256 _lbpDeployedTopic = new(DatabaseSchema.LBPDeployed.Topic);
@@ -55,7 +55,7 @@ public class LogParser(Address factoryAddress) : ILogParser
             yield break;
         }
 
-        if (log.Address != factoryAddress)
+        if (!factoryAddresses.Contains(log.Address))
         {
             yield break;
         }
