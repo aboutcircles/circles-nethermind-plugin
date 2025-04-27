@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query;
@@ -88,17 +89,17 @@ public class Plugin : INethermindPlugin
 
         if (settings.CirclesLBPFactoryAddress != null)
         {
-            logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress));
+            logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress.ToImmutableHashSet()));
         }
 
         if (settings.CMGroupDeployer.Length > 0)
         {
-            logParsers.Add(new CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToHashSet()));
+            logParsers.Add(new CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToImmutableHashSet()));
         }
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
-            logParsers.Add(new Safe.LogParser(settings.SafeProxyFactoryAddresses));
+            logParsers.Add(new Safe.LogParser(settings.SafeProxyFactoryAddresses.ToImmutableHashSet()));
         }
 
         if (settings.CirclesV1NameRegistry != null)

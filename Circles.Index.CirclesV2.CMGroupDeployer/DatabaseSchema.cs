@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -56,7 +57,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     }
 }
 
-public class LogParser(HashSet<Address> deployerAddress) : ILogParser
+public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
 {
     private readonly Hash256 _cmGroupCreatedTopicNew =
         Keccak.Compute("CMGroupCreated(address,address,address,address,address)");
