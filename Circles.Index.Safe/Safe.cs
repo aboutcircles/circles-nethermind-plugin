@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Numerics;
 using Circles.Index.Common;
 using Nethermind.Core;
@@ -265,11 +266,9 @@ public class DatabaseSchema : BaseDatabaseSchema
     }
 }
 
-public class LogParser(Address[] factoryAddresses) : ILogParser
+public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
     public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
-
-    private readonly HashSet<Address> _factoryAddresses = new(factoryAddresses);
 
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
     private readonly Hash256 _legacyCrcProxyCreationTopic = Keccak.Compute("ProxyCreation(address)");
@@ -346,7 +345,7 @@ public class LogParser(Address[] factoryAddresses) : ILogParser
 
         var topic = log.Topics[0];
 
-        if (_factoryAddresses.Contains(log.Address))
+        if (factoryAddresses.Contains(log.Address))
         {
             if (topic == _proxyCreationTopic || topic == _legacyCrcProxyCreationTopic)
             {

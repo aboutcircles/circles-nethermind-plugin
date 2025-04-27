@@ -27,10 +27,12 @@ public class Settings
             ? new(Environment.GetEnvironmentVariable("V2_STANDARD_TREASURY_ADDRESS")!)
             : throw new Exception("V2_STANDARD_TREASURY_ADDRESS is not set.");
 
-    public readonly Address? CirclesLBPFactoryAddress =
+    public readonly Address[] CirclesLBPFactoryAddress =
         Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS") != null
-            ? new(Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS")!)
-            : null;
+            ? Environment.GetEnvironmentVariable("V2_LBP_FACTORY_ADDRESS")!.Split(',')
+                .Select(x => new Address(x.Trim()))
+                .ToArray()
+            : [];
 
     public readonly Address[] CMGroupDeployer =
         Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER") != null
