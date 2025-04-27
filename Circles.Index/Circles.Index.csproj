@@ -21,8 +21,8 @@
 
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.0" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.30.3" />
+      <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.4" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.31.9" />
     </ItemGroup>
 
 
