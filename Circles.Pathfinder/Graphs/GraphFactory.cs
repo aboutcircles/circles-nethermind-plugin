@@ -1,7 +1,7 @@
+using System.Collections.Concurrent;
 using Circles.Index.Utils;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
-using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
@@ -86,8 +86,6 @@ public class GraphFactory
         int skipCapEdgeCase2 = 0; // trust-based edges missing nodes
         int skipTrustEdgeSinkTokens = 0; // sink->token trust filtered by toTokens
         int skipTrustEdgeSinkExcludedTokens = 0; // sink->token trust filtered by excludedToTokens
-
-        LogRequestInfo(r);
 
         var sourceId = AddressIdPool.IdOf(r.Source);
         var sinkId = AddressIdPool.IdOf(r.Sink);
@@ -179,12 +177,6 @@ public class GraphFactory
         AddTrustBasedCapacityEdges(
             capacityGraph, balanceGraph, accountTrusts, virtualSinkAddress, ref skipCapEdgeCase2);
 
-        // Log statistics about filtering
-        LogFilteringStatistics(
-            skipBalanceCase2, skipBalanceCase2b, skipBalanceCase3a, skipBalanceCase3b,
-            skipCapEdgeCase1, skipCapEdgeCase2, skipTrustEdgeSinkTokens, skipTrustEdgeSinkExcludedTokens);
-
-
         return capacityGraph;
     }
 
@@ -199,18 +191,6 @@ public class GraphFactory
     }
 
     #region Helper Methods
-
-    private void LogRequestInfo(FlowRequest request)
-    {
-        // // Console.WriteLine("Creating capacity graph...");
-        // // Console.WriteLine($"Source: {request.Source}");
-        // // Console.WriteLine($"Sink: {request.Sink}");
-        // // Console.WriteLine($"ToTokens: {request.ToTokens?.Count ?? 0}");
-        // // Console.WriteLine($"FromTokens: {request.FromTokens?.Count ?? 0}");
-        // // Console.WriteLine($"ExcludedFromTokens: {request.ExcludedFromTokens?.Count ?? 0}");
-        // // Console.WriteLine($"ExcludedToTokens: {request.ExcludedToTokens?.Count ?? 0}");
-        // // Console.WriteLine($"WithWrap: {request.WithWrap}");
-    }
 
     private void AddAllAvatarNodes(CapacityGraph capacityGraph, BalanceGraph balanceGraph, TrustGraph trustGraph)
     {
@@ -447,6 +427,13 @@ public class GraphFactory
         return anyVirtualSinkEdgesAdded;
     }
 
+    /// <summary>
+    /// Adds capacity edges “BalanceNode ➜ trusting-avatar” for every avatar that
+    /// accepts the BalanceNode’s token.  This version builds an index so that
+    /// each BalanceNode only visits the *avatars that trust its token*, and runs
+    /// the BalanceNode loop in parallel.  All mutations on shared state are
+    /// funnelled through thread-safe helpers to avoid locking inside the hot loop.
+    /// </summary>
     private void AddTrustBasedCapacityEdges(
         CapacityGraph capacityGraph,
         BalanceGraph balanceGraph,
@@ -454,61 +441,64 @@ public class GraphFactory
         int? virtualSinkAddress,
         ref int skipCapEdgeCase2)
     {
-        foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
+        // Build "token -> avatars that trust it" lookup
+        var tokenToTrustingAvatars = new Dictionary<int, List<int>>();
+
+        foreach (var (avatar, trustedTokens) in accountTrusts)
         {
-            // For each trusting account
-            foreach (var kvp in accountTrusts)
+            foreach (var token in trustedTokens)
             {
-                // Skip if the account doesn't trust this BN's token
-                if (!kvp.Value.Contains(balanceNode.Token))
-                    continue;
-
-                // Skip self-edge
-                if (kvp.Key == balanceNode.Holder)
-                    continue;
-
-                // Skip if it's the virtual sink (already handled above)
-                if (virtualSinkAddress != null && kvp.Key == virtualSinkAddress)
-                    continue;
-
-                // Must exist in capacityGraph
-                if (!capacityGraph.Nodes.ContainsKey(balanceNode.Address)
-                    || !capacityGraph.Nodes.ContainsKey(kvp.Key))
+                if (!tokenToTrustingAvatars.TryGetValue(token, out var list))
                 {
-                    skipCapEdgeCase2++;
-                    continue;
+                    list = new List<int>();
+                    tokenToTrustingAvatars[token] = list;
                 }
 
-                capacityGraph.AddCapacityEdge(
-                    balanceNode.Address,
-                    kvp.Key,
-                    balanceNode.Token,
-                    balanceNode.Amount
-                );
+                list.Add(avatar);
             }
         }
-    }
 
-    private void LogFilteringStatistics(
-        int skipBalanceCase2,
-        int skipBalanceCase2b,
-        int skipBalanceCase3a,
-        int skipBalanceCase3b,
-        int skipCapEdgeCase1,
-        int skipCapEdgeCase2,
-        int skipTrustEdgeSinkTokens,
-        int skipTrustEdgeSinkExcludedTokens)
-    {
-        // // Console.WriteLine($"Skipped balance nodes (case 1): [SOURCE=SINK toTokens skip]");
-        // // Console.WriteLine($"Skipped balance nodes (case 2): {skipBalanceCase2}");
-        // // Console.WriteLine($"Skipped balance nodes (case 2b): {skipBalanceCase2b}");
-        // // Console.WriteLine($"Skipped balance nodes (case 3a): {skipBalanceCase3a}");
-        // // Console.WriteLine($"Skipped balance nodes (case 3b): {skipBalanceCase3b}");
-        // // Console.WriteLine($"Skipped capacity edges (node not found. Case: 1): {skipCapEdgeCase1}");
-        // // Console.WriteLine($"Skipped capacity edges (node not found. Case: 2): {skipCapEdgeCase2}");
-        // // Console.WriteLine($"Skipped trust edges (sink trusts token but not in toTokens): {skipTrustEdgeSinkTokens}");
-        // // Console.WriteLine($"Skipped trust edges (sink trusts token in excludedToTokens): {skipTrustEdgeSinkExcludedTokens}");
-    }
+        // Prepare edge collection – we create edges locally in each thread
+        // and add them to the graph *once* at the end to keep the graph’s
+        // internal dictionaries single-threaded.
+        var edgeBag = new ConcurrentBag<(int From, int To, int Token, long Amount)>();
 
+        // Outer loop over BalanceNodes in parallel.
+        Parallel.ForEach(
+            balanceGraph.BalanceNodes.Values,
+            balanceNode =>
+            {
+                // avatars that trust this BN’s token
+                if (!tokenToTrustingAvatars.TryGetValue(balanceNode.Token, out var avatars))
+                    return;
+
+                foreach (var avatar in avatars)
+                {
+                    // Skip self, virtual sink and any node missing in capacityGraph
+                    if (avatar == balanceNode.Holder ||
+                        (virtualSinkAddress.HasValue && avatar == virtualSinkAddress) ||
+                        !capacityGraph.Nodes.ContainsKey(balanceNode.Address) ||
+                        !capacityGraph.Nodes.ContainsKey(avatar))
+                    {
+                        continue;
+                    }
+
+                    edgeBag.Add((
+                        From: balanceNode.Address,
+                        To: avatar,
+                        Token: balanceNode.Token,
+                        Amount: balanceNode.Amount));
+                }
+            });
+
+        /* ---------------------------------------------------------------
+         * 4. Commit edges to the graph serially – graph internals stay safe.
+         * --------------------------------------------------------------- */
+        foreach (var (from, to, token, amount) in edgeBag)
+        {
+            capacityGraph.AddCapacityEdge(from, to, token, amount);
+        }
+    }
+    
     #endregion
 }
