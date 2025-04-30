@@ -7,5 +7,5 @@ public interface IGraph<TEdge>
     where TEdge : Edge
 {
     IDictionary<int, Node> Nodes { get; }
-    HashSet<TEdge> Edges { get; }
+    List<TEdge> Edges { get; }
 }

@@ -6,7 +6,7 @@ namespace Circles.Pathfinder.Graphs;
 public class BalanceGraph : IGraph<CapacityEdge>
 {
     public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
-    public HashSet<CapacityEdge> Edges { get; } = new();
+    public List<CapacityEdge> Edges { get; } = new();
     public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
     public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
 

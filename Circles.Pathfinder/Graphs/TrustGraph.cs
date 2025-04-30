@@ -7,7 +7,7 @@ public class TrustGraph : IGraph<TrustEdge>
 {
     public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
     public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
-    public HashSet<TrustEdge> Edges { get; } = new();
+    public List<TrustEdge> Edges { get; } = new();
 
     public void AddAvatar(int avatarAddress)
     {

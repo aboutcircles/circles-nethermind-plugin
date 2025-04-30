@@ -9,7 +9,7 @@ public class FlowGraph : IGraph<FlowEdge>
     public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
     public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
     public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
-    public HashSet<FlowEdge> Edges { get; } = new();
+    public List<FlowEdge> Edges { get; } = new();
 
     public FlowGraph(int? nodeCount = null, int? edgeCount = null)
     {
@@ -20,7 +20,7 @@ public class FlowGraph : IGraph<FlowEdge>
 
         if (edgeCount != null)
         {
-            Edges = new HashSet<FlowEdge>(edgeCount.Value);
+            Edges = new List<FlowEdge>(edgeCount.Value);
         }
     }
 

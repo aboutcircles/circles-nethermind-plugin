@@ -8,7 +8,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
     public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
     public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
-    public HashSet<CapacityEdge> Edges { get; } = new();
+    public List<CapacityEdge> Edges { get; } = new();
 
     public int? VirtualSinkAddress { get; set; }
     public int? SourceAddress { get; }

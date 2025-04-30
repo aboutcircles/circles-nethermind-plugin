@@ -333,12 +333,31 @@ public class GraphFactory
         int sourceAddress,
         HashSet<int> toTokensFilter)
     {
-        capacityGraph.Edges.RemoveWhere(edge =>
-            AddressIdPool.IsBalanceNode(edge.From) && capacityGraph.BalanceNodes[edge.From].Holder ==
-                                                   sourceAddress /*from is BalanceNode and source equals balance holder*/
-                                                   && edge.To == sourceAddress /*to equals source*/
-                                                   && toTokensFilter.Contains(edge.Token)
-        );
+        for (int i = capacityGraph.Edges.Count - 1; i >= 0; i--)
+        {
+            var edge = capacityGraph.Edges[i];
+            if (!AddressIdPool.IsBalanceNode(edge.From))
+            {
+                continue;
+            }
+            
+            var holder = capacityGraph.BalanceNodes[edge.From].Holder;
+            var holderSameAsSource = holder == sourceAddress;
+            var toSameAsSource = edge.To == sourceAddress;
+            var tokenInFilter = toTokensFilter.Contains(edge.Token);
+
+            if (holderSameAsSource && toSameAsSource && tokenInFilter)
+            {
+                capacityGraph.Edges.RemoveAt(i);
+            }
+        }
+        
+        // capacityGraph.Edges.RemoveWhere(edge =>
+        //     AddressIdPool.IsBalanceNode(edge.From) && capacityGraph.BalanceNodes[edge.From].Holder ==
+        //                                            sourceAddress /*from is BalanceNode and source equals balance holder*/
+        //                                            && edge.To == sourceAddress /*to equals source*/
+        //                                            && toTokensFilter.Contains(edge.Token)
+        // );
     }
 
     private Dictionary<int, HashSet<int>> BuildAccountTrustDictionary(
