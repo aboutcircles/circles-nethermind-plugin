@@ -5,7 +5,7 @@ namespace Circles.Pathfinder.Edges;
 /// </summary>
 public class TrustEdge : Edge
 {
-    public TrustEdge(string from, string to) : base(from, to)
+    public TrustEdge(int from, int to) : base(from, to)
     {
     }
 }
