@@ -12,15 +12,15 @@ public static class GraphExtensions
     /// </summary>
     public static long ComputeMaxFlowWithPaths(
         this FlowGraph graph,
-        string source,
-        string sink,
+        int source,
+        int sink,
         long targetFlow)
     {
         Stopwatch sw = new();
         sw.Start();
 
         // 3) Map nodes
-        var nodeIndices = new Dictionary<string, int>();
+        var nodeIndices = new Dictionary<int, int>();
         int nodeIndex = 0;
         foreach (var node in graph.Nodes.Values)
         {
@@ -70,11 +70,11 @@ public static class GraphExtensions
         {
             int tail = maxFlowSolver.Tail(i);
             long flow = maxFlowSolver.Flow(i);
-            
+
             // Skip the superSource->source arc
             if (tail == superSourceIndex)
                 continue;
-                
+
             // If any other arc has flow, then we have a real path
             if (flow > 0)
             {
@@ -86,7 +86,7 @@ public static class GraphExtensions
         // If there's no real flow in the network, return 0
         if (!hasRealFlow)
         {
-            Console.WriteLine("No actual flow paths found in the network. Returning max flow = 0.");
+            // Console.WriteLine("No actual flow paths found in the network. Returning max flow = 0.");
             return 0;
         }
 
@@ -104,7 +104,7 @@ public static class GraphExtensions
         }
 
         sw.Stop();
-        Console.WriteLine($"TIMING: GraphExtensions.ComputeMaxFlowWithPaths: {sw.ElapsedMilliseconds}ms");
+        // Console.WriteLine($"TIMING: GraphExtensions.ComputeMaxFlowWithPaths: {sw.ElapsedMilliseconds}ms");
 
         return scaledFlowVal;
     }

@@ -6,12 +6,12 @@ namespace Circles.Pathfinder.Graphs;
 
 public class FlowGraph : IGraph<FlowEdge>
 {
-    public IDictionary<string, Node> Nodes { get; } = new Dictionary<string, Node>();
-    public IDictionary<string, AvatarNode> AvatarNodes { get; } = new Dictionary<string, AvatarNode>();
-    public IDictionary<string, BalanceNode> BalanceNodes { get; } = new Dictionary<string, BalanceNode>();
+    public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
+    public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
+    public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
     public HashSet<FlowEdge> Edges { get; } = new();
 
-    public void AddAvatar(string avatarAddress)
+    public void AddAvatar(int avatarAddress)
     {
         if (!AvatarNodes.ContainsKey(avatarAddress))
         {
@@ -20,9 +20,10 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, long amount, bool isWrapped, bool isStatic)
+    public void AddBalanceNode(int address, int token, long amount, bool isWrapped, bool isStatic)
     {
-        var balanceNode = new BalanceNode(address, token, amount, isWrapped, isStatic);
+        var balanceNodeId = AddressIdPool.BalanceNodeIdOf($"{address}-{token}");
+        var balanceNode = new BalanceNode(balanceNodeId, address, token, amount, isWrapped, isStatic);
         balanceNode.Address = address;
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
@@ -194,7 +195,7 @@ public class FlowGraph : IGraph<FlowEdge>
     /// <summary>
     /// Searches the graph for liquid paths from the source node to the sink node.
     /// </summary>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(string sourceNode, string sinkNode, long minFlowThreshold)
+    public List<List<FlowEdge>> ExtractPathsWithFlow(int sourceNode, int sinkNode, long minFlowThreshold)
     {
         Stopwatch sw = new Stopwatch();
         sw.Start();
@@ -202,7 +203,7 @@ public class FlowGraph : IGraph<FlowEdge>
         var resultPaths = new List<List<FlowEdge>>();
 
         // Build adjacency lists containing only edges with positive flow
-        var adjacency = new Dictionary<string, List<FlowEdge>>();
+        var adjacency = new Dictionary<int, List<FlowEdge>>();
         foreach (var e in Edges)
         {
             if (e.Flow <= 0) continue;
@@ -217,9 +218,9 @@ public class FlowGraph : IGraph<FlowEdge>
         while (true)
         {
             // BFS to find path from source -> sink
-            var queue = new Queue<string>();
-            var visited = new HashSet<string>();
-            var parent = new Dictionary<string, FlowEdge>();
+            var queue = new Queue<int>();
+            var visited = new HashSet<int>();
+            var parent = new Dictionary<int, FlowEdge>();
 
             queue.Enqueue(sourceNode);
             visited.Add(sourceNode);
@@ -258,7 +259,7 @@ public class FlowGraph : IGraph<FlowEdge>
 
             // Reconstruct path by backtracking from sinkNode -> sourceNode
             var pathEdges = new List<FlowEdge>();
-            string node = sinkNode;
+            int node = sinkNode;
             while (node != sourceNode)
             {
                 var e = parent[node];
@@ -298,7 +299,7 @@ public class FlowGraph : IGraph<FlowEdge>
         }
         
         sw.Stop();
-        Console.WriteLine($"TIMING: FlowGraph.ExtractPathsWithFlow took {sw.ElapsedMilliseconds}ms");
+        // Console.WriteLine($"TIMING: FlowGraph.ExtractPathsWithFlow took {sw.ElapsedMilliseconds}ms");
 
         return resultPaths;
     }
@@ -323,7 +324,7 @@ public class FlowGraph : IGraph<FlowEdge>
         
         // Dictionary to store aggregated edges
         // Key is a tuple of (From, To, Token)
-        var aggregatedEdges = new Dictionary<(string From, string To, string Token), FlowEdge>();
+        var aggregatedEdges = new Dictionary<(int From, int To, int Token), FlowEdge>();
         
         // Aggregate edges with the same From, To, and Token
         foreach (var edge in Edges)
@@ -394,12 +395,12 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error adding aggregated edge: {ex.Message}");
+                // Console.WriteLine($"Error adding aggregated edge: {ex.Message}");
             }
         }
         
         sw.Stop();
-        Console.WriteLine($"TIMING: FlowGraph.AggregateIdenticalEdges took {sw.ElapsedMilliseconds}ms");
+        // Console.WriteLine($"TIMING: FlowGraph.AggregateIdenticalEdges took {sw.ElapsedMilliseconds}ms");
         
         return aggregatedGraph;
     }

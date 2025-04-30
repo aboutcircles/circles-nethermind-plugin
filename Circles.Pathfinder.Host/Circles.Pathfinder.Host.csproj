@@ -11,10 +11,16 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj"/>
+        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="OpenTelemetry" Version="1.11.2" />
+      <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2" />
+      <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
+      <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
+      <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
+      <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1" />
       <PackageReference Include="prometheus-net" Version="8.2.1" />
       <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     </ItemGroup>
