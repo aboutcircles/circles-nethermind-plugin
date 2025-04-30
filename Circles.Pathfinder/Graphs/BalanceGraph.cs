@@ -1,4 +1,3 @@
-using System.Numerics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
 
@@ -6,27 +5,25 @@ namespace Circles.Pathfinder.Graphs;
 
 public class BalanceGraph : IGraph<CapacityEdge>
 {
-    public IDictionary<string, Node> Nodes { get; } = new Dictionary<string, Node>();
+    public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
     public HashSet<CapacityEdge> Edges { get; } = new();
-    public IDictionary<string, BalanceNode> BalanceNodes { get; } = new Dictionary<string, BalanceNode>();
-    public IDictionary<string, AvatarNode> AvatarNodes { get; } = new Dictionary<string, AvatarNode>();
+    public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
+    public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
 
-    public void AddAvatar(string avatarAddress)
+    public void AddAvatar(int avatarAddress)
     {
         Nodes.Add(avatarAddress, new AvatarNode(avatarAddress));
     }
 
-    public void AddBalance(string address, string token, long balance, bool isWrapped, bool isStatic)
+    public void AddBalance(int address, int token, long balance, bool isWrapped, bool isStatic)
     {
-        address = address.ToLower();
-        token = token.ToLower();
-
         if (!AvatarNodes.ContainsKey(address))
         {
             AvatarNodes.Add(address, new AvatarNode(address));
         }
 
-        var balanceNode = new BalanceNode(address, token, balance, isWrapped, isStatic);
+        var balanceNodeId = AddressIdPool.BalanceNodeIdOf($"{address}-{token}");
+        var balanceNode = new BalanceNode(balanceNodeId, address, token, balance, isWrapped, isStatic);
         Nodes.Add(balanceNode.Address, balanceNode);
         BalanceNodes.Add(balanceNode.Address, balanceNode);
 

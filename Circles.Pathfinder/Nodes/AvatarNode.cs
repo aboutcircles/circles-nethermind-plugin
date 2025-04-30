@@ -1,3 +1,3 @@
 namespace Circles.Pathfinder.Nodes;
 
-public class AvatarNode(string address) : Node(address);
+public class AvatarNode(int address) : Node(address);
