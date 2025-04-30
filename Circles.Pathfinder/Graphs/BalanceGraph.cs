@@ -12,7 +12,9 @@ public class BalanceGraph : IGraph<CapacityEdge>
 
     public void AddAvatar(int avatarAddress)
     {
-        Nodes.Add(avatarAddress, new AvatarNode(avatarAddress));
+        var avatar = new AvatarNode(avatarAddress);
+        Nodes.Add(avatarAddress, avatar);
+        AvatarNodes.Add(avatarAddress, avatar);
     }
 
     public void AddBalance(int address, int token, long balance, bool isWrapped, bool isStatic)
