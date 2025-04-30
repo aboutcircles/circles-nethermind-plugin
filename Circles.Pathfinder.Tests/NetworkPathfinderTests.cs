@@ -22,35 +22,26 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 public class PathfinderTestCase
 {
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = "";
-    
-    [JsonPropertyName("description")]
-    public string Description { get; set; } = "";
-    
-    [JsonPropertyName("source")]
-    public string Source { get; set; } = "";
-    
-    [JsonPropertyName("sink")]
-    public string Sink { get; set; } = "";
-    
-    [JsonPropertyName("targetFlow")]
-    public string TargetFlow { get; set; } = "";
-    
-    [JsonPropertyName("fromTokens")]
-    public string[] FromTokens { get; set; } = Array.Empty<string>();
-    
-    [JsonPropertyName("toTokens")]
-    public string[] ToTokens { get; set; } = Array.Empty<string>();
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
+
+    [JsonPropertyName("source")] public string Source { get; set; } = "";
+
+    [JsonPropertyName("sink")] public string Sink { get; set; } = "";
+
+    [JsonPropertyName("targetFlow")] public string TargetFlow { get; set; } = "";
+
+    [JsonPropertyName("fromTokens")] public string[] FromTokens { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("toTokens")] public string[] ToTokens { get; set; } = Array.Empty<string>();
 
     [JsonPropertyName("excludedFromTokens")]
     public string[] ExcludedFromTokens { get; set; } = Array.Empty<string>();
-    
-    [JsonPropertyName("excludedToTokens")]
-    public string[] ExcludedToTokens { get; set; } = Array.Empty<string>();
-    
-    [JsonPropertyName("withWrap")]
-    public bool WithWrap { get; set; } = false;
+
+    [JsonPropertyName("excludedToTokens")] public string[] ExcludedToTokens { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("withWrap")] public bool WithWrap { get; set; } = false;
 }
 
 /// <summary>
@@ -63,13 +54,13 @@ public class NetworkPathfinderTests
     private readonly string _pathfinderBaseUrl;
     private HttpClient? _httpClient;
     private readonly JsonSerializerOptions _jsonOptions;
-    
+
     // Graphs for validating trust and balance
     private TrustGraph? _trustGraph;
     private BalanceGraph? _balanceGraph;
     private GraphFactory? _graphFactory;
     private bool _graphsLoaded = false;
-    
+
     // ANSI color escape sequences for console output
     private static class ConsoleColors
     {
@@ -86,7 +77,7 @@ public class NetworkPathfinderTests
     {
         // Set the base URL for your Pathfinder service
         _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8547";
-        
+
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
@@ -98,8 +89,9 @@ public class NetworkPathfinderTests
     public void OneTimeSetUp()
     {
         _httpClient = new HttpClient();
-        Console.WriteLine($"{ConsoleColors.Cyan}Connecting to Pathfinder service at: {_pathfinderBaseUrl}{ConsoleColors.Reset}");
-        
+        Console.WriteLine(
+            $"{ConsoleColors.Cyan}Connecting to Pathfinder service at: {_pathfinderBaseUrl}{ConsoleColors.Reset}");
+
         // Load the graph data
         LoadGraphs();
     }
@@ -110,7 +102,7 @@ public class NetworkPathfinderTests
         // Properly dispose the HttpClient
         _httpClient?.Dispose();
     }
-    
+
     /// <summary>
     /// Loads trust and balance graphs from the database
     /// </summary>
@@ -118,33 +110,36 @@ public class NetworkPathfinderTests
     {
         // Get connection string from environment variable
         string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
-        
+
         if (string.IsNullOrEmpty(connectionString))
         {
-            Console.WriteLine($"{ConsoleColors.Red}Warning: POSTGRES_READONLY_CONNECTION_STRING environment variable is not set.{ConsoleColors.Reset}");
-            Console.WriteLine("Trust and balance validation will be skipped. Set this environment variable to enable validation.");
+            Console.WriteLine(
+                $"{ConsoleColors.Red}Warning: POSTGRES_READONLY_CONNECTION_STRING environment variable is not set.{ConsoleColors.Reset}");
+            Console.WriteLine(
+                "Trust and balance validation will be skipped. Set this environment variable to enable validation.");
             return;
         }
-        
+
         try
         {
             Console.WriteLine($"{ConsoleColors.Cyan}Loading network graphs from database...{ConsoleColors.Reset}");
-            
+
             var loadGraph = new LoadGraph(connectionString);
             _graphFactory = new GraphFactory();
-            
+
             // Load the graphs
             if (_graphFactory != null)
             {
                 Console.WriteLine("Loading trust graph...");
                 _trustGraph = _graphFactory.V2TrustGraph(loadGraph);
-                
+
                 Console.WriteLine("Loading balance graph...");
                 _balanceGraph = _graphFactory.V2BalanceGraph(loadGraph);
-                
+
                 if (_trustGraph != null && _balanceGraph != null)
                 {
-                    Console.WriteLine($"{ConsoleColors.Green}Successfully loaded trust and balance graphs for validation{ConsoleColors.Reset}");
+                    Console.WriteLine(
+                        $"{ConsoleColors.Green}Successfully loaded trust and balance graphs for validation{ConsoleColors.Reset}");
                     Console.WriteLine($"Trust graph: {_trustGraph.Edges.Count} trust relationships");
                     Console.WriteLine($"Balance graph: {_balanceGraph.BalanceNodes.Count} balances");
                     _graphsLoaded = true;
@@ -157,12 +152,13 @@ public class NetworkPathfinderTests
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"{ConsoleColors.Red}Failed to load graphs for validation: {ex.Message}{ConsoleColors.Reset}");
+            Console.WriteLine(
+                $"{ConsoleColors.Red}Failed to load graphs for validation: {ex.Message}{ConsoleColors.Reset}");
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
             Console.WriteLine("Tests will run without trust and balance validation");
         }
     }
-    
+
     /// <summary>
     /// Check if a receiving address trusts the token they are receiving
     /// </summary>
@@ -173,49 +169,20 @@ public class NetworkPathfinderTests
             Console.WriteLine("Trust graph not available for validation");
             return true; // Skip validation if graph not available
         }
-        
+
         // Convert addresses to lowercase for comparison
-        receiver = receiver.ToLower();
-        token = token.ToLower();
-        
+        var receiverId = AddressIdPool.IdOf(receiver);
+        var tokenOd = AddressIdPool.IdOf(token);
+
         // Check if there's a trust edge from receiver to token
         foreach (var edge in _trustGraph.Edges)
         {
-            if (edge.From.ToLower() == receiver && edge.To.ToLower() == token)
+            if (edge.From == receiverId && edge.To == tokenOd)
             {
                 return true;
             }
         }
-        
-        return false;
-    }
-    
-    /// <summary>
-    /// Check if a sending address has sufficient balance for the token they are sending
-    /// </summary>
-    private bool CheckSufficientBalance(string sender, string token, UInt256 requiredAmount)
-    {
-        if (!_graphsLoaded || _balanceGraph == null)
-        {
-            Console.WriteLine("Balance graph not available for validation");
-            return true; // Skip validation if graph not available
-        }
-        
-        // Convert addresses to lowercase for comparison
-        sender = sender.ToLower();
-        token = token.ToLower();
-        
-        // Find the balance node for this sender and token
-        string balanceNodeKey = $"{sender}-{token}";
-        
-        if (_balanceGraph.BalanceNodes.TryGetValue(balanceNodeKey, out var balanceNode))
-        {
-            // Convert the balance to UInt256 for comparison
-            UInt256 availableBalance = (UInt256)balanceNode.Amount;
-            return availableBalance >= requiredAmount;
-        }
-        
-        // No balance found
+
         return false;
     }
 
@@ -224,17 +191,13 @@ public class NetworkPathfinderTests
     /// </summary>
     private class JsonRpcRequest
     {
-        [JsonPropertyName("jsonrpc")]
-        public string JsonRpc { get; set; } = "2.0";
-        
-        [JsonPropertyName("id")]
-        public int Id { get; set; } = 0;
-        
-        [JsonPropertyName("method")]
-        public string Method { get; set; } = "";
-        
-        [JsonPropertyName("params")]
-        public object[] Params { get; set; } = Array.Empty<object>();
+        [JsonPropertyName("jsonrpc")] public string JsonRpc { get; set; } = "2.0";
+
+        [JsonPropertyName("id")] public int Id { get; set; } = 0;
+
+        [JsonPropertyName("method")] public string Method { get; set; } = "";
+
+        [JsonPropertyName("params")] public object[] Params { get; set; } = Array.Empty<object>();
     }
 
     /// <summary>
@@ -242,17 +205,13 @@ public class NetworkPathfinderTests
     /// </summary>
     private class JsonRpcResponse<T>
     {
-        [JsonPropertyName("jsonrpc")]
-        public string JsonRpc { get; set; } = "2.0";
-        
-        [JsonPropertyName("id")]
-        public int Id { get; set; }
-        
-        [JsonPropertyName("result")]
-        public T? Result { get; set; } = default;
-        
-        [JsonPropertyName("error")]
-        public JsonRpcError? Error { get; set; }
+        [JsonPropertyName("jsonrpc")] public string JsonRpc { get; set; } = "2.0";
+
+        [JsonPropertyName("id")] public int Id { get; set; }
+
+        [JsonPropertyName("result")] public T? Result { get; set; } = default;
+
+        [JsonPropertyName("error")] public JsonRpcError? Error { get; set; }
     }
 
     /// <summary>
@@ -260,14 +219,11 @@ public class NetworkPathfinderTests
     /// </summary>
     private class JsonRpcError
     {
-        [JsonPropertyName("code")]
-        public int Code { get; set; }
-        
-        [JsonPropertyName("message")]
-        public string Message { get; set; } = "";
-        
-        [JsonPropertyName("data")]
-        public object? Data { get; set; }
+        [JsonPropertyName("code")] public int Code { get; set; }
+
+        [JsonPropertyName("message")] public string Message { get; set; } = "";
+
+        [JsonPropertyName("data")] public object? Data { get; set; }
     }
 
     /// <summary>
@@ -280,6 +236,7 @@ public class NetworkPathfinderTests
         {
             total += UInt256.Parse(transfer.Value);
         }
+
         return total;
     }
 
@@ -295,6 +252,7 @@ public class NetworkPathfinderTests
                 return true;
             }
         }
+
         return false;
     }
 
@@ -309,27 +267,27 @@ public class NetworkPathfinderTests
             return false; // Skip validation if graph not available
         }
         
-        // Convert addresses to lowercase for comparison
-        accountAddress = accountAddress.ToLower();
-        tokenAddress = tokenAddress.ToLower();
+        var accountId = AddressIdPool.IdOf(accountAddress);
+        var tokenId = AddressIdPool.IdOf(tokenAddress);
         
         // Find the balance node for this account and token
-        string balanceNodeKey = $"{accountAddress}-{tokenAddress}";
-        
-        if (_balanceGraph.BalanceNodes.TryGetValue(balanceNodeKey, out var balanceNode))
+        string balanceNodeKey = $"{accountId}-{tokenId}";
+        var balanceNodeId = AddressIdPool.BalanceNodeIdOf(balanceNodeKey);
+
+        if (_balanceGraph.BalanceNodes.TryGetValue(balanceNodeId, out var balanceNode))
         {
             return balanceNode.IsWrapped;
         }
-        
+
         // If no balance node found, check any balance node with this token
         foreach (var node in _balanceGraph.BalanceNodes.Values)
         {
-            if (node.Token.Equals(tokenAddress, StringComparison.OrdinalIgnoreCase))
+            if (node.Token == tokenId)
             {
                 return node.IsWrapped;
             }
         }
-        
+
         // No information found
         return false;
     }
@@ -337,16 +295,17 @@ public class NetworkPathfinderTests
     /// <summary>
     /// Checks if source is sending tokens that are in the toTokens list when source=sink
     /// </summary>
-    private bool HasInvalidTokensInSelfTransfer(List<TransferPathStep> transfers, string source, string sink, string[]? toTokens)
+    private bool HasInvalidTokensInSelfTransfer(List<TransferPathStep> transfers, string source, string sink,
+        string[]? toTokens)
     {
         // Only perform this check when source equals sink and toTokens is specified
         if (!source.Equals(sink, StringComparison.OrdinalIgnoreCase) || toTokens == null || toTokens.Length == 0)
             return false;
-            
+
         // Normalize for case-insensitive comparison
         source = source.ToLower();
         var toTokensLower = toTokens.Select(t => t.ToLower()).ToHashSet();
-        
+
         // Check if source is sending any token that's in the toTokens list
         foreach (var transfer in transfers)
         {
@@ -356,13 +315,13 @@ public class NetworkPathfinderTests
                 if (toTokensLower.Contains(transfer.TokenOwner.ToLower()))
                 {
                     Console.WriteLine($"{ConsoleColors.Red}INVALID SELF-TRANSFER:{ConsoleColors.Reset} " +
-                                    $"Source {transfer.From} is sending token {transfer.TokenOwner} " +
-                                    $"which is in the toTokens list. This would create a circular flow.");
+                                      $"Source {transfer.From} is sending token {transfer.TokenOwner} " +
+                                      $"which is in the toTokens list. This would create a circular flow.");
                     return true;
                 }
             }
         }
-        
+
         return false;
     }
 
@@ -370,11 +329,11 @@ public class NetworkPathfinderTests
     /// Sends a JSON-RPC request to the pathfinder service and validates the response
     /// </summary>
     private async Task ValidatePathfinderResponse(
-        string jsonRequest, 
-        string source, 
-        string sink, 
-        string[]? fromTokens = null, 
-        string[]? toTokens = null, 
+        string jsonRequest,
+        string source,
+        string sink,
+        string[]? fromTokens = null,
+        string[]? toTokens = null,
         string[]? excludedFromTokens = null,
         string[]? excludedToTokens = null,
         bool withWrap = false
@@ -384,43 +343,46 @@ public class NetworkPathfinderTests
         {
             throw new InvalidOperationException("HTTP client is not initialized");
         }
-        
+
         var content = new StringContent(jsonRequest, Encoding.UTF8, "application/json");
-        
+
         bool validationPassed = true;
 
         try
         {
             var response = await _httpClient.PostAsync(_pathfinderBaseUrl, content);
             response.EnsureSuccessStatusCode();
-            
+
             var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonResponse = JsonSerializer.Deserialize<JsonRpcResponse<MaxFlowResponse>>(responseContent, _jsonOptions);
-            
+            var jsonResponse =
+                JsonSerializer.Deserialize<JsonRpcResponse<MaxFlowResponse>>(responseContent, _jsonOptions);
+
             if (jsonResponse?.Error != null)
             {
-                Console.WriteLine($"{ConsoleColors.Red}JSON-RPC Error: {jsonResponse.Error.Message}{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"{ConsoleColors.Red}JSON-RPC Error: {jsonResponse.Error.Message}{ConsoleColors.Reset}");
                 throw new Exception($"JSON-RPC error: {jsonResponse.Error.Message}");
             }
-            
+
             var result = jsonResponse?.Result ?? throw new Exception("No result in response");
-            
+
             // Print the results
             Console.WriteLine($"\n{ConsoleColors.Cyan}RESULTS:{ConsoleColors.Reset}");
             Console.WriteLine($"Max flow: {result.MaxFlow}");
             Console.WriteLine($"Transfers: {result.Transfers.Count}");
-            
-           // foreach (var transfer in result.Transfers)
-           // {
-           //     Console.WriteLine($"  {ConsoleColors.Blue}{transfer.From} -> {transfer.To}{ConsoleColors.Reset} via {ConsoleColors.Cyan}{transfer.TokenOwner}{ConsoleColors.Reset} for {transfer.Value}");
-           // }
-            
+
+            // foreach (var transfer in result.Transfers)
+            // {
+            //     Console.WriteLine($"  {ConsoleColors.Blue}{transfer.From} -> {transfer.To}{ConsoleColors.Reset} via {ConsoleColors.Cyan}{transfer.TokenOwner}{ConsoleColors.Reset} for {transfer.Value}");
+            // }
+
             // Check if there's no flow (zero max flow)
             if (result.MaxFlow == "0" || result.Transfers.Count == 0)
             {
-                Console.WriteLine($"\n{ConsoleColors.Yellow}NO PATH FOUND:{ConsoleColors.Reset} No valid path exists between source and sink with the given constraints.");
+                Console.WriteLine(
+                    $"\n{ConsoleColors.Yellow}NO PATH FOUND:{ConsoleColors.Reset} No valid path exists between source and sink with the given constraints.");
                 // This is now considered a valid case, not a failure
-              //  return;
+                //  return;
                 // FLOW ZERO CONSISTENCY CHECK
                 Console.WriteLine($"\n{ConsoleColors.Magenta}FLOW ZERO CONSISTENCY CHECK:{ConsoleColors.Reset}");
                 bool flowZeroConsistencyPassed = true;
@@ -428,18 +390,21 @@ public class NetworkPathfinderTests
                 // Consistency check: if there are no transfers, maxFlow must be zero
                 if (result.Transfers.Count == 0 && result.MaxFlow != "0")
                 {
-                    Console.WriteLine($"{ConsoleColors.Red}INCONSISTENT STATE:{ConsoleColors.Reset} No transfers found but MaxFlow is not zero ({result.MaxFlow})");
+                    Console.WriteLine(
+                        $"{ConsoleColors.Red}INCONSISTENT STATE:{ConsoleColors.Reset} No transfers found but MaxFlow is not zero ({result.MaxFlow})");
                     flowZeroConsistencyPassed = false;
                 }
 
                 // Consistency check: if maxFlow is zero, there should be no transfers
                 if (result.MaxFlow == "0" && result.Transfers.Count > 0)
                 {
-                    Console.WriteLine($"{ConsoleColors.Red}INCONSISTENT STATE:{ConsoleColors.Reset} MaxFlow is zero but {result.Transfers.Count} transfers were found");
+                    Console.WriteLine(
+                        $"{ConsoleColors.Red}INCONSISTENT STATE:{ConsoleColors.Reset} MaxFlow is zero but {result.Transfers.Count} transfers were found");
                     flowZeroConsistencyPassed = false;
                 }
 
-                Console.WriteLine($"Check: {(flowZeroConsistencyPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"Check: {(flowZeroConsistencyPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!flowZeroConsistencyPassed)
                 {
                     validationPassed = false;
@@ -452,13 +417,14 @@ public class NetworkPathfinderTests
                 }
                 else
                 {
-                    Console.WriteLine($"\n{ConsoleColors.Red}Test failed due to one or more validation errors!{ConsoleColors.Reset}");
+                    Console.WriteLine(
+                        $"\n{ConsoleColors.Red}Test failed due to one or more validation errors!{ConsoleColors.Reset}");
                 }
 
                 Assert.That(validationPassed, Is.True, "One or more validation checks failed.");
                 return;
             }
-            
+
             // Check for self-loops
             Console.WriteLine($"\n{ConsoleColors.Magenta}SELF-LOOP CHECK{ConsoleColors.Reset}");
 
@@ -467,17 +433,20 @@ public class NetworkPathfinderTests
 
             // For source=sink cases, check if source is sending tokens in the toTokens list
             bool hasInvalidSelfTransfers = HasInvalidTokensInSelfTransfer(
-                result.Transfers, 
-                source, 
-                sink, 
+                result.Transfers,
+                source,
+                sink,
                 toTokens
             );
 
             bool selfLoopCheckPassed = !hasDirectSelfLoops && !hasInvalidSelfTransfers;
 
-            Console.WriteLine($"Direct self-loops: {(hasDirectSelfLoops ? ConsoleColors.Red + "DETECTED" : ConsoleColors.Green + "NONE")}{ConsoleColors.Reset}");
-            Console.WriteLine($"Invalid closed-paths: {(hasInvalidSelfTransfers ? ConsoleColors.Red + "DETECTED" : ConsoleColors.Green + "NONE")}{ConsoleColors.Reset}");
-            Console.WriteLine($"Check: {(selfLoopCheckPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+            Console.WriteLine(
+                $"Direct self-loops: {(hasDirectSelfLoops ? ConsoleColors.Red + "DETECTED" : ConsoleColors.Green + "NONE")}{ConsoleColors.Reset}");
+            Console.WriteLine(
+                $"Invalid closed-paths: {(hasInvalidSelfTransfers ? ConsoleColors.Red + "DETECTED" : ConsoleColors.Green + "NONE")}{ConsoleColors.Reset}");
+            Console.WriteLine(
+                $"Check: {(selfLoopCheckPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
 
             if (!selfLoopCheckPassed)
             {
@@ -488,31 +457,32 @@ public class NetworkPathfinderTests
             // Normalize addresses to lowercase for comparison
             source = source.ToLower();
             sink = sink.ToLower();
-            
+
             // FLOW CONSERVATION CHECKS
             var transfers = result.Transfers;
             UInt256 totalOutflowFromSource = CalculateTotalFlow(transfers, t => t.From.ToLower() == source);
             UInt256 totalInflowToSink = CalculateTotalFlow(transfers, t => t.To.ToLower() == sink);
             UInt256 maxFlow = UInt256.Parse(result.MaxFlow);
-            
+
             Console.WriteLine($"\n{ConsoleColors.Magenta}FLOW VALIDATION{ConsoleColors.Reset}");
             Console.WriteLine($"Total outflow from source: {totalOutflowFromSource}");
             Console.WriteLine($"Total inflow to sink: {totalInflowToSink}");
             Console.WriteLine($"Max flow: {maxFlow}");
 
-            bool flowCheckPassed = 
-            totalOutflowFromSource == maxFlow && 
-            totalInflowToSink   == maxFlow;
-            Console.WriteLine($"Check: {(flowCheckPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+            bool flowCheckPassed =
+                totalOutflowFromSource == maxFlow &&
+                totalInflowToSink == maxFlow;
+            Console.WriteLine(
+                $"Check: {(flowCheckPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
             if (!flowCheckPassed)
             {
                 validationPassed = false;
             }
 
             // Verify flow conservation
-          //  Assert.That(totalOutflowFromSource, Is.EqualTo(maxFlow), "Total outflow from source doesn't match the max flow");
-          //  Assert.That(totalInflowToSink, Is.EqualTo(maxFlow), "Total inflow to sink doesn't match the max flow");
-            
+            //  Assert.That(totalOutflowFromSource, Is.EqualTo(maxFlow), "Total outflow from source doesn't match the max flow");
+            //  Assert.That(totalInflowToSink, Is.EqualTo(maxFlow), "Total inflow to sink doesn't match the max flow");
+
             // Check intermediate nodes for flow conservation
             var intermediateNodes = transfers
                 .Select(t => t.From.ToLower())
@@ -520,28 +490,31 @@ public class NetworkPathfinderTests
                 .Distinct()
                 .Where(addr => addr != source && addr != sink)
                 .ToList();
-                
+
             Console.WriteLine($"\n{ConsoleColors.Magenta}INTERMEDIATE NODE FLOW VALIDATION{ConsoleColors.Reset}");
             bool allIntermediateNodesValid = true;
-            
+
             foreach (var node in intermediateNodes)
             {
                 var outflow = CalculateTotalFlow(transfers, t => t.From.ToLower() == node);
                 var inflow = CalculateTotalFlow(transfers, t => t.To.ToLower() == node);
-                
+
                 bool nodeFlowValid = inflow == outflow;
-                if (!nodeFlowValid) {
-                    Console.WriteLine($"{ConsoleColors.Red}Intermediate node {node} has unbalanced flow:{ConsoleColors.Reset} inflow={inflow}, outflow={outflow}");
+                if (!nodeFlowValid)
+                {
+                    Console.WriteLine(
+                        $"{ConsoleColors.Red}Intermediate node {node} has unbalanced flow:{ConsoleColors.Reset} inflow={inflow}, outflow={outflow}");
                     allIntermediateNodesValid = false;
                 }
-                
-              //  Console.WriteLine($"Node {ConsoleColors.Blue}{node}{ConsoleColors.Reset}: Inflow = {inflow}, Outflow = {outflow} - {(nodeFlowValid ? ConsoleColors.Green + "VALID" : ConsoleColors.Red + "INVALID")}{ConsoleColors.Reset}");
-                
-              //  Assert.That(inflow, Is.EqualTo(outflow),
-              //      $"Intermediate node {node} has unbalanced flow: inflow={inflow}, outflow={outflow}");
+
+                //  Console.WriteLine($"Node {ConsoleColors.Blue}{node}{ConsoleColors.Reset}: Inflow = {inflow}, Outflow = {outflow} - {(nodeFlowValid ? ConsoleColors.Green + "VALID" : ConsoleColors.Red + "INVALID")}{ConsoleColors.Reset}");
+
+                //  Assert.That(inflow, Is.EqualTo(outflow),
+                //      $"Intermediate node {node} has unbalanced flow: inflow={inflow}, outflow={outflow}");
             }
-            
-            Console.WriteLine($"Check: {(allIntermediateNodesValid ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+            Console.WriteLine(
+                $"Check: {(allIntermediateNodesValid ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
             if (!allIntermediateNodesValid)
             {
                 validationPassed = false;
@@ -552,102 +525,107 @@ public class NetworkPathfinderTests
             {
                 var sourceTransfers = transfers.Where(t => t.From.ToLower() == source).ToList();
                 var tokensUsedFromSource = sourceTransfers.Select(t => t.TokenOwner.ToLower()).Distinct().ToList();
-                
+
                 Console.WriteLine($"\n{ConsoleColors.Magenta}FROM TOKENS FILTER CHECK{ConsoleColors.Reset}");
-               // Console.WriteLine($"Specified tokens: {string.Join(", ", fromTokens.Select(t => t.ToLower()))}");
-               // Console.WriteLine($"Used tokens: {string.Join(", ", tokensUsedFromSource)}");
-                
+                // Console.WriteLine($"Specified tokens: {string.Join(", ", fromTokens.Select(t => t.ToLower()))}");
+                // Console.WriteLine($"Used tokens: {string.Join(", ", tokensUsedFromSource)}");
+
                 // Check if all used tokens were in the FromTokens list
                 var fromTokensLower = fromTokens.Select(t => t.ToLower()).ToHashSet();
                 bool allValidFromTokens = tokensUsedFromSource.All(token => fromTokensLower.Contains(token));
-                
-                Console.WriteLine($"Check: {(allValidFromTokens ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+                Console.WriteLine(
+                    $"Check: {(allValidFromTokens ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!allValidFromTokens)
                 {
                     validationPassed = false;
                 }
-               // Assert.That(allValidFromTokens, Is.True, "Transfers from source used tokens that weren't in the FromTokens list");
+                // Assert.That(allValidFromTokens, Is.True, "Transfers from source used tokens that weren't in the FromTokens list");
             }
-            
+
             if (toTokens != null && toTokens.Length > 0)
             {
                 var sinkTransfers = transfers.Where(t => t.To.ToLower() == sink).ToList();
                 var tokensUsedToSink = sinkTransfers.Select(t => t.TokenOwner.ToLower()).Distinct().ToList();
-                
+
                 Console.WriteLine($"\n{ConsoleColors.Magenta}TO TOKENS FILTER CHECK{ConsoleColors.Reset}");
-               // Console.WriteLine($"Specified tokens: {string.Join(", ", toTokens.Select(t => t.ToLower()))}");
-               // Console.WriteLine($"Used tokens: {string.Join(", ", tokensUsedToSink)}");
-                
+                // Console.WriteLine($"Specified tokens: {string.Join(", ", toTokens.Select(t => t.ToLower()))}");
+                // Console.WriteLine($"Used tokens: {string.Join(", ", tokensUsedToSink)}");
+
                 // Check if all used tokens were in the ToTokens list
                 var toTokensLower = toTokens.Select(t => t.ToLower()).ToHashSet();
                 bool allValidToTokens = tokensUsedToSink.All(token => toTokensLower.Contains(token));
-                Console.WriteLine($"Check: {(allValidToTokens ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"Check: {(allValidToTokens ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!allValidToTokens)
                 {
                     validationPassed = false;
                 }
-               // Assert.That(allValidToTokens, Is.True, "Transfers to sink used tokens that weren't in the ToTokens list");
+                // Assert.That(allValidToTokens, Is.True, "Transfers to sink used tokens that weren't in the ToTokens list");
             }
-            
+
             // TRUST RELATIONSHIP VALIDATION
             if (_graphsLoaded && _trustGraph != null)
             {
                 Console.WriteLine($"\n{ConsoleColors.Magenta}TRUST RELATIONSHIP VALIDATION:{ConsoleColors.Reset}");
                 bool allTrustRelationshipsValid = true;
-                
+
                 foreach (var transfer in transfers)
                 {
                     // Skip self-transfers for same address
                     if (transfer.From.Equals(transfer.To, StringComparison.OrdinalIgnoreCase))
                         continue;
-                        
+
                     // Every receiving address should trust the token they're receiving
                     bool trustValid = CheckTrustRelationship(transfer.To, transfer.TokenOwner);
-                    
+
                     if (!trustValid)
                     {
                         allTrustRelationshipsValid = false;
-                        Console.WriteLine($"{ConsoleColors.Red}INVALID TRUST:{ConsoleColors.Reset} {transfer.To} does not trust token {transfer.TokenOwner}");
+                        Console.WriteLine(
+                            $"{ConsoleColors.Red}INVALID TRUST:{ConsoleColors.Reset} {transfer.To} does not trust token {transfer.TokenOwner}");
                     }
-                //    else
-                //    {
-                //        Console.WriteLine($"{ConsoleColors.Green}VALID TRUST:{ConsoleColors.Reset} {transfer.To} trusts token {transfer.TokenOwner}");
-                //    }
+                    //    else
+                    //    {
+                    //        Console.WriteLine($"{ConsoleColors.Green}VALID TRUST:{ConsoleColors.Reset} {transfer.To} trusts token {transfer.TokenOwner}");
+                    //    }
                 }
-                
-                Console.WriteLine($"Check: {(allTrustRelationshipsValid ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+                Console.WriteLine(
+                    $"Check: {(allTrustRelationshipsValid ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!allTrustRelationshipsValid)
                 {
                     validationPassed = false;
                 }
-               // Assert.That(allTrustRelationshipsValid, Is.True, "Some receivers don't trust the tokens they're receiving");
+                // Assert.That(allTrustRelationshipsValid, Is.True, "Some receivers don't trust the tokens they're receiving");
             }
             else
             {
-                Console.WriteLine($"\n{ConsoleColors.Red}Trust validation skipped - graphs not loaded{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"\n{ConsoleColors.Red}Trust validation skipped - graphs not loaded{ConsoleColors.Reset}");
             }
-            
+
             // BALANCE VALIDATION
             if (_graphsLoaded && _balanceGraph != null)
             {
                 Console.WriteLine($"\n{ConsoleColors.Magenta}BALANCE VALIDATION:{ConsoleColors.Reset}");
                 bool allBalancesValid = true;
-                
+
                 // Calculate total outflow by token for each sender
                 var senderTokenOutflows = new Dictionary<string, Dictionary<string, UInt256>>();
-                
+
                 foreach (var transfer in transfers)
                 {
                     string sender = transfer.From.ToLower();
                     string token = transfer.TokenOwner.ToLower();
                     UInt256 value = UInt256.Parse(transfer.Value);
-                    
+
                     if (!senderTokenOutflows.TryGetValue(sender, out var outflows))
                     {
                         outflows = new Dictionary<string, UInt256>();
                         senderTokenOutflows[sender] = outflows;
                     }
-                    
+
                     if (outflows.TryGetValue(token, out var currentOutflow))
                     {
                         outflows[token] = currentOutflow + value;
@@ -657,58 +635,64 @@ public class NetworkPathfinderTests
                         outflows[token] = value;
                     }
                 }
-                
+
                 // Check each sender has sufficient balance for all tokens they're sending
                 foreach (var senderEntry in senderTokenOutflows)
                 {
                     string sender = senderEntry.Key;
-                    
+                    int senderId = AddressIdPool.IdOf(senderEntry.Key);
+
                     foreach (var tokenEntry in senderEntry.Value)
                     {
                         string token = tokenEntry.Key;
+                        int tokenId = AddressIdPool.IdOf(token);
                         UInt256 requiredAmount = tokenEntry.Value;
-                        
+
                         // Find the balance in the graph
-                        string balanceNodeKey = $"{sender}-{token}";
+                        string balanceNodeKey = $"{senderId}-{tokenId}";
+                        var balanceNodeId = AddressIdPool.BalanceNodeIdOf(balanceNodeKey);
                         UInt256 availableBalance = UInt256.Zero;
-                        
-                        if (_balanceGraph.BalanceNodes.TryGetValue(balanceNodeKey, out var balanceNode))
+
+                        if (_balanceGraph.BalanceNodes.TryGetValue(balanceNodeId, out var balanceNode))
                         {
                             availableBalance = ConversionUtils.BlowUpToUInt256(balanceNode.Amount);
                         }
-                        
+
                         bool hasBalance = availableBalance >= requiredAmount;
-                        
+
                         if (!hasBalance)
                         {
                             allBalancesValid = false;
-                            Console.WriteLine($"{ConsoleColors.Red}INSUFFICIENT BALANCE:{ConsoleColors.Reset} {sender} has {availableBalance} of token {token} but requires {requiredAmount}");
+                            Console.WriteLine(
+                                $"{ConsoleColors.Red}INSUFFICIENT BALANCE:{ConsoleColors.Reset} {sender} has {availableBalance} of token {token} but requires {requiredAmount}");
                         }
-                     //   else
-                     //   {
-                     //       Console.WriteLine($"{ConsoleColors.Green}SUFFICIENT BALANCE:{ConsoleColors.Reset} {sender} has {availableBalance} of token {token} for required {requiredAmount}");
-                     //   }
+                        //   else
+                        //   {
+                        //       Console.WriteLine($"{ConsoleColors.Green}SUFFICIENT BALANCE:{ConsoleColors.Reset} {sender} has {availableBalance} of token {token} for required {requiredAmount}");
+                        //   }
                     }
                 }
-                
-                Console.WriteLine($"Check: {(allBalancesValid ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+                Console.WriteLine(
+                    $"Check: {(allBalancesValid ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!allBalancesValid)
                 {
                     validationPassed = false;
                 }
-               // Assert.That(allBalancesValid, Is.True, "Some senders don't have sufficient balance for their transfers");
+                // Assert.That(allBalancesValid, Is.True, "Some senders don't have sufficient balance for their transfers");
             }
             else
             {
-                Console.WriteLine($"\n{ConsoleColors.Red}Balance validation skipped - graphs not loaded{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"\n{ConsoleColors.Red}Balance validation skipped - graphs not loaded{ConsoleColors.Reset}");
             }
-            
+
             // WRAPPED TOKEN VALIDATION
             if (_graphsLoaded && _balanceGraph != null)
             {
                 Console.WriteLine($"\n{ConsoleColors.Magenta}WRAPPED TOKEN VALIDATION:{ConsoleColors.Reset}");
                 bool wrappedTokenCheckPassed = true;
-                
+
                 // For withWrap=false, no transfers should use wrapped tokens
                 if (!withWrap)
                 {
@@ -716,13 +700,13 @@ public class NetworkPathfinderTests
                     {
                         // Check if token is wrapped
                         bool isWrappedToken = IsWrappedToken(transfer.From, transfer.TokenOwner);
-                        
+
                         if (isWrappedToken)
                         {
                             wrappedTokenCheckPassed = false;
                             Console.WriteLine($"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
-                                            $"Transfer from {transfer.From} to {transfer.To} uses wrapped token {transfer.TokenOwner} " +
-                                            $"but withWrap=false");
+                                              $"Transfer from {transfer.From} to {transfer.To} uses wrapped token {transfer.TokenOwner} " +
+                                              $"but withWrap=false");
                         }
                     }
                 }
@@ -733,29 +717,32 @@ public class NetworkPathfinderTests
                     {
                         // Check if token is wrapped
                         bool isWrappedToken = IsWrappedToken(transfer.From, transfer.TokenOwner);
-                        
+
                         if (isWrappedToken)
                         {
                             // Only source can use wrapped tokens
                             if (!transfer.From.Equals(source, StringComparison.OrdinalIgnoreCase))
                             {
                                 wrappedTokenCheckPassed = false;
-                                Console.WriteLine($"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
-                                                $"Non-source account {transfer.From} is using wrapped token {transfer.TokenOwner}");
+                                Console.WriteLine(
+                                    $"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
+                                    $"Non-source account {transfer.From} is using wrapped token {transfer.TokenOwner}");
                             }
-                            
+
                             // Wrapped tokens cannot go to sink
                             if (transfer.To.Equals(sink, StringComparison.OrdinalIgnoreCase))
                             {
                                 wrappedTokenCheckPassed = false;
-                                Console.WriteLine($"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
-                                                $"Wrapped token {transfer.TokenOwner} is being sent to sink {transfer.To}");
+                                Console.WriteLine(
+                                    $"{ConsoleColors.Red}INVALID WRAPPED TOKEN USAGE:{ConsoleColors.Reset} " +
+                                    $"Wrapped token {transfer.TokenOwner} is being sent to sink {transfer.To}");
                             }
                         }
                     }
                 }
-                
-                Console.WriteLine($"Check: {(wrappedTokenCheckPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+                Console.WriteLine(
+                    $"Check: {(wrappedTokenCheckPassed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!wrappedTokenCheckPassed)
                 {
                     validationPassed = false;
@@ -763,7 +750,8 @@ public class NetworkPathfinderTests
             }
             else
             {
-                Console.WriteLine($"\n{ConsoleColors.Red}Wrapped token validation skipped - graphs not loaded{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"\n{ConsoleColors.Red}Wrapped token validation skipped - graphs not loaded{ConsoleColors.Reset}");
             }
 
 
@@ -772,66 +760,69 @@ public class NetworkPathfinderTests
             {
                 var sourceTransfers = transfers.Where(t => t.From.ToLower() == source.ToLower()).ToList();
                 var tokensUsedFromSource = sourceTransfers.Select(t => t.TokenOwner.ToLower()).Distinct().ToList();
-                
+
                 Console.WriteLine($"\n{ConsoleColors.Magenta}EXCLUDED FROM TOKENS FILTER CHECK{ConsoleColors.Reset}");
-                
+
                 // Check if any excluded tokens were used from source
                 var excludedFromTokensLower = excludedFromTokens.Select(t => t.ToLower()).ToHashSet();
-                bool noExcludedFromTokensUsed = tokensUsedFromSource.All(token => !excludedFromTokensLower.Contains(token));
-                
+                bool noExcludedFromTokensUsed =
+                    tokensUsedFromSource.All(token => !excludedFromTokensLower.Contains(token));
+
                 if (!noExcludedFromTokensUsed)
                 {
                     var usedExcludedTokens = tokensUsedFromSource
                         .Where(token => excludedFromTokensLower.Contains(token))
                         .ToList();
-                        
+
                     foreach (var token in usedExcludedTokens)
                     {
                         Console.WriteLine($"{ConsoleColors.Red}INVALID TOKEN USAGE:{ConsoleColors.Reset} " +
-                                        $"Source {source} is using token {token} which is in the excludedFromTokens list.");
+                                          $"Source {source} is using token {token} which is in the excludedFromTokens list.");
                     }
                 }
-                
-                Console.WriteLine($"Check: {(noExcludedFromTokensUsed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+                Console.WriteLine(
+                    $"Check: {(noExcludedFromTokensUsed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!noExcludedFromTokensUsed)
                 {
                     validationPassed = false;
                 }
             }
-            
+
             // EXCLUDED TO TOKENS FILTER CHECK
             if (excludedToTokens != null && excludedToTokens.Length > 0)
             {
                 var sinkTransfers = transfers.Where(t => t.To.ToLower() == sink.ToLower()).ToList();
                 var tokensUsedToSink = sinkTransfers.Select(t => t.TokenOwner.ToLower()).Distinct().ToList();
-                
+
                 Console.WriteLine($"\n{ConsoleColors.Magenta}EXCLUDED TO TOKENS FILTER CHECK{ConsoleColors.Reset}");
-                
+
                 // Check if any excluded tokens were used to sink
                 var excludedToTokensLower = excludedToTokens.Select(t => t.ToLower()).ToHashSet();
                 bool noExcludedToTokensUsed = tokensUsedToSink.All(token => !excludedToTokensLower.Contains(token));
-                
+
                 if (!noExcludedToTokensUsed)
                 {
                     var usedExcludedTokens = tokensUsedToSink
                         .Where(token => excludedToTokensLower.Contains(token))
                         .ToList();
-                        
+
                     foreach (var token in usedExcludedTokens)
                     {
                         Console.WriteLine($"{ConsoleColors.Red}INVALID TOKEN USAGE:{ConsoleColors.Reset} " +
-                                        $"Sink {sink} is receiving token {token} which is in the excludedToTokens list.");
+                                          $"Sink {sink} is receiving token {token} which is in the excludedToTokens list.");
                     }
                 }
-                
-                Console.WriteLine($"Check: {(noExcludedToTokensUsed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
+
+                Console.WriteLine(
+                    $"Check: {(noExcludedToTokensUsed ? ConsoleColors.Green + "PASSED" : ConsoleColors.Red + "FAILED")}{ConsoleColors.Reset}");
                 if (!noExcludedToTokensUsed)
                 {
                     validationPassed = false;
                 }
             }
 
-            
+
             // Finally, assert if the entire validation succeeded.
             if (validationPassed)
             {
@@ -839,14 +830,16 @@ public class NetworkPathfinderTests
             }
             else
             {
-                Console.WriteLine($"\n{ConsoleColors.Red}Test failed due to one or more validation errors!{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"\n{ConsoleColors.Red}Test failed due to one or more validation errors!{ConsoleColors.Reset}");
             }
 
             Assert.That(validationPassed, Is.True, "One or more validation checks failed.");
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
         {
-            Console.WriteLine($"\n{ConsoleColors.Yellow}SERVICE UNAVAILABLE:{ConsoleColors.Reset} The pathfinder service is currently unavailable or overloaded.");
+            Console.WriteLine(
+                $"\n{ConsoleColors.Yellow}SERVICE UNAVAILABLE:{ConsoleColors.Reset} The pathfinder service is currently unavailable or overloaded.");
             Assert.Inconclusive("Pathfinder service is unavailable or overloaded");
         }
         catch (HttpRequestException ex)
@@ -865,8 +858,8 @@ public class NetworkPathfinderTests
         {
             // Create a TestCaseData object
             var nunitTestCase = new TestCaseData(
-                testCase.Source, 
-                testCase.Sink, 
+                testCase.Source,
+                testCase.Sink,
                 testCase.TargetFlow,
                 testCase.FromTokens.Length > 0 ? testCase.FromTokens : null,
                 testCase.ToTokens.Length > 0 ? testCase.ToTokens : null,
@@ -874,11 +867,11 @@ public class NetworkPathfinderTests
                 testCase.ExcludedToTokens.Length > 0 ? testCase.ExcludedToTokens : null,
                 testCase.WithWrap
             );
-            
+
             // Set the test name and description
             nunitTestCase = nunitTestCase.SetName(testCase.Name)
-                                        .SetDescription(testCase.Description);
-            
+                .SetDescription(testCase.Description);
+
             yield return nunitTestCase;
         }
     }
@@ -896,7 +889,7 @@ public class NetworkPathfinderTests
         {
             Console.WriteLine($"Warning: Test cases file not found at {testCasesPath}.");
             Console.WriteLine("Using hardcoded test cases instead.");
-            
+
             // Return hardcoded test cases
             yield return new PathfinderTestCase
             {
@@ -906,7 +899,7 @@ public class NetworkPathfinderTests
                 Sink = "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
                 TargetFlow = "400000000000000000000"
             };
-            
+
             yield return new PathfinderTestCase
             {
                 Name = "PathWithFromTokensFilter",
@@ -916,7 +909,7 @@ public class NetworkPathfinderTests
                 TargetFlow = "100000000000000000000",
                 FromTokens = new[] { "0x59cf08d8f86dd8a19b71f2dcd8ed71f9c2a8a9da" }
             };
-            
+
             yield return new PathfinderTestCase
             {
                 Name = "PathWithToTokensFilter",
@@ -926,12 +919,12 @@ public class NetworkPathfinderTests
                 TargetFlow = "100000000000000000000",
                 ToTokens = new[] { "0x4a9affa9249f36fd0629f342c182a4e94a13c2e0" }
             };
-            
+
             yield break;
         }
 
         string json = File.ReadAllText(testCasesPath);
-        var testCases = JsonSerializer.Deserialize<List<PathfinderTestCase>>(json, 
+        var testCases = JsonSerializer.Deserialize<List<PathfinderTestCase>>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         if (testCases != null)
@@ -942,30 +935,33 @@ public class NetworkPathfinderTests
             }
         }
     }
-    
+
 
     [Test, TestCaseSource(nameof(GetPathfinderTestCases))]
     public async Task TestPathfinderRequest(
-        string source, 
-        string sink, 
-        string targetFlow, 
-        string[]? fromTokens, 
-        string[]? toTokens, 
+        string source,
+        string sink,
+        string targetFlow,
+        string[]? fromTokens,
+        string[]? toTokens,
         string[]? excludedFromTokens,
         string[]? excludedToTokens,
         bool withWrap)
     {
-        Console.WriteLine($"\n{ConsoleColors.Magenta}RUNNING TEST CASE: {TestContext.CurrentContext.Test.Name}{ConsoleColors.Reset}");
+        Console.WriteLine(
+            $"\n{ConsoleColors.Magenta}RUNNING TEST CASE: {TestContext.CurrentContext.Test.Name}{ConsoleColors.Reset}");
         Console.WriteLine($"Description: {TestContext.CurrentContext.Test.Properties.Get("Description") ?? ""}");
         Console.WriteLine($"Source: {source}");
         Console.WriteLine($"Sink: {sink}");
         Console.WriteLine($"Target Flow: {targetFlow}");
         Console.WriteLine($"From Tokens: {(fromTokens == null ? "none" : string.Join(", ", fromTokens))}");
         Console.WriteLine($"To Tokens: {(toTokens == null ? "none" : string.Join(", ", toTokens))}");
-        Console.WriteLine($"Excluded From Tokens: {(excludedFromTokens == null ? "none" : string.Join(", ", excludedFromTokens))}");
-        Console.WriteLine($"Excluded To Tokens: {(excludedToTokens == null ? "none" : string.Join(", ", excludedToTokens))}");
+        Console.WriteLine(
+            $"Excluded From Tokens: {(excludedFromTokens == null ? "none" : string.Join(", ", excludedFromTokens))}");
+        Console.WriteLine(
+            $"Excluded To Tokens: {(excludedToTokens == null ? "none" : string.Join(", ", excludedToTokens))}");
         Console.WriteLine($"With Wrap: {withWrap}");
-        
+
         // Create the flow request
         var request = new FlowRequest
         {
@@ -978,17 +974,18 @@ public class NetworkPathfinderTests
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap
         };
-        
+
         // Convert the request to a JSON-RPC request
         var jsonRpcRequest = new JsonRpcRequest
         {
             Method = "circlesV2_findPath",
             Params = new object[] { request }
         };
-        
+
         string jsonRequest = JsonSerializer.Serialize(jsonRpcRequest, _jsonOptions);
-        
+
         // Validate the response
-        await ValidatePathfinderResponse(jsonRequest, source, sink, fromTokens, toTokens, excludedFromTokens, excludedToTokens, withWrap);
+        await ValidatePathfinderResponse(jsonRequest, source, sink, fromTokens, toTokens, excludedFromTokens,
+            excludedToTokens, withWrap);
     }
 }

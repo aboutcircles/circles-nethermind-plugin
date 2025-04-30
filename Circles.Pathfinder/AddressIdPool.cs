@@ -6,43 +6,46 @@ namespace Circles.Pathfinder;
 /// </summary>
 public static class AddressIdPool
 {
-    private static readonly Dictionary<string, int> Map = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, int> Map = new();
     private static readonly List<string> Reverse = new();
     private static readonly Dictionary<string, int> BalanceNodeMap = new();
     private static int _next;
 
-    public static int IdOf(string address)
+    public static int IdOf(string _address)
     {
-        if (Map.TryGetValue(address, out var id))
+        var lower = _address.ToLower();
+        if (Map.TryGetValue(lower, out var id))
             return id;
 
         lock (Map)                        // cheap – only when we meet a new string
         {
-            if (Map.TryGetValue(address, out id))
+            if (Map.TryGetValue(lower, out id))
                 return id;
 
             id = _next++;
-            Map[address] = id;
-            Reverse.Add(address);
+            Map[lower] = id;
+            Reverse.Add(lower);
             return id;
         }
     }
 
     public static string StringOf(int id) => Reverse[id];
 
-    public static int BalanceNodeIdOf(string balanceNodeString)
+    public static int BalanceNodeIdOf(string _balanceNodeString)
     {
-        if (Map.TryGetValue(balanceNodeString, out var id))
+        var lower = _balanceNodeString.ToLower();
+        if (Map.TryGetValue(lower, out var id))
             return id;
 
         lock (Map)                        // cheap – only when we meet a new string
         {
-            if (Map.TryGetValue(balanceNodeString, out id))
+            if (Map.TryGetValue(lower, out id))
                 return id;
 
             id = _next++;
-            Map[balanceNodeString] = id;
-            Reverse.Add(balanceNodeString);
+            Map[lower] = id;
+            BalanceNodeMap[lower] = id;
+            Reverse.Add(lower);
             return id;
         }
     }
