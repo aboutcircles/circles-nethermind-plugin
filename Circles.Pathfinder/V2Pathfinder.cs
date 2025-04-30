@@ -192,7 +192,7 @@ public class V2Pathfinder : IPathfinder
     /// </summary>
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
-        var collapsed = new FlowGraph();
+        var collapsed = new FlowGraph(null, null);
 
         // copy every avatar that occurs in the paths
         var avatars = new HashSet<int>();

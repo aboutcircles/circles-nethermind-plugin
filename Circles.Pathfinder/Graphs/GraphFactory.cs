@@ -185,7 +185,7 @@ public class GraphFactory
     /// </summary>
     public FlowGraph CreateFlowGraph(CapacityGraph capacityGraph)
     {
-        var flowGraph = new FlowGraph();
+        var flowGraph = new FlowGraph(capacityGraph.Nodes.Count + 1, capacityGraph.Edges.Count * 2 + 1);
         flowGraph.AddCapacity(capacityGraph);
         return flowGraph;
     }
@@ -499,6 +499,6 @@ public class GraphFactory
             capacityGraph.AddCapacityEdge(from, to, token, amount);
         }
     }
-    
+
     #endregion
 }
