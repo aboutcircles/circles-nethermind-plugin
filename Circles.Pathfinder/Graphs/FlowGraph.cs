@@ -11,6 +11,19 @@ public class FlowGraph : IGraph<FlowEdge>
     public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
     public HashSet<FlowEdge> Edges { get; } = new();
 
+    public FlowGraph(int? nodeCount = null, int? edgeCount = null)
+    {
+        if (nodeCount != null)
+        {
+            Nodes = new Dictionary<int, Node>(nodeCount.Value);
+        }
+
+        if (edgeCount != null)
+        {
+            Edges = new HashSet<FlowEdge>(edgeCount.Value);
+        }
+    }
+
     public void AddAvatar(int avatarAddress)
     {
         if (!AvatarNodes.ContainsKey(avatarAddress))
@@ -47,7 +60,8 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (fromNode is BalanceNode fromBalance)
             {
-                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped, fromBalance.IsStatic);
+                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped,
+                    fromBalance.IsStatic);
             }
 
             from = Nodes[fromNode.Address];
@@ -62,7 +76,8 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (toNode is BalanceNode toBalance)
             {
-                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped, toBalance.IsStatic);
+                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped,
+                    toBalance.IsStatic);
             }
 
             to = Nodes[toNode.Address];
@@ -137,7 +152,8 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (fromNode is BalanceNode fromBalance)
             {
-                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped, fromBalance.IsStatic);
+                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped,
+                    fromBalance.IsStatic);
             }
         }
 
@@ -149,7 +165,8 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (toNode is BalanceNode toBalance)
             {
-                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped, toBalance.IsStatic);
+                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped,
+                    toBalance.IsStatic);
             }
         }
 
@@ -198,7 +215,7 @@ public class FlowGraph : IGraph<FlowEdge>
     {
         Stopwatch sw = new Stopwatch();
         sw.Start();
-        
+
         var resultPaths = new List<List<FlowEdge>>();
 
         // Build adjacency lists containing only edges with positive flow
@@ -296,7 +313,7 @@ public class FlowGraph : IGraph<FlowEdge>
                 }
             }
         }
-        
+
         sw.Stop();
         // Console.WriteLine($"TIMING: FlowGraph.ExtractPathsWithFlow took {sw.ElapsedMilliseconds}ms");
 
@@ -312,19 +329,19 @@ public class FlowGraph : IGraph<FlowEdge>
     {
         Stopwatch sw = new Stopwatch();
         sw.Start();
-        
-        var aggregatedGraph = new FlowGraph();
-        
+
+        var aggregatedGraph = new FlowGraph(null, null);
+
         // Copy all avatar nodes
         foreach (var avatarNode in AvatarNodes.Values)
         {
             aggregatedGraph.AddAvatar(avatarNode.Address);
         }
-        
+
         // Dictionary to store aggregated edges
         // Key is a tuple of (From, To, Token)
         var aggregatedEdges = new Dictionary<(int From, int To, int Token), FlowEdge>();
-        
+
         // Aggregate edges with the same From, To, and Token
         foreach (var edge in Edges)
         {
@@ -333,14 +350,14 @@ public class FlowGraph : IGraph<FlowEdge>
             {
                 continue;
             }
-            
+
             var key = (edge.From, edge.To, edge.Token);
-            
+
             if (aggregatedEdges.TryGetValue(key, out var existingEdge))
             {
                 // Add the flow to the existing edge
                 existingEdge.Flow += edge.Flow;
-                
+
                 // For capacity, take the max, as that's the logical limit
                 existingEdge.CurrentCapacity = Math.Max(existingEdge.CurrentCapacity, edge.CurrentCapacity);
             }
@@ -352,11 +369,11 @@ public class FlowGraph : IGraph<FlowEdge>
                     Flow = edge.Flow,
                     CurrentCapacity = edge.CurrentCapacity
                 };
-                
+
                 aggregatedEdges[key] = newEdge;
             }
         }
-        
+
         // Add all aggregated edges to the graph
         foreach (var edge in aggregatedEdges.Values)
         {
@@ -366,14 +383,14 @@ public class FlowGraph : IGraph<FlowEdge>
                 // that might prevent adding the aggregated edge
                 var fromNode = aggregatedGraph.Nodes[edge.From];
                 var toNode = aggregatedGraph.Nodes[edge.To];
-                
+
                 var newFlowEdge = new FlowEdge(fromNode.Address, toNode.Address, edge.Token, edge.CurrentCapacity)
                 {
                     Flow = edge.Flow
                 };
-                
+
                 aggregatedGraph.Edges.Add(newFlowEdge);
-                
+
                 if (aggregatedGraph.AvatarNodes.TryGetValue(fromNode.Address, out var fromAvatarNode))
                 {
                     fromAvatarNode.OutEdges.Add(newFlowEdge);
@@ -382,7 +399,7 @@ public class FlowGraph : IGraph<FlowEdge>
                 {
                     fromBalanceNode.OutEdges.Add(newFlowEdge);
                 }
-                
+
                 if (aggregatedGraph.AvatarNodes.TryGetValue(toNode.Address, out var toAvatarNode))
                 {
                     toAvatarNode.InEdges.Add(newFlowEdge);
@@ -397,10 +414,10 @@ public class FlowGraph : IGraph<FlowEdge>
                 // Console.WriteLine($"Error adding aggregated edge: {ex.Message}");
             }
         }
-        
+
         sw.Stop();
         // Console.WriteLine($"TIMING: FlowGraph.AggregateIdenticalEdges took {sw.ElapsedMilliseconds}ms");
-        
+
         return aggregatedGraph;
     }
 }
