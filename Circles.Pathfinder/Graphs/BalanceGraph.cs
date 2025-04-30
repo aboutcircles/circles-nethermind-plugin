@@ -33,6 +33,6 @@ public class BalanceGraph : IGraph<CapacityEdge>
         Edges.Add(capacityEdge);
 
         AvatarNodes[address].OutEdges.Add(capacityEdge);
-        BalanceNodes[balanceNode.Address].InEdges.Add(capacityEdge);
+        // BalanceNodes[balanceNode.Address].InEdges.Add(capacityEdge);
     }
 }

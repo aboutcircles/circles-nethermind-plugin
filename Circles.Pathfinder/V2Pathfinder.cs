@@ -271,7 +271,7 @@ public class V2Pathfinder : IPathfinder
 
             collapsed.Edges.Add(e);
             collapsed.AvatarNodes[from].OutEdges.Add(e);
-            collapsed.AvatarNodes[to].InEdges.Add(e);
+            // collapsed.AvatarNodes[to].InEdges.Add(e);
         }
 
         return collapsed;

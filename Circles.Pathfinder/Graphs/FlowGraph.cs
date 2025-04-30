@@ -49,83 +49,6 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddFlowEdge(FlowGraph flowGraph, FlowEdge flowEdge)
-    {
-        var fromNode = flowGraph.Nodes[flowEdge.From];
-        if (!Nodes.TryGetValue(fromNode.Address, out var from))
-        {
-            if (fromNode is AvatarNode)
-            {
-                AddAvatar(fromNode.Address);
-            }
-            else if (fromNode is BalanceNode fromBalance)
-            {
-                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped,
-                    fromBalance.IsStatic);
-            }
-
-            from = Nodes[fromNode.Address];
-        }
-
-        var toNode = flowGraph.Nodes[flowEdge.To];
-        if (!Nodes.TryGetValue(toNode.Address, out var to))
-        {
-            if (toNode is AvatarNode)
-            {
-                AddAvatar(toNode.Address);
-            }
-            else if (toNode is BalanceNode toBalance)
-            {
-                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped,
-                    toBalance.IsStatic);
-            }
-
-            to = Nodes[toNode.Address];
-        }
-
-        // TODO: Find a quicker way to do this
-        if (from.OutEdges.Any(o => o.To == to.Address && (o as FlowEdge)?.Flow == flowEdge.Flow))
-        {
-            return;
-        }
-
-        if (to.InEdges.Any(o => o.From == from.Address && (o as FlowEdge)?.Flow == flowEdge.Flow))
-        {
-            return;
-        }
-
-        var newFlowEdge = new FlowEdge(from.Address, to.Address, flowEdge.Token, flowEdge.CurrentCapacity);
-        newFlowEdge.Flow = flowEdge.Flow;
-
-        var newReverseEdge = new FlowEdge(to.Address, from.Address, flowEdge.Token,
-            flowEdge.ReverseEdge?.CurrentCapacity ?? 0L);
-        newReverseEdge.Flow = flowEdge.ReverseEdge?.Flow ?? 0L;
-
-        newFlowEdge.ReverseEdge = newReverseEdge;
-        newReverseEdge.ReverseEdge = newFlowEdge;
-
-        Edges.Add(newFlowEdge);
-        Edges.Add(newReverseEdge);
-
-        if (AvatarNodes.TryGetValue(from.Address, out var fromAvatarNode))
-        {
-            fromAvatarNode.OutEdges.Add(newFlowEdge);
-        }
-        else if (BalanceNodes.TryGetValue(from.Address, out var fromBalanceNode))
-        {
-            fromBalanceNode.OutEdges.Add(newFlowEdge);
-        }
-
-        if (AvatarNodes.TryGetValue(to.Address, out var toAvatarNode))
-        {
-            toAvatarNode.InEdges.Add(newFlowEdge);
-        }
-        else if (BalanceNodes.TryGetValue(to.Address, out var toBalanceNode))
-        {
-            toBalanceNode.InEdges.Add(newFlowEdge);
-        }
-    }
-
     public void AddCapacityEdge(CapacityGraph capacityGraph, CapacityEdge capacityEdge)
     {
         var from = capacityEdge.From;
@@ -180,14 +103,14 @@ public class FlowGraph : IGraph<FlowEdge>
             balanceNode.OutEdges.Add(edge);
         }
 
-        if (AvatarNodes.TryGetValue(to, out var avatarNode))
-        {
-            avatarNode.InEdges.Add(edge);
-        }
-        else if (BalanceNodes.TryGetValue(to, out var balanceNode))
-        {
-            balanceNode.InEdges.Add(edge);
-        }
+        // if (AvatarNodes.TryGetValue(to, out var avatarNode))
+        // {
+        //     avatarNode.InEdges.Add(edge);
+        // }
+        // else if (BalanceNodes.TryGetValue(to, out var balanceNode))
+        // {
+        //     balanceNode.InEdges.Add(edge);
+        // }
 
         if (AvatarNodes.TryGetValue(to, out var avatarNode2))
         {
@@ -198,14 +121,14 @@ public class FlowGraph : IGraph<FlowEdge>
             balanceNode2.OutEdges.Add(reverseEdge);
         }
 
-        if (AvatarNodes.TryGetValue(from, out var node2))
-        {
-            node2.InEdges.Add(reverseEdge);
-        }
-        else if (BalanceNodes.TryGetValue(from, out var balanceNode2))
-        {
-            balanceNode2.InEdges.Add(reverseEdge);
-        }
+        // if (AvatarNodes.TryGetValue(from, out var node2))
+        // {
+        //     node2.InEdges.Add(reverseEdge);
+        // }
+        // else if (BalanceNodes.TryGetValue(from, out var balanceNode2))
+        // {
+        //     balanceNode2.InEdges.Add(reverseEdge);
+        // }
     }
 
     /// <summary>
@@ -400,14 +323,14 @@ public class FlowGraph : IGraph<FlowEdge>
                     fromBalanceNode.OutEdges.Add(newFlowEdge);
                 }
 
-                if (aggregatedGraph.AvatarNodes.TryGetValue(toNode.Address, out var toAvatarNode))
-                {
-                    toAvatarNode.InEdges.Add(newFlowEdge);
-                }
-                else if (aggregatedGraph.BalanceNodes.TryGetValue(toNode.Address, out var toBalanceNode))
-                {
-                    toBalanceNode.InEdges.Add(newFlowEdge);
-                }
+                // if (aggregatedGraph.AvatarNodes.TryGetValue(toNode.Address, out var toAvatarNode))
+                // {
+                //     toAvatarNode.InEdges.Add(newFlowEdge);
+                // }
+                // else if (aggregatedGraph.BalanceNodes.TryGetValue(toNode.Address, out var toBalanceNode))
+                // {
+                //     toBalanceNode.InEdges.Add(newFlowEdge);
+                // }
             }
             catch (Exception ex)
             {
