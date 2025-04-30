@@ -4,6 +4,24 @@ using Circles.Pathfinder.Nodes;
 
 namespace Circles.Pathfinder.Graphs;
 
+public readonly struct PathEdge
+{
+    public readonly FlowEdge Edge;
+    public readonly long PathFlow;
+
+    public PathEdge(FlowEdge edge, long pathFlow)
+    {
+        Edge = edge;
+        PathFlow = pathFlow;
+    }
+
+    // Convenience forwarders – this lets the rest of the code stay unchanged
+    public int From => Edge.From;
+    public int To => Edge.To;
+    public int Token => Edge.Token;
+    public long Flow => PathFlow;
+}
+
 public class FlowGraph : IGraph<FlowEdge>
 {
     public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
@@ -134,49 +152,63 @@ public class FlowGraph : IGraph<FlowEdge>
     /// <summary>
     /// Searches the graph for liquid paths from the source node to the sink node.
     /// </summary>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(int sourceNode, int sinkNode, long minFlowThreshold)
+    public List<List<PathEdge>> ExtractPathsWithFlow(
+        int sourceNode,
+        int sinkNode,
+        long minFlowThreshold)
     {
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
+        var sw = Stopwatch.StartNew();
+        var resultPaths = new List<List<PathEdge>>();
 
-        var resultPaths = new List<List<FlowEdge>>();
-
-        // Build adjacency lists containing only edges with positive flow
+        // Build an adjacency list that only contains edges with positive flow
         var adjacency = new Dictionary<int, List<FlowEdge>>();
         foreach (var e in Edges)
         {
             if (e.Flow <= 0) continue;
-            if (!adjacency.ContainsKey(e.From))
+            if (!adjacency.TryGetValue(e.From, out var bucket))
             {
-                adjacency[e.From] = new List<FlowEdge>();
+                bucket = new List<FlowEdge>(4);
+                adjacency[e.From] = bucket;
             }
 
-            adjacency[e.From].Add(e);
+            bucket.Add(e);
         }
+
+        var queue = new Queue<int>(Nodes.Count);
+        var visited = new HashSet<int>(Nodes.Count);
+        var parent = new Dictionary<int, FlowEdge>(Nodes.Count);
 
         while (true)
         {
             // BFS to find path from source -> sink
-            var queue = new Queue<int>();
-            var visited = new HashSet<int>();
-            var parent = new Dictionary<int, FlowEdge>();
+            queue.Clear();
+            visited.Clear();
+            parent.Clear();
 
             queue.Enqueue(sourceNode);
             visited.Add(sourceNode);
 
-            bool foundSink = false;
+            var foundSink = false;
+
             while (queue.Count > 0 && !foundSink)
             {
                 var current = queue.Dequeue();
-                if (!adjacency.TryGetValue(current, out var value))
+                if (!adjacency.TryGetValue(current, out var outs))
                 {
                     continue;
                 }
 
-                foreach (var edge in value)
+                foreach (var edge in outs)
                 {
-                    if (visited.Contains(edge.To)) continue;
-                    if (edge.Flow < minFlowThreshold) continue; // usually minFlowThreshold=0
+                    if (edge.Flow < minFlowThreshold)
+                    {
+                        continue;
+                    }
+
+                    if (visited.Contains(edge.To))
+                    {
+                        continue;
+                    }
 
                     visited.Add(edge.To);
                     parent[edge.To] = edge;
@@ -196,50 +228,49 @@ public class FlowGraph : IGraph<FlowEdge>
                 break; // no more augmenting paths
             }
 
-            // Reconstruct path by backtracking from sinkNode -> sourceNode
-            var pathEdges = new List<FlowEdge>();
-            int node = sinkNode;
+            var tmpPath = new List<FlowEdge>(32);
+            var node = sinkNode;
+
             while (node != sourceNode)
             {
                 var e = parent[node];
-                pathEdges.Add(e);
+                tmpPath.Add(e);
                 node = e.From;
             }
 
-            pathEdges.Reverse();
+            tmpPath.Reverse();
 
-            // The path flow is the min edge.Flow along that path
-            long pathFlow = pathEdges.Min(e => e.Flow);
-
-            // Build a copy of the path with each edge having Flow=pathFlow
-            var onePath = new List<FlowEdge>();
-            foreach (var e in pathEdges)
+            // compute the bottleneck capacity of this path
+            long pathFlow = long.MaxValue;
+            foreach (var e in tmpPath)
             {
-                var copy = new FlowEdge(e.From, e.To, e.Token, e.CurrentCapacity)
+                if (e.Flow < pathFlow)
                 {
-                    Flow = pathFlow
-                };
-                onePath.Add(copy);
+                    pathFlow = e.Flow;
+                }
+            }
+
+            // materialise the path without *copying* the edges
+            var onePath = new List<PathEdge>(tmpPath.Count);
+            foreach (var e in tmpPath)
+            {
+                onePath.Add(new PathEdge(e, pathFlow));
             }
 
             resultPaths.Add(onePath);
 
-            // Subtract pathFlow from each edge in the path
-            foreach (var e in pathEdges)
+            // reduce residual capacities
+            foreach (var e in tmpPath)
             {
                 e.Flow -= pathFlow;
-
-                // If e.Flow <= 0, remove it from adjacency so BFS won't use it next time
-                if (e.Flow <= 0 && adjacency.ContainsKey(e.From))
+                if (e.Flow <= 0 && adjacency.TryGetValue(e.From, out var bucket))
                 {
-                    adjacency[e.From].Remove(e);
+                    bucket.Remove(e);
                 }
             }
         }
 
         sw.Stop();
-        // Console.WriteLine($"TIMING: FlowGraph.ExtractPathsWithFlow took {sw.ElapsedMilliseconds}ms");
-
         return resultPaths;
     }
 
