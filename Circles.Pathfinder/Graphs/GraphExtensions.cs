@@ -19,44 +19,21 @@ public static class GraphExtensions
         Stopwatch sw = new();
         sw.Start();
 
-        // 3) Map nodes
-        var nodeIndices = new Dictionary<int, int>();
-        int nodeIndex = 0;
-        foreach (var node in graph.Nodes.Values)
-        {
-            nodeIndices[node.Address] = nodeIndex++;
-        }
-
-        int superSourceIndex = nodeIndex++;
-
-        // 4) Create solver
+        int superSourceIndex = int.MaxValue;
         var maxFlowSolver = new MaxFlow();
 
-        // 5) Scale targetFlow for superSource->realSource
+        // superSource->realSource arc
+        maxFlowSolver.AddArcWithCapacity(superSourceIndex, source, targetFlow);
 
-        if (!nodeIndices.ContainsKey(source) || !nodeIndices.ContainsKey(sink))
-        {
-            throw new ArgumentException("Source or sink not in node map.");
-        }
-
-        int realSourceIndex = nodeIndices[source];
-        int sinkIndex = nodeIndices[sink];
-
-        // 6) superSource->realSource arc
-        maxFlowSolver.AddArcWithCapacity(superSourceIndex, realSourceIndex, targetFlow);
-
-        // 7) Add arcs for each edge
-        var edgeToArc = new Dictionary<FlowEdge, int>();
+        // Add arcs for each edge
+        var edgeToArc = new Dictionary<FlowEdge, int>(graph.Edges.Count);
         foreach (var edge in graph.Edges)
         {
-            int fromIdx = nodeIndices[edge.From];
-            int toIdx = nodeIndices[edge.To];
-
-            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(fromIdx, toIdx, edge.CurrentCapacity);
+            edgeToArc[edge] = maxFlowSolver.AddArcWithCapacity(edge.From, edge.To, edge.CurrentCapacity);
         }
 
         // 8) Solve from superSource->sink
-        var status = maxFlowSolver.Solve(superSourceIndex, sinkIndex);
+        var status = maxFlowSolver.Solve(superSourceIndex, sink);
         if (status != MaxFlow.Status.OPTIMAL)
         {
             throw new Exception($"Max flow not optimal: {status}");

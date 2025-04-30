@@ -315,11 +315,12 @@ public class GraphFactory
             }
 
             capacityGraph.AddBalanceNode(
-                balanceNode.Address,
+                balanceNode.Holder,
                 balanceNode.Token,
                 balanceNode.Amount,
                 balanceNode.IsWrapped,
-                balanceNode.IsStatic
+                balanceNode.IsStatic,
+                balanceNode.Address
             );
         }
     }
@@ -426,7 +427,8 @@ public class GraphFactory
             if (accountTrusts.TryGetValue(balanceNode.Holder, out var tokensTheyTrust))
             {
                 // If holder trusts the token and virtual sink also trusts the token, add edge
-                if (tokensTheyTrust.Contains(balanceNode.Token) && virtualSinkTrustedTokenIds.Contains(balanceNode.Token))
+                if (tokensTheyTrust.Contains(balanceNode.Token) &&
+                    virtualSinkTrustedTokenIds.Contains(balanceNode.Token))
                 {
                     if (capacityGraph.Nodes.ContainsKey(virtualSinkAddress))
                     {
@@ -455,23 +457,23 @@ public class GraphFactory
         foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
         {
             // For each trusting account
-            foreach (var (trustingAccount, trustedTokens) in accountTrusts)
+            foreach (var kvp in accountTrusts)
             {
                 // Skip if the account doesn't trust this BN's token
-                if (!trustedTokens.Contains(balanceNode.Token))
+                if (!kvp.Value.Contains(balanceNode.Token))
                     continue;
 
                 // Skip self-edge
-                if (trustingAccount == balanceNode.Holder)
+                if (kvp.Key == balanceNode.Holder)
                     continue;
 
                 // Skip if it's the virtual sink (already handled above)
-                if (virtualSinkAddress != null && trustingAccount == virtualSinkAddress)
+                if (virtualSinkAddress != null && kvp.Key == virtualSinkAddress)
                     continue;
 
                 // Must exist in capacityGraph
                 if (!capacityGraph.Nodes.ContainsKey(balanceNode.Address)
-                    || !capacityGraph.Nodes.ContainsKey(trustingAccount))
+                    || !capacityGraph.Nodes.ContainsKey(kvp.Key))
                 {
                     skipCapEdgeCase2++;
                     continue;
@@ -479,7 +481,7 @@ public class GraphFactory
 
                 capacityGraph.AddCapacityEdge(
                     balanceNode.Address,
-                    trustingAccount,
+                    kvp.Key,
                     balanceNode.Token,
                     balanceNode.Amount
                 );

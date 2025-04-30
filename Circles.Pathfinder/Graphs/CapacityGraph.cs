@@ -22,11 +22,10 @@ public class CapacityGraph : IGraph<CapacityEdge>
         }
     }
 
-    public void AddBalanceNode(int address, int token, long amount, bool isWrapped, bool isStatic)
+    public void AddBalanceNode(int holder, int token, long amount, bool isWrapped, bool isStatic, int? balanceNodeId)
     {
-        var balanceNodeId = AddressIdPool.BalanceNodeIdOf($"{address}-{token}");
-        var balanceNode = new BalanceNode(balanceNodeId, address, token, amount, isWrapped, isStatic);
-        balanceNode.Address = address;
+        var _balanceNodeId = balanceNodeId ?? AddressIdPool.BalanceNodeIdOf($"{holder}-{token}");
+        var balanceNode = new BalanceNode(_balanceNodeId, holder, token, amount, isWrapped, isStatic);
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }

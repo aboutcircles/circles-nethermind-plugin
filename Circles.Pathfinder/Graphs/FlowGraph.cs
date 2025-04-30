@@ -24,7 +24,6 @@ public class FlowGraph : IGraph<FlowEdge>
     {
         var balanceNodeId = AddressIdPool.BalanceNodeIdOf($"{address}-{token}");
         var balanceNode = new BalanceNode(balanceNodeId, address, token, amount, isWrapped, isStatic);
-        balanceNode.Address = address;
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
