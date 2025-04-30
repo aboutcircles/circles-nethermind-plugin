@@ -45,13 +45,14 @@ public class CapacityGraph : IGraph<CapacityEdge>
             balanceNode.OutEdges.Add(edge);
         }
 
-        if (AvatarNodes.TryGetValue(to, out var avatarNode))
-        {
-            avatarNode.InEdges.Add(edge);
-        }
-        else if (BalanceNodes.TryGetValue(to, out var balanceNode))
-        {
-            balanceNode.InEdges.Add(edge);
-        }
+        // Not used in pathfinding:
+        // if (AvatarNodes.TryGetValue(to, out var avatarNode))
+        // {
+        //     avatarNode.InEdges.Add(edge);
+        // }
+        // else if (BalanceNodes.TryGetValue(to, out var balanceNode))
+        // {
+        //     balanceNode.InEdges.Add(edge);
+        // }
     }
 }
