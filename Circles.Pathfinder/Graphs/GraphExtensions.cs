@@ -19,7 +19,7 @@ public static class GraphExtensions
         Stopwatch sw = new();
         sw.Start();
 
-        int superSourceIndex = int.MaxValue;
+        int superSourceIndex = graph.Nodes.Count + 1;
         var maxFlowSolver = new MaxFlow();
 
         // superSource->realSource arc
