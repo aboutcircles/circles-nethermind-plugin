@@ -2,10 +2,10 @@ namespace Circles.Pathfinder.Edges;
 
 public abstract class Edge
 {
-    public string From { get; }
-    public string To { get; }
+    public int From { get; }
+    public int To { get; }
 
-    public Edge(string from, string to)
+    public Edge(int from, int to)
     {
         From = from;
         To = to;

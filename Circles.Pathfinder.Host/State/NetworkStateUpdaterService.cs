@@ -1,9 +1,12 @@
+using System.Diagnostics;
+using System.Globalization;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Prometheus;
+using static Circles.Pathfinder.Tracing;
 
 namespace Circles.Pathfinder.Host.State;
 
@@ -13,71 +16,92 @@ public class NetworkStateUpdaterService : BackgroundService
     private readonly Settings _settings = new();
     private readonly List<Exception> _getCurrentBlockErrors = new();
     private static readonly HttpClient HttpClient = new();
+    private readonly ILogger<NetworkStateUpdaterService> _log;
 
-    // Prometheus metrics (static so there's only one set of counters/gauges regardless of service instantiation)
+    // Prometheus metrics
     private static readonly Counter GraphUpdatesCounter = Metrics.CreateCounter(
         "circles_graph_updates_total",
-        "Number of times the background service updates the trust/balance graphs."
-    );
+        "Number of times the background service updates the trust/balance graphs.");
 
     private static readonly Gauge LastProcessedBlockGauge = Metrics.CreateGauge(
         "circles_last_processed_block",
-        "The most recent block number processed by the background service."
-    );
+        "The most recent block number processed by the background service.");
 
-    public NetworkStateUpdaterService(NetworkState networkState)
+    public NetworkStateUpdaterService(NetworkState networkState,
+        ILogger<NetworkStateUpdaterService> log)
     {
         _networkState = networkState;
+        _log          = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Create a single LoadGraph instance with the new implementation
-        var loadGraph = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
+        using var root = Source.StartActivity("NetworkStateUpdater.Run", ActivityKind.Internal);
+
+        var loadGraph   = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
         var graphFactory = new GraphFactory();
 
-        var lastBlock = 0L;
+        long lastBlock = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            using var waitBlk = Source.StartActivity("WaitForNextBlock");
+
+            _log.LogDebug("Waiting for next block…");
             lastBlock = await WaitForNextBlock(stoppingToken, lastBlock);
             LastProcessedBlockGauge.Set(lastBlock);
+            _log.LogDebug("↳ got block {Block}", lastBlock);
 
-            // Load both graphs in parallel
-            var tasks = new List<Task>();
-            
-            // Task 1: Load trust graph
-            tasks.Add(Task.Run(() =>
+            waitBlk?.SetTag("block", lastBlock);
+
+            using var upd = Source.StartActivity("LoadGraphs");
+
+            var swTotal = Stopwatch.StartNew();
+
+            var swTrustGraph  = Stopwatch.StartNew();
+            var trustSpan     = Source.StartActivity("TrustGraph.Load");
+            var trustTask = Task.Run(() =>
             {
-                // Pass null request to get full graph for network state
-                var trustGraph = graphFactory.V2TrustGraph(loadGraph);
-                _networkState.Replace(trustGraph: trustGraph);
-            }, stoppingToken));
+                var graph = graphFactory.V2TrustGraph(loadGraph);
+                _networkState.Replace(trustGraph: graph);
+                swTrustGraph.Stop();
+                trustSpan?.Dispose();
+            }, stoppingToken);
 
-            // Task 2: Load balance graph
-            tasks.Add(Task.Run(() =>
+            var swBalanceGraph = Stopwatch.StartNew();
+            var balanceSpan    = Source.StartActivity("BalanceGraph.Load");
+            var balanceTask = Task.Run(() =>
             {
-                // Pass null request to get full graph for network state
-                var balanceGraph = graphFactory.V2BalanceGraph(loadGraph);
-                _networkState.Replace(balanceGraph: balanceGraph);
-            }, stoppingToken));
+                var graph = graphFactory.V2BalanceGraph(loadGraph);
+                _networkState.Replace(balanceGraph: graph);
+                swBalanceGraph.Stop();
+                balanceSpan?.Dispose();
+            }, stoppingToken);
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(trustTask, balanceTask);
+            swTotal.Stop();
+
+            upd?.SetTag("trust_ms", swTrustGraph.ElapsedMilliseconds);
+            upd?.SetTag("balance_ms", swBalanceGraph.ElapsedMilliseconds);
+
+            _log.LogInformation(
+                "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
+                swTrustGraph.ElapsedMilliseconds,
+                swBalanceGraph.ElapsedMilliseconds,
+                swTotal.ElapsedMilliseconds);
 
             GraphUpdatesCounter.Inc();
         }
     }
 
-    // The rest of the code remains the same
-    
     private async Task<long> WaitForNextBlock(CancellationToken stoppingToken, long lastBlock)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var currentBlock = await GetBlockNumber();
+            long currentBlock = await GetBlockNumber();
             if (currentBlock <= lastBlock)
             {
-                await Task.Delay(1000, stoppingToken);
+                await Task.Delay(1_000, stoppingToken);
             }
             else
             {
@@ -95,16 +119,15 @@ public class NetworkStateUpdaterService : BackgroundService
             var requestBody = new
             {
                 jsonrpc = "2.0",
-                method = "eth_blockNumber",
-                @params = new object[] { },
-                id = 1
+                method  = "eth_blockNumber",
+                @params = Array.Empty<object>(),
+                id      = 1
             };
 
             using var content = new StringContent(
                 JsonSerializer.Serialize(requestBody),
                 Encoding.UTF8,
-                "application/json"
-            );
+                "application/json");
 
             using var response = await HttpClient.PostAsync(_settings.CirclesRpcUrl, content);
             response.EnsureSuccessStatusCode();
@@ -113,20 +136,20 @@ public class NetworkStateUpdaterService : BackgroundService
                               ?? throw new InvalidOperationException("Failed to deserialize Nethermind RPC response.");
 
             if (long.TryParse(rpcResponse.Result?.Replace("0x", ""),
-                    System.Globalization.NumberStyles.HexNumber, null, out var blockNum))
+                    NumberStyles.HexNumber, null, out var num))
             {
                 _getCurrentBlockErrors.Clear();
-                return blockNum;
+                return num;
             }
 
             return -1;
         }
         catch (Exception e)
         {
-            Console.WriteLine($"Error getting block number: {e.Message}");
+            _log.LogWarning(e, "Error getting block number");
             _getCurrentBlockErrors.Add(e);
 
-            if (_getCurrentBlockErrors.Count >= 20)
+            if (_getCurrentBlockErrors.Count >= Constants.MaxGetBlockErrors)
             {
                 throw new AggregateException("Too many errors getting block number.", _getCurrentBlockErrors);
             }
@@ -135,10 +158,10 @@ public class NetworkStateUpdaterService : BackgroundService
         return -1;
     }
 
-    private class EthBlockNumberResponse
+    private sealed class EthBlockNumberResponse
     {
         [JsonPropertyName("jsonrpc")] public string? JsonRpc { get; set; }
-        [JsonPropertyName("result")] public string? Result { get; set; }
-        [JsonPropertyName("id")] public int Id { get; set; }
+        [JsonPropertyName("result")]  public string? Result  { get; set; }
+        [JsonPropertyName("id")]      public int      Id     { get; set; }
     }
 }

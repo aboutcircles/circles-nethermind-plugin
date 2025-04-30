@@ -1,22 +1,20 @@
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
-using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
 public class CapacityGraph : IGraph<CapacityEdge>
 {
-    public IDictionary<string, Node> Nodes { get; } = new Dictionary<string, Node>();
-    public IDictionary<string, AvatarNode> AvatarNodes { get; } = new Dictionary<string, AvatarNode>();
-    public IDictionary<string, BalanceNode> BalanceNodes { get; } = new Dictionary<string, BalanceNode>();
-    public HashSet<CapacityEdge> Edges { get; } = new();
+    public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();
+    public IDictionary<int, AvatarNode> AvatarNodes { get; } = new Dictionary<int, AvatarNode>();
+    public IDictionary<int, BalanceNode> BalanceNodes { get; } = new Dictionary<int, BalanceNode>();
+    public List<CapacityEdge> Edges { get; } = new();
 
-    public string? VirtualSinkAddress { get; set; }
-    public string? SourceAddress { get; }
+    public int? VirtualSinkAddress { get; set; }
+    public int? SourceAddress { get; }
 
-    public void AddAvatar(string avatarAddress)
+    public void AddAvatar(int avatarAddress)
     {
-        avatarAddress = avatarAddress.ToLower();
         if (!AvatarNodes.ContainsKey(avatarAddress))
         {
             AvatarNodes.Add(avatarAddress, new AvatarNode(avatarAddress));
@@ -24,23 +22,16 @@ public class CapacityGraph : IGraph<CapacityEdge>
         }
     }
 
-    public void AddBalanceNode(string address, string token, long amount, bool isWrapped, bool isStatic)
+    public void AddBalanceNode(int holder, int token, long amount, bool isWrapped, bool isStatic, int? balanceNodeId)
     {
-        address = address.ToLower();
-        token = token.ToLower();
-        
-        var balanceNode = new BalanceNode(address, token, amount, isWrapped, isStatic);
-        balanceNode.Address = address;
+        var _balanceNodeId = balanceNodeId ?? AddressIdPool.BalanceNodeIdOf($"{holder}-{token}");
+        var balanceNode = new BalanceNode(_balanceNodeId, holder, token, amount, isWrapped, isStatic);
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
 
-    public void AddCapacityEdge(string from, string to, string token, long capacity)
+    public void AddCapacityEdge(int from, int to, int token, long capacity)
     {
-        from = from.ToLower();
-        to = to.ToLower();
-        token = token.ToLower();
-        
         var edge = new CapacityEdge(from, to, token, capacity);
         Edges.Add(edge);
 
@@ -54,13 +45,14 @@ public class CapacityGraph : IGraph<CapacityEdge>
             balanceNode.OutEdges.Add(edge);
         }
 
-        if (AvatarNodes.TryGetValue(to, out var avatarNode))
-        {
-            avatarNode.InEdges.Add(edge);
-        }
-        else if (BalanceNodes.TryGetValue(to, out var balanceNode))
-        {
-            balanceNode.InEdges.Add(edge);
-        }
+        // Not used in pathfinding:
+        // if (AvatarNodes.TryGetValue(to, out var avatarNode))
+        // {
+        //     avatarNode.InEdges.Add(edge);
+        // }
+        // else if (BalanceNodes.TryGetValue(to, out var balanceNode))
+        // {
+        //     balanceNode.InEdges.Add(edge);
+        // }
     }
 }

@@ -9,7 +9,7 @@ namespace Circles.Pathfinder.Data
     // TODO: Use CirclesQuery<T> and remove the Npgsql dependency
     public interface ILoadGraph
     {
-        IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped, bool IsStatic)>
+        IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
             LoadV2Balances();
 
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
@@ -39,7 +39,7 @@ namespace Circles.Pathfinder.Data
             return reader.ReadToEnd();
         }
 
-        public IEnumerable<(string Balance, string Account, string TokenAddress, bool IsWrapped, bool IsStatic)>
+        public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
             LoadV2Balances()
         {
             // We now only have one balance query that includes the isWrapped column
@@ -80,7 +80,12 @@ namespace Circles.Pathfinder.Data
                     continue;
                 }
 
-                yield return (balance, account, tokenAddress, isWrapped, type == "static");
+                // yield return (balance, account, tokenAddress, isWrapped, type == "static");
+                yield return (balance,
+                              AddressIdPool.IdOf(account.ToLowerInvariant()),
+                              AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
+                              isWrapped,
+                              type == "static");
             }
         }
 

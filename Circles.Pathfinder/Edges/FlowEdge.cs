@@ -9,7 +9,7 @@ public class FlowEdge : CapacityEdge
     public long Flow { get; set; }
     public FlowEdge? ReverseEdge { get; set; }
 
-    public FlowEdge(string from, string to, string token, long initialCapacity)
+    public FlowEdge(int from, int to, int token, long initialCapacity)
         : base(from, to, token, initialCapacity)
     {
         CurrentCapacity = initialCapacity;
