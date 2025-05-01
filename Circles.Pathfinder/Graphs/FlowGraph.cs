@@ -92,43 +92,6 @@ public class FlowGraph : IGraph<FlowEdge>
                     toBalance.IsStatic);
             }
         }
-
-        // manage adjacency lists
-        if (AvatarNodes.TryGetValue(from, out var node))
-        {
-            node.OutEdges.Add(edge);
-        }
-        else if (BalanceNodes.TryGetValue(from, out var balanceNode))
-        {
-            balanceNode.OutEdges.Add(edge);
-        }
-
-        // if (AvatarNodes.TryGetValue(to, out var avatarNode))
-        // {
-        //     avatarNode.InEdges.Add(edge);
-        // }
-        // else if (BalanceNodes.TryGetValue(to, out var balanceNode))
-        // {
-        //     balanceNode.InEdges.Add(edge);
-        // }
-
-        if (AvatarNodes.TryGetValue(to, out var avatarNode2))
-        {
-            avatarNode2.OutEdges.Add(reverseEdge);
-        }
-        else if (BalanceNodes.TryGetValue(to, out var balanceNode2))
-        {
-            balanceNode2.OutEdges.Add(reverseEdge);
-        }
-
-        // if (AvatarNodes.TryGetValue(from, out var node2))
-        // {
-        //     node2.InEdges.Add(reverseEdge);
-        // }
-        // else if (BalanceNodes.TryGetValue(from, out var balanceNode2))
-        // {
-        //     balanceNode2.InEdges.Add(reverseEdge);
-        // }
     }
 
     /// <summary>
@@ -253,7 +216,7 @@ public class FlowGraph : IGraph<FlowEdge>
         Stopwatch sw = new Stopwatch();
         sw.Start();
 
-        var aggregatedGraph = new FlowGraph(null, null);
+        var aggregatedGraph = new FlowGraph();
 
         // Copy all avatar nodes
         foreach (var avatarNode in AvatarNodes.Values)
@@ -300,42 +263,17 @@ public class FlowGraph : IGraph<FlowEdge>
         // Add all aggregated edges to the graph
         foreach (var edge in aggregatedEdges.Values)
         {
-            try
+            // Instead of using AddFlowEdge, add directly to avoid validation checks
+            // that might prevent adding the aggregated edge
+            var fromNode = aggregatedGraph.Nodes[edge.From];
+            var toNode = aggregatedGraph.Nodes[edge.To];
+
+            var newFlowEdge = new FlowEdge(fromNode.Address, toNode.Address, edge.Token, edge.CurrentCapacity)
             {
-                // Instead of using AddFlowEdge, add directly to avoid validation checks
-                // that might prevent adding the aggregated edge
-                var fromNode = aggregatedGraph.Nodes[edge.From];
-                var toNode = aggregatedGraph.Nodes[edge.To];
+                Flow = edge.Flow
+            };
 
-                var newFlowEdge = new FlowEdge(fromNode.Address, toNode.Address, edge.Token, edge.CurrentCapacity)
-                {
-                    Flow = edge.Flow
-                };
-
-                aggregatedGraph.Edges.Add(newFlowEdge);
-
-                if (aggregatedGraph.AvatarNodes.TryGetValue(fromNode.Address, out var fromAvatarNode))
-                {
-                    fromAvatarNode.OutEdges.Add(newFlowEdge);
-                }
-                else if (aggregatedGraph.BalanceNodes.TryGetValue(fromNode.Address, out var fromBalanceNode))
-                {
-                    fromBalanceNode.OutEdges.Add(newFlowEdge);
-                }
-
-                // if (aggregatedGraph.AvatarNodes.TryGetValue(toNode.Address, out var toAvatarNode))
-                // {
-                //     toAvatarNode.InEdges.Add(newFlowEdge);
-                // }
-                // else if (aggregatedGraph.BalanceNodes.TryGetValue(toNode.Address, out var toBalanceNode))
-                // {
-                //     toBalanceNode.InEdges.Add(newFlowEdge);
-                // }
-            }
-            catch (Exception ex)
-            {
-                // Console.WriteLine($"Error adding aggregated edge: {ex.Message}");
-            }
+            aggregatedGraph.Edges.Add(newFlowEdge);
         }
 
         sw.Stop();
