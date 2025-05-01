@@ -30,9 +30,6 @@ public class TrustGraph : IGraph<TrustEdge>
             AvatarNodes[trustee] = trusteeNode;
         }
 
-        trusterNode.OutEdges.Add(new TrustEdge(truster, trustee));
-        // AvatarNodes[trustee].InEdges.Add(new TrustEdge(truster, trustee));
-
         Edges.Add(new TrustEdge(truster, trustee));
     }
 }
