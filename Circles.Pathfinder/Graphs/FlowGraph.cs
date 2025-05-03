@@ -72,12 +72,6 @@ public class FlowGraph : IGraph<FlowEdge>
         var edge = new FlowEdge(from, to, token, capacity);
         Edges.Add(edge);
 
-        // var reverseEdge = new FlowEdge(to, from, token, 0);
-        // Edges.Add(reverseEdge);
-
-        // edge.ReverseEdge = reverseEdge;
-        // reverseEdge.ReverseEdge = edge;
-
         // Create nodes if they don't exist
         if (capacityGraph.Nodes.TryGetValue(from, out var fromNode))
         {
