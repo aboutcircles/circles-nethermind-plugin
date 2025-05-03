@@ -5,6 +5,7 @@ using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Pathfinder.DTOs;
 using Prometheus;
 using static Circles.Pathfinder.Tracing;
 
@@ -17,6 +18,7 @@ public class NetworkStateUpdaterService : BackgroundService
     private readonly List<Exception> _getCurrentBlockErrors = new();
     private static readonly HttpClient HttpClient = new();
     private readonly ILogger<NetworkStateUpdaterService> _log;
+    private readonly FlowGraphPool _pool;
 
     // Prometheus metrics
     private static readonly Counter GraphUpdatesCounter = Metrics.CreateCounter(
@@ -28,10 +30,12 @@ public class NetworkStateUpdaterService : BackgroundService
         "The most recent block number processed by the background service.");
 
     public NetworkStateUpdaterService(NetworkState networkState,
-        ILogger<NetworkStateUpdaterService> log)
+        ILogger<NetworkStateUpdaterService> log,
+        FlowGraphPool pool)
     {
         _networkState = networkState;
         _log = log;
+        _pool = pool;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -82,6 +86,10 @@ public class NetworkStateUpdaterService : BackgroundService
 
             await Task.WhenAll(trustTask, balanceTask);
             swTotal.Stop();
+
+            var baseGraph = await FlowGraphPool.CreateFlowGraph(_settings.IndexReadonlyDbConnectionString, new FlowRequest());
+            var snapshot = new FlowGraphSnapshot(lastBlock, baseGraph);
+            _pool.UpdateSnapshot(snapshot);
 
             upd?.SetTag("trust_ms", swTrustGraph.ElapsedMilliseconds);
             upd?.SetTag("balance_ms", swBalanceGraph.ElapsedMilliseconds);

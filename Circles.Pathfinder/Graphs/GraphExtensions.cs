@@ -60,14 +60,34 @@ public static class GraphExtensions
 
             edge.Flow += flow;
             edge.CurrentCapacity -= flow;
-
-            if (edge.ReverseEdge is not null)
-            {
-                edge.ReverseEdge.CurrentCapacity += flow;
-            }
         }
 
         sw.Stop();
         return optimalFlow;
+    }
+}
+
+public static class FlowGraphCloneExtensions
+{
+    public static FlowGraph CloneShallow(this FlowGraph source)
+    {
+        if (source == null)
+        {
+            throw new ArgumentNullException(nameof(source));
+        }
+
+        // Assume FlowGraph = { List<FlowEdge> Edges, NodeDictionary Nodes, … }
+        // Nodes are immutable; edges get copied.
+        var newEdges = new List<FlowEdge>(source.Edges.Count);
+        foreach (FlowEdge e in source.Edges)
+        {
+            newEdges.Add(new FlowEdge(
+                from: e.From,
+                to: e.To,
+                token: e.Token,
+                initialCapacity: e.InitialCapacity));
+        }
+
+        return new FlowGraph(source.Nodes, source.AvatarNodes, source.BalanceNodes, newEdges);
     }
 }

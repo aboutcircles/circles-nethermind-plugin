@@ -24,6 +24,18 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
+    public FlowGraph(
+        IDictionary<int, Node> nodes,
+        IDictionary<int, AvatarNode> avatarNodes,
+        IDictionary<int, BalanceNode> balanceNodes,
+        List<FlowEdge> edges)
+    {
+        Nodes = nodes;
+        AvatarNodes = avatarNodes;
+        BalanceNodes = balanceNodes;
+        Edges = edges;
+    }
+
     public void AddAvatar(int avatarAddress)
     {
         if (!AvatarNodes.ContainsKey(avatarAddress))
