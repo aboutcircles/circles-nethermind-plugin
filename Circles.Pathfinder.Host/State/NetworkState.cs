@@ -4,21 +4,24 @@ namespace Circles.Pathfinder.Host.State;
 
 public sealed class NetworkState
 {
-    // Single set of graphs
-    public TrustGraph? TrustGraph => _trustGraph;
-    private TrustGraph? _trustGraph;
+    public IReadOnlyDictionary<int, HashSet<int>> AccountTrusts => _accountTrusts;
+    private Dictionary<int, HashSet<int>> _accountTrusts = new();
     
     public BalanceGraph? BalanceGraph => _balanceGraph;
     private BalanceGraph? _balanceGraph;
 
     internal void Replace(
-        TrustGraph? trustGraph = null, 
-        BalanceGraph? balanceGraph = null)
+        BalanceGraph?                      balanceGraph     = null,
+        Dictionary<int, HashSet<int>>?     accountTrusts    = null)
     {
-        if (trustGraph != null)
-            Interlocked.Exchange(ref _trustGraph, trustGraph);
-            
-        if (balanceGraph != null)
+        if (balanceGraph is not null)
+        {
             Interlocked.Exchange(ref _balanceGraph, balanceGraph);
+        }
+
+        if (accountTrusts is not null)
+        {
+            Interlocked.Exchange(ref _accountTrusts, accountTrusts);
+        }
     }
 }

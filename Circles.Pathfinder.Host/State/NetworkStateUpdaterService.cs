@@ -31,14 +31,14 @@ public class NetworkStateUpdaterService : BackgroundService
         ILogger<NetworkStateUpdaterService> log)
     {
         _networkState = networkState;
-        _log          = log;
+        _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var root = Source.StartActivity("NetworkStateUpdater.Run", ActivityKind.Internal);
 
-        var loadGraph   = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
+        var loadGraph = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
         var graphFactory = new GraphFactory();
 
         long lastBlock = 0;
@@ -58,18 +58,20 @@ public class NetworkStateUpdaterService : BackgroundService
 
             var swTotal = Stopwatch.StartNew();
 
-            var swTrustGraph  = Stopwatch.StartNew();
-            var trustSpan     = Source.StartActivity("TrustGraph.Load");
+            var swTrustGraph = Stopwatch.StartNew();
+            var trustSpan = Source.StartActivity("TrustGraph.Load");
             var trustTask = Task.Run(() =>
             {
                 var graph = graphFactory.V2TrustGraph(loadGraph);
-                _networkState.Replace(trustGraph: graph);
+                var lookup = GraphFactory.BuildTrustLookup(graph);
+
+                _networkState.Replace(accountTrusts: lookup);
                 swTrustGraph.Stop();
                 trustSpan?.Dispose();
             }, stoppingToken);
 
             var swBalanceGraph = Stopwatch.StartNew();
-            var balanceSpan    = Source.StartActivity("BalanceGraph.Load");
+            var balanceSpan = Source.StartActivity("BalanceGraph.Load");
             var balanceTask = Task.Run(() =>
             {
                 var graph = graphFactory.V2BalanceGraph(loadGraph);
@@ -119,9 +121,9 @@ public class NetworkStateUpdaterService : BackgroundService
             var requestBody = new
             {
                 jsonrpc = "2.0",
-                method  = "eth_blockNumber",
+                method = "eth_blockNumber",
                 @params = Array.Empty<object>(),
-                id      = 1
+                id = 1
             };
 
             using var content = new StringContent(
@@ -161,7 +163,7 @@ public class NetworkStateUpdaterService : BackgroundService
     private sealed class EthBlockNumberResponse
     {
         [JsonPropertyName("jsonrpc")] public string? JsonRpc { get; set; }
-        [JsonPropertyName("result")]  public string? Result  { get; set; }
-        [JsonPropertyName("id")]      public int      Id     { get; set; }
+        [JsonPropertyName("result")] public string? Result { get; set; }
+        [JsonPropertyName("id")] public int Id { get; set; }
     }
 }

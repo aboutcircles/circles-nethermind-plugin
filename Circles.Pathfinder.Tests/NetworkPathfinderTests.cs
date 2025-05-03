@@ -76,7 +76,7 @@ public class NetworkPathfinderTests
     public NetworkPathfinderTests()
     {
         // Set the base URL for your Pathfinder service
-        _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8547";
+        _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8545";
 
         _jsonOptions = new JsonSerializerOptions
         {

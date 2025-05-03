@@ -11,7 +11,6 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public List<CapacityEdge> Edges { get; } = new();
 
     public int? VirtualSinkAddress { get; set; }
-    public int? SourceAddress { get; }
 
     public void AddAvatar(int avatarAddress)
     {
@@ -34,25 +33,5 @@ public class CapacityGraph : IGraph<CapacityEdge>
     {
         var edge = new CapacityEdge(from, to, token, capacity);
         Edges.Add(edge);
-
-        // Manage adjacency lists
-        if (AvatarNodes.TryGetValue(from, out var node))
-        {
-            node.OutEdges.Add(edge);
-        }
-        else if (BalanceNodes.TryGetValue(from, out var balanceNode))
-        {
-            balanceNode.OutEdges.Add(edge);
-        }
-
-        // Not used in pathfinding:
-        // if (AvatarNodes.TryGetValue(to, out var avatarNode))
-        // {
-        //     avatarNode.InEdges.Add(edge);
-        // }
-        // else if (BalanceNodes.TryGetValue(to, out var balanceNode))
-        // {
-        //     balanceNode.InEdges.Add(edge);
-        // }
     }
 }

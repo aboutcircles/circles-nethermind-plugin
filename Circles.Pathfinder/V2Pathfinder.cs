@@ -51,23 +51,24 @@ public class V2Pathfinder : IPathfinder
         //  // Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
         // Load Trust and Balance Graphs
         var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
         var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
 
-        var maxFlowResponse = ComputeMaxFlowWithData(balanceGraph, trustGraph, request, targetFlow);
+        var maxFlowResponse = ComputeMaxFlowWithData(balanceGraph, trustLookup, request, targetFlow);
 
         return Task.FromResult(maxFlowResponse);
     }
 
     public MaxFlowResponse ComputeMaxFlowWithData(
         BalanceGraph balanceGraph,
-        TrustGraph trustGraph,
+        IReadOnlyDictionary<int, HashSet<int>> trustLookup,
         FlowRequest request,
         UInt256 targetFlow)
     {
         request.WithWrap ??= false;
 
         // Create capacity graph
-        var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustGraph, request);
+        var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustLookup, request);
 
         // If we created a virtual sink inside capacityGraph, use that as the sink
         var sinkId = AddressIdPool.IdOf(request.Sink);
@@ -270,8 +271,6 @@ public class V2Pathfinder : IPathfinder
             };
 
             collapsed.Edges.Add(e);
-            collapsed.AvatarNodes[from].OutEdges.Add(e);
-            // collapsed.AvatarNodes[to].InEdges.Add(e);
         }
 
         return collapsed;

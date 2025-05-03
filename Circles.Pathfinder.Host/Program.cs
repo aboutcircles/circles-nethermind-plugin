@@ -127,9 +127,9 @@ app.MapGet("/findPath", (
     try
     {
         var balanceGraph = state.BalanceGraph;
-        var trustGraph   = state.TrustGraph;
+        var trustGraph   = state.AccountTrusts;
 
-        if (balanceGraph is null || trustGraph is null)
+        if (balanceGraph is null)
         {
             log.LogWarning("Graphs not ready");
             return Results.BadRequest("Graphs are not loaded yet.");
