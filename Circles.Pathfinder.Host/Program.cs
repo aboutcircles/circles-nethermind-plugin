@@ -52,52 +52,44 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation()
         .AddSource(Tracing.Name)
         .SetSampler(new ParentBasedSampler(
-            new TraceIdRatioBasedSampler(0.05)))          // sample 5 %
-        .AddOtlpExporter()                                // ↗ to collector
-        .AddConsoleExporter(o =>                          // ↘ **NEW** simple console dump
+            new TraceIdRatioBasedSampler(0.05))) // sample 5 %
+        .AddOtlpExporter() // ↗ to collector
+        .AddConsoleExporter(o =>
         {
-            o.Targets        = ConsoleExporterOutputTargets.Console;
+            o.Targets = ConsoleExporterOutputTargets.Console;
         }));
 
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(_ => { });
 
 var sem = new SemaphoreSlim(settings.MaxConcurrentRequests,
-                            settings.MaxConcurrentRequests);
+    settings.MaxConcurrentRequests);
 builder.Services.AddSingleton(sem);
 
 builder.Services.AddSingleton<NetworkState>();
+builder.Services.AddSingleton(new FlowGraphPool(settings.IndexReadonlyDbConnectionString));
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
 
 var app = builder.Build();
 
-// ─── Middleware ─────────────────────────────────────────────────────────────
-app.Use((ctx, next) =>
-{
-    ctx.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-    ctx.Response.Headers["Pragma"]        = "no-cache";
-    ctx.Response.Headers["Expires"]       = "0";
-    return next(ctx);
-});
-
 app.UseHttpMetrics();
 app.MapMetrics();
-
 app.UseMiddleware<RequestTimingMiddleware>();
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
-app.MapGet("/findPath", (
-    string        from,
-    string        to,
-    string        amount,
-    string[]?     fromTokens,
-    string[]?     toTokens,
-    string[]?     excludedFromTokens,
-    string[]?     excludedToTokens,
-    bool?         withWrap,
-    NetworkState  state,
+app.MapGet("/findPath", async (
+    string from,
+    string to,
+    string amount,
+    string[]? fromTokens,
+    string[]? toTokens,
+    string[]? excludedFromTokens,
+    string[]? excludedToTokens,
+    bool? withWrap,
+    NetworkState state,
     SemaphoreSlim sem,
+    FlowGraphPool pool,
     ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
@@ -127,7 +119,7 @@ app.MapGet("/findPath", (
     try
     {
         var balanceGraph = state.BalanceGraph;
-        var trustGraph   = state.AccountTrusts;
+        var trustGraph = state.AccountTrusts;
 
         if (balanceGraph is null)
         {
@@ -136,38 +128,41 @@ app.MapGet("/findPath", (
         }
 
         var parseMs = sw.ElapsedMilliseconds;
-        var algoSw  = Stopwatch.StartNew();
+        var algoSw = Stopwatch.StartNew();
 
         var graphFactory = new GraphFactory();
-        var pathfinder   = new V2Pathfinder(graphFactory);
+        var pathfinder = new V2Pathfinder(graphFactory);
 
         var request = new FlowRequest
         {
-            Source             = from.ToLower(),
-            Sink               = to.ToLower(),
-            TargetFlow         = amount,
-            FromTokens         = fromTokens?.ToList(),
-            ToTokens           = toTokens?.ToList(),
+            Source = from.ToLower(),
+            Sink = to.ToLower(),
+            TargetFlow = amount,
+            FromTokens = fromTokens?.ToList(),
+            ToTokens = toTokens?.ToList(),
             ExcludedFromTokens = excludedFromTokens?.ToList(),
-            ExcludedToTokens   = excludedToTokens?.ToList(),
-            WithWrap           = withWrap
+            ExcludedToTokens = excludedToTokens?.ToList(),
+            WithWrap = withWrap
         };
-
-        MaxFlowResponse result = pathfinder.ComputeMaxFlowWithData(
-            balanceGraph, trustGraph, request, targetFlow);
-
-        var algoMs  = algoSw.ElapsedMilliseconds;
-        sw.Stop();
-        var totalMs = sw.ElapsedMilliseconds;
-
-        log.LogDebug("findPath parsed={ParseMs}ms algo={AlgoMs}ms total={TotalMs}ms",
-                     parseMs, algoMs, totalMs);
-
-        if (totalMs > Constants.FindPathSlaMs)
-        {
-            log.LogWarning("findPath SLA breach — {TotalMs} ms (>{SlaMs})",
-                           totalMs, Constants.FindPathSlaMs);
-        }
+        
+        using var rentedFlowGraph = await pool.Rent(request);
+        MaxFlowResponse result = pathfinder.ComputeMaxFlowOnFlowGraph(rentedFlowGraph.Graph, request, targetFlow);
+        
+        // MaxFlowResponse result = pathfinder.ComputeMaxFlowWithData(
+        //     balanceGraph, trustGraph, request, targetFlow);
+        //
+        // var algoMs = algoSw.ElapsedMilliseconds;
+        // sw.Stop();
+        // var totalMs = sw.ElapsedMilliseconds;
+        //
+        // log.LogDebug("findPath parsed={ParseMs}ms algo={AlgoMs}ms total={TotalMs}ms",
+        //     parseMs, algoMs, totalMs);
+        //
+        // if (totalMs > Constants.FindPathSlaMs)
+        // {
+        //     log.LogWarning("findPath SLA breach — {TotalMs} ms (>{SlaMs})",
+        //         totalMs, Constants.FindPathSlaMs);
+        // }
 
         return Results.Ok(result);
     }

@@ -85,6 +85,8 @@ public class GraphFactory
         return graph;
     }
 
+    public static int _c = 0;
+
     /// <summary>
     /// Takes a balance graph and a trust graph and creates a capacity graph from them.
     /// Also sets up a "virtual sink" if source == sink and toTokens are specified.
@@ -94,15 +96,22 @@ public class GraphFactory
     /// <param name="request">Flow request parameters.</param>
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
     public CapacityGraph CreateCapacityGraph(BalanceGraph balanceGraph,
-        IReadOnlyDictionary<int, HashSet<int>> trustLookup, FlowRequest r)
+        IReadOnlyDictionary<int, HashSet<int>> trustLookup, FlowRequest? r)
     {
-        var sourceId = AddressIdPool.IdOf(r.Source);
-        var sinkId = AddressIdPool.IdOf(r.Sink);
+        Interlocked.Increment(ref _c);
+        Console.WriteLine($"Creating capacity graph {_c}...");
 
         var capacityGraph = new CapacityGraph();
 
+        // STEP 1: Add all avatar nodes from both graphs
+        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
+
+        int? virtualSinkAddress = null;
+        HashSet<int> virtualSinkTrustedTokens = new HashSet<int>();
+
+        var sourceEqualsSink = r.Source?.Trim().ToLowerInvariant() == r.Sink?.Trim().ToLowerInvariant();
+
         // Setup key filters
-        var sourceEqualsSink = (r.Source?.ToLowerInvariant() == r.Sink?.ToLowerInvariant());
         var toTokensFilter = r.ToTokens?
                                  .Select(AddressIdPool.IdOf)
                                  .ToHashSet()
@@ -123,17 +132,14 @@ public class GraphFactory
                                          .ToHashSet()
                                      ?? new HashSet<int>();
 
-        // STEP 1: Add all avatar nodes from both graphs
-        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
-
         // STEP 2: Create a virtual sink if needed
-        int? virtualSinkAddress = null;
-        HashSet<int> virtualSinkTrustedTokens = new HashSet<int>();
+        int? sourceId = !string.IsNullOrWhiteSpace(r.Source) ? AddressIdPool.IdOf(r.Source) : null;
+        int? sinkId = !string.IsNullOrWhiteSpace(r.Sink) ? AddressIdPool.IdOf(r.Sink) : null;
 
-        if (sourceEqualsSink && !string.IsNullOrEmpty(r.Source) && toTokensFilter.Count > 0)
+        if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
         {
             (virtualSinkAddress, virtualSinkTrustedTokens) =
-                CreateVirtualSink(capacityGraph, sourceId, toTokensFilter, balanceGraph);
+                CreateVirtualSink(capacityGraph, sourceId.Value, toTokensFilter, balanceGraph);
         }
 
         // STEP 3: Add balance nodes (applying filters)
@@ -150,18 +156,17 @@ public class GraphFactory
         AddCapacityEdges(capacityGraph, balanceGraph);
 
         // STEP 5: Remove direct BN->source edges that form self-loops for source==sink
-        if (sourceEqualsSink && !string.IsNullOrEmpty(r.Source) && toTokensFilter.Count > 0)
+        if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
         {
-            RemoveSelfLoopEdges(capacityGraph, sourceId, toTokensFilter);
+            RemoveSelfLoopEdges(capacityGraph, sourceId.Value, toTokensFilter);
         }
 
         // STEP 6: Create account trust dictionary for efficient lookups
         // STEP 7: Add virtual sink edges if using virtual sink
-        bool anyVirtualSinkEdgesAdded = false;
-        if (virtualSinkAddress != null)
+        if (sourceId != null && virtualSinkAddress != null)
         {
-            anyVirtualSinkEdgesAdded = AddVirtualSinkEdges(
-                capacityGraph, balanceGraph, sourceId, virtualSinkAddress.Value, virtualSinkTrustedTokens,
+            var anyVirtualSinkEdgesAdded = AddVirtualSinkEdges(
+                capacityGraph, balanceGraph, sourceId.Value, virtualSinkAddress.Value, virtualSinkTrustedTokens,
                 trustLookup);
 
             // Remove virtual sink if no edges were added
@@ -257,7 +262,8 @@ public class GraphFactory
     {
         foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
         {
-            var isSource = balanceNode.Holder == AddressIdPool.IdOf(request.Source);
+            int? sourceId = request.Source != null ? AddressIdPool.IdOf(request.Source) : null;
+            var isSource = balanceNode.Holder == sourceId;
 
             // Case 1: When source and sink are the same, don't add balances for tokens that are in toTokens
             // This prevents trivial self-loops when attempting token conversion
@@ -409,7 +415,7 @@ public class GraphFactory
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         int? virtualSinkAddress,
-        int sinkAddress,
+        int? sinkAddress,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
