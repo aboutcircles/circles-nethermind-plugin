@@ -1,18 +1,11 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Index.Utils;
 using Nethermind.Int256;
-using NUnit.Framework;
 using System.Text.Json.Serialization;
 
 namespace Circles.Pathfinder.Tests;
@@ -109,7 +102,8 @@ public class NetworkPathfinderTests
     private void LoadGraphs()
     {
         // Get connection string from environment variable
-        string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
+        string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING")
+                                   ?? "Server=localhost;User ID=postgres;Password=postgres;Port=5432;Database=postgres;";
 
         if (string.IsNullOrEmpty(connectionString))
         {
