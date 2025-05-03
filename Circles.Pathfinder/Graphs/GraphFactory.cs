@@ -176,7 +176,7 @@ public class GraphFactory
 
         // STEP 8: Add regular trust-based capacity edges
         AddTrustBasedCapacityEdges(capacityGraph, balanceGraph, trustLookup, virtualSinkAddress, sinkId, toTokensFilter,
-            excludedFromTokensFilter);
+            excludedToTokensFilter);
 
         return capacityGraph;
     }
@@ -413,7 +413,7 @@ public class GraphFactory
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
-        /* 1️⃣ build “token ➜ avatars that trust it”, applying sink filters inline */
+        /* build “token ➜ avatars that trust it”, applying sink filters inline */
         var tokenToAvatars = new Dictionary<int, List<int>>();
 
         foreach (var (avatar, trustedTokens) in accountTrusts)
@@ -434,7 +434,7 @@ public class GraphFactory
             }
         }
 
-        /* 2️⃣ create edges in parallel */
+        /* create edges in parallel */
         var edgeBag = new ConcurrentBag<(int From, int To, int Token, long Amount)>();
 
         Parallel.ForEach(balanceGraph.BalanceNodes.Values, bn =>
@@ -453,7 +453,7 @@ public class GraphFactory
             }
         });
 
-        /* 3️⃣ commit edges serially */
+        /* commit edges serially */
         foreach (var (from, to, token, amount) in edgeBag)
             capacityGraph.AddCapacityEdge(from, to, token, amount);
     }
