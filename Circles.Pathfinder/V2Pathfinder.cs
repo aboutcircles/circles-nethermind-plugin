@@ -59,6 +59,68 @@ public class V2Pathfinder : IPathfinder
         return Task.FromResult(maxFlowResponse);
     }
 
+    public MaxFlowResponse ComputeMaxFlowOnFlowGraph(FlowGraph flowGraph, FlowRequest request, UInt256 targetFlow)
+    {
+        // if (request.ExcludedFromTokens?.Count > 0 || request.ExcludedFromTokens?.Count > 0 || request.WithWrap == false || request.FromTokens?.Count > 0 || request.ToTokens?.Count > 0)
+        // {
+        //     throw new InvalidOperationException("Cannot filter on static flow graph. Use ComputeMaxFlowWithData instead.");
+        // }
+        
+        // Validate source + sink
+        var sourceId = AddressIdPool.IdOf(request.Source);
+        if (!flowGraph.Nodes.ContainsKey(sourceId))
+        {
+            throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
+        }
+
+        var sinkId = AddressIdPool.IdOf(request.Sink);
+        if (!flowGraph.Nodes.ContainsKey(sinkId))
+        {
+            throw new ArgumentException(
+                $"Sink node '{request.Sink}' does not exist in the graph.");
+        }
+
+        // Compute max flow
+        var maxFlow = ConversionUtils.BlowUpToUInt256(
+            flowGraph.ComputeMaxFlowWithPaths(
+                sourceId,
+                sinkId,
+                ConversionUtils.TruncateToInt64(targetFlow)
+            )
+        );
+
+        // Extract the paths
+        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(sourceId, sinkId, 0L);
+
+        // Collapse balance nodes, etc. 
+        var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
+
+        // Aggregate identical edges (from, to, token) 
+        var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
+
+        var transferSteps = new List<TransferPathStep>();
+        foreach (var edge in aggregatedGraph.Edges)
+        {
+            if (edge.Flow == 0)
+                continue;
+
+            transferSteps.Add(new TransferPathStep
+            {
+                From = AddressIdPool.StringOf(edge.From),
+                To = AddressIdPool.StringOf(edge.To),
+                TokenOwner = AddressIdPool.StringOf(edge.Token),
+                Value = ConversionUtils.BlowUpToUInt256(edge.Flow)
+                    .ToString(CultureInfo.InvariantCulture)
+            });
+        }
+
+        var response = new MaxFlowResponse(
+            maxFlow.ToString(CultureInfo.InvariantCulture),
+            transferSteps
+        );
+        return response;
+    }
+
     public MaxFlowResponse ComputeMaxFlowWithData(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
