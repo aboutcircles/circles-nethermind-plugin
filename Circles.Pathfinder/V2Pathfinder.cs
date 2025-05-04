@@ -1,7 +1,5 @@
 using System.Globalization;
-using System.Text;
 using Circles.Index.Utils;
-using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
@@ -9,240 +7,72 @@ using Nethermind.Int256;
 
 namespace Circles.Pathfinder;
 
-public class V2Pathfinder : IPathfinder
+public class V2Pathfinder
 {
-    private readonly LoadGraph? _loadGraph;
-    private readonly GraphFactory _graphFactory;
-
-    public V2Pathfinder(GraphFactory graphFactory)
-    {
-        _graphFactory = graphFactory;
-    }
-
-    public V2Pathfinder(LoadGraph loadGraph, GraphFactory graphFactory)
-    {
-        _loadGraph = loadGraph;
-        _graphFactory = graphFactory;
-    }
-
-    public Task<MaxFlowResponse> ComputeMaxFlow(FlowRequest request)
-    {
-        if (string.IsNullOrEmpty(request.Source) || string.IsNullOrEmpty(request.Sink))
-        {
-            throw new ArgumentException("Source and Sink must be provided.");
-        }
-
-        if (request.TargetFlow == null)
-        {
-            throw new ArgumentException("TargetFlow must be provided.");
-        }
-
-        if (!UInt256.TryParse(request.TargetFlow, out var targetFlow))
-        {
-            throw new ArgumentException("TargetFlow must be a valid integer.");
-        }
-
-        if (_loadGraph == null || _graphFactory == null)
-        {
-            throw new InvalidOperationException("LoadGraph and GraphFactory must be provided.");
-        }
-
-        //  // Console.WriteLine($"Requests Source: {request.Source?.ToLower()}");
-        //  // Console.WriteLine($"Requests Sink: {request.Sink?.ToLower()} ");
-        // Load Trust and Balance Graphs
-        var trustGraph = _graphFactory.V2TrustGraph(_loadGraph);
-        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
-        var balanceGraph = _graphFactory.V2BalanceGraph(_loadGraph);
-
-        var maxFlowResponse = ComputeMaxFlowWithData(balanceGraph, trustLookup, request, targetFlow);
-
-        return Task.FromResult(maxFlowResponse);
-    }
-
-    public MaxFlowResponse ComputeMaxFlowOnFlowGraph(FlowGraph flowGraph, FlowRequest request, UInt256 targetFlow)
-    {
-        // if (request.ExcludedFromTokens?.Count > 0 || request.ExcludedFromTokens?.Count > 0 || request.WithWrap == false || request.FromTokens?.Count > 0 || request.ToTokens?.Count > 0)
-        // {
-        //     throw new InvalidOperationException("Cannot filter on static flow graph. Use ComputeMaxFlowWithData instead.");
-        // }
-        
-        // Validate source + sink
-        var sourceId = AddressIdPool.IdOf(request.Source);
-        if (!flowGraph.Nodes.ContainsKey(sourceId))
-        {
-            throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
-        }
-
-        var sinkId = AddressIdPool.IdOf(request.Sink);
-        if (!flowGraph.Nodes.ContainsKey(sinkId))
-        {
-            throw new ArgumentException(
-                $"Sink node '{request.Sink}' does not exist in the graph.");
-        }
-
-        // Compute max flow
-        var maxFlow = ConversionUtils.BlowUpToUInt256(
-            flowGraph.ComputeMaxFlowWithPaths(
-                sourceId,
-                sinkId,
-                ConversionUtils.TruncateToInt64(targetFlow)
-            )
-        );
-
-        // Extract the paths
-        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(sourceId, sinkId, 0L);
-
-        // Collapse balance nodes, etc. 
-        var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
-
-        // Aggregate identical edges (from, to, token) 
-        var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
-
-        var transferSteps = new List<TransferPathStep>();
-        foreach (var edge in aggregatedGraph.Edges)
-        {
-            if (edge.Flow == 0)
-                continue;
-
-            transferSteps.Add(new TransferPathStep
-            {
-                From = AddressIdPool.StringOf(edge.From),
-                To = AddressIdPool.StringOf(edge.To),
-                TokenOwner = AddressIdPool.StringOf(edge.Token),
-                Value = ConversionUtils.BlowUpToUInt256(edge.Flow)
-                    .ToString(CultureInfo.InvariantCulture)
-            });
-        }
-
-        var response = new MaxFlowResponse(
-            maxFlow.ToString(CultureInfo.InvariantCulture),
-            transferSteps
-        );
-        return response;
-    }
-
-    public MaxFlowResponse ComputeMaxFlowWithData(
-        BalanceGraph balanceGraph,
-        IReadOnlyDictionary<int, HashSet<int>> trustLookup,
+    public MaxFlowResponse ComputeMaxFlowOnCapacityGraph(
+        CapacityGraph capacityGraph,
         FlowRequest request,
         UInt256 targetFlow)
     {
-        request.WithWrap ??= false;
+        // pick real vs virtual sink exactly like before
+        int sinkId = AddressIdPool.IdOf(request.Sink);
+        int effSink = capacityGraph.VirtualSinkAddress ?? sinkId;
+        int sourceId = AddressIdPool.IdOf(request.Source);
 
-        // Create capacity graph
-        var capacityGraph = _graphFactory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
+            throw new ArgumentException($"Source '{request.Source}' isn’t in the graph snapshot.");
+        if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
+            throw new ArgumentException($"Sink '{request.Sink}' isn’t in the graph snapshot.");
+        
+        // ------------------ max-flow -------------------------------------
+        var edges = capacityGraph.Edges;
+        long tgt = ConversionUtils.TruncateToInt64(targetFlow);
 
-        // If we created a virtual sink inside capacityGraph, use that as the sink
-        var sinkId = AddressIdPool.IdOf(request.Sink);
-        int effectiveSink = sinkId;
+        var solved = MaxFlowSolver.Solve(edges, sourceId, effSink, tgt);
+        var paths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
+
+        /* Re-use existing collapse / aggregate code by briefly mapping
+           SimpleEdge ➜ FlowEdge (cheap objects, negligible GC). */
+        var flowPaths = paths.Select(p => p.Select(e => new FlowEdge(
+                    e.From, e.To, e.Token, e.Capacity)
+                { Flow = e.Flow, CurrentCapacity = e.Capacity })
+            .ToList()).ToList();
+
         if (capacityGraph.VirtualSinkAddress != null)
         {
-            effectiveSink = capacityGraph.VirtualSinkAddress.Value;
+            flowPaths = flowPaths.Select(path =>
+                    path.Select(f => new FlowEdge(
+                                f.From == capacityGraph.VirtualSinkAddress ? sinkId : f.From,
+                                f.To == capacityGraph.VirtualSinkAddress ? sinkId : f.To,
+                                f.Token,
+                                f.InitialCapacity)
+                            { Flow = f.Flow, CurrentCapacity = f.CurrentCapacity })
+                        .ToList())
+                .ToList();
         }
 
-        // Build flow graph
-        var flowGraph = _graphFactory.CreateFlowGraph(capacityGraph);
+        var collapsed = CollapseBalanceNodes(flowPaths);
+        var aggregated = collapsed.AggregateIdenticalEdges();
 
-        // Validate source + sink
-        var sourceId = AddressIdPool.IdOf(request.Source);
-        if (!flowGraph.Nodes.ContainsKey(sourceId))
-        {
-            throw new ArgumentException($"Source node '{request.Source}' does not exist in the graph.");
-        }
-
-        if (!flowGraph.Nodes.ContainsKey(effectiveSink))
-        {
-            throw new ArgumentException(
-                $"Sink node '{(capacityGraph.VirtualSinkAddress != null ? "virtual sink" : request.Sink)}' does not exist in the graph.");
-        }
-
-        // Compute max flow
-        var maxFlow = ConversionUtils.BlowUpToUInt256(
-            flowGraph.ComputeMaxFlowWithPaths(
-                sourceId,
-                effectiveSink,
-                ConversionUtils.TruncateToInt64(targetFlow)
-            )
-        );
-
-        // // Console.WriteLine($"[Circles.V2Pathfinder] Max flow from {source} to {sink}: {maxFlow} (target: {targetFlow})");
-
-        // Extract the paths
-        var pathsWithFlow = flowGraph.ExtractPathsWithFlow(sourceId, effectiveSink, 0L);
-
-        FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] pathsWithFlow before VirtualSink processing", sourceId,
-            sinkId, pathsWithFlow);
-
-
-        // If we had a virtual sink, rewrite it as the real sink in final edges 
-        if (capacityGraph.VirtualSinkAddress != null)
-        {
-            pathsWithFlow = pathsWithFlow
-                .Select(path =>
-                    path.Select(edge => new FlowEdge(
-                            edge.From == capacityGraph.VirtualSinkAddress
-                                ? sinkId
-                                : edge.From,
-                            edge.To == capacityGraph.VirtualSinkAddress
-                                ? sinkId
-                                : edge.To,
-                            edge.Token,
-                            edge.InitialCapacity)
-                        {
-                            Flow = edge.Flow,
-                            CurrentCapacity = edge.CurrentCapacity
-                        })
-                        .ToList()
-                ).ToList();
-        }
-
-        FlowLogger.LogTransferStepsFlow(
-            "[Circles.V2Pathfinder] pathsWithFlow after VirtualSink processing",
-            sourceId,
-            sinkId,
-            pathsWithFlow);
-
-        // Collapse balance nodes, etc. 
-        var collapsedGraph = CollapseBalanceNodes(pathsWithFlow);
-
-        FlowLogger.LogFlowGraphFlow("[Circles.V2Pathfinder] collapsedGraph", sourceId, sinkId, collapsedGraph);
-
-
-        // Aggregate identical edges (from, to, token) 
-        var aggregatedGraph = collapsedGraph.AggregateIdenticalEdges();
-
-        FlowLogger.LogFlowGraphFlow("[Circles.V2Pathfinder] aggregatedGraph", sourceId, sinkId, aggregatedGraph);
-
-        var transferSteps = new List<TransferPathStep>();
-        foreach (var edge in aggregatedGraph.Edges)
-        {
-            if (edge.Flow == 0)
-                continue;
-
-            transferSteps.Add(new TransferPathStep
+        // ------------------ DTO build ------------------------------------
+        var transfer = aggregated.Edges
+            .Where(e => e.Flow > 0)
+            .Select(e => new TransferPathStep
             {
-                From = AddressIdPool.StringOf(edge.From),
-                To = AddressIdPool.StringOf(edge.To),
-                TokenOwner = AddressIdPool.StringOf(edge.Token),
-                Value = ConversionUtils.BlowUpToUInt256(edge.Flow)
-                    .ToString(CultureInfo.InvariantCulture)
-            });
-        }
+                From = AddressIdPool.StringOf(e.From),
+                To = AddressIdPool.StringOf(e.To),
+                TokenOwner = AddressIdPool.StringOf(e.Token),
+                Value = ConversionUtils.BlowUpToUInt256(e.Flow).ToString(CultureInfo.InvariantCulture)
+            })
+            .ToList();
 
-        FlowLogger.LogTransferStepsFlow("[Circles.V2Pathfinder] transferSteps", sourceId, sinkId, transferSteps);
+        var maxFlowWei = transfer
+            .Where(e => AddressIdPool.IdOf(e.From) == sourceId)
+            .Aggregate((UInt256)0, (p, c) => p + UInt256.Parse(c.Value));
 
-        //  var totalValue = transferSteps.Sum(o => Convert.ToInt64(o.Value));
-        // Console.WriteLine($"-----------------------------------");
-        // Console.WriteLine($"Target flow: {targetFlow}");
-        // Console.WriteLine($"Max flow: {maxFlow}");
-        //  // Console.WriteLine($"Total value: {totalValue}");
-
-        // Return
-        var response = new MaxFlowResponse(
-            maxFlow.ToString(CultureInfo.InvariantCulture),
-            transferSteps
-        );
-        return response;
+        return new MaxFlowResponse(
+            maxFlowWei.ToString(CultureInfo.InvariantCulture),
+            transfer);
     }
 
 
@@ -255,7 +85,7 @@ public class V2Pathfinder : IPathfinder
     /// </summary>
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
-        var collapsed = new FlowGraph(null, null);
+        var collapsed = new FlowGraph();
 
         // copy every avatar that occurs in the paths
         var avatars = new HashSet<int>();
@@ -346,129 +176,5 @@ public class V2Pathfinder : IPathfinder
     private bool IsBalanceNode(int nodeAddress)
     {
         return AddressIdPool.IsBalanceNode(nodeAddress);
-    }
-
-    static class FlowLogger
-    {
-        public static void LogPaths(string sink, List<List<FlowEdge>> transferPathSteps)
-        {
-            // Log the flows:
-            StringBuilder sbb = new StringBuilder();
-            sbb.AppendLine("Discovered paths:");
-            sbb.AppendLine("----------------------------");
-            foreach (var p in transferPathSteps)
-            {
-                sbb.AppendLine($"{p[0].From} -> {p[^1].To} ({p[^1].Flow}):");
-                foreach (var flowEdge in p)
-                {
-                    sbb.Append(flowEdge.From);
-                    sbb.Append("->");
-                }
-
-                sbb.AppendLine(sink);
-                sbb.AppendLine();
-            }
-
-            // Console.WriteLine(sbb.ToString());
-        }
-
-        public static void LogFlowGraphFlow(string title, int source, int sink, FlowGraph flowGraph)
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine(title);
-            sb.AppendLine("-----------------------");
-
-            long flowFromSource = 0;
-            foreach (var edge in flowGraph.Edges)
-            {
-                if (edge.From == source)
-                {
-                    flowFromSource += edge.Flow;
-                }
-            }
-
-            long flowToSink = 0;
-            foreach (var edge in flowGraph.Edges)
-            {
-                if (edge.To == sink)
-                {
-                    flowToSink += edge.Flow;
-                }
-            }
-
-            sb.AppendLine($"  Flow from {AddressIdPool.StringOf(source)} to {AddressIdPool.StringOf(sink)}");
-            sb.AppendLine($"  Flow from source: {flowFromSource}");
-            sb.AppendLine($"  Flow to sink: {flowToSink}");
-
-            // Console.WriteLine(sb.ToString());
-        }
-
-        public static void LogTransferStepsFlow(string title, int source, int sink,
-            List<List<FlowEdge>> transferPathSteps)
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine(title);
-            sb.AppendLine("-----------------------");
-
-            long flowFromSource = 0;
-            long flowToSink = 0;
-
-            foreach (var flow in transferPathSteps)
-            {
-                foreach (var transferPathStep in flow)
-                {
-                    if (transferPathStep.From == source)
-                    {
-                        flowFromSource += transferPathStep.Flow;
-                    }
-                }
-
-                foreach (var transferPathStep in flow)
-                {
-                    if (transferPathStep.To == sink)
-                    {
-                        flowToSink += transferPathStep.Flow;
-                    }
-                }
-            }
-
-            sb.AppendLine($"  Flow from {AddressIdPool.StringOf(source)} to {AddressIdPool.StringOf(sink)}");
-            sb.AppendLine($"  Flow from source: {flowFromSource}");
-            sb.AppendLine($"  Flow to sink: {flowToSink}");
-
-            // Console.WriteLine(sb.ToString());
-        }
-
-        public static void LogTransferStepsFlow(string title, int source, int sink,
-            List<TransferPathStep> transferPathSteps)
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine(title);
-            sb.AppendLine("-----------------------");
-
-            UInt256 flowFromSource = 0;
-            foreach (var transferPathStep in transferPathSteps)
-            {
-                if (AddressIdPool.IdOf(transferPathStep.From) == source)
-                {
-                    flowFromSource += UInt256.Parse(transferPathStep.Value);
-                }
-            }
-
-            UInt256 flowToSink = 0;
-            foreach (var transferPathStep in transferPathSteps)
-            {
-                if (AddressIdPool.IdOf(transferPathStep.To) == sink)
-                {
-                    flowToSink += UInt256.Parse(transferPathStep.Value);
-                }
-            }
-
-            sb.AppendLine($"  Flow from {source} to {sink}");
-            sb.AppendLine($"  Flow from source: {flowFromSource}");
-            sb.AppendLine($"  Flow to sink: {flowToSink}");
-
-            // Console.WriteLine(sb.ToString());
-        }
     }
 }
