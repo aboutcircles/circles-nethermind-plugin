@@ -404,78 +404,62 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
     {
-        if (!string.IsNullOrWhiteSpace(_indexerContext.Settings.ExternalPathfinderUrl))
+        // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
+        var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
+        var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+
+        // Add the parameters if they are set
+        if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
         {
-            // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
-            var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
-            var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
-
-            // Add the parameters if they are set
-            if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
+            foreach (var token in flowRequest.FromTokens)
             {
-                foreach (var token in flowRequest.FromTokens)
-                {
-                    url += $"&fromTokens={token}";
-                }
-
+                url += $"&fromTokens={token}";
             }
-            
-            if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
-            {
-                foreach (var token in flowRequest.ToTokens)
-                {
-                    url += $"&toTokens={token}";
-                }
-            }
-
-            if (flowRequest.ExcludedFromTokens != null && flowRequest.ExcludedFromTokens.Any())
-            {
-                foreach (var token in flowRequest.ExcludedFromTokens)
-                {
-                    url += $"&excludedFromTokens={token}";
-                }
-            }
-            
-            if (flowRequest.ExcludedToTokens != null && flowRequest.ExcludedToTokens.Any())
-            {
-                foreach (var token in flowRequest.ExcludedToTokens)
-                {
-                    url += $"&excludedToTokens={token}";
-                }
-            }
-            
-            if (flowRequest.WithWrap.HasValue)
-            {
-                url += $"&withWrap={flowRequest.WithWrap.Value}";
-            }
-
-            using var httpClient = new HttpClient();
-
-            // Perform the GET request to the external pathfinder
-            var response = await httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-
-            // Expect a JSON response that can deserialize into MaxFlowResponse
-            var maxFlowResponse = await response.Content.ReadFromJsonAsync<MaxFlowResponse>();
-            if (maxFlowResponse == null)
-            {
-                throw new Exception("Failed to deserialize MaxFlowResponse from external pathfinder.");
-            }
-
-            return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse);
         }
-        else
+
+        if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
         {
-            // If no external service is configured, run the local pathfinder
-            var loadGraph = new LoadGraph(
-                _indexerContext.Settings.IndexReadonlyDbConnectionString ??
-                _indexerContext.Settings.IndexDbConnectionString); 
-
-            var graphFactory = new GraphFactory();
-            var pathfinder = new V2Pathfinder(loadGraph, graphFactory);
-
-            return ResultWrapper<MaxFlowResponse>.Success(await pathfinder.ComputeMaxFlow(flowRequest));
+            foreach (var token in flowRequest.ToTokens)
+            {
+                url += $"&toTokens={token}";
+            }
         }
+
+        if (flowRequest.ExcludedFromTokens != null && flowRequest.ExcludedFromTokens.Any())
+        {
+            foreach (var token in flowRequest.ExcludedFromTokens)
+            {
+                url += $"&excludedFromTokens={token}";
+            }
+        }
+
+        if (flowRequest.ExcludedToTokens != null && flowRequest.ExcludedToTokens.Any())
+        {
+            foreach (var token in flowRequest.ExcludedToTokens)
+            {
+                url += $"&excludedToTokens={token}";
+            }
+        }
+
+        if (flowRequest.WithWrap.HasValue)
+        {
+            url += $"&withWrap={flowRequest.WithWrap.Value}";
+        }
+
+        using var httpClient = new HttpClient();
+
+        // Perform the GET request to the external pathfinder
+        var response = await httpClient.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+
+        // Expect a JSON response that can deserialize into MaxFlowResponse
+        var maxFlowResponse = await response.Content.ReadFromJsonAsync<MaxFlowResponse>();
+        if (maxFlowResponse == null)
+        {
+            throw new Exception("Failed to deserialize MaxFlowResponse from external pathfinder.");
+        }
+
+        return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse);
     }
 
     public ResultWrapper<string> circles_health()

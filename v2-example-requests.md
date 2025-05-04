@@ -17,9 +17,9 @@ This method allows you to query the total Circles (v2) holdings of an address.
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circlesV2_getTotalBalance",
-    "params":["0xc661fe4ce147c209ea6ca66a2a2323b69791a463"],
+    "params":["0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2"],
     "id":1
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ````
 
 ##### Response:
@@ -41,10 +41,10 @@ This method allows you to query all individual Circles (v2) holdings of an addre
 ```shell
 curl -X POST --data '{
     "jsonrpc":"2.0",
-    "method":"circlesV2_getTokenBalances",
-    "params":["0xc661fe4ce147c209ea6ca66a2a2323b69791a463"],
+    "method":"circles_getTokenBalances",
+    "params":["0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2"],
     "id":1
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
 ```
 
 ##### Response:
