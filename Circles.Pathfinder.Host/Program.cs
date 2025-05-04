@@ -54,10 +54,7 @@ builder.Services.AddOpenTelemetry()
         .SetSampler(new ParentBasedSampler(
             new TraceIdRatioBasedSampler(0.05))) // sample 5 %
         .AddOtlpExporter() // ↗ to collector
-        .AddConsoleExporter(o =>
-        {
-            o.Targets = ConsoleExporterOutputTargets.Console;
-        }));
+        .AddConsoleExporter(o => { o.Targets = ConsoleExporterOutputTargets.Console; }));
 
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(_ => { });
@@ -67,7 +64,7 @@ var sem = new SemaphoreSlim(settings.MaxConcurrentRequests,
 builder.Services.AddSingleton(sem);
 
 builder.Services.AddSingleton<NetworkState>();
-builder.Services.AddSingleton(new FlowGraphPool(settings.IndexReadonlyDbConnectionString));
+builder.Services.AddSingleton(new CapacityGraphPool(settings.IndexReadonlyDbConnectionString));
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
 
@@ -89,7 +86,7 @@ app.MapGet("/findPath", async (
     bool? withWrap,
     NetworkState state,
     SemaphoreSlim sem,
-    FlowGraphPool pool,
+    CapacityGraphPool pool,
     ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
@@ -127,11 +124,7 @@ app.MapGet("/findPath", async (
             return Results.BadRequest("Graphs are not loaded yet.");
         }
 
-        var parseMs = sw.ElapsedMilliseconds;
-        var algoSw = Stopwatch.StartNew();
-
-        var graphFactory = new GraphFactory();
-        var pathfinder = new V2Pathfinder(graphFactory);
+        var pathfinder = new V2Pathfinder();
 
         var request = new FlowRequest
         {
@@ -144,25 +137,9 @@ app.MapGet("/findPath", async (
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap
         };
-        
-        using var rentedFlowGraph = await pool.Rent(request);
-        MaxFlowResponse result = pathfinder.ComputeMaxFlowOnFlowGraph(rentedFlowGraph.Graph, request, targetFlow);
-        
-        // MaxFlowResponse result = pathfinder.ComputeMaxFlowWithData(
-        //     balanceGraph, trustGraph, request, targetFlow);
-        //
-        // var algoMs = algoSw.ElapsedMilliseconds;
-        // sw.Stop();
-        // var totalMs = sw.ElapsedMilliseconds;
-        //
-        // log.LogDebug("findPath parsed={ParseMs}ms algo={AlgoMs}ms total={TotalMs}ms",
-        //     parseMs, algoMs, totalMs);
-        //
-        // if (totalMs > Constants.FindPathSlaMs)
-        // {
-        //     log.LogWarning("findPath SLA breach — {TotalMs} ms (>{SlaMs})",
-        //         totalMs, Constants.FindPathSlaMs);
-        // }
+
+        using var h = await pool.Rent(request, balanceGraph, trustGraph);
+        MaxFlowResponse result = pathfinder.ComputeMaxFlowOnCapacityGraph(h.Graph, request, targetFlow);
 
         return Results.Ok(result);
     }

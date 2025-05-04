@@ -18,7 +18,7 @@ public class NetworkStateUpdaterService : BackgroundService
     private readonly List<Exception> _getCurrentBlockErrors = new();
     private static readonly HttpClient HttpClient = new();
     private readonly ILogger<NetworkStateUpdaterService> _log;
-    private readonly FlowGraphPool _pool;
+    private readonly CapacityGraphPool _pool;
 
     // Prometheus metrics
     private static readonly Counter GraphUpdatesCounter = Metrics.CreateCounter(
@@ -31,7 +31,7 @@ public class NetworkStateUpdaterService : BackgroundService
 
     public NetworkStateUpdaterService(NetworkState networkState,
         ILogger<NetworkStateUpdaterService> log,
-        FlowGraphPool pool)
+        CapacityGraphPool pool)
     {
         _networkState = networkState;
         _log = log;
@@ -87,9 +87,13 @@ public class NetworkStateUpdaterService : BackgroundService
             await Task.WhenAll(trustTask, balanceTask);
             swTotal.Stop();
 
-            var baseGraph = await FlowGraphPool.CreateFlowGraph(_settings.IndexReadonlyDbConnectionString, new FlowRequest());
-            var snapshot = new FlowGraphSnapshot(lastBlock, baseGraph);
-            _pool.UpdateSnapshot(snapshot);
+            // var baseGraph = await FlowGraphPool.CreateFlowGraph(_settings.IndexReadonlyDbConnectionString, new FlowRequest());
+            // var snapshot = new FlowGraphSnapshot(lastBlock, baseGraph);
+            // _pool.UpdateSnapshot(snapshot);
+            
+            var cap       = await CapacityGraphPool.BuildFullGraph(_settings.IndexReadonlyDbConnectionString);
+            var snap      = new CapacityGraphSnapshot(lastBlock, cap);
+            _pool.UpdateSnapshot(snap);
 
             upd?.SetTag("trust_ms", swTrustGraph.ElapsedMilliseconds);
             upd?.SetTag("balance_ms", swBalanceGraph.ElapsedMilliseconds);
