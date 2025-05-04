@@ -11,39 +11,48 @@ internal static class MaxFlowSolver
         int sinkAvatar,
         long targetFlow)
     {
-        var maxFlow = new MaxFlow();
-        var arcOfEdge = new Dictionary<CapacityEdge, int>();
 
-        /* add super-source */
-        int superSource = capacityEdges.Max(e => Math.Max(e.From, e.To)) + 1;
+        var maxFlow = new MaxFlow();
+
+        /* ----------------------------------------------------------------
+         * Arc-id 0      : super-source ➜ real source
+         * Arc-id 1..N   : real capacity edges (same order as edgesList)
+         * ---------------------------------------------------------------- */
+        int superSource = capacityEdges.Count > 0
+            ? Math.Max(capacityEdges.Max(e => Math.Max(e.From, e.To)), sourceAvatar) + 1
+            : sourceAvatar + 1;
+
         maxFlow.AddArcWithCapacity(superSource, sourceAvatar, targetFlow);
 
-        /* add real arcs */
-        foreach (CapacityEdge edge in capacityEdges)
+        /* Add the real arcs — their ids are predictable: offset + index  */
+        for (int i = 0; i < capacityEdges.Count; i++)
         {
-            int arcId = maxFlow.AddArcWithCapacity(edge.From, edge.To, edge.InitialCapacity);
-            arcOfEdge[edge] = arcId;
+            var edge = capacityEdges[i];
+            maxFlow.AddArcWithCapacity(edge.From, edge.To, edge.InitialCapacity);
         }
 
-        /* solve */
+        /* --------------------------- solve ------------------------------ */
         var status = maxFlow.Solve(superSource, sinkAvatar);
         if (status != MaxFlow.Status.OPTIMAL)
-        {
             throw new InvalidOperationException($"Max-flow failed: {status}");
-        }
 
-        /* write back */
+        /* ---------------- write back only the arcs with flow ------------ */
+        const int arcOffset = 1; // skip the super-source arc (id 0)
         var result = new List<SimpleEdge>();
-        foreach ((CapacityEdge ce, int arc) in arcOfEdge)
+
+        for (int i = 0; i < capacityEdges.Count; i++)
         {
-            long flow = maxFlow.Flow(arc);
-            if (flow == 0)
+            long flow = maxFlow.Flow(arcOffset + i);
+            bool hasFlow = flow > 0;
+            if (!hasFlow)
             {
                 continue;
             }
 
-            long remainingCapacity = ce.InitialCapacity - flow;
-            result.Add(new SimpleEdge(ce.From, ce.To, ce.Token, remainingCapacity)
+            var edge = capacityEdges[i];
+            long remain = edge.InitialCapacity - flow;
+
+            result.Add(new SimpleEdge(edge.From, edge.To, edge.Token, remain)
             {
                 Flow = flow
             });
