@@ -66,9 +66,9 @@ public class V2Pathfinder
             })
             .ToList();
 
-        var maxFlowWei = solved
-            .Where(e => e.From == sourceId)
-            .Aggregate((UInt256)0, (p, c) => p + ConversionUtils.BlowUpToUInt256(c.Flow));
+        var maxFlowWei = transfer
+            .Where(e => AddressIdPool.IdOf(e.From) == sourceId)
+            .Aggregate((UInt256)0, (p, c) => p + UInt256.Parse(c.Value));
 
         return new MaxFlowResponse(
             maxFlowWei.ToString(CultureInfo.InvariantCulture),

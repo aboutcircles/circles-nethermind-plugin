@@ -9,59 +9,115 @@ internal static class PathUtils
         int source,
         int sink)
     {
-        /* build adjacency (only positive-flow arcs) */
-        var adjacency = edges
-            .GroupBy(e => e.From)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        /* --------------------------------------------------------------------
+         * Build adjacency: map  node → List<SimpleEdge> that still have flow.
+         * ------------------------------------------------------------------ */
+        var adjacency = new Dictionary<int, List<SimpleEdge>>();
 
-        var paths = new List<List<SimpleEdge>>();
+        foreach (var edge in edges)
+        {
+            bool edgeHasResidualFlow = edge.Flow > 0;
+            if (!edgeHasResidualFlow)
+            {
+                continue;
+            }
 
-        /* classic BFS path peeling */
+            if (!adjacency.TryGetValue(edge.From, out var list))
+            {
+                list = new List<SimpleEdge>();
+                adjacency[edge.From] = list;
+            }
+
+            list.Add(edge);
+        }
+
+        var result = new List<List<SimpleEdge>>();
+
+        /* --------------------------------------------------------------------
+         * Repeatedly peel one augmenting path at a time (classic Edmonds-Karp).
+         * ------------------------------------------------------------------ */
         while (true)
         {
-            var queue   = new Queue<int>();
-            var parent  = new Dictionary<int, SimpleEdge>();
+            var parent = new Dictionary<int, SimpleEdge>(); // child → edge used to reach it
+            var queue = new Queue<int>();
             queue.Enqueue(source);
 
-            while (queue.Count > 0 && !parent.ContainsKey(sink))
+            /* ---------- BFS restricted to positive-flow arcs ---------------- */
+            while (queue.Count > 0)
             {
                 int current = queue.Dequeue();
-                if (!adjacency.TryGetValue(current, out var outs)) { continue; }
-
-                foreach (SimpleEdge e in outs)
+                bool sinkReached = parent.ContainsKey(sink);
+                if (sinkReached)
                 {
-                    if (parent.ContainsKey(e.To))               { continue; }
-                    if (e.Flow <= 0)                            { continue; }
+                    break;
+                }
 
-                    parent[e.To] = e;
-                    queue.Enqueue(e.To);
+                if (!adjacency.TryGetValue(current, out var outgoing))
+                {
+                    continue;
+                }
+
+                foreach (var edge in outgoing)
+                {
+                    bool edgeHasResidual = edge.Flow > 0;
+                    bool nodeSeen = parent.ContainsKey(edge.To);
+                    bool skipEdge = !edgeHasResidual || nodeSeen;
+                    if (skipEdge)
+                    {
+                        continue;
+                    }
+
+                    parent[edge.To] = edge;
+                    queue.Enqueue(edge.To);
                 }
             }
 
-            if (!parent.ContainsKey(sink)) { break; }
+            bool noPathFound = !parent.ContainsKey(sink);
+            if (noPathFound)
+            {
+                break;
+            } // algorithm terminates
 
-            /* reconstruct & peel */
-            var path = new List<SimpleEdge>();
-            int node = sink;
+            /* ----------------------------------------------------------------
+             * Walk back sink → source to collect edges in this path and
+             * find the bottleneck capacity (minFlow).
+             * ---------------------------------------------------------------- */
+            var peel = new List<SimpleEdge>();
             long minFlow = long.MaxValue;
+            int node = sink;
 
             while (node != source)
             {
                 var edge = parent[node];
-                path.Add(edge);
+                peel.Add(edge);
                 minFlow = Math.Min(minFlow, edge.Flow);
                 node = edge.From;
             }
 
-            path.Reverse();
-            paths.Add(path);
+            peel.Reverse(); // now in source → sink order
 
-            foreach (SimpleEdge e in path)
+            /* ----------------------------------------------------------------
+             * Store an immutable copy of the path with the exact flow value.
+             * ---------------------------------------------------------------- */
+            var pathCopy = new List<SimpleEdge>(peel.Count);
+            foreach (var edge in peel)
             {
-                e.Flow -= minFlow;
+                var copy = edge with { Flow = minFlow };
+                pathCopy.Add(copy);
+            }
+
+            result.Add(pathCopy);
+
+            /* ----------------------------------------------------------------
+             * Peel the bottleneck amount off the residual capacities so we can
+             * search for the next augmenting path.
+             * ---------------------------------------------------------------- */
+            foreach (var edge in peel)
+            {
+                edge.Flow -= minFlow;
             }
         }
 
-        return paths;
+        return result;
     }
 }
