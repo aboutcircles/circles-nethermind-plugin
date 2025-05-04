@@ -11,7 +11,6 @@ internal static class MaxFlowSolver
         int sinkAvatar,
         long targetFlow)
     {
-
         var maxFlow = new MaxFlow();
 
         /* ----------------------------------------------------------------
