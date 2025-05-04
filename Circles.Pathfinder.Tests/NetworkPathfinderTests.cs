@@ -102,8 +102,7 @@ public class NetworkPathfinderTests
     private void LoadGraphs()
     {
         // Get connection string from environment variable
-        string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING")
-                                   ?? "Server=localhost;User ID=postgres;Password=postgres;Port=5432;Database=postgres;";
+        string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
 
         if (string.IsNullOrEmpty(connectionString))
         {
