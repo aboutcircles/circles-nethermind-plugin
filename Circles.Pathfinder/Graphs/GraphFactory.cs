@@ -166,8 +166,7 @@ public class GraphFactory
         if (sourceId != null && virtualSinkAddress != null)
         {
             var anyVirtualSinkEdgesAdded = AddVirtualSinkEdges(
-                capacityGraph, balanceGraph, sourceId.Value, virtualSinkAddress.Value, virtualSinkTrustedTokens,
-                trustLookup);
+                capacityGraph, balanceGraph, sourceId.Value, virtualSinkAddress.Value, virtualSinkTrustedTokens);
 
             // Remove virtual sink if no edges were added
             if (!anyVirtualSinkEdgesAdded)
@@ -367,8 +366,8 @@ public class GraphFactory
         BalanceGraph balanceGraph,
         int sourceAddress,
         int virtualSinkAddress,
-        HashSet<int> virtualSinkTrustedTokenIds,
-        IReadOnlyDictionary<int, HashSet<int>> accountTrusts)
+        HashSet<int> virtualSinkTrustedTokenIds
+        )
     {
         bool anyEdgeAdded = false;
 
@@ -382,10 +381,6 @@ public class GraphFactory
             if (bn.Holder == sourceAddress)
                 continue;
 
-            // does the holder trust this token?
-            if (!accountTrusts.TryGetValue(bn.Holder, out var tokensTheyTrust) ||
-                !tokensTheyTrust.Contains(bn.Token))
-                continue;
 
             // does the virtual sink accept this token?
             if (!virtualSinkTrustedTokenIds.Contains(bn.Token))

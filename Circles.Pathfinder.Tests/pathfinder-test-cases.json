@@ -183,5 +183,29 @@
       "excludedFromTokens": [],
       "excludedToTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
       "withWrap": false
+    },
+    {
+      "name": "SelfConversionWithToTokensFilter3",
+      "description": "Self-conversion",
+      "source": "0x42cEDde51198D1773590311E2A340DC06B24cB37",
+      "sink": "0x42cEDde51198D1773590311E2A340DC06B24cB37",
+      "targetFlow": "100000000000000000000000000000",
+      "fromTokens": [],
+      "toTokens": ["0x42cEDde51198D1773590311E2A340DC06B24cB37"],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
+      "withWrap": true
+    },
+    {
+      "name": "SelfConversionWithToTokensFilter4",
+      "description": "Self-conversion",
+      "source": "0x42cEDde51198D1773590311E2A340DC06B24cB37",
+      "sink": "0x42cEDde51198D1773590311E2A340DC06B24cB37",
+      "targetFlow": "100000000000000000000000000000",
+      "fromTokens": [],
+      "toTokens": ["0x42cEDde51198D1773590311E2A340DC06B24cB37"],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
+      "withWrap": false
     }
   ]
