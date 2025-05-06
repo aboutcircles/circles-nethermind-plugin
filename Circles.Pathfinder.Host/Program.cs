@@ -4,6 +4,8 @@ using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Nethermind.Int256;
 using Npgsql;
@@ -56,6 +58,13 @@ builder.Services.AddOpenTelemetry()
         .AddOtlpExporter() // ↗ to collector
         .AddConsoleExporter(o => { o.Targets = ConsoleExporterOutputTargets.Console; }));
 
+builder.Services
+    .AddHealthChecks()
+    // liveness – always healthy as long as the process answers HTTP
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
+    // readiness – needs the graphs
+    .AddCheck<GraphReadinessHealthCheck>("graphs_loaded", tags: new[] { "ready" });
+
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(_ => { });
 
@@ -73,6 +82,24 @@ var app = builder.Build();
 app.UseHttpMetrics();
 app.MapMetrics();
 app.UseMiddleware<RequestTimingMiddleware>();
+
+app.MapHealthChecks("/live", new HealthCheckOptions
+{
+    Predicate = hc => hc.Tags.Contains("live")
+});
+
+// readiness: only healthy once the background loader has built the graphs
+app.MapHealthChecks("/ready", new HealthCheckOptions
+{
+    Predicate = hc => hc.Tags.Contains("ready"),
+    AllowCachingResponses = false,
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable,
+        [HealthStatus.Degraded] = StatusCodes.Status429TooManyRequests
+    }
+});
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findPath", async (
@@ -96,8 +123,6 @@ app.MapGet("/findPath", async (
     act?.SetTag("amount", amount);
 
     using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
-
-    var sw = Stopwatch.StartNew();
 
     if (!UInt256.TryParse(amount, out var targetFlow))
     {
