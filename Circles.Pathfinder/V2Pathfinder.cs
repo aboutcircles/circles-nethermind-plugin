@@ -97,7 +97,7 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
         var transfer = new List<TransferPathStep>();
 
-        foreach (var e in collapsed)
+        foreach (var e in collapsed.Edges)
         {
             if (e.Flow <= 0)
             {
