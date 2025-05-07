@@ -97,7 +97,7 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
         var transfer = new List<TransferPathStep>();
 
-        foreach (var e in aggregated.Edges)
+        foreach (var e in TopoSort(aggregated.Edges))
         {
             if (e.Flow <= 0)
             {
@@ -237,6 +237,38 @@ public class V2Pathfinder
 
         return collapsed;
     }
+
+    private static IEnumerable<FlowEdge> TopoSort(IEnumerable<FlowEdge> edges)
+    {
+        var outgoing = new Dictionary<int, List<FlowEdge>>();
+        var indeg = new Dictionary<int, int>();
+
+        foreach (var e in edges)
+        {
+            if (!outgoing.TryGetValue(e.From, out var list))
+                list = outgoing[e.From] = new List<FlowEdge>();
+            list.Add(e);
+
+            indeg.TryAdd(e.To, 0);
+            indeg[e.To]++;
+
+            indeg.TryAdd(e.From, 0); // ensure source nodes appear
+        }
+
+        var q = new Queue<int>(indeg.Where(kv => kv.Value == 0).Select(kv => kv.Key));
+        while (q.Count > 0)
+        {
+            int v = q.Dequeue();
+            if (!outgoing.TryGetValue(v, out var outs)) continue;
+
+            foreach (var e in outs)
+            {
+                yield return e;
+                if (--indeg[e.To] == 0) q.Enqueue(e.To);
+            }
+        }
+    }
+
 
     private bool IsBalanceNode(int addr) => AddressIdPool.IsBalanceNode(addr);
 }
