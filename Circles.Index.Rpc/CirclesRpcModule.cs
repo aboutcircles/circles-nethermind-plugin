@@ -1,13 +1,11 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Index.Utils;
-using Circles.Pathfinder;
-using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
-using Circles.Pathfinder.Graphs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -402,8 +400,14 @@ public class CirclesRpcModule : ICirclesRpcModule
                 , sortAscending));
     }
 
+    private static readonly HttpClient HttpClient = new();
+    private static long _totalTimeSpentProxying = 0L;
+    private static long _totalProxyCount = 0L;
+
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
     {
+        var sw = Stopwatch.StartNew();
+        
         // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
         var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
@@ -446,10 +450,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             url += $"&withWrap={flowRequest.WithWrap.Value}";
         }
 
-        using var httpClient = new HttpClient();
-
         // Perform the GET request to the external pathfinder
-        var response = await httpClient.GetAsync(url);
+        using var response = await HttpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
 
         // Expect a JSON response that can deserialize into MaxFlowResponse
@@ -457,6 +459,17 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (maxFlowResponse == null)
         {
             throw new Exception("Failed to deserialize MaxFlowResponse from external pathfinder.");
+        }
+        
+        sw.Stop();
+        _totalTimeSpentProxying += sw.ElapsedMilliseconds;
+        _totalProxyCount++;
+
+        if (_totalProxyCount % 1000 == 0)
+        {
+            Console.WriteLine($"Total time spent proxying: {_totalTimeSpentProxying}ms");
+            Console.WriteLine($"Total proxy count: {_totalProxyCount}");
+            Console.WriteLine($"Avg. duration: {_totalTimeSpentProxying / _totalProxyCount}ms");
         }
 
         return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse);
