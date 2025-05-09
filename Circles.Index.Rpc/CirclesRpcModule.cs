@@ -222,6 +222,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             ["token", "type", "tokenOwner", "version"],
             [new FilterPredicate("token", FilterType.In, allTokenAddressStrings)],
             Array.Empty<OrderBy>(),
+            int.MaxValue,
+            false,
             int.MaxValue);
 
         var sql = selectTokenInfos.ToSql(_indexerContext.ReadonlyDatabase);
@@ -407,7 +409,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
     {
         var sw = Stopwatch.StartNew();
-        
+
         // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
         var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
@@ -460,7 +462,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             throw new Exception("Failed to deserialize MaxFlowResponse from external pathfinder.");
         }
-        
+
         sw.Stop();
         _totalTimeSpentProxying += sw.ElapsedMilliseconds;
         _totalProxyCount++;
