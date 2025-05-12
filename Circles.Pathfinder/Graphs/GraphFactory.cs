@@ -189,16 +189,6 @@ public class GraphFactory
         return capacityGraph;
     }
 
-    /// <summary>
-    /// Creates a flow graph from a capacity graph.
-    /// </summary>
-    public FlowGraph CreateFlowGraph(CapacityGraph capacityGraph)
-    {
-        var flowGraph = new FlowGraph(capacityGraph.Nodes.Count + 1, capacityGraph.Edges.Count * 2 + 1);
-        flowGraph.AddCapacity(capacityGraph);
-        return flowGraph;
-    }
-
     #region Helper Methods
 
     private void AddAllAvatarNodes(
@@ -325,7 +315,7 @@ public class GraphFactory
             {
                 continue;
             }
-            
+
             // If the edge is to a mint handler, filter out group tokens of the same group
             if (groupMintHandlerToGroupTokenMap.ContainsKey(capacityEdge.To)
                 && groupMintHandlerToGroupTokenMap[capacityEdge.To].Contains(capacityEdge.Token))
@@ -366,13 +356,6 @@ public class GraphFactory
                 capacityGraph.Edges.RemoveAt(i);
             }
         }
-
-        // capacityGraph.Edges.RemoveWhere(edge =>
-        //     AddressIdPool.IsBalanceNode(edge.From) && capacityGraph.BalanceNodes[edge.From].Holder ==
-        //                                            sourceAddress /*from is BalanceNode and source equals balance holder*/
-        //                                            && edge.To == sourceAddress /*to equals source*/
-        //                                            && toTokensFilter.Contains(edge.Token)
-        // );
     }
 
     private bool AddVirtualSinkEdges(
