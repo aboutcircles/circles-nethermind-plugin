@@ -3,7 +3,7 @@
 -- holder:ValueTypes.Address:true
 -- totalBalance:ValueTypes.BigInt:true
 -- demurragedTotalBalance:ValueTypes.BigInt:true
--- fractionOwnership:ValueTypes.BigInt:true
+-- fractionOwnership:ValueTypes.DoublePrecision:true
 
 create or replace view "V_CrcV2_GroupTokenHoldersBalance"
     ("group", "holder", "totalBalance", "demurragedTotalBalance", "fractionOwnership") as
