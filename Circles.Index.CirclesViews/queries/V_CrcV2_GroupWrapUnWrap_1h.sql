@@ -2,12 +2,12 @@
 -- group:ValueTypes.Address:true
 -- timestamp:ValueTypes.BigInt:true
 -- tokenAddress:ValueTypes.Address:true
--- currencyUnit:ValueTypes.Address:true
+-- tokenType:ValueTypes.Address:true
 -- wrapAmount:ValueTypes.BigInt:true
 -- unwrapAmount:ValueTypes.BigInt:true
 -- wrapSupply:ValueTypes.BigInt:true
 
-create or replace view "V_CrcV2_GroupWrapUnWrap_1h" ("group", "timestamp", "tokenAddress", "currencyUnit", "wrapAmount", "unwrapAmount", "wrapSupply") as
+create or replace view "V_CrcV2_GroupWrapUnWrap_1h" ("group", "timestamp", "tokenAddress", "tokenType", "wrapAmount", "unwrapAmount", "wrapSupply") as
 
 WITH
 
@@ -19,7 +19,7 @@ group_wrap_tokens AS (
 		,CASE
 			WHEN t2."circlesType"=0 THEN 'Demurrage'
 			ELSE 'Inflation'
-		END AS "currencyUnit"
+		END AS "tokenType"
 		,SUM(
 			CASE
 				WHEN t1."from"='0x0000000000000000000000000000000000000000' THEN t1.amount
@@ -47,7 +47,7 @@ min_per_group AS (
     SELECT
         "group",
 		"tokenAddress",
-		"currencyUnit",
+		"tokenType",
         MIN("timestamp") AS min_timestamp
     FROM 
         group_wrap_tokens
@@ -59,7 +59,7 @@ calendar AS (
     SELECT
         g."group",
 		g."tokenAddress",
-		g."currencyUnit",
+		g."tokenType",
         generate_series(
             g.min_timestamp,
             date_trunc('hour', CURRENT_TIMESTAMP),
@@ -72,7 +72,7 @@ SELECT
 	t1."group"
 	,t1."timestamp"
 	,t1."tokenAddress"
-	,t1."currencyUnit"
+	,t1."tokenType"
 	,COALESCE(t2."wrapAmount", 0) AS "wrapAmount"
 	,COALESCE(t2."unwrapAmount", 0) AS "unwrapAmount"
 	,SUM(COALESCE(t2."wrapAmount", 0) + COALESCE(t2."unwrapAmount", 0)) OVER (PARTITION BY t1."group", t1."tokenAddress" ORDER BY t1."timestamp") AS "wrapSupply"
