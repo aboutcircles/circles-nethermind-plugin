@@ -49,8 +49,8 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
-            using var reader = command.ExecuteReader(); 
-            
+            using var reader = command.ExecuteReader();
+
             var now = DateTime.UtcNow;
 
             while (reader.Read())
@@ -82,10 +82,10 @@ namespace Circles.Pathfinder.Data
 
                 // yield return (balance, account, tokenAddress, isWrapped, type == "static");
                 yield return (balance,
-                              AddressIdPool.IdOf(account.ToLowerInvariant()),
-                              AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
-                              isWrapped,
-                              type == "static");
+                    AddressIdPool.IdOf(account.ToLowerInvariant()),
+                    AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
+                    isWrapped,
+                    type == "static");
             }
         }
 
@@ -106,6 +106,27 @@ namespace Circles.Pathfinder.Data
                 var trustee = reader.GetString(1);
 
                 yield return (truster, trustee, 100); // Assuming a default trust limit of 100 in V2
+            }
+        }
+
+        public IEnumerable<(string MintHandler, string Group, string Token)> LoadMintHandlers()
+        {
+            // We now only have one trust query that includes wrap tokens
+            var mintHandlerQuery = LoadQueryFromResource("mintHandlerQuery.sql");
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(mintHandlerQuery, connection);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                var mintHandler = reader.GetString(0);
+                var group = reader.GetString(1);
+                var token = reader.GetString(2);
+
+                yield return (mintHandler, group, token);
             }
         }
     }

@@ -40,11 +40,6 @@ public class NetworkStateUpdaterService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var root = Source.StartActivity("NetworkStateUpdater.Run", ActivityKind.Internal);
-
-        var loadGraph = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
-        var graphFactory = new GraphFactory();
-
         long lastBlock = 0;
 
         while (!stoppingToken.IsCancellationRequested)
@@ -55,54 +50,11 @@ public class NetworkStateUpdaterService : BackgroundService
             lastBlock = await WaitForNextBlock(stoppingToken, lastBlock);
             LastProcessedBlockGauge.Set(lastBlock);
             _log.LogDebug("↳ got block {Block}", lastBlock);
-
             waitBlk?.SetTag("block", lastBlock);
 
-            using var upd = Source.StartActivity("LoadGraphs");
-
-            var swTotal = Stopwatch.StartNew();
-
-            var swTrustGraph = Stopwatch.StartNew();
-            var trustSpan = Source.StartActivity("TrustGraph.Load");
-            var trustTask = Task.Run(() =>
-            {
-                var graph = graphFactory.V2TrustGraph(loadGraph);
-                var lookup = GraphFactory.BuildTrustLookup(graph);
-
-                _networkState.Replace(accountTrusts: lookup);
-                swTrustGraph.Stop();
-                trustSpan?.Dispose();
-            }, stoppingToken);
-
-            var swBalanceGraph = Stopwatch.StartNew();
-            var balanceSpan = Source.StartActivity("BalanceGraph.Load");
-            var balanceTask = Task.Run(() =>
-            {
-                var graph = graphFactory.V2BalanceGraph(loadGraph);
-                _networkState.Replace(balanceGraph: graph);
-                swBalanceGraph.Stop();
-                balanceSpan?.Dispose();
-            }, stoppingToken);
-
-            await Task.WhenAll(trustTask, balanceTask);
-            swTotal.Stop();
-
-            // var baseGraph = await FlowGraphPool.CreateFlowGraph(_settings.IndexReadonlyDbConnectionString, new FlowRequest());
-            // var snapshot = new FlowGraphSnapshot(lastBlock, baseGraph);
-            // _pool.UpdateSnapshot(snapshot);
-            
-            var cap       = await CapacityGraphPool.BuildFullGraph(_settings.IndexReadonlyDbConnectionString);
-            var snap      = new CapacityGraphSnapshot(lastBlock, cap);
+            var cap = await CapacityGraphPool.BuildFullGraph(_settings.IndexReadonlyDbConnectionString);
+            var snap = new CapacityGraphSnapshot(lastBlock, cap);
             _pool.UpdateSnapshot(snap);
-
-            upd?.SetTag("trust_ms", swTrustGraph.ElapsedMilliseconds);
-            upd?.SetTag("balance_ms", swBalanceGraph.ElapsedMilliseconds);
-
-            _log.LogInformation(
-                "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
-                swTrustGraph.ElapsedMilliseconds,
-                swBalanceGraph.ElapsedMilliseconds,
-                swTotal.ElapsedMilliseconds);
 
             GraphUpdatesCounter.Inc();
         }

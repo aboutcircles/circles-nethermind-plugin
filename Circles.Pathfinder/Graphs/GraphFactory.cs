@@ -93,10 +93,14 @@ public class GraphFactory
     /// </summary>
     /// <param name="balanceGraph">The balance graph to use.</param>
     /// <param name="trustGraph">The trust graph to use.</param>
+    /// <param name="groupMintHandlerToGroupTokenMap">contains all basegroup mint handlers and the addresses (1155 or wrapped erc20) of the associated group token</param>
     /// <param name="request">Flow request parameters.</param>
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
-    public CapacityGraph CreateCapacityGraph(BalanceGraph balanceGraph,
-        IReadOnlyDictionary<int, HashSet<int>> trustLookup, FlowRequest? r)
+    public CapacityGraph CreateCapacityGraph(
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> trustLookup,
+        IReadOnlyDictionary<int, HashSet<int>> groupMintHandlerToGroupTokenMap,
+        FlowRequest? r)
     {
         Interlocked.Increment(ref _c);
         Console.WriteLine($"Creating capacity graph {_c}...");
@@ -153,7 +157,7 @@ public class GraphFactory
             excludedFromTokensFilter);
 
         // STEP 4: Add capacity edges from balance graph
-        AddCapacityEdges(capacityGraph, balanceGraph);
+        AddCapacityEdges(capacityGraph, balanceGraph, groupMintHandlerToGroupTokenMap);
 
         // STEP 5: Remove direct BN->source edges that form self-loops for source==sink
         if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
@@ -310,13 +314,23 @@ public class GraphFactory
 
     private void AddCapacityEdges(
         CapacityGraph capacityGraph,
-        BalanceGraph balanceGraph)
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> groupMintHandlerToGroupTokenMap)
     {
-        foreach (var capacityEdge in balanceGraph.Edges)
+        for (int i = 0; i < balanceGraph.Edges.Count; i++)
         {
+            var capacityEdge = balanceGraph.Edges[i];
             if (!capacityGraph.Nodes.ContainsKey(capacityEdge.From)
                 || !capacityGraph.Nodes.ContainsKey(capacityEdge.To))
             {
+                continue;
+            }
+            
+            // If the edge is to a mint handler, filter out group tokens of the same group
+            if (groupMintHandlerToGroupTokenMap.ContainsKey(capacityEdge.To)
+                && groupMintHandlerToGroupTokenMap[capacityEdge.To].Contains(capacityEdge.Token))
+            {
+                Console.WriteLine($"Skipping edge to mint handler {capacityEdge.To} for token {capacityEdge.Token}");
                 continue;
             }
 
@@ -367,7 +381,7 @@ public class GraphFactory
         int sourceAddress,
         int virtualSinkAddress,
         HashSet<int> virtualSinkTrustedTokenIds
-        )
+    )
     {
         bool anyEdgeAdded = false;
 
@@ -380,7 +394,6 @@ public class GraphFactory
             // never draw from the source’s own balances
             if (bn.Holder == sourceAddress)
                 continue;
-
 
             // does the virtual sink accept this token?
             if (!virtualSinkTrustedTokenIds.Contains(bn.Token))

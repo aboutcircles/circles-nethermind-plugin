@@ -1,5 +1,3 @@
-// Circles.Pathfinder/Graphs/CapacityGraphPool.cs
-
 using System.Collections.Concurrent;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
@@ -42,8 +40,24 @@ public sealed class CapacityGraphPool
 
         if (CapacityGraphPool.RequestNeedsFiltering(r))
         {
+            var load = new LoadGraph(_cs);
+            var mintHandlersAndGroupToken = load.LoadMintHandlers().ToArray();
+            var groupMintHandlerToGroupTokenMap = new Dictionary<int, HashSet<int>>();
+            foreach (var valueTuple in mintHandlersAndGroupToken)
+            {
+                var mintHandlerId = AddressIdPool.IdOf(valueTuple.MintHandler);
+                var groupTokenId = AddressIdPool.IdOf(valueTuple.Token);
+                if (!groupMintHandlerToGroupTokenMap.TryGetValue(mintHandlerId, out var groupTokenSet))
+                {
+                    groupTokenSet = new HashSet<int>();
+                    groupMintHandlerToGroupTokenMap[mintHandlerId] = groupTokenSet;
+                }
+
+                groupTokenSet.Add(groupTokenId);
+            }
+
             // build ad-hoc filtered graph
-            var g = _gf.CreateCapacityGraph(balances, trust, r);
+            var g = _gf.CreateCapacityGraph(balances, trust, groupMintHandlerToGroupTokenMap, r);
             return new CapacityGraphHandle(g, null, this);
         }
 
@@ -69,15 +83,41 @@ public sealed class CapacityGraphPool
         var load = new LoadGraph(cs);
         var gf = new GraphFactory();
 
-        var balTask = Task.Run(() => gf.V2BalanceGraph(load));
+        var balTask = Task.Run(() => { return gf.V2BalanceGraph(load); });
+
         var trustTask = Task.Run(() =>
         {
             var g = gf.V2TrustGraph(load);
             return GraphFactory.BuildTrustLookup(g);
         });
 
-        await Task.WhenAll(balTask, trustTask);
-        return gf.CreateCapacityGraph(balTask.Result, trustTask.Result, new FlowRequest());
+        var mintHandlerTask = Task.Run(() =>
+        {
+            var mintHandlersAndGroupToken = load.LoadMintHandlers().ToArray();
+            var groupMintHandlerToGroupTokenMap = new Dictionary<int, HashSet<int>>();
+            foreach (var valueTuple in mintHandlersAndGroupToken)
+            {
+                var mintHandlerId = AddressIdPool.IdOf(valueTuple.MintHandler);
+                var groupTokenId = AddressIdPool.IdOf(valueTuple.Token);
+                if (!groupMintHandlerToGroupTokenMap.TryGetValue(mintHandlerId, out var groupTokenSet))
+                {
+                    groupTokenSet = new HashSet<int>();
+                    groupMintHandlerToGroupTokenMap[mintHandlerId] = groupTokenSet;
+                }
+
+                groupTokenSet.Add(groupTokenId);
+            }
+
+            return groupMintHandlerToGroupTokenMap;
+        });
+
+        await Task.WhenAll(balTask, trustTask, mintHandlerTask);
+
+        return gf.CreateCapacityGraph(
+            balTask.Result,
+            trustTask.Result,
+            mintHandlerTask.Result,
+            new FlowRequest());
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)
