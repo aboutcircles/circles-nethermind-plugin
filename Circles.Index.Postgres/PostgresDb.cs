@@ -43,7 +43,22 @@ public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
             {
                 if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
                 {
-                    row[i] = reader.GetFieldValue<BigInteger?>(i);
+                    // Check if this is a Double-type column (which can have fractional parts)
+                    var columnName = reader.GetName(i);
+                    var column = schema.Tables.Values
+                        .SelectMany(t => t.Columns)
+                        .FirstOrDefault(c => c.Column.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+                    
+                    if (column != null && column.Type == ValueTypes.Double)
+                    {
+                        // Read as double for columns with ValueTypes.Double
+                        row[i] = reader.GetFieldValue<double?>(i);
+                    }
+                    else
+                    {
+                        // Otherwise read as BigInteger as before
+                        row[i] = reader.GetFieldValue<BigInteger?>(i);
+                    }
                 }
                 else
                 {
