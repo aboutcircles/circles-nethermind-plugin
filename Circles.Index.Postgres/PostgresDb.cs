@@ -253,6 +253,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ValueTypes.Bytes => "BYTEA",
             ValueTypes.AddressArray => "TEXT[]",
             ValueTypes.Json => "JSON",
+            ValueTypes.Double => "DOUBLE PRECISION",
             _ => throw new ArgumentException("Unsupported type")
         };
     }
@@ -269,6 +270,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ValueTypes.Bytes => NpgsqlDbType.Bytea,
             ValueTypes.AddressArray => NpgsqlDbType.Array | NpgsqlDbType.Text,
             ValueTypes.Json => NpgsqlDbType.Json,
+            ValueTypes.Double => NpgsqlDbType.Double,
             _ => throw new ArgumentException("Unsupported type")
         };
     }

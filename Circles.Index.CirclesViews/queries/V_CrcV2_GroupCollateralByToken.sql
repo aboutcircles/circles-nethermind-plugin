@@ -3,7 +3,7 @@
 -- id:ValueTypes.BigInt:true
 -- amountLocked:ValueTypes.BigInt:true
 -- demurragedAmountLocked:ValueTypes.BigInt:true
--- fractionLocked:ValueTypes.BigInt:true
+-- fractionLocked:ValueTypes.DoublePrecision:true
 
 
 create or replace view public."V_CrcV2_GroupCollateralByToken"
