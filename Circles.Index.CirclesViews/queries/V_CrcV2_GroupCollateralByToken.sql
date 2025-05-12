@@ -14,7 +14,7 @@ SELECT
     ,"id"
     ,"amountLocked"
     ,"demurragedAmountLocked"
-    ,"amountLocked" / (SUM("amountLocked") OVER (PARTITION BY "group")) AS "fractionLocked"
+    ,COALESCE("amountLocked" / NULLIF(SUM("amountLocked") OVER (PARTITION BY "group"),0),0) AS "fractionLocked"
 FROM (
     SELECT
         "group"
