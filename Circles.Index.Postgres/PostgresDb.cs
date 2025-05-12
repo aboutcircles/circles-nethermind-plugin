@@ -41,33 +41,37 @@ public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
             var row = new object?[reader.FieldCount];
             for (int i = 0; i < reader.FieldCount; i++)
             {
+                if (reader.IsDBNull(i))
+                {
+                    row[i] = null;
+                    continue;
+                }
+
+                // Special handling for numeric values
                 if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
                 {
-                    // Check if this is a Double-type column (which can have fractional parts)
-                    var columnName = reader.GetName(i);
-                    var column = schema.Tables.Values
-                        .SelectMany(t => t.Columns)
-                        .FirstOrDefault(c => c.Column.Equals(columnName, StringComparison.OrdinalIgnoreCase));
-                    
-                    if (column != null && column.Type == ValueTypes.Double)
+                    // First try BigInteger 
+                    try 
                     {
-                        // Read as double for columns with ValueTypes.Double
-                        row[i] = reader.GetFieldValue<double?>(i);
+                        row[i] = reader.GetFieldValue<BigInteger>(i);
                     }
-                    else
+                    catch (InvalidCastException) 
                     {
-                        // Otherwise read as BigInteger as before
-                        row[i] = reader.GetFieldValue<BigInteger?>(i);
+                        // If BigInteger fails (likely due to fractional parts), try decimal
+                        try 
+                        {
+                            row[i] = reader.GetFieldValue<decimal>(i);
+                        }
+                        catch (Exception)
+                        {
+                            // Last resort: get as string to preserve the value
+                            row[i] = reader.GetValue(i).ToString();
+                        }
                     }
                 }
                 else
                 {
                     row[i] = reader.GetValue(i);
-                }
-
-                if (row[i] is DBNull)
-                {
-                    row[i] = null;
                 }
             }
 
