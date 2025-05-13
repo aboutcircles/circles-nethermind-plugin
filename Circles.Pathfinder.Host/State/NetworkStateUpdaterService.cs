@@ -87,12 +87,11 @@ public class NetworkStateUpdaterService : BackgroundService
             await Task.WhenAll(trustTask, balanceTask);
             swTotal.Stop();
 
-            // var baseGraph = await FlowGraphPool.CreateFlowGraph(_settings.IndexReadonlyDbConnectionString, new FlowRequest());
-            // var snapshot = new FlowGraphSnapshot(lastBlock, baseGraph);
-            // _pool.UpdateSnapshot(snapshot);
-            
-            var cap       = await CapacityGraphPool.BuildFullGraph(_settings.IndexReadonlyDbConnectionString);
-            var snap      = new CapacityGraphSnapshot(lastBlock, cap);
+            var cap = await CapacityGraphPool.BuildFullGraph(
+                _networkState.BalanceGraph,
+                _networkState.AccountTrusts
+            );
+            var snap = new CapacityGraphSnapshot(lastBlock, cap);
             _pool.UpdateSnapshot(snap);
 
             upd?.SetTag("trust_ms", swTrustGraph.ElapsedMilliseconds);
