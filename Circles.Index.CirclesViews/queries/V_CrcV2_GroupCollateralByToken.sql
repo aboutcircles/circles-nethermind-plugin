@@ -3,7 +3,7 @@
 -- id:ValueTypes.BigInt:true
 -- amountLocked:ValueTypes.BigInt:true
 -- demurragedAmountLocked:ValueTypes.BigInt:true
--- fractionLocked:ValueTypes.BigInt:true
+-- fractionLocked:ValueTypes.Double:true
 
 
 create or replace view public."V_CrcV2_GroupCollateralByToken"
@@ -14,7 +14,7 @@ SELECT
     ,"id"
     ,"amountLocked"
     ,"demurragedAmountLocked"
-    ,"amountLocked" / (SUM("amountLocked") OVER (PARTITION BY "group")) AS "fractionLocked"
+    ,COALESCE("amountLocked" / NULLIF(SUM("amountLocked") OVER (PARTITION BY "group"),0),0) AS "fractionLocked"
 FROM (
     SELECT
         "group"

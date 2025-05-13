@@ -41,18 +41,47 @@ public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
             var row = new object?[reader.FieldCount];
             for (int i = 0; i < reader.FieldCount; i++)
             {
+                if (reader.IsDBNull(i))
+                {
+                    row[i] = null;
+                    continue;
+                }
+
                 if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
                 {
-                    row[i] = reader.GetFieldValue<BigInteger?>(i);
+                    int precision = resultSchema[i].NumericPrecision ?? 0;
+                    int scale = resultSchema[i].NumericScale ?? 0;
+
+                    bool hasNoScale = scale == 0;
+                    bool fitsInDecimal = precision <= 28;
+                    bool fitsIn256BitInteger = precision <= 78; // 256-bit max ≈ 7.9e76 (78 digits)
+
+                    if (hasNoScale)
+                    {
+                        if (fitsIn256BitInteger)
+                        {
+                            row[i] = reader.GetFieldValue<BigInteger>(i);
+                        }
+                        else
+                        {
+                            row[i] = reader.GetValue(i).ToString();
+                        }
+                    }
+                    else
+                    {
+                        if (fitsInDecimal)
+                        {
+                            row[i] = reader.GetFieldValue<decimal>(i);
+                        }
+                        else
+                        {
+                            row[i] = reader.GetFieldValue<double>(i);
+                        }
+                    }
                 }
                 else
                 {
                     row[i] = reader.GetValue(i);
-                }
-
-                if (row[i] is DBNull)
-                {
-                    row[i] = null;
                 }
             }
 
@@ -253,6 +282,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ValueTypes.Bytes => "BYTEA",
             ValueTypes.AddressArray => "TEXT[]",
             ValueTypes.Json => "JSON",
+            ValueTypes.Double => "DOUBLE PRECISION",
             _ => throw new ArgumentException("Unsupported type")
         };
     }
@@ -269,6 +299,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ValueTypes.Bytes => NpgsqlDbType.Bytea,
             ValueTypes.AddressArray => NpgsqlDbType.Array | NpgsqlDbType.Text,
             ValueTypes.Json => NpgsqlDbType.Json,
+            ValueTypes.Double => NpgsqlDbType.Double,
             _ => throw new ArgumentException("Unsupported type")
         };
     }
