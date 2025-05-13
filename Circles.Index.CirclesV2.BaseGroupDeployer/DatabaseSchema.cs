@@ -208,19 +208,18 @@ public class LogParser(Address deployerAddress) : ILogParser
         LogEntry log,
         int logIndex)
     {
-        if (log.Topics.Length == 0 || deployerAddress != log.Address)
+        if (log.Topics.Length == 0)
         {
             yield break;
         }
 
         var topic = log.Topics[0];
 
-        if (topic == BaseGroupCreatedTopic)
+        if (log.Address == deployerAddress && topic == BaseGroupCreatedTopic)
         {
             yield return BaseGroupCreated(block, receipt, log, logIndex);
         }
-
-        if (BaseGroupsCreated.ContainsKey(log.Address))
+        else if (BaseGroupsCreated.ContainsKey(log.Address))
         {
             if (topic == OwnerUpdatedTopic)
             {
