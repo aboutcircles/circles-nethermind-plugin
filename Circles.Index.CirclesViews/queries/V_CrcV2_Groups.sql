@@ -54,8 +54,18 @@ AS
     member_counts AS (
         SELECT bgc."group", count(*) as "memberCount"
         FROM "CrcV2_RegisterGroup" bgc
-            JOIN "V_CrcV2_TrustRelations" tr on tr.truster = bgc."group"
+                 JOIN "V_CrcV2_TrustRelations" tr on tr.truster = bgc."group"
         GROUP BY bgc."group"
+    ),
+    erc20_demurraged AS (
+        SELECT ed.avatar, ed."erc20Wrapper" as "erc20WrapperDemurraged"
+        FROM "CrcV2_RegisterGroup" bgc
+                 JOIN "CrcV2_ERC20WrapperDeployed" ed on ed."circlesType" = 0 and ed.avatar = bgc."group"
+    ),
+    erc20_static AS (
+        SELECT ed.avatar, ed."erc20Wrapper" as "erc20WrapperStatic"
+        FROM "CrcV2_RegisterGroup" bgc
+                 JOIN "CrcV2_ERC20WrapperDeployed" ed on ed."circlesType" = 1 and ed.avatar = bgc."group"
     )
     SELECT
         c."blockNumber",
@@ -79,12 +89,16 @@ AS
         COALESCE(m."memberCount", 0)        AS "memberCount",
         c.name,
         c.symbol,
-        ci."metadataDigest" as "cidV0Digest"
+        ci."metadataDigest" as "cidV0Digest",
+        ed."erc20WrapperDemurraged",
+        es."erc20WrapperStatic"
     FROM       "CrcV2_RegisterGroup" c
-    LEFT JOIN  latest_owner             o ON o.emitter  = c."group"
-    LEFT JOIN  latest_service           s ON s.emitter  = c."group"
-    LEFT JOIN  latest_fee               f ON f.emitter  = c."group"
-    LEFT JOIN  member_counts            m ON m."group"  = c."group"
-    LEFT JOIN  latest_cid               ci ON ci.avatar = c."group"
-    LEFT JOIN  "CrcV2_CMGroupCreated"   cm ON cm.proxy  = c."group"
+    LEFT JOIN  latest_owner             o ON o.emitter   = c."group"
+    LEFT JOIN  latest_service           s ON s.emitter   = c."group"
+    LEFT JOIN  latest_fee               f ON f.emitter   = c."group"
+    LEFT JOIN  member_counts            m ON m."group"   = c."group"
+    LEFT JOIN  latest_cid               ci ON ci.avatar  = c."group"
+    LEFT JOIN  erc20_demurraged         ed ON ed.avatar  = c."group"
+    LEFT JOIN  erc20_static             es ON es.avatar  = c."group"
+    LEFT JOIN  "CrcV2_CMGroupCreated"   cm ON cm.proxy   = c."group"
     LEFT JOIN  "CrcV2_BaseGroupCreated" bg ON bg."group" = c."group";
