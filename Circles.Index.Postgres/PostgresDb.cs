@@ -47,25 +47,35 @@ public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
                     continue;
                 }
 
-                // Special handling for numeric values
                 if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
                 {
-                    // First try BigInteger 
-                    try 
+                    int precision = resultSchema[i].NumericPrecision ?? 0;
+                    int scale = resultSchema[i].NumericScale ?? 0;
+
+                    bool hasNoScale = scale == 0;
+                    bool fitsInDecimal = precision <= 28;
+                    bool fitsIn256BitInteger = precision <= 78; // 256-bit max ≈ 7.9e76 (78 digits)
+
+                    if (hasNoScale)
                     {
-                        row[i] = reader.GetFieldValue<BigInteger>(i);
+                        if (fitsIn256BitInteger)
+                        {
+                            row[i] = reader.GetFieldValue<BigInteger>(i);
+                        }
+                        else
+                        {
+                            row[i] = reader.GetValue(i).ToString();
+                        }
                     }
-                    catch (InvalidCastException) 
+                    else
                     {
-                        // If BigInteger fails (likely due to fractional parts), try decimal
-                        try 
+                        if (fitsInDecimal)
                         {
                             row[i] = reader.GetFieldValue<decimal>(i);
                         }
-                        catch (Exception)
+                        else
                         {
-                            // Last resort: get as string to preserve the value
-                            row[i] = reader.GetValue(i).ToString();
+                            row[i] = reader.GetFieldValue<double>(i);
                         }
                     }
                 }
