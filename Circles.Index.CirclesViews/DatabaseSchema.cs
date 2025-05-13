@@ -49,10 +49,11 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "Erc20BalancerVaultBalance_1d"),
 
         ("V_CrcV2", "GroupMintRedeem_1h"),
-        ("V_CrcV2", "GroupMintRedeem_1d")
+        ("V_CrcV2", "GroupMintRedeem_1d"),
+
+        ("V_CrcV2", "GroupWrapUnWrap_1h"),
+        ("V_CrcV2", "GroupWrapUnWrap_1d")
         
-        
- 
     };
     
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();

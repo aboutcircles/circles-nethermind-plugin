@@ -73,7 +73,7 @@ var sem = new SemaphoreSlim(settings.MaxConcurrentRequests,
 builder.Services.AddSingleton(sem);
 
 builder.Services.AddSingleton<NetworkState>();
-builder.Services.AddSingleton(new CapacityGraphPool(settings.IndexReadonlyDbConnectionString));
+builder.Services.AddSingleton(new CapacityGraphPool());
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
 

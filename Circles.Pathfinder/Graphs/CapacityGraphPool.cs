@@ -1,7 +1,4 @@
-// Circles.Pathfinder/Graphs/CapacityGraphPool.cs
-
 using System.Collections.Concurrent;
-using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
 
 namespace Circles.Pathfinder.Graphs;
@@ -10,10 +7,7 @@ public sealed class CapacityGraphPool
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
-    private readonly string _cs;
     private readonly GraphFactory _gf = new();
-
-    public CapacityGraphPool(string connectionString) => _cs = connectionString;
 
     /* ------------------------------------------------------------------ */
     /* Snapshot                                                           */
@@ -40,7 +34,7 @@ public sealed class CapacityGraphPool
         if (_current == null)
             throw new InvalidOperationException("No capacity graph available yet.");
 
-        if (CapacityGraphPool.RequestNeedsFiltering(r))
+        if (RequestNeedsFiltering(r))
         {
             // build ad-hoc filtered graph
             var g = _gf.CreateCapacityGraph(balances, trust, r);
