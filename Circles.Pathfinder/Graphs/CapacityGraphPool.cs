@@ -64,20 +64,12 @@ public sealed class CapacityGraphPool
     /* One-off builder used by the background service                     */
     /* ------------------------------------------------------------------ */
 
-    public static async Task<CapacityGraph> BuildFullGraph(string cs)
+    public static async Task<CapacityGraph> BuildFullGraph(
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> accountTrusts)
     {
-        var load = new LoadGraph(cs);
         var gf = new GraphFactory();
-
-        var balTask = Task.Run(() => gf.V2BalanceGraph(load));
-        var trustTask = Task.Run(() =>
-        {
-            var g = gf.V2TrustGraph(load);
-            return GraphFactory.BuildTrustLookup(g);
-        });
-
-        await Task.WhenAll(balTask, trustTask);
-        return gf.CreateCapacityGraph(balTask.Result, trustTask.Result, new FlowRequest());
+        return gf.CreateCapacityGraph(balanceGraph, accountTrusts, new FlowRequest());
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)
