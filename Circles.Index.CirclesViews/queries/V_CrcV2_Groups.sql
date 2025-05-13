@@ -16,7 +16,8 @@
 -- name:ValueTypes.String:true
 -- symbol:ValueTypes.String:true
 -- cidV0Digest:ValueTypes.Bytes:true
-
+-- erc20WrapperDemurraged:ValueTypes.Address:true
+-- erc20WrapperStatic:ValueTypes.Address:true
 CREATE OR REPLACE VIEW "V_CrcV2_Groups"
 AS
     WITH latest_owner AS (
