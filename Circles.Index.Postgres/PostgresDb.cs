@@ -28,61 +28,51 @@ public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
 
         using var reader = command.ExecuteReader();
 
-        var resultSchema = reader.GetColumnSchema().ToArray();
-        var columnNames = new string[reader.FieldCount];
-        for (int i = 0; i < reader.FieldCount; i++)
+        var resultSchema = reader.GetColumnSchema();
+        var columnNames = new string[resultSchema.Count];
+        var columnFuncs = new Func<NpgsqlDataReader, int, object?>[resultSchema.Count];
+
+        for (int i = 0; i < resultSchema.Count; i++)
         {
-            columnNames[i] = reader.GetName(i);
+            var col = resultSchema[i];
+            columnNames[i] = col.ColumnName;
+
+            if (col.NpgsqlDbType == NpgsqlDbType.Numeric)
+            {
+                int precision = col.NumericPrecision ?? 0;
+                int scale = col.NumericScale ?? 0;
+
+                bool hasNoScale = scale == 0;
+                bool fitsInDecimal = precision <= 28;
+                bool fitsIn256BitInteger = precision <= 78; // 256-bit max ≈ 7.9e76 (78 digits)
+
+                if (hasNoScale)
+                {
+                    columnFuncs[i] = fitsIn256BitInteger
+                        ? static (r, idx) => r.IsDBNull(idx) ? null : r.GetFieldValue<BigInteger>(idx)
+                        : static (r, idx) => r.IsDBNull(idx) ? null : r.GetValue(idx)?.ToString();
+                }
+                else
+                {
+                    columnFuncs[i] = fitsInDecimal
+                        ? static (r, idx) => r.IsDBNull(idx) ? null : r.GetFieldValue<decimal>(idx)
+                        : static (r, idx) => r.IsDBNull(idx) ? null : (object?)r.GetFieldValue<double>(idx);
+                }
+            }
+            else
+            {
+                columnFuncs[i] = static (r, idx) => r.IsDBNull(idx) ? null : r.GetValue(idx);
+            }
         }
+
 
         var resultRows = new List<object?[]>();
         while (reader.Read())
         {
-            var row = new object?[reader.FieldCount];
-            for (int i = 0; i < reader.FieldCount; i++)
+            var row = new object?[resultSchema.Count];
+            for (int i = 0; i < resultSchema.Count; i++)
             {
-                if (reader.IsDBNull(i))
-                {
-                    row[i] = null;
-                    continue;
-                }
-
-                if (resultSchema[i].NpgsqlDbType == NpgsqlDbType.Numeric)
-                {
-                    int precision = resultSchema[i].NumericPrecision ?? 0;
-                    int scale = resultSchema[i].NumericScale ?? 0;
-
-                    bool hasNoScale = scale == 0;
-                    bool fitsInDecimal = precision <= 28;
-                    bool fitsIn256BitInteger = precision <= 78; // 256-bit max ≈ 7.9e76 (78 digits)
-
-                    if (hasNoScale)
-                    {
-                        if (fitsIn256BitInteger)
-                        {
-                            row[i] = reader.GetFieldValue<BigInteger>(i);
-                        }
-                        else
-                        {
-                            row[i] = reader.GetValue(i).ToString();
-                        }
-                    }
-                    else
-                    {
-                        if (fitsInDecimal)
-                        {
-                            row[i] = reader.GetFieldValue<decimal>(i);
-                        }
-                        else
-                        {
-                            row[i] = reader.GetFieldValue<double>(i);
-                        }
-                    }
-                }
-                else
-                {
-                    row[i] = reader.GetValue(i);
-                }
+                row[i] = columnFuncs[i](reader, i);
             }
 
             resultRows.Add(row);
@@ -129,7 +119,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             }
 
             ExecuteNonQuery(connection, ddlSql.ToString());
-            
+
             StringBuilder indexesSql = new StringBuilder();
             foreach (var index in Schema.Indexes)
             {

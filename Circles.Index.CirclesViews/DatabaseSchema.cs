@@ -78,6 +78,16 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 "idx_CrcV2_Erc20WrapperTransfer_to_tokenAddress",
                 "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_Erc20WrapperTransfer_to_tokenAddress\" ON public.\"CrcV2_Erc20WrapperTransfer\" (\"to\", \"tokenAddress\");"
+            },
+            // Used in the V_CrcV1_Avatars view
+            {
+                "idx_CrcV1_UpdateMetadataDigest_avatar_cursor_desc",
+                "create index if not exists \"idx_CrcV1_UpdateMetadataDigest_avatar_cursor_desc\" on \"CrcV1_UpdateMetadataDigest\" (avatar, \"blockNumber\" desc, \"transactionIndex\" desc, \"logIndex\" desc);"
+            },
+            // Used in the V_CrcV2_Avatars view
+            {
+                "idx_CrcV2_UpdateMetadataDigest_avatar_cursor_desc",
+                "create index if not exists \"idx_CrcV2_UpdateMetadataDigest_avatar_cursor_desc\" on \"CrcV2_UpdateMetadataDigest\" (avatar, \"blockNumber\" desc, \"transactionIndex\" desc, \"logIndex\" desc);"
             }
         };
 

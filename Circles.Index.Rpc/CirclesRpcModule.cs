@@ -447,16 +447,15 @@ public class CirclesRpcModule : ICirclesRpcModule
         Select select = query.ToModel();
         var parameterizedSql = select.ToSql(_indexerContext.ReadonlyDatabase);
 
-        StringWriter stringWriter = new();
-        stringWriter.WriteLine($"circles_query(SelectDto query):");
-        stringWriter.WriteLine($"  select: {parameterizedSql.Sql}");
-        stringWriter.WriteLine($"  parameters:");
-        foreach (var parameter in parameterizedSql.Parameters)
-        {
-            stringWriter.WriteLine($"    {parameter.ParameterName}: {parameter.Value}");
-        }
-
-        _pluginLogger.Info(stringWriter.ToString());
+        // StringWriter stringWriter = new();
+        // stringWriter.WriteLine($"circles_query(SelectDto query):");
+        // stringWriter.WriteLine($"  select: {parameterizedSql.Sql}");
+        // stringWriter.WriteLine($"  parameters:");
+        // foreach (var parameter in parameterizedSql.Parameters)
+        // {
+        //     stringWriter.WriteLine($"    {parameter.ParameterName}: {parameter.Value}");
+        // }
+        // _pluginLogger.Info(stringWriter.ToString());
 
         var result = _indexerContext.ReadonlyDatabase.Select(parameterizedSql);
 
