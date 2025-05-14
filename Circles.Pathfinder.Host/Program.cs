@@ -102,6 +102,85 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
 });
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
+app.MapGet("/findMaxFlow", async (
+    string from,
+    string to,
+    string amount,
+    string[]? fromTokens,
+    string[]? toTokens,
+    string[]? excludedFromTokens,
+    string[]? excludedToTokens,
+    bool? withWrap,
+    NetworkState state,
+    SemaphoreSlim sem,
+    CapacityGraphPool pool,
+    ILogger<Program> log) =>
+{
+    using var act = Source.StartActivity("findMaxFlow", ActivityKind.Server);
+    act?.SetTag("http.route", "/findMaxFlow");
+    act?.SetTag("from", from);
+    act?.SetTag("to", to);
+    act?.SetTag("amount", amount);
+
+    using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
+
+    if (!UInt256.TryParse(amount, out var targetFlow))
+    {
+        log.LogWarning("Bad amount format");
+        return Results.BadRequest("amount must be a valid integer.");
+    }
+
+    if (!sem.Wait(0))
+    {
+        FindPathMetrics.RejectedRequestsCounter.Inc();
+        log.LogWarning("Concurrency limit hit — request rejected");
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    FindPathMetrics.InFlightRequestsGauge.Inc();
+    try
+    {
+        var balanceGraph = state.BalanceGraph;
+        var trustGraph = state.AccountTrusts;
+
+        if (balanceGraph is null)
+        {
+            log.LogWarning("Graphs not ready");
+            return Results.BadRequest("Graphs are not loaded yet.");
+        }
+
+        var pathfinder = new V2Pathfinder();
+
+        var request = new FlowRequest
+        {
+            Source = from.ToLower(),
+            Sink = to.ToLower(),
+            TargetFlow = amount,
+            FromTokens = fromTokens?.ToList(),
+            ToTokens = toTokens?.ToList(),
+            ExcludedFromTokens = excludedFromTokens?.ToList(),
+            ExcludedToTokens = excludedToTokens?.ToList(),
+            WithWrap = withWrap
+        };
+
+        using var h = await pool.Rent(request, balanceGraph, trustGraph);
+        var result = pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow);
+
+        return Results.Ok(result);
+    }
+    catch (Exception ex) when (ex is not OutOfMemoryException)
+    {
+        log.LogWarning(ex, "findPath threw non-fatal exception");
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+    }
+    finally
+    {
+        sem.Release();
+        FindPathMetrics.InFlightRequestsGauge.Dec();
+    }
+});
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findPath", async (
     string from,
     string to,
@@ -164,7 +243,7 @@ app.MapGet("/findPath", async (
         };
 
         using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        MaxFlowResponse result = pathfinder.ComputeMaxFlowOnCapacityGraph(h.Graph, request, targetFlow);
+        MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
 
         return Results.Ok(result);
     }
