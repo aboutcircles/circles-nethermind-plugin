@@ -85,7 +85,7 @@ public class GraphFactory
         return graph;
     }
 
-    public static int _c = 0;
+    private static int _c = 0;
 
     /// <summary>
     /// Takes a balance graph and a trust graph and creates a capacity graph from them.
@@ -95,8 +95,10 @@ public class GraphFactory
     /// <param name="trustGraph">The trust graph to use.</param>
     /// <param name="request">Flow request parameters.</param>
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
-    public CapacityGraph CreateCapacityGraph(BalanceGraph balanceGraph,
-        IReadOnlyDictionary<int, HashSet<int>> trustLookup, FlowRequest? r)
+    public CapacityGraph CreateCapacityGraph(
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> trustLookup,
+        FlowRequest? r)
     {
         Interlocked.Increment(ref _c);
         Console.WriteLine($"Creating capacity graph {_c}...");
@@ -138,8 +140,11 @@ public class GraphFactory
 
         if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
         {
-            (virtualSinkAddress, virtualSinkTrustedTokens) =
-                CreateVirtualSink(capacityGraph, sourceId.Value, toTokensFilter, balanceGraph);
+            (virtualSinkAddress, virtualSinkTrustedTokens) = CreateVirtualSink(
+                capacityGraph,
+                sourceId.Value,
+                toTokensFilter,
+                balanceGraph);
         }
 
         // STEP 3: Add balance nodes (applying filters)
@@ -166,7 +171,11 @@ public class GraphFactory
         if (sourceId != null && virtualSinkAddress != null)
         {
             var anyVirtualSinkEdgesAdded = AddVirtualSinkEdges(
-                capacityGraph, balanceGraph, sourceId.Value, virtualSinkAddress.Value, virtualSinkTrustedTokens);
+                capacityGraph,
+                balanceGraph,
+                sourceId.Value,
+                virtualSinkAddress.Value,
+                virtualSinkTrustedTokens);
 
             // Remove virtual sink if no edges were added
             if (!anyVirtualSinkEdgesAdded)
@@ -179,7 +188,13 @@ public class GraphFactory
         }
 
         // STEP 8: Add regular trust-based capacity edges
-        AddTrustBasedCapacityEdges(capacityGraph, balanceGraph, trustLookup, virtualSinkAddress, sinkId, toTokensFilter,
+        AddTrustBasedCapacityEdges(
+            capacityGraph,
+            balanceGraph,
+            trustLookup,
+            virtualSinkAddress,
+            sinkId,
+            toTokensFilter,
             excludedToTokensFilter);
 
         return capacityGraph;
@@ -194,16 +209,24 @@ public class GraphFactory
     {
         // every avatar that shows up as a balance holder
         foreach (var avatarId in balanceGraph.AvatarNodes.Keys)
+        {
             capacityGraph.AddAvatar(avatarId);
+        }
 
         // every avatar that *trusts* something
         foreach (var truster in trustLookup.Keys)
+        {
             capacityGraph.AddAvatar(truster);
+        }
 
         // every token that is trusted by somebody
         foreach (var trustedSet in trustLookup.Values)
-        foreach (var tokenId in trustedSet)
-            capacityGraph.AddAvatar(tokenId);
+        {
+            foreach (var tokenId in trustedSet)
+            {
+                capacityGraph.AddAvatar(tokenId);
+            }
+        }
     }
 
     private (int address, HashSet<int> trustedTokens) CreateVirtualSink(
@@ -217,8 +240,6 @@ public class GraphFactory
 
         capacityGraph.AddAvatar(virtualSinkAddressId);
         capacityGraph.VirtualSinkAddress = virtualSinkAddressId;
-
-        // // Console.WriteLine($"Created virtual sink: {virtualSinkAddress}");
 
         // Collect tokens trusted by virtual sink (excluding wrapped tokens)
         var virtualSinkTrustedTokens = new HashSet<int>();
@@ -302,8 +323,10 @@ public class GraphFactory
         CapacityGraph capacityGraph,
         BalanceGraph balanceGraph)
     {
-        foreach (var capacityEdge in balanceGraph.Edges)
+        for (int i = 0; i < balanceGraph.Edges.Count; i++)
         {
+            var capacityEdge = balanceGraph.Edges[i];
+
             if (!capacityGraph.Nodes.ContainsKey(capacityEdge.From)
                 || !capacityGraph.Nodes.ContainsKey(capacityEdge.To))
             {
@@ -342,13 +365,6 @@ public class GraphFactory
                 capacityGraph.Edges.RemoveAt(i);
             }
         }
-
-        // capacityGraph.Edges.RemoveWhere(edge =>
-        //     AddressIdPool.IsBalanceNode(edge.From) && capacityGraph.BalanceNodes[edge.From].Holder ==
-        //                                            sourceAddress /*from is BalanceNode and source equals balance holder*/
-        //                                            && edge.To == sourceAddress /*to equals source*/
-        //                                            && toTokensFilter.Contains(edge.Token)
-        // );
     }
 
     private bool AddVirtualSinkEdges(
@@ -357,7 +373,7 @@ public class GraphFactory
         int sourceAddress,
         int virtualSinkAddress,
         HashSet<int> virtualSinkTrustedTokenIds
-        )
+    )
     {
         bool anyEdgeAdded = false;
 
@@ -365,16 +381,21 @@ public class GraphFactory
         {
             // skip balances the capacity graph didn’t keep
             if (!capacityGraph.Nodes.ContainsKey(bn.Address))
+            {
                 continue;
+            }
 
             // never draw from the source’s own balances
             if (bn.Holder == sourceAddress)
+            {
                 continue;
-
+            }
 
             // does the virtual sink accept this token?
             if (!virtualSinkTrustedTokenIds.Contains(bn.Token))
+            {
                 continue;
+            }
 
             capacityGraph.AddCapacityEdge(
                 bn.Address,
@@ -414,12 +435,21 @@ public class GraphFactory
                 // If the avatar is the real sink, enforce toTokens / excludedToTokens
                 if (avatar == sinkAddress)
                 {
-                    if (toTokensFilter.Count > 0 && !toTokensFilter.Contains(token)) continue;
-                    if (excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(token)) continue;
+                    if (toTokensFilter.Count > 0 && !toTokensFilter.Contains(token))
+                    {
+                        continue;
+                    }
+
+                    if (excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(token))
+                    {
+                        continue;
+                    }
                 }
 
                 if (!tokenToAvatars.TryGetValue(token, out var list))
+                {
                     list = tokenToAvatars[token] = new List<int>();
+                }
 
                 list.Add(avatar);
             }
@@ -431,14 +461,29 @@ public class GraphFactory
         Parallel.ForEach(balanceGraph.BalanceNodes.Values, bn =>
         {
             if (!tokenToAvatars.TryGetValue(bn.Token, out var avatars))
-                return;
-
-            foreach (var avatar in avatars)
             {
-                if (avatar == bn.Holder) continue; // no self-edge
-                if (virtualSinkAddress.HasValue && avatar == virtualSinkAddress) continue;
+                return;
+            }
+
+            for (int i = 0; i < avatars.Count; i++)
+            {
+                var avatar = avatars[i];
+
+                if (avatar == bn.Holder)
+                {
+                    continue; // no self-edge
+                }
+
+                if (virtualSinkAddress.HasValue && avatar == virtualSinkAddress)
+                {
+                    continue;
+                }
+
                 if (!capacityGraph.Nodes.ContainsKey(bn.Address) ||
-                    !capacityGraph.Nodes.ContainsKey(avatar)) continue;
+                    !capacityGraph.Nodes.ContainsKey(avatar))
+                {
+                    continue;
+                }
 
                 edgeBag.Add((bn.Address, avatar, bn.Token, bn.Amount));
             }
@@ -446,7 +491,9 @@ public class GraphFactory
 
         /* commit edges serially */
         foreach (var (from, to, token, amount) in edgeBag)
+        {
             capacityGraph.AddCapacityEdge(from, to, token, amount);
+        }
     }
 
     #endregion
