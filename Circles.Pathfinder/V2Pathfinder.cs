@@ -9,7 +9,63 @@ namespace Circles.Pathfinder;
 
 public class V2Pathfinder
 {
-    public MaxFlowResponse ComputeMaxFlowOnCapacityGraph(
+    public long ComputeMaxFlow(
+        CapacityGraph capacityGraph,
+        FlowRequest flowRequest,
+        UInt256 targetFlow)
+    {
+        /* --------------------------------------------------------------------
+         * 1. Resolve ids and basic guards
+         * ------------------------------------------------------------------ */
+        int sinkId = AddressIdPool.IdOf(flowRequest.Sink);
+        int? vs = capacityGraph.VirtualSinkAddress;
+        int effSink = vs ?? sinkId;
+        int sourceId = AddressIdPool.IdOf(flowRequest.Source);
+
+        bool sourceMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
+        if (sourceMissing)
+        {
+            throw new ArgumentException($"Source '{flowRequest.Source}' isn’t in the graph snapshot.");
+        }
+
+        bool sinkMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
+        if (sinkMissing)
+        {
+            throw new ArgumentException($"Sink '{flowRequest.Sink}' isn’t in the graph snapshot.");
+        }
+
+        /* --------------------------------------------------------------------
+         * 2. Run max-flow (no path extraction needed)
+         * ------------------------------------------------------------------ */
+        long target = ConversionUtils.TruncateToInt64(targetFlow);
+        var solved = MaxFlowSolver.Solve(
+            capacityGraph.Edges,
+            sourceId,
+            effSink,
+            target);
+
+        /* --------------------------------------------------------------------
+         * 3. Sum outbound flow from the source
+         * ------------------------------------------------------------------ */
+        long totalFlow = 0;
+
+        for (int i = 0; i < solved.Count; i++)
+        {
+            var edge = solved[i];
+
+            bool edgeLeavesSource = edge.From == sourceId;
+            bool edgeHasPositiveFlow = edge.Flow > 0;
+
+            if (edgeLeavesSource && edgeHasPositiveFlow)
+            {
+                totalFlow += edge.Flow;
+            }
+        }
+
+        return totalFlow;
+    }
+
+    public MaxFlowResponse ComputeMaxFlowWithPath(
         CapacityGraph capacityGraph,
         FlowRequest request,
         UInt256 targetFlow)
