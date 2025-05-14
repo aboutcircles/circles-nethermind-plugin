@@ -51,5 +51,4 @@ SELECT t."blockNumber",
     t.type,
     tt.type as "tokenType"
 FROM "allTransfers" t
-LEFT JOIN "V_Crc_Tokens" tt on tt.token = t."tokenAddress"
-ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
+LEFT JOIN "V_Crc_Tokens" tt on tt.token = t."tokenAddress";

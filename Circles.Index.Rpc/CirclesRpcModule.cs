@@ -29,6 +29,122 @@ public class CirclesRpcModule : ICirclesRpcModule
         _indexerContext = indexerContext;
     }
 
+    // Helpers for ABI words ------------------------------------------------------
+    static byte[] Word(ulong value)
+    {
+        var word = new byte[32];
+        for (int i = 0; i < 8; i++)
+        {
+            word[31 - i] = (byte)(value & 0xFF);
+            value >>= 8;
+        }
+
+        return word;
+    }
+
+    static byte[] Word(Address address) => address.Bytes.PadLeft(32);
+    static byte[] Word(UInt256 value) => value.PaddedBytes(32);
+
+    static byte[] EncodeAddressArray(IReadOnlyList<Address> addresses)
+    {
+        var bytes = new List<byte>();
+        bytes.AddRange(Word((ulong)addresses.Count));
+        foreach (var addr in addresses)
+        {
+            bytes.AddRange(Word(addr));
+        }
+
+        return bytes.ToArray();
+    }
+
+    static byte[] EncodeUIntArray(IReadOnlyList<UInt256> values)
+    {
+        var bytes = new List<byte>();
+        bytes.AddRange(Word((ulong)values.Count));
+        foreach (var v in values)
+        {
+            bytes.AddRange(Word(v));
+        }
+
+        return bytes.ToArray();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Main helper – one ERC-1155, many (account,tokenId) pairs
+    // ---------------------------------------------------------------------------
+    private List<UInt256> GetBatchBalances(
+        IEthRpcModule rpcModule,
+        Address token,
+        IReadOnlyList<Address> accounts,
+        IReadOnlyList<UInt256> tokenIds)
+    {
+        if (accounts.Count != tokenIds.Count)
+        {
+            throw new ArgumentException("accounts and tokenIds length mismatch");
+        }
+
+        // 1. build calldata ------------------------------------------------------
+        byte[] selector = Keccak
+            .Compute("balanceOfBatch(address[],uint256[])")
+            .Bytes[..4].ToArray();
+
+        byte[] encAccounts = EncodeAddressArray(accounts);
+        byte[] encIds = EncodeUIntArray(tokenIds);
+
+        ulong offsetAccounts = 0x40; // first dynamic section starts right after the two offsets
+        ulong offsetIds = offsetAccounts + (ulong)encAccounts.Length;
+
+        var data = new List<byte>(selector);
+        data.AddRange(Word(offsetAccounts));
+        data.AddRange(Word(offsetIds));
+        data.AddRange(encAccounts);
+        data.AddRange(encIds);
+
+        // 2. eth_call ------------------------------------------------------------
+        var call = new LegacyTransactionForRpc
+        {
+            To = token,
+            Input = data.ToArray()
+        };
+
+        var result = rpcModule.eth_call(call);
+
+        if (result.ErrorCode != 0)
+        {
+            throw new Exception($"Couldn't get batch balances for token {token}");
+        }
+
+        // 3. decode uint256[] ----------------------------------------------------
+        byte[] raw = Convert.FromHexString(result.Data.StartsWith("0x")
+            ? result.Data[2..]
+            : result.Data);
+
+        // ── dynamic return value layout ───────────────────────────────────────────
+        //  0x00..0x1F  ->  offset to start of array  (always 0x20)
+        //  0x20..0x3F  ->  length (N)
+        //  0x40..      ->  N × 32-byte uint256 values
+        // -------------------------------------------------------------------------
+
+        int arrayOffset = 32; // skip the offset word
+        int count = (int)new UInt256(
+            raw.AsSpan(arrayOffset, 32).ToArray(),
+            true).ToUInt64(CultureInfo.InvariantCulture);
+
+        int firstElement = arrayOffset + 32;
+        int neededBytes = firstElement + count * 32;
+        if (raw.Length < neededBytes)
+            throw new Exception("Return data shorter than advertised length");
+
+        var balances = new List<UInt256>(count);
+        for (int i = 0; i < count; i++)
+        {
+            int start = firstElement + i * 32;
+            balances.Add(new UInt256(raw.AsSpan(start, 32).ToArray(), true));
+        }
+
+        return balances;
+    }
+
     private UInt256 GetBalance(IEthRpcModule rpcModule, Address token, Address account, UInt256? tokenId = null)
     {
         string functionName = tokenId == null ? "balanceOf(address)" : "balanceOf(address,uint256)";
@@ -56,29 +172,61 @@ public class CirclesRpcModule : ICirclesRpcModule
         return balance;
     }
 
-    private async Task<UInt256> FetchBalance(Address token, Address account, bool isErc20, Address hubAddress)
+    private UInt256 FetchBalance(IEthRpcModule rpcModule, Address token, Address account, bool isErc20,
+        Address hubAddress)
     {
-        using var rpc = new RentedEthRpcModule(_indexerContext.NethermindApi);
-        await rpc.Rent();
         var balance = isErc20
-            ? GetBalance(rpc.RpcModule!, token, account)
-            : GetBalance(rpc.RpcModule!, hubAddress, account, ConversionUtils.AddressToUInt256(token));
+            ? GetBalance(rpcModule, token, account)
+            : GetBalance(rpcModule, hubAddress, account, ConversionUtils.AddressToUInt256(token));
 
         return balance;
     }
 
     private async Task<List<CirclesTokenBalance>> GetTokenBalancesForAccount(Address address, Address hubAddress)
     {
-        var tokens = GetTokensByAccount(address);
-        var balanceTasks = tokens.ToDictionary(
-            token => token.TokenAddress,
-            token => FetchBalance(token.TokenAddress, address, token.IsErc20, hubAddress));
+        var tokens = GetTokenExposureIds(address);
 
-        await Task.WhenAll(balanceTasks.Values);
+        var erc20Tokens = tokens.Values.Where(o => o.IsErc20).ToArray();
+        var erc1155Tokens = tokens.Values.Where(o => o.IsErc1155).ToArray();
 
-        var tokenBalances = tokens.Select(token =>
+        using var rpc = new RentedEthRpcModule(_indexerContext.NethermindApi);
+        await rpc.Rent();
+
+        var balances = new Dictionary<Address, UInt256>();
+
+        // erc1155 balances can be fetched as batch
+        if (erc1155Tokens.Length > 0)
+        {
+            var erc1155Balances = GetBatchBalances(
+                rpc.RpcModule!,
+                hubAddress,
+                Enumerable.Repeat(address, erc1155Tokens.Length).ToArray(),
+                erc1155Tokens.Select(o => ConversionUtils.AddressToUInt256(o.TokenAddress)).ToArray());
+
+            for (int i = 0; i < erc1155Tokens.Length; i++)
             {
-                var rawBalance = balanceTasks[token.TokenAddress].Result;
+                balances.Add(erc1155Tokens[i].TokenAddress, erc1155Balances[i]);
+            }
+        }
+
+        var erc20Balances = erc20Tokens.Select(o => FetchBalance(
+            rpc.RpcModule!,
+            o.TokenAddress,
+            address,
+            o.IsErc20,
+            hubAddress)).ToArray();
+
+        for (int i = 0; i < erc20Balances.Length; i++)
+        {
+            var tokenInfo = erc20Tokens[i];
+            var balance = erc20Balances[i];
+
+            balances.Add(tokenInfo.TokenAddress, balance);
+        }
+
+        var tokenBalances = tokens.Values.Select(token =>
+            {
+                var rawBalance = balances[token.TokenAddress];
 
                 UInt256 attoCircles;
                 decimal cirlces;
@@ -179,74 +327,6 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             return ResultWrapper<string>.Success(totalBalance.ToString(CultureInfo.InvariantCulture));
         }
-    }
-
-    private List<TokenInfo> GetTokensByAccount(Address address)
-    {
-        var tokenExposureRawIds = GetTokenExposureIds(address);
-
-        var erc1155TokenAddresses = tokenExposureRawIds
-            .Where(id => !id.StartsWith("0x"))
-            .Select(id => ConversionUtils.UInt256ToAddress(UInt256.Parse(id)))
-            .ToArray();
-
-        var erc20TokenAddresses = tokenExposureRawIds
-            .Where(id => id.StartsWith("0x"))
-            .Select(id => new Address(id))
-            .ToArray();
-
-        var allTokenAddresses = erc1155TokenAddresses.Concat(erc20TokenAddresses).ToArray();
-        var allTokenAddressStrings = allTokenAddresses.Select(o => o.ToString(true, false)).ToArray();
-
-        var tokenInfoByAddress = FetchTokenInfo(allTokenAddressStrings);
-
-        return allTokenAddresses.Select(token =>
-        {
-            if (!tokenInfoByAddress.TryGetValue(token, out var row))
-                throw new Exception($"Token {token} not found in token info result set");
-
-            var (isErc20, isErc1155, isWrapped, isInflationary, isGroup) = ParseTokenType(row[1]);
-            var tokenOwner = new Address(row[2]);
-            var version = int.Parse(row[3]);
-
-            return new TokenInfo(token, tokenOwner, row[1], version, isErc20, isErc1155, isWrapped, isInflationary,
-                isGroup);
-        }).ToList();
-    }
-
-    private Dictionary<Address, string[]> FetchTokenInfo(string[] allTokenAddressStrings)
-    {
-        var selectTokenInfos = new Select(
-            "V_Crc",
-            "Tokens",
-            ["token", "type", "tokenOwner", "version"],
-            [new FilterPredicate("token", FilterType.In, allTokenAddressStrings)],
-            Array.Empty<OrderBy>(),
-            int.MaxValue,
-            false,
-            int.MaxValue);
-
-        var sql = selectTokenInfos.ToSql(_indexerContext.ReadonlyDatabase);
-        var result = _indexerContext.ReadonlyDatabase.Select(sql).Rows.ToDictionary(
-            row => new Address(row[0]?.ToString() ?? throw new Exception("A token in the result set is null")),
-            row => row.Select(o => o?.ToString() ?? throw new Exception("A value in the result set is null"))
-                .ToArray());
-
-        return result;
-    }
-
-    private (bool isErc20, bool isErc1155, bool isWrapped, bool isInflationary, bool isGroup)
-        ParseTokenType(string type)
-    {
-        return type switch
-        {
-            "CrcV1_Signup" => (true, false, false, true, false),
-            "CrcV2_RegisterGroup" => (false, true, false, false, true),
-            "CrcV2_RegisterHuman" => (false, true, false, false, false),
-            "CrcV2_ERC20WrapperDeployed_Inflationary" => (true, false, true, true, false),
-            "CrcV2_ERC20WrapperDeployed_Demurraged" => (true, false, true, false, false),
-            _ => throw new Exception($"Unknown token type: {type}")
-        };
     }
 
     public async Task<ResultWrapper<string>> circles_getTotalBalance(Address address, bool? asTimeCircles = true)
@@ -518,23 +598,86 @@ public class CirclesRpcModule : ICirclesRpcModule
         return Task.FromResult(ResultWrapper<IEnumerable<DatabaseNamespace>>.Success(namespaces));
     }
 
-    private string[] GetTokenExposureIds(Address address)
+    private Dictionary<Address, TokenInfo> GetTokenExposureIds(Address address)
     {
         var tokenExposure = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(@"
-            select distinct ""tokenAddress""
-            from ""CrcV1_Transfer""
-            where ""to"" = @address
-            union
-            select distinct ""tokenAddress""
-            from ""V_CrcV2_Transfers""
-            where ""to"" = @address;
+            WITH tokens AS (
+                SELECT ""tokenAddress""
+                     , 'CrcV1_Signup' as ""type""
+                     , s.""user"" as ""tokenOwner""
+                FROM  public.""CrcV1_Transfer"" t
+                join ""CrcV1_Signup"" s on s.token = t.""tokenAddress""
+                WHERE ""to"" = @address
+
+                UNION ALL
+                SELECT ""tokenAddress""
+                     , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
+                     , ""tokenAddress"" as ""tokenOwner""
+                FROM  public.""CrcV2_TransferSingle"" ts
+                left join ""CrcV2_RegisterHuman"" rh on rh.avatar = ts.""tokenAddress""
+                WHERE ""to"" = @address
+
+                UNION ALL
+                SELECT ""tokenAddress""
+                     , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
+                     , ""tokenAddress"" as ""tokenOwner""
+                FROM  public.""CrcV2_TransferBatch"" tb
+                          left join ""CrcV2_RegisterHuman"" rh on rh.avatar = tb.""tokenAddress""
+                WHERE ""to"" = @address
+
+                UNION ALL
+                SELECT ""tokenAddress""
+                     , case when wd.""circlesType"" = 0 then 'CrcV2_ERC20WrapperDeployed_Demurraged' else 'CrcV2_ERC20WrapperDeployed_Inflationary' end as type
+                     , wd.avatar as tokenOwner
+                FROM  public.""CrcV2_Erc20WrapperTransfer"" wt
+                join ""CrcV2_ERC20WrapperDeployed"" wd on wd.""erc20Wrapper"" = wt.""tokenAddress""
+                WHERE ""to"" = @address
+            ), distinct_tokens as (
+                SELECT DISTINCT ""tokenAddress"", ""type"", ""tokenOwner""
+                FROM   tokens
+            )
+            select ""tokenAddress"", ""type"", ""tokenOwner""
+            from distinct_tokens
         ", [
             _indexerContext.ReadonlyDatabase.CreateParameter("address", address.ToString(true, false))
         ]));
 
-        return tokenExposure
-            .Rows
-            .Select(row => row[0]?.ToString() ?? throw new Exception("An id in the result set is null"))
-            .ToArray();
+        var rows = tokenExposure.Rows.ToArray();
+        Dictionary<Address, TokenInfo> tokenExposureIds = new(rows.Length);
+        foreach (var tokenExposureRow in tokenExposure.Rows)
+        {
+            var token = new Address((string)tokenExposureRow[0]);
+            var tokenType = (string)tokenExposureRow[1];
+            var tokenOwner = new Address((string)tokenExposureRow[2]);
+
+            var isWrapped = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary"
+                or "CrcV2_ERC20WrapperDeployed_Demurraged";
+
+            var isInflationary = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary";
+            var isGroup = tokenType is "CrcV2_RegisterGroup";
+
+            var isErc20 = tokenType == "CrcV1_Signup"
+                          || isWrapped;
+
+            var isErc1155 = tokenType is "CrcV2_RegisterHuman"
+                or "CrcV2_RegisterGroup";
+
+            var version = isWrapped || isErc1155 ? 2 : 1;
+
+            var tokenInfo = new TokenInfo(
+                token,
+                tokenOwner,
+                tokenType,
+                version,
+                isErc20,
+                isErc1155,
+                isWrapped,
+                isInflationary,
+                isGroup);
+
+            tokenExposureIds.Add(token, tokenInfo);
+        }
+
+        return tokenExposureIds;
     }
 }
