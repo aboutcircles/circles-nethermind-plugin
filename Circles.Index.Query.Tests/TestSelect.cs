@@ -25,6 +25,8 @@ public class TestDatabaseSchema : IDatabaseSchema
                 ])
             }
         };
+
+    public IDictionary<string, string> Indexes { get; } = new Dictionary<string, string>();
 }
 
 public class TestDatabase : IDatabaseUtils
@@ -374,13 +376,11 @@ public class Tests
     public void B()
     {
         var t = BigInteger.Parse("238208892873504508097789456176502153024265176387")
-            * (
-                BigInteger.Parse("31556952")
-                                 - BigInteger.Parse("4142484904995219")
-            )
-            + BigInteger.Parse("238208892873504508097789456176502153024265176387")
-                               * BigInteger.Parse("4142484904995219");
-        
-        
+                * (
+                    BigInteger.Parse("31556952")
+                    - BigInteger.Parse("4142484904995219")
+                )
+                + BigInteger.Parse("238208892873504508097789456176502153024265176387")
+                * BigInteger.Parse("4142484904995219");
     }
 }
