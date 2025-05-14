@@ -36,6 +36,8 @@ public class DatabaseSchema : IDatabaseSchema
             }
         };
 
+    public IDictionary<string, string> Indexes { get; } = new Dictionary<string, string>();
+
     public DatabaseSchema()
     {
         SchemaPropertyMap.Add(("System", "Block"), new Dictionary<string, Func<BlockWithEventCounts, object?>>

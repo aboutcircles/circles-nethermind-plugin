@@ -129,6 +129,15 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             }
 
             ExecuteNonQuery(connection, ddlSql.ToString());
+            
+            StringBuilder indexesSql = new StringBuilder();
+            foreach (var index in Schema.Indexes)
+            {
+                var ddl = index.Value;
+                indexesSql.AppendLine(ddl);
+            }
+
+            ExecuteNonQuery(connection, indexesSql.ToString());
 
             StringBuilder primaryKeyDdl = new StringBuilder();
             foreach (var table in Schema.Tables)

@@ -6,6 +6,7 @@ public class CompositeDatabaseSchema : IDatabaseSchema
     public IEventDtoTableMap EventDtoTableMap { get; }
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
+    public IDictionary<string, string> Indexes { get; }
 
     public CompositeDatabaseSchema(IDatabaseSchema[] components)
     {
@@ -18,6 +19,14 @@ public class CompositeDatabaseSchema : IDatabaseSchema
 
         SchemaPropertyMap = new CompositeSchemaPropertyMap(components.Select(o => o.SchemaPropertyMap).ToArray());
         EventDtoTableMap = new CompositeEventDtoTableMap(components.Select(o => o.EventDtoTableMap).ToArray());
+        Indexes = new Dictionary<string, string>();
+        foreach (var component in components)
+        {
+            foreach (var kvp in component.Indexes)
+            {
+                Indexes.Add(kvp.Key, kvp.Value);
+            }
+        }
     }
 }
 
@@ -44,6 +53,7 @@ public class SchemaPropertyMap : ISchemaPropertyMap
 public class CompositeSchemaPropertyMap : ISchemaPropertyMap
 {
     public Dictionary<(string Namespace, string Table), Dictionary<string, Func<object, object?>>> Map { get; }
+
     public void Add<TEvent>((string Namespace, string Table) table, Dictionary<string, Func<TEvent, object?>> map)
     {
         throw new NotImplementedException();
