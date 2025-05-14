@@ -64,11 +64,12 @@ SELECT a."blockNumber",
         a.name,
         cid."cidV0Digest"
 FROM avatars a
-LEFT JOIN (
-    SELECT 
-        cid_1.avatar,
-        cid_1."metadataDigest"  AS "cidV0Digest",
-        row_number() OVER (PARTITION BY cid_1.avatar ORDER BY cid_1."blockNumber" DESC, cid_1."transactionIndex" DESC, cid_1."logIndex" DESC) AS rn
-    FROM "CrcV2_UpdateMetadataDigest" cid_1
-) cid 
-ON cid.avatar = a.avatar AND cid.rn = 1;
+         left join lateral (
+    select "metadataDigest" as "cidV0Digest"
+    from   "CrcV2_UpdateMetadataDigest" m
+    where  m.avatar = a.avatar
+    order  by m."blockNumber" desc,
+              m."transactionIndex" desc,
+              m."logIndex" desc
+    limit  1
+    ) cid on true;
