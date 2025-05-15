@@ -3,6 +3,7 @@ using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
+using Circles.Pathfinder.Host.LogDb;
 using Circles.Pathfinder.Host.State;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -73,6 +74,7 @@ var sem = new SemaphoreSlim(settings.MaxConcurrentRequests,
 builder.Services.AddSingleton(sem);
 
 builder.Services.AddSingleton<NetworkState>();
+builder.Services.AddSingleton<PathLogDb>();
 builder.Services.AddSingleton(new CapacityGraphPool());
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
@@ -116,14 +118,6 @@ app.MapGet("/findMaxFlow", async (
     CapacityGraphPool pool,
     ILogger<Program> log) =>
 {
-    using var act = Source.StartActivity("findMaxFlow", ActivityKind.Server);
-    act?.SetTag("http.route", "/findMaxFlow");
-    act?.SetTag("from", from);
-    act?.SetTag("to", to);
-    act?.SetTag("amount", amount);
-
-    using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
-
     if (!UInt256.TryParse(amount, out var targetFlow))
     {
         log.LogWarning("Bad amount format");
@@ -141,13 +135,13 @@ app.MapGet("/findMaxFlow", async (
     try
     {
         var balanceGraph = state.BalanceGraph;
-        var trustGraph = state.AccountTrusts;
-
         if (balanceGraph is null)
         {
             log.LogWarning("Graphs not ready");
             return Results.BadRequest("Graphs are not loaded yet.");
         }
+
+        var trustGraph = state.AccountTrusts;
 
         var pathfinder = new V2Pathfinder();
 
@@ -163,10 +157,11 @@ app.MapGet("/findMaxFlow", async (
             WithWrap = withWrap
         };
 
-        using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        var result = pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow);
-
-        return Results.Ok(result);
+        using (var h = await pool.Rent(request, balanceGraph, trustGraph))
+        {
+            var result = pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow);
+            return Results.Ok(result);
+        }
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
@@ -193,7 +188,8 @@ app.MapGet("/findPath", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
-    ILogger<Program> log) =>
+    ILogger<Program> log,
+    PathLogDb logDb) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
     act?.SetTag("http.route", "/findPath");
@@ -242,10 +238,23 @@ app.MapGet("/findPath", async (
             WithWrap = withWrap
         };
 
-        using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+        var requestId = Guid.NewGuid();
+        _ = logDb.LogRequest(requestId, request);
 
-        return Results.Ok(result);
+        try
+        {
+            using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+
+            logDb.LogResponse(requestId, result, true);
+
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            logDb.LogResponse(requestId, null, false, ex.Message + "\n" + ex.StackTrace);
+            throw;
+        }
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
