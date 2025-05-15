@@ -10,6 +10,9 @@ public class Settings
         Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING")
         ?? throw new ArgumentException("POSTGRES_READONLY_CONNECTION_STRING is not set.");
 
+    public readonly string? LogDbConnectionString =
+        Environment.GetEnvironmentVariable("POSTGRES_LOGDB_CONNECTION_STRING");
+
     public readonly int MaxConcurrentRequests = Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS")!)
         : Environment.ProcessorCount * 2;
