@@ -42,10 +42,10 @@ public sealed class PathLogDb : IAsyncDisposable
         ApplyMigrationsAsync(v).GetAwaiter().GetResult();
     }
 
-    public ValueTask LogRequest(Guid id, FlowRequest flowRequest)
+    public ValueTask LogRequest(Guid id, long blockNo, FlowRequest flowRequest)
         => _dataSource is null
             ? ValueTask.CompletedTask
-            : _queue.Writer.WriteAsync(new RequestLogItem(id, flowRequest));
+            : _queue.Writer.WriteAsync(new RequestLogItem(id, blockNo, flowRequest));
 
     public ValueTask LogResponse(Guid requestId, MaxFlowResponse? response, bool success,
         string? errorMessage = null)
@@ -77,18 +77,19 @@ public sealed class PathLogDb : IAsyncDisposable
         Task WriteAsync(NpgsqlDataSource ds, CancellationToken ct);
     }
 
-    private sealed class RequestLogItem(Guid id, FlowRequest req) : ILogItem
+    private sealed class RequestLogItem(Guid id, long blockNo, FlowRequest req) : ILogItem
     {
         private const string Sql = @"
 insert into request
-(id, source, sink, target_flow, to_tokens, from_tokens, exclude_to_tokens, exclude_from_tokens, with_wrap)
-values (@id, @source, @sink, @target_flow, @to_tokens, @from_tokens, @exclude_to_tokens, @exclude_from_tokens, @with_wrap);";
+(id, block_no, source, sink, target_flow, to_tokens, from_tokens, exclude_to_tokens, exclude_from_tokens, with_wrap)
+values (@id, @block_no, @source, @sink, @target_flow, @to_tokens, @from_tokens, @exclude_to_tokens, @exclude_from_tokens, @with_wrap);";
 
         public async Task WriteAsync(NpgsqlDataSource ds, CancellationToken ct)
         {
             await using var cmd = ds.CreateCommand(Sql);
 
             cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("block_no", ToDb(blockNo));
             cmd.Parameters.AddWithValue("source", ToDb(req.Source));
             cmd.Parameters.AddWithValue("sink", ToDb(req.Sink));
             AddNumeric(cmd, "target_flow", ParseBigInt(req.TargetFlow));
