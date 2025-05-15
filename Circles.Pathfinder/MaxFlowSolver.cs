@@ -11,7 +11,7 @@ internal static class MaxFlowSolver
         int sinkAvatar,
         long targetFlow)
     {
-        var maxFlow = new MaxFlow();
+        using var maxFlow = new MaxFlow();
 
         /* ----------------------------------------------------------------
          * Arc-id 0      : super-source ➜ real source
