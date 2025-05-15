@@ -17,6 +17,7 @@ groups_trusts AS (
 		"expiryTime"
 		,"TrusterIsGroup"
 		,"TrusteeIsGroup"
+        ,ROW_NUMBER() OVER (PARTITION BY truster, trustee ORDER BY "timestamp", "logIndex") AS r_cnt
 	FROM (
 		SELECT 
 			t1.*
@@ -32,7 +33,7 @@ groups_trusts AS (
 			ON t3.group = t1.trustee
 	) a
 	WHERE
-		"TrusterIsGroup" IS TRUE OR "TrusteeIsGroup" IS TRUE
+		"TrusterIsGroup" IS TRUE
 ),
 
 groups_trusts_diff AS (
@@ -41,17 +42,19 @@ groups_trusts_diff AS (
 		,truster AS "group"
         ,COUNT(*) AS cnt
     FROM groups_trusts
-	WHERE "TrusterIsGroup" IS TRUE
     GROUP BY 1, 2
     
     UNION ALL 
     
     SELECT 
-        "expiryTime" AS "timestamp"
+        CASE
+			WHEN r_cnt > 1 THEN "timestamp"
+			ELSE "expiryTime"
+		END AS "timestamp"
         ,truster AS "group"
-        ,-COUNT(*) AS cnt
+        ,-COUNT(DISTINCT trustee) AS cnt
     FROM groups_trusts
-    WHERE "TrusterIsGroup" IS TRUE AND  "expiryTime" < 10000000000 --Sat Nov 20 2286
+    WHERE r_cnt > 1 OR "expiryTime" < 10000000000  --Sat Nov 20 2286
     GROUP BY 1, 2
 ),
 
