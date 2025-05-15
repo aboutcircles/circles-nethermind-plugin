@@ -1,5 +1,3 @@
-using System.Collections;
-
 namespace Circles.Pathfinder.DTOs;
 
 public class FlowRequest
