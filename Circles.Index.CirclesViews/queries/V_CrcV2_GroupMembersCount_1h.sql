@@ -52,7 +52,7 @@ groups_trusts_diff AS (
 			ELSE "expiryTime"
 		END AS "timestamp"
         ,truster AS "group"
-        ,-COUNT(DISTINCT trustee) AS cnt
+        ,-COUNT(*) AS cnt
     FROM groups_trusts
     WHERE r_cnt > 1 OR "expiryTime" < 10000000000  --Sat Nov 20 2286
     GROUP BY 1, 2
