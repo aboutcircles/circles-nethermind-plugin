@@ -31,4 +31,11 @@
       </Reference>
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="LogDb\0_applied_migrations.sql" />
+      <EmbeddedResource Include="LogDb\0_applied_migrations.sql" />
+      <None Remove="LogDb\1_request_and_response.sql" />
+      <EmbeddedResource Include="LogDb\1_request_and_response.sql" />
+    </ItemGroup>
+
 </Project>

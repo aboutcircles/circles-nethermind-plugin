@@ -2,206 +2,247 @@ using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 using Circles.Pathfinder.DTOs;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace Circles.Pathfinder.Host.LogDb;
 
-/// <summary>
-/// If the LOGDB_CONNECTION_STRING is configured, logs requests and responses to a db.
-/// </summary>
-public class PathLogDb
+public sealed class PathLogDb : IAsyncDisposable
 {
-    private readonly string? _connectionString;
+    private readonly NpgsqlDataSource? _dataSource;
+    private readonly Channel<ILogItem> _queue;
+    private readonly CancellationTokenSource _cts = new();
+    private readonly Task _worker; // single writer thread
 
     public PathLogDb()
     {
-        _connectionString = new Settings().LogDbConnectionString;
-
-        if (string.IsNullOrWhiteSpace(_connectionString))
+        string? cs = new Settings().LogDbConnectionString;
+        if (string.IsNullOrWhiteSpace(cs))
         {
             return; // logging disabled
         }
 
-        var dbVersion = GetCurrentDbVersion();
-        ApplyMigrations(dbVersion);
+        _dataSource = NpgsqlDataSource.Create(cs);
+
+        // small-ish bounded buffer → natural back-pressure if DB stalls
+        _queue = Channel.CreateBounded<ILogItem>(new BoundedChannelOptions(100_000)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = false,
+            SingleReader = true
+        });
+
+        // kick off the background writer
+        _worker = Task.Run(() => WriterLoopAsync(_cts.Token), _cts.Token);
+
+        // migrations run synchronously at startup
+        int v = GetCurrentDbVersionAsync().GetAwaiter().GetResult();
+        ApplyMigrationsAsync(v).GetAwaiter().GetResult();
     }
 
-    #region migration helpers (unchanged)
+    public ValueTask LogRequest(Guid id, FlowRequest flowRequest)
+        => _dataSource is null
+            ? ValueTask.CompletedTask
+            : _queue.Writer.WriteAsync(new RequestLogItem(id, flowRequest));
 
-    private void ApplyMigrations(int lastVersion)
+    public ValueTask LogResponse(Guid requestId, MaxFlowResponse? response, bool success,
+        string? errorMessage = null)
+        => _dataSource is null
+            ? ValueTask.CompletedTask
+            : _queue.Writer.WriteAsync(new ResponseLogItem(requestId, response, success, errorMessage));
+
+    private async Task WriterLoopAsync(CancellationToken ct)
     {
-        using var connection = new NpgsqlConnection(_connectionString);
-        connection.Open();
-
-        var scripts = GetAllSqlFromResources();
-        foreach (var script in scripts)
+        while (await _queue.Reader.WaitToReadAsync(ct))
         {
-            if (script.Key <= lastVersion)
+            while (_queue.Reader.TryRead(out ILogItem item))
+            {
+                try
+                {
+                    await item.WriteAsync(_dataSource!, ct);
+                }
+                catch (Exception ex)
+                {
+                    // Swallow → log somewhere else; we must not kill the loop.
+                    Console.Error.WriteLine($"[log-db] {ex}");
+                }
+            }
+        }
+    }
+
+    private interface ILogItem
+    {
+        Task WriteAsync(NpgsqlDataSource ds, CancellationToken ct);
+    }
+
+    private sealed class RequestLogItem(Guid id, FlowRequest req) : ILogItem
+    {
+        private const string Sql = @"
+insert into request
+(id, source, sink, target_flow, to_tokens, from_tokens, exclude_to_tokens, exclude_from_tokens, with_wrap)
+values (@id, @source, @sink, @target_flow, @to_tokens, @from_tokens, @exclude_to_tokens, @exclude_from_tokens, @with_wrap);";
+
+        public async Task WriteAsync(NpgsqlDataSource ds, CancellationToken ct)
+        {
+            await using var cmd = ds.CreateCommand(Sql);
+
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("source", ToDb(req.Source));
+            cmd.Parameters.AddWithValue("sink", ToDb(req.Sink));
+            AddNumeric(cmd, "target_flow", ParseBigInt(req.TargetFlow));
+            cmd.Parameters.AddWithValue("to_tokens", ToDb(req.ToTokens));
+            cmd.Parameters.AddWithValue("from_tokens", ToDb(req.FromTokens));
+            cmd.Parameters.AddWithValue("exclude_to_tokens", ToDb(req.ExcludedToTokens));
+            cmd.Parameters.AddWithValue("exclude_from_tokens", ToDb(req.ExcludedFromTokens));
+            cmd.Parameters.AddWithValue("with_wrap", ToDb(req.WithWrap));
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private sealed class ResponseLogItem(Guid reqId, MaxFlowResponse? resp, bool ok, string? err) : ILogItem
+    {
+        private readonly Guid _id = Guid.NewGuid();
+
+        private const string Sql = @"
+insert into response
+(id, request_id, actual_flow, success, error_message, result)
+values (@id, @request_id, @actual_flow, @success, @error_message, @result::jsonb);";
+
+        public async Task WriteAsync(NpgsqlDataSource ds, CancellationToken ct)
+        {
+            await using var cmd = ds.CreateCommand(Sql);
+
+            cmd.Parameters.AddWithValue("id", _id);
+            cmd.Parameters.AddWithValue("request_id", reqId);
+            AddNumeric(cmd, "actual_flow", ParseBigInt(resp?.MaxFlow));
+            cmd.Parameters.AddWithValue("success", ok);
+            cmd.Parameters.AddWithValue("error_message", ToDb(err));
+            cmd.Parameters.AddWithValue("result", ToDb(resp is null ? null : JsonSerializer.Serialize(resp)));
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private static object ToDb(object? val) => val ?? DBNull.Value;
+
+    private static BigInteger? ParseBigInt(string? s)
+        => string.IsNullOrWhiteSpace(s)
+            ? null
+            : BigInteger.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var bi)
+                ? bi
+                : null;
+
+    private static void AddNumeric(NpgsqlCommand cmd, string name, BigInteger? v)
+    {
+        var p = cmd.Parameters.Add(name, NpgsqlDbType.Numeric);
+        p.Value = (object?)v ?? DBNull.Value;
+    }
+
+    private async Task ApplyMigrationsAsync(int lastVersion)
+    {
+        await using NpgsqlConnection connection = await _dataSource!.OpenConnectionAsync();
+
+        SortedDictionary<int, string> scripts = GetAllSqlFromResources();
+        foreach (KeyValuePair<int, string> script in scripts)
+        {
+            bool migrationAlreadyApplied = script.Key <= lastVersion;
+            if (migrationAlreadyApplied)
             {
                 continue;
             }
 
-            var scriptStream = typeof(PathLogDb).Assembly.GetManifestResourceStream(script.Value);
-            if (scriptStream == null)
+            using Stream? scriptStream = typeof(PathLogDb).Assembly.GetManifestResourceStream(script.Value);
+            if (scriptStream is null)
             {
-                throw new Exception($"Could not find resource {script.Value}");
+                throw new InvalidOperationException($"Could not find resource {script.Value}");
             }
 
             using var reader = new StreamReader(scriptStream);
-            var sql = reader.ReadToEnd();
+            string sql = await reader.ReadToEndAsync();
 
-            using var tx = connection.BeginTransaction();
+            await using var tx = await connection.BeginTransactionAsync();
             try
             {
-                using var migrationCmd = new NpgsqlCommand(sql, connection, tx);
-                migrationCmd.ExecuteNonQuery();
+                await using var migrationCmd = new NpgsqlCommand(sql, connection, tx);
+                await migrationCmd.ExecuteNonQueryAsync();
 
-                using var insertCmd =
+                await using var insertCmd =
                     new NpgsqlCommand("INSERT INTO _applied_migrations (id) VALUES (@id)", connection, tx);
                 insertCmd.Parameters.AddWithValue("id", script.Key);
-                insertCmd.ExecuteNonQuery();
+                await insertCmd.ExecuteNonQueryAsync();
 
-                tx.Commit();
+                await tx.CommitAsync();
             }
             catch
             {
-                tx.Rollback();
+                await tx.RollbackAsync();
                 throw;
             }
         }
     }
 
-    private int GetCurrentDbVersion()
+    private async Task<int> GetCurrentDbVersionAsync()
     {
-        using var connection = new NpgsqlConnection(_connectionString);
-        connection.Open();
+        await using NpgsqlConnection connection = await _dataSource!.OpenConnectionAsync();
 
-        using var checkTableCmd = new NpgsqlCommand(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_applied_migrations')",
-            connection);
-        var dbInitialised = (bool)(checkTableCmd.ExecuteScalar() ?? false);
+        const string checkTableSql =
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_applied_migrations')";
+
+        await using var checkTableCmd = new NpgsqlCommand(checkTableSql, connection);
+        bool dbInitialised = (bool)(await checkTableCmd.ExecuteScalarAsync() ?? false);
+
         if (!dbInitialised)
         {
             return -1;
         }
 
-        using var cmd = new NpgsqlCommand("SELECT id FROM _applied_migrations ORDER BY id DESC LIMIT 1", connection);
-        var result = cmd.ExecuteScalar();
-        return result == null ? -1 : (int)result;
+        await using var cmd =
+            new NpgsqlCommand("SELECT id FROM _applied_migrations ORDER BY id DESC LIMIT 1", connection);
+
+        object? result = await cmd.ExecuteScalarAsync();
+        return result is null ? -1 : (int)result;
     }
 
-    private SortedDictionary<int, string> GetAllSqlFromResources()
+    private static SortedDictionary<int, string> GetAllSqlFromResources()
     {
         var dict = new SortedDictionary<int, string>();
-        var resources = typeof(PathLogDb).Assembly.GetManifestResourceNames();
+        string[] resources = typeof(PathLogDb).Assembly.GetManifestResourceNames();
 
-        foreach (var res in resources)
+        foreach (string res in resources)
         {
-            var m = Regex.Match(res, @".*?(\d+)_.*?\.sql$");
+            Match m = Regex.Match(res, @".*?(\d+)_.*?\.sql$");
             if (!m.Success)
             {
                 continue;
             }
 
-            dict[int.Parse(m.Groups[1].Value)] = res;
+            dict[int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture)] = res;
         }
 
         return dict;
     }
 
-    #endregion
-
-    /// <summary>
-    /// Persists an incoming <see cref="FlowRequest"/>  
-    /// Returns the generated request-id so that the caller can tie the response back.
-    /// </summary>
-    public async Task LogRequest(Guid id, FlowRequest flowRequest)
+    public async ValueTask DisposeAsync()
     {
-        if (string.IsNullOrWhiteSpace(_connectionString))
-        {
-            // logging disabled – supply dummy id
+        if (_dataSource is null)
             return;
-        }
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
+        _queue.Writer.Complete();
+        _cts.Cancel();
 
-        const string sql = @"
-insert into request
-(id, source, sink, target_flow, to_tokens, from_tokens, exclude_to_tokens, exclude_from_tokens, with_wrap)
-values (@id, @source, @sink, @target_flow, @to_tokens, @from_tokens, @exclude_to_tokens, @exclude_from_tokens, @with_wrap);";
-
-        await using var cmd = new NpgsqlCommand(sql, connection);
-
-        cmd.Parameters.AddWithValue("id", id);
-        cmd.Parameters.AddWithValue("source", ToDbValue(flowRequest.Source));
-        cmd.Parameters.AddWithValue("sink", ToDbValue(flowRequest.Sink));
-        AddNumericParameter(cmd, "target_flow", ParseBigIntegerOrNull(flowRequest.TargetFlow));
-        cmd.Parameters.AddWithValue("to_tokens", ToDbValue(flowRequest.ToTokens));
-        cmd.Parameters.AddWithValue("from_tokens", ToDbValue(flowRequest.FromTokens));
-        cmd.Parameters.AddWithValue("exclude_to_tokens",
-            ToDbValue(flowRequest.ExcludedToTokens));
-        cmd.Parameters.AddWithValue("exclude_from_tokens",
-            ToDbValue(flowRequest.ExcludedFromTokens));
-        cmd.Parameters.AddWithValue("with_wrap", ToDbValue(flowRequest.WithWrap));
-
-        await cmd.ExecuteNonQueryAsync();
-    }
-
-    /// <summary>
-    /// Persists a <see cref="MaxFlowResponse"/> coupled to a previously stored request.
-    /// </summary>
-    public async Task LogResponse(Guid requestId, MaxFlowResponse? response, bool success, string? errorMessage = null)
-    {
-        if (string.IsNullOrWhiteSpace(_connectionString))
+        try
         {
-            return;
+            await _worker;
         }
-
-        var id = Guid.NewGuid();
-
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
-
-        const string sql = @"
-insert into response
-(id, request_id, actual_flow, success, error_message, result)
-values (@id, @request_id, @actual_flow, @success, @error_message, @result::jsonb);";
-
-        await using var cmd = new NpgsqlCommand(sql, connection);
-
-        cmd.Parameters.AddWithValue("id", id);
-        cmd.Parameters.AddWithValue("request_id", requestId);
-        AddNumericParameter(cmd, "actual_flow", ParseBigIntegerOrNull(response?.MaxFlow));
-        cmd.Parameters.AddWithValue("success", success);
-        cmd.Parameters.AddWithValue("error_message",
-            ToDbValue(errorMessage));
-        cmd.Parameters.AddWithValue("result", ToDbValue(response == null ? null : JsonSerializer.Serialize(response)));
-
-        await cmd.ExecuteNonQueryAsync();
-    }
-
-    #region helpers
-
-    private static object ToDbValue(object? value) => value ?? DBNull.Value;
-
-    private static BigInteger? ParseBigIntegerOrNull(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s))
+        catch
         {
-            return null;
+            /* ignore */
         }
 
-        return BigInteger.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var bi) ? bi : null;
+        await _dataSource.DisposeAsync();
+        _cts.Dispose();
     }
-
-    private static void AddNumericParameter(NpgsqlCommand cmd, string name, BigInteger? value)
-    {
-        var p = cmd.Parameters.Add(name, NpgsqlDbType.Numeric);
-        p.Value = (object?)value ?? DBNull.Value;
-    }
-
-    #endregion
 }

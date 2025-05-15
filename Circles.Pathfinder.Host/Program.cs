@@ -74,7 +74,7 @@ var sem = new SemaphoreSlim(settings.MaxConcurrentRequests,
 builder.Services.AddSingleton(sem);
 
 builder.Services.AddSingleton<NetworkState>();
-builder.Services.AddSingleton<PathLogDb>();
+builder.Services.AddSingleton(new PathLogDb());
 builder.Services.AddSingleton(new CapacityGraphPool());
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
@@ -246,13 +246,13 @@ app.MapGet("/findPath", async (
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
             MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
 
-            logDb.LogResponse(requestId, result, true);
+            _ = logDb.LogResponse(requestId, result, true);
 
             return Results.Ok(result);
         }
         catch (Exception ex)
         {
-            logDb.LogResponse(requestId, null, false, ex.Message + "\n" + ex.StackTrace);
+            _ = logDb.LogResponse(requestId, null, false, ex.Message + "\n" + ex.StackTrace);
             throw;
         }
     }
