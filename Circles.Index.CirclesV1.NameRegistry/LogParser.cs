@@ -1,6 +1,7 @@
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV1.NameRegistry;
 
@@ -16,6 +17,12 @@ public class LogParser(Address v1NameRegistryAddress) : ILogParser
         IReadOnlyList<IIndexEvent> events)
     {
         yield break;
+    }
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        // No caches to initialize for this log parser
+        return Task.CompletedTask;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,

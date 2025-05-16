@@ -77,8 +77,9 @@ public class Plugin : INethermindPlugin
             databaseSchema.EventDtoTableMap,
             settings.EventBufferSize);
 
-        InitCaches(pluginLogger, database, settings);
-
+        //
+        // Create all LogParser instances
+        //
         var logParsers = new List<ILogParser>
         {
             new CirclesV1.LogParser(settings.CirclesV1HubAddress),
@@ -111,6 +112,11 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new CirclesV2.BaseGroupDeployer.LogParser(settings.BaseGroupDeployer));
         }
+
+        //
+        // Init all LogParser caches
+        //
+        await Task.WhenAll(logParsers.Select(o => o.InitCaches(_indexerContext.Logger, database, settings)));
 
         var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
 
@@ -200,106 +206,6 @@ public class Plugin : INethermindPlugin
         }
     }
 
-    private static void InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
-    {
-        logger.Info("Caching Circles token addresses");
-
-        var selectSignups = new Select(
-            "CrcV1",
-            "Signup",
-            ["token"],
-            [],
-            [],
-            int.MaxValue,
-            false,
-            int.MaxValue);
-
-        var sql = selectSignups.ToSql(database);
-        var result = database.Select(sql);
-        var rows = result.Rows.ToArray();
-
-        logger.Info($" * Found {rows.Length} Circles token addresses");
-
-        foreach (var row in rows)
-        {
-            CirclesV1.LogParser.CirclesTokenAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
-        }
-
-        logger.Info("Caching Circles token addresses done");
-
-        logger.Info("Caching erc20 wrapper addresses");
-
-        var selectErc20WrapperDeployed = new Select(
-            "CrcV2",
-            "ERC20WrapperDeployed",
-            ["erc20Wrapper", "circlesType"],
-            [],
-            [],
-            int.MaxValue,
-            false,
-            int.MaxValue);
-
-        sql = selectErc20WrapperDeployed.ToSql(database);
-        result = database.Select(sql);
-        rows = result.Rows.ToArray();
-
-        logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
-
-        foreach (var row in rows)
-        {
-            CirclesV2.LogParser.Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
-        }
-
-        logger.Info("Caching erc20 wrapper addresses done");
-
-        if (settings.SafeProxyFactoryAddresses.Length > 0)
-        {
-            logger.Info("Caching ProxyCreation events");
-
-            var selectSafeProxyCreation = new Select(
-                "Safe",
-                "ProxyCreation",
-                ["proxy"],
-                [],
-                [],
-                int.MaxValue,
-                false,
-                int.MaxValue);
-
-            sql = selectSafeProxyCreation.ToSql(database);
-            result = database.Select(sql);
-            rows = result.Rows.ToArray();
-
-            logger.Info($" * Found {rows.Length} ProxyCreation events");
-
-            foreach (var row in rows)
-            {
-                Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
-            }
-
-            logger.Info("Caching ProxyCreation events done");
-        }
-
-        if (settings.BaseGroupDeployer != null)
-        {
-            logger.Info("Caching BaseGroupCreated events");
-
-            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false,
-                int.MaxValue);
-            sql = baseGroupsQuery.ToSql(database);
-            result = database.Select(sql);
-            rows = result.Rows.ToArray();
-
-            logger.Info($" * Found {rows.Length} BaseGroupCreated events");
-
-            foreach (var row in rows)
-            {
-                CirclesV2.BaseGroupDeployer.LogParser.BaseGroupsCreated.TryAdd(new Address(row[0]!.ToString()!), null);
-            }
-
-            logger.Info("Caching BaseGroupCreated events done");
-        }
-    }
 
     /// <summary>
     /// Handles when a new head block is received.

@@ -3,6 +3,7 @@ using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.CMGroupDeployer;
 
@@ -75,6 +76,11 @@ public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
         yield break;
     }
 
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        return Task.CompletedTask;
+    }
+
     public IEnumerable<IIndexEvent> ParseLog(
         Block block,
         Transaction transaction,
@@ -102,7 +108,8 @@ public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
         string owner = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
         string redemptionHandler = new Address(log.Data.Slice(12, 20)).ToString(true, false);
-        string liquidityProvider = log.Data.Length == 64 ? new Address(log.Data.Slice(44, 20)).ToString(true, false) : "";
+        string liquidityProvider =
+            log.Data.Length == 64 ? new Address(log.Data.Slice(44, 20)).ToString(true, false) : "";
 
         return new CMGroupCreated(
             block.Number,

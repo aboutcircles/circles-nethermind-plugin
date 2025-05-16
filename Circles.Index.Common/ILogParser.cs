@@ -1,9 +1,12 @@
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Circles.Index.Common;
 
 public interface ILogParser
 {
+    Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings);
+    
     /// <summary>
     /// Parses a log entry into a list of index events.
     /// </summary>

@@ -2,10 +2,12 @@
 using System.Collections.Immutable;
 using System.Numerics;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.Safe;
 
@@ -269,6 +271,39 @@ public class DatabaseSchema : BaseDatabaseSchema
 public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
     public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            logger.Info("Caching ProxyCreation events");
+
+            var selectSafeProxyCreation = new Select(
+                "Safe",
+                "ProxyCreation",
+                ["proxy"],
+                [],
+                [],
+                int.MaxValue,
+                false,
+                int.MaxValue);
+
+            var sql = selectSafeProxyCreation.ToSql(database);
+            var result = database.Select(sql);
+            var rows = result.Rows.ToArray();
+
+            logger.Info($" * Found {rows.Length} ProxyCreation events");
+
+            foreach (var row in rows)
+            {
+                Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
+            }
+
+            logger.Info("Caching ProxyCreation events done");
+        }
+
+        return Task.CompletedTask;
+    }
 
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
     private readonly Hash256 _legacyCrcProxyCreationTopic = Keccak.Compute("ProxyCreation(address)");
