@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Nethermind.Api;
 using Nethermind.Logging;
 
@@ -11,5 +10,4 @@ public record Context(
     IDatabase Database,
     IReadonlyDatabase ReadonlyDatabase,
     ILogParser[] LogParsers,
-    Sink Sink,
-    ConcurrentDictionary<(string Namespace, string Table), object?> LiveTables);
+    Sink Sink);
