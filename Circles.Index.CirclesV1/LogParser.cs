@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV1;
 
@@ -12,20 +14,50 @@ public class LogParser(Address v1HubAddress) : ILogParser
 {
     public static readonly ConcurrentDictionary<Address, object?> CirclesTokenAddresses = new();
 
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        logger.Info("Caching Circles token addresses");
+
+        var selectSignups = new Select(
+            "CrcV1",
+            "Signup",
+            ["token"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectSignups.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} Circles token addresses");
+
+        foreach (var row in rows)
+        {
+            CirclesTokenAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
+        }
+
+        logger.Info("Caching Circles token addresses done");
+
+        return Task.CompletedTask;
+    }
+
     private readonly Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic);
     private readonly Hash256 _signupTopic = new(DatabaseSchema.Signup.Topic);
     private readonly Hash256 _organizationSignupTopic = new(DatabaseSchema.OrganizationSignup.Topic);
     private readonly Hash256 _hubTransferTopic = new(DatabaseSchema.HubTransfer.Topic);
     private readonly Hash256 _trustTopic = new(DatabaseSchema.Trust.Topic);
 
-    private readonly JsonSerializerOptions _jsonSerializerOptions = new()
-    {
-        WriteIndented = false,
-        Converters =
-        {
-            new UInt256AsStringConverter()
-        }
-    };
+    // private readonly JsonSerializerOptions _jsonSerializerOptions = new()
+    // {
+    //     WriteIndented = false,
+    //     Converters =
+    //     {
+    //         new UInt256AsStringConverter()
+    //     }
+    // };
 
     /// <summary>
     /// 1) Identify all HubTransfer events + gather all Transfers.

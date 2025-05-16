@@ -1,9 +1,11 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2;
 
@@ -33,7 +35,34 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
     public static readonly ConcurrentDictionary<Address, long> Erc20WrapperAddresses = new();
+    
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {        
+        var selectErc20WrapperDeployed = new Select(
+            "CrcV2",
+            "ERC20WrapperDeployed",
+            ["erc20Wrapper", "circlesType"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
 
+        var sql = selectErc20WrapperDeployed.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
+
+        foreach (var row in rows)
+        {
+            Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
+        }
+
+        logger.Info("Caching erc20 wrapper addresses done");
+        
+        return Task.CompletedTask;
+    }
 
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {

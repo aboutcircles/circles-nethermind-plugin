@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.BaseGroupDeployer;
 
@@ -159,6 +161,31 @@ public class LogParser(Address deployerAddress) : ILogParser
     public static readonly Hash256 FeeCollectionUpdatedTopic = new(DatabaseSchema.FeeCollectionUpdated.Topic);
 
     public static readonly ConcurrentDictionary<Address, object?> BaseGroupsCreated = new();
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        if (settings.BaseGroupDeployer != null)
+        {
+            logger.Info("Caching BaseGroupCreated events");
+
+            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false,
+                int.MaxValue);
+            var sql = baseGroupsQuery.ToSql(database);
+            var result = database.Select(sql);
+            var rows = result.Rows.ToArray();
+
+            logger.Info($" * Found {rows.Length} BaseGroupCreated events");
+
+            foreach (var row in rows)
+            {
+                BaseGroupsCreated.TryAdd(new Address(row[0]!.ToString()!), null);
+            }
+
+            logger.Info("Caching BaseGroupCreated events done");
+        }
+
+        return Task.CompletedTask;
+    }
 
     public IEnumerable<IIndexEvent> ParseTransaction(
         Block block,
