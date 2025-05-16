@@ -116,9 +116,7 @@ public class Plugin : INethermindPlugin
         //
         // Init all LogParser caches
         //
-        await Task.WhenAll(logParsers.Select(o => o.InitCaches(_indexerContext.Logger, database, settings)));
-
-        var liveTables = new ConcurrentDictionary<(string Namespace, string Table), object?>();
+        await Task.WhenAll(logParsers.Select(o => o.InitCaches(pluginLogger, database, settings)));
 
         _indexerContext = new Context(
             nethermindApi,
@@ -127,8 +125,7 @@ public class Plugin : INethermindPlugin
             database,
             readonlyDatabase,
             logParsers.ToArray(),
-            sink,
-            liveTables);
+            sink);
 
         _indexerMachine = new StateMachine(
             _indexerContext
