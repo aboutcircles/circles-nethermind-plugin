@@ -3,7 +3,9 @@ namespace Circles.Index.Common;
 public interface IRollbackCache
 {
     /// <summary>The number of blocks that can be rolled back.</summary>
-    public int RollbackCapacity { get; }
+    int RollbackCapacity { get; }
+
+    void DeleteAllGreaterOrEqualBlock(long toBlockNo);
 }
 
 /// <summary>
@@ -85,11 +87,13 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     }
 
     /// <summary>
-    /// Adds or replaces <paramref name="key"/> with <paramref name="value"/> at <paramref name="blockNo"/>.  
+    /// Adds or replaces <paramref name="key"/> with <paramref name="value"/> at <paramref name="blockNo"/>.
     /// Calls must arrive in monotonically non-decreasing <paramref name="blockNo"/> order; whenever the
     /// number increases, the previous block is considered committed and a new diff bucket is started.
     /// </summary>
-    /// <returns>'true' if the key is new, 'false' if it already existed and is overwritten</returns>
+    /// <returns>
+    /// <c>true</c> if the key did not previously exist in the cache; <c>false</c> if it was overwritten.
+    /// </returns>
     public bool Add(long blockNo, TKey key, TValue value)
     {
         if (key is null) throw new ArgumentNullException(nameof(key));
@@ -115,15 +119,12 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
             }
 
             var diff = _blockDiffs[blockNo];
-
             var hadPrev = _current.TryGetValue(key, out var prevVal);
+
             if (!diff.ContainsKey(key))
-            {
                 diff[key] = new Change(hadPrev, prevVal!);
-            }
 
             _current[key] = value;
-
             return !hadPrev;
         }
         finally
@@ -133,10 +134,11 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     }
 
     /// <summary>
-    /// Rolls the cache back to <paramref name="toBlockNo"/> (inclusive).  
-    /// The target must be within the retained history window.
+    /// Deletes the state of every block whose number is <b>greater than</b> <paramref name="toBlockNo"/>.
+    /// The cache is left in the exact state it had after finishing block <paramref name="toBlockNo"/>.
+    /// The target block must still be within the retained history window.
     /// </summary>
-    public void Rollback(long toBlockNo)
+    public void DeleteAllGreaterOrEqualBlock(long toBlockNo)
     {
         _lock.EnterWriteLock();
         try

@@ -378,7 +378,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         }
     }
 
-    public async Task DeleteFromBlockOnwards(long reorgAt)
+    public async Task DeleteAllGreaterOrEqualBlock(long reorgAt)
     {
         NpgsqlTransaction transaction = null;
         try
