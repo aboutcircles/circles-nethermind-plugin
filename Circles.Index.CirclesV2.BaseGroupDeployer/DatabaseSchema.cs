@@ -160,21 +160,18 @@ public class LogParser(Address deployerAddress) : ILogParser
     public static readonly Hash256 ServiceUpdatedTopic = new(DatabaseSchema.ServiceUpdated.Topic);
     public static readonly Hash256 FeeCollectionUpdatedTopic = new(DatabaseSchema.FeeCollectionUpdated.Topic);
 
-    public static readonly RollbackCache<Address, object?> BaseGroupsCreated = new();
+    public static readonly RollbackCache<Address, object?> BaseGroupsCreated = new("BaseGroupsCreated");
     public IRollbackCache[] Caches { get; } = [BaseGroupsCreated];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         if (settings.BaseGroupDeployer != null)
         {
-            logger.Info("Caching BaseGroupCreated events");
-
             var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false,
                 int.MaxValue);
             var sql = baseGroupsQuery.ToSql(database);
             var result = database.Select(sql);
             var rows = result.Rows.ToArray();
-            logger.Info($" * Found {rows.Length} BaseGroupCreated events");
 
             var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
             foreach (var row in rows)
@@ -185,7 +182,7 @@ public class LogParser(Address deployerAddress) : ILogParser
 
             BaseGroupsCreated.Seed(seed);
 
-            logger.Info("Caching BaseGroupCreated events done");
+            logger.Info($" * Cached {seed.Count} BaseGroupCreated events");
         }
 
         return Task.CompletedTask;

@@ -33,7 +33,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
-    public static readonly RollbackCache<Address, long> Erc20WrapperAddresses = new();
+    public static readonly RollbackCache<Address, long> Erc20WrapperAddresses = new("Erc20WrapperAddresses");
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -50,7 +50,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         var sql = selectErc20WrapperDeployed.ToSql(database);
         var result = database.Select(sql);
         var rows = result.Rows.ToArray();
-        logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
 
         var seed = new Dictionary<Address, long>(rows.Length + 25_000);
         foreach (var row in rows)
@@ -60,8 +59,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
 
         Erc20WrapperAddresses.Seed(seed);
-
-        logger.Info("Caching erc20 wrapper addresses done");
+        logger.Info($" * Cached {seed.Count} erc20 wrapper addresses");
 
         return Task.CompletedTask;
     }
