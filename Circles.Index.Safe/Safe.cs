@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query;
@@ -270,7 +269,8 @@ public class DatabaseSchema : BaseDatabaseSchema
 
 public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
-    public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
+    // public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
+    public static readonly RollbackCache<Address, object?> KnownSafeProxies = new(12);
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -294,9 +294,11 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
             logger.Info($" * Found {rows.Length} ProxyCreation events");
 
+            var seed = new Dictionary<Address, object?>();
             foreach (var row in rows)
             {
-                Safe.LogParser.KnownSafeProxies.TryAdd(new Address(row[0]!.ToString()!), null);
+                var address = new Address(row[0]!.ToString()!);
+                seed[address] = null;
             }
 
             logger.Info("Caching ProxyCreation events done");
@@ -385,7 +387,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             if (topic == _proxyCreationTopic || topic == _legacyCrcProxyCreationTopic)
             {
                 var evt = ProxyCreation(block, receipt, log, logIndex);
-                KnownSafeProxies.TryAdd(new Address(evt.Proxy), null);
+                KnownSafeProxies.Add(block.Number, new Address(evt.Proxy), null);
                 yield return evt;
             }
         }
