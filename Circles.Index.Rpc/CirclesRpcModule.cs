@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Numerics;
+using Circles.Index.CirclesV2;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
@@ -462,6 +464,45 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
+    public ResultWrapper<IEnumerable<(string tokenAddress, bool isWrapped, bool isInflationary, BigInteger amount)>>
+        circles_getBalanceBreakdown(Address address)
+    {
+        if (!CirclesV2.LogParser.BalancesByAccountAndToken.TryGetValue(address.ToString(true, false),
+                out var balances))
+        {
+            return ResultWrapper<
+                IEnumerable<(string tokenAddress, bool isWrapped, bool isInflationary, BigInteger amount)>>.Fail(
+                "No balances found");
+        }
+
+        // Apply demurrage
+        List<(string tokenAddress, bool isWrapped, bool isInflationary, BigInteger amount)> result = new();
+        foreach (var tokenBalance in balances)
+        {
+            var isWrapped = (tokenBalance.Value.Item2 & TokenValueRepresentation.IsWrapped) ==
+                            TokenValueRepresentation.IsWrapped;
+            var isInflationary = (tokenBalance.Value.Item2 & TokenValueRepresentation.Inflationary) ==
+                                 TokenValueRepresentation.Inflationary;
+            if (CirclesV2.LogParser.LastTokenMovement.TryGetValue((address.ToString(true, false), tokenBalance.Key),
+                    out var lastTokenMovement))
+            {
+            //     var gamma = 0.9998013320085989574306481700129226782902039065082930593676448873m;
+            //     var dayLastInteraction = ConversionUtils.TimestampToCirclesDay(lastTokenMovement);
+            //     var dayNow = ConversionUtils.TimestampToCirclesDay(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            //     var demurragedAmount = (decimal)tokenBalance.Value.Item1 *
+            //                            (decimal)Math.Pow((double)gamma, dayNow - dayLastInteraction);
+                // result.Add((tokenBalance.Key, isWrapped, isInflationary, (BigInteger)demurragedAmount));
+            }
+            else
+            {
+                result.Add((tokenBalance.Key, isWrapped, isInflationary, tokenBalance.Value.Item1));
+            }
+        }
+
+        return ResultWrapper<IEnumerable<(string tokenAddress, bool isWrapped, bool isInflationary, BigInteger amount)>>
+            .Success(result);
+    }
+
     public ResultWrapper<string> circles_getProfileCid(Address address)
     {
         var hasV2Profile = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(address, out var v2Profile);
@@ -485,7 +526,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             return ResultWrapper<List<string?>>.Fail("Batch size exceeds 100");
         }
-        
+
         List<string?> cids = new(addresses.Length);
         for (int i = 0; i < addresses.Length; i++)
         {

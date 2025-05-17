@@ -79,6 +79,24 @@ public record ApprovalForAll(
     string Operator,
     bool Approved) : IIndexedEventV2;
 
+public interface IV2TransferEvent : IIndexedEventV2
+{
+    string From { get; }
+    string To { get; }
+    UInt256 Value { get; }
+}
+
+public interface IV2Erc1155TransferEvent : IV2TransferEvent
+{
+    string Operator { get; }
+    UInt256 Id { get; }
+}
+
+public interface IV2Erc20TransferEvent : IV2TransferEvent
+{
+    string TokenAddress { get; }
+}
+
 public record TransferSingle(
     long BlockNumber,
     long Timestamp,
@@ -90,7 +108,7 @@ public record TransferSingle(
     string From,
     string To,
     UInt256 Id,
-    UInt256 Value) : IIndexedEventV2;
+    UInt256 Value) : IV2Erc1155TransferEvent;
 
 public record TransferBatch(
     long BlockNumber,
@@ -104,7 +122,7 @@ public record TransferBatch(
     string From,
     string To,
     UInt256 Id,
-    UInt256 Value) : IIndexedEventV2;
+    UInt256 Value) : IV2Erc1155TransferEvent;
 
 public record ERC20WrapperDeployed(
     long BlockNumber,
@@ -127,7 +145,7 @@ public record Erc20WrapperTransfer(
     string TokenAddress,
     string From,
     string To,
-    UInt256 Value) : IIndexedEventV2;
+    UInt256 Value) : IV2Erc20TransferEvent;
 
 public record DepositInflationary(
     long BlockNumber,
