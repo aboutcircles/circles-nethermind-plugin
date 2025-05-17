@@ -82,7 +82,9 @@ public class StateMachine(
                             var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
                             foreach (var cache in allCaches)
                             {
+                                var countBeforeDelete = cache.Count;
                                 cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
+                                context.Logger.Info($"Deleted {countBeforeDelete - cache.Count} items from the '{cache.Name}' cache.");
                             }
 
                             await TransitionTo(State.WaitForNewBlock);

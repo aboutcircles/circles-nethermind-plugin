@@ -6,6 +6,10 @@ public interface IRollbackCache
     int RollbackCapacity { get; }
 
     void DeleteAllGreaterOrEqualBlock(long toBlockNo);
+
+    int Count { get; }
+
+    string Name { get; }
 }
 
 /// <summary>
@@ -52,10 +56,14 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     public long LastBlockNo => _lastBlockNo;
     private long _lastBlockNo = long.MinValue;
 
+    public string Name { get; }
+
     /// <summary>Creates a new cache that can roll back the specified number of blocks.</summary>
-    public RollbackCache(int rollbackCapacity = 12)
+    public RollbackCache(string name, int rollbackCapacity = 12)
     {
-        if (rollbackCapacity < 1) throw new ArgumentOutOfRangeException(nameof(rollbackCapacity));
+        Name = name;
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(rollbackCapacity, 1);
         RollbackCapacity = rollbackCapacity;
     }
 
@@ -138,15 +146,28 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     /// The cache is left in the exact state it had after finishing block <paramref name="toBlockNo"/>.
     /// The target block must still be within the retained history window.
     /// </summary>
+    /// <summary>
+    /// Deletes every block whose number is <b>&gt;=</b> <paramref name="toBlockNo"/>.
+    /// After the call, the cache looks exactly as it did after finishing the block
+    /// immediately preceding <paramref name="toBlockNo"/>.  
+    /// If <paramref name="toBlockNo"/> is greater than the current head, the call
+    /// is a no-op.  
+    /// If the target precedes the retained history window an exception is thrown.
+    /// </summary>
     public void DeleteAllGreaterOrEqualBlock(long toBlockNo)
     {
         _lock.EnterWriteLock();
         try
         {
+            // Nothing stored yet or already behind the requested head.
+            if (_lastBlockNo == long.MinValue || _lastBlockNo < toBlockNo)
+                return;
+
             if (_blockOrder.Count == 0 || toBlockNo < _blockOrder.First!.Value)
                 throw new InvalidOperationException("Cannot roll back beyond stored history.");
 
-            while (_lastBlockNo > toBlockNo)
+            // Roll back blocks one by one while _lastBlockNo >= toBlockNo
+            while (_lastBlockNo >= toBlockNo)
             {
                 var diff = _blockDiffs[_lastBlockNo];
 
@@ -160,12 +181,28 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
 
                 _blockDiffs.Remove(_lastBlockNo);
                 _blockOrder.RemoveLast();
-                _lastBlockNo = _blockOrder.Count > 0 ? _blockOrder.Last!.Value : toBlockNo;
+                _lastBlockNo = _blockOrder.Count > 0 ? _blockOrder.Last!.Value : long.MinValue;
             }
         }
         finally
         {
             _lock.ExitWriteLock();
+        }
+    }
+
+    public int Count
+    {
+        get
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                return _current.Count;
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
         }
     }
 

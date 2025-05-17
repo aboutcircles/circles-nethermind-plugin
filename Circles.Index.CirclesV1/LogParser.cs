@@ -10,7 +10,7 @@ namespace Circles.Index.CirclesV1;
 
 public class LogParser(Address v1HubAddress) : ILogParser
 {
-    public static readonly RollbackCache<Address, object?> CirclesV1TokenAddresses = new();
+    public static readonly RollbackCache<Address, object?> CirclesV1TokenAddresses = new("CirclesV1TokenAddresses");
 
     public IRollbackCache[] Caches { get; } =
     [
@@ -19,8 +19,6 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
-        logger.Info("Caching Circles token addresses");
-
         var selectSignups = new Select(
             "CrcV1",
             "Signup",
@@ -34,7 +32,6 @@ public class LogParser(Address v1HubAddress) : ILogParser
         var sql = selectSignups.ToSql(database);
         var result = database.Select(sql);
         var rows = result.Rows.ToArray();
-        logger.Info($" * Found {rows.Length} Circles token addresses");
 
         var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
         foreach (var row in rows)
@@ -45,7 +42,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
         CirclesV1TokenAddresses.Seed(seed);
 
-        logger.Info("Caching Circles token addresses done");
+        logger.Info($" * Cached {seed.Count} Circles token addresses");
 
         return Task.CompletedTask;
     }

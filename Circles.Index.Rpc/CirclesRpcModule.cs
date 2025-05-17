@@ -462,6 +462,57 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
 
+    public ResultWrapper<string> circles_getProfileCid(Address address)
+    {
+        var hasV2Profile = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(address, out var v2Profile);
+        if (hasV2Profile)
+        {
+            return ResultWrapper<string>.Success(v2Profile);
+        }
+
+        var hasV1Profile = CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(address, out var v1Profile);
+        if (hasV1Profile)
+        {
+            return ResultWrapper<string>.Success(v1Profile);
+        }
+
+        return ResultWrapper<string>.Fail("No profile found");
+    }
+
+    public ResultWrapper<List<string?>> circles_getProfileCidBatch(Address[] addresses)
+    {
+        if (addresses.Length > 100)
+        {
+            return ResultWrapper<List<string?>>.Fail("Batch size exceeds 100");
+        }
+        
+        List<string?> cids = new(addresses.Length);
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            var address = addresses[i];
+
+            var hasV2Profile =
+                CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(address, out var v2Profile);
+            if (hasV2Profile)
+            {
+                cids.Add(v2Profile);
+                continue;
+            }
+
+            var hasV1Profile =
+                CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(address, out var v1Profile);
+            if (hasV1Profile)
+            {
+                cids.Add(v1Profile);
+                continue;
+            }
+
+            cids.Add(null);
+        }
+
+        return ResultWrapper<List<string?>>.Success(cids);
+    }
+
     public ResultWrapper<CirclesEvent[]> circles_events(
         Address? address
         , long? fromBlock

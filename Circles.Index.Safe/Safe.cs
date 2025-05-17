@@ -270,14 +270,12 @@ public class DatabaseSchema : BaseDatabaseSchema
 public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
     // public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
-    public static readonly RollbackCache<Address, object?> KnownSafeProxies = new();
+    public static readonly RollbackCache<Address, object?> KnownSafeProxies = new("KnownSafeProxies");
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
-            logger.Info("Caching ProxyCreation events");
-
             var selectSafeProxyCreation = new Select(
                 "Safe",
                 "ProxyCreation",
@@ -291,7 +289,6 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             var sql = selectSafeProxyCreation.ToSql(database);
             var result = database.Select(sql);
             var rows = result.Rows.ToArray();
-            logger.Info($" * Found {rows.Length} ProxyCreation events");
 
             var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
             foreach (var row in rows)
@@ -302,7 +299,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
             KnownSafeProxies.Seed(seed);
 
-            logger.Info("Caching ProxyCreation events done");
+            logger.Info($" * Cached {seed.Count} ProxyCreation events");
         }
 
         return Task.CompletedTask;
