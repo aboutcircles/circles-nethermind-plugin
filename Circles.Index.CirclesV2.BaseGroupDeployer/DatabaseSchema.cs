@@ -160,7 +160,7 @@ public class LogParser(Address deployerAddress) : ILogParser
     public static readonly Hash256 ServiceUpdatedTopic = new(DatabaseSchema.ServiceUpdated.Topic);
     public static readonly Hash256 FeeCollectionUpdatedTopic = new(DatabaseSchema.FeeCollectionUpdated.Topic);
 
-    public static readonly ConcurrentDictionary<Address, object?> BaseGroupsCreated = new();
+    public static readonly RollbackCache<Address, object?> BaseGroupsCreated = new();
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -173,13 +173,16 @@ public class LogParser(Address deployerAddress) : ILogParser
             var sql = baseGroupsQuery.ToSql(database);
             var result = database.Select(sql);
             var rows = result.Rows.ToArray();
-
             logger.Info($" * Found {rows.Length} BaseGroupCreated events");
 
+            var seed = new Dictionary<Address, object?>(rows.Length);
             foreach (var row in rows)
             {
-                BaseGroupsCreated.TryAdd(new Address(row[0]!.ToString()!), null);
+                var group = new Address(row[0]!.ToString()!);
+                seed[group] = null;
             }
+
+            BaseGroupsCreated.Seed(seed);
 
             logger.Info("Caching BaseGroupCreated events done");
         }
@@ -321,7 +324,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
         string treasury = new Address(log.Data.Slice(12, 20)).ToString(true, false);
 
-        BaseGroupsCreated.TryAdd(new Address(group), null);
+        BaseGroupsCreated.Add(block.Number, new Address(group), null);
 
         return new BaseGroupCreated(
             block.Number,

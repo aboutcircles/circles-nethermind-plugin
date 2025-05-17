@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
@@ -12,7 +10,7 @@ namespace Circles.Index.CirclesV1;
 
 public class LogParser(Address v1HubAddress) : ILogParser
 {
-    public static readonly ConcurrentDictionary<Address, object?> CirclesTokenAddresses = new();
+    public static readonly RollbackCache<Address, object?> CirclesV1TokenAddresses = new();
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -31,13 +29,16 @@ public class LogParser(Address v1HubAddress) : ILogParser
         var sql = selectSignups.ToSql(database);
         var result = database.Select(sql);
         var rows = result.Rows.ToArray();
-
         logger.Info($" * Found {rows.Length} Circles token addresses");
 
+        var seed = new Dictionary<Address, object?>(rows.Length);
         foreach (var row in rows)
         {
-            CirclesTokenAddresses.TryAdd(new Address(row[0]!.ToString()!), null);
+            var tokenAddress = new Address(row[0].ToString());
+            seed[tokenAddress] = null;
         }
+
+        CirclesV1TokenAddresses.Seed(seed);
 
         logger.Info("Caching Circles token addresses done");
 
@@ -250,7 +251,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
         var topic = log.Topics[0];
         if (topic == _transferTopic &&
-            CirclesTokenAddresses.ContainsKey(log.Address))
+            CirclesV1TokenAddresses.ContainsKey(log.Address))
         {
             events.Add(Erc20Transfer(block, receipt, log, logIndex));
         }
@@ -396,7 +397,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         );
 
         // Attempt to register the token address
-        bool isNewToken = CirclesTokenAddresses.TryAdd(tokenAddress, null);
+        bool isNewToken = CirclesV1TokenAddresses.Add(block.Number, tokenAddress, null);
         if (!isNewToken)
         {
             // Already known => only return the Signup event
