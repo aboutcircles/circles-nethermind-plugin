@@ -161,6 +161,7 @@ public class LogParser(Address deployerAddress) : ILogParser
     public static readonly Hash256 FeeCollectionUpdatedTopic = new(DatabaseSchema.FeeCollectionUpdated.Topic);
 
     public static readonly RollbackCache<Address, object?> BaseGroupsCreated = new();
+    public IRollbackCache[] Caches { get; } = [BaseGroupsCreated];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -175,7 +176,7 @@ public class LogParser(Address deployerAddress) : ILogParser
             var rows = result.Rows.ToArray();
             logger.Info($" * Found {rows.Length} BaseGroupCreated events");
 
-            var seed = new Dictionary<Address, object?>(rows.Length);
+            var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
             foreach (var row in rows)
             {
                 var group = new Address(row[0]!.ToString()!);
@@ -189,6 +190,7 @@ public class LogParser(Address deployerAddress) : ILogParser
 
         return Task.CompletedTask;
     }
+
 
     public IEnumerable<IIndexEvent> ParseTransaction(
         Block block,

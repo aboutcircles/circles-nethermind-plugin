@@ -1,54 +1,105 @@
 ﻿namespace Circles.Index.Common.Tests;
 
 /// <summary>
-/// Integration-style tests for <see cref="RollbackCache{TKey,TValue}"/>.
+/// Verification tests for <see cref="RollbackCache{TKey,TValue}"/>.
 /// </summary>
 [TestFixture]
 public sealed class RollbackCacheTests
 {
-    /* --------------------------------------------------------------- */
-    /*  ADD / GET                                                      */
-    /* --------------------------------------------------------------- */
+    /* ----------------------------------------------------------------- */
+    /*  ADD / GET                                                        */
+    /* ----------------------------------------------------------------- */
 
     [Test]
-    public void Add_ExposesValues()
+    public void Add_ExposesValues_And_ReturnsInsertionFlag()
     {
         var cache = new RollbackCache<string, int>(rollbackCapacity: 4);
 
-        cache.Add(1, "a", 10);
-        cache.Add(1, "b", 20);
+        var isNewA  = cache.Add(1, "a", 10);
+        var isNewB  = cache.Add(1, "b", 20);
+        var isNewA2 = cache.Add(1, "a", 30);  // overwrite in same block
 
-        Assert.That(cache.ContainsKey("a"), Is.True);
-        Assert.That(cache.TryGetValue("b", out var v), Is.True);
-        Assert.That(v, Is.EqualTo(20));
-        Assert.That(cache.Get("a"), Is.EqualTo(10));
+        Assert.Multiple(() =>
+        {
+            Assert.That(isNewA,  Is.True);
+            Assert.That(isNewB,  Is.True);
+            Assert.That(isNewA2, Is.False);
+            Assert.That(cache.Get("a"), Is.EqualTo(30));
+            Assert.That(cache.Get("b"), Is.EqualTo(20));
+            Assert.That(cache.LastBlockNo, Is.EqualTo(1));
+        });
     }
 
     [Test]
-    public void LaterBlock_OverwritesValue()
+    public void LaterBlock_OverwritesValue_And_UpdatesLastBlock()
     {
         var cache = new RollbackCache<string, int>();
 
         cache.Add(1, "x", 1);
-        cache.Add(2, "x", 2);
+        var isNew = cache.Add(2, "x", 2);
 
-        Assert.That(cache.Get("x"), Is.EqualTo(2));
+        Assert.Multiple(() =>
+        {
+            Assert.That(isNew, Is.False);
+            Assert.That(cache.Get("x"), Is.EqualTo(2));
+            Assert.That(cache.LastBlockNo, Is.EqualTo(2));
+        });
     }
 
     [Test]
-    public void DuplicateKeyWithinBlock_LastWriteWins()
+    public void DuplicateKeyWithinSameBlock_LastWriteWins()
     {
         var cache = new RollbackCache<string, int>();
 
         cache.Add(1, "dup", 1);
         cache.Add(1, "dup", 42);
 
-        Assert.That(cache.Get("dup"), Is.EqualTo(42));
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Get("dup"), Is.EqualTo(42));
+            Assert.That(cache.LastBlockNo, Is.EqualTo(1));
+        });
     }
 
-    /* --------------------------------------------------------------- */
-    /*  ROLLBACK                                                       */
-    /* --------------------------------------------------------------- */
+    /* ----------------------------------------------------------------- */
+    /*  LAST BLOCK NO & SEED                                             */
+    /* ----------------------------------------------------------------- */
+
+    [Test]
+    public void Seed_ReinitialisesState_And_SetsLastBlockNoToZero()
+    {
+        var cache = new RollbackCache<int, int>();
+
+        cache.Add(5, 99, 99);
+        cache.Seed(new Dictionary<int, int> { [1] = 123 });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.LastBlockNo, Is.EqualTo(0));
+            Assert.That(cache.Get(1), Is.EqualTo(123));
+            Assert.That(cache.ContainsKey(99), Is.False);
+        });
+    }
+
+    [Test]
+    public void LastBlockNo_TracksHighestBlock_And_ChangesOnRollback()
+    {
+        var cache = new RollbackCache<int, int>();
+
+        cache.Seed(new Dictionary<int, int> { [111] = 0 });   // LastBlockNo == 0
+        cache.Add(5, 1, 1);
+        cache.Add(6, 2, 2);
+
+        Assert.That(cache.LastBlockNo, Is.EqualTo(6));
+
+        cache.Rollback(5);
+
+        Assert.That(cache.LastBlockNo, Is.EqualTo(5));
+    }
+
+    /* ----------------------------------------------------------------- */
+    /*  ROLLBACK                                                         */
+    /* ----------------------------------------------------------------- */
 
     [Test]
     public void Rollback_RestoresPreviousState()
@@ -61,26 +112,31 @@ public sealed class RollbackCacheTests
 
         cache.Rollback(1);
 
-        Assert.That(cache.Get("k"), Is.EqualTo(1));
-        Assert.That(cache.ContainsKey("m"), Is.False);
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Get("k"), Is.EqualTo(1));
+            Assert.That(cache.ContainsKey("m"), Is.False);
+            Assert.That(cache.LastBlockNo, Is.EqualTo(1));
+        });
     }
 
     [Test]
-    public void Rollback_RollbackToSameBlock()
+    public void Rollback_ToSameBlock_DoesNothing()
     {
-        // Nothing should happen if we rollback to the same block
         var cache = new RollbackCache<string, int>();
 
         cache.Add(1, "k", 1);
         cache.Add(2, "k", 2);
         cache.Add(2, "m", 5);
 
-        cache.Rollback(2);
+        cache.Rollback(2);   // same block
 
-        Assert.That(cache.Get("k"), Is.EqualTo(2));
-        Assert.That(cache.ContainsKey("k"), Is.True);
-        Assert.That(cache.Get("k"), Is.EqualTo(2));
-        Assert.That(cache.ContainsKey("m"), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Get("k"), Is.EqualTo(2));
+            Assert.That(cache.ContainsKey("m"), Is.True);
+            Assert.That(cache.LastBlockNo, Is.EqualTo(2));
+        });
     }
 
     [Test]
@@ -96,9 +152,9 @@ public sealed class RollbackCacheTests
         Assert.That(ex!.Message, Does.Contain("history"));
     }
 
-    /* --------------------------------------------------------------- */
-    /*  VALIDATION & EDGE PATHS                                        */
-    /* --------------------------------------------------------------- */
+    /* ----------------------------------------------------------------- */
+    /*  VALIDATION & EDGE PATHS                                          */
+    /* ----------------------------------------------------------------- */
 
     [Test]
     public void AddWithNonIncreasingBlock_Throws()
@@ -118,9 +174,12 @@ public sealed class RollbackCacheTests
 
         cache.Add(1, "x", 9);
 
-        Assert.That(cache.Remove("x"), Is.True);
-        Assert.That(cache.Remove("x"), Is.False);
-        Assert.That(cache.ContainsKey("x"), Is.False);
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Remove("x"), Is.True);
+            Assert.That(cache.Remove("x"), Is.False);
+            Assert.That(cache.ContainsKey("x"), Is.False);
+        });
     }
 
     [Test]
@@ -130,16 +189,16 @@ public sealed class RollbackCacheTests
         Assert.Throws<KeyNotFoundException>(() => cache.Get("missing"));
     }
 
-    /* --------------------------------------------------------------- */
-    /*  BASIC CONCURRENCY                                              */
-    /* --------------------------------------------------------------- */
+    /* ----------------------------------------------------------------- */
+    /*  BASIC CONCURRENCY                                                */
+    /* ----------------------------------------------------------------- */
 
     [Test]
     [Timeout(15_000)]
     public async Task ConcurrentReaders_DoNotThrow()
     {
         const int readerCount = 16;
-        const int iterations = 1_000;
+        const int iterations  = 1_000;
 
         var cache = new RollbackCache<int, int>();
 
@@ -147,7 +206,7 @@ public sealed class RollbackCacheTests
         {
             for (var i = 0; i < iterations; i++)
             {
-                cache.Add(i + 1, i, i); // one key per block
+                cache.Add(i + 1, i, i);  // one key per block
             }
         });
 

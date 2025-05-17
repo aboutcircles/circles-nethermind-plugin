@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Numerics;
+using Circles.Index.Common;
 using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -35,7 +36,7 @@ public record AggregationResult(
 public static class TransferSummaryAggregator
 {
     public static AggregationResult AggregateAll(IEnumerable<IIndexedEventV2> events,
-        IDictionary<Address, long> erc20WrapperAddresses)
+        RollbackCache<Address, long> erc20WrapperAddresses)
     {
         var streamSums = new Dictionary<TransferKey, TransferTotal>();
         var nonStreamSums = new Dictionary<TransferKey, TransferTotal>();
@@ -100,7 +101,7 @@ public static class TransferSummaryAggregator
     }
 
     static void AddNonStreamTransfers(Dictionary<TransferKey, TransferTotal> sums, IIndexedEventV2 e,
-        IDictionary<Address, long> erc20WrapperAddresses)
+        RollbackCache<Address, long> erc20WrapperAddresses)
     {
         if (e is TransferSingle ts)
         {

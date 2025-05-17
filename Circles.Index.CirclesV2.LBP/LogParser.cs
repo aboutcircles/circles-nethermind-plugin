@@ -49,6 +49,8 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         return Task.CompletedTask;
     }
 
+    public IRollbackCache[] Caches { get; } = [];
+
     public IEnumerable<IIndexEvent> ParseLog(
         Block block,
         Transaction transaction,

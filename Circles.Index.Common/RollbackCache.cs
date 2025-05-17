@@ -1,11 +1,17 @@
 namespace Circles.Index.Common;
 
+public interface IRollbackCache
+{
+    /// <summary>The number of blocks that can be rolled back.</summary>
+    public int RollbackCapacity { get; }
+}
+
 /// <summary>
 /// A cache that stores events for up to <see cref="RollbackCapacity"/> blocks and can be rolled back in
 /// the case of a chain re-organisation. State is kept in <see cref="_current"/> while per-block diffs are
 /// tracked so that reverting changes is O(changed items per block).
 /// </summary>
-public sealed class RollbackCache<TKey, TValue> where TKey : notnull
+public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : notnull
 {
     private readonly struct Change
     {
@@ -25,6 +31,23 @@ public sealed class RollbackCache<TKey, TValue> where TKey : notnull
     private readonly Dictionary<long, Dictionary<TKey, Change>> _blockDiffs = new();
     private readonly LinkedList<long> _blockOrder = new();
 
+    public IReadOnlyDictionary<TKey, TValue> ReadOnlyDictionary
+    {
+        get
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                return new Dictionary<TKey, TValue>(_current);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+    }
+
+    public long LastBlockNo => _lastBlockNo;
     private long _lastBlockNo = long.MinValue;
 
     /// <summary>Creates a new cache that can roll back the specified number of blocks.</summary>

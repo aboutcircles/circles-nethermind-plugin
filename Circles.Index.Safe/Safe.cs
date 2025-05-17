@@ -270,7 +270,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
     // public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
-    public static readonly RollbackCache<Address, object?> KnownSafeProxies = new(12);
+    public static readonly RollbackCache<Address, object?> KnownSafeProxies = new();
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -291,21 +291,24 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             var sql = selectSafeProxyCreation.ToSql(database);
             var result = database.Select(sql);
             var rows = result.Rows.ToArray();
-
             logger.Info($" * Found {rows.Length} ProxyCreation events");
 
-            var seed = new Dictionary<Address, object?>();
+            var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
             foreach (var row in rows)
             {
                 var address = new Address(row[0]!.ToString()!);
                 seed[address] = null;
             }
 
+            KnownSafeProxies.Seed(seed);
+
             logger.Info("Caching ProxyCreation events done");
         }
 
         return Task.CompletedTask;
     }
+
+    public IRollbackCache[] Caches { get; } = [KnownSafeProxies];
 
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
     private readonly Hash256 _legacyCrcProxyCreationTopic = Keccak.Compute("ProxyCreation(address)");

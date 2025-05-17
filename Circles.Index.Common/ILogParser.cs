@@ -7,6 +7,8 @@ public interface ILogParser
 {
     Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings);
     
+    IRollbackCache[] Caches { get; }
+    
     /// <summary>
     /// Parses a log entry into a list of index events.
     /// </summary>

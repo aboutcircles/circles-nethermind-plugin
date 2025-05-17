@@ -81,6 +81,8 @@ public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
         return Task.CompletedTask;
     }
 
+    public IRollbackCache[] Caches { get; } = [];
+
     public IEnumerable<IIndexEvent> ParseLog(
         Block block,
         Transaction transaction,
