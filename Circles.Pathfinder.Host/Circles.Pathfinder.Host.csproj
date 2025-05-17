@@ -15,11 +15,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="OpenTelemetry" Version="1.11.2" />
-      <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2" />
-      <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
-      <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
-      <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
       <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1" />
       <PackageReference Include="prometheus-net" Version="8.2.1" />
       <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
@@ -36,6 +31,10 @@
       <EmbeddedResource Include="LogDb\0_applied_migrations.sql" />
       <None Remove="LogDb\1_request_and_response.sql" />
       <EmbeddedResource Include="LogDb\1_request_and_response.sql" />
+      <None Remove="LogDb\2_request_block_no.sql" />
+      <EmbeddedResource Include="LogDb\2_request_block_no.sql" />
+      <None Remove="LogDb\3_index_numeric_values.sql" />
+      <EmbeddedResource Include="LogDb\3_index_numeric_values.sql" />
     </ItemGroup>
 
 </Project>

@@ -11,9 +11,6 @@ using Microsoft.Extensions.Logging.Console;
 using Nethermind.Int256;
 using Npgsql;
 using Prometheus;
-using OpenTelemetry.Exporter;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using static Circles.Pathfinder.Tracing;
 
 var settings = new Settings();
@@ -45,19 +42,6 @@ builder.Logging.Configure(o =>
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Logging.AddFilter("Circles.Pathfinder.Host", LogLevel.Debug);
 
-// ─── OpenTelemetry Tracing ──────────────────────────────────────────────────
-builder.Services.AddOpenTelemetry()
-    .ConfigureResource(r => r.AddService(
-        serviceName: "circles-pathfinder",
-        serviceVersion: typeof(Program).Assembly.GetName().Version!.ToString()))
-    .WithTracing(t => t
-        .AddAspNetCoreInstrumentation()
-        .AddHttpClientInstrumentation()
-        .AddSource(Tracing.Name)
-        .SetSampler(new ParentBasedSampler(
-            new TraceIdRatioBasedSampler(0.05))) // sample 5 %
-        .AddOtlpExporter() // ↗ to collector
-        .AddConsoleExporter(o => { o.Targets = ConsoleExporterOutputTargets.Console; }));
 
 builder.Services
     .AddHealthChecks()
@@ -239,7 +223,7 @@ app.MapGet("/findPath", async (
         };
 
         var requestId = Guid.NewGuid();
-        _ = logDb.LogRequest(requestId, request);
+        _ = logDb.LogRequest(requestId, state.LastKnownBlockNumber, request);
 
         try
         {
