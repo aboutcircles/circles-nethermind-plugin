@@ -25,6 +25,8 @@ public class LogParser(Address v1NameRegistryAddress) : ILogParser
         return Task.CompletedTask;
     }
 
+    public IRollbackCache[] Caches { get; } = [];
+
     public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
         int logIndex)
     {

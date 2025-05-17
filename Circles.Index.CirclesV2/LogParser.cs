@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
@@ -34,10 +33,10 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
-    public static readonly ConcurrentDictionary<Address, long> Erc20WrapperAddresses = new();
-    
+    public static readonly RollbackCache<Address, long> Erc20WrapperAddresses = new();
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
-    {        
+    {
         var selectErc20WrapperDeployed = new Select(
             "CrcV2",
             "ERC20WrapperDeployed",
@@ -51,18 +50,23 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         var sql = selectErc20WrapperDeployed.ToSql(database);
         var result = database.Select(sql);
         var rows = result.Rows.ToArray();
-
         logger.Info($" * Found {rows.Length} erc20 wrapper addresses");
 
+        var seed = new Dictionary<Address, long>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            Erc20WrapperAddresses.TryAdd(new Address(row[0]!.ToString()!), (long)row[1]!);
+            var address = new Address(row[0]!.ToString()!);
+            seed[address] = (long)row[1]!;
         }
 
+        Erc20WrapperAddresses.Seed(seed);
+
         logger.Info("Caching erc20 wrapper addresses done");
-        
+
         return Task.CompletedTask;
     }
+
+    public IRollbackCache[] Caches { get; } = [];
 
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -284,7 +288,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         UInt256 circlesType = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
         // Mark that we know about this wrapper
-        Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), (long)circlesType);
+        Erc20WrapperAddresses.Add(block.Number, new Address(erc20Wrapper), (long)circlesType);
 
         return new ERC20WrapperDeployed(
             block.Number,
