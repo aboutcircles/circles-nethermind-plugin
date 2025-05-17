@@ -15,14 +15,14 @@ public sealed class RollbackCacheTests
     {
         var cache = new RollbackCache<string, int>(rollbackCapacity: 4);
 
-        var isNewA  = cache.Add(1, "a", 10);
-        var isNewB  = cache.Add(1, "b", 20);
-        var isNewA2 = cache.Add(1, "a", 30);  // overwrite in same block
+        var isNewA = cache.Add(1, "a", 10);
+        var isNewB = cache.Add(1, "b", 20);
+        var isNewA2 = cache.Add(1, "a", 30); // overwrite in same block
 
         Assert.Multiple(() =>
         {
-            Assert.That(isNewA,  Is.True);
-            Assert.That(isNewB,  Is.True);
+            Assert.That(isNewA, Is.True);
+            Assert.That(isNewB, Is.True);
             Assert.That(isNewA2, Is.False);
             Assert.That(cache.Get("a"), Is.EqualTo(30));
             Assert.That(cache.Get("b"), Is.EqualTo(20));
@@ -62,7 +62,7 @@ public sealed class RollbackCacheTests
     }
 
     /* ----------------------------------------------------------------- */
-    /*  LAST BLOCK NO & SEED                                             */
+    /*  SEED & LAST-BLOCK                                                */
     /* ----------------------------------------------------------------- */
 
     [Test]
@@ -82,27 +82,27 @@ public sealed class RollbackCacheTests
     }
 
     [Test]
-    public void LastBlockNo_TracksHighestBlock_And_ChangesOnRollback()
+    public void LastBlockNo_TracksHighestBlock_And_ChangesOnDelete()
     {
         var cache = new RollbackCache<int, int>();
 
-        cache.Seed(new Dictionary<int, int> { [111] = 0 });   // LastBlockNo == 0
+        cache.Seed(new Dictionary<int, int> { [111] = 0 }); // LastBlockNo == 0
         cache.Add(5, 1, 1);
         cache.Add(6, 2, 2);
 
         Assert.That(cache.LastBlockNo, Is.EqualTo(6));
 
-        cache.Rollback(5);
+        cache.DeleteAllGreaterOrEqualBlock(5);
 
         Assert.That(cache.LastBlockNo, Is.EqualTo(5));
     }
 
     /* ----------------------------------------------------------------- */
-    /*  ROLLBACK                                                         */
+    /*  DELETE (rollback)                                                */
     /* ----------------------------------------------------------------- */
 
     [Test]
-    public void Rollback_RestoresPreviousState()
+    public void Delete_RemovesBlocksAndRestoresState()
     {
         var cache = new RollbackCache<string, int>();
 
@@ -110,7 +110,7 @@ public sealed class RollbackCacheTests
         cache.Add(2, "k", 2);
         cache.Add(2, "m", 5);
 
-        cache.Rollback(1);
+        cache.DeleteAllGreaterOrEqualBlock(1);
 
         Assert.Multiple(() =>
         {
@@ -121,7 +121,7 @@ public sealed class RollbackCacheTests
     }
 
     [Test]
-    public void Rollback_ToSameBlock_DoesNothing()
+    public void Delete_ToSameBlock_LeavesStateUntouched()
     {
         var cache = new RollbackCache<string, int>();
 
@@ -129,7 +129,7 @@ public sealed class RollbackCacheTests
         cache.Add(2, "k", 2);
         cache.Add(2, "m", 5);
 
-        cache.Rollback(2);   // same block
+        cache.DeleteAllGreaterOrEqualBlock(2); // same block
 
         Assert.Multiple(() =>
         {
@@ -140,7 +140,7 @@ public sealed class RollbackCacheTests
     }
 
     [Test]
-    public void RollbackPastCapacity_Throws()
+    public void DeletePastCapacity_Throws()
     {
         var cache = new RollbackCache<int, int>(rollbackCapacity: 2);
 
@@ -148,12 +148,12 @@ public sealed class RollbackCacheTests
         cache.Add(2, 2, 2);
         cache.Add(3, 3, 3); // drops block 1 from history
 
-        var ex = Assert.Throws<InvalidOperationException>(() => cache.Rollback(1));
+        var ex = Assert.Throws<InvalidOperationException>(() => cache.DeleteAllGreaterOrEqualBlock(1));
         Assert.That(ex!.Message, Does.Contain("history"));
     }
 
     /* ----------------------------------------------------------------- */
-    /*  VALIDATION & EDGE PATHS                                          */
+    /*  VALIDATION & EDGE CASES                                          */
     /* ----------------------------------------------------------------- */
 
     [Test]
@@ -198,16 +198,14 @@ public sealed class RollbackCacheTests
     public async Task ConcurrentReaders_DoNotThrow()
     {
         const int readerCount = 16;
-        const int iterations  = 1_000;
+        const int iterations = 1_000;
 
         var cache = new RollbackCache<int, int>();
 
         var writer = Task.Run(() =>
         {
             for (var i = 0; i < iterations; i++)
-            {
-                cache.Add(i + 1, i, i);  // one key per block
-            }
+                cache.Add(i + 1, i, i); // one key per block
         });
 
         var readers = Enumerable.Range(0, readerCount).Select(_ => Task.Run(() =>
