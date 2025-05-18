@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.BaseGroupDeployer;
 
@@ -158,7 +160,34 @@ public class LogParser(Address deployerAddress) : ILogParser
     public static readonly Hash256 ServiceUpdatedTopic = new(DatabaseSchema.ServiceUpdated.Topic);
     public static readonly Hash256 FeeCollectionUpdatedTopic = new(DatabaseSchema.FeeCollectionUpdated.Topic);
 
-    public static readonly ConcurrentDictionary<Address, object?> BaseGroupsCreated = new();
+    public static readonly RollbackCache<Address, object?> BaseGroupsCreated = new("BaseGroupsCreated");
+    public IRollbackCache[] Caches { get; } = [BaseGroupsCreated];
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        if (settings.BaseGroupDeployer != null)
+        {
+            var baseGroupsQuery = new Select("CrcV2", "BaseGroupCreated", ["group"], [], [], int.MaxValue, false,
+                int.MaxValue);
+            var sql = baseGroupsQuery.ToSql(database);
+            var result = database.Select(sql);
+            var rows = result.Rows.ToArray();
+
+            var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
+            foreach (var row in rows)
+            {
+                var group = new Address(row[0]!.ToString()!);
+                seed[group] = null;
+            }
+
+            BaseGroupsCreated.Seed(seed);
+
+            logger.Info($" * Cached {seed.Count} BaseGroupCreated events");
+        }
+
+        return Task.CompletedTask;
+    }
+
 
     public IEnumerable<IIndexEvent> ParseTransaction(
         Block block,
@@ -294,7 +323,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
         string treasury = new Address(log.Data.Slice(12, 20)).ToString(true, false);
 
-        BaseGroupsCreated.TryAdd(new Address(group), null);
+        BaseGroupsCreated.Add(block.Number, new Address(group), null);
 
         return new BaseGroupCreated(
             block.Number,

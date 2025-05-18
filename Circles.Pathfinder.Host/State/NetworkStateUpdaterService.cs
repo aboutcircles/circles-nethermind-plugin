@@ -5,9 +5,6 @@ using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Circles.Pathfinder.DTOs;
-using Prometheus;
-using static Circles.Pathfinder.Tracing;
 
 namespace Circles.Pathfinder.Host.State;
 
@@ -20,15 +17,6 @@ public class NetworkStateUpdaterService : BackgroundService
     private readonly ILogger<NetworkStateUpdaterService> _log;
     private readonly CapacityGraphPool _pool;
 
-    // Prometheus metrics
-    private static readonly Counter GraphUpdatesCounter = Metrics.CreateCounter(
-        "circles_graph_updates_total",
-        "Number of times the background service updates the trust/balance graphs.");
-
-    private static readonly Gauge LastProcessedBlockGauge = Metrics.CreateGauge(
-        "circles_last_processed_block",
-        "The most recent block number processed by the background service.");
-
     public NetworkStateUpdaterService(NetworkState networkState,
         ILogger<NetworkStateUpdaterService> log,
         CapacityGraphPool pool)
@@ -40,8 +28,6 @@ public class NetworkStateUpdaterService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var root = Source.StartActivity("NetworkStateUpdater.Run", ActivityKind.Internal);
-
         var loadGraph = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
         var graphFactory = new GraphFactory();
 
@@ -49,21 +35,15 @@ public class NetworkStateUpdaterService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            using var waitBlk = Source.StartActivity("WaitForNextBlock");
-
             _log.LogDebug("Waiting for next block…");
             lastBlock = await WaitForNextBlock(stoppingToken, lastBlock);
-            LastProcessedBlockGauge.Set(lastBlock);
+            _networkState.Replace(lastKnownBlockNumber: lastBlock);
+
             _log.LogDebug("↳ got block {Block}", lastBlock);
-
-            waitBlk?.SetTag("block", lastBlock);
-
-            using var upd = Source.StartActivity("LoadGraphs");
 
             var swTotal = Stopwatch.StartNew();
 
             var swTrustGraph = Stopwatch.StartNew();
-            var trustSpan = Source.StartActivity("TrustGraph.Load");
             var trustTask = Task.Run(() =>
             {
                 var graph = graphFactory.V2TrustGraph(loadGraph);
@@ -71,17 +51,14 @@ public class NetworkStateUpdaterService : BackgroundService
 
                 _networkState.Replace(accountTrusts: lookup);
                 swTrustGraph.Stop();
-                trustSpan?.Dispose();
             }, stoppingToken);
 
             var swBalanceGraph = Stopwatch.StartNew();
-            var balanceSpan = Source.StartActivity("BalanceGraph.Load");
             var balanceTask = Task.Run(() =>
             {
                 var graph = graphFactory.V2BalanceGraph(loadGraph);
                 _networkState.Replace(balanceGraph: graph);
                 swBalanceGraph.Stop();
-                balanceSpan?.Dispose();
             }, stoppingToken);
 
             await Task.WhenAll(trustTask, balanceTask);
@@ -94,16 +71,11 @@ public class NetworkStateUpdaterService : BackgroundService
             var snap = new CapacityGraphSnapshot(lastBlock, cap);
             _pool.UpdateSnapshot(snap);
 
-            upd?.SetTag("trust_ms", swTrustGraph.ElapsedMilliseconds);
-            upd?.SetTag("balance_ms", swBalanceGraph.ElapsedMilliseconds);
-
             _log.LogInformation(
                 "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
                 swTrustGraph.ElapsedMilliseconds,
                 swBalanceGraph.ElapsedMilliseconds,
                 swTotal.ElapsedMilliseconds);
-
-            GraphUpdatesCounter.Inc();
         }
     }
 

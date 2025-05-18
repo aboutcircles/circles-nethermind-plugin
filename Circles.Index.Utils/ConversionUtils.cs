@@ -39,7 +39,7 @@ public abstract class ConversionUtils
     {
         return (UInt256)sixDecimalValue * Factor;
     }
-    
+
     public static long ConvertToUnixTimestamp(DateTime dateTime)
     {
         DateTimeOffset dateTimeOffset = dateTime;
@@ -154,7 +154,13 @@ public abstract class ConversionUtils
         var day = (timestamp - CirclesInceptionDate).TotalDays;
         return (long)Math.Floor(day);
     }
-    
+
+    public static long TimestampToCirclesDay(long timestamp)
+    {
+        var day = DateTimeOffset.FromUnixTimeSeconds(timestamp - CirclesInceptionTimestamp).Offset.TotalDays;
+        return (long)Math.Floor(day);
+    }
+
     public static UInt256 AddressToUInt256(Address address)
     {
         return new(address.Bytes, true);

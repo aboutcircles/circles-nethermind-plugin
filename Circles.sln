@@ -67,6 +67,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV1.Nam
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.BaseGroupDeployer", "Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj", "{58B46B62-06DF-4623-8ADF-3715523FED67}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Common.Tests", "Circles.Index.Common.Tests\Circles.Index.Common.Tests.csproj", "{79FDB94E-566E-4DB4-B978-C0EA46E0BC7D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -153,6 +155,10 @@ Global
 		{58B46B62-06DF-4623-8ADF-3715523FED67}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{58B46B62-06DF-4623-8ADF-3715523FED67}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{58B46B62-06DF-4623-8ADF-3715523FED67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{79FDB94E-566E-4DB4-B978-C0EA46E0BC7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{79FDB94E-566E-4DB4-B978-C0EA46E0BC7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{79FDB94E-566E-4DB4-B978-C0EA46E0BC7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{79FDB94E-566E-4DB4-B978-C0EA46E0BC7D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}

@@ -1,8 +1,10 @@
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.NameRegistry;
 
@@ -11,6 +13,43 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
     private readonly Hash256 _registerShortNameTopic = new(DatabaseSchema.RegisterShortName.Topic);
     private readonly Hash256 _updateMetadataDigestTopic = new(DatabaseSchema.UpdateMetadataDigest.Topic);
     private readonly Hash256 _cidV0Topic = new(DatabaseSchema.CidV0.Topic);
+
+    /// <summary>
+    /// Contains always the latest cidV0 for each avatar.
+    /// </summary>
+    public static readonly RollbackCache<Address, string> V2AvatarToCidMap = new("V2AvatarToCidMap");
+
+    public IRollbackCache[] Caches { get; } = [V2AvatarToCidMap];
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        var selectSignups = new Select(
+            "CrcV2",
+            "UpdateMetadataDigest",
+            ["avatar", "metadataDigest"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectSignups.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        var seed = new Dictionary<Address, string>(rows.Length + 25_000);
+        foreach (var row in rows)
+        {
+            var avatar = new Address(row[0].ToString());
+            seed[avatar] = CidHelper.MetadataDigestToCidV0((byte[])row[1]);
+        }
+
+        V2AvatarToCidMap.Seed(seed);
+
+        logger.Info($" * Cached {seed.Count} avatar -> cidV0 mappings from V1 UpdateMetadataDigest");
+
+        return Task.CompletedTask;
+    }
 
     public IEnumerable<IIndexEvent> ParseTransaction(
         Block block,
@@ -58,6 +97,9 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         // event UpdateMetadataDigest(address indexed avatar, bytes32 metadataDigest)
         string avatar = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
         byte[] metadataDigest = log.Data;
+
+        var cidV0 = CidHelper.MetadataDigestToCidV0(metadataDigest);
+        V2AvatarToCidMap.Add(block.Number, new Address(avatar), cidV0);
 
         return new UpdateMetadataDigest(
             block.Number,
