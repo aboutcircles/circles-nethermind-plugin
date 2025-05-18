@@ -1,4 +1,3 @@
-using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
@@ -80,8 +79,7 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Queries the profile CID of a Circles avatar.",
         IsImplemented = true)]
-    ResultWrapper<IEnumerable<(string tokenAddress, bool isWrapped, bool isInflationary, BigInteger amount)>> circles_getBalanceBreakdown(
-        Address address);
+    ResultWrapper<IEnumerable<CirclesTokenBalance>> circles_getBalanceBreakdown(Address address);
 
     [JsonRpcMethod(Description = "Queries the profile CID of a Circles avatar.",
         IsImplemented = true)]

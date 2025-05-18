@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
@@ -5,24 +7,114 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index.CirclesV1;
 
 public class LogParser(Address v1HubAddress) : ILogParser
 {
-    public static readonly RollbackCache<Address, object?> CirclesV1TokenAddresses = new("CirclesV1TokenAddresses");
+    public static readonly RollbackCache<Address, Address> CirclesV1TokenOwnersByToken =
+        new("CirclesV1TokenAddresses");
+
+    public static readonly RollbackCache<string, ImmutableDictionary<string, BigInteger>>
+        BalancesByAccountAndToken =
+            new("V1BalancesByAccountAndToken");
 
     public IRollbackCache[] Caches { get; } =
     [
-        CirclesV1TokenAddresses
+        CirclesV1TokenOwnersByToken, BalancesByAccountAndToken
     ];
 
+    private static void InitBalanceCache(InterfaceLogger logger, Settings settings)
+    {
+        var sql = @"
+            select ""blockNumber"",
+                   timestamp,
+                   ""tokenAddress"",
+                   ""from"",
+                   ""to"",
+                   amount::text
+            from ""CrcV1_Transfer""
+            order by ""blockNumber"", 
+                     ""transactionIndex"",
+                     ""logIndex"";
+        ";
+
+        using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+        connection.Open();
+
+        using var command = new NpgsqlCommand(sql, connection);
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var tokenAddress = reader.GetString(2);
+            var from = reader.GetString(3);
+            var to = reader.GetString(4);
+            var value = BigInteger.Parse(reader.GetString(5));
+
+            MaintainBalanceCache(blockNumber, timestamp, from, to, tokenAddress, value);
+        }
+
+        logger.Info($" * Cached v1 balances of {BalancesByAccountAndToken.Count} accounts");
+    }
+
+    private static void MaintainBalanceCache(long blockNumber, long timestamp, string from, string to,
+        string tokenAddress, BigInteger amount)
+    {
+        // Make sure there is an initial dictionary for each account
+        if (!BalancesByAccountAndToken.TryGetValue(from, out var fromBalances))
+        {
+            fromBalances = ImmutableDictionary<string, BigInteger>.Empty;
+            BalancesByAccountAndToken.Add(blockNumber, from, fromBalances);
+        }
+
+        if (!BalancesByAccountAndToken.TryGetValue(to, out var toBalances))
+        {
+            toBalances = ImmutableDictionary<string, BigInteger>.Empty;
+            BalancesByAccountAndToken.Add(blockNumber, to, toBalances);
+        }
+
+        // Update the balances
+        if (fromBalances.TryGetValue(tokenAddress, out var fromBalance))
+        {
+            var newFromBalances = fromBalances.SetItem(tokenAddress, (fromBalance - amount));
+            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
+        }
+        else
+        {
+            var newFromBalances = fromBalances.SetItem(tokenAddress, 0 - amount);
+            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
+        }
+
+        if (toBalances.TryGetValue(tokenAddress, out var toBalance))
+        {
+            var newToBalances = toBalances.SetItem(tokenAddress, toBalance + amount);
+            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
+        }
+        else
+        {
+            var newToBalances = toBalances.SetItem(tokenAddress, 0 + amount);
+            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
+        }
+    }
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        InitV1TokenAddresses(logger, database);
+        InitBalanceCache(logger, settings);
+
+        return Task.CompletedTask;
+    }
+
+    private static void InitV1TokenAddresses(InterfaceLogger logger, IDatabase database)
     {
         var selectSignups = new Select(
             "CrcV1",
             "Signup",
-            ["token"],
+            ["user", "token"],
             [],
             [],
             int.MaxValue,
@@ -33,18 +125,17 @@ public class LogParser(Address v1HubAddress) : ILogParser
         var result = database.Select(sql);
         var rows = result.Rows.ToArray();
 
-        var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
+        var seed = new Dictionary<Address, Address>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            var tokenAddress = new Address(row[0].ToString());
-            seed[tokenAddress] = null;
+            var userAddress = new Address(row[0].ToString());
+            var tokenAddress = new Address(row[1].ToString());
+            seed[tokenAddress] = userAddress;
         }
 
-        CirclesV1TokenAddresses.Seed(seed);
+        CirclesV1TokenOwnersByToken.Seed(seed);
 
         logger.Info($" * Cached {seed.Count} Circles token addresses");
-
-        return Task.CompletedTask;
     }
 
     private readonly Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic);
@@ -253,7 +344,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
         var topic = log.Topics[0];
         if (topic == _transferTopic &&
-            CirclesV1TokenAddresses.ContainsKey(log.Address))
+            CirclesV1TokenOwnersByToken.ContainsKey(log.Address))
         {
             events.Add(Erc20Transfer(block, receipt, log, logIndex));
         }
@@ -386,6 +477,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         }
 
         Address tokenAddress = new Address(log.Data.Slice(12));
+        Address userAddress = new Address(user);
 
         var signupEvent = new Signup(
             receipt.BlockNumber,
@@ -399,7 +491,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         );
 
         // Attempt to register the token address
-        bool isNewToken = CirclesV1TokenAddresses.Add(block.Number, tokenAddress, null);
+        bool isNewToken = CirclesV1TokenOwnersByToken.Add(block.Number, tokenAddress, userAddress);
         if (!isNewToken)
         {
             // Already known => only return the Signup event

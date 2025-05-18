@@ -36,7 +36,7 @@ public record AggregationResult(
 public static class TransferSummaryAggregator
 {
     public static AggregationResult AggregateAll(IEnumerable<IIndexedEventV2> events,
-        RollbackCache<string, TokenValueRepresentation> erc20WrapperAddresses)
+        RollbackCache<string, (string, TokenValueRepresentation)> erc20WrapperAddresses)
     {
         var streamSums = new Dictionary<TransferKey, TransferTotal>();
         var nonStreamSums = new Dictionary<TransferKey, TransferTotal>();
@@ -101,7 +101,7 @@ public static class TransferSummaryAggregator
     }
 
     static void AddNonStreamTransfers(Dictionary<TransferKey, TransferTotal> sums, IIndexedEventV2 e,
-        RollbackCache<string, TokenValueRepresentation> erc20WrapperAddresses)
+        RollbackCache<string, (string, TokenValueRepresentation)> erc20WrapperAddresses)
     {
         if (e is TransferSingle ts)
         {
@@ -115,7 +115,7 @@ public static class TransferSummaryAggregator
         {
             var val = (BigInteger)ewt.Value;
             if (erc20WrapperAddresses.TryGetValue(ewt.TokenAddress, out var wrapperType) &&
-                wrapperType == TokenValueRepresentation.Inflationary)
+                wrapperType.Item2 == TokenValueRepresentation.Inflationary)
             {
                 val = (BigInteger)ConversionUtils.CirclesToAttoCircles(
                     ConversionUtils.StaticCirclesToCircles(ConversionUtils.AttoCirclesToCircles(ewt.Value)));
