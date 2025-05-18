@@ -29,7 +29,7 @@ public interface IReadonlyDatabase : IDatabaseUtils
 public interface IDatabase : IReadonlyDatabase
 {
     void Migrate();
-    Task DeleteFromBlockOnwards(long reorgAt);
+    Task DeleteAllGreaterOrEqualBlock(long reorgAt);
     Task WriteBatch(string @namespace, string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap);
     long? LatestBlock();
     long? FirstGap();

@@ -66,14 +66,28 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Gets the balance of each V1 Circles token the specified address holds",
         IsImplemented = true)]
     Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address);
-    
-    [JsonRpcMethod(Description = "Gets the common trust between two addresses. If version is specified, it will only return trusts with the specified version. If version is not specified, it will return all trusts.",
+
+    [JsonRpcMethod(
+        Description =
+            "Gets the common trust between two addresses. If version is specified, it will only return trusts with the specified version. If version is not specified, it will return all trusts.",
         IsImplemented = true)]
     Task<ResultWrapper<Address[]>> circles_getCommonTrust(Address address1, Address address2, int? version = null);
 
     [JsonRpcMethod(Description = "Queries the data of one Circles index table",
         IsImplemented = true)]
     ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query);
+
+    [JsonRpcMethod(Description = "Queries the profile CID of a Circles avatar.",
+        IsImplemented = true)]
+    ResultWrapper<IEnumerable<CirclesTokenBalance>> circles_getBalanceBreakdown(Address address);
+
+    [JsonRpcMethod(Description = "Queries the profile CID of a Circles avatar.",
+        IsImplemented = true)]
+    ResultWrapper<string> circles_getProfileCid(Address address);
+
+    [JsonRpcMethod(Description = "Queries the profile CID of a Circles avatar.",
+        IsImplemented = true)]
+    ResultWrapper<List<string?>> circles_getProfileCidBatch(Address[] address);
 
     [JsonRpcMethod(Description = "Returns all events affecting the specified account since block N",
         IsImplemented = true)]

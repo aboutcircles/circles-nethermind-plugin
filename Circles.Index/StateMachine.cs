@@ -72,7 +72,21 @@ public class StateMachine(
                             context.Logger.Info(
                                 $"Reorg at {enterState.Arg}. Deleting all events from this block onwards...");
 
-                            await context.Database.DeleteFromBlockOnwards(enterState.Arg);
+                            await context.Database.DeleteAllGreaterOrEqualBlock(enterState.Arg);
+
+
+                            context.Logger.Info(
+                                $"Reorg at {enterState.Arg}. Removing objects from caches...");
+
+
+                            var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
+                            foreach (var cache in allCaches)
+                            {
+                                var countBeforeDelete = cache.Count;
+                                cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
+                                context.Logger.Info($"Deleted {countBeforeDelete - cache.Count} items from the '{cache.Name}' cache.");
+                            }
+
                             await TransitionTo(State.WaitForNewBlock);
                             return;
                     }

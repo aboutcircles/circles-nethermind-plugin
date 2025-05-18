@@ -3,6 +3,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.StandardTreasury;
 
@@ -28,6 +29,13 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     {
         yield break;
     }
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        return Task.CompletedTask;
+    }
+
+    public IRollbackCache[] Caches { get; } = [];
 
     public IEnumerable<IIndexEvent> ParseLog(Block block, Transaction transaction, TxReceipt receipt, LogEntry log,
         int logIndex)

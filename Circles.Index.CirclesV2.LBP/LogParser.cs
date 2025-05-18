@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.LBP;
 
@@ -42,6 +43,13 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
     {
         yield break;
     }
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        return Task.CompletedTask;
+    }
+
+    public IRollbackCache[] Caches { get; } = [];
 
     public IEnumerable<IIndexEvent> ParseLog(
         Block block,

@@ -1,9 +1,14 @@
-using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using System.Numerics;
 using System.Text.Json;
 using Circles.Index.Common;
+using Circles.Index.Query;
+using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index.CirclesV2;
 
@@ -32,8 +37,229 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
-    public static readonly ConcurrentDictionary<Address, long> Erc20WrapperAddresses = new();
+    public static readonly RollbackCache<string, (string TokenOwner, TokenValueRepresentation ValueRepresentation)>
+        Erc20WrapperAddresses =
+            new("Erc20WrapperAddresses");
 
+    public static readonly RollbackCache<string, ImmutableDictionary<string, (BigInteger Balance,
+            TokenValueRepresentation ValueRepresentation, string TokenOwner)>>
+        BalancesByAccountAndToken =
+            new("V2BalancesByAccountAndToken");
+
+    public static readonly RollbackCache<(string Account, string Token), long> LastTokenMovement =
+        new("V2LastTokenMovement");
+
+    public static readonly RollbackCache<string, (string MintPolicy, string Treasury, string name, string symbol)>
+        Groups =
+            new("Groups");
+
+    public IRollbackCache[] Caches { get; } =
+    [
+        Erc20WrapperAddresses,
+        BalancesByAccountAndToken,
+        LastTokenMovement,
+        Groups
+    ];
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        InitErc20WrapperCache(logger, database);
+        InitBalanceCache(logger, settings);
+        // LastTokenMovement is initialized with the balances
+        InitGroupsCache(logger, database);
+
+        return Task.CompletedTask;
+    }
+
+    private void InitGroupsCache(InterfaceLogger logger, IDatabase database)
+    {
+        var registerGroupEvents = new Select(
+            "CrcV2",
+            "RegisterGroup",
+            ["group", "mint", "treasury", "name", "symbol"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = registerGroupEvents.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        var seed = new Dictionary<string, (string, string, string, string)>(rows.Length + 10_000);
+        foreach (var row in rows)
+        {
+            var group = row[0].ToString();
+            var mint = row[1]!.ToString();
+            var treasury = row[2]!.ToString();
+            var name = row[3]!.ToString();
+            var symbol = row[4]!.ToString();
+            seed[group] = (mint, treasury, name, symbol);
+        }
+
+        Groups.Seed(seed);
+        logger.Info($" * Cached {seed.Count} groups");
+    }
+
+    private static void InitBalanceCache(InterfaceLogger logger, Settings settings)
+    {
+        var sql = @"
+            with all_transfers as (
+                select ""blockNumber"",
+                       timestamp,
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       0 as ""batchIndex"",
+                       ""tokenAddress"",
+                       ""from"",
+                       ""to"",
+                       value::text
+                from ""CrcV2_TransferSingle""
+                union all
+                select ""blockNumber"",
+                       timestamp,
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       ""batchIndex"",
+                       ""tokenAddress"",
+                       ""from"",
+                       ""to"",
+                       value::text
+                from ""CrcV2_TransferBatch""
+                union all
+                select ""blockNumber"",
+                       timestamp,
+                       ""transactionIndex"",
+                       ""logIndex"",
+                       0 as ""batchIndex"",
+                       ""tokenAddress"",
+                       ""from"",
+                       ""to"",
+                       amount::text
+                from ""CrcV2_Erc20WrapperTransfer""
+            )
+            select ""blockNumber"",
+                   timestamp,
+                   ""tokenAddress"",
+                   ""from"",
+                   ""to"",
+                   value
+            from all_transfers
+            order by ""blockNumber"", 
+                     ""transactionIndex"",
+                     ""logIndex"", 
+                     ""batchIndex"";
+        ";
+
+        using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+        connection.Open();
+
+        using var command = new NpgsqlCommand(sql, connection);
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var tokenAddress = reader.GetString(2);
+            var from = reader.GetString(3);
+            var to = reader.GetString(4);
+            var value = BigInteger.Parse(reader.GetString(5));
+
+            MaintainBalanceCache(blockNumber, timestamp, from, to, tokenAddress, value);
+        }
+
+        logger.Info($" * Cached v2 balances of {BalancesByAccountAndToken.Count} accounts");
+        logger.Info($" * Cached the last movement of {LastTokenMovement.Count} account/token pairs");
+    }
+
+    private static void MaintainBalanceCache(long blockNumber, long timestamp, string from, string to,
+        string tokenAddress, BigInteger amount)
+    {
+        if (!Erc20WrapperAddresses.TryGetValue(tokenAddress, out var tokenValueRepresentation))
+        {
+            tokenValueRepresentation.ValueRepresentation = TokenValueRepresentation.Demurraged;
+            tokenValueRepresentation.TokenOwner = tokenAddress;
+        }
+        else
+        {
+            tokenValueRepresentation.ValueRepresentation |= TokenValueRepresentation.IsWrapped;
+        }
+
+        // Make sure there is an initial dictionary for each account
+        if (!BalancesByAccountAndToken.TryGetValue(from, out var fromBalances))
+        {
+            fromBalances = ImmutableDictionary<string, (BigInteger, TokenValueRepresentation, string)>.Empty;
+            BalancesByAccountAndToken.Add(blockNumber, from, fromBalances);
+        }
+
+        if (!BalancesByAccountAndToken.TryGetValue(to, out var toBalances))
+        {
+            toBalances = ImmutableDictionary<string, (BigInteger, TokenValueRepresentation, string)>.Empty;
+            BalancesByAccountAndToken.Add(blockNumber, to, toBalances);
+        }
+
+        // Update the balances
+        if (fromBalances.TryGetValue(tokenAddress, out var fromBalance))
+        {
+            var newFromBalances = fromBalances.SetItem(tokenAddress,
+                (fromBalance.Item1 - amount, tokenValueRepresentation.ValueRepresentation,
+                    tokenValueRepresentation.TokenOwner));
+            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
+        }
+        else
+        {
+            var newFromBalances = fromBalances.SetItem(tokenAddress,
+                (0 - amount, tokenValueRepresentation.ValueRepresentation, tokenValueRepresentation.TokenOwner));
+            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
+        }
+
+        if (toBalances.TryGetValue(tokenAddress, out var toBalance))
+        {
+            var newToBalances = toBalances.SetItem(tokenAddress,
+                (toBalance.Item1 + amount, tokenValueRepresentation.ValueRepresentation,
+                    tokenValueRepresentation.TokenOwner));
+            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
+        }
+        else
+        {
+            var newToBalances = toBalances.SetItem(tokenAddress,
+                (0 + amount, tokenValueRepresentation.ValueRepresentation, tokenValueRepresentation.TokenOwner));
+            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
+        }
+
+        LastTokenMovement.Add(blockNumber, (from, tokenAddress), timestamp);
+        LastTokenMovement.Add(blockNumber, (to, tokenAddress), timestamp);
+    }
+
+    private static void InitErc20WrapperCache(InterfaceLogger logger, IDatabase database)
+    {
+        var selectErc20WrapperDeployed = new Select(
+            "CrcV2",
+            "ERC20WrapperDeployed",
+            ["avatar", "erc20Wrapper", "circlesType"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = selectErc20WrapperDeployed.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        var seed = new Dictionary<string, (string, TokenValueRepresentation)>(rows.Length + 25_000);
+        foreach (var row in rows)
+        {
+            var avatar = row[0].ToString();
+            var address = row[1]!.ToString();
+            seed[address] = (avatar, (TokenValueRepresentation)(long)row[2]!);
+        }
+
+        Erc20WrapperAddresses.Seed(seed);
+        logger.Info($" * Cached {seed.Count} erc20 wrapper addresses");
+    }
 
     private readonly JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -57,11 +283,32 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         var eventsv2 = new List<IIndexedEventV2>(events.Count);
         foreach (var e in events)
         {
-            if (e is IIndexedEventV2 v2) eventsv2.Add(v2);
+            if (e is not IIndexedEventV2 v2)
+            {
+                continue;
+            }
+
+            // Maintain the balance cache
+            if (e is IV2TransferEvent te)
+            {
+                var tokenAddress = e switch
+                {
+                    IV2Erc1155TransferEvent te1155 => ConversionUtils.UInt256ToAddress(te1155.Id)
+                        .ToString(true, false),
+                    IV2Erc20TransferEvent te20 => te20.TokenAddress,
+                    _ => throw new Exception("Unsupported transaction type")
+                };
+
+                MaintainBalanceCache(e.BlockNumber, e.Timestamp, te.From, te.To, tokenAddress, (BigInteger)te.Value);
+            }
+
+            eventsv2.Add(v2);
         }
 
         if (eventsv2.Count == 0)
+        {
             yield break;
+        }
 
         var result = TransferSummaryAggregator.AggregateAll(eventsv2, Erc20WrapperAddresses);
         int syntheticLogIndex = -(result.StreamTransfers.Totals.Count() + result.NonStreamTransfers.Totals.Count());
@@ -214,7 +461,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
 
         // Events from known ERC20Wrapper addresses
-        if (Erc20WrapperAddresses.ContainsKey(log.Address))
+        if (Erc20WrapperAddresses.ContainsKey(log.Address.ToString(true, false)))
         {
             if (topic == _erc20WrapperTransfer)
             {
@@ -255,7 +502,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         UInt256 circlesType = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
         // Mark that we know about this wrapper
-        Erc20WrapperAddresses.TryAdd(new Address(erc20Wrapper), (long)circlesType);
+        Erc20WrapperAddresses.Add(block.Number, erc20Wrapper, (avatar, (TokenValueRepresentation)(int)circlesType));
 
         return new ERC20WrapperDeployed(
             block.Number,
@@ -398,6 +645,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         string[] stringData = LogDataStringDecoder.ReadStrings(log.Data);
         string groupName = stringData[0];
         string groupSymbol = stringData[1];
+
+        Groups.Add(block.Number, groupAddress, (mintPolicy, treasury, groupName, groupSymbol));
 
         return new RegisterGroup(
             block.Number,

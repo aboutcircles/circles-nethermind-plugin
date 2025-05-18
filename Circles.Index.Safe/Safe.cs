@@ -1,11 +1,12 @@
-﻿using System.Collections.Concurrent;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Numerics;
 using Circles.Index.Common;
+using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Circles.Index.Safe;
 
@@ -268,7 +269,43 @@ public class DatabaseSchema : BaseDatabaseSchema
 
 public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 {
-    public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
+    // public static readonly ConcurrentDictionary<Address, object?> KnownSafeProxies = new();
+    public static readonly RollbackCache<Address, object?> KnownSafeProxies = new("KnownSafeProxies");
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        if (settings.SafeProxyFactoryAddresses.Length > 0)
+        {
+            var selectSafeProxyCreation = new Select(
+                "Safe",
+                "ProxyCreation",
+                ["proxy"],
+                [],
+                [],
+                int.MaxValue,
+                false,
+                int.MaxValue);
+
+            var sql = selectSafeProxyCreation.ToSql(database);
+            var result = database.Select(sql);
+            var rows = result.Rows.ToArray();
+
+            var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
+            foreach (var row in rows)
+            {
+                var address = new Address(row[0]!.ToString()!);
+                seed[address] = null;
+            }
+
+            KnownSafeProxies.Seed(seed);
+
+            logger.Info($" * Cached {seed.Count} ProxyCreation events");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public IRollbackCache[] Caches { get; } = [KnownSafeProxies];
 
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
     private readonly Hash256 _legacyCrcProxyCreationTopic = Keccak.Compute("ProxyCreation(address)");
@@ -350,7 +387,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             if (topic == _proxyCreationTopic || topic == _legacyCrcProxyCreationTopic)
             {
                 var evt = ProxyCreation(block, receipt, log, logIndex);
-                KnownSafeProxies.TryAdd(new Address(evt.Proxy), null);
+                KnownSafeProxies.Add(block.Number, new Address(evt.Proxy), null);
                 yield return evt;
             }
         }
