@@ -16,7 +16,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
     public static readonly RollbackCache<Address, Address> CirclesV1TokenOwnersByToken =
         new("CirclesV1TokenAddresses");
 
-    public static readonly RollbackCache<string, ImmutableDictionary<string, BigInteger>>
+    public static readonly RollbackCache<string, ImmutableDictionary<string, (BigInteger Balance, string TokenOwner)>>
         BalancesByAccountAndToken =
             new("V1BalancesByAccountAndToken");
 
@@ -67,36 +67,40 @@ public class LogParser(Address v1HubAddress) : ILogParser
         // Make sure there is an initial dictionary for each account
         if (!BalancesByAccountAndToken.TryGetValue(from, out var fromBalances))
         {
-            fromBalances = ImmutableDictionary<string, BigInteger>.Empty;
+            fromBalances = ImmutableDictionary<string, (BigInteger, string)>.Empty;
             BalancesByAccountAndToken.Add(blockNumber, from, fromBalances);
         }
 
         if (!BalancesByAccountAndToken.TryGetValue(to, out var toBalances))
         {
-            toBalances = ImmutableDictionary<string, BigInteger>.Empty;
+            toBalances = ImmutableDictionary<string, (BigInteger, string)>.Empty;
             BalancesByAccountAndToken.Add(blockNumber, to, toBalances);
         }
+
+        var tokenOwner = CirclesV1TokenOwnersByToken.Get(new Address(tokenAddress));
 
         // Update the balances
         if (fromBalances.TryGetValue(tokenAddress, out var fromBalance))
         {
-            var newFromBalances = fromBalances.SetItem(tokenAddress, (fromBalance - amount));
+            var newFromBalances = fromBalances.SetItem(tokenAddress,
+                (fromBalance.Balance - amount, tokenOwner.ToString(true, false)));
             BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
         }
         else
         {
-            var newFromBalances = fromBalances.SetItem(tokenAddress, 0 - amount);
+            var newFromBalances = fromBalances.SetItem(tokenAddress, (0 - amount, tokenOwner.ToString(true, false)));
             BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
         }
 
         if (toBalances.TryGetValue(tokenAddress, out var toBalance))
         {
-            var newToBalances = toBalances.SetItem(tokenAddress, toBalance + amount);
+            var newToBalances = toBalances.SetItem(tokenAddress,
+                (toBalance.Balance + amount, tokenOwner.ToString(true, false)));
             BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
         }
         else
         {
-            var newToBalances = toBalances.SetItem(tokenAddress, 0 + amount);
+            var newToBalances = toBalances.SetItem(tokenAddress, (0 + amount, tokenOwner.ToString(true, false)));
             BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
         }
     }

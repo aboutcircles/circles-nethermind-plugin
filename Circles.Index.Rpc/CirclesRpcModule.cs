@@ -499,8 +499,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
-
-
+    
     public ResultWrapper<IEnumerable<CirclesTokenBalance>>
         circles_getBalanceBreakdown(Address address)
     {
@@ -520,6 +519,35 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         List<CirclesTokenBalance> result = new();
 
+        foreach (var v1Balance in v1Balances)
+        {
+            // V1 circles are ERC20 and always inflationary
+            var attoCrcBn = v1Balance.Value.Balance;
+            var crc = ConversionUtils.AttoCirclesToCircles((UInt256)attoCrcBn);
+            var circles = ConversionUtils.CrcToCircles(crc);
+            var attoCircles = ConversionUtils.CirclesToAttoCircles(circles).ToString(NumberFormatInfo.InvariantInfo);
+            var staticCircles = ConversionUtils.CirclesToStaticCircles(circles, DateTime.Now);
+            var staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles)
+                .ToString(NumberFormatInfo.InvariantInfo);
+
+            result.Add(new CirclesTokenBalance(
+                v1Balance.Key,
+                v1Balance.Key,
+                v1Balance.Value.TokenOwner,
+                "CrcV1_Signup",
+                1,
+                attoCircles,
+                circles,
+                staticAttoCircles,
+                staticCircles,
+                attoCrcBn.ToString(NumberFormatInfo.InvariantInfo),
+                crc,
+                true,
+                false,
+                false,
+                true,
+                false));
+        }
 
         foreach (var v2TokenBalance in v2Balances)
         {
@@ -618,7 +646,11 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
         }
 
-        return ResultWrapper<IEnumerable<CirclesTokenBalance>>.Success(result);
+        var orderedResult = result
+            .Where(o => o.Circles > 0)
+            .OrderByDescending(o => o.Circles);
+
+        return ResultWrapper<IEnumerable<CirclesTokenBalance>>.Success(orderedResult);
     }
 
     public ResultWrapper<string> circles_getProfileCid(Address address)
