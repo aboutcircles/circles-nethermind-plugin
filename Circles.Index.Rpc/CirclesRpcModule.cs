@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Json;
@@ -499,7 +500,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return ResultWrapper<DatabaseQueryResult>.Success(result);
     }
-    
+
     public ResultWrapper<IEnumerable<CirclesTokenBalance>>
         circles_getBalanceBreakdown(Address address)
     {
@@ -507,9 +508,21 @@ public class CirclesRpcModule : ICirclesRpcModule
             CirclesV1.LogParser.BalancesByAccountAndToken.TryGetValue(address.ToString(true, false),
                 out var v1Balances);
 
+        if (!hasV1Balance)
+        {
+            v1Balances = ImmutableDictionary<string, (BigInteger Balance, string TokenOwner)>.Empty;
+        }
+
         var hasV2Balance =
             CirclesV2.LogParser.BalancesByAccountAndToken.TryGetValue(address.ToString(true, false),
                 out var v2Balances);
+
+        if (!hasV2Balance)
+        {
+            v2Balances =
+                ImmutableDictionary<string, (BigInteger Balance, TokenValueRepresentation ValueRepresentation, string
+                    TokenOwner)>.Empty;
+        }
 
         if (!hasV1Balance && !hasV2Balance)
         {
