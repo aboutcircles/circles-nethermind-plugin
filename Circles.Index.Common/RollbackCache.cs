@@ -163,7 +163,10 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
             if (_lastBlockNo == long.MinValue || _lastBlockNo < toBlockNo)
                 return;
 
-            if (_blockOrder.Count == 0 || toBlockNo < _blockOrder.First!.Value)
+            if (_blockOrder.Count == 0)
+                return;
+
+            if (toBlockNo < _blockOrder.First!.Value)
                 throw new InvalidOperationException("Cannot roll back beyond stored history.");
 
             // Roll back blocks one by one while _lastBlockNo >= toBlockNo
