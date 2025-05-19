@@ -46,7 +46,7 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
 
         V2AvatarToCidMap.Seed(seed);
 
-        logger.Info($" * Cached {seed.Count} avatar -> cidV0 mappings from V1 UpdateMetadataDigest");
+        logger.Info($" * Cached {seed.Count} avatar -> cidV0 mappings from V2 UpdateMetadataDigest");
 
         return Task.CompletedTask;
     }

@@ -14,16 +14,63 @@ namespace Circles.Index.CirclesV1;
 public class LogParser(Address v1HubAddress) : ILogParser
 {
     public static readonly RollbackCache<Address, Address> CirclesV1TokenOwnersByToken =
-        new("CirclesV1TokenAddresses");
+        new("CirclesV1TokenOwnersByToken");
+
+    public static readonly RollbackCache<Address, Address> CirclesV1TokensByTokenOwner =
+        new("CirclesV1TokensByTokenOwner");
 
     public static readonly RollbackCache<string, ImmutableDictionary<string, (BigInteger Balance, string TokenOwner)>>
-        BalancesByAccountAndToken =
-            new("V1BalancesByAccountAndToken");
+        BalancesByAccountAndToken = new("V1BalancesByAccountAndToken");
+
+    public static readonly RollbackCache<string, (string Type, string? TokenAddress)>
+        V1Avatars = new("V1Avatars");
 
     public IRollbackCache[] Caches { get; } =
     [
-        CirclesV1TokenOwnersByToken, BalancesByAccountAndToken
+        CirclesV1TokenOwnersByToken, CirclesV1TokensByTokenOwner, BalancesByAccountAndToken, V1Avatars
     ];
+
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        InitV1TokenAddresses(logger, database);
+        InitBalanceCache(logger, settings);
+        InitAvatarsCache(logger, database);
+
+        return Task.CompletedTask;
+    }
+
+    private void InitAvatarsCache(InterfaceLogger logger, IDatabase database)
+    {
+        var registerGroupEvents = new Select(
+            "V_CrcV1",
+            "Avatars",
+            ["user", "type", "token"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = registerGroupEvents.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        var seed = new Dictionary<string, (string Type, string? Token)>(rows.Length + 10_000);
+        foreach (var row in rows)
+        {
+            string user = row[0].ToString();
+            string type = row[1].ToString();
+            string? token = row[2] is not DBNull and not null
+                ? row[2].ToString()
+                : null;
+
+            seed.Add(user, (type, token));
+        }
+
+        V1Avatars.Seed(seed);
+
+        logger.Info($" * Cached {seed.Count} V1 avatars");
+    }
 
     private static void InitBalanceCache(InterfaceLogger logger, Settings settings)
     {
@@ -105,14 +152,6 @@ public class LogParser(Address v1HubAddress) : ILogParser
         }
     }
 
-    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
-    {
-        InitV1TokenAddresses(logger, database);
-        InitBalanceCache(logger, settings);
-
-        return Task.CompletedTask;
-    }
-
     private static void InitV1TokenAddresses(InterfaceLogger logger, IDatabase database)
     {
         var selectSignups = new Select(
@@ -130,14 +169,17 @@ public class LogParser(Address v1HubAddress) : ILogParser
         var rows = result.Rows.ToArray();
 
         var seed = new Dictionary<Address, Address>(rows.Length + 25_000);
+        var seed2 = new Dictionary<Address, Address>(rows.Length + 25_000);
         foreach (var row in rows)
         {
             var userAddress = new Address(row[0].ToString());
             var tokenAddress = new Address(row[1].ToString());
             seed[tokenAddress] = userAddress;
+            seed2[userAddress] = tokenAddress;
         }
 
         CirclesV1TokenOwnersByToken.Seed(seed);
+        CirclesV1TokensByTokenOwner.Seed(seed2);
 
         logger.Info($" * Cached {seed.Count} Circles token addresses");
     }
@@ -416,6 +458,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
     {
         string org = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
 
+        V1Avatars.Add(block.Number, org, ("CrcV1_OrganizationSignup", null));
+
         return new OrganizationSignup(
             receipt.BlockNumber,
             (long)block.Timestamp,
@@ -481,6 +525,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
         }
 
         Address tokenAddress = new Address(log.Data.Slice(12));
+        string tokenAddressString = tokenAddress.ToString(true, false);
+
         Address userAddress = new Address(user);
 
         var signupEvent = new Signup(
@@ -491,10 +537,13 @@ public class LogParser(Address v1HubAddress) : ILogParser
             receipt.TxHash!.ToString(),
             log.Address.ToString(true, false),
             user,
-            tokenAddress.ToString(true, false)
+            tokenAddressString
         );
 
         // Attempt to register the token address
+        CirclesV1TokensByTokenOwner.Add(block.Number, userAddress, tokenAddress);
+        V1Avatars.Add(block.Number, user, ("CrcV1_Signup", tokenAddressString));
+
         bool isNewToken = CirclesV1TokenOwnersByToken.Add(block.Number, tokenAddress, userAddress);
         if (!isNewToken)
         {
