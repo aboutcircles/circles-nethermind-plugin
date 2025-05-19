@@ -4,6 +4,7 @@
 -- transactionIndex:ValueTypes.Int:true
 -- logIndex:ValueTypes.Int:true
 -- transactionHash:ValueTypes.String:true
+-- type:ValueTypes.String:true
 -- user:ValueTypes.Address:true
 -- token:ValueTypes.Address:true
 -- cidV0Digest:ValueTypes.Bytes:false

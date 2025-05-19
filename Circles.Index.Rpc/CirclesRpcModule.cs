@@ -374,6 +374,74 @@ public class CirclesRpcModule : ICirclesRpcModule
     public async Task<ResultWrapper<string>> circlesV2_getTotalBalance(Address address, bool? asTimeCircles = true)
         => await GetTotalBalance(address, 2, asTimeCircles);
 
+    public ResultWrapper<AvatarRow> circles_getAvatarInfo(Address address)
+    {
+        var avatarInfoResult = GetAvatarInfoBatch([address]);
+        if (avatarInfoResult[0] == null)
+        {
+            return ResultWrapper<AvatarRow>.Fail($"No avatar found for address {address}");
+        }
+
+        return ResultWrapper<AvatarRow>.Success(avatarInfoResult[0]);
+    }
+
+    public ResultWrapper<AvatarRow?[]> circles_getAvatarInfoBatch(Address[] addresses)
+    {
+        if (addresses.Length > 1000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
+        }
+
+        var result = GetAvatarInfoBatch(addresses);
+        return ResultWrapper<AvatarRow?[]>.Success(result);
+    }
+
+    private static AvatarRow?[] GetAvatarInfoBatch(Address[] addresses)
+    {
+        AvatarRow?[] result = new AvatarRow?[addresses.Length];
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            var avatarAddress = addresses[i];
+            string addressString = avatarAddress.ToString(true, false);
+
+            bool hasV1 = CirclesV1.LogParser.V1Avatars.TryGetValue(addressString, out var v1Avatar);
+            bool hasV2 = CirclesV2.LogParser.V2Avatars.TryGetValue(addressString, out var v2Avatar);
+
+            if (!hasV1 && !hasV2)
+            {
+                result[i] = null;
+                continue;
+            }
+
+            int version = hasV2 ? 2 : 1;
+            string type = hasV2 ? v2Avatar.Type : v1Avatar.Type;
+            string avatar = addressString;
+            string tokenId = hasV2 ? v2Avatar.TokenId : v1Avatar.TokenAddress;
+            string? v1Token = hasV1 ? v1Avatar.TokenAddress : null;
+
+            bool hasV1Cid = CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(avatarAddress, out var v1Cid);
+            bool hasV2Cid = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(avatarAddress, out var v2Cid);
+
+            string? cid = hasV2Cid ? v2Cid : hasV1Cid ? v1Cid : null;
+            bool isHuman = type == "CrcV2_RegisterHuman" || type == "CrcV1_Signup";
+
+            result[i] = new AvatarRow(
+                version,
+                type,
+                avatar,
+                tokenId,
+                hasV1,
+                v1Token,
+                "",
+                cid,
+                isHuman,
+                hasV2 ? v2Avatar.Name : null,
+                "");
+        }
+
+        return result;
+    }
+
     public Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address)
     {
         const string sql = @"
