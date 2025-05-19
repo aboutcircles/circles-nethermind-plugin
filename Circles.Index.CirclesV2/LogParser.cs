@@ -38,27 +38,31 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     // Tracks whether a specific address is recognized as an ERC20Wrapper contract
     // Address -> CirclesType (demurraged = 0 or static = 1)
     public static readonly RollbackCache<string, (string TokenOwner, TokenValueRepresentation ValueRepresentation)>
-        Erc20WrapperAddresses =
-            new("Erc20WrapperAddresses");
+        Erc20WrapperAddresses = new("Erc20WrapperAddresses");
 
-    public static readonly RollbackCache<string, ImmutableDictionary<string, (BigInteger Balance,
-            TokenValueRepresentation ValueRepresentation, string TokenOwner)>>
-        BalancesByAccountAndToken =
-            new("V2BalancesByAccountAndToken");
+    public static readonly RollbackCache<string, ImmutableDictionary<string, (
+            BigInteger Balance,
+            TokenValueRepresentation ValueRepresentation,
+            string TokenOwner
+            )>>
+        BalancesByAccountAndToken = new("V2BalancesByAccountAndToken");
 
-    public static readonly RollbackCache<(string Account, string Token), long> LastTokenMovement =
-        new("V2LastTokenMovement");
+    public static readonly RollbackCache<(string Account, string Token), long>
+        LastTokenMovement = new("V2LastTokenMovement");
 
     public static readonly RollbackCache<string, (string MintPolicy, string Treasury, string name, string symbol)>
-        Groups =
-            new("Groups");
+        Groups = new("Groups");
+
+    public static readonly RollbackCache<string, (string Type, string? InvitedBy, string? TokenId, string? Name)>
+        V2Avatars = new("V2Avatars");
 
     public IRollbackCache[] Caches { get; } =
     [
         Erc20WrapperAddresses,
         BalancesByAccountAndToken,
         LastTokenMovement,
-        Groups
+        Groups,
+        V2Avatars
     ];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
@@ -67,8 +71,50 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         InitBalanceCache(logger, settings);
         // LastTokenMovement is initialized with the balances
         InitGroupsCache(logger, database);
+        InitAvatarsCache(logger, database);
 
         return Task.CompletedTask;
+    }
+
+    private void InitAvatarsCache(InterfaceLogger logger, IDatabase database)
+    {
+        var registerGroupEvents = new Select(
+            "V_CrcV2",
+            "Avatars",
+            ["avatar", "type", "invitedBy", "tokenId", "name"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        var sql = registerGroupEvents.ToSql(database);
+        var result = database.Select(sql);
+        var rows = result.Rows.ToArray();
+
+        var seed = new Dictionary<string, (string Type, string? InvitedBy, string? TokenId, string? Name)>(
+            rows.Length + 10_000);
+
+        foreach (var row in rows)
+        {
+            string avatar = row[0].ToString();
+            string type = row[1].ToString();
+            string invitedBy = row[2] is not DBNull and not null
+                ? row[2].ToString()
+                : null;
+            string tokenId = row[3] is not DBNull and not null
+                ? row[3].ToString()
+                : null;
+            string? name = row[4] is not DBNull and not null
+                ? row[4].ToString()
+                : null;
+
+            seed.Add(avatar, (type, invitedBy, tokenId, name));
+        }
+
+        V2Avatars.Seed(seed);
+
+        logger.Info($" * Cached {seed.Count} V2 avatars");
     }
 
     private void InitGroupsCache(InterfaceLogger logger, IDatabase database)
@@ -622,6 +668,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         string orgAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string orgName = LogDataStringDecoder.ReadStrings(log.Data)[0];
 
+        V2Avatars.Add(block.Number, orgAddress, ("CrcV2_RegisterOrganization", null, null, orgName));
+
         return new RegisterOrganization(
             block.Number,
             (long)block.Timestamp,
@@ -647,6 +695,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         string groupSymbol = stringData[1];
 
         Groups.Add(block.Number, groupAddress, (mintPolicy, treasury, groupName, groupSymbol));
+        V2Avatars.Add(block.Number, groupAddress, ("CrcV2_RegisterGroup", null, groupAddress, groupName));
 
         return new RegisterGroup(
             block.Number,
@@ -668,6 +717,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         // event RegisterHuman(address indexed human, address indexed inviter)
         string humanAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string inviterAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+
+        V2Avatars.Add(block.Number, humanAddress, ("CrcV2_RegisterHuman", inviterAddress, humanAddress, null));
 
         return new RegisterHuman(
             block.Number,
