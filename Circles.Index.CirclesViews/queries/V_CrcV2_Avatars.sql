@@ -73,3 +73,51 @@ FROM avatars a
               m."logIndex" desc
     limit  1
     ) cid on true;
+
+
+create or replace function public.base58_encode(data bytea) returns text
+    immutable
+    language plpgsql
+as
+$$
+DECLARE
+    alphabet CONSTANT text := '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    leading_zeroes int := 0;
+    bytes    int[];   -- the working big-endian byte array (0-255)
+    next     int[];
+    carry    int;
+    q        int;
+    piece    int;
+    result   text := '';
+BEGIN
+    -- count leading 0x00
+    WHILE leading_zeroes < length(data)
+        AND get_byte(data, leading_zeroes) = 0 LOOP
+            leading_zeroes := leading_zeroes + 1;
+        END LOOP;
+
+    -- copy non-zero payload into an int[]
+    bytes := ARRAY(
+            SELECT get_byte(data, i)
+            FROM generate_series(leading_zeroes, length(data) - 1) AS i
+             );
+
+    -- main div-mod loop: base-256 → base-58
+    WHILE array_length(bytes, 1) IS NOT NULL LOOP
+            carry := 0;
+            next  := '{}';
+            FOREACH piece IN ARRAY bytes LOOP
+                    carry := carry * 256 + piece;   -- 0 ≤ carry < 58*256
+                    q     := carry / 58;            -- small; fits in int
+                    carry := carry % 58;
+                    IF array_length(next, 1) IS NOT NULL OR q <> 0 THEN
+                        next := next || q;
+                    END IF;
+                END LOOP;
+            result := substr(alphabet, carry + 1, 1) || result;
+            bytes  := next;
+        END LOOP;
+
+    RETURN repeat('1', leading_zeroes) || result;
+END;
+$$;
