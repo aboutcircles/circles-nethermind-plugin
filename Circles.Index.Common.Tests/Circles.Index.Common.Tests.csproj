@@ -22,6 +22,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+      <ProjectReference Include="..\Circles.Index.ContractClient\Circles.Index.ContractClient.csproj" />
     </ItemGroup>
 
 </Project>
