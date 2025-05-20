@@ -3,11 +3,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Numerics;
-using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
-using Circles.Index.Utils;
 using Circles.Pathfinder.DTOs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index.Rpc;
 
@@ -31,43 +31,6 @@ public class CirclesRpcModule : ICirclesRpcModule
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
         _indexerContext = indexerContext;
     }
-
-    // -----------------------------------------------------------------------------
-    // 27-dec "ray" helpers  (same idea as Maker-DAO's RAY = 1e27)
-    // -----------------------------------------------------------------------------
-    private static class RayMath
-    {
-        // 1 * 10²⁷
-        public static readonly BigInteger ONE = BigInteger.Pow(10, 27);
-
-        // γ scaled to 27 decimals: 0.999801332008598957430648170 (rounded)
-        public static readonly BigInteger GAMMA_RAY =
-            BigInteger.Parse("999801332008598957430648170");
-
-        // (a · b) / 1e27 (floored)
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static BigInteger Mul(BigInteger a, BigInteger b) => (a * b) / ONE;
-
-        // a^n in ray fixed-point (exponentiation-by-squaring)
-        public static BigInteger Pow(BigInteger a, long n)
-        {
-            BigInteger result = ONE;
-            BigInteger basePow = a;
-            long exp = n;
-
-            while (exp > 0)
-            {
-                if ((exp & 1) == 1)
-                    result = Mul(result, basePow);
-
-                basePow = Mul(basePow, basePow);
-                exp >>= 1;
-            }
-
-            return result;
-        }
-    }
-
 
     // Helpers for ABI words ------------------------------------------------------
     static byte[] Word(ulong value)
@@ -216,7 +179,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var balance = isErc20
             ? GetBalance(rpcModule, token, account)
-            : GetBalance(rpcModule, hubAddress, account, ConversionUtils.AddressToUInt256(token));
+            : GetBalance(rpcModule, hubAddress, account, AddressConverter.AddressToUInt256(token));
 
         return balance;
     }
@@ -240,7 +203,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 rpc.RpcModule!,
                 hubAddress,
                 Enumerable.Repeat(address, erc1155Tokens.Length).ToArray(),
-                erc1155Tokens.Select(o => ConversionUtils.AddressToUInt256(o.TokenAddress)).ToArray());
+                erc1155Tokens.Select(o => AddressConverter.AddressToUInt256(o.TokenAddress)).ToArray());
 
             for (int i = 0; i < erc1155Tokens.Length; i++)
             {
@@ -265,58 +228,59 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var tokenBalances = tokens.Values.Select(token =>
             {
-                var rawBalance = balances[token.TokenAddress];
+                var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-                UInt256 attoCircles;
+                var rawBalance = (BigInteger)balances[token.TokenAddress];
+
+                BigInteger attoCircles;
                 decimal cirlces;
 
-                UInt256 attoCrc;
+                BigInteger attoCrc;
                 decimal crc;
 
-                UInt256 staticAttoCircles;
+                BigInteger staticAttoCircles;
                 decimal staticCircles;
 
                 if (token.TokenType == "CrcV1_Signup")
                 {
                     // OG CRC
                     attoCrc = rawBalance;
-                    crc = ConversionUtils.AttoCirclesToCircles(rawBalance);
+                    crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                    attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
+                    cirlces = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
-                    cirlces = ConversionUtils.CrcToCircles(crc);
-                    attoCircles = ConversionUtils.CirclesToAttoCircles(cirlces);
-
-                    staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces, DateTime.Now);
-                    staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles);
+                    staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                    staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
                 }
                 else
                 {
                     if (token.IsInflationary)
                     {
                         staticAttoCircles = rawBalance;
-                        staticCircles = ConversionUtils.AttoCirclesToCircles(rawBalance);
+                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
 
-                        cirlces = ConversionUtils.StaticCirclesToCircles(staticCircles);
-                        attoCircles = ConversionUtils.CirclesToAttoCircles(cirlces);
+                        attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                        cirlces = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
-                        crc = ConversionUtils.CirclesToCrc(cirlces);
-                        attoCrc = ConversionUtils.CirclesToAttoCircles(crc);
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
                     }
                     else
                     {
                         attoCircles = rawBalance;
-                        cirlces = ConversionUtils.AttoCirclesToCircles(rawBalance);
+                        cirlces = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
-                        crc = ConversionUtils.CirclesToCrc(cirlces);
-                        attoCrc = ConversionUtils.CirclesToAttoCircles(crc);
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
-                        staticCircles = ConversionUtils.CirclesToStaticCircles(cirlces, DateTime.Now);
-                        staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles);
+                        staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
                     }
                 }
 
                 var tokenAddress = token.TokenAddress;
                 var tokenAddressString = tokenAddress.ToString(true, false);
-                var tokenId = ConversionUtils.AddressToUInt256(tokenAddress)
+                var tokenId = AddressConverter.AddressToUInt256(tokenAddress)
                     .ToString(CultureInfo.InvariantCulture);
 
                 return new CirclesTokenBalance(
@@ -600,16 +564,19 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         List<CirclesTokenBalance> result = new();
 
+        var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
         foreach (var v1Balance in v1Balances)
         {
             // V1 circles are ERC20 and always inflationary
-            var attoCrcBn = v1Balance.Value.Balance;
-            var crc = ConversionUtils.AttoCirclesToCircles((UInt256)attoCrcBn);
-            var circles = ConversionUtils.CrcToCircles(crc);
-            var attoCircles = ConversionUtils.CirclesToAttoCircles(circles).ToString(NumberFormatInfo.InvariantInfo);
-            var staticCircles = ConversionUtils.CirclesToStaticCircles(circles, DateTime.Now);
-            var staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles)
-                .ToString(NumberFormatInfo.InvariantInfo);
+            BigInteger attoCrc = v1Balance.Value.Balance;
+            decimal crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+            BigInteger attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
+            decimal circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+            BigInteger staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+            decimal staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
 
             result.Add(new CirclesTokenBalance(
                 v1Balance.Key,
@@ -617,11 +584,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                 v1Balance.Value.TokenOwner,
                 "CrcV1_Signup",
                 1,
-                attoCircles,
+                attoCircles.ToString(NumberFormatInfo.InvariantInfo),
                 circles,
-                staticAttoCircles,
+                staticAttoCircles.ToString(NumberFormatInfo.InvariantInfo),
                 staticCircles,
-                attoCrcBn.ToString(NumberFormatInfo.InvariantInfo),
+                attoCrc.ToString(NumberFormatInfo.InvariantInfo),
                 crc,
                 true,
                 false,
@@ -642,14 +609,14 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (isInflationary)
             {
                 // Static Circles (only exist in ERC20 form as wrapper)
-                var staticAttoCirclesBn = v2TokenBalance.Value.Balance;
-                var staticAttoCircles = staticAttoCirclesBn.ToString(NumberFormatInfo.InvariantInfo);
-                var staticCircles = ConversionUtils.AttoCirclesToCircles((UInt256)staticAttoCirclesBn);
-                var circles = ConversionUtils.StaticCirclesToCircles(staticCircles);
-                var attoCircles = ConversionUtils.CirclesToAttoCircles(circles)
-                    .ToString(NumberFormatInfo.InvariantInfo);
-                var crc = ConversionUtils.CirclesToCrc(circles);
-                var attoCrc = ConversionUtils.CirclesToAttoCircles(crc).ToString(NumberFormatInfo.InvariantInfo);
+                BigInteger staticAttoCircles = v2TokenBalance.Value.Balance;
+                decimal staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+
+                BigInteger attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                decimal circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                BigInteger attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                decimal crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
                 result.Add(new CirclesTokenBalance(
                     v2TokenBalance.Key,
@@ -657,11 +624,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                     v2TokenBalance.Value.TokenOwner,
                     "CrcV2_ERC20WrapperDeployed_Inflationary",
                     2,
-                    attoCircles,
+                    attoCircles.ToString(NumberFormatInfo.InvariantInfo),
                     circles,
-                    staticAttoCircles,
+                    staticAttoCircles.ToString(NumberFormatInfo.InvariantInfo),
                     staticCircles,
-                    attoCrc,
+                    attoCrc.ToString(NumberFormatInfo.InvariantInfo),
                     crc,
                     true,
                     false,
@@ -672,38 +639,31 @@ public class CirclesRpcModule : ICirclesRpcModule
             else
             {
                 // Demurraged Circles
-                var hasTokenMoved = CirclesV2.LogParser.LastTokenMovement.TryGetValue(
-                    (address.ToString(true, false), v2TokenBalance.Key),
-                    out var lastTokenMovement);
-
-                if (!hasTokenMoved)
+                if (!CirclesV2.LogParser.LastTokenMovement.TryGetValue(
+                        (address.ToString(true, false), v2TokenBalance.Key),
+                        out var lastTokenMovement))
                 {
-                    // Token never moved?! Should not be possible.
                     throw new InvalidOperationException(
                         $"Account {address} has a token {v2TokenBalance.Key} that was never moved.");
                 }
 
-                // We know when the token was last moved -> apply demurrage for the time between now and last move.
-                long nowSec = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                long currentDay = nowSec / 86_400; // circles-days
+                ulong today = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, 1_602_720_000);
+                var (attoCircles, _) = Demurrage.ApplyDemurrage(
+                    storedBalance: v2TokenBalance.Value.Item1,
+                    storedDay: (ulong)lastTokenMovement,
+                    targetDay: today);
+                decimal circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
-                long lastMoveDay = lastTokenMovement / 86_400;
-                long daysPassed = Math.Max(currentDay - lastMoveDay, 0);
-                BigInteger factorRay = RayMath.Pow(RayMath.GAMMA_RAY, daysPassed);
-                BigInteger attoCircles = (v2TokenBalance.Value.Item1 * factorRay) / RayMath.ONE;
+                BigInteger staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                decimal staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
 
-                decimal circles = ConversionUtils.AttoCirclesToCircles((UInt256)attoCircles);
-                decimal staticCircles = ConversionUtils.CirclesToStaticCircles(circles,
-                    DateTimeOffset.FromUnixTimeSeconds(lastTokenMovement).DateTime);
-                string staticAttoCircles = ConversionUtils.CirclesToAttoCircles(staticCircles)
-                    .ToString(NumberFormatInfo.InvariantInfo);
-                decimal crc = ConversionUtils.CirclesToCrc(circles);
-                string attoCrc = ConversionUtils.CirclesToAttoCircles(crc).ToString(NumberFormatInfo.InvariantInfo);
+                BigInteger attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                decimal crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
                 result.Add(new CirclesTokenBalance(
                     v2TokenBalance.Key,
                     !isWrapped
-                        ? ConversionUtils.AddressToUInt256(new Address(v2TokenBalance.Key))
+                        ? AddressConverter.AddressToUInt256(new Address(v2TokenBalance.Key))
                             .ToString(NumberFormatInfo.InvariantInfo)
                         : v2TokenBalance.Key,
                     v2TokenBalance.Value.TokenOwner,
@@ -715,9 +675,9 @@ public class CirclesRpcModule : ICirclesRpcModule
                     2,
                     attoCircles.ToString(NumberFormatInfo.InvariantInfo),
                     circles,
-                    staticAttoCircles,
+                    staticAttoCircles.ToString(NumberFormatInfo.InvariantInfo),
                     staticCircles,
-                    attoCrc,
+                    attoCrc.ToString(NumberFormatInfo.InvariantInfo),
                     crc,
                     isWrapped,
                     !isWrapped,
@@ -1001,5 +961,113 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         return tokenExposureIds;
+    }
+
+    public async Task<ResultWrapper<Profile>> circles_getProfileByCid(string cid)
+    {
+        var query = "select payload from ipfs_files where cid = @cid";
+
+        await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await using var command = new NpgsqlCommand(query, connection);
+        await connection.OpenAsync();
+
+        command.Parameters.AddWithValue("cid", cid);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return ResultWrapper<Profile>.Fail($"No profile found for cid {cid}");
+        }
+
+        var payload = reader.GetString(0);
+        var profile = JsonSerializer.Deserialize<Profile>(payload);
+
+        return ResultWrapper<Profile>.Success(profile);
+    }
+
+    public async Task<ResultWrapper<Profile?[]>> circles_getProfileByCidBatch(string[] cids)
+    {
+        if (cids.Length > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 100");
+        }
+
+        var query = @"
+            select f.payload
+            from unnest(@cids) _cid
+            left join ipfs_files f on f.cid = _cid;";
+
+        await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await using var command = new NpgsqlCommand(query, connection);
+        await connection.OpenAsync();
+
+        command.Parameters.AddWithValue("cids", cids);
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var resultList = new List<Profile?>();
+        while (await reader.ReadAsync())
+        {
+            var payloadCellValue = reader.GetValue(0);
+            if (payloadCellValue is string payload)
+            {
+                var profile = JsonSerializer.Deserialize<Profile>(payload);
+                resultList.Add(profile);
+            }
+            else
+            {
+                resultList.Add(null);
+            }
+        }
+
+        return ResultWrapper<Profile?[]>.Success(resultList.ToArray());
+    }
+
+    public async Task<ResultWrapper<Profile>> circles_getProfileByAddress(Address avatar)
+    {
+        bool hasV1Cid = CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(avatar, out var v1Cid);
+        bool hasV2Cid = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(avatar, out var v2Cid);
+
+        var cid = hasV2Cid ? v2Cid : hasV1Cid ? v1Cid : null;
+
+        if (cid == null)
+        {
+            throw new KeyNotFoundException($"Couldn't find a CID for {avatar}");
+        }
+
+        var result = await circles_getProfileByCid(cid);
+        if (result.ErrorCode != 0)
+        {
+            throw new Exception($"Couldn't get a profile for {avatar}");
+        }
+
+        return result;
+    }
+
+    public async Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address?[] avatars)
+    {
+        if (avatars.Length > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(avatars), "Batch size exceeds 100");
+        }
+
+        var cids = avatars.Select(avatar =>
+            {
+                if (avatar == null)
+                {
+                    return null;
+                }
+
+                bool hasV1Cid = CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(avatar, out var v1Cid);
+                bool hasV2Cid = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(avatar, out var v2Cid);
+                return hasV2Cid ? v2Cid : hasV1Cid ? v1Cid : null;
+            })
+            .ToArray();
+
+        var result = await circles_getProfileByCidBatch(cids);
+        if (result.ErrorCode != 0)
+        {
+            throw new Exception($"Error during batch profile retrieval");
+        }
+
+        return result;
     }
 }

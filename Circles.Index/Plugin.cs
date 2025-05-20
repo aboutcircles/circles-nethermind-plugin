@@ -206,6 +206,7 @@ public class Plugin : INethermindPlugin
                 {
                     await connection.OpenAsync(_cancellationTokenSource.Token);
                     await using var command = new NpgsqlCommand(seedQuery, connection);
+                    command.CommandTimeout = 600;
                     await command.ExecuteNonQueryAsync(_cancellationTokenSource.Token);
                 }
 

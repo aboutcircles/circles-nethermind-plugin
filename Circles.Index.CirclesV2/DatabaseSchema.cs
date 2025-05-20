@@ -1,6 +1,5 @@
 using System.Numerics;
 using Circles.Index.Common;
-using Circles.Index.Utils;
 using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV2;
@@ -261,7 +260,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("id", e => (BigInteger)e.Id),
                 ("value", e => (BigInteger)e.Value),
-                ("tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false))
+                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToString(true, false))
             ]
         );
 
@@ -289,7 +288,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("id", e => (BigInteger)e.Id),
                 ("value", e => (BigInteger)e.Value),
-                ("tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false))
+                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToString(true, false))
             ]
         );
 
@@ -378,7 +377,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("id", e => (BigInteger)e.Id),
                 ("amount", e => (BigInteger)e.Amount),
-                ("tokenAddress", e => ConversionUtils.UInt256ToAddress(e.Id).ToString(true, false))
+                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToString(true, false))
             ]
         );
 

@@ -1,8 +1,8 @@
 using System.Globalization;
+using System.Numerics;
 using Npgsql;
 using System.Reflection;
-using Circles.Index.Utils;
-using Nethermind.Int256;
+using Circles.Index.Common;
 
 namespace Circles.Pathfinder.Data
 {
@@ -49,8 +49,8 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
-            using var reader = command.ExecuteReader(); 
-            
+            using var reader = command.ExecuteReader();
+
             var now = DateTime.UtcNow;
 
             while (reader.Read())
@@ -64,15 +64,14 @@ namespace Circles.Pathfinder.Data
                 if (type == "static")
                 {
                     // Convert to Circles
-                    var staticAttoCircles = ConversionUtils.AttoCirclesToCircles(UInt256.Parse(balance));
-                    var demurragedCircles = ConversionUtils.StaticCirclesToCircles(staticAttoCircles, now);
-                    if (demurragedCircles == 0)
+                    var staticAttoCircles = BigInteger.Parse(balance);
+                    var demurragedAttoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                    if (demurragedAttoCircles == 0)
                     {
                         continue;
                     }
 
-                    balance = ConversionUtils.CirclesToAttoCircles(demurragedCircles)
-                        .ToString(CultureInfo.InvariantCulture);
+                    balance = demurragedAttoCircles.ToString(CultureInfo.InvariantCulture);
                 }
 
                 if (balance == "0")
@@ -82,10 +81,10 @@ namespace Circles.Pathfinder.Data
 
                 // yield return (balance, account, tokenAddress, isWrapped, type == "static");
                 yield return (balance,
-                              AddressIdPool.IdOf(account.ToLowerInvariant()),
-                              AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
-                              isWrapped,
-                              type == "static");
+                    AddressIdPool.IdOf(account.ToLowerInvariant()),
+                    AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
+                    isWrapped,
+                    type == "static");
             }
         }
 

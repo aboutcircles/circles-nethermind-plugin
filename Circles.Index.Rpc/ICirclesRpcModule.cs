@@ -113,6 +113,53 @@ public record AvatarRow(
      */
     string? Symbol);
 
+/*
+ *
+ * export interface IPFSDataProfile {
+     name: string | null;
+     description?: string;
+     imageUrl?: string;
+     previewImageUrl?: string;
+     location?: string;
+     geoLocation?: [number, number]; // [longitude, latitude]
+   }
+ */
+public record IpfsDataProfile(
+    string name,
+    string? description,
+    string? imageUrl,
+    string? previewImageUrl,
+    string? location,
+    float[]? geoLocation);
+
+/**
+ * export interface Profile {
+  address: string;
+  CID: string;
+  lastUpdatedAt: number;
+  name: string | null;
+  description?: string;
+  registeredName: string | null;
+  location?: string;
+  geoLocation?: [number, number]; // [longitude, latitude]
+  longitude?: number;
+  latitude?: number;
+}
+ */
+public record Profile(
+    string address,
+    string CID,
+    long lastUpdatedAt,
+    string name,
+    string? description,
+    string? registeredName,
+    string? location,
+    string? imageUrl,
+    string? previewImageUrl,
+    float[]? geoLocation,
+    float? longitude,
+    float? latitude);
+
 #endregion
 
 [RpcModule("Circles")]
@@ -184,4 +231,20 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Queries essential information about an avatar in batch.",
         IsImplemented = true)]
     ResultWrapper<AvatarRow?[]> circles_getAvatarInfoBatch(Address[] addresses);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<Profile>> circles_getProfileByCid(string cid);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<Profile?[]>> circles_getProfileByCidBatch(string[] cids);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<Profile>> circles_getProfileByAddress(Address avatar);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address[] avatars);
 }

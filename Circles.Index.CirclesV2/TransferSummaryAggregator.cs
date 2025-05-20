@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using System.Numerics;
 using Circles.Index.Common;
-using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -117,8 +116,7 @@ public static class TransferSummaryAggregator
             if (erc20WrapperAddresses.TryGetValue(ewt.TokenAddress, out var wrapperType) &&
                 wrapperType.Item2 == TokenValueRepresentation.Inflationary)
             {
-                val = (BigInteger)ConversionUtils.CirclesToAttoCircles(
-                    ConversionUtils.StaticCirclesToCircles(ConversionUtils.AttoCirclesToCircles(ewt.Value)));
+                val = CirclesConverter.AttoStaticCirclesToAttoCircles(val);
             }
 
             AddSum(sums, ewt.From, ewt.To, val, ewt.TokenAddress);
