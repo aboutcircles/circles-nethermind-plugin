@@ -1,6 +1,3 @@
-// ./IpfsDownloader.cs
-// Usings ──────────────────────────────────────────────────────────────────────
-
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -86,10 +83,6 @@ public static class Program
         await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync();
         await EnsureSchemaAsync(conn);
-
-        List<string> missing = await LoadMissingCidsAsync(conn);
-        await EnqueueAsync(conn, missing);
-        Console.WriteLine($"[BOOT] queued {missing.Count} missing CIDs");
 
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
@@ -177,42 +170,6 @@ public static class Program
                 Console.WriteLine($"[REAPER] failed: {ex.Message}");
             }
         }
-    }
-
-    // === Helper: discover missing CIDs =======================================
-    private static async Task<List<string>> LoadMissingCidsAsync(NpgsqlConnection conn)
-    {
-        const string sql = @"
-            UPDATE ipfs_queue
-               SET status = 'FAILED', next_retry = NOW()
-             WHERE status = 'IN_PROGRESS'
-               AND updated_at < NOW() - INTERVAL '1 minutes';
-
-            WITH cids AS (
-                SELECT cid FROM ""UpdateMetadataDigest""
-            )
-            SELECT c.cid
-              FROM cids c
-              LEFT JOIN ipfs_files f USING (cid)
-             WHERE f.cid IS NULL;
-        ";
-
-        IEnumerable<string> rows = await conn.QueryAsync<string>(sql);
-        return rows.ToList();
-    }
-
-    // === Helper: enqueue CIDs =================================================
-    private static async Task EnqueueAsync(NpgsqlConnection conn, IEnumerable<string> cids)
-    {
-        if (!cids.Any()) return;
-
-        const string sql = @"
-            INSERT INTO ipfs_queue (cid, status, attempt_count, next_retry, updated_at)
-            SELECT cid, 'PENDING', 0, NOW(), NOW()
-              FROM unnest(@cids) cid
-            ON CONFLICT DO NOTHING;";
-
-        await conn.ExecuteAsync(sql, new { cids });
     }
 
     // === DB bootstrap =========================================================
