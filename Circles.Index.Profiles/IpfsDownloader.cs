@@ -98,7 +98,6 @@ public static class IpfsDownloader
 
         while (!ct.IsCancellationRequested)
         {
-            Console.WriteLine("[LOOP] reserving work…");
             List<QueueRow> batch;
             try
             {
