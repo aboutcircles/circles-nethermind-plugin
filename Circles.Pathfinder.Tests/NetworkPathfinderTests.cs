@@ -4,9 +4,9 @@ using System.Text.Json;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
-using Circles.Index.Utils;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
+using Circles.Index.Common;
 
 namespace Circles.Pathfinder.Tests;
 
@@ -259,10 +259,10 @@ public class NetworkPathfinderTests
             Console.WriteLine("Balance graph not available for wrapped token validation");
             return false; // Skip validation if graph not available
         }
-        
+
         var accountId = AddressIdPool.IdOf(accountAddress);
         var tokenId = AddressIdPool.IdOf(tokenAddress);
-        
+
         // Find the balance node for this account and token
         string balanceNodeKey = $"{accountId}-{tokenId}";
         var balanceNodeId = AddressIdPool.BalanceNodeIdOf(balanceNodeKey);
@@ -648,7 +648,7 @@ public class NetworkPathfinderTests
 
                         if (_balanceGraph.BalanceNodes.TryGetValue(balanceNodeId, out var balanceNode))
                         {
-                            availableBalance = ConversionUtils.BlowUpToUInt256(balanceNode.Amount);
+                            availableBalance = CirclesConverter.BlowUpToUInt256(balanceNode.Amount);
                         }
 
                         bool hasBalance = availableBalance >= requiredAmount;

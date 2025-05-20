@@ -46,6 +46,7 @@ curl -X POST --data '{
     "id":1
 }' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
+
 ```shell
 curl -X POST --data '{
     "jsonrpc":"2.0",
@@ -430,14 +431,13 @@ curl -X POST --data '{
 }' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
 
-
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_getBalanceBreakdown",
   "params": ["0xc6d075112b96b75460e543e3bf70be9ab45b62d9"]
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
 
 ```shell
@@ -446,7 +446,7 @@ curl -X POST --data '{
     "method":"circles_getTokenBalances",
     "params":["0xc6d075112b96b75460e543e3bf70be9ab45b62d9"],
     "id":1
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
 
 ```shell
@@ -489,4 +489,40 @@ curl -X POST --data '{
     }
   ]
 }' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
+```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getProfileByCid",
+    "params":["QmZXM7o7xebWMsf2zRtSNUw2QbkrEz8APQ9cfNqhK8kFz2"],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getProfileByCidBatch",
+    "params":[["QmPMhVviyHeYD3AR3kjvVBib1jBCawDF6nxH5dZaa9rrWF", "QmZuR1Jkhs9RLXVY28eTTRSnqbxLTBSoggp18Yde858xCM"]],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getProfileByAddress",
+    "params":["0xde374ece6fa50e781e81aac78e811b33D16912C7"],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getProfileByAddressBatch",
+    "params":[["", null, "0xde374ece6fa50e781e81aac78e811b33D16912C7", "0xde374ece6fa50e781e81aac78e811b33D16912C7"]],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```

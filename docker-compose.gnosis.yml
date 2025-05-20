@@ -55,6 +55,8 @@ services:
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;
       - START_BLOCK=12000000
       - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
+      - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
+      - IPFS_MAX_PARALLELISM=192
   
   pathfinder:
     build:
