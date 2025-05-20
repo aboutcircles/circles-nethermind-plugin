@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Net.Http.Json;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
@@ -17,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Npgsql;
 
 namespace Circles.Index.Rpc;
 
@@ -1001,5 +1003,112 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         return tokenExposureIds;
+    }
+
+    public async Task<ResultWrapper<IpfsDataProfile>> circles_getProfileByCid(string cid)
+    {
+        var query = "select payload from ipfs_files where cid = @cid";
+
+        await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await using var command = new NpgsqlCommand(query, connection);
+        await connection.OpenAsync();
+
+        command.Parameters.AddWithValue("cid", cid);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return ResultWrapper<IpfsDataProfile>.Fail($"No profile found for cid {cid}");
+        }
+
+        var payload = reader.GetString(0);
+        var profile = JsonSerializer.Deserialize<IpfsDataProfile>(payload);
+
+        return ResultWrapper<IpfsDataProfile>.Success(profile);
+    }
+
+    public async Task<ResultWrapper<IpfsDataProfile?[]>> circles_getProfileByCidBatch(string[] cids)
+    {
+        if (cids.Length > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 100");
+        }
+
+        var query = @"
+            select f.payload
+            from unnest(@cids) _cid
+            left join ipfs_files f on f.cid = _cid;";
+
+        await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await using var command = new NpgsqlCommand(query, connection);
+        await connection.OpenAsync();
+
+        command.Parameters.AddWithValue("cids", cids);
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var resultList = new List<IpfsDataProfile?>();
+        while (await reader.ReadAsync())
+        {
+            var payloadCellValue = reader.GetValue(0);
+            if (payloadCellValue is string payload)
+            {
+                var profile = JsonSerializer.Deserialize<IpfsDataProfile>(payload);
+                resultList.Add(profile);
+            }
+            else
+            {
+                resultList.Add(null);
+            }
+        }
+
+        return ResultWrapper<IpfsDataProfile?[]>.Success(resultList.ToArray());
+    }
+
+    public async Task<ResultWrapper<IpfsDataProfile>> circles_getProfileByAddress(Address avatar)
+    {
+        bool hasV1Cid = CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(avatar, out var v1Cid);
+        bool hasV2Cid = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(avatar, out var v2Cid);
+
+        var cid = hasV2Cid ? v2Cid : hasV1Cid ? v1Cid : null;
+
+        if (cid == null)
+        {
+            throw new KeyNotFoundException($"Couldn't find a CID for {avatar}");
+        }
+
+        var result = await circles_getProfileByCid(cid);
+        if (result.ErrorCode != 0)
+        {
+            throw new Exception($"Couldn't get a profile for {avatar}");
+        }
+
+        return result;
+    }
+
+    public async Task<ResultWrapper<IpfsDataProfile?[]>> circles_getProfileByAddressBatch(Address?[] avatars)
+    {
+        if (avatars.Length > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(avatars), "Batch size exceeds 100");
+        }
+
+        var cids = avatars.Select(avatar =>
+            {
+                if (avatar == null)
+                {
+                    return null;
+                }
+                bool hasV1Cid = CirclesV1.NameRegistry.LogParser.V1AvatarToCidMap.TryGetValue(avatar, out var v1Cid);
+                bool hasV2Cid = CirclesV2.NameRegistry.LogParser.V2AvatarToCidMap.TryGetValue(avatar, out var v2Cid);
+                return hasV2Cid ? v2Cid : hasV1Cid ? v1Cid : null;
+            })
+            .ToArray();
+
+        var result = await circles_getProfileByCidBatch(cids);
+        if (result.ErrorCode != 0)
+        {
+            throw new Exception($"Error during batch profile retrieval");
+        }
+
+        return result;
     }
 }

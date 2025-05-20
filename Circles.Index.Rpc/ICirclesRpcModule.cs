@@ -113,6 +113,25 @@ public record AvatarRow(
      */
     string? Symbol);
 
+/*
+ *
+ * export interface IPFSDataProfile {
+     name: string | null;
+     description?: string;
+     imageUrl?: string;
+     previewImageUrl?: string;
+     location?: string;
+     geoLocation?: [number, number]; // [longitude, latitude]
+   }
+ */
+public record IpfsDataProfile(
+    string name,
+    string? description,
+    string? imageUrl,
+    string? previewImageUrl,
+    string? location,
+    double[]? geoLocation);
+
 #endregion
 
 [RpcModule("Circles")]
@@ -184,4 +203,20 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Queries essential information about an avatar in batch.",
         IsImplemented = true)]
     ResultWrapper<AvatarRow?[]> circles_getAvatarInfoBatch(Address[] addresses);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<IpfsDataProfile>> circles_getProfileByCid(string cid);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<IpfsDataProfile?[]>> circles_getProfileByCidBatch(string[] cids);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<IpfsDataProfile>> circles_getProfileByAddress(Address avatar);
+
+    [JsonRpcMethod(Description = "",
+        IsImplemented = true)]
+    Task<ResultWrapper<IpfsDataProfile?[]>> circles_getProfileByAddressBatch(Address[] avatars);
 }
