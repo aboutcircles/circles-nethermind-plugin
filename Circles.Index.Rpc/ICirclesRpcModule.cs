@@ -130,7 +130,35 @@ public record IpfsDataProfile(
     string? imageUrl,
     string? previewImageUrl,
     string? location,
-    double[]? geoLocation);
+    float[]? geoLocation);
+
+/**
+ * export interface Profile {
+  address: string;
+  CID: string;
+  lastUpdatedAt: number;
+  name: string | null;
+  description?: string;
+  registeredName: string | null;
+  location?: string;
+  geoLocation?: [number, number]; // [longitude, latitude]
+  longitude?: number;
+  latitude?: number;
+}
+ */
+public record Profile(
+    string address,
+    string CID,
+    long lastUpdatedAt,
+    string name,
+    string? description,
+    string? registeredName,
+    string? location,
+    string? imageUrl,
+    string? previewImageUrl,
+    float[]? geoLocation,
+    float? longitude,
+    float? latitude);
 
 #endregion
 
@@ -206,17 +234,17 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "",
         IsImplemented = true)]
-    Task<ResultWrapper<IpfsDataProfile>> circles_getProfileByCid(string cid);
+    Task<ResultWrapper<Profile>> circles_getProfileByCid(string cid);
 
     [JsonRpcMethod(Description = "",
         IsImplemented = true)]
-    Task<ResultWrapper<IpfsDataProfile?[]>> circles_getProfileByCidBatch(string[] cids);
+    Task<ResultWrapper<Profile?[]>> circles_getProfileByCidBatch(string[] cids);
 
     [JsonRpcMethod(Description = "",
         IsImplemented = true)]
-    Task<ResultWrapper<IpfsDataProfile>> circles_getProfileByAddress(Address avatar);
+    Task<ResultWrapper<Profile>> circles_getProfileByAddress(Address avatar);
 
     [JsonRpcMethod(Description = "",
         IsImplemented = true)]
-    Task<ResultWrapper<IpfsDataProfile?[]>> circles_getProfileByAddressBatch(Address[] avatars);
+    Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address[] avatars);
 }

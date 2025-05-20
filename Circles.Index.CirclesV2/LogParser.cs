@@ -3,7 +3,6 @@ using System.Numerics;
 using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
-using Circles.Index.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -339,7 +338,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             {
                 var tokenAddress = e switch
                 {
-                    IV2Erc1155TransferEvent te1155 => ConversionUtils.UInt256ToAddress(te1155.Id)
+                    IV2Erc1155TransferEvent te1155 => AddressConverter.UInt256ToAddress(te1155.Id)
                         .ToString(true, false),
                     IV2Erc20TransferEvent te20 => te20.TokenAddress,
                     _ => throw new Exception("Unsupported transaction type")

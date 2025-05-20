@@ -1,5 +1,5 @@
 using System.Globalization;
-using Circles.Index.Utils;
+using Circles.Index.Common;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
@@ -37,7 +37,7 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 2. Run max-flow (no path extraction needed)
          * ------------------------------------------------------------------ */
-        long target = ConversionUtils.TruncateToInt64(targetFlow);
+        long target = CirclesConverter.TruncateToInt64(targetFlow);
         var solved = MaxFlowSolver.Solve(
             capacityGraph.Edges,
             sourceId,
@@ -87,7 +87,7 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 2. Run max-flow and peel paths
          * ------------------------------------------------------------------ */
-        long tgt = ConversionUtils.TruncateToInt64(targetFlow);
+        long tgt = CirclesConverter.TruncateToInt64(targetFlow);
         var solved = MaxFlowSolver.Solve(capacityGraph.Edges, sourceId, effSink, tgt);
         var simplePath = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
 
@@ -165,7 +165,7 @@ public class V2Pathfinder
                 From = AddressIdPool.StringOf(e.From),
                 To = AddressIdPool.StringOf(e.To),
                 TokenOwner = AddressIdPool.StringOf(e.Token),
-                Value = ConversionUtils
+                Value = CirclesConverter
                     .BlowUpToUInt256(e.Flow)
                     .ToString(CultureInfo.InvariantCulture)
             };

@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Circles.Index.Utils;
+using Circles.Index.Common;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
 using Nethermind.Int256;
@@ -77,7 +77,7 @@ public class GraphFactory
             graph.AddBalance(
                 balance.Account,
                 balance.TokenAddress,
-                ConversionUtils.TruncateToInt64(UInt256.Parse(balance.Balance)),
+                CirclesConverter.TruncateToInt64(UInt256.Parse(balance.Balance)),
                 balance.IsWrapped,
                 balance.IsStatic);
         }
