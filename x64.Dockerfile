@@ -28,9 +28,11 @@ COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.dll /netherm
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Rpc.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Utils.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.Profiles.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Dapper.dll /nethermind/plugins
 
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins

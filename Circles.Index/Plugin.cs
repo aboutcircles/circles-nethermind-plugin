@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Data;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query;
@@ -31,6 +32,7 @@ public class Plugin : INethermindPlugin
     private int _isProcessing;
     private int _newItemsArrived;
     private long _latestHeadToIndex = -1;
+    private Task? _ipfsDownloader;
 
     public async Task Init(INethermindApi nethermindApi)
     {
@@ -154,6 +156,70 @@ public class Plugin : INethermindPlugin
 
             HandleNewHead(args.Block.Number);
         };
+
+        // Run the downloader
+        _ipfsDownloader = Task.Run(async () => await RunIpfsDownloader(settings),
+            _cancellationTokenSource.Token);
+    }
+
+    private async Task RunIpfsDownloader(Settings settings)
+    {
+        while (true)
+        {
+            try
+            {
+                var seedQuery = @"
+                    WITH digests AS (
+                        SELECT DISTINCT ""metadataDigest""::bytea AS metadata_digest
+                        FROM ""CrcV1_UpdateMetadataDigest""
+                        UNION ALL
+                        SELECT DISTINCT ""metadataDigest""
+                        FROM ""CrcV2_UpdateMetadataDigest""
+                    ), to_enqueue AS (
+                        SELECT
+                            d.metadata_digest
+                        FROM   digests d
+                                   LEFT   JOIN ipfs_queue q
+                                               ON q.metadata_digest = d.metadata_digest
+                                   LEFT   JOIN ipfs_files f
+                                               ON f.metadata_digest = d.metadata_digest
+                        WHERE  q.cid IS NULL
+                          AND  f.metadata_digest IS NULL
+                    ), with_cid as (
+                        select
+                            base58_encode(decode('1220','hex') || to_enqueue.metadata_digest) AS cid,
+                            metadata_digest
+                        from to_enqueue
+                    )
+                    INSERT INTO ipfs_queue (cid, metadata_digest, status, attempt_count, next_retry, updated_at)
+                    SELECT  cid,
+                            metadata_digest,
+                            'PENDING',
+                            0,
+                            NOW(),
+                            NOW()
+                    FROM   with_cid
+                    ON CONFLICT (cid) DO NOTHING;
+                ";
+
+                await using (var connection = new NpgsqlConnection(settings.IndexDbConnectionString))
+                {
+                    await connection.OpenAsync(_cancellationTokenSource.Token);
+                    await using var command = new NpgsqlCommand(seedQuery, connection);
+                    await command.ExecuteNonQueryAsync(_cancellationTokenSource.Token);
+                }
+
+                await IpfsDownloader.Main(
+                    _cancellationTokenSource.Token,
+                    settings.IndexDbConnectionString);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[IPFS Downloader] IPFS downloader failed: " + ex);
+                await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
+                Console.WriteLine("[IPFS Downloader] restarting IPFS downloader");
+            }
+        }
     }
 
     private void LogSettings(InterfaceLogger pluginLogger, Settings settings, IDatabase database)
