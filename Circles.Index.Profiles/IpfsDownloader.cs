@@ -6,7 +6,7 @@ using Dapper;
 using Npgsql;
 
 // Entry point ─────────────────────────────────────────────────────────────────
-public static class Program
+public static class IpfsDownloader
 {
     // === Config ==============================================================
     private static readonly int MaxParallelism = GetEnvInt("IPFS_MAX_PARALLELISM", 192);
@@ -18,9 +18,9 @@ public static class Program
     private static readonly long MaxDownloadBytes = GetEnvLong("IPFS_MAX_DOWNLOAD_BYTES", 164L * 1024);
     private static readonly int ChannelCapacity = MaxParallelism * 8; // derived
 
-    private static readonly string ConnectionString =
-        Environment.GetEnvironmentVariable("IPFS_PG_CONNECTION_STRING") ??
-        "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres";
+    // private static readonly string ConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
+    //                                                   ?? throw new Exception(
+    //                                                       "Postgres connection (env var: POSTGRES_CONNECTION_STRING) string not found");
 
     private static readonly string[] Gateways =
         Environment.GetEnvironmentVariable("IPFS_GATEWAYS") is { Length: > 0 } gwEnv
@@ -76,64 +76,58 @@ public static class Program
     private static long _bytesTotal;
 
     // === Main =================================================================
-    public static async Task Main()
+    public static async Task Main(CancellationToken ct, string connectionString)
     {
         Console.WriteLine("[BOOT] starting IPFS downloader");
 
-        await using var conn = new NpgsqlConnection(ConnectionString);
-        await conn.OpenAsync();
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
         await EnsureSchemaAsync(conn);
 
-        using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            cts.Cancel();
-        };
-
         Task writerTask = Task.Run(
-            () => WriterLoopAsync(PersistQueue.Reader, cts.Token),
-            cts.Token);
+            () => WriterLoopAsync(PersistQueue.Reader, ct, connectionString),
+            ct);
 
         Task reaperTask = Task.Run(
-            () => ReaperLoopAsync(cts.Token),
-            cts.Token);
+            () => ReaperLoopAsync(ct, connectionString),
+            ct);
 
         Task statsTask = Task.Run(
-            () => StatsLoopAsync(cts.Token),
-            cts.Token);
+            () => StatsLoopAsync(ct),
+            ct);
 
-        while (!cts.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
+            Console.WriteLine("[LOOP] reserving work…");
             List<QueueRow> batch;
             try
             {
-                batch = await ReserveAsync(conn, MaxParallelism * 4, cts.Token);
+                batch = await ReserveAsync(conn, MaxParallelism * 4);
             }
             catch (PostgresException pgEx) when (IsTransient(pgEx))
             {
                 Console.WriteLine($"[WARN] transient DB error during reserve: {pgEx.Message}");
-                await ReopenAsync(conn, cts.Token);
-                await Task.Delay(1000, cts.Token);
+                await ReopenAsync(conn, ct);
+                await Task.Delay(1000, ct);
                 continue;
             }
-            catch (Exception ex) when (!cts.IsCancellationRequested)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 Console.WriteLine($"[WARN] reserve failed: {ex.Message}");
-                await Task.Delay(1000, cts.Token);
+                await Task.Delay(1000, ct);
                 continue;
             }
 
             if (batch.Count == 0)
             {
-                await Task.Delay(500, cts.Token);
+                await Task.Delay(100, ct);
                 continue;
             }
 
             ParallelOptions opts = new()
             {
                 MaxDegreeOfParallelism = MaxParallelism,
-                CancellationToken = cts.Token
+                CancellationToken = ct
             };
 
             await Parallel.ForEachAsync(batch, opts,
@@ -147,14 +141,14 @@ public static class Program
         Console.WriteLine("[SHUTDOWN] done");
     }
 
-    private static async Task ReaperLoopAsync(CancellationToken ct)
+    private static async Task ReaperLoopAsync(CancellationToken ct, string connectionString)
     {
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(30), ct);
             try
             {
-                await using var conn = new NpgsqlConnection(ConnectionString);
+                await using var conn = new NpgsqlConnection(connectionString);
                 await conn.OpenAsync(ct);
                 const string reset = @"
                 UPDATE ipfs_queue
@@ -202,8 +196,7 @@ public static class Program
     // === Work reservation =====================================================
     private static async Task<List<QueueRow>> ReserveAsync(
         NpgsqlConnection conn,
-        int limit,
-        CancellationToken ct)
+        int limit)
     {
         const string sql = @"
             WITH pick AS (
@@ -330,9 +323,10 @@ public static class Program
     // === Dedicated writer =====================================================
     private static async Task WriterLoopAsync(
         ChannelReader<PersistJob> reader,
-        CancellationToken ct)
+        CancellationToken ct,
+        string connectionString)
     {
-        await using var conn = new NpgsqlConnection(ConnectionString);
+        await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync(ct);
 
         while (!ct.IsCancellationRequested && await reader.WaitToReadAsync(ct))

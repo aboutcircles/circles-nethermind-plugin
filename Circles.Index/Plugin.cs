@@ -31,6 +31,7 @@ public class Plugin : INethermindPlugin
     private int _isProcessing;
     private int _newItemsArrived;
     private long _latestHeadToIndex = -1;
+    private Task? _ipfsDownloader;
 
     public async Task Init(INethermindApi nethermindApi)
     {
@@ -154,6 +155,29 @@ public class Plugin : INethermindPlugin
 
             HandleNewHead(args.Block.Number);
         };
+
+        // Run the downloader
+        _ipfsDownloader = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    try
+                    {
+                        // TODO: Find all missing CIDs and enque them
+                        
+                        await IpfsDownloader.Main(
+                            _cancellationTokenSource.Token,
+                            settings.IndexDbConnectionString);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("[IPFS Downloader] IPFS downloader failed: " + ex);
+                        await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
+                        Console.WriteLine("[IPFS Downloader] restarting IPFS downloader");
+                    }
+                }
+            },
+            _cancellationTokenSource.Token);
     }
 
     private void LogSettings(InterfaceLogger pluginLogger, Settings settings, IDatabase database)
