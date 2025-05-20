@@ -45,29 +45,34 @@ SELECT "V_CrcV1_Avatars"."blockNumber",
 FROM "V_CrcV1_Avatars";
 
 
-create table if not exists ipfs_files
+create table if not exists public.ipfs_files
 (
-    id            serial
-        primary key,
-    cid           text                                   not null
-        unique,
-    payload       jsonb                                  not null,
-    downloaded_at timestamp with time zone default now() not null
+    id              serial                                 primary key,
+    cid             text                                   not null unique,
+    metadata_digest bytea                                  not null unique,
+    payload         jsonb                                  not null,
+    downloaded_at   timestamp with time zone default now() not null
 );
+
+create unique index if not exists idx_ipfs_files_metadata_digest
+    on public.ipfs_files (metadata_digest);
 
 create table if not exists public.ipfs_queue
 (
-    cid           text                     not null
-        primary key,
-    status        text                     not null,
-    attempt_count integer                  not null,
-    next_retry    timestamp with time zone not null,
-    last_error    text,
-    updated_at    timestamp with time zone not null
+    cid             text                     not null primary key,
+    metadata_digest bytea                    not null unique,
+    status          text                     not null,
+    attempt_count   integer                  not null,
+    next_retry      timestamp with time zone not null,
+    last_error      text,
+    updated_at      timestamp with time zone not null
 );
 
 create index if not exists ipfs_queue_next_retry_status_idx
     on public.ipfs_queue (next_retry, status);
+
+create unique index if not exists id_ipfs_queue_metadata_digest
+    on public.ipfs_queue (metadata_digest);
 
 create or replace function public.base58_encode(data bytea) returns text
     immutable
@@ -137,18 +142,22 @@ $$
 BEGIN
     /*  Collect all distinct CIDs created by this INSERT and push only the
         ones we haven’t already downloaded or queued.  */
-
-    WITH candidate_cids AS (SELECT DISTINCT base58_encode(decode('1220', 'hex') || nr."metadataDigest") AS cid
-                            FROM new_rows nr
-                            WHERE nr."metadataDigest" IS NOT NULL),
-         missing AS (SELECT cid
-                     FROM candidate_cids c
-                     WHERE NOT EXISTS (SELECT 1 FROM ipfs_files f WHERE f.cid = c.cid)
-                       AND NOT EXISTS (SELECT 1 FROM ipfs_queue q WHERE q.cid = c.cid))
-    INSERT
-    INTO ipfs_queue (cid, status, attempt_count, next_retry, updated_at)
-    SELECT cid, 'PENDING', 0, NOW(), NOW()
-    FROM missing
+    WITH candidate_cids AS (
+                SELECT DISTINCT
+               base58_encode(decode('1220','hex') || nr."metadataDigest") AS cid,
+               nr."metadataDigest"                                             AS metadata_digest
+        FROM new_rows nr
+        WHERE nr."metadataDigest" IS NOT NULL
+     ),
+              missing AS (
+                 SELECT cid, metadata_digest
+                 FROM candidate_cids c
+                 WHERE NOT EXISTS (SELECT 1 FROM ipfs_files f WHERE f.cid = c.cid)
+                   AND NOT EXISTS (SELECT 1 FROM ipfs_queue q WHERE q.cid = c.cid)
+              )
+         INSERT INTO ipfs_queue (cid, metadata_digest, status, attempt_count, next_retry, updated_at)
+              SELECT cid, metadata_digest, 'PENDING', 0, NOW(), NOW()
+        FROM missing
     ON CONFLICT DO NOTHING; -- double-insert safety
 
     RETURN NULL;
