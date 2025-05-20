@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -82,7 +83,6 @@ public static class IpfsDownloader
 
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync(ct);
-        await EnsureSchemaAsync(conn);
 
         Task writerTask = Task.Run(
             () => WriterLoopAsync(PersistQueue.Reader, ct, connectionString),
@@ -165,33 +165,6 @@ public static class IpfsDownloader
         }
     }
 
-    // === DB bootstrap =========================================================
-    private static async Task EnsureSchemaAsync(NpgsqlConnection conn)
-    {
-        const string ddl = @"
-            CREATE TABLE IF NOT EXISTS ipfs_files (
-                id  SERIAL PRIMARY KEY,
-                cid TEXT UNIQUE NOT NULL,
-                payload JSONB NOT NULL,
-                downloaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-
-            CREATE TABLE IF NOT EXISTS ipfs_queue (
-                cid TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                attempt_count INT NOT NULL,
-                next_retry TIMESTAMPTZ NOT NULL,
-                last_error TEXT,
-                updated_at TIMESTAMPTZ NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS ipfs_queue_next_retry_status_idx
-                ON ipfs_queue(next_retry, status);
-        ";
-
-        await conn.ExecuteAsync(ddl);
-    }
-
     // === Work reservation =====================================================
     private static async Task<List<QueueRow>> ReserveAsync(
         NpgsqlConnection conn,
@@ -213,11 +186,11 @@ public static class IpfsDownloader
               FROM pick
              WHERE q.cid = pick.cid
           RETURNING q.cid AS ""Cid"",
+                    q.metadata_digest AS ""MetadataDigest"",
                     q.attempt_count AS ""AttemptCount"";
         ";
 
-        IEnumerable<QueueRow> rows =
-            await conn.QueryAsync<QueueRow>(sql, new { limit });
+        IEnumerable<QueueRow> rows = await conn.QueryAsync<QueueRow>(sql, new { limit });
         return rows.ToList();
     }
 
@@ -310,7 +283,7 @@ public static class IpfsDownloader
         }
 
         await PersistQueue.Writer.WriteAsync(
-            new PersistJob(row.Cid, success, blacklisted, json, error, nextAttempt), ct);
+            new PersistJob(row.Cid, row.MetadataDigest, success, blacklisted, json, error, nextAttempt), ct);
     }
 
     private static HttpClient NextClient()
@@ -348,11 +321,16 @@ public static class IpfsDownloader
                 if (completed.Count > 0)
                 {
                     const string insertFile = @"
-                        INSERT INTO ipfs_files (cid, payload)
-                        VALUES (@cid, @json::jsonb)
+                        INSERT INTO ipfs_files (cid, metadata_digest, payload)
+                        VALUES (@cid, @metadata_digest, @json::jsonb)
                         ON CONFLICT DO NOTHING;";
                     await conn.ExecuteAsync(insertFile,
-                        completed.Select(j => new { cid = j.Cid, json = j.Json }), tx);
+                        completed.Select(j => new
+                        {
+                            cid = j.Cid,
+                            metadata_digest = j.MetadataDigest,
+                            json = j.Json
+                        }), tx);
 
                     const string markDone = @"
                         UPDATE ipfs_queue
@@ -475,10 +453,11 @@ public static class IpfsDownloader
                 : text;
 
     // === Record types =========================================================
-    private sealed record QueueRow(string Cid, int AttemptCount);
+    private sealed record QueueRow(string Cid, byte[] MetadataDigest, int AttemptCount);
 
     private sealed record PersistJob(
         string Cid,
+        byte[] MetadataDigest,
         bool Success,
         bool Blacklisted,
         string? Json,
