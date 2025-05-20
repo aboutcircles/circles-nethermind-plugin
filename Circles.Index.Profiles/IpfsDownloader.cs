@@ -1,7 +1,9 @@
 // ./IpfsDownloader.cs
 // Usings ──────────────────────────────────────────────────────────────────────
+
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using Dapper;
 using Npgsql;
@@ -10,12 +12,14 @@ using Npgsql;
 public static class Program
 {
     // === Config ==============================================================
-    private const int MaxParallelism      = 160;
-    private const int HttpTimeoutSeconds  = 1;
-    private const int MaxBackoffSeconds   = 3600 * 24; // 24 h
-    private const int StatsIntervalSec    = 30;
-    private const int ErrorMaxLen         = 1024;
-    private const int WriterBatchSize     = 256;
+    private const int MaxParallelism = 192;
+    private const int HttpTimeoutSeconds = 1;
+    private const int MaxBackoffSeconds = 3600 * 24; // 24 h
+    private const int StatsIntervalSec = 30;
+    private const int ErrorMaxLen = 1024;
+    private const int WriterBatchSize = 256;
+    private const long MaxDownloadBytes = 164 * 1024; // 164 KiB hard limit
+    private const int ChannelCapacity = MaxParallelism * 8;
 
     private const string ConnectionString =
         "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres";
@@ -41,13 +45,11 @@ public static class Program
             return new HttpClient(handler)
             {
                 BaseAddress = new Uri(gw, UriKind.Absolute),
-                Timeout     = TimeSpan.FromSeconds(HttpTimeoutSeconds)
+                Timeout = TimeSpan.FromSeconds(HttpTimeoutSeconds)
             };
         }).ToArray();
 
     private static int _roundRobin;
-
-    private static readonly int ChannelCapacity = MaxParallelism * 8;
 
     private static readonly Channel<PersistJob> PersistQueue =
         Channel.CreateBounded<PersistJob>(
@@ -55,7 +57,7 @@ public static class Program
             {
                 SingleReader = true,
                 SingleWriter = false,
-                FullMode     = BoundedChannelFullMode.Wait
+                FullMode = BoundedChannelFullMode.Wait
             });
 
     private static long _okCount;
@@ -83,7 +85,11 @@ public static class Program
         };
 
         Task writerTask = Task.Run(
-            () => WriterLoopAsync(ConnectionString, PersistQueue.Reader, cts.Token),
+            () => WriterLoopAsync(PersistQueue.Reader, cts.Token),
+            cts.Token);
+
+        Task reaperTask = Task.Run(
+            () => ReaperLoopAsync(cts.Token),
             cts.Token);
 
         Task statsTask = Task.Run(
@@ -97,6 +103,13 @@ public static class Program
             {
                 batch = await ReserveAsync(conn, MaxParallelism * 4, cts.Token);
             }
+            catch (PostgresException pgEx) when (IsTransient(pgEx))
+            {
+                Console.WriteLine($"[WARN] transient DB error during reserve: {pgEx.Message}");
+                await ReopenAsync(conn, cts.Token);
+                await Task.Delay(1000, cts.Token);
+                continue;
+            }
             catch (Exception ex) when (!cts.IsCancellationRequested)
             {
                 Console.WriteLine($"[WARN] reserve failed: {ex.Message}");
@@ -104,8 +117,7 @@ public static class Program
                 continue;
             }
 
-            bool noWork = batch.Count == 0;
-            if (noWork)
+            if (batch.Count == 0)
             {
                 await Task.Delay(500, cts.Token);
                 continue;
@@ -114,7 +126,7 @@ public static class Program
             ParallelOptions opts = new()
             {
                 MaxDegreeOfParallelism = MaxParallelism,
-                CancellationToken      = cts.Token
+                CancellationToken = cts.Token
             };
 
             await Parallel.ForEachAsync(batch, opts,
@@ -123,9 +135,34 @@ public static class Program
 
         Console.WriteLine("[SHUTDOWN] cancelling…");
         PersistQueue.Writer.Complete();
-        await Task.WhenAll(writerTask, statsTask);
+        await Task.WhenAll(writerTask, statsTask, reaperTask);
         foreach (HttpClient c in _clients) c.Dispose();
         Console.WriteLine("[SHUTDOWN] done");
+    }
+
+    private static async Task ReaperLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            try
+            {
+                await using var conn = new NpgsqlConnection(ConnectionString);
+                await conn.OpenAsync(ct);
+                const string reset = @"
+                UPDATE ipfs_queue
+                   SET status     = 'FAILED',
+                       next_retry = NOW(),
+                       updated_at = NOW()
+                 WHERE status = 'IN_PROGRESS'
+                   AND updated_at < NOW() - INTERVAL '1 minute';";
+                await conn.ExecuteAsync(reset, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                Console.WriteLine($"[REAPER] failed: {ex.Message}");
+            }
+        }
     }
 
     // === Helper: discover missing CIDs =======================================
@@ -226,21 +263,68 @@ public static class Program
         QueueRow row,
         CancellationToken ct)
     {
-        bool   success;
-        string? json  = null;
+        bool success;
+        bool blacklisted = false;
+        string? json = null;
         string? error = null;
-        Stopwatch sw  = Stopwatch.StartNew();
+        Stopwatch sw = Stopwatch.StartNew();
 
         try
         {
             HttpClient client = NextClient();
-            json    = await client.GetStringAsync($"ipfs/{row.Cid}", ct);
-            success = true;
+
+            using HttpRequestMessage req = new(HttpMethod.Get, $"ipfs/{row.Cid}");
+            using HttpResponseMessage resp =
+                await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            resp.EnsureSuccessStatusCode();
+
+            long? contentLength = resp.Content.Headers.ContentLength;
+            if (contentLength.HasValue && contentLength.Value > MaxDownloadBytes)
+            {
+                blacklisted = true;
+                throw new InvalidOperationException(
+                    $"Payload too large: {contentLength.Value} B > {MaxDownloadBytes} B");
+            }
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+            using var ms = new MemoryStream();
+
+            byte[] buffer = new byte[8192];
+            int read;
+            long total = 0;
+            while ((read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
+            {
+                total += read;
+                if (total > MaxDownloadBytes)
+                {
+                    blacklisted = true;
+                    throw new InvalidOperationException(
+                        $"Payload exceeded limit {MaxDownloadBytes} B while streaming");
+                }
+
+                ms.Write(buffer, 0, read);
+            }
+
+            json = Encoding.UTF8.GetString(ms.ToArray());
+
+            // -------- JSON validation --------
+            try
+            {
+                JsonDocument.Parse(json);
+                success = true;
+            }
+            catch (JsonException)
+            {
+                success = false;
+                blacklisted = true;
+                error = "invalid JSON payload";
+            }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             success = false;
-            error   = ex.Message;
+            error = ex.Message;
             Console.WriteLine($"[WARN] download failed for {row.Cid}: {error}");
         }
         finally
@@ -248,8 +332,8 @@ public static class Program
             sw.Stop();
         }
 
-        int  nextAttempt = success ? row.AttemptCount : row.AttemptCount + 1;
-        long sizeBytes   = json is not null ? Encoding.UTF8.GetByteCount(json) : 0;
+        int nextAttempt = success ? row.AttemptCount : row.AttemptCount + 1;
+        long sizeBytes = json is not null ? Encoding.UTF8.GetByteCount(json) : 0;
 
         if (success)
         {
@@ -263,7 +347,7 @@ public static class Program
         }
 
         await PersistQueue.Writer.WriteAsync(
-            new PersistJob(row.Cid, success, json, error, nextAttempt), ct);
+            new PersistJob(row.Cid, success, blacklisted, json, error, nextAttempt), ct);
     }
 
     private static HttpClient NextClient()
@@ -274,72 +358,102 @@ public static class Program
 
     // === Dedicated writer =====================================================
     private static async Task WriterLoopAsync(
-        string connString,
         ChannelReader<PersistJob> reader,
         CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(connString);
+        await using var conn = new NpgsqlConnection(ConnectionString);
         await conn.OpenAsync(ct);
 
-        await foreach (PersistJob firstJob in reader.ReadAllAsync(ct))
+        while (!ct.IsCancellationRequested && await reader.WaitToReadAsync(ct))
         {
-            var batch = new List<PersistJob>(WriterBatchSize) { firstJob };
-
-            while (batch.Count < WriterBatchSize && reader.TryRead(out PersistJob? next))
+            var batch = new List<PersistJob>(WriterBatchSize);
+            while (batch.Count < WriterBatchSize && reader.TryRead(out var job))
             {
-                batch.Add(next);
+                batch.Add(job);
             }
 
-            await using var tx = await conn.BeginTransactionAsync(ct);
+            if (conn.FullState != System.Data.ConnectionState.Open)
+                await ReopenAsync(conn, ct);
 
-            var completed = batch.Where(j => j.Success && j.Json is not null).ToList();
-            if (completed.Count > 0)
+            try
             {
-                const string insertFile = @"
-                    INSERT INTO ipfs_files (cid, payload)
-                    VALUES (@cid, @json::jsonb)
-                    ON CONFLICT DO NOTHING;";
-                await conn.ExecuteAsync(insertFile,
-                    completed.Select(j => new { cid = j.Cid, json = j.Json }), tx);
+                await using var tx = await conn.BeginTransactionAsync(ct);
 
-                const string markDone = @"
-                    UPDATE ipfs_queue
-                       SET status     = 'COMPLETED',
-                           updated_at = NOW()
-                     WHERE cid = ANY(@cids);";
-                await conn.ExecuteAsync(markDone,
-                    new { cids = completed.Select(j => j.Cid).ToArray() }, tx);
-            }
-
-            var failed = batch.Where(j => !j.Success).ToList();
-            foreach (PersistJob job in failed)
-            {
-                TimeSpan backoff = CalcBackoff(job.NextAttempt);
-
-                string errorTrunc = string.IsNullOrEmpty(job.Error)
-                    ? string.Empty
-                    : job.Error!.Length > ErrorMaxLen
-                        ? job.Error[..ErrorMaxLen]
-                        : job.Error;
-
-                const string markFail = @"
-                    UPDATE ipfs_queue
-                       SET status        = 'FAILED',
-                           attempt_count = @nextAttempt,
-                           last_error    = @error,
-                           next_retry    = NOW() + @backoff,
-                           updated_at    = NOW()
-                     WHERE cid = @cid;";
-                await conn.ExecuteAsync(markFail, new
+                // successes
+                var completed = batch.Where(j => j.Success).ToList();
+                if (completed.Count > 0)
                 {
-                    cid         = job.Cid,
-                    nextAttempt = job.NextAttempt,
-                    error       = errorTrunc,
-                    backoff
-                }, tx);
-            }
+                    const string insertFile = @"
+                        INSERT INTO ipfs_files (cid, payload)
+                        VALUES (@cid, @json::jsonb)
+                        ON CONFLICT DO NOTHING;";
+                    await conn.ExecuteAsync(insertFile,
+                        completed.Select(j => new { cid = j.Cid, json = j.Json }), tx);
 
-            await tx.CommitAsync(ct);
+                    const string markDone = @"
+                        UPDATE ipfs_queue
+                           SET status     = 'COMPLETED',
+                               updated_at = NOW()
+                         WHERE cid = ANY(@cids);";
+                    await conn.ExecuteAsync(markDone,
+                        new { cids = completed.Select(j => j.Cid).ToArray() }, tx);
+                }
+
+                // blacklisted
+                var blacklisted = batch.Where(j => j.Blacklisted).ToList();
+                foreach (var job in blacklisted)
+                {
+                    string errorTrunc = Truncate(job.Error);
+                    const string markBlack = @"
+                        UPDATE ipfs_queue
+                           SET status        = 'BLACKLISTED',
+                               attempt_count = @nextAttempt,
+                               last_error    = @error,
+                               updated_at    = NOW()
+                         WHERE cid = @cid;";
+                    await conn.ExecuteAsync(markBlack, new
+                    {
+                        cid = job.Cid,
+                        nextAttempt = job.NextAttempt,
+                        error = errorTrunc
+                    }, tx);
+                }
+
+                // regular failures
+                var failed = batch.Where(j => !j.Success && !j.Blacklisted).ToList();
+                foreach (var job in failed)
+                {
+                    TimeSpan backoff = CalcBackoff(job.NextAttempt);
+
+                    string errorTrunc = Truncate(job.Error);
+                    const string markFail = @"
+                        UPDATE ipfs_queue
+                           SET status        = 'FAILED',
+                               attempt_count = @nextAttempt,
+                               last_error    = @error,
+                               next_retry    = NOW() + @backoff,
+                               updated_at    = NOW()
+                         WHERE cid = @cid;";
+                    await conn.ExecuteAsync(markFail, new
+                    {
+                        cid = job.Cid,
+                        nextAttempt = job.NextAttempt,
+                        error = errorTrunc,
+                        backoff
+                    }, tx);
+                }
+
+                await tx.CommitAsync(ct);
+            }
+            catch (PostgresException pgEx) when (IsTransient(pgEx))
+            {
+                Console.WriteLine($"[WARN] writer transient DB error: {pgEx.SqlState} – {pgEx.Message}");
+                await ReopenAsync(conn, ct);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                Console.WriteLine($"[ERROR] writer crashed while persisting: {ex}");
+            }
         }
     }
 
@@ -350,9 +464,9 @@ public static class Program
         {
             await Task.Delay(TimeSpan.FromSeconds(StatsIntervalSec), ct);
 
-            long ok   = Interlocked.Exchange(ref _okCount,    0);
-            long fail = Interlocked.Exchange(ref _failCount,  0);
-            long mb   = Interlocked.Exchange(ref _bytesTotal, 0) / 1_000_000;
+            long ok = Interlocked.Exchange(ref _okCount, 0);
+            long fail = Interlocked.Exchange(ref _failCount, 0);
+            long mb = Interlocked.Exchange(ref _bytesTotal, 0) / 1_000_000;
 
             Console.WriteLine(
                 $"[STATS] last {StatsIntervalSec}s  ok={ok}  fail={fail}  MB={mb}  queued={PersistQueue.Reader.Count}/{ChannelCapacity}");
@@ -362,18 +476,48 @@ public static class Program
     // === Helpers ==============================================================
     private static TimeSpan CalcBackoff(int attempt)
     {
-        double baseSec      = Math.Pow(2, Math.Min(attempt, 16));
-        double jitterFactor = 0.5 + Random.Shared.NextDouble(); // 0.5 – 1.5
-        double secs         = baseSec * jitterFactor;
+        double baseSec = Math.Pow(2, Math.Min(attempt, 16));
+        double jitterFactor = 0.5 + Random.Shared.NextDouble();
+        double secs = baseSec * jitterFactor;
 
-        bool exceeds = secs > MaxBackoffSeconds;
-        return exceeds
+        return secs > MaxBackoffSeconds
             ? TimeSpan.FromSeconds(MaxBackoffSeconds)
             : TimeSpan.FromSeconds(secs);
     }
 
+    private static bool IsTransient(PostgresException ex) =>
+        ex.IsTransient ||
+        (ex.SqlState is { Length: 5 } state && state.StartsWith("08", StringComparison.Ordinal));
+
+    private static async Task ReopenAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        try
+        {
+            await conn.CloseAsync();
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        await conn.OpenAsync(ct);
+    }
+
+    private static string Truncate(string? text) =>
+        string.IsNullOrEmpty(text)
+            ? string.Empty
+            : text!.Length > ErrorMaxLen
+                ? text[..ErrorMaxLen]
+                : text;
+
     // === Record types =========================================================
-    private sealed record QueueRow  (string Cid, int AttemptCount);
-    private sealed record PersistJob(string Cid, bool Success,
-                                     string? Json, string? Error, int NextAttempt);
+    private sealed record QueueRow(string Cid, int AttemptCount);
+
+    private sealed record PersistJob(
+        string Cid,
+        bool Success,
+        bool Blacklisted,
+        string? Json,
+        string? Error,
+        int NextAttempt);
 }

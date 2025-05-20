@@ -42,9 +42,17 @@ This method allows you to query all individual Circles (v2) holdings of an addre
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getTokenBalances",
-    "params":["0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2"],
+    "params":["0x009626daded5e90aecee30ad3ebf2b3e510fe256"],
     "id":1
-}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+```
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circlesV2_getTotalBalance",
+    "params":["0x009626daded5e90aecee30ad3ebf2b3e510fe256"],
+    "id":1
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
 
 ##### Response:
@@ -83,26 +91,7 @@ curl -X POST --data '{
       "Table": "Transfers",
       "Limit": 10,
       "Columns": [],
-      "Filter": [
-        {
-          "Type": "Conjunction",
-          "ConjunctionType": "Or",
-          "Predicates": [
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "Equals",
-                "Column": "from",
-                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
-              },
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "Equals",
-                "Column": "to",
-                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
-              }
-          ]
-        }
-      ],
+      "Filter": [],
       "Order": [
         {
           "Column": "blockNumber",
@@ -123,7 +112,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" http://localhost:8545/
 ```
 
 ##### Response:
@@ -389,7 +378,9 @@ curl 'https://rpc.aboutcircles.com/' -H 'Content-Type: application/json' --data-
 ```
 
 #### Get all events of a specific type within a specific block range
+
 From block 38000000 to the latest block, get all events of type `CrcV1_Trust`:
+
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
@@ -417,4 +408,85 @@ curl -X POST --data '{
     "0xde374ece6fa50e781e81aac78e811b33d16912c7", "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
   ]
 }' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Query groups
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_CrcV2",
+      "Table": "GroupTokenHoldersBalance",
+      "Columns": [],
+      "Filter": [],
+      "Order": [
+      ]
+    }
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+```
+
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getBalanceBreakdown",
+  "params": ["0xc6d075112b96b75460e543e3bf70be9ab45b62d9"]
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getTokenBalances",
+    "params":["0xc6d075112b96b75460e543e3bf70be9ab45b62d9"],
+    "id":1
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getAvatarInfoBatch",
+    "params":[["0xde374ece6fa50e781e81aac78e811b33d16912c7"]],
+    "id":1
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+```
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_Crc",
+      "Table": "Tokens",
+      "Columns": [
+         "blockNumber",
+         "timestamp",
+         "transactionIndex",
+         "logIndex",
+         "transactionHash",
+         "version",
+         "type",
+         "token",
+         "tokenOwner"
+      ],
+      "Filter": [{
+         "Type": "FilterPredicate",
+         "FilterType": "Equals",
+         "Column": "token",
+         "Value": "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e"
+      }],
+      "Order": [
+      ]
+    }
+  ]
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
 ```
