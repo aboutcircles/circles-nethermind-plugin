@@ -17,21 +17,12 @@ public static class IpfsDownloader
     private static readonly int ErrorMaxLen = GetEnvInt("IPFS_ERROR_MAX_LEN", 1024);
     private static readonly int WriterBatchSize = GetEnvInt("IPFS_WRITER_BATCH_SIZE", 256);
     private static readonly long MaxDownloadBytes = GetEnvLong("IPFS_MAX_DOWNLOAD_BYTES", 164L * 1024);
-    private static readonly int ChannelCapacity = MaxParallelism * 8; // derived
-
-    // private static readonly string ConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
-    //                                                   ?? throw new Exception(
-    //                                                       "Postgres connection (env var: POSTGRES_CONNECTION_STRING) string not found");
+    private static readonly int ChannelCapacity = MaxParallelism * 8;
 
     private static readonly string[] Gateways =
         Environment.GetEnvironmentVariable("IPFS_GATEWAYS") is { Length: > 0 } gwEnv
             ? gwEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            : new[]
-            {
-                "https://evident-magenta-puma.myfilebase.com",
-                "https://circles-profiles.myfilebase.com",
-                "https://da08cae2-8b50-45dc-80b9-48925be78ec8.myfilebase.com"
-            };
+            : ["https://circles-profiles.myfilebase.com"];
 
     private static int GetEnvInt(string name, int @default) =>
         int.TryParse(Environment.GetEnvironmentVariable(name), out var val) && val > 0
