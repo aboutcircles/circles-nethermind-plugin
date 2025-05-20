@@ -10,59 +10,56 @@ WITH
 ---- GroupMembersChange
 groups_trusts AS (
 	SELECT
-		"timestamp",
-		"logIndex",
-		truster,
-		trustee,
-		"expiryTime"
-		,"TrusterIsGroup"
-		,"TrusteeIsGroup"
-	FROM (
-		SELECT 
-			t1.*
-			,CASE WHEN t2.group IS NOT NULL THEN TRUE ELSE FALSE END AS "TrusterIsGroup"
-			,CASE WHEN t3.group IS NOT NULL THEN TRUE ELSE FALSE END AS "TrusteeIsGroup"
-		FROM 
-			"CrcV2_Trust" t1
-		LEFT JOIN
-			"V_CrcV2_Groups" t2
-			ON t2.group = t1.truster 
-		LEFT JOIN
-			"V_CrcV2_Groups" t3
-			ON t3.group = t1.trustee
-	) a
-	WHERE
-		"TrusterIsGroup" IS TRUE OR "TrusteeIsGroup" IS TRUE
+		t1."timestamp",
+		t1."logIndex",
+		t1.truster,
+		t1.trustee,
+		t1."expiryTime",
+		LEAD(t1."timestamp") OVER (PARTITION BY t1.truster, t1.trustee ORDER BY t1."timestamp", t1."logIndex") AS next_ts
+	FROM 
+		"CrcV2_Trust" t1
+	INNER JOIN 
+		"V_CrcV2_Groups" t2 
+		ON t2.group = t1.truster 
 ),
 
-groups_trusts_diff AS (
-    SELECT 
-        "timestamp"
-		,truster AS "group"
-        ,COUNT(*) AS cnt
-    FROM groups_trusts
-	WHERE "TrusterIsGroup" IS TRUE
-    GROUP BY 1, 2
-    
-    UNION ALL 
-    
-    SELECT 
-        "expiryTime" AS "timestamp"
-        ,truster AS "group"
-        ,-COUNT(*) AS cnt
-    FROM groups_trusts
-    WHERE "TrusterIsGroup" IS TRUE AND  "expiryTime" < 10000000000 --Sat Nov 20 2286
-    GROUP BY 1, 2
+trust_intervals AS (
+	SELECT 
+		truster AS "group",
+		"timestamp" AS start_ts,
+		CASE 
+			WHEN "expiryTime" < 10000000000 THEN "expiryTime"
+			WHEN next_ts IS NOT NULL THEN next_ts
+			ELSE NULL -- Still valid
+		END AS end_ts
+	FROM groups_trusts
+),
+
+group_membership_changes AS (
+	SELECT 
+		start_ts AS "timestamp",
+		"group",
+		1 AS cnt
+	FROM trust_intervals
+
+	UNION ALL
+
+	SELECT 
+		end_ts AS "timestamp",
+		"group",
+		-1 AS cnt
+	FROM trust_intervals
+	WHERE end_ts IS NOT NULL
 ),
 
 -- V_CrcV2_GroupMembersCount_1h
-members_change_sparse AS (
+members_hourly_sparse AS (
     SELECT 
         date_trunc('hour',TO_TIMESTAMP("timestamp")) AS "timestamp"
         ,"group"
         ,SUM(cnt) AS cnt
     FROM 
-        groups_trusts_diff
+        group_membership_changes
 	GROUP BY 1, 2
 ),
 
@@ -71,7 +68,7 @@ min_max_per_group AS (
         "group",
         MIN("timestamp") AS min_timestamp
     FROM 
-        members_change_sparse
+        members_hourly_sparse
     GROUP BY 1
 ),
 
@@ -94,7 +91,7 @@ members_change AS (
 	FROM 
 	    calendar t1
 	LEFT JOIN 
-		members_change_sparse t2
+		members_hourly_sparse t2
 	    ON t1."group" = t2."group" AND t1."timestamp" = t2."timestamp"
 )
 
