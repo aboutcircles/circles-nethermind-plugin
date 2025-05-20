@@ -12,24 +12,38 @@ using Npgsql;
 public static class Program
 {
     // === Config ==============================================================
-    private const int MaxParallelism = 192;
-    private const int HttpTimeoutSeconds = 1;
-    private const int MaxBackoffSeconds = 3600 * 24; // 24 h
-    private const int StatsIntervalSec = 30;
-    private const int ErrorMaxLen = 1024;
-    private const int WriterBatchSize = 256;
-    private const long MaxDownloadBytes = 164 * 1024; // 164 KiB hard limit
-    private const int ChannelCapacity = MaxParallelism * 8;
+    private static readonly int MaxParallelism = GetEnvInt("IPFS_MAX_PARALLELISM", 192);
+    private static readonly int HttpTimeoutSeconds = GetEnvInt("IPFS_HTTP_TIMEOUT_SEC", 1);
+    private static readonly int MaxBackoffSeconds = GetEnvInt("IPFS_MAX_BACKOFF_SEC", 3600 * 72);
+    private static readonly int StatsIntervalSec = GetEnvInt("IPFS_STATS_INTERVAL_SEC", 30);
+    private static readonly int ErrorMaxLen = GetEnvInt("IPFS_ERROR_MAX_LEN", 1024);
+    private static readonly int WriterBatchSize = GetEnvInt("IPFS_WRITER_BATCH_SIZE", 256);
+    private static readonly long MaxDownloadBytes = GetEnvLong("IPFS_MAX_DOWNLOAD_BYTES", 164L * 1024);
+    private static readonly int ChannelCapacity = MaxParallelism * 8; // derived
 
-    private const string ConnectionString =
+    private static readonly string ConnectionString =
+        Environment.GetEnvironmentVariable("IPFS_PG_CONNECTION_STRING") ??
         "Host=localhost;Port=5432;Username=postgres;Password=postgres;Database=postgres";
 
     private static readonly string[] Gateways =
-    {
-        "https://evident-magenta-puma.myfilebase.com",
-        "https://circles-profiles.myfilebase.com",
-        "https://da08cae2-8b50-45dc-80b9-48925be78ec8.myfilebase.com"
-    };
+        Environment.GetEnvironmentVariable("IPFS_GATEWAYS") is { Length: > 0 } gwEnv
+            ? gwEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : new[]
+            {
+                "https://evident-magenta-puma.myfilebase.com",
+                "https://circles-profiles.myfilebase.com",
+                "https://da08cae2-8b50-45dc-80b9-48925be78ec8.myfilebase.com"
+            };
+
+    private static int GetEnvInt(string name, int @default) =>
+        int.TryParse(Environment.GetEnvironmentVariable(name), out var val) && val > 0
+            ? val
+            : @default;
+
+    private static long GetEnvLong(string name, long @default) =>
+        long.TryParse(Environment.GetEnvironmentVariable(name), out var val) && val > 0
+            ? val
+            : @default;
 
     // === Globals ==============================================================
 
