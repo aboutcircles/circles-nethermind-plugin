@@ -526,3 +526,29 @@ curl -X POST --data '{
     "id":1
 }' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
+
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [
+    {
+      "Namespace": "V_CrcV2",
+      "Table": "BalancesByAccountAndToken",
+      "Columns": [],
+      "Filter": [{
+         "Type": "FilterPredicate",
+         "FilterType": "Equals",
+         "Column": "tokenAddress",
+         "Value": "0x42cedde51198d1773590311e2a340dc06b24cb37"
+      }],
+      "Order": [{
+         "Column": "demurragedTotalBalance",
+         "SortOrder": "DESC"
+      }]
+    }
+  ]
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
+```

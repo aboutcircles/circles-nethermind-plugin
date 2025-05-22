@@ -58,6 +58,12 @@ public class StateMachine(
 
                             context.Logger.Info(
                                 $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
+
+                            context.Logger.Info("Initializing: Warming up all caches...");
+                            await InitializeCaches(lastPersistedBlock);
+
+                            context.Logger.Info(
+                                "Initializing: Transitioning to 'Reorg' to clean up possible residues...");
                             await TransitionTo(State.Reorg, lastPersistedBlock);
                             return;
                         }
@@ -84,7 +90,8 @@ public class StateMachine(
                             {
                                 var countBeforeDelete = cache.Count;
                                 cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
-                                context.Logger.Info($"Deleted {countBeforeDelete - cache.Count} items from the '{cache.Name}' cache.");
+                                context.Logger.Info(
+                                    $"Deleted {countBeforeDelete - cache.Count} items from the '{cache.Name}' cache.");
                             }
 
                             await TransitionTo(State.WaitForNewBlock);
@@ -211,6 +218,18 @@ public class StateMachine(
     public async Task TransitionTo(State newState)
     {
         await TransitionTo<object>(newState, null);
+    }
+
+    private async Task InitializeCaches(long lastPersistedBlock)
+    {
+        //
+        // Init all LogParser caches
+        //
+        await Task.WhenAll(
+            context.LogParsers.Select(o => o.InitCaches(
+                context.Logger,
+                context.Database,
+                context.Settings)));
     }
 
     private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
