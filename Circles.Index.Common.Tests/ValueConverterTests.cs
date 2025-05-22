@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices.JavaScript;
 using Circles.Index.ContractClient;
 
 namespace Circles.Index.Common.Tests
@@ -19,7 +20,7 @@ namespace Circles.Index.Common.Tests
         [OneTimeSetUp]
         public void Setup()
         {
-            var rpc = "http://rpc.aboutcircles.com";
+            var rpc = "https://rpc.aboutcircles.com";
             var addr = "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8";
 
             if (!string.IsNullOrWhiteSpace(rpc) && !string.IsNullOrWhiteSpace(addr))
@@ -85,6 +86,21 @@ namespace Circles.Index.Common.Tests
                 Assert.That(math, Is.EqualTo(evm),
                     $"mismatch at iter {i}, day {day}");
             }
+        }
+
+        [Test]
+        public void Blubb()
+        {
+            var amount = BigInteger.Parse("278586469842282977102");
+
+            var day = MathConv.DayFromTimestamp(DateTimeOffset.UtcNow, 1_602_720_000);
+            var evm = ChainConv.InflationaryToDemurrage(amount, day, _hub!);
+            var math = MathConv.InflationaryToDemurrage(amount, day);
+
+            Assert.That(math, Is.EqualTo(evm),
+                $"mismatch day {day}");
+            
+            Assert.That(math, Is.EqualTo(BigInteger.Parse("199523717000000000000")));
         }
 
         // ───────────────── edge guards & other existing tests (unchanged) ───────

@@ -6,7 +6,7 @@ namespace Circles.Index.Common
     public static class V1Converter
     {
         public const ulong
-            ACCURACY = 100_000_000; // 1e8  :contentReference[oaicite:8]{index=8}:contentReference[oaicite:9]{index=9}
+            ACCURACY = 100_000_000; // 1e8
 
         /// <remarks>
         /// All inputs must be the exact values returned by HubV1:
@@ -22,10 +22,10 @@ namespace Circles.Index.Common
             uint secondsInto,
             uint periodSec)
         {
-            // rP = factorCur*(P-s) + factorNext*s   (see Migration.sol) :contentReference[oaicite:10]{index=10}:contentReference[oaicite:11]{index=11}
+            // rP = factorCur*(P-s) + factorNext*s   (see Migration.sol)
             BigInteger rP = factorCurrent * (periodSec - secondsInto) + factorNext * secondsInto;
 
-            // amount * 3 * ACCURACY * P / rP  (same rounding-down) :contentReference[oaicite:12]{index=12}:contentReference[oaicite:13]{index=13}
+            // amount * 3 * ACCURACY * P / rP  (same rounding-down)
             return (v1Amount * 3 * ACCURACY * periodSec) / rP;
         }
     }
