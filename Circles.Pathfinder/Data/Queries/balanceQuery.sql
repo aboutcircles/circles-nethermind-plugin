@@ -1,80 +1,121 @@
-WITH
-
-current_crc20_balances AS (
-    SELECT
-        MAX("timestamp") AS "timestamp"
-        ,account
-        ,"tokenAddress"
-        ,SUM(diff) AS balance
-    FROM (
-        SELECT 	
-            t1."timestamp"
-            ,t1."from" AS account
-            ,t1."tokenAddress"
-            ,-t1.amount AS diff
-        FROM public."CrcV2_Erc20WrapperTransfer" t1
-        INNER JOIN 
-            public."V_CrcV2_Avatars" t2
-            ON t2.avatar = t1."from"
-        
-        UNION ALL
-        
-        SELECT 
-            t1."timestamp"
-            ,t1."to" AS account
-            ,t1."tokenAddress"
-            ,t1.amount AS diff
-        FROM public."CrcV2_Erc20WrapperTransfer" t1
-        INNER JOIN 
-            public."V_CrcV2_Avatars" t2
-            ON t2.avatar = t1."to"
-    ) AS t
-    GROUP BY 2, 3
+with static_token_transfers as (
+    select t."blockNumber"
+         , t."timestamp"
+         , t."transactionIndex"
+         , t."logIndex"
+         , t."transactionHash"
+         , t."tokenAddress"
+         , t."from"
+         , t."to"
+         , t."amount"
+    from "CrcV2_Erc20WrapperTransfer" t
+             join "CrcV2_ERC20WrapperDeployed" d on d."circlesType" = 1 and d."erc20Wrapper" = t."tokenAddress"
+    order by t."blockNumber", t."transactionIndex", t."logIndex"
+), static_from_transfers as (
+    select t1."timestamp"
+         , t1."tokenAddress"
+         , t1."from" as "account"
+         , -t1."amount" as diff
+    from static_token_transfers t1
+             inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."from"
+), static_to_transfers as (
+    select t1."timestamp"
+         , t1."tokenAddress"
+         , t1."to" as "account"
+         , t1."amount" as diff
+    from static_token_transfers t1
+             inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."to"
+), static_sum as (
+    select sum(diff) AS static_balance
+         , account
+         , "tokenAddress"
+         , max("timestamp") AS "timestamp"
+         , true as "isWrapped"
+         , 'static' as "circlesType"
+    from (
+             select *
+             from static_from_transfers
+             union all
+             select *
+             from static_to_transfers
+         ) as t
+    group by account
+           , "tokenAddress"
 ),
 
-current_crc20_demurraged_balances AS (
-	SELECT
-	    "demurragedTotalBalance"::text
-	    ,account AS "account"
-	    ,"tokenAddress"
-	    ,"circlesType"
-	FROM (
-	    SELECT
-            current_crc20_balances."timestamp" AS "lastActivity"
-	        ,account
-	        ,"tokenAddress"
-	        ,balance
-	        ,floor(crc_demurrage(1675209600::bigint, current_crc20_balances."timestamp", balance)) AS "demurragedTotalBalance"
-	        ,t1."circlesType"
-	    FROM
-	        current_crc20_balances
-	    JOIN 
-            public."CrcV2_ERC20WrapperDeployed" t1 
-	        ON t1."erc20Wrapper" = current_crc20_balances."tokenAddress"
-	) AS t
-	WHERE "demurragedTotalBalance" > 0
-), z as (
+demurraged_wrapped_token_transfers as (
+    select t."blockNumber"
+         , t."timestamp"
+         , t."transactionIndex"
+         , t."logIndex"
+         , t."transactionHash"
+         , t."tokenAddress"
+         , t."from"
+         , t."to"
+         , t."amount"
+    from "CrcV2_Erc20WrapperTransfer" t
+             join "CrcV2_ERC20WrapperDeployed" d on d."circlesType" = 0 and d."erc20Wrapper" = t."tokenAddress"
+    order by t."blockNumber", t."transactionIndex", t."logIndex"
+), demurraged_wrapped_from_transfers as (
+    select t1."timestamp"
+         , t1."tokenAddress"
+         , t1."from" as "account"
+         , -t1."amount" as diff
+    from demurraged_wrapped_token_transfers t1
+             inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."from"
+), demurraged_wrapped_to_transfers as (
+    select t1."timestamp"
+         , t1."tokenAddress"
+         , t1."to" as "account"
+         , t1."amount" as diff
+    from demurraged_wrapped_token_transfers t1
+             inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."to"
+), demurraged_wrapped_sum as (
+    select floor(crc_demurrage(1675209600::bigint, max("timestamp"), sum(diff))) AS demurraged_balance
+         , account
+         , "tokenAddress"
+         , max("timestamp") AS "timestamp"
+         , true as "isWrapped"
+         , 'demurraged' as "circlesType"
+    from (
+             select *
+             from demurraged_wrapped_from_transfers
+             union all
+             select *
+             from demurraged_wrapped_to_transfers
+         ) as t
+    group by account
+           , "tokenAddress"
+),
 
-SELECT 
-	"demurragedTotalBalance"::text
-	,"account"
-	,"tokenAddress"
-	,FALSE AS "isWrapped"
-    ,'demurraged' AS "circlesType"
-FROM 
-	"V_CrcV2_BalancesByAccountAndToken" 
-WHERE
-	"demurragedTotalBalance" > 0
-
-UNION ALL 
-
-SELECT 
-	"demurragedTotalBalance"
-	,"account"
-	,"tokenAddress"
-	,TRUE AS "isWrapped"
-    ,CASE "circlesType" WHEN 0 THEN 'demurraged' ELSE 'static' END
-    FROM current_crc20_demurraged_balances
+all_transfers as (
+    select "static_balance" as balance
+         , "account"
+         , "tokenAddress"
+         , "isWrapped"
+         , "circlesType"
+    from static_sum
+    union all
+    select "demurraged_balance" as balance
+         , "account"
+         , "tokenAddress"
+         , "isWrapped"
+         , "circlesType"
+    from demurraged_wrapped_sum
+    union all
+    select
+        "demurragedTotalBalance" as balance
+         ,"account"
+         ,"tokenAddress"
+         ,false AS "isWrapped"
+         ,'demurraged' AS "circlesType"
+    from "V_CrcV2_BalancesByAccountAndToken"
 )
-select *
-from z
+
+select balance::text
+     , account
+     , "tokenAddress"
+     , "isWrapped"
+     , "circlesType"
+from all_transfers
+where balance > 0;
