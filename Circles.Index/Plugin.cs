@@ -115,11 +115,6 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new CirclesV2.BaseGroupDeployer.LogParser(settings.BaseGroupDeployer));
         }
 
-        //
-        // Init all LogParser caches
-        //
-        await Task.WhenAll(logParsers.Select(o => o.InitCaches(pluginLogger, database, settings)));
-
         _indexerContext = new Context(
             nethermindApi,
             pluginLogger,
