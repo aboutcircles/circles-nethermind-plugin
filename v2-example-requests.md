@@ -436,8 +436,8 @@ curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_getBalanceBreakdown",
-  "params": ["0xc6d075112b96b75460e543e3bf70be9ab45b62d9"]
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+  "params": ["0x14b31a052964143b4c455e3650164ff6c91f81be"]
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
@@ -513,9 +513,9 @@ curl -X POST --data '{
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddress",
-    "params":["0xde374ece6fa50e781e81aac78e811b33D16912C7"],
+    "params":["0x13285C44F9B70C807085621b9e1dd66C9daF23A8"],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
@@ -551,4 +551,27 @@ curl -X POST --data '{
     }
   ]
 }' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
+```
+
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_query",
+    "params":[{
+      "Namespace": "CrcV2",
+      "Table": "CirclesBackingDeployed",
+      "Columns": [
+      ],            
+      "Filter": [{
+         "Type": "FilterPredicate",
+         "FilterType": "Equals",
+         "Column": "emitter",
+         "Value": "0xeced91232c609a42f6016860e8223b8aecaa7bd0"
+      }],        
+      "Order": [],
+      "Limit": 1000      
+    }],            
+    "id":1         
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
