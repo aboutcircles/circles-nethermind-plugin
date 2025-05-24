@@ -7,10 +7,10 @@ namespace Circles.Index.Common;
 [Flags]
 public enum TokenValueRepresentation : long
 {
-    Demurraged = 0b00, // 0
-    Inflationary = 0b01, // 1
-    IsWrapped = 0b10, // 2
+    Demurraged = 0b00,
+    Inflationary = 0b01,
+    IsWrapped = 0b10,
 
-    DemurragedWrapped = Demurraged | IsWrapped, // 2
-    InflationaryWrapped = Inflationary | IsWrapped // 3
+    DemurragedWrapped = Demurraged | IsWrapped,
+    InflationaryWrapped = Inflationary | IsWrapped
 }
