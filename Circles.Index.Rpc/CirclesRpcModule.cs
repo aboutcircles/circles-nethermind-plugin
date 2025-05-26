@@ -1079,26 +1079,27 @@ public class CirclesRpcModule : ICirclesRpcModule
             return ResultWrapper<TokenInfo>.Success(new TokenInfo(tokenAddress, v1TokenOwner,
                 "CrcV1_Signup", 1, true, false, false, true, false));
         }
-        
+
         var isV2_1155 = CirclesV2.LogParser.V2Avatars.TryGetValue(tokenAddress.ToString(true, false), out var v2Avatar);
         if (isV2_1155)
         {
             return ResultWrapper<TokenInfo>.Success(new TokenInfo(tokenAddress, tokenAddress,
                 v2Avatar.Type, 2, false, true, false, false, v2Avatar.Type == "CrcV2_RegisterGroup"));
         }
-        
-        var isV2_20 = CirclesV2.LogParser.Erc20WrapperAddresses.TryGetValue(tokenAddress.ToString(true, false), out var v2Erc20);
+
+        var isV2_20 =
+            CirclesV2.LogParser.Erc20WrapperAddresses.TryGetValue(tokenAddress.ToString(true, false), out var v2Erc20);
         if (isV2_20)
         {
             bool isGroup = CirclesV2.LogParser.Groups.ContainsKey(v2Erc20.TokenOwner);
             return ResultWrapper<TokenInfo>.Success(new TokenInfo(tokenAddress, new Address(v2Erc20.TokenOwner),
                 v2Erc20.ValueRepresentation == TokenValueRepresentation.DemurragedWrapped
-                ? "CrcV2_ERC20WrapperDeployed_Demurraged"
-                : "CrcV2_ERC20WrapperDeployed_Inflationary", 2, true, false, true,
+                    ? "CrcV2_ERC20WrapperDeployed_Demurraged"
+                    : "CrcV2_ERC20WrapperDeployed_Inflationary", 2, true, false, true,
                 v2Erc20.ValueRepresentation.HasFlag(TokenValueRepresentation.Inflationary),
                 isGroup));
         }
-        
+
         return ResultWrapper<TokenInfo>.Fail($"No token info found for {tokenAddress}.");
     }
 
@@ -1124,7 +1125,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 tokenInfos.Add(results[i].Data);
             }
         }
-        
+
         return ResultWrapper<TokenInfo?[]>.Success(tokenInfos.ToArray());
     }
 }
