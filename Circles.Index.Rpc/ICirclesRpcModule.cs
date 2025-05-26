@@ -247,4 +247,10 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "",
         IsImplemented = true)]
     Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address[] avatars);
+    
+    [JsonRpcMethod(Description = "", IsImplemented = true)]
+    Task<ResultWrapper<TokenInfo>> circles_getTokenInfo(Address tokenAddress);
+    
+    [JsonRpcMethod(Description = "", IsImplemented = true)]
+    Task<ResultWrapper<TokenInfo?[]>> circles_getTokenInfoBatch(Address[] tokenAddresses);
 }

@@ -1070,4 +1070,62 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return result;
     }
+
+    public Task<ResultWrapper<TokenInfo>> circles_getTokenInfo(Address tokenAddress)
+    {
+        var isV1 = CirclesV1.LogParser.CirclesV1TokenOwnersByToken.TryGetValue(tokenAddress, out var v1TokenOwner);
+        if (isV1)
+        {
+            return ResultWrapper<TokenInfo>.Success(new TokenInfo(tokenAddress, v1TokenOwner,
+                "CrcV1_Signup", 1, true, false, false, true, false));
+        }
+
+        var isV2_1155 = CirclesV2.LogParser.V2Avatars.TryGetValue(tokenAddress.ToString(true, false), out var v2Avatar);
+        if (isV2_1155)
+        {
+            return ResultWrapper<TokenInfo>.Success(new TokenInfo(tokenAddress, tokenAddress,
+                v2Avatar.Type, 2, false, true, false, false, v2Avatar.Type == "CrcV2_RegisterGroup"));
+        }
+
+        var isV2_20 =
+            CirclesV2.LogParser.Erc20WrapperAddresses.TryGetValue(tokenAddress.ToString(true, false), out var v2Erc20);
+        if (isV2_20)
+        {
+            bool isGroup = CirclesV2.LogParser.Groups.ContainsKey(v2Erc20.TokenOwner);
+            return ResultWrapper<TokenInfo>.Success(new TokenInfo(tokenAddress, new Address(v2Erc20.TokenOwner),
+                v2Erc20.ValueRepresentation == TokenValueRepresentation.DemurragedWrapped
+                    ? "CrcV2_ERC20WrapperDeployed_Demurraged"
+                    : "CrcV2_ERC20WrapperDeployed_Inflationary", 2, true, false, true,
+                v2Erc20.ValueRepresentation.HasFlag(TokenValueRepresentation.Inflationary),
+                isGroup));
+        }
+
+        return ResultWrapper<TokenInfo>.Fail($"No token info found for {tokenAddress}.");
+    }
+
+    public async Task<ResultWrapper<TokenInfo?[]>> circles_getTokenInfoBatch(Address[] tokenAddresses)
+    {
+        if (tokenAddresses.Length > 100)
+        {
+            throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 100");
+        }
+
+        var getTokenInfoTasks = tokenAddresses.Select(circles_getTokenInfo).ToArray();
+        var results = await Task.WhenAll(getTokenInfoTasks);
+
+        List<TokenInfo?> tokenInfos = new(tokenAddresses.Length);
+        for (int i = 0; i < tokenAddresses.Length; i++)
+        {
+            if (results[i].ErrorCode != 0)
+            {
+                tokenInfos.Add(null);
+            }
+            else
+            {
+                tokenInfos.Add(results[i].Data);
+            }
+        }
+
+        return ResultWrapper<TokenInfo?[]>.Success(tokenInfos.ToArray());
+    }
 }
