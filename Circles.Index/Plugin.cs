@@ -133,7 +133,7 @@ public class Plugin : INethermindPlugin
 
     private async Task RunIpfsDownloader(Settings settings)
     {
-        while (true)
+        while (!_cancellationTokenSource.IsCancellationRequested)
         {
             try
             {
