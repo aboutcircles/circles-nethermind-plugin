@@ -1,13 +1,9 @@
-﻿using System.Collections.Concurrent;
-using System.Collections.Immutable;
-using System.Data;
+﻿using System.Collections.Immutable;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
-using Circles.Index.Query;
 using Circles.Index.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -129,28 +125,6 @@ public class Plugin : INethermindPlugin
             , nethermindApi.BlockTree!
             , nethermindApi.ReceiptFinder!
             , _cancellationTokenSource.Token);
-
-        await _indexerMachine.TransitionTo(StateMachine.State.Initial);
-
-        nethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
-        {
-            var fullSyncInfo = nethermindApi.EthSyncingInfo?.GetFullInfo();
-
-            if (fullSyncInfo?.IsSyncing ?? true)
-            {
-                switch (fullSyncInfo?.SyncMode)
-                {
-                    // Should handle blocks in the following sync modes:
-                    case SyncMode.Full:
-                    case SyncMode.DbLoad:
-                        break;
-                    default:
-                        return;
-                }
-            }
-
-            HandleNewHead(args.Block.Number);
-        };
 
         // Run the downloader
         _ipfsDownloader = Task.Run(async () => await RunIpfsDownloader(settings),
@@ -284,7 +258,7 @@ public class Plugin : INethermindPlugin
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
             // TODO: Await all ProcessBlocksAsync tasks without blocking the event handler. It's important that we always get all exceptions (e.g. as aggregate exception) of all tasks.
-            Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
+            _ = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
         }
     }
 
@@ -353,6 +327,34 @@ public class Plugin : INethermindPlugin
         getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
             (client, param) => new CirclesSubscription(client, _indexerContext, param));
+
+
+        // Start the actual processing (give the other rpc modules enough time to initialize)
+        // TODO: Any event we can subscribe to that indicates that rpc is ready?
+        _ = Task.Delay(10_000, _cancellationTokenSource.Token).ContinueWith(async _ =>
+        {
+            await _indexerMachine.TransitionTo(StateMachine.State.Initial);
+
+            _indexerContext.NethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
+            {
+                var fullSyncInfo = _indexerContext.NethermindApi.EthSyncingInfo?.GetFullInfo();
+
+                if (fullSyncInfo?.IsSyncing ?? true)
+                {
+                    switch (fullSyncInfo?.SyncMode)
+                    {
+                        // Should handle blocks in the following sync modes:
+                        case SyncMode.Full:
+                        case SyncMode.DbLoad:
+                            break;
+                        default:
+                            return;
+                    }
+                }
+
+                HandleNewHead(args.Block.Number);
+            };
+        }, _cancellationTokenSource.Token);
 
         return Task.CompletedTask;
     }
