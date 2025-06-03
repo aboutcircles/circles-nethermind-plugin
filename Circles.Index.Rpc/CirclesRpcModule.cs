@@ -774,7 +774,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath"; // POST body carries the payload
-        
+
         // Send the request
         using var response = await HttpClient.PostAsJsonAsync(url, flowRequest);
 
@@ -800,6 +800,39 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse!);
+    }
+
+    public async Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot()
+    {
+        var sw = Stopwatch.StartNew();
+        var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
+        var url = $"{baseUrl}/snapshot";
+
+        // Ask only for headers first – we’re going to stream the body.
+        using var response = await HttpClient.GetAsync(
+            url,
+            HttpCompletionOption.ResponseHeadersRead);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+
+        // Parse to JsonDocument so we can hand a JsonElement out.
+        using var doc = await JsonDocument.ParseAsync(stream);
+        JsonElement snapshot = doc.RootElement.Clone(); // detach from 'doc'
+
+        sw.Stop();
+        _totalTimeSpentProxying += sw.ElapsedMilliseconds;
+        _totalProxyCount++;
+
+        if (_totalProxyCount % 1000 == 0)
+        {
+            Console.WriteLine($"Total time spent proxying: {_totalTimeSpentProxying}ms");
+            Console.WriteLine($"Total proxy count: {_totalProxyCount}");
+            Console.WriteLine($"Avg. duration: {_totalTimeSpentProxying / _totalProxyCount}ms");
+        }
+
+        return ResultWrapper<JsonElement>.Success(snapshot);
     }
 
     public ResultWrapper<string> circles_health()

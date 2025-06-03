@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
@@ -247,10 +248,13 @@ public interface ICirclesRpcModule : IRpcModule
     [JsonRpcMethod(Description = "",
         IsImplemented = true)]
     Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address[] avatars);
-    
+
     [JsonRpcMethod(Description = "", IsImplemented = true)]
     Task<ResultWrapper<TokenInfo>> circles_getTokenInfo(Address tokenAddress);
-    
+
     [JsonRpcMethod(Description = "", IsImplemented = true)]
     Task<ResultWrapper<TokenInfo?[]>> circles_getTokenInfoBatch(Address[] tokenAddresses);
+
+    [JsonRpcMethod(Description = "", IsImplemented = true)]
+    public Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot();
 }

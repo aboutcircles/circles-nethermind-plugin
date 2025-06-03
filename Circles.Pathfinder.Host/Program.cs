@@ -1,10 +1,15 @@
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
+using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.LogDb;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -13,6 +18,7 @@ using Nethermind.Int256;
 using Npgsql;
 using Prometheus;
 using static Circles.Pathfinder.Tracing;
+using Microsoft.AspNetCore.ResponseCompression;
 
 var settings = new Settings();
 
@@ -43,6 +49,16 @@ builder.Logging.Configure(o =>
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Logging.AddFilter("Circles.Pathfinder.Host", LogLevel.Debug);
 
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
+
+builder.Services.Configure<GzipCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
 
 builder.Services
     .AddHealthChecks()
@@ -67,6 +83,7 @@ builder.Services.AddHostedService<LogStatsService>();
 var app = builder.Build();
 
 app.UseHttpMetrics();
+app.UseResponseCompression();
 app.MapMetrics();
 app.UseMiddleware<RequestTimingMiddleware>();
 
@@ -329,5 +346,40 @@ app.MapPost("/findPath", async (
     }
 });
 
+app.MapGet("/snapshot", async (NetworkState state) =>
+{
+    var graphsReady = state.BalanceGraph is not null &&
+                      state.AccountTrusts.Count > 0;
+
+    if (!graphsReady)
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var balancesByHolder = new Dictionary<int, List<BalanceNode>>(state.BalanceGraph!.BalanceNodes.Count);
+    foreach (var node in state.BalanceGraph.BalanceNodes.Values)
+    {
+        if (!balancesByHolder.TryGetValue(node.Holder, out var list))
+        {
+            list = new List<BalanceNode>();
+            balancesByHolder.Add(node.Holder, list);
+        }
+
+        list.Add(node);
+    }
+
+    var snapshot = new NetworkSnapshot
+    {
+        BlockNumber = state.LastKnownBlockNumber,
+        Addresses = AddressIdPool.GetAvatarSnapshot(),
+        Trust = state.AccountTrusts.ToDictionary(kvp => kvp.Key, kvp => new HashSet<int>(kvp.Value)),
+        Balance = balancesByHolder
+    };
+
+    // Let ASP.NET Core handle JSON + transport compression
+    return Results.Json(
+        snapshot,
+        new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+});
 
 app.Run();
