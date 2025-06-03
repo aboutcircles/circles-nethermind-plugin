@@ -772,55 +772,17 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var sw = Stopwatch.StartNew();
 
-        // Construct the final URL: <ExternalPathfinderUrl>/findPath?from=xxx&to=yyy&amount=zzz
         var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
-        var url = $"{baseUrl}/findPath?from={flowRequest.Source}&to={flowRequest.Sink}&amount={flowRequest.TargetFlow}";
+        var url = $"{baseUrl}/findPath"; // POST body carries the payload
+        
+        // Send the request
+        using var response = await HttpClient.PostAsJsonAsync(url, flowRequest);
 
-        // Add the parameters if they are set
-        if (flowRequest.FromTokens != null && flowRequest.FromTokens.Any())
-        {
-            foreach (var token in flowRequest.FromTokens)
-            {
-                url += $"&fromTokens={token}";
-            }
-        }
-
-        if (flowRequest.ToTokens != null && flowRequest.ToTokens.Any())
-        {
-            foreach (var token in flowRequest.ToTokens)
-            {
-                url += $"&toTokens={token}";
-            }
-        }
-
-        if (flowRequest.ExcludedFromTokens != null && flowRequest.ExcludedFromTokens.Any())
-        {
-            foreach (var token in flowRequest.ExcludedFromTokens)
-            {
-                url += $"&excludedFromTokens={token}";
-            }
-        }
-
-        if (flowRequest.ExcludedToTokens != null && flowRequest.ExcludedToTokens.Any())
-        {
-            foreach (var token in flowRequest.ExcludedToTokens)
-            {
-                url += $"&excludedToTokens={token}";
-            }
-        }
-
-        if (flowRequest.WithWrap.HasValue)
-        {
-            url += $"&withWrap={flowRequest.WithWrap.Value}";
-        }
-
-        // Perform the GET request to the external pathfinder
-        using var response = await HttpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
 
-        // Expect a JSON response that can deserialize into MaxFlowResponse
         var maxFlowResponse = await response.Content.ReadFromJsonAsync<MaxFlowResponse>();
-        if (maxFlowResponse == null)
+        var failedToParse = maxFlowResponse is null;
+        if (failedToParse)
         {
             throw new Exception("Failed to deserialize MaxFlowResponse from external pathfinder.");
         }
@@ -829,14 +791,15 @@ public class CirclesRpcModule : ICirclesRpcModule
         _totalTimeSpentProxying += sw.ElapsedMilliseconds;
         _totalProxyCount++;
 
-        if (_totalProxyCount % 1000 == 0)
+        var shouldLogStats = _totalProxyCount % 1000 == 0;
+        if (shouldLogStats)
         {
             Console.WriteLine($"Total time spent proxying: {_totalTimeSpentProxying}ms");
             Console.WriteLine($"Total proxy count: {_totalProxyCount}");
             Console.WriteLine($"Avg. duration: {_totalTimeSpentProxying / _totalProxyCount}ms");
         }
 
-        return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse);
+        return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse!);
     }
 
     public ResultWrapper<string> circles_health()
