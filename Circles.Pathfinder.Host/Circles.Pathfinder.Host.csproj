@@ -6,8 +6,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <InvariantGlobalization>true</InvariantGlobalization>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-        <AssemblyVersion>1.23.2</AssemblyVersion>
-        <FileVersion>1.23.2</FileVersion>
+        <AssemblyVersion>1.23.3</AssemblyVersion>
+        <FileVersion>1.23.3</FileVersion>
     </PropertyGroup>
 
     <ItemGroup>
