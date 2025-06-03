@@ -9,7 +9,7 @@
 -- demurragedSupply:ValueTypes.BigInt:true
 
 drop view if exists "V_CrcV2_GroupMintRedeem_1d";
-drop view if exists "V_CrcV2_GroupMintRedeem_1d";
+drop view if exists "V_CrcV2_GroupMintRedeem_1h";
 
 create or replace view "V_CrcV2_GroupMintRedeem_1h" ("group", "timestamp", "minted", "burned", "supply", "demurragedMinted", "demurragedBurned", "demurragedSupply") as
 
