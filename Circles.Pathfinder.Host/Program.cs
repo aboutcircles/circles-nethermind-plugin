@@ -6,6 +6,7 @@ using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.LogDb;
 using Circles.Pathfinder.Host.State;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Nethermind.Int256;
@@ -251,5 +252,82 @@ app.MapGet("/findPath", async (
         FindPathMetrics.InFlightRequestsGauge.Dec();
     }
 });
+
+// POST  /findPath  -----------------------------------------------------------
+app.MapPost("/findPath", async (
+    [FromBody] FlowRequest request, // body-bound request DTO
+    NetworkState state,
+    SemaphoreSlim sem,
+    CapacityGraphPool pool,
+    ILogger<Program> log,
+    PathLogDb logDb) =>
+{
+    using var act = Source.StartActivity("findPath", ActivityKind.Server);
+    act?.SetTag("http.route", "/findPath");
+    act?.SetTag("from", request.Source);
+    act?.SetTag("to", request.Sink);
+    act?.SetTag("amount", request.TargetFlow);
+
+    // Normalise addresses so matching is case-insensitive
+    request.Source = request.Source?.ToLowerInvariant();
+    request.Sink = request.Sink?.ToLowerInvariant();
+
+    if (!UInt256.TryParse(request.TargetFlow, out var targetFlow))
+    {
+        log.LogWarning("Bad amount format");
+        return Results.BadRequest("amount must be a valid integer.");
+    }
+
+    if (!sem.Wait(0))
+    {
+        FindPathMetrics.RejectedRequestsCounter.Inc();
+        log.LogWarning("Concurrency limit hit — request rejected");
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    FindPathMetrics.InFlightRequestsGauge.Inc();
+    try
+    {
+        var balanceGraph = state.BalanceGraph;
+        var trustGraph = state.AccountTrusts;
+
+        if (balanceGraph is null)
+        {
+            log.LogWarning("Graphs not ready");
+            return Results.BadRequest("Graphs are not loaded yet.");
+        }
+
+        var pathfinder = new V2Pathfinder();
+        var requestId = Guid.NewGuid();
+        _ = logDb.LogRequest(requestId, state.LastKnownBlockNumber, request);
+
+        try
+        {
+            using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            MaxFlowResponse result =
+                pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+
+            _ = logDb.LogResponse(requestId, result, true);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _ = logDb.LogResponse(requestId, null, false,
+                ex.Message + "\n" + ex.StackTrace);
+            throw;
+        }
+    }
+    catch (Exception ex) when (ex is not OutOfMemoryException)
+    {
+        log.LogWarning(ex, "findPath threw non-fatal exception");
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+    }
+    finally
+    {
+        sem.Release();
+        FindPathMetrics.InFlightRequestsGauge.Dec();
+    }
+});
+
 
 app.Run();
