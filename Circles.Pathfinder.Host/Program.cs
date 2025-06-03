@@ -1,10 +1,15 @@
 using System.Diagnostics;
+using System.IO.Compression;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
+using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.LogDb;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -326,6 +331,47 @@ app.MapPost("/findPath", async (
     {
         sem.Release();
         FindPathMetrics.InFlightRequestsGauge.Dec();
+    }
+});
+
+app.MapGet("/snapshot", async (NetworkState state) =>
+{
+    if (state.BalanceGraph is null || state.AccountTrusts.Count == 0)
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+    var bg = state.BalanceGraph;
+
+    var snap = new NetworkSnapshot
+    {
+        BlockNumber = state.LastKnownBlockNumber,
+        Addresses = AddressIdPool.GetReverseSnapshot(),
+        Trust = state.AccountTrusts
+            .ToDictionary(kvp => kvp.Key,
+                kvp => new HashSet<int>(kvp.Value)),
+        Balance = new BalanceGraphDto
+        {
+            AvatarNodes = new Dictionary<int, AvatarNode>(bg.AvatarNodes),
+            BalanceNodes = new Dictionary<int, BalanceNode>(bg.BalanceNodes),
+            Edges = new List<CapacityEdge>(bg.Edges)
+        }
+    };
+
+    var json = JsonSerializer.SerializeToUtf8Bytes(
+        snap,
+        new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        });
+
+    var ms = new MemoryStream();
+    await using (ms.ConfigureAwait(false))
+    {
+        await using (var gz = new GZipStream(ms, CompressionLevel.Fastest, leaveOpen: true))
+            await gz.WriteAsync(json);
+
+        ms.Position = 0;
+        return Results.File(ms, "application/gzip",
+            $"snapshot_{snap.BlockNumber}.json.gz");
     }
 });
 
