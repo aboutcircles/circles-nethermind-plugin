@@ -71,6 +71,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Profiles", "C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.ContractClient", "Circles.Index.ContractClient\Circles.Index.ContractClient.csproj", "{32C6C815-041E-472A-B748-458A5EE99065}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Analysis", "Circles.Analysis\Circles.Analysis.csproj", "{6498FA4A-609A-4254-8696-96DD013D2B3A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -165,6 +167,10 @@ Global
 		{32C6C815-041E-472A-B748-458A5EE99065}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{32C6C815-041E-472A-B748-458A5EE99065}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{32C6C815-041E-472A-B748-458A5EE99065}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6498FA4A-609A-4254-8696-96DD013D2B3A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6498FA4A-609A-4254-8696-96DD013D2B3A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6498FA4A-609A-4254-8696-96DD013D2B3A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6498FA4A-609A-4254-8696-96DD013D2B3A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
