@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Npgsql;
 using Prometheus;
 using static Circles.Pathfinder.Tracing;
+using Microsoft.AspNetCore.ResponseCompression;
 
 var settings = new Settings();
 
@@ -48,6 +49,16 @@ builder.Logging.Configure(o =>
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Logging.AddFilter("Circles.Pathfinder.Host", LogLevel.Debug);
 
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
+
+builder.Services.Configure<GzipCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
 
 builder.Services
     .AddHealthChecks()
@@ -72,6 +83,7 @@ builder.Services.AddHostedService<LogStatsService>();
 var app = builder.Build();
 
 app.UseHttpMetrics();
+app.UseResponseCompression();
 app.MapMetrics();
 app.UseMiddleware<RequestTimingMiddleware>();
 
@@ -336,44 +348,38 @@ app.MapPost("/findPath", async (
 
 app.MapGet("/snapshot", async (NetworkState state) =>
 {
-    if (state.BalanceGraph is null || state.AccountTrusts.Count == 0)
+    var graphsReady = state.BalanceGraph is not null &&
+                      state.AccountTrusts.Count > 0;
+
+    if (!graphsReady)
+    {
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
 
-    var bg = state.BalanceGraph;
+    var balancesByHolder = new Dictionary<int, List<BalanceNode>>(state.BalanceGraph!.BalanceNodes.Count);
+    foreach (var node in state.BalanceGraph.BalanceNodes.Values)
+    {
+        if (!balancesByHolder.TryGetValue(node.Holder, out var list))
+        {
+            list = new List<BalanceNode>();
+            balancesByHolder.Add(node.Holder, list);
+        }
 
-    var snap = new NetworkSnapshot
+        list.Add(node);
+    }
+
+    var snapshot = new NetworkSnapshot
     {
         BlockNumber = state.LastKnownBlockNumber,
-        Addresses = AddressIdPool.GetReverseSnapshot(),
-        Trust = state.AccountTrusts
-            .ToDictionary(kvp => kvp.Key,
-                kvp => new HashSet<int>(kvp.Value)),
-        Balance = new BalanceGraphDto
-        {
-            AvatarNodes = new Dictionary<int, AvatarNode>(bg.AvatarNodes),
-            BalanceNodes = new Dictionary<int, BalanceNode>(bg.BalanceNodes),
-            Edges = new List<CapacityEdge>(bg.Edges)
-        }
+        Addresses = AddressIdPool.GetAvatarSnapshot(),
+        Trust = state.AccountTrusts.ToDictionary(kvp => kvp.Key, kvp => new HashSet<int>(kvp.Value)),
+        Balance = balancesByHolder
     };
 
-    var json = JsonSerializer.SerializeToUtf8Bytes(
-        snap,
-        new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        });
-
-    var ms = new MemoryStream();
-    await using (ms.ConfigureAwait(false))
-    {
-        await using (var gz = new GZipStream(ms, CompressionLevel.Fastest, leaveOpen: true))
-            await gz.WriteAsync(json);
-
-        ms.Position = 0;
-        return Results.File(ms, "application/gzip",
-            $"snapshot_{snap.BlockNumber}.json.gz");
-    }
+    // Let ASP.NET Core handle JSON + transport compression
+    return Results.Json(
+        snapshot,
+        new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
 });
-
 
 app.Run();

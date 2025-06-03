@@ -9,14 +9,14 @@ public static class AddressIdPool
     private static readonly Dictionary<string, int> Map = new();
     private static readonly List<string> Reverse = new();
 
-    public static List<string> GetReverseSnapshot()
+    public static List<string> GetAvatarSnapshot()
     {
         lock (Map)
         {
-            return [..Reverse];
+            return [..Reverse.Where(o => !o.Contains('-'))];
         }
     }
-    
+
     private static readonly Dictionary<string, int> BalanceNodeMap = new();
     private static int _next;
 
@@ -26,7 +26,7 @@ public static class AddressIdPool
         if (Map.TryGetValue(lower, out var id))
             return id;
 
-        lock (Map)                        // cheap – only when we meet a new string
+        lock (Map) // cheap – only when we meet a new string
         {
             if (Map.TryGetValue(lower, out id))
                 return id;
@@ -46,7 +46,7 @@ public static class AddressIdPool
         if (Map.TryGetValue(lower, out var id))
             return id;
 
-        lock (Map)                        // cheap – only when we meet a new string
+        lock (Map) // cheap – only when we meet a new string
         {
             if (Map.TryGetValue(lower, out id))
                 return id;
