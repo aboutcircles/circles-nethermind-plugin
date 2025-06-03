@@ -8,6 +8,15 @@ public static class AddressIdPool
 {
     private static readonly Dictionary<string, int> Map = new();
     private static readonly List<string> Reverse = new();
+
+    public static List<string> GetReverseSnapshot()
+    {
+        lock (Map)
+        {
+            return [..Reverse];
+        }
+    }
+    
     private static readonly Dictionary<string, int> BalanceNodeMap = new();
     private static int _next;
 
