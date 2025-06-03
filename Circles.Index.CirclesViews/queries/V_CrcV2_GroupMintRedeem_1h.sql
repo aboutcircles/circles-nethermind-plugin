@@ -2,40 +2,77 @@
 -- group:ValueTypes.Address:true
 -- timestamp:ValueTypes.BigInt:true
 -- minted:ValueTypes.BigInt:true
--- redeemed:ValueTypes.BigInt:true
+-- burned:ValueTypes.BigInt:true
 -- supply:ValueTypes.BigInt:true
 -- demurragedMinted:ValueTypes.BigInt:true
--- demurragedRedeemed:ValueTypes.BigInt:true
+-- demurragedBurned:ValueTypes.BigInt:true
 -- demurragedSupply:ValueTypes.BigInt:true
 
-create or replace view "V_CrcV2_GroupMintRedeem_1h" ("group", "timestamp", "minted", "redeemed", "supply", "demurragedMinted", "demurragedRedeemed", "demurragedSupply") as
+create or replace view "V_CrcV2_GroupMintRedeem_1h" ("group", "timestamp", "minted", "burned", "supply", "demurragedMinted", "demurragedBurned", "demurragedSupply") as
 
-WITH
+WITH 
+	mint AS (
+         SELECT 
+		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
+			,t1."tokenAddress" AS "group"
+            ,SUM(t1."value") AS "minted"
+			,0 			 AS "burned"
+           FROM "CrcV2_TransferSingle" t1
+		   INNER JOIN
+		   		"V_Crc_Avatars" t2
+				 ON t2.avatar = t1."tokenAddress"
+		   WHERE t1."from" = '0x0000000000000000000000000000000000000000'::text
+		   GROUP BY 1, 2, 4
+        UNION ALL
+         SELECT 
+		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
+			,t1."tokenAddress" AS "group"
+            ,SUM(t1."value") AS "minted"
+			,0 			 AS "burned"
+         FROM "CrcV2_TransferBatch" t1
+		   INNER JOIN
+		   		"V_Crc_Avatars" t2
+				 ON t2.avatar = t1."tokenAddress"
+		   WHERE t1."from" = '0x0000000000000000000000000000000000000000'::text
+		   GROUP BY 1, 2, 4
+        ), 
+		
+	burn AS (
+         SELECT 
+		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
+			,t1."tokenAddress" AS "group"
+            ,0			 AS "minted"
+			,-SUM(t1."value") AS "burned"
+           FROM "CrcV2_TransferSingle" t1
+		   INNER JOIN
+		   		"V_Crc_Avatars" t2
+				 ON t2.avatar = t1."tokenAddress"
+		   WHERE t1."to" = '0x0000000000000000000000000000000000000000'::text
+		   GROUP BY 1, 2, 3
+        UNION ALL
+         SELECT 
+		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
+			,t1."tokenAddress" AS "group"
+            ,0			 AS "minted"
+			,-SUM(t1."value") AS "burned"
+         FROM "CrcV2_TransferBatch" t1
+		   INNER JOIN
+		   		"V_Crc_Avatars" t2
+				 ON t2.avatar = t1."tokenAddress"
+		   WHERE t1."to" = '0x0000000000000000000000000000000000000000'::text
+		   GROUP BY 1, 2, 3
+        ),
 
 group_actions AS (
 	SELECT
 		"timestamp"
 		,"group"
 		,SUM("minted") AS "minted"
-		,SUM("redeemed") AS "redeemed"
+		,SUM("burned") AS "burned"
 	FROM (
-		SELECT 
-			date_trunc('hour',TO_TIMESTAMP("timestamp"))  AS "timestamp"
-			,"group"
-			,SUM(amount) AS "minted"
-			,0 			 AS "redeemed"
-		FROM "CrcV2_GroupMint"
-		GROUP BY 1, 2, 4
-
+		SELECT * FROM mint
 		UNION ALL
-
-		SELECT 
-			date_trunc('hour',TO_TIMESTAMP("timestamp"))  AS "timestamp"
-			,"group"
-			,0			 AS "minted"
-			,-SUM("value") AS "redeemed"
-		FROM "CrcV2_GroupRedeem"
-		GROUP BY 1, 2, 3
+		SELECT * FROM burn
 	)
 	GROUP BY 1, 2
 	
@@ -67,18 +104,18 @@ SELECT
 	"group"
 	,"timestamp"
 	,"minted"
-	,"redeemed"
+	,"burned"
 	,"supply"
 	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "minted")) AS "demurragedMinted"
-	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "redeemed")) AS "demurragedRedeemed"
+	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "burned")) AS "demurragedBurned"
 	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "supply")) AS "demurragedSupply"
 FROM (
     SELECT 
         t1."group"
         ,t1."timestamp"
         ,COALESCE(t2."minted", 0) AS "minted"
-        ,COALESCE(t2."redeemed", 0) AS "redeemed"
-        ,SUM(COALESCE(t2."minted", 0) + COALESCE(t2."redeemed", 0)) OVER (PARTITION BY t1."group" ORDER BY t1."timestamp") AS "supply"
+        ,COALESCE(t2."burned", 0) AS "burned"
+        ,SUM(COALESCE(t2."minted", 0) + COALESCE(t2."burned", 0)) OVER (PARTITION BY t1."group" ORDER BY t1."timestamp") AS "supply"
     FROM 
         calendar t1
     LEFT JOIN
