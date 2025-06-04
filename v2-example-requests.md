@@ -364,25 +364,20 @@ curl -X POST --data '{
 }
 ```
 
-#### Get the max flow between two nodes
-
 ```shell
-curl 'https://rpc.aboutcircles.com/' \
+# Calculate a path between two addresses with a target flow.
+curl 'https://rpc.circlesubi.network/' \
  -H 'Content-Type: application/json' \
  --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
 ```
 
-#### Show all tables available for queries
-
 ```shell
-curl 'https://rpc.aboutcircles.com/' -H 'Content-Type: application/json' --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_tables","params":[]}' | jq
+# Return all available namespaces and tables which can be queried by `circles_query`.
+curl 'https://rpc.circlesubi.network/' -H 'Content-Type: application/json' --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_tables","params":[]}' | jq
 ```
 
-#### Get all events of a specific type within a specific block range
-
-From block 38000000 to the latest block, get all events of type `CrcV1_Trust`:
-
 ```shell
+# Query all events of type CrcV1_Trust from block 38000000 to the latest block.
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -395,12 +390,11 @@ curl -X POST --data '{
     null,
     false
   ]
-}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
 ```
 
-#### Get common trust relations
-
 ```shell
+# Query the common trust relations of two addresses (only common outgoing trust relations are considered).
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -408,30 +402,11 @@ curl -X POST --data '{
   "params": [
     "0xde374ece6fa50e781e81aac78e811b33d16912c7", "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
   ]
-}' -H "Content-Type: application/json" http://localhost:8545/
-```
-
-#### Query groups
-
-```shell
-curl -X POST --data '{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "circles_query",
-  "params": [
-    {
-      "Namespace": "V_CrcV2",
-      "Table": "GroupTokenHoldersBalance",
-      "Columns": [],
-      "Filter": [],
-      "Order": [
-      ]
-    }
-  ]
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
 ```
 
 ```shell
+# A fast method to query the balance breakdown of a specific avatar address.
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -441,12 +416,13 @@ curl -X POST --data '{
 ```
 
 ```shell
+# A slower method to query the balance breakdown of a specific avatar address (but with values directly taken from the rpc instead of the index).
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getTokenBalances",
     "params":["0xc6d075112b96b75460e543e3bf70be9ab45b62d9"],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
@@ -459,6 +435,7 @@ curl -X POST --data '{
 ```
 
 ```shell
+# Get information about a specific token (0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -492,6 +469,7 @@ curl -X POST --data '{
 ```
 
 ```shell
+# Get a profile by it's CID.
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByCid",
@@ -506,29 +484,32 @@ curl -X POST --data '{
     "method":"circles_getProfileByCidBatch",
     "params":[["QmPMhVviyHeYD3AR3kjvVBib1jBCawDF6nxH5dZaa9rrWF",null , "QmZuR1Jkhs9RLXVY28eTTRSnqbxLTBSoggp18Yde858xCM"]],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
+# Query the profile for an avatar address.
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddress",
     "params":["0x5d033356cf431207ac72f3b48a86db0ebbcd6fdf"],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
+# Query profiles by address in batch.
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddressBatch",
     "params":[["0x5d033356cf431207ac72f3b48a86db0ebbcd6fdf", "0x0e50fc4e7d629bc5edd69b6dddb3c22c6e60704b", "0xf712d3b31de494b5c0ea51a6a407460ca66b12e8", null, "0xde374ece6fa50e781e81aac78e811b33D16912C7", "0xde374ece6fa50e781e81aac78e811b33D16912C7"]],
     "id":1
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 
 ```shell
+# Who holds '0x42cedde51198d1773590311e2a340dc06b24cb37' token?
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -550,11 +531,11 @@ curl -X POST --data '{
       }]
     }
   ]
-}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
-
 ```shell
+# Who backed their Circles with a Balancer LBP?
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_query",
@@ -573,20 +554,22 @@ curl -X POST --data '{
       "Limit": 1000      
     }],            
     "id":1         
-}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
 ```
 
 ```shell
+# Download a full snapshot of the Circles network state (current trust relations and balances)
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getNetworkSnapshot",
     "params":[],            
     "id":1         
-}' -H "Content-Type: application/json" http://localhost:8545/ | jq
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
-curl -s -X POST http://localhost:8545 \
+# Search profiles by name, description or address
+curl -s -X POST https://rpc.circlesubi.network \
   -H 'Content-Type: application/json' \
   -d '{
         "jsonrpc": "2.0",
