@@ -120,6 +120,7 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
         }
+        
 
         _indexerContext = new Context(
             nethermindApi,
