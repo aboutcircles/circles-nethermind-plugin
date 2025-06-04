@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
@@ -19,7 +20,14 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
     /// </summary>
     public static readonly RollbackCache<Address, string> V2AvatarToCidMap = new("V2AvatarToCidMap");
 
-    public IRollbackCache[] Caches { get; } = [V2AvatarToCidMap];
+    /// <summary>
+    /// Contains the shortname for each avatar.
+    /// </summary>
+    public static readonly RollbackCache<Address, string> V2AvatarToShortNameMap = new("V2AvatarToShortNameMap");
+
+    public static readonly RollbackCache<string, Address> V2AShortNameToAvatarMap = new("V2AShortNameToAvatarMap");
+
+    public IRollbackCache[] Caches { get; } = [V2AvatarToCidMap, V2AvatarToShortNameMap, V2AShortNameToAvatarMap];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
@@ -47,6 +55,38 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         V2AvatarToCidMap.Seed(seed);
 
         logger.Info($" * Cached {seed.Count} avatar -> cidV0 mappings from V2 UpdateMetadataDigest");
+
+
+        var selectShortNames = new Select(
+            "CrcV2",
+            "RegisterShortName",
+            ["avatar", "shortName"],
+            [],
+            [],
+            int.MaxValue,
+            false,
+            int.MaxValue);
+
+        sql = selectShortNames.ToSql(database);
+        result = database.Select(sql);
+        rows = result.Rows.ToArray();
+
+        var seed1 = new Dictionary<Address, string>(rows.Length + 1000);
+        var seed2 = new Dictionary<string, Address>(rows.Length + 1000);
+
+        foreach (var row in rows)
+        {
+            var avatar = new Address(row[0].ToString());
+            var shortNameUInt256 = BigInteger.Parse(row[1].ToString());
+            var shortNameBase58Btc = shortNameUInt256.ToBase58Btc();
+            seed1[avatar] = shortNameBase58Btc;
+            seed2[shortNameBase58Btc] = avatar;
+        }
+
+        V2AvatarToShortNameMap.Seed(seed1);
+        V2AShortNameToAvatarMap.Seed(seed2);
+
+        logger.Info($" * Cached {seed1.Count} avatar -> short name (and reverse) mappings from V2 RegsiterShortName");
 
         return Task.CompletedTask;
     }
@@ -116,9 +156,13 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
     {
         // event RegisterShortName(address indexed avatar, uint72 shortName, uint256 nonce)
         string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        Address avatarAddress = new(avatar);
 
         UInt256 shortName = new UInt256(log.Data.Slice(0, 32), true);
         UInt256 nonce = new UInt256(log.Data.Slice(32, 32), true);
+
+        V2AvatarToShortNameMap.Add(block.Number, avatarAddress, shortName.ToBase58Btc());
+        V2AShortNameToAvatarMap.Add(block.Number, shortName.ToBase58Btc(), avatarAddress);
 
         return new RegisterShortName(
             block.Number,

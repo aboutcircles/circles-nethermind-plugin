@@ -504,7 +504,7 @@ curl -X POST --data '{
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByCidBatch",
-    "params":[["QmPMhVviyHeYD3AR3kjvVBib1jBCawDF6nxH5dZaa9rrWF", "QmZuR1Jkhs9RLXVY28eTTRSnqbxLTBSoggp18Yde858xCM"]],
+    "params":[["QmPMhVviyHeYD3AR3kjvVBib1jBCawDF6nxH5dZaa9rrWF",null , "QmZuR1Jkhs9RLXVY28eTTRSnqbxLTBSoggp18Yde858xCM"]],
     "id":1
 }' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
@@ -513,16 +513,16 @@ curl -X POST --data '{
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddress",
-    "params":["0x13285C44F9B70C807085621b9e1dd66C9daF23A8"],
+    "params":["0x5d033356cf431207ac72f3b48a86db0ebbcd6fdf"],
     "id":1
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
 
 ```shell
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddressBatch",
-    "params":[["", null, "0xde374ece6fa50e781e81aac78e811b33D16912C7", "0xde374ece6fa50e781e81aac78e811b33D16912C7"]],
+    "params":[["0x5d033356cf431207ac72f3b48a86db0ebbcd6fdf", "0x0e50fc4e7d629bc5edd69b6dddb3c22c6e60704b", "0xf712d3b31de494b5c0ea51a6a407460ca66b12e8", null, "0xde374ece6fa50e781e81aac78e811b33D16912C7", "0xde374ece6fa50e781e81aac78e811b33D16912C7"]],
     "id":1
 }' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
@@ -592,6 +592,6 @@ curl -s -X POST http://localhost:8545 \
         "jsonrpc": "2.0",
         "id":      1,
         "method":  "circles_searchProfiles",
-        "params":  ["Metri Co", 10, 0]
+        "params":  ["0xf712d3b31de494b5c0ea51a6a407460ca66b12e8", 10, 0]
       }' | jq
 ```
