@@ -1124,4 +1124,77 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return ResultWrapper<TokenInfo?[]>.Success(tokenInfos.ToArray());
     }
+
+    public async Task<ResultWrapper<Profile[]>> circles_searchProfiles(
+        string text,
+        int? limit = 20,
+        int? offset = 0)
+    {
+        // ---------- guard clauses ------------------------------------------
+        const int hardLimit = 100;
+        int take = limit ?? 20;
+        int skip = offset ?? 0;
+
+        bool limitTooLarge = take > hardLimit;
+        if (limitTooLarge)
+        {
+            return ResultWrapper<Profile[]>.Fail(
+                $"limit must not exceed {hardLimit} (got {take}).");
+        }
+
+        string query = text?.Trim() ?? string.Empty;
+        bool emptyQuery = query.Length == 0;
+        if (emptyQuery)
+        {
+            return ResultWrapper<Profile[]>.Success(Array.Empty<Profile>());
+        }
+
+        // ---------- SQL -----------------------------------------------------
+        const string sql = @"
+            WITH q AS (
+                SELECT websearch_to_tsquery('simple', @q) AS query
+            )
+            SELECT  f.payload
+            FROM    ipfs_files f, q
+            WHERE   (
+                        setweight(to_tsvector('simple', coalesce(f.payload ->> 'name', '')),        'A')
+                     || setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B')
+                    ) @@ q.query
+            ORDER BY
+                ts_rank_cd(
+                    ARRAY[1.0, 0.4, 0.1, 0.05],   -- explicit weight factors A..D
+                    ( setweight(to_tsvector('simple', coalesce(f.payload ->> 'name', '')), 'A')
+                   || setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B')
+                    ),
+                    q.query
+                ) DESC
+            LIMIT  @take
+            OFFSET @skip;";
+
+
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("q", query);
+        cmd.Parameters.AddWithValue("take", take);
+        cmd.Parameters.AddWithValue("skip", skip);
+
+        var profiles = new List<Profile>(take);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            // payload is stored as text → deserialize to `Profile`
+            string json = reader.GetString(0);
+            var profile = JsonSerializer.Deserialize<Profile>(json);
+
+            if (profile != null)
+            {
+                profiles.Add(profile);
+            }
+        }
+
+        return ResultWrapper<Profile[]>.Success(profiles.ToArray());
+    }
 }

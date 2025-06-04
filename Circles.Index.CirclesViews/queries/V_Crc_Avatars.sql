@@ -188,3 +188,25 @@ CREATE TRIGGER trg_enq_ipfs_v2
     REFERENCING NEW TABLE AS new_rows
     FOR EACH STATEMENT
 EXECUTE FUNCTION public.enqueue_ipfs_from_update();
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX IF NOT EXISTS idx_ipfs_files_payload_profile_fts
+    ON ipfs_files
+        USING gin (
+                   (
+                       /* weight A → most important */
+                       setweight(
+                               to_tsvector('simple', coalesce(payload ->> 'name', '')),
+                               'A'
+                       )
+                           ||
+                           /* weight B → still counts, but less */
+                       setweight(
+                               to_tsvector('simple', coalesce(payload ->> 'description', '')),
+                               'B'
+                       )
+                   )
+                );
+
+
