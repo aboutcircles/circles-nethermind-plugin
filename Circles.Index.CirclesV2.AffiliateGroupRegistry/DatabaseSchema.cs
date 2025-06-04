@@ -27,8 +27,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             eventSchema: AffiliateGroupChanged,
             databaseFieldMap:
             [
-                ("emitter",  e => e.Emitter),
-                ("human",    e => e.Human),
+                ("emitter", e => e.Emitter),
+                ("human", e => e.Human),
                 ("oldGroup", e => e.OldGroup),
                 ("newGroup", e => e.NewGroup)
             ]
@@ -36,25 +36,25 @@ public class DatabaseSchema : BaseDatabaseSchema
 
         AddMappings<NotificationFailed>(
             ns: "CrcV2",
-            table: "AffiliateGroupNotificationFailed",
+            table: "NotificationFailed",
             eventSchema: NotificationFailed,
             databaseFieldMap:
             [
                 ("emitter", e => e.Emitter),
-                ("group",   e => e.Group),
-                ("human",   e => e.Human)
+                ("group", e => e.Group),
+                ("human", e => e.Human)
             ]
         );
 
         AddMappings<NotificationSuccessful>(
             ns: "CrcV2",
-            table: "AffiliateGroupNotificationSuccessful",
+            table: "NotificationSuccessful",
             eventSchema: NotificationSuccessful,
             databaseFieldMap:
             [
                 ("emitter", e => e.Emitter),
-                ("group",   e => e.Group),
-                ("human",   e => e.Human)
+                ("group", e => e.Group),
+                ("human", e => e.Human)
             ]
         );
     }
