@@ -575,3 +575,12 @@ curl -X POST --data '{
     "id":1         
 }' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
+
+```shell
+curl -X POST --data '{
+    "jsonrpc":"2.0",
+    "method":"circles_getNetworkSnapshot",
+    "params":[],            
+    "id":1         
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+```
