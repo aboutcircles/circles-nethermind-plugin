@@ -62,6 +62,11 @@ public class Settings
         ? new(Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS")!)
         : null;
 
+    public readonly Address? AffiliateGroupRegistry =
+        Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS") != null
+            ? new(Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS")!)
+            : null;
+
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 0L;

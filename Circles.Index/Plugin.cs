@@ -52,7 +52,12 @@ public class Plugin : INethermindPlugin
 
         if (settings.CirclesLBPFactoryAddress != null)
         {
-            schemas.Add(new Circles.Index.CirclesV2.LBP.DatabaseSchema());
+            schemas.Add(new CirclesV2.LBP.DatabaseSchema());
+        }
+
+        if (settings.AffiliateGroupRegistry != null)
+        {
+            schemas.Add(new CirclesV2.AffiliateGroupRegistry.DatabaseSchema());
         }
 
         if (settings.SafeProxyFactoryAddresses.Length > 0)
@@ -109,6 +114,11 @@ public class Plugin : INethermindPlugin
         if (settings.BaseGroupDeployer != null)
         {
             logParsers.Add(new CirclesV2.BaseGroupDeployer.LogParser(settings.BaseGroupDeployer));
+        }
+
+        if (settings.AffiliateGroupRegistry != null)
+        {
+            logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
         }
 
         _indexerContext = new Context(
@@ -228,6 +238,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 CMGroup Deployer address: " + string.Join(", ",
             settings.CMGroupDeployer.Select(o => o.ToString(true, false))));
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
+        pluginLogger.Info(" * V2 Affiliate group registry address: " + settings.AffiliateGroupRegistry);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
             settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
