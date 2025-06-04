@@ -149,8 +149,8 @@ public record IpfsDataProfile(
  */
 public record Profile(
     string address,
-    string CID,
-    long lastUpdatedAt,
+    string? CID,
+    long? lastUpdatedAt,
     string name,
     string? description,
     string? registeredName,
@@ -159,7 +159,8 @@ public record Profile(
     string? previewImageUrl,
     float[]? geoLocation,
     float? longitude,
-    float? latitude);
+    float? latitude,
+    string? shortName);
 
 #endregion
 
