@@ -592,6 +592,6 @@ curl -s -X POST http://localhost:8545 \
         "jsonrpc": "2.0",
         "id":      1,
         "method":  "circles_searchProfiles",
-        "params":  ["test", 10, 0]
+        "params":  ["0xde37", 10, 0]
       }' | jq
 ```
