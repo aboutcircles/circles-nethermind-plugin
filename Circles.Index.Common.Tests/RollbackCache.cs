@@ -92,9 +92,14 @@ public sealed class RollbackCacheTests
 
         Assert.That(cache.LastBlockNo, Is.EqualTo(6));
 
-        cache.DeleteAllGreaterOrEqualBlock(5);
+        var stats = cache.DeleteAllGreaterOrEqualBlock(5);
 
-        Assert.That(cache.LastBlockNo, Is.EqualTo(long.MinValue));
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats.Removed, Is.EqualTo(2));
+            Assert.That(stats.Restored, Is.EqualTo(0));
+            Assert.That(cache.LastBlockNo, Is.EqualTo(long.MinValue));
+        });
     }
 
     /* ----------------------------------------------------------------- */
@@ -110,10 +115,12 @@ public sealed class RollbackCacheTests
         cache.Add(2, "k", 2);
         cache.Add(2, "m", 5);
 
-        cache.DeleteAllGreaterOrEqualBlock(2);
+        var stats = cache.DeleteAllGreaterOrEqualBlock(2);
 
         Assert.Multiple(() =>
         {
+            Assert.That(stats.Removed, Is.EqualTo(1));
+            Assert.That(stats.Restored, Is.EqualTo(1));
             Assert.That(cache.Get("k"), Is.EqualTo(1));
             Assert.That(cache.ContainsKey("m"), Is.False);
             Assert.That(cache.LastBlockNo, Is.EqualTo(1));
