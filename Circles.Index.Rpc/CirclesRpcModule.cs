@@ -1024,18 +1024,55 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var cid = hasV2Cid ? v2Cid : hasV1Cid ? v1Cid : null;
 
+        Profile? result;
+
         if (cid == null)
         {
-            throw new KeyNotFoundException($"Couldn't find a CID for {avatar}");
-        }
+            // Check if the account has a name and return this instead.
+            var hasV2Name = CirclesV2.LogParser.V2Avatars.TryGetValue(avatar.ToString(true, false), out var v2Avatar);
+            if (!hasV2Name)
+            {
+                return ResultWrapper<Profile>.Fail($"No profile found for avatar {avatar}");
+            }
 
-        var result = await circles_getProfileByCid(cid);
-        if (result.ErrorCode != 0)
+            result = new Profile(
+                null,
+                null,
+                null,
+                v2Avatar.Name,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+        }
+        else
         {
-            throw new Exception($"Couldn't get a profile for {avatar}");
+            var profileByCidResultWrapper = await circles_getProfileByCid(cid);
+            if (profileByCidResultWrapper.ErrorCode != 0)
+            {
+                return ResultWrapper<Profile>.Fail(
+                    $"Error retrieving profile for {avatar} by CID {cid}: {profileByCidResultWrapper.ErrorCode}");
+            }
+
+            result = profileByCidResultWrapper.Data;
         }
 
-        return result;
+        var hasShortName = CirclesV2.NameRegistry.LogParser.V2AvatarToShortNameMap.TryGetValue(
+            avatar,
+            out var shortName);
+
+        var enrichedProfile = result with
+        {
+            address = avatar.ToString(true, false),
+            shortName = hasShortName ? shortName : null
+        };
+
+        return ResultWrapper<Profile>.Success(enrichedProfile);
     }
 
     public async Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address?[] avatars)
@@ -1064,7 +1101,33 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new Exception($"Error during batch profile retrieval");
         }
 
-        return result;
+        var enrichedProfiles = new List<Profile?>(avatars.Length);
+        for (int i = 0; i < avatars.Length; i++)
+        {
+            if (result.Data[i] == null)
+            {
+                enrichedProfiles.Add(null);
+                continue;
+            }
+
+            var profile = result.Data[i];
+            if (profile == null)
+            {
+                enrichedProfiles.Add(null);
+                continue;
+            }
+
+            bool hasShortName =
+                CirclesV2.NameRegistry.LogParser.V2AvatarToShortNameMap.TryGetValue(avatars[i]!, out var shortName);
+            var enrichedProfile = profile with
+            {
+                address = avatars[i]!.ToString(true, false),
+                shortName = hasShortName ? shortName : null
+            };
+            enrichedProfiles.Add(enrichedProfile);
+        }
+
+        return ResultWrapper<Profile?[]>.Success(enrichedProfiles.ToArray());
     }
 
     public Task<ResultWrapper<TokenInfo>> circles_getTokenInfo(Address tokenAddress)
@@ -1142,7 +1205,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         string[] tokens = qText
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        
+
         if (!tokens.Any(o => o.Length > 1))
             return ResultWrapper<Profile[]>.Success(Array.Empty<Profile>());
 
