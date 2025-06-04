@@ -584,3 +584,14 @@ curl -X POST --data '{
     "id":1         
 }' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
+
+```shell
+curl -s -X POST http://localhost:8545 \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "jsonrpc": "2.0",
+        "id":      1,
+        "method":  "circles_searchProfiles",
+        "params":  ["Metri Co", 10, 0]
+      }' | jq
+```

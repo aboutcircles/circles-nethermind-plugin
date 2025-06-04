@@ -149,8 +149,8 @@ public record IpfsDataProfile(
  */
 public record Profile(
     string address,
-    string CID,
-    long lastUpdatedAt,
+    string? CID,
+    long? lastUpdatedAt,
     string name,
     string? description,
     string? registeredName,
@@ -159,7 +159,8 @@ public record Profile(
     string? previewImageUrl,
     float[]? geoLocation,
     float? longitude,
-    float? latitude);
+    float? latitude,
+    string? shortName);
 
 #endregion
 
@@ -257,4 +258,13 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "", IsImplemented = true)]
     public Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot();
+
+    [JsonRpcMethod(
+        Description = "Full-text search over avatar profiles (name & description)",
+        IsImplemented = true)]
+    Task<ResultWrapper<Profile[]>> circles_searchProfiles(
+        string text, // search term(s)
+        int? limit = 20, // default page size
+        int? offset = 0 // pagination offset
+    );
 }
