@@ -1138,9 +1138,18 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (take > hardLimit)
             return ResultWrapper<Profile[]>.Fail($"limit must not exceed {hardLimit} (got {take}).");
 
-        string query = text?.Trim() ?? string.Empty;
-        if (query.Length == 0)
+        string qText = text.Trim();
+
+        string[] tokens = qText
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        
+        if (!tokens.Any(o => o.Length > 1))
             return ResultWrapper<Profile[]>.Success(Array.Empty<Profile>());
+
+        if (tokens.Length > 3)
+            return ResultWrapper<Profile[]>.Fail("Too many search terms. Maximum is 3.");
+
+        qText = string.Join(' ', tokens);
 
         // ── SQL ────────────────────────────────────────
         const string sql = @"
@@ -1234,7 +1243,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await conn.OpenAsync();
 
         await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("search", query);
+        cmd.Parameters.AddWithValue("search", qText);
         cmd.Parameters.AddWithValue("limit", take);
         cmd.Parameters.AddWithValue("offset", skip);
 
