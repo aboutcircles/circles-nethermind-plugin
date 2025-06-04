@@ -71,6 +71,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Profiles", "C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.ContractClient", "Circles.Index.ContractClient\Circles.Index.ContractClient.csproj", "{32C6C815-041E-472A-B748-458A5EE99065}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.AffiliateGroupRegistry", "Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj", "{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -165,6 +167,10 @@ Global
 		{32C6C815-041E-472A-B748-458A5EE99065}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{32C6C815-041E-472A-B748-458A5EE99065}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{32C6C815-041E-472A-B748-458A5EE99065}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
@@ -177,5 +183,6 @@ Global
 		{2EBE576E-3DEC-4458-977D-88699673E6D6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 		{C95155BB-B159-4A82-9503-F129A82D806B} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 		{58B46B62-06DF-4623-8ADF-3715523FED67} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
+		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 	EndGlobalSection
 EndGlobal

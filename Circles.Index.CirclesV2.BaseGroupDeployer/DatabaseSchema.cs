@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
