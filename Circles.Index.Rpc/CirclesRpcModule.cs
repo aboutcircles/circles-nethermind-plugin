@@ -1326,7 +1326,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             */
             string avatar = reader.GetString(2);
             string? avatarName = reader.IsDBNull(3) ? null : reader.GetString(3);
-            string? shortName = reader.IsDBNull(4) ? null : reader.GetString(4);
+            string? shortName = reader.IsDBNull(4) ? null : BigInteger.Parse(reader.GetString(4)).ToBase58Btc();
             object? payloadObj = reader.GetValue(6);
 
             if (payloadObj is string json)
