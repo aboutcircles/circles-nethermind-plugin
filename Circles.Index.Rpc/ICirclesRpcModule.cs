@@ -257,4 +257,13 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "", IsImplemented = true)]
     public Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot();
+
+    [JsonRpcMethod(
+        Description = "Full-text search over avatar profiles (name & description)",
+        IsImplemented = true)]
+    Task<ResultWrapper<Profile[]>> circles_searchProfiles(
+        string text, // search term(s)
+        int? limit = 20, // default page size
+        int? offset = 0 // pagination offset
+    );
 }
