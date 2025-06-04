@@ -1124,4 +1124,182 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return ResultWrapper<TokenInfo?[]>.Success(tokenInfos.ToArray());
     }
+
+    public async Task<ResultWrapper<Profile[]>> circles_searchProfiles(
+        string text,
+        int? limit = 20,
+        int? offset = 0)
+    {
+        // ── guard clauses ────────────────────────────────────────────────
+        const int hardLimit = 100;
+        int take = limit ?? 20;
+        int skip = offset ?? 0;
+
+        if (take > hardLimit)
+            return ResultWrapper<Profile[]>.Fail($"limit must not exceed {hardLimit} (got {take}).");
+
+        string qText = text.Trim();
+
+        string[] tokens = qText
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        
+        if (!tokens.Any(o => o.Length > 1))
+            return ResultWrapper<Profile[]>.Success(Array.Empty<Profile>());
+
+        if (tokens.Length > 3)
+            return ResultWrapper<Profile[]>.Fail("Too many search terms. Maximum is 3.");
+
+        qText = string.Join(' ', tokens);
+
+        // ── SQL ────────────────────────────────────────
+        const string sql = @"
+            WITH
+                input(txt) AS (VALUES (@search)),
+                q AS (
+                    SELECT to_tsquery(
+                             'simple',
+                             (
+                               SELECT string_agg(quote_literal(tok) || ':*', ' & ')
+                               FROM   unnest(string_to_array(txt, ' ')) AS tok
+                             )
+                           ) AS query
+                    FROM input
+                ),
+                recv AS (
+                    SELECT ""to""::text AS avatar, COUNT(*) AS receive_count
+                    FROM   ""CrcV2_TransferSummary""
+                    GROUP  BY ""to""
+                ),
+                /* ── avatars WITH profile ─────────────────────────────────────── */
+                w_profile AS (
+                    SELECT  a.avatar,
+                            a.""timestamp"",
+                            a.name              AS avatar_name,
+                            rs.""shortName""    AS short_name,
+                            f.metadata_digest,
+                            f.payload,
+                            ts_rank_cd(
+                              ARRAY[1.0, 0.4, 0.2, 0.05],            -- A,B,C,D weights
+                              (
+                                setweight(to_tsvector('simple', coalesce(f.payload ->> 'name',        '')), 'A') ||
+                                setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B') ||
+                                setweight(to_tsvector('simple', a.avatar),                                'C')
+                              ),
+                              q.query
+                            ) AS rank
+                    FROM   ""V_CrcV2_Avatars""        a
+                    LEFT   JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
+                    JOIN   ipfs_files                 f  ON f.metadata_digest = a.""cidV0Digest""
+                    CROSS  JOIN q
+                    WHERE (
+                            setweight(to_tsvector('simple', coalesce(f.payload ->> 'name',        '')), 'A') ||
+                            setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B') ||
+                            setweight(to_tsvector('simple', a.avatar),                                'C')
+                          ) @@ q.query
+                ),
+                /* ── avatars WITHOUT profile ──────────────────────────────────── */
+                wo_profile AS (
+                    SELECT  a.avatar,
+                            a.""timestamp"",
+                            a.name              AS avatar_name,
+                            rs.""shortName""    AS short_name,
+                            NULL::bytea         AS metadata_digest,
+                            NULL::jsonb         AS payload,
+                            ts_rank_cd(
+                              ARRAY[1.0, 0.4, 0.2, 0.05],
+                              (
+                                setweight(to_tsvector('simple', a.name),   'A') ||
+                                setweight(to_tsvector('simple', a.avatar), 'C')
+                              ),
+                              q.query
+                            ) AS rank
+                    FROM   ""V_CrcV2_Avatars""        a
+                    LEFT   JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
+                    LEFT   JOIN ipfs_files             f  ON f.metadata_digest = a.""cidV0Digest""
+                    CROSS  JOIN q
+                    WHERE  f.metadata_digest IS NULL
+                      AND (
+                            setweight(to_tsvector('simple', a.name),   'A') ||
+                            setweight(to_tsvector('simple', a.avatar), 'C')
+                          ) @@ q.query
+                )
+            SELECT  p.""timestamp"",
+                    COALESCE(r.receive_count, 0) AS receive_count,
+                    p.avatar,
+                    p.avatar_name,
+                    p.short_name::text,
+                    p.metadata_digest,
+                    p.payload
+            FROM   (SELECT * FROM w_profile
+                    UNION ALL
+                    SELECT * FROM wo_profile) p
+            LEFT   JOIN recv r USING (avatar)
+            ORDER  BY receive_count DESC, p.rank DESC
+            LIMIT  @limit
+            OFFSET @offset;";
+
+        // ── run the query ───────────────────────────────────────────────
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("search", qText);
+        cmd.Parameters.AddWithValue("limit", take);
+        cmd.Parameters.AddWithValue("offset", skip);
+
+        var profiles = new List<Profile>(take);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            /* Column order:
+               0 timestamp (DateTime)
+               1 receive_count (int64)   -- ignored here
+               2 avatar       (string)
+               3 avatar_name  (string)
+               4 short_name   (string or null)
+               5 digest       (bytea)    -- ignored here
+               6 payload      (string or null)
+            */
+            string avatar = reader.GetString(2);
+            string? avatarName = reader.IsDBNull(3) ? null : reader.GetString(3);
+            string? shortName = reader.IsDBNull(4) ? null : reader.GetString(4);
+            object? payloadObj = reader.GetValue(6);
+
+            if (payloadObj is string json)
+            {
+                // real profile
+                var prof = JsonSerializer.Deserialize<Profile>(json);
+                if (prof != null)
+                {
+                    profiles.Add(prof with
+                    {
+                        address = avatar,
+                        shortName = shortName
+                    });
+                }
+            }
+            else
+            {
+                // synthetic profile
+                profiles.Add(new Profile(
+                    address: avatar,
+                    CID: null,
+                    lastUpdatedAt: null,
+                    name: avatarName,
+                    description: null,
+                    registeredName: null,
+                    location: null,
+                    imageUrl: null,
+                    previewImageUrl: null,
+                    geoLocation: null,
+                    longitude: null,
+                    latitude: null,
+                    shortName: shortName
+                ));
+            }
+        }
+
+        return ResultWrapper<Profile[]>.Success(profiles.ToArray());
+    }
 }
