@@ -5,11 +5,23 @@ public interface IRollbackCache
     /// <summary>The number of blocks that can be rolled back.</summary>
     int RollbackCapacity { get; }
 
-    void DeleteAllGreaterOrEqualBlock(long toBlockNo);
+    RollbackStats DeleteAllGreaterOrEqualBlock(long toBlockNo);
 
     int Count { get; }
 
     string Name { get; }
+}
+
+public readonly struct RollbackStats
+{
+    public int Removed { get; }
+    public int Restored { get; }
+
+    public RollbackStats(int removed, int restored)
+    {
+        Removed = removed;
+        Restored = restored;
+    }
 }
 
 /// <summary>
@@ -154,22 +166,24 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     /// is a no-op.  
     /// If the target precedes the retained history window an exception is thrown.
     /// </summary>
-    public void DeleteAllGreaterOrEqualBlock(long toBlockNo)
+    public RollbackStats DeleteAllGreaterOrEqualBlock(long toBlockNo)
     {
         _lock.EnterWriteLock();
         try
         {
             // Nothing stored yet or already behind the requested head.
             if (_lastBlockNo == long.MinValue || _lastBlockNo < toBlockNo)
-                return;
+                return new RollbackStats(0, 0);
 
             if (_blockOrder.Count == 0)
-                return;
+                return new RollbackStats(0, 0);
 
             if (toBlockNo < _blockOrder.First!.Value)
                 throw new InvalidOperationException("Cannot roll back beyond stored history.");
 
             // Roll back blocks one by one while _lastBlockNo >= toBlockNo
+            var removed = 0;
+            var restored = 0;
             while (_lastBlockNo >= toBlockNo)
             {
                 var diff = _blockDiffs[_lastBlockNo];
@@ -177,15 +191,23 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
                 foreach (var (key, change) in diff)
                 {
                     if (change.HadPrevious)
+                    {
                         _current[key] = change.PreviousValue;
+                        restored++;
+                    }
                     else
+                    {
                         _current.Remove(key);
+                        removed++;
+                    }
                 }
 
                 _blockDiffs.Remove(_lastBlockNo);
                 _blockOrder.RemoveLast();
                 _lastBlockNo = _blockOrder.Count > 0 ? _blockOrder.Last!.Value : long.MinValue;
             }
+
+            return new RollbackStats(removed, restored);
         }
         finally
         {
