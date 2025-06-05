@@ -52,7 +52,10 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "GroupMintRedeem_1d"),
 
         ("V_CrcV2", "GroupWrapUnWrap_1h"),
-        ("V_CrcV2", "GroupWrapUnWrap_1d")
+        ("V_CrcV2", "GroupWrapUnWrap_1d"),
+
+        ("V_CrcV2", "AffiliateMembersCount_1h"),
+        ("V_CrcV2", "AffiliateMembersCount_1d")
     };
 
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
