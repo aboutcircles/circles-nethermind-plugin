@@ -40,7 +40,7 @@ affiliate_groups_sparse AS (
 	GROUP BY 1, 2
 ),
 
-affiliate_groups_hourly_sparse AS (
+affiliate_groups_daily_sparse AS (
     SELECT 
         date_trunc('day',TO_TIMESTAMP("timestamp")) AS "timestamp"
         ,"group"
@@ -55,7 +55,7 @@ min_max_per_group AS (
         "group",
         MIN("timestamp") AS min_timestamp
     FROM 
-        affiliate_groups_hourly_sparse
+        affiliate_groups_daily_sparse
     GROUP BY 1
 ),
 
@@ -79,5 +79,5 @@ SELECT
 FROM 
 	calendar t1
 LEFT JOIN 
-	affiliate_groups_hourly_sparse t2
+	affiliate_groups_daily_sparse t2
 	ON t1."group" = t2."group" AND t1."timestamp" = t2."timestamp"
