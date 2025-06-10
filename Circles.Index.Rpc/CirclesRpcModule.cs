@@ -7,6 +7,7 @@ using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
+using Circles.Index.Rpc.Queries;
 using Circles.Pathfinder.DTOs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -186,7 +187,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private async Task<List<CirclesTokenBalance>> GetTokenBalancesForAccount(Address address, Address hubAddress)
     {
-        var tokens = GetTokenExposureIds(address);
+        var tokens = await GetTokenExposureIds(address);
 
         var erc20Tokens = tokens.Values.Where(o => o.IsErc20).ToArray();
         var erc1155Tokens = tokens.Values.Where(o => o.IsErc1155).ToArray();
@@ -406,40 +407,20 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result;
     }
 
-    public Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address)
+    public async Task<ResultWrapper<CirclesTrustRelations>> circles_getTrustRelations(Address address)
     {
-        const string sql = @"
-            select ""user"",
-                   ""canSendTo"",
-                   ""limit""
-            from (
-                     select ""blockNumber"",
-                            ""transactionIndex"",
-                            ""logIndex"",
-                            ""user"",
-                            ""canSendTo"",
-                            ""limit"",
-                            row_number() over (partition by ""user"", ""canSendTo"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as rn
-                     from ""CrcV1_Trust""
-                 ) t
-            where rn = 1
-              and (""user"" = @address
-               or ""canSendTo"" = @address)
-        ";
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
 
-        var parameters = new[]
-        {
-            _indexerContext.ReadonlyDatabase.CreateParameter("address", address.ToString(true, false))
-        };
+        var rows = await TrustRelationsQuery.ExecuteAsync(
+            conn,
+            address: address.ToString(true, false));
 
-        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, parameters));
-        if (result.Rows == null)
-        {
-            throw new Exception("Failed to get trust relations");
-        }
+        var trustRelations = ParseTrustRelations(rows
+                .Select(r => new object[] { r.User, r.CanSendTo, r.Limit }), // keep old parser
+            address);
 
-        var trustRelations = ParseTrustRelations(result.Rows!, address);
-        return Task.FromResult(ResultWrapper<CirclesTrustRelations>.Success(trustRelations));
+        return ResultWrapper<CirclesTrustRelations>.Success(trustRelations);
     }
 
     private CirclesTrustRelations ParseTrustRelations(IEnumerable<object[]> rows, Address address)
@@ -470,47 +451,33 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
     }
 
-    public Task<ResultWrapper<Address[]>> circles_getCommonTrust(
+    public async Task<ResultWrapper<Address[]>> circles_getCommonTrust(
         Address address1,
         Address address2,
         int? version = null)
     {
-        var v1Sql = @"
-            select trustee
-            from ""V_Crc_TrustRelations""
-            where truster in (@address1, @address2)
-            and trustee not in (@address1, @address2)
-            and version = 1
-            group by trustee
-            having count(truster) > 1
-        ";
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
 
-        var v2Sql = @"
-            select trustee
-            from ""V_Crc_TrustRelations""
-            where truster in (@address1, @address2)
-            and trustee not in (@address1, @address2)
-            and version = 2
-            group by trustee
-            having count(truster) > 1
-        ";
+        var addr1 = address1.ToString(true, false);
+        var addr2 = address2.ToString(true, false);
 
-        var sql = version == 1
-            ? v1Sql
-            : version == 2
-                ? v2Sql
-                : $"{v1Sql} union {v2Sql}";
+        IEnumerable<CommonTrustQuery.Row> rows = version switch
+        {
+            1 => await CommonTrustQuery.ExecuteV1Async(conn, addr1, addr2),
+            2 => await CommonTrustQuery.ExecuteV2Async(conn, addr1, addr2),
+            _ => (await Task.WhenAll(
+                    CommonTrustQuery.ExecuteV1Async(conn, addr1, addr2),
+                    CommonTrustQuery.ExecuteV2Async(conn, addr1, addr2)))
+                .SelectMany(x => x)
+        };
 
-        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, [
-            _indexerContext.ReadonlyDatabase.CreateParameter("address1", address1.ToString(true, false)),
-            _indexerContext.ReadonlyDatabase.CreateParameter("address2", address2.ToString(true, false))
-        ]));
-
-        var commonTrust = result.Rows
-            .Select(row => new Address(row[0]?.ToString() ?? throw new Exception("Address is null")))
+        var result = rows
+            .Select(r => new Address(r.Trustee))
+            .Distinct()
             .ToArray();
 
-        return Task.FromResult(ResultWrapper<Address[]>.Success(commonTrust));
+        return ResultWrapper<Address[]>.Success(result);
     }
 
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
@@ -876,145 +843,73 @@ public class CirclesRpcModule : ICirclesRpcModule
         return Task.FromResult(ResultWrapper<IEnumerable<DatabaseNamespace>>.Success(namespaces));
     }
 
-    private Dictionary<Address, TokenInfo> GetTokenExposureIds(Address address)
+    private async Task<Dictionary<Address, TokenInfo>> GetTokenExposureIds(Address address)
     {
-        var tokenExposure = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(@"
-            WITH tokens AS (
-                SELECT ""tokenAddress""
-                     , 'CrcV1_Signup' as ""type""
-                     , s.""user"" as ""tokenOwner""
-                FROM  public.""CrcV1_Transfer"" t
-                join ""CrcV1_Signup"" s on s.token = t.""tokenAddress""
-                WHERE ""to"" = @address
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
 
-                UNION ALL
-                SELECT ""tokenAddress""
-                     , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
-                     , ""tokenAddress"" as ""tokenOwner""
-                FROM  public.""CrcV2_TransferSingle"" ts
-                left join ""CrcV2_RegisterHuman"" rh on rh.avatar = ts.""tokenAddress""
-                WHERE ""to"" = @address
+        var rows = await TokenExposureIdsQuery.ExecuteAsync(
+            conn,
+            address: address.ToString(true, false));
 
-                UNION ALL
-                SELECT ""tokenAddress""
-                     , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
-                     , ""tokenAddress"" as ""tokenOwner""
-                FROM  public.""CrcV2_TransferBatch"" tb
-                          left join ""CrcV2_RegisterHuman"" rh on rh.avatar = tb.""tokenAddress""
-                WHERE ""to"" = @address
+        var dict = new Dictionary<Address, TokenInfo>();
 
-                UNION ALL
-                SELECT ""tokenAddress""
-                     , case when wd.""circlesType"" = 0 then 'CrcV2_ERC20WrapperDeployed_Demurraged' else 'CrcV2_ERC20WrapperDeployed_Inflationary' end as type
-                     , wd.avatar as tokenOwner
-                FROM  public.""CrcV2_Erc20WrapperTransfer"" wt
-                join ""CrcV2_ERC20WrapperDeployed"" wd on wd.""erc20Wrapper"" = wt.""tokenAddress""
-                WHERE ""to"" = @address
-            ), distinct_tokens as (
-                SELECT DISTINCT ""tokenAddress"", ""type"", ""tokenOwner""
-                FROM   tokens
-            )
-            select ""tokenAddress"", ""type"", ""tokenOwner""
-            from distinct_tokens
-        ", [
-            _indexerContext.ReadonlyDatabase.CreateParameter("address", address.ToString(true, false))
-        ]));
-
-        var rows = tokenExposure.Rows.ToArray();
-        Dictionary<Address, TokenInfo> tokenExposureIds = new(rows.Length);
-        foreach (var tokenExposureRow in tokenExposure.Rows)
+        foreach (var r in rows)
         {
-            var token = new Address((string)tokenExposureRow[0]);
-            var tokenType = (string)tokenExposureRow[1];
-            var tokenOwner = new Address((string)tokenExposureRow[2]);
+            var token = new Address(r.TokenAddress);
+            var tokenOwner = new Address(r.TokenOwner);
+            var tokenType = r.Type;
 
-            var isWrapped = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary"
-                or "CrcV2_ERC20WrapperDeployed_Demurraged";
+            bool isWrapped = tokenType.StartsWith("CrcV2_ERC20Wrapper");
+            bool isInflationary = tokenType.EndsWith("Inflationary");
+            bool isGroup = tokenType == "CrcV2_RegisterGroup";
+            bool isErc20 = tokenType == "CrcV1_Signup" || isWrapped;
+            bool isErc1155 = tokenType is "CrcV2_RegisterHuman" or "CrcV2_RegisterGroup";
+            int version = isWrapped || isErc1155 ? 2 : 1;
 
-            var isInflationary = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary";
-            var isGroup = tokenType is "CrcV2_RegisterGroup";
-
-            var isErc20 = tokenType == "CrcV1_Signup"
-                          || isWrapped;
-
-            var isErc1155 = tokenType is "CrcV2_RegisterHuman"
-                or "CrcV2_RegisterGroup";
-
-            var version = isWrapped || isErc1155 ? 2 : 1;
-
-            var tokenInfo = new TokenInfo(
-                token,
-                tokenOwner,
-                tokenType,
-                version,
-                isErc20,
-                isErc1155,
-                isWrapped,
-                isInflationary,
-                isGroup);
-
-            tokenExposureIds.Add(token, tokenInfo);
+            dict[token] = new TokenInfo(
+                token, tokenOwner, tokenType, version,
+                isErc20, isErc1155, isWrapped, isInflationary, isGroup);
         }
 
-        return tokenExposureIds;
+        return dict;
     }
 
     public async Task<ResultWrapper<Profile>> circles_getProfileByCid(string cid)
     {
-        var query = "select payload from ipfs_files where cid = @cid";
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
 
-        await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
-        await using var command = new NpgsqlCommand(query, connection);
-        await connection.OpenAsync();
+        var row = await circles_getProfileByCidQuery.ExecuteAsync(conn, cid);
 
-        command.Parameters.AddWithValue("cid", cid);
-        await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+        if (row is null)
         {
             return ResultWrapper<Profile>.Fail($"No profile found for cid {cid}");
         }
 
-        var payload = reader.GetString(0);
-        var profile = JsonSerializer.Deserialize<Profile>(payload);
-
-        return ResultWrapper<Profile>.Success(profile);
+        var profile = JsonSerializer.Deserialize<Profile>(row.Payload);
+        return ResultWrapper<Profile>.Success(profile!);
     }
 
     public async Task<ResultWrapper<Profile?[]>> circles_getProfileByCidBatch(string[] cids)
     {
         if (cids.Length > 100)
         {
-            throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 100");
+            return ResultWrapper<Profile?[]>.Fail("Batch size exceeds 100");
         }
 
-        var query = @"
-            select f.payload
-            from unnest(@cids) _cid
-            left join ipfs_files f on f.cid = _cid;";
+        await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync();
 
-        await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
-        await using var command = new NpgsqlCommand(query, connection);
-        await connection.OpenAsync();
+        var rows = await circles_getProfileByCidBatchQuery.ExecuteAsync(conn, cids);
 
-        command.Parameters.AddWithValue("cids", cids);
-        await using var reader = await command.ExecuteReaderAsync();
+        var result = rows
+            .Select(r => r.Payload is null
+                ? null
+                : JsonSerializer.Deserialize<Profile>(r.Payload))
+            .ToArray();
 
-        var resultList = new List<Profile?>();
-        while (await reader.ReadAsync())
-        {
-            var payloadCellValue = reader.GetValue(0);
-            if (payloadCellValue is string payload)
-            {
-                var profile = JsonSerializer.Deserialize<Profile>(payload);
-                resultList.Add(profile);
-            }
-            else
-            {
-                resultList.Add(null);
-            }
-        }
-
-        return ResultWrapper<Profile?[]>.Success(resultList.ToArray());
+        return ResultWrapper<Profile?[]>.Success(result);
     }
 
     public async Task<ResultWrapper<Profile>> circles_getProfileByAddress(Address avatar)
@@ -1188,181 +1083,63 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<TokenInfo?[]>.Success(tokenInfos.ToArray());
     }
 
-    public async Task<ResultWrapper<Profile[]>> circles_searchProfiles(
-        string text,
-        int? limit = 20,
-        int? offset = 0)
+    public async Task<ResultWrapper<Profile[]>> circles_searchProfiles(string text, int? limit = 20, int? offset = 0)
     {
-        // ── guard clauses ────────────────────────────────────────────────
         const int hardLimit = 100;
         int take = limit ?? 20;
         int skip = offset ?? 0;
 
         if (take > hardLimit)
-            return ResultWrapper<Profile[]>.Fail($"limit must not exceed {hardLimit} (got {take}).");
+        {
+            return ResultWrapper<Profile[]>.Fail($"limit must not exceed {hardLimit}.");
+        }
 
-        string qText = text.Trim();
+        string trimmed = text.Trim();
+        string[] terms = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        string[] tokens = qText
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (!tokens.Any(o => o.Length > 1))
+        if (terms.All(t => t.Length <= 1))
+        {
             return ResultWrapper<Profile[]>.Success(Array.Empty<Profile>());
+        }
 
-        if (tokens.Length > 3)
+        if (terms.Length > 3)
+        {
             return ResultWrapper<Profile[]>.Fail("Too many search terms. Maximum is 3.");
+        }
 
-        qText = string.Join(' ', tokens);
+        string qText = string.Join(' ', terms);
 
-        // ── SQL ────────────────────────────────────────
-        const string sql = @"
-            WITH
-                input(txt) AS (VALUES (@search)),
-                q AS (
-                    SELECT to_tsquery(
-                             'simple',
-                             (
-                               SELECT string_agg(quote_literal(tok) || ':*', ' & ')
-                               FROM   unnest(string_to_array(txt, ' ')) AS tok
-                             )
-                           ) AS query
-                    FROM input
-                ),
-                recv AS (
-                    SELECT ""to""::text AS avatar, COUNT(*) AS receive_count
-                    FROM   ""CrcV2_TransferSummary""
-                    GROUP  BY ""to""
-                ),
-                /* ── avatars WITH profile ─────────────────────────────────────── */
-                w_profile AS (
-                    SELECT  a.avatar,
-                            a.""timestamp"",
-                            a.name              AS avatar_name,
-                            rs.""shortName""    AS short_name,
-                            f.metadata_digest,
-                            f.payload,
-                            ts_rank_cd(
-                              ARRAY[1.0, 0.4, 0.2, 0.05],            -- A,B,C,D weights
-                              (
-                                setweight(to_tsvector('simple', coalesce(f.payload ->> 'name',        '')), 'A') ||
-                                setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B') ||
-                                setweight(to_tsvector('simple', a.avatar),                                'C')
-                              ),
-                              q.query
-                            ) AS rank
-                    FROM   ""V_CrcV2_Avatars""        a
-                    LEFT   JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
-                    JOIN   ipfs_files                 f  ON f.metadata_digest = a.""cidV0Digest""
-                    CROSS  JOIN q
-                    WHERE (
-                            setweight(to_tsvector('simple', coalesce(f.payload ->> 'name',        '')), 'A') ||
-                            setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B') ||
-                            setweight(to_tsvector('simple', a.avatar),                                'C')
-                          ) @@ q.query
-                ),
-                /* ── avatars WITHOUT profile ──────────────────────────────────── */
-                wo_profile AS (
-                    SELECT  a.avatar,
-                            a.""timestamp"",
-                            a.name              AS avatar_name,
-                            rs.""shortName""    AS short_name,
-                            NULL::bytea         AS metadata_digest,
-                            NULL::jsonb         AS payload,
-                            ts_rank_cd(
-                              ARRAY[1.0, 0.4, 0.2, 0.05],
-                              (
-                                setweight(to_tsvector('simple', a.name),   'A') ||
-                                setweight(to_tsvector('simple', a.avatar), 'C')
-                              ),
-                              q.query
-                            ) AS rank
-                    FROM   ""V_CrcV2_Avatars""        a
-                    LEFT   JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
-                    LEFT   JOIN ipfs_files             f  ON f.metadata_digest = a.""cidV0Digest""
-                    CROSS  JOIN q
-                    WHERE  f.metadata_digest IS NULL
-                      AND (
-                            setweight(to_tsvector('simple', a.name),   'A') ||
-                            setweight(to_tsvector('simple', a.avatar), 'C')
-                          ) @@ q.query
-                )
-            SELECT  p.""timestamp"",
-                    COALESCE(r.receive_count, 0) AS receive_count,
-                    p.avatar,
-                    p.avatar_name,
-                    p.short_name::text,
-                    p.metadata_digest,
-                    p.payload
-            FROM   (SELECT * FROM w_profile
-                    UNION ALL
-                    SELECT * FROM wo_profile) p
-            LEFT   JOIN recv r USING (avatar)
-            ORDER  BY receive_count DESC, p.rank DESC
-            LIMIT  @limit
-            OFFSET @offset;";
-
-        // ── run the query ───────────────────────────────────────────────
         await using var conn = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
         await conn.OpenAsync();
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("search", qText);
-        cmd.Parameters.AddWithValue("limit", take);
-        cmd.Parameters.AddWithValue("offset", skip);
+        var rows = await SearchProfilesQuery.ExecuteAsync(conn, qText, take, skip);
 
-        var profiles = new List<Profile>(take);
-
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        var profiles = rows.Select(r =>
         {
-            /* Column order:
-               0 timestamp (DateTime)
-               1 receive_count (int64)   -- ignored here
-               2 avatar       (string)
-               3 avatar_name  (string)
-               4 short_name   (string or null)
-               5 digest       (bytea)    -- ignored here
-               6 payload      (string or null)
-            */
-            string avatar = reader.GetString(2);
-            string? avatarName = reader.IsDBNull(3) ? null : reader.GetString(3);
-            string? shortName = reader.IsDBNull(4) ? null : BigInteger.Parse(reader.GetString(4)).ToBase58Btc();
-            object? payloadObj = reader.GetValue(6);
-
-            if (payloadObj is string json)
+            // payload present → real profile
+            if (r.Payload is not null)
             {
-                // real profile
-                var prof = JsonSerializer.Deserialize<Profile>(json);
-                if (prof != null)
-                {
-                    profiles.Add(prof with
-                    {
-                        address = avatar,
-                        shortName = shortName
-                    });
-                }
+                var prof = JsonSerializer.Deserialize<Profile>(r.Payload);
+                return prof with { address = r.Avatar, shortName = r.Short_Name };
             }
-            else
-            {
-                // synthetic profile
-                profiles.Add(new Profile(
-                    address: avatar,
-                    CID: null,
-                    lastUpdatedAt: null,
-                    name: avatarName,
-                    description: null,
-                    registeredName: null,
-                    location: null,
-                    imageUrl: null,
-                    previewImageUrl: null,
-                    geoLocation: null,
-                    longitude: null,
-                    latitude: null,
-                    shortName: shortName
-                ));
-            }
-        }
 
-        return ResultWrapper<Profile[]>.Success(profiles.ToArray());
+            // otherwise synthesise minimal profile
+            return new Profile(
+                address: r.Avatar,
+                CID: null,
+                lastUpdatedAt: null,
+                name: r.Avatar_Name,
+                description: null,
+                registeredName: null,
+                location: null,
+                imageUrl: null,
+                previewImageUrl: null,
+                geoLocation: null,
+                longitude: null,
+                latitude: null,
+                shortName: r.Short_Name);
+        }).ToArray();
+
+        return ResultWrapper<Profile[]>.Success(profiles);
     }
 }

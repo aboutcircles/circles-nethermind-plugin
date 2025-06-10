@@ -256,6 +256,6 @@ curl -s -X POST https://rpc.circlesubi.network \
         "jsonrpc": "2.0",
         "id":      1,
         "method":  "circles_searchProfiles",
-        "params":  ["Ben", 10, 0]
-      }' | jq
+        "params":  ["Metri Core"]
+      }' | jq<
 ```
