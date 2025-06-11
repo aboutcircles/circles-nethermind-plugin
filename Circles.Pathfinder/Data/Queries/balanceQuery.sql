@@ -115,7 +115,9 @@ all_transfers as (
 select balance::text
      , account
      , "tokenAddress"
+     , t."tokenOwner"
      , "isWrapped"
      , "circlesType"
 from all_transfers
+left join "V_Crc_Tokens" t on t."token" = all_transfers."tokenAddress"
 where balance > 0;

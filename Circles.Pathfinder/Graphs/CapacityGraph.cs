@@ -21,10 +21,10 @@ public class CapacityGraph : IGraph<CapacityEdge>
         }
     }
 
-    public void AddBalanceNode(int holder, int token, long amount, bool isWrapped, bool isStatic, int? balanceNodeId)
+    public void AddBalanceNode(int holder, int token, int tokenOwner, long amount, bool isWrapped, bool isStatic, int? balanceNodeId)
     {
         var _balanceNodeId = balanceNodeId ?? AddressIdPool.BalanceNodeIdOf($"{holder}-{token}");
-        var balanceNode = new BalanceNode(_balanceNodeId, holder, token, amount, isWrapped, isStatic);
+        var balanceNode = new BalanceNode(_balanceNodeId, holder, token, tokenOwner, amount, isWrapped, isStatic);
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
@@ -33,5 +33,34 @@ public class CapacityGraph : IGraph<CapacityEdge>
     {
         var edge = new CapacityEdge(from, to, token, capacity);
         Edges.Add(edge);
+    }
+    
+    public CapacityGraph ShallowCloneWithoutEdges()
+    {
+        var g = new CapacityGraph
+        {
+            VirtualSinkAddress = VirtualSinkAddress
+        };
+
+        /* copy all avatars */
+        foreach (var avatarId in AvatarNodes.Keys)
+        {
+            g.AddAvatar(avatarId);
+        }
+
+        /* copy every BalanceNode (but no edges yet) */
+        foreach (var bn in BalanceNodes.Values)
+        {
+            g.AddBalanceNode(
+                bn.Holder,
+                bn.Token,
+                bn.TokenOwner,
+                bn.Amount,
+                bn.IsWrapped,
+                bn.IsStatic,
+                bn.Address);
+        }
+
+        return g;
     }
 }

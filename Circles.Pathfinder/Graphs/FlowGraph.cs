@@ -45,10 +45,10 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public void AddBalanceNode(int address, int token, long amount, bool isWrapped, bool isStatic)
+    public void AddBalanceNode(int address, int token, int tokenOwner, long amount, bool isWrapped, bool isStatic)
     {
         var balanceNodeId = AddressIdPool.BalanceNodeIdOf($"{address}-{token}");
-        var balanceNode = new BalanceNode(balanceNodeId, address, token, amount, isWrapped, isStatic);
+        var balanceNode = new BalanceNode(balanceNodeId, address, token, tokenOwner, amount, isWrapped, isStatic);
         BalanceNodes.TryAdd(balanceNode.Address, balanceNode);
         Nodes.TryAdd(balanceNode.Address, balanceNode);
     }
@@ -81,7 +81,7 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (fromNode is BalanceNode fromBalance)
             {
-                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.Amount, fromBalance.IsWrapped,
+                AddBalanceNode(fromBalance.Address, fromBalance.Token, fromBalance.TokenOwner, fromBalance.Amount, fromBalance.IsWrapped,
                     fromBalance.IsStatic);
             }
         }
@@ -94,7 +94,7 @@ public class FlowGraph : IGraph<FlowEdge>
             }
             else if (toNode is BalanceNode toBalance)
             {
-                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.Amount, toBalance.IsWrapped,
+                AddBalanceNode(toBalance.Address, toBalance.Token, toBalance.TokenOwner, toBalance.Amount, toBalance.IsWrapped,
                     toBalance.IsStatic);
             }
         }

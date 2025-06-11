@@ -17,7 +17,7 @@ public class BalanceGraph : IGraph<CapacityEdge>
         AvatarNodes.Add(avatarAddress, avatar);
     }
 
-    public void AddBalance(int address, int token, long balance, bool isWrapped, bool isStatic)
+    public void AddBalance(int address, int token, int tokenOwner, long balance, bool isWrapped, bool isStatic)
     {
         if (!AvatarNodes.ContainsKey(address))
         {
@@ -25,7 +25,7 @@ public class BalanceGraph : IGraph<CapacityEdge>
         }
 
         var balanceNodeId = AddressIdPool.BalanceNodeIdOf($"{address}-{token}");
-        var balanceNode = new BalanceNode(balanceNodeId, address, token, balance, isWrapped, isStatic);
+        var balanceNode = new BalanceNode(balanceNodeId, address, token, tokenOwner, balance, isWrapped, isStatic);
         Nodes.Add(balanceNode.Address, balanceNode);
         BalanceNodes.Add(balanceNode.Address, balanceNode);
 

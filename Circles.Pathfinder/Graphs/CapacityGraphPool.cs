@@ -37,7 +37,7 @@ public sealed class CapacityGraphPool
         if (RequestNeedsFiltering(r))
         {
             // build ad-hoc filtered graph
-            var g = _gf.CreateCapacityGraph(balances, trust, r);
+            var g = _gf.CreateCapacityGraphs(balances, trust, r).full;
             return new CapacityGraphHandle(g, null, this);
         }
 
@@ -63,7 +63,7 @@ public sealed class CapacityGraphPool
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts)
     {
         var gf = new GraphFactory();
-        return gf.CreateCapacityGraph(balanceGraph, accountTrusts, new FlowRequest());
+        return gf.CreateCapacityGraphs(balanceGraph, accountTrusts, new FlowRequest()).full;
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)

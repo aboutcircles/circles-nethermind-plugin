@@ -28,6 +28,36 @@ public class GraphFactory
         return dict;
     }
 
+    public (CapacityGraph full, CapacityGraph noOwnerTokens) CreateCapacityGraphs(
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> trustLookup,
+        FlowRequest request)
+    {
+        /* 1. build the canonical graph exactly as before */
+        var full = CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        /* 2. clone its structure without edges */
+        var filtered = full.ShallowCloneWithoutEdges();
+
+        /* 3. replay edges, skipping those that originate from “token-owner holds own token” */
+        foreach (var e in full.Edges)
+        {
+            if (AddressIdPool.IsBalanceNode(e.From))
+            {
+                var bn = full.BalanceNodes[e.From];
+
+                if (bn.Holder == bn.TokenOwner)
+                {
+                    continue; // skip capacity supplied by the token owner himself
+                }
+            }
+
+            filtered.AddCapacityEdge(e.From, e.To, e.Token, e.InitialCapacity);
+        }
+
+        return (full, filtered);
+    }
+
     /// <summary>
     /// Loads all v2 trust edges from the database and creates a trust graph from them.
     /// </summary>
@@ -77,6 +107,7 @@ public class GraphFactory
             graph.AddBalance(
                 balance.Account,
                 balance.TokenAddress,
+                balance.TokenOwner,
                 CirclesConverter.TruncateToInt64(UInt256.Parse(balance.Balance)),
                 balance.IsWrapped,
                 balance.IsStatic);
@@ -95,7 +126,7 @@ public class GraphFactory
     /// <param name="trustGraph">The trust graph to use.</param>
     /// <param name="request">Flow request parameters.</param>
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
-    public CapacityGraph CreateCapacityGraph(
+    private CapacityGraph CreateCapacityGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
         FlowRequest? r)
@@ -311,6 +342,7 @@ public class GraphFactory
             capacityGraph.AddBalanceNode(
                 balanceNode.Holder,
                 balanceNode.Token,
+                balanceNode.TokenOwner,
                 balanceNode.Amount,
                 balanceNode.IsWrapped,
                 balanceNode.IsStatic,
@@ -471,17 +503,20 @@ public class GraphFactory
 
                 if (avatar == bn.Holder)
                 {
+                    Console.WriteLine($"Skipping edge {bn.Address} ➜ {avatar} due to self-edge");
                     continue; // no self-edge
                 }
 
                 if (virtualSinkAddress.HasValue && avatar == virtualSinkAddress)
                 {
+                    Console.WriteLine($"Skipping edge {bn.Address} ➜ {avatar} due to virtual sink");
                     continue;
                 }
 
                 if (!capacityGraph.Nodes.ContainsKey(bn.Address) ||
                     !capacityGraph.Nodes.ContainsKey(avatar))
                 {
+                    Console.WriteLine($"Skipping edge {bn.Address} ➜ {avatar} due to missing node");
                     continue;
                 }
 
@@ -489,9 +524,12 @@ public class GraphFactory
             }
         });
 
+        Console.WriteLine("Committing edges...");
+        
         /* commit edges serially */
         foreach (var (from, to, token, amount) in edgeBag)
         {
+            Console.WriteLine($"AddCapacityEdge({from}, {to}, {token}, {amount})");
             capacityGraph.AddCapacityEdge(from, to, token, amount);
         }
     }

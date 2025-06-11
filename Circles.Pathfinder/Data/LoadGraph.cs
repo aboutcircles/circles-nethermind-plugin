@@ -9,7 +9,7 @@ namespace Circles.Pathfinder.Data
     // TODO: Use CirclesQuery<T> and remove the Npgsql dependency
     public interface ILoadGraph
     {
-        IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
+        IEnumerable<(string Balance, int Account, int TokenAddress, int TokenOwner, bool IsWrapped, bool IsStatic)>
             LoadV2Balances();
 
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
@@ -39,7 +39,7 @@ namespace Circles.Pathfinder.Data
             return reader.ReadToEnd();
         }
 
-        public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
+        public IEnumerable<(string Balance, int Account, int TokenAddress, int TokenOwner, bool IsWrapped, bool IsStatic)>
             LoadV2Balances()
         {
             // We now only have one balance query that includes the isWrapped column
@@ -58,8 +58,9 @@ namespace Circles.Pathfinder.Data
                 var balance = reader.GetString(0);
                 var account = reader.GetString(1);
                 var tokenAddress = reader.GetString(2);
-                var isWrapped = reader.GetBoolean(3);
-                var type = reader.GetString(4);
+                var tokenOwner = reader.GetString(3);
+                var isWrapped = reader.GetBoolean(4);
+                var type = reader.GetString(5);
 
                 if (type == "static")
                 {
@@ -79,10 +80,11 @@ namespace Circles.Pathfinder.Data
                     continue;
                 }
 
-                // yield return (balance, account, tokenAddress, isWrapped, type == "static");
+                // yield return (balance, account, tokenAddress, tokenOwner, isWrapped, type == "static");
                 yield return (balance,
                     AddressIdPool.IdOf(account.ToLowerInvariant()),
                     AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
+                    AddressIdPool.IdOf(tokenOwner.ToLowerInvariant()),
                     isWrapped,
                     type == "static");
             }
