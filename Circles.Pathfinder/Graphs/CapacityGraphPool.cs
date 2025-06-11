@@ -37,7 +37,7 @@ public sealed class CapacityGraphPool
         if (RequestNeedsFiltering(r))
         {
             // build ad-hoc filtered graph
-            var g = _gf.CreateCapacityGraphs(balances, trust, r).full;
+            var g = _gf.CreateCapacityGraphs(balances, trust, r);
             return new CapacityGraphHandle(g, null, this);
         }
 
@@ -58,12 +58,12 @@ public sealed class CapacityGraphPool
     /* One-off builder used by the background service                     */
     /* ------------------------------------------------------------------ */
 
-    public static async Task<CapacityGraph> BuildFullGraph(
+    public static async Task<CapacityGraphs> BuildFullGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts)
     {
         var gf = new GraphFactory();
-        return gf.CreateCapacityGraphs(balanceGraph, accountTrusts, new FlowRequest()).full;
+        return gf.CreateCapacityGraphs(balanceGraph, accountTrusts, new FlowRequest());
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)
@@ -83,18 +83,18 @@ public sealed class CapacityGraphPool
     }
 }
 
-public sealed class CapacityGraphSnapshot(long block, CapacityGraph @base)
+public sealed class CapacityGraphSnapshot(long block, CapacityGraphs @base)
 {
     public long Block { get; } = block;
-    public CapacityGraph Base { get; } = @base;
+    public CapacityGraphs Base { get; } = @base;
 }
 
 public readonly struct CapacityGraphHandle(
-    CapacityGraph g,
+    CapacityGraphs g,
     CapacityGraphSnapshot? s,
     CapacityGraphPool pool) : IDisposable
 {
-    public CapacityGraph Graph { get; } = g;
+    public CapacityGraphs Graphs { get; } = g;
 
     public void Dispose()
     {

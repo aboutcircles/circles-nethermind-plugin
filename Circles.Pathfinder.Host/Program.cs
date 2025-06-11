@@ -161,7 +161,7 @@ app.MapGet("/findMaxFlow", async (
 
         using (var h = await pool.Rent(request, balanceGraph, trustGraph))
         {
-            var result = pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow);
+            var result = pathfinder.ComputeMaxFlow(h.Graphs.Full, request, targetFlow);
             return Results.Ok(result);
         }
     }
@@ -246,7 +246,7 @@ app.MapGet("/findPath", async (
         try
         {
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
-            MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+            MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graphs.Full, request, targetFlow);
 
             _ = logDb.LogResponse(requestId, result, true);
 
@@ -322,7 +322,7 @@ app.MapPost("/findPath", async (
         {
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
             MaxFlowResponse result =
-                pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+                pathfinder.ComputeMaxFlowWithPath(h.Graphs.Full, request, targetFlow);
 
             _ = logDb.LogResponse(requestId, result, true);
             return Results.Ok(result);

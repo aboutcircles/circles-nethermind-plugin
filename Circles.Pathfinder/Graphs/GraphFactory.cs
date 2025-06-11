@@ -6,6 +6,12 @@ using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
+public class CapacityGraphs
+{
+    public CapacityGraph Full { get; set; }
+    public CapacityGraph noOwnerTokens { get; set; }
+}
+
 public class GraphFactory
 {
     private const string VIRTUAL_SINK_SUFFIX = "_virtual_sink";
@@ -28,7 +34,7 @@ public class GraphFactory
         return dict;
     }
 
-    public (CapacityGraph full, CapacityGraph noOwnerTokens) CreateCapacityGraphs(
+    public CapacityGraphs CreateCapacityGraphs(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
         FlowRequest request)
@@ -55,7 +61,11 @@ public class GraphFactory
             filtered.AddCapacityEdge(e.From, e.To, e.Token, e.InitialCapacity);
         }
 
-        return (full, filtered);
+        return new CapacityGraphs
+        {
+            Full = full,
+            noOwnerTokens = filtered
+        };
     }
 
     /// <summary>
@@ -503,20 +513,17 @@ public class GraphFactory
 
                 if (avatar == bn.Holder)
                 {
-                    Console.WriteLine($"Skipping edge {bn.Address} ➜ {avatar} due to self-edge");
                     continue; // no self-edge
                 }
 
                 if (virtualSinkAddress.HasValue && avatar == virtualSinkAddress)
                 {
-                    Console.WriteLine($"Skipping edge {bn.Address} ➜ {avatar} due to virtual sink");
                     continue;
                 }
 
                 if (!capacityGraph.Nodes.ContainsKey(bn.Address) ||
                     !capacityGraph.Nodes.ContainsKey(avatar))
                 {
-                    Console.WriteLine($"Skipping edge {bn.Address} ➜ {avatar} due to missing node");
                     continue;
                 }
 
@@ -524,12 +531,9 @@ public class GraphFactory
             }
         });
 
-        Console.WriteLine("Committing edges...");
-        
         /* commit edges serially */
         foreach (var (from, to, token, amount) in edgeBag)
         {
-            Console.WriteLine($"AddCapacityEdge({from}, {to}, {token}, {amount})");
             capacityGraph.AddCapacityEdge(from, to, token, amount);
         }
     }
