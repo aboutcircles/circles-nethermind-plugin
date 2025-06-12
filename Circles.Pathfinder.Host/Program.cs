@@ -270,6 +270,99 @@ app.MapGet("/findPath", async (
     }
 });
 
+// ─── Routes ─────────────────────────────────────────────────────────────────
+app.MapGet("/findNicePath", async (
+    string from,
+    string to,
+    string amount,
+    string[]? fromTokens,
+    string[]? toTokens,
+    string[]? excludedFromTokens,
+    string[]? excludedToTokens,
+    bool? withWrap,
+    NetworkState state,
+    SemaphoreSlim sem,
+    CapacityGraphPool pool,
+    ILogger<Program> log,
+    PathLogDb logDb) =>
+{
+    using var act = Source.StartActivity("findNicePath", ActivityKind.Server);
+    act?.SetTag("http.route", "/findNicePath");
+    act?.SetTag("from", from);
+    act?.SetTag("to", to);
+    act?.SetTag("amount", amount);
+
+    using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
+
+    if (!UInt256.TryParse(amount, out var targetFlow))
+    {
+        log.LogWarning("Bad amount format");
+        return Results.BadRequest("amount must be a valid integer.");
+    }
+
+    if (!sem.Wait(0))
+    {
+        FindPathMetrics.RejectedRequestsCounter.Inc();
+        log.LogWarning("Concurrency limit hit — request rejected");
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    FindPathMetrics.InFlightRequestsGauge.Inc();
+    try
+    {
+        var balanceGraph = state.BalanceGraph;
+        var trustGraph = state.AccountTrusts;
+
+        if (balanceGraph is null)
+        {
+            log.LogWarning("Graphs not ready");
+            return Results.BadRequest("Graphs are not loaded yet.");
+        }
+
+        var pathfinder = new V2Pathfinder();
+
+        var request = new FlowRequest
+        {
+            Source = from.ToLower(),
+            Sink = to.ToLower(),
+            TargetFlow = amount,
+            FromTokens = fromTokens?.ToList(),
+            ToTokens = toTokens?.ToList(),
+            ExcludedFromTokens = excludedFromTokens?.ToList(),
+            ExcludedToTokens = excludedToTokens?.ToList(),
+            WithWrap = withWrap
+        };
+
+        var requestId = Guid.NewGuid();
+        _ = logDb.LogRequest(requestId, state.LastKnownBlockNumber, request);
+
+        try
+        {
+            using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graphs.NoOwnerTokens, request, targetFlow);
+
+            _ = logDb.LogResponse(requestId, result, true);
+
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _ = logDb.LogResponse(requestId, null, false, ex.Message + "\n" + ex.StackTrace);
+            throw;
+        }
+    }
+    catch (Exception ex) when (ex is not OutOfMemoryException)
+    {
+        log.LogWarning(ex, "findPath threw non-fatal exception");
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+    }
+    finally
+    {
+        sem.Release();
+        FindPathMetrics.InFlightRequestsGauge.Dec();
+    }
+});
+
 // POST  /findPath  -----------------------------------------------------------
 app.MapPost("/findPath", async (
     [FromBody] FlowRequest request, // body-bound request DTO
@@ -323,6 +416,82 @@ app.MapPost("/findPath", async (
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
             MaxFlowResponse result =
                 pathfinder.ComputeMaxFlowWithPath(h.Graphs.Full, request, targetFlow);
+
+            _ = logDb.LogResponse(requestId, result, true);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _ = logDb.LogResponse(requestId, null, false,
+                ex.Message + "\n" + ex.StackTrace);
+            throw;
+        }
+    }
+    catch (Exception ex) when (ex is not OutOfMemoryException)
+    {
+        log.LogWarning(ex, "findPath threw non-fatal exception");
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+    }
+    finally
+    {
+        sem.Release();
+        FindPathMetrics.InFlightRequestsGauge.Dec();
+    }
+});
+
+// POST  /findNicePath  -----------------------------------------------------------
+app.MapPost("/findNicePath", async (
+    [FromBody] FlowRequest request, // body-bound request DTO
+    NetworkState state,
+    SemaphoreSlim sem,
+    CapacityGraphPool pool,
+    ILogger<Program> log,
+    PathLogDb logDb) =>
+{
+    using var act = Source.StartActivity("findNicePath", ActivityKind.Server);
+    act?.SetTag("http.route", "/findNicePath");
+    act?.SetTag("from", request.Source);
+    act?.SetTag("to", request.Sink);
+    act?.SetTag("amount", request.TargetFlow);
+
+    // Normalise addresses so matching is case-insensitive
+    request.Source = request.Source?.ToLowerInvariant();
+    request.Sink = request.Sink?.ToLowerInvariant();
+
+    if (!UInt256.TryParse(request.TargetFlow, out var targetFlow))
+    {
+        log.LogWarning("Bad amount format");
+        return Results.BadRequest("amount must be a valid integer.");
+    }
+
+    if (!sem.Wait(0))
+    {
+        FindPathMetrics.RejectedRequestsCounter.Inc();
+        log.LogWarning("Concurrency limit hit — request rejected");
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    FindPathMetrics.InFlightRequestsGauge.Inc();
+    try
+    {
+        var balanceGraph = state.BalanceGraph;
+        var trustGraph = state.AccountTrusts;
+
+        if (balanceGraph is null)
+        {
+            log.LogWarning("Graphs not ready");
+            return Results.BadRequest("Graphs are not loaded yet.");
+        }
+
+        var pathfinder = new V2Pathfinder();
+        var requestId = Guid.NewGuid();
+        _ = logDb.LogRequest(requestId, state.LastKnownBlockNumber, request);
+
+        try
+        {
+            using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            MaxFlowResponse result =
+                pathfinder.ComputeMaxFlowWithPath(h.Graphs.NoOwnerTokens, request, targetFlow);
 
             _ = logDb.LogResponse(requestId, result, true);
             return Results.Ok(result);

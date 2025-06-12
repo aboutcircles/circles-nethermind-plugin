@@ -9,7 +9,7 @@ namespace Circles.Pathfinder.Graphs;
 public class CapacityGraphs
 {
     public CapacityGraph Full { get; set; }
-    public CapacityGraph noOwnerTokens { get; set; }
+    public CapacityGraph NoOwnerTokens { get; set; }
 }
 
 public class GraphFactory
@@ -64,7 +64,7 @@ public class GraphFactory
         return new CapacityGraphs
         {
             Full = full,
-            noOwnerTokens = filtered
+            NoOwnerTokens = filtered
         };
     }
 
