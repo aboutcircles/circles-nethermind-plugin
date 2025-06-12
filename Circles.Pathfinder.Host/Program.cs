@@ -346,6 +346,56 @@ app.MapPost("/findPath", async (
     }
 });
 
+// POST  /rankByGraphProximity -----------------------------------------------
+app.MapPost("/rankByGraphProximity", async (
+    [FromBody] ProximityRequest request,
+    NetworkState state,
+    SemaphoreSlim sem,
+    CapacityGraphPool pool,
+    ILogger<Program> log) =>
+{
+    if (request.Reference is null || request.Addresses is null)
+        return Results.BadRequest("reference and addresses are required.");
+    if (request.Addresses.Count > 100)
+        return Results.BadRequest("maximum 100 addresses allowed.");
+
+    if (!sem.Wait(0))
+    {
+        FindPathMetrics.RejectedRequestsCounter.Inc();
+        log.LogWarning("Concurrency limit hit — request rejected");
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    FindPathMetrics.InFlightRequestsGauge.Inc();
+    try
+    {
+        var balanceGraph = state.BalanceGraph;
+        if (balanceGraph is null)
+        {
+            log.LogWarning("Graphs not ready");
+            return Results.BadRequest("Graphs are not loaded yet.");
+        }
+
+        using var h = await pool.Rent(new FlowRequest(), balanceGraph, state.AccountTrusts);
+        var pf = new V2Pathfinder();
+        var ranks = pf.RankByGraphProximity(
+            h.Graph,
+            request.Reference.ToLowerInvariant(),
+            request.Addresses.Select(a => a.ToLowerInvariant()));
+        return Results.Ok(ranks);
+    }
+    catch (Exception ex) when (ex is not OutOfMemoryException)
+    {
+        log.LogWarning(ex, "rankByGraphProximity threw non-fatal exception");
+        return Results.StatusCode(StatusCodes.Status500InternalServerError);
+    }
+    finally
+    {
+        sem.Release();
+        FindPathMetrics.InFlightRequestsGauge.Dec();
+    }
+});
+
 app.MapGet("/snapshot", async (NetworkState state) =>
 {
     var graphsReady = state.BalanceGraph is not null &&

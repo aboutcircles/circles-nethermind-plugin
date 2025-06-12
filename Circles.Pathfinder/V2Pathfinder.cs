@@ -295,4 +295,69 @@ public class V2Pathfinder
     }
 
     private bool IsBalanceNode(int addr) => AddressIdPool.IsBalanceNode(addr);
+
+    /* --------------------------------------------------------------------
+     * Rank a set of addresses by their graph distance to a reference.
+     * The distance calculation can be swapped by providing a custom metric
+     * implementation.
+     * ------------------------------------------------------------------ */
+    public delegate Dictionary<int, int> ProximityMetric(CapacityGraph g, int referenceId);
+
+    public List<ProximityRank> RankByGraphProximity(
+        CapacityGraph graph,
+        string referenceAddress,
+        IEnumerable<string> addresses,
+        ProximityMetric? metric = null)
+    {
+        if (graph == null) throw new ArgumentNullException(nameof(graph));
+        if (referenceAddress == null) throw new ArgumentNullException(nameof(referenceAddress));
+
+        var unique = addresses.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        int referenceId = AddressIdPool.IdOf(referenceAddress);
+
+        var distances = (metric ?? DefaultBfsMetric)(graph, referenceId);
+
+        var ranked = new List<ProximityRank>(unique.Count);
+        foreach (var addr in unique)
+        {
+            int id = AddressIdPool.IdOf(addr);
+            distances.TryGetValue(id, out int dist);
+            ranked.Add(new ProximityRank(addr, dist));
+        }
+
+        return ranked.OrderBy(r => r.Distance).ToList();
+    }
+
+    private static Dictionary<int, int> DefaultBfsMetric(CapacityGraph g, int start)
+    {
+        var result = new Dictionary<int, int> { [start] = 0 };
+        var q = new Queue<int>();
+        q.Enqueue(start);
+
+        var adj = new Dictionary<int, List<int>>();
+        foreach (var e in g.Edges)
+        {
+            if (e.InitialCapacity <= 0) continue;
+            if (!adj.TryGetValue(e.From, out var list))
+            {
+                list = new List<int>();
+                adj[e.From] = list;
+            }
+            list.Add(e.To);
+        }
+
+        while (q.Count > 0)
+        {
+            int cur = q.Dequeue();
+            if (!adj.TryGetValue(cur, out var neigh)) continue;
+            foreach (var n in neigh)
+            {
+                if (result.ContainsKey(n)) continue;
+                result[n] = result[cur] + 1;
+                q.Enqueue(n);
+            }
+        }
+
+        return result;
+    }
 }
