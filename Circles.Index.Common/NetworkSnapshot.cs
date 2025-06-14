@@ -1,6 +1,4 @@
-using Circles.Pathfinder.Nodes;
-
-namespace Circles.Pathfinder.Host;
+namespace Circles.Index.Common;
 
 public sealed class NetworkSnapshot
 {

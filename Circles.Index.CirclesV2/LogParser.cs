@@ -4,6 +4,7 @@ using System.Text.Json;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -352,6 +353,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
         if (eventsv2.Count == 0)
         {
+            // Caches.ForEach(cache => cache.CommitEmptyBlock(block.Number));
             yield break;
         }
 

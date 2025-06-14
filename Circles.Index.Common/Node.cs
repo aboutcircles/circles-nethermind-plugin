@@ -1,4 +1,4 @@
-namespace Circles.Pathfinder.Nodes;
+namespace Circles.Index.Common;
 
 public abstract class Node(int address)
 {

@@ -245,7 +245,7 @@ curl -X POST --data '{
     "method":"circles_getNetworkSnapshot",
     "params":[],            
     "id":1         
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
+}' -H "Content-Type: application/json" http://localhost:8545/ | jq
 ```
 
 ```shell

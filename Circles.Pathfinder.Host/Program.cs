@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Index.Common;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Edges;
@@ -19,6 +20,7 @@ using Npgsql;
 using Prometheus;
 using static Circles.Pathfinder.Tracing;
 using Microsoft.AspNetCore.ResponseCompression;
+using Settings = Circles.Pathfinder.Host.Settings;
 
 var settings = new Settings();
 

@@ -802,7 +802,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse!);
     }
 
-    public async Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot()
+    public async Task<ResultWrapper<NetworkSnapshot>> circles_getNetworkSnapshot()
+    {
+        var snapshotter = new NetworkSnapshotRpc(_indexerContext);
+        var result = await snapshotter.circles_getNetworkSnapshot();
+        return ResultWrapper<NetworkSnapshot>.Success(result.Data);
+    }
+
+    public async Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot_old()
     {
         var sw = Stopwatch.StartNew();
         var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
@@ -847,6 +854,13 @@ public class CirclesRpcModule : ICirclesRpcModule
             return ResultWrapper<string>.Fail(
                 $"Indexing is lagging behind. Block head: {blockHead}, last persisted: {lastPersisted}");
         }
+
+        // Check if all caches are initialized
+        var isInitialized = Circles.Index.CirclesV2.LogParser.BalancesByAccountAndToken.LastBlockNo > 0;
+        isInitialized = isInitialized && Circles.Index.CirclesV2.LogParser.Erc20WrapperAddresses.LastBlockNo > 0;
+        isInitialized = isInitialized && Circles.Index.CirclesV2.LogParser.Groups.LastBlockNo > 0;
+        isInitialized = isInitialized && Circles.Index.CirclesV2.LogParser.LastTokenMovement.LastBlockNo > 0;
+        isInitialized = isInitialized && Circles.Index.CirclesV2.LogParser.V2Avatars.LastBlockNo > 0;
 
         return ResultWrapper<string>.Success("Healthy");
     }

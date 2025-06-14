@@ -1,4 +1,4 @@
-namespace Circles.Pathfinder.Nodes;
+namespace Circles.Index.Common;
 
 public class BalanceNode(int balanceNodeId, int holder, int token, long amount, bool isWrapped, bool isStatic)
     : Node(balanceNodeId)

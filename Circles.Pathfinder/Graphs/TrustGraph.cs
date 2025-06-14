@@ -1,3 +1,4 @@
+using Circles.Index.Common;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
 

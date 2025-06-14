@@ -257,7 +257,7 @@ public interface ICirclesRpcModule : IRpcModule
     Task<ResultWrapper<TokenInfo?[]>> circles_getTokenInfoBatch(Address[] tokenAddresses);
 
     [JsonRpcMethod(Description = "", IsImplemented = true)]
-    public Task<ResultWrapper<JsonElement>> circles_getNetworkSnapshot();
+    public Task<ResultWrapper<NetworkSnapshot>> circles_getNetworkSnapshot();
 
     [JsonRpcMethod(
         Description = "Full-text search over avatar profiles (name & description)",

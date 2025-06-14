@@ -10,6 +10,7 @@ public interface IRollbackCache
     int Count { get; }
 
     string Name { get; }
+    void CommitEmptyBlock(long blockNumber);
 }
 
 public readonly struct RollbackStats
@@ -107,6 +108,94 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     }
 
     /// <summary>
+    /// Returns a snapshot of the cache state as it was after the last block that cannot be rolled back anymore.
+    /// If the cache has not yet filled the rollback window, returns null.
+    /// </summary>
+    public IReadOnlyDictionary<TKey, TValue>? GetLastSafeSnapshot()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            // snapshot becomes available once *at least* RollbackCapacity blocks
+            // are in the window (== we have diffs for the last N blocks)
+            if (_blockOrder.Count < RollbackCapacity)
+                return null;
+
+            //  index of the last block that is still roll-back-able
+            //  (-1 when Count == Capacity → revert *all* stored diffs)
+            var safeBlockIndex = _blockOrder.Count - RollbackCapacity - 1;
+            var snapshotCopy = new Dictionary<TKey, TValue>(_current);
+
+            // Revert all diffs from the most recent blocks back to the safe block
+            for (var i = _blockOrder.Count - 1; i > safeBlockIndex; i--)
+            {
+                var blockNo = _blockOrder.ElementAt(i);
+                var diff = _blockDiffs[blockNo];
+
+                foreach (var (key, change) in diff)
+                {
+                    if (change.HadPrevious)
+                    {
+                        snapshotCopy[key] = change.PreviousValue;
+                    }
+                    else
+                    {
+                        snapshotCopy.Remove(key);
+                    }
+                }
+            }
+
+            return snapshotCopy;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    /// <summary>
+    /// Starts a new block at <paramref name="blockNo"/>.
+    /// </summary>
+    /// <param name="blockNo"></param>
+    /// <exception cref="ArgumentException"></exception>
+    private void StartNewBlock(long blockNo)
+    {
+        if (blockNo < _lastBlockNo)
+            throw new ArgumentException("Block number must be monotonically increasing.", nameof(blockNo));
+
+        if (blockNo == _lastBlockNo)
+            return; // already at this height
+
+        _lastBlockNo = blockNo;
+        _blockDiffs[blockNo] = new Dictionary<TKey, Change>(); // ← EMPTY diff
+        _blockOrder.AddLast(blockNo);
+
+        if (_blockOrder.Count > RollbackCapacity)
+        {
+            var oldest = _blockOrder.First!.Value;
+            _blockOrder.RemoveFirst();
+            _blockDiffs.Remove(oldest);
+        }
+    }
+
+    /// <summary>
+    /// Commits an empty block at <paramref name="blockNo"/>.
+    /// </summary>
+    /// <param name="blockNo"></param>
+    public void CommitEmptyBlock(long blockNo)
+    {
+        _lock.EnterWriteLock();
+        try
+        {
+            StartNewBlock(blockNo); // just advance – no state mutations
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
     /// Adds or replaces <paramref name="key"/> with <paramref name="value"/> at <paramref name="blockNo"/>.
     /// Calls must arrive in monotonically non-decreasing <paramref name="blockNo"/> order; whenever the
     /// number increases, the previous block is considered committed and a new diff bucket is started.
@@ -121,22 +210,7 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
         _lock.EnterWriteLock();
         try
         {
-            if (blockNo < _lastBlockNo)
-                throw new ArgumentException("Block number must be monotonically increasing.", nameof(blockNo));
-
-            if (blockNo > _lastBlockNo)
-            {
-                _lastBlockNo = blockNo;
-                _blockDiffs[blockNo] = new Dictionary<TKey, Change>();
-                _blockOrder.AddLast(blockNo);
-
-                if (_blockOrder.Count > RollbackCapacity)
-                {
-                    var oldest = _blockOrder.First!.Value;
-                    _blockOrder.RemoveFirst();
-                    _blockDiffs.Remove(oldest);
-                }
-            }
+            StartNewBlock(blockNo);
 
             var diff = _blockDiffs[blockNo];
             var hadPrev = _current.TryGetValue(key, out var prevVal);
