@@ -50,7 +50,7 @@ public class Plugin : INethermindPlugin
             new CirclesViews.DatabaseSchema()
         };
 
-        if (settings.CirclesLBPFactoryAddress != null)
+        if (settings.CirclesLBPFactoryAddress.Length > 0)
         {
             schemas.Add(new CirclesV2.LBP.DatabaseSchema());
         }
@@ -63,6 +63,11 @@ public class Plugin : INethermindPlugin
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
             schemas.Add(new Circles.Index.Safe.DatabaseSchema());
+        }
+
+        if (settings.BalancerV2VaultAddress != null)
+        {
+            schemas.Add(new Circles.Index.Balancer.DatabaseSchema());
         }
 
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
@@ -91,7 +96,7 @@ public class Plugin : INethermindPlugin
             new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
         };
 
-        if (settings.CirclesLBPFactoryAddress != null)
+        if (settings.CirclesLBPFactoryAddress.Length > 0)
         {
             logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress.ToImmutableHashSet()));
         }
@@ -120,7 +125,11 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
         }
-        
+
+        if (settings.BalancerV2VaultAddress != null)
+        {
+            logParsers.Add(new Circles.Index.Balancer.LogParser(settings.BalancerV2VaultAddress));
+        }
 
         _indexerContext = new Context(
             nethermindApi,

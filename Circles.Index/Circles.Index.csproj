@@ -27,6 +27,7 @@
 
 
     <ItemGroup>
+      <ProjectReference Include="..\Circles.Index.Balancer\Circles.Index.Balancer.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj" />

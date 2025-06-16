@@ -62,6 +62,10 @@ public class Settings
         ? new(Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS")!)
         : null;
 
+    public readonly Address? BalancerV2VaultAddress = Environment.GetEnvironmentVariable("BALANCER_V2_VAULT_ADDRESS") != null
+        ? new(Environment.GetEnvironmentVariable("BALANCER_V2_VAULT_ADDRESS")!)
+        : null;
+
     public readonly Address? AffiliateGroupRegistry =
         Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS") != null
             ? new(Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS")!)
