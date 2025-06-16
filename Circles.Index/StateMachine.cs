@@ -58,13 +58,14 @@ public class StateMachine(
 
                             context.Logger.Info(
                                 $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
+                            await context.Database.DeleteAllGreaterOrEqualBlock(lastPersistedBlock);
 
                             context.Logger.Info("Initializing: Warming up all caches...");
                             await InitializeCaches(lastPersistedBlock);
 
                             context.Logger.Info(
-                                "Initializing: Transitioning to 'Reorg' to clean up possible residues...");
-                            await TransitionTo(State.Reorg, lastPersistedBlock);
+                                "Initializing: Transitioning to 'WaitForNewBlock'...");
+                            await TransitionTo(State.WaitForNewBlock, lastPersistedBlock);
                             return;
                         }
                     }
