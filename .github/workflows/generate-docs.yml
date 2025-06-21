@@ -1,0 +1,47 @@
+name: Generate OpenRPC Documentation
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'Circles.Index.Rpc/CirclesRpcModule.cs'
+      - 'Circles.Index.Rpc/ICirclesRpcModule.cs'
+      - 'Circles.Index.Rpc/docs/generate-openrpc.csx'
+      - '.github/workflows/generate-docs.yml'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  generate-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Install dotnet-script
+      run: dotnet tool install -g dotnet-script
+      
+    - name: Generate OpenRPC documentation
+      run: |
+        cd Circles.Index.Rpc/docs
+        export PATH="$PATH:$HOME/.dotnet/tools"
+        dotnet script generate-openrpc.csx
+        
+    - name: Upload artifact for GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: 'Circles.Index.Rpc/docs'
+        
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v4
+      id: deployment

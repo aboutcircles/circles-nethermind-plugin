@@ -1,0 +1,1211 @@
+{
+  "openrpc": "1.2.6",
+  "info": {
+    "title": "Circles Protocol RPC API",
+    "description": "JSON-RPC API for interacting with the Circles protocol indexer and blockchain data",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Circles UBI",
+      "url": "https://aboutcircles.com"
+    },
+    "license": {
+      "name": "AGPL-3.0",
+      "url": "https://www.gnu.org/licenses/agpl-3.0.html"
+    }
+  },
+  "servers": [
+    {
+      "name": "Cricles Gnosis Mainnet RPC",
+      "url": "https://rpc.aboutcircles.com",
+      "summary": "Production Circles RPC endpoint",
+      "description": "Main production endpoint for Circles"
+    },
+    {
+      "name": "Circles Staging RPC",
+      "url": "https://rpc.circlesubi.network",
+      "summary": "Staging Circles RPC endpoint",
+      "description": "Use this for local development and testing"
+    }
+  ],
+  "methods": [
+    {
+      "name": "circles_events",
+      "description": "Returns all events affecting the specified account since block N",
+      "summary": "events",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        },
+        {
+          "name": "fromBlock",
+          "description": "Starting block number (inclusive)",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "default": null
+        },
+        {
+          "name": "toBlock",
+          "description": "Ending block number (inclusive)",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "default": null
+        },
+        {
+          "name": "eventTypes",
+          "description": "Array of event types to filter",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": null
+        },
+        {
+          "name": "filters",
+          "description": "Additional filter conditions",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/FilterPredicateDto"
+            }
+          },
+          "default": null
+        },
+        {
+          "name": "sortAscending",
+          "description": "Sort results in ascending order",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "default": false
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getAvatarInfo",
+      "description": "Queries essential information about an avatar.",
+      "summary": "getAvatarInfo",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getAvatarInfoBatch",
+      "description": "Queries essential information about an avatar in batch.",
+      "summary": "getAvatarInfoBatch",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "addresses",
+          "description": "Array of Ethereum addresses",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/Address"
+            }
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getBalanceBreakdown",
+      "description": "Queries the balances of all Circles tokens an avatar has.",
+      "summary": "getBalanceBreakdown",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getCommonTrust",
+      "description": "Gets the common trust between two addresses. If version is specified, it will only return trusts with the specified version. If version is not specified, it will return all trusts.",
+      "summary": "getCommonTrust",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address1",
+          "description": "The first address to compare",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        },
+        {
+          "name": "address2",
+          "description": "The second address to compare",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        },
+        {
+          "name": "version",
+          "description": "Circles protocol version (1 or 2)",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/Address"
+          }
+        }
+      }
+    },
+    {
+      "name": "circles_getNetworkSnapshot",
+      "description": "Gets a complete snapshot of the trust network",
+      "summary": "getNetworkSnapshot",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "name": "circles_getProfileByAddress",
+      "description": "Gets complete profile information by address",
+      "summary": "getProfileByAddress",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "avatar",
+          "description": "The avatar address",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "ref": "#/components/schemas/Profile"
+        }
+      }
+    },
+    {
+      "name": "circles_getProfileByAddressBatch",
+      "description": "Gets profiles for multiple addresses",
+      "summary": "getProfileByAddressBatch",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "avatars",
+          "description": "Array of avatar addresses",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/Address"
+            }
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/Profile"
+          }
+        }
+      }
+    },
+    {
+      "name": "circles_getProfileByCid",
+      "description": "Gets profile data from IPFS by CID",
+      "summary": "getProfileByCid",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "cid",
+          "description": "IPFS Content Identifier",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "ref": "#/components/schemas/Profile"
+        }
+      }
+    },
+    {
+      "name": "circles_getProfileByCidBatch",
+      "description": "Gets multiple profiles from IPFS by CIDs",
+      "summary": "getProfileByCidBatch",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "cids",
+          "description": "Array of IPFS Content Identifiers",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/Profile"
+          }
+        }
+      }
+    },
+    {
+      "name": "circles_getProfileCid",
+      "description": "Queries the profile CID of a Circles avatar. Returns an error if the avatar is not found.",
+      "summary": "getProfileCid",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getProfileCidBatch",
+      "description": "Queries the profile CID of many Circles avatars. Returns 'null' for avatars that are not found.",
+      "summary": "getProfileCidBatch",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/Address"
+            }
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getTokenBalances",
+      "description": "Gets the balance of each V1 Circles token the specified address holds",
+      "summary": "getTokenBalances",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/CirclesTokenBalance"
+          }
+        }
+      }
+    },
+    {
+      "name": "circles_getTokenInfo",
+      "description": "Gets detailed information about a specific token",
+      "summary": "getTokenInfo",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "tokenAddress",
+          "description": "The token contract address",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "ref": "#/components/schemas/TokenInfo"
+        }
+      }
+    },
+    {
+      "name": "circles_getTokenInfoBatch",
+      "description": "Gets information about multiple tokens",
+      "summary": "getTokenInfoBatch",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "tokenAddresses",
+          "description": "Array of token contract addresses",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/Address"
+            }
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/TokenInfo"
+          }
+        }
+      }
+    },
+    {
+      "name": "circles_getTotalBalance",
+      "description": "Gets the V1 Circles balance of the specified address",
+      "summary": "getTotalBalance",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        },
+        {
+          "name": "asTimeCircles",
+          "description": "Return balance in time circles (true) or static circles (false)",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "default": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_getTrustRelations",
+      "description": "This method allows you to query all (v1) trust relations of an address",
+      "summary": "getTrustRelations",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "ref": "#/components/schemas/CirclesTrustRelations"
+        }
+      }
+    },
+    {
+      "name": "circles_health",
+      "description": "Checks if the database is available and indexing progresses as expected",
+      "summary": "health",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_query",
+      "description": "Queries the data of one Circles index table",
+      "summary": "Query database",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "query",
+          "description": "Database query parameters",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/SelectDto"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "name": "circles_searchProfiles",
+      "description": "Full-text search over avatar profiles (name & description)",
+      "summary": "searchProfiles",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [
+        {
+          "name": "text",
+          "description": "Search query text",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "default": null
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of results",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "default": 20
+        },
+        {
+          "name": "offset",
+          "description": "Number of results to skip",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "default": 0
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/Profile"
+          }
+        }
+      }
+    },
+    {
+      "name": "circles_tables",
+      "description": "Returns all indexed tables and columns grouped by namespace",
+      "summary": "tables",
+      "tags": [
+        {
+          "name": "Circles v1"
+        }
+      ],
+      "params": [],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "array",
+          "items": {
+            "ref": "#/components/schemas/DatabaseNamespace"
+          }
+        }
+      }
+    },
+    {
+      "name": "circlesV2_findPath",
+      "description": "Tries to find a transitive transfer path between two addresses in the Circles V2 graph",
+      "summary": "findPath",
+      "tags": [
+        {
+          "name": "Circles v2"
+        }
+      ],
+      "params": [
+        {
+          "name": "flowRequest",
+          "description": "Path finding request parameters",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/FlowRequest"
+          },
+          "default": null
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "ref": "#/components/schemas/MaxFlowResponse"
+        }
+      }
+    },
+    {
+      "name": "circlesV2_getTotalBalance",
+      "description": "Gets the V2 Circles balance of the specified address",
+      "summary": "getTotalBalance",
+      "tags": [
+        {
+          "name": "Circles v2"
+        }
+      ],
+      "params": [
+        {
+          "name": "address",
+          "description": "The Ethereum address to query",
+          "required": true,
+          "schema": {
+            "ref": "#/components/schemas/Address"
+          },
+          "default": null
+        },
+        {
+          "name": "asTimeCircles",
+          "description": "Return balance in time circles (true) or static circles (false)",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "default": true
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The result of the operation",
+        "schema": {
+          "type": "string"
+        }
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Address": {
+        "type": "string",
+        "description": "Ethereum address (0x-prefixed, 40 hex characters)",
+        "pattern": "^0x[a-fA-F0-9]{40}$",
+        "example": "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+      },
+      "UInt256": {
+        "type": "string",
+        "description": "256-bit unsigned integer as decimal string",
+        "example": "1000000000000000000"
+      },
+      "CirclesEvent": {
+        "type": "object",
+        "description": "A Circles protocol event",
+        "properties": {
+          "event": {
+            "type": "string",
+            "description": "The event name (e.g., CrcV1_Transfer)"
+          },
+          "values": {
+            "type": "object",
+            "description": "Event-specific data fields"
+          }
+        },
+        "required": [
+          "event",
+          "values"
+        ]
+      },
+      "CirclesTokenBalance": {
+        "type": "object",
+        "description": "Token balance information",
+        "properties": {
+          "tokenAddress": {
+            "type": "string"
+          },
+          "tokenId": {
+            "type": "string"
+          },
+          "tokenOwner": {
+            "type": "string"
+          },
+          "tokenType": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "attoCircles": {
+            "type": "string"
+          },
+          "circles": {
+            "type": "number"
+          },
+          "staticAttoCircles": {
+            "type": "string"
+          },
+          "staticCircles": {
+            "type": "number"
+          },
+          "attoCrc": {
+            "type": "string"
+          },
+          "crc": {
+            "type": "number"
+          },
+          "isErc20": {
+            "type": "boolean"
+          },
+          "isErc1155": {
+            "type": "boolean"
+          },
+          "isWrapped": {
+            "type": "boolean"
+          },
+          "isInflationary": {
+            "type": "boolean"
+          },
+          "isGroup": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CirclesTrustRelations": {
+        "type": "object",
+        "description": "Trust relationships for an address",
+        "properties": {
+          "user": {
+            "ref": "#/components/schemas/Address"
+          },
+          "trusts": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/CirclesTrustRelation"
+            }
+          },
+          "trustedBy": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/CirclesTrustRelation"
+            }
+          }
+        }
+      },
+      "CirclesTrustRelation": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "ref": "#/components/schemas/Address"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      },
+      "SelectDto": {
+        "type": "object",
+        "description": "Database query parameters",
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "description": "Table namespace (e.g., CrcV1, CrcV2)"
+          },
+          "table": {
+            "type": "string",
+            "description": "Table name"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Columns to select"
+          },
+          "filter": {
+            "type": "array",
+            "description": "Filter conditions"
+          },
+          "order": {
+            "type": "array",
+            "description": "Order by conditions"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum results"
+          }
+        }
+      },
+      "FilterPredicateDto": {
+        "type": "object",
+        "description": "Filter predicate for queries",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "filterType": {
+            "type": "string",
+            "enum": [
+              "Equals",
+              "NotEquals",
+              "GreaterThan",
+              "GreaterThanOrEquals",
+              "LessThan",
+              "LessThanOrEquals",
+              "Like",
+              "NotLike",
+              "In",
+              "NotIn"
+            ]
+          },
+          "value": {}
+        }
+      },
+      "DatabaseQueryResult": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array"
+            }
+          }
+        }
+      },
+      "Profile": {
+        "type": "object",
+        "description": "User profile information",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "CID": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdatedAt": {
+            "type": "integer",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "registeredName": {
+            "type": "string",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "previewImageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "geoLocation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "shortName": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "AvatarRow": {
+        "type": "object",
+        "description": "Avatar information",
+        "properties": {
+          "version": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "tokenId": {
+            "type": "string"
+          },
+          "hasV1": {
+            "type": "boolean"
+          },
+          "v1Token": {
+            "type": "string",
+            "nullable": true
+          },
+          "cidV0Digest": {
+            "type": "string"
+          },
+          "cidV0": {
+            "type": "string"
+          },
+          "isHuman": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "symbol": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "TokenInfo": {
+        "type": "object",
+        "description": "Token metadata",
+        "properties": {
+          "tokenAddress": {
+            "ref": "#/components/schemas/Address"
+          },
+          "tokenOwner": {
+            "ref": "#/components/schemas/Address"
+          },
+          "tokenType": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "isErc20": {
+            "type": "boolean"
+          },
+          "isErc1155": {
+            "type": "boolean"
+          },
+          "isWrapped": {
+            "type": "boolean"
+          },
+          "isInflationary": {
+            "type": "boolean"
+          },
+          "isGroup": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FlowRequest": {
+        "type": "object",
+        "description": "Path finding request",
+        "properties": {
+          "from": {
+            "ref": "#/components/schemas/Address"
+          },
+          "to": {
+            "ref": "#/components/schemas/Address"
+          },
+          "amount": {
+            "type": "string"
+          }
+        }
+      },
+      "MaxFlowResponse": {
+        "type": "object",
+        "description": "Path finding response",
+        "properties": {
+          "maxFlow": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "DatabaseNamespace": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "tables": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/DatabaseTable"
+            }
+          }
+        }
+      },
+      "DatabaseTable": {
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "ref": "#/components/schemas/DatabaseColumn"
+            }
+          }
+        }
+      },
+      "DatabaseColumn": {
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "errors": {
+      "ParseError": {
+        "code": -32700,
+        "message": "Parse error"
+      },
+      "InvalidRequest": {
+        "code": -32600,
+        "message": "Invalid Request"
+      },
+      "MethodNotFound": {
+        "code": -32601,
+        "message": "Method not found"
+      },
+      "InvalidParams": {
+        "code": -32602,
+        "message": "Invalid params"
+      },
+      "InternalError": {
+        "code": -32603,
+        "message": "Internal error"
+      }
+    }
+  }
+}
