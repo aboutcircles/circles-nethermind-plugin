@@ -989,8 +989,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var query = @"
             select f.payload
-            from unnest(@cids) _cid
-            left join ipfs_files f on f.cid = _cid;";
+            from unnest(@cids) WITH ORDINALITY as u(_cid, _index)
+            left join ipfs_files f on f.cid = u._cid
+            order by u._index;";
 
         await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
         await using var command = new NpgsqlCommand(query, connection);
