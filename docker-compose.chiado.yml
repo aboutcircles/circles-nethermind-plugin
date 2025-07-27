@@ -1,5 +1,6 @@
 services:
   nethermind-chiado:
+    container_name: nethermind-chiado
     build:
       context: .
       dockerfile: x64.Dockerfile
@@ -41,6 +42,7 @@ services:
       - POSTGRES_CONNECTION_STRING=Server=postgres-chiado;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
 
   postgres-chiado:
+    container_name: postgres-chiado
     image: postgres:16
     command: -c 'max_connections=100'
     restart: unless-stopped

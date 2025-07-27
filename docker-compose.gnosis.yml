@@ -1,8 +1,9 @@
 services:
   nethermind-gnosis:
+    container_name: nethermind-gnosis
     build:
       context: .
-      dockerfile: x64.Dockerfile
+      dockerfile: arm64.Dockerfile
     restart: unless-stopped
     depends_on:
       - postgres-gnosis
@@ -60,6 +61,7 @@ services:
       - IPFS_MAX_PARALLELISM=192
   
   pathfinder:
+    container_name: pathfinder
     build:
       context: .
       dockerfile: pathfinder-host.Dockerfile
@@ -75,6 +77,7 @@ services:
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
 
   postgres-gnosis:
+    container_name: postgres-gnosis
     image: postgres:17
     command: -c 'max_connections=100'
     restart: unless-stopped

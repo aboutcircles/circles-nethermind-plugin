@@ -1,5 +1,6 @@
 services:
   circles-spaceneth:
+    container_name: circles-spaceneth
     depends_on:
       - db2
     restart: unless-stopped
