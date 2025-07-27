@@ -29,9 +29,12 @@ public class Plugin : INethermindPlugin
     private int _newItemsArrived;
     private long _latestHeadToIndex = -1;
     private Task? _ipfsDownloader;
+    private INethermindApi _nethermindApi = null!;
 
-    public async Task Init(INethermindApi nethermindApi)
+    public Task Init(INethermindApi nethermindApi)
     {
+        _nethermindApi = nethermindApi;
+
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
 
@@ -120,7 +123,6 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
         }
-        
 
         _indexerContext = new Context(
             nethermindApi,
@@ -140,6 +142,8 @@ public class Plugin : INethermindPlugin
         // Run the downloader
         _ipfsDownloader = Task.Run(async () => await RunIpfsDownloader(settings),
             _cancellationTokenSource.Token);
+
+        return Task.CompletedTask;
     }
 
     private async Task RunIpfsDownloader(Settings settings)
@@ -320,23 +324,26 @@ public class Plugin : INethermindPlugin
 
     public Task InitRpcModules()
     {
-        if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
+        if (_indexerContext == null)
         {
-            throw new Exception("_indexerContext.NethermindApi.RpcModuleProvider is not set");
+            throw new InvalidOperationException("InitRpcModules: _indexerContext is not set");
         }
-
-        var (getFromAPi, _) = _indexerContext.NethermindApi.ForRpc;
+        if (_nethermindApi.RpcModuleProvider == null)
+        {
+            _indexerContext.Logger.Error("RpcModuleProvider is NULL");
+            throw new InvalidOperationException("RpcModuleProvider is null in InitRpcModules. Nethermind API might not be fully ready for plugin registration.");
+        }
+        if (_nethermindApi.SubscriptionFactory == null)
+        {
+            _indexerContext.Logger.Error("SubscriptionFactory is NULL");
+            throw new InvalidOperationException("SubscriptionFactory is null in InitRpcModules. Nethermind API might not be fully ready for plugin registration.");
+        }
 
         CirclesRpcModule circlesRpcModule = new(_indexerContext);
-        getFromAPi.RpcModuleProvider?.Register(
+        _nethermindApi.RpcModuleProvider.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
-        if (getFromAPi.SubscriptionFactory == null)
-        {
-            throw new Exception("getFromAPi.SubscriptionFactory is not set");
-        }
-
-        getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
+        _nethermindApi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
             (client, param) => new CirclesSubscription(client, _indexerContext, param));
 
@@ -345,7 +352,7 @@ public class Plugin : INethermindPlugin
         // TODO: Any event we can subscribe to that indicates that rpc is ready?
         _ = Task.Delay(10_000, _cancellationTokenSource.Token).ContinueWith(async _ =>
         {
-            await _indexerMachine.TransitionTo(StateMachine.State.Initial);
+            await _indexerMachine!.TransitionTo(StateMachine.State.Initial);
 
             _indexerContext.NethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
             {
