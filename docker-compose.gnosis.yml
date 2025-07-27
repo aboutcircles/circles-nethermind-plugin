@@ -3,7 +3,7 @@ services:
     container_name: nethermind-gnosis
     build:
       context: .
-      dockerfile: arm64.Dockerfile
+      dockerfile: x64.Dockerfile
     restart: unless-stopped
     depends_on:
       - postgres-gnosis
