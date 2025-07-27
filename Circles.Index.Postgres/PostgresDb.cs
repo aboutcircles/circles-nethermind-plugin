@@ -111,30 +111,34 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         using var transaction = connection.BeginTransaction();
         try
         {
-            StringBuilder ddlSql = new StringBuilder();
-            foreach (var table in Schema.Tables)
+            // --- PHASE 1: Create all TABLES and their INDEXES ---
+            StringBuilder tableAndIndexDdlSql = new StringBuilder();
+            foreach (var table in Schema.Tables.Values) // Iterate through all EventSchemas
             {
-                var ddl = GetDdl(table.Value);
-                ddlSql.AppendLine(ddl);
+                // Pass 'false' to GetDdl to indicate we are in the table creation phase
+                tableAndIndexDdlSql.AppendLine(GetDdl(table, false));
             }
+            ExecuteNonQuery(connection, tableAndIndexDdlSql.ToString());
 
-            ExecuteNonQuery(connection, ddlSql.ToString());
 
-            StringBuilder indexesSql = new StringBuilder();
-            foreach (var index in Schema.Indexes)
+            // --- PHASE 2: Create all VIEWS ---
+            StringBuilder viewDdlSql = new StringBuilder();
+            foreach (var view in Schema.Tables.Values) // Iterate again, this time for views
             {
-                var ddl = index.Value;
-                indexesSql.AppendLine(ddl);
+                // Pass 'true' to GetDdl to indicate we are in the view creation phase
+                viewDdlSql.AppendLine(GetDdl(view, true));
             }
+            // Execute views DDL. Use IF EXISTS and IF NOT EXISTS where appropriate in the SQL.
+            ExecuteNonQuery(connection, viewDdlSql.ToString());
 
-            ExecuteNonQuery(connection, indexesSql.ToString());
 
+            // --- PHASE 3: Add PRIMARY KEYS ---
             StringBuilder primaryKeyDdl = new StringBuilder();
             foreach (var table in Schema.Tables)
             {
                 if (table.Key.Namespace.StartsWith("V_"))
                 {
-                    // Skip views
+                    // Skip views for primary keys
                     continue;
                 }
 
@@ -153,10 +157,10 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\");");
                 }
                 else if (table.Value is
-                         {
-                             Namespace: Common.DatabaseSchema.SystemNamespace,
-                             Table: Common.DatabaseSchema.EventTableHeadTable
-                         })
+                {
+                    Namespace: Common.DatabaseSchema.SystemNamespace,
+                    Table: Common.DatabaseSchema.EventTableHeadTable
+                })
                 {
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"tableName\");");
@@ -217,12 +221,14 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         await writer.CompleteAsync();
     }
 
-    private string GetDdl(EventSchema @event)
+    private string GetDdl(EventSchema @event, bool isViewPhase)
     {
         StringBuilder ddlSql = new StringBuilder();
 
-        if (!@event.Namespace.StartsWith("V_"))
+        if (!@event.Namespace.StartsWith("V_")) // This is a TABLE
         {
+            if (isViewPhase) return ""; // Skip tables if we are in the view phase
+
             ddlSql.AppendLine($"CREATE TABLE IF NOT EXISTS \"{@event.Namespace}_{@event.Table}\" (");
 
             List<string> columnDefinitions = new List<string>();
@@ -240,30 +246,27 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ddlSql.AppendLine(");");
             ddlSql.AppendLine();
 
-            // Generate index creation statements
-            var indexedColumns = @event.Columns
-                .Where(column => column.IsIndexed);
+            // Generate index creation statements (usually after tables, before views)
+            var indexedColumns = @event.Columns.Where(column => column.IsIndexed);
 
             foreach (var column in indexedColumns)
             {
-                if (@event.Namespace.StartsWith("V_"))
-                {
-                    // Dirty way to skip indexes and primary keys for views
-                    continue;
-                }
-
                 string indexName = $"idx_{@event.Namespace}_{@event.Table}_{column.Column}";
                 ddlSql.AppendLine(
                     $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON \"{@event.Namespace}_{@event.Table}\" (\"{column.Column}\");");
             }
         }
-
-        // If the event schema has a SqlMigrationItem, execute it
-        if (@event.SqlMigrationItem != null)
+        else // This is a VIEW (Namespace starts with V_)
         {
-            ddlSql.AppendLine();
-            ddlSql.AppendLine(@event.SqlMigrationItem.Sql);
-            ddlSql.AppendLine(";"); // An additional semicolon doesn't hurt
+            if (!isViewPhase) return ""; // Skip views if we are in the table phase
+
+            // If the event schema has a SqlMigrationItem, it's likely the view definition
+            if (@event.SqlMigrationItem != null)
+            {
+                ddlSql.AppendLine();
+                ddlSql.AppendLine(@event.SqlMigrationItem.Sql); // This should be CREATE OR REPLACE VIEW
+                ddlSql.AppendLine(";");
+            }
         }
 
         return ddlSql.ToString();
