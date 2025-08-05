@@ -641,17 +641,29 @@ public class CirclesRpcModule : ICirclesRpcModule
                 // Demurraged Circles
                 if (!CirclesV2.LogParser.LastTokenMovement.TryGetValue(
                         (address.ToString(true, false), v2TokenBalance.Key),
-                        out var lastTokenMovement))
+                        out var lastMovementTs))
                 {
                     throw new InvalidOperationException(
                         $"Account {address} has a token {v2TokenBalance.Key} that was never moved.");
                 }
 
-                ulong today = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, 1_602_720_000);
+                // 1) Convert the unix‑seconds to the same *day index* that the Hub uses
+                const uint DAY_ZERO = 1_602_720_000; // 2020‑10‑31 00:00:00 UTC
+
+                ulong storedDay = CirclesConverter.DayFromTimestamp(
+                    DateTimeOffset.FromUnixTimeSeconds(lastMovementTs),
+                    DAY_ZERO);
+
+                ulong todayDay = CirclesConverter.DayFromTimestamp(
+                    DateTimeOffset.UtcNow,
+                    DAY_ZERO);
+                
+                // 2) Apply demurrage with matching units
                 var (attoCircles, _) = Demurrage.ApplyDemurrage(
                     storedBalance: v2TokenBalance.Value.Item1,
-                    storedDay: (ulong)lastTokenMovement,
-                    targetDay: today);
+                    storedDay: storedDay,
+                    targetDay: todayDay);
+
                 decimal circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
                 BigInteger staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
