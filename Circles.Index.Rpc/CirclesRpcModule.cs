@@ -462,13 +462,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         return new CirclesTrustRelations(address, outgoingTrusts.ToArray(), incomingTrusts.ToArray());
     }
 
-    public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
-    {
-        var balances = await GetTokenBalancesForAccount(address,
-            _indexerContext.Settings.CirclesV2HubAddress);
-
-        return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
-    }
+    // public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
+    // {
+    //     var balances = await GetTokenBalancesForAccount(address,
+    //         _indexerContext.Settings.CirclesV2HubAddress);
+    //
+    //     return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
+    // }
 
     public Task<ResultWrapper<Address[]>> circles_getCommonTrust(
         Address address1,
@@ -534,7 +534,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
     public ResultWrapper<IEnumerable<CirclesTokenBalance>>
-        circles_getBalanceBreakdown(Address address)
+        circles_getTokenBalances(Address address)
     {
         var hasV1Balance =
             CirclesV1.LogParser.BalancesByAccountAndToken.TryGetValue(address.ToString(true, false),
@@ -725,9 +725,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public ResultWrapper<List<string?>> circles_getProfileCidBatch(Address[] addresses)
     {
-        if (addresses.Length > 100)
+        if (addresses.Length > 1000)
         {
-            return ResultWrapper<List<string?>>.Fail("Batch size exceeds 100");
+            return ResultWrapper<List<string?>>.Fail("Batch size exceeds 1000");
         }
 
         List<string?> cids = new(addresses.Length);
@@ -994,9 +994,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<Profile?[]>> circles_getProfileByCidBatch(string[] cids)
     {
-        if (cids.Length > 100)
+        if (cids.Length > 1000)
         {
-            throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 100");
+            throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 1000");
         }
 
         var query = @"
@@ -1090,9 +1090,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<Profile?[]>> circles_getProfileByAddressBatch(Address?[] avatars)
     {
-        if (avatars.Length > 100)
+        if (avatars.Length > 1000)
         {
-            throw new ArgumentOutOfRangeException(nameof(avatars), "Batch size exceeds 100");
+            throw new ArgumentOutOfRangeException(nameof(avatars), "Batch size exceeds 1000");
         }
 
         var cids = avatars.Select(avatar =>
@@ -1177,9 +1177,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<TokenInfo?[]>> circles_getTokenInfoBatch(Address[] tokenAddresses)
     {
-        if (tokenAddresses.Length > 100)
+        if (tokenAddresses.Length > 1000)
         {
-            throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 100");
+            throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
         }
 
         var getTokenInfoTasks = tokenAddresses.Select(circles_getTokenInfo).ToArray();
