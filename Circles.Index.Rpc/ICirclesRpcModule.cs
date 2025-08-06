@@ -179,7 +179,7 @@ public interface ICirclesRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Gets the balance of each V1 Circles token the specified address holds",
         IsImplemented = true)]
-    Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address);
+    ResultWrapper<IEnumerable<CirclesTokenBalance>> circles_getTokenBalances(Address address);
 
     [JsonRpcMethod(
         Description =
@@ -222,9 +222,9 @@ public interface ICirclesRpcModule : IRpcModule
         IsImplemented = true)]
     ResultWrapper<List<string?>> circles_getProfileCidBatch(Address[] address);
 
-    [JsonRpcMethod(Description = "Queries the balances of all Circles tokens an avatar has.",
-        IsImplemented = true)]
-    ResultWrapper<IEnumerable<CirclesTokenBalance>> circles_getBalanceBreakdown(Address address);
+    // [JsonRpcMethod(Description = "Queries the balances of all Circles tokens an avatar has.",
+    //     IsImplemented = true)]
+    // ResultWrapper<IEnumerable<CirclesTokenBalance>> circles_getBalanceBreakdown(Address address);
 
     [JsonRpcMethod(Description = "Queries essential information about an avatar.",
         IsImplemented = true)]
