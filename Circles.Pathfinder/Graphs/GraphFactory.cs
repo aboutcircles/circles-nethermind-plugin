@@ -108,6 +108,14 @@ public class GraphFactory
         // STEP 1: Add all avatar nodes from both graphs
         AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
+        // STEP 1b: Add avatars referenced by simulated balances (holders + tokens)
+        var simulated = NormalizeSimulatedBalances(r?.SimulatedBalances);
+        foreach (var sb in simulated)
+        {
+            capacityGraph.AddAvatar(sb.HolderId);
+            capacityGraph.AddAvatar(sb.TokenId);
+        }
+
         int? virtualSinkAddress = null;
         HashSet<int> virtualSinkTrustedTokens = new HashSet<int>();
 
@@ -140,18 +148,34 @@ public class GraphFactory
 
         if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
         {
+            var wrappedTokensInSim = simulated
+                .Where(x => x.IsWrapped)
+                .Select(x => x.TokenId)
+                .ToHashSet();
+
             (virtualSinkAddress, virtualSinkTrustedTokens) = CreateVirtualSink(
                 capacityGraph,
                 sourceId.Value,
                 toTokensFilter,
-                balanceGraph);
+                balanceGraph,
+                wrappedTokensInSim);
         }
 
         // STEP 3: Add balance nodes (applying filters)
         AddFilteredBalanceNodes(
             capacityGraph,
             balanceGraph,
-            r,
+            r!,
+            sourceEqualsSink,
+            fromTokensFilter,
+            toTokensFilter,
+            excludedFromTokensFilter);
+
+        // STEP 3b: Add simulated balances (filtered) into capacityGraph + BN→holder capacity edges
+        AddSimulatedBalances(
+            capacityGraph,
+            simulated,
+            r!,
             sourceEqualsSink,
             fromTokensFilter,
             toTokensFilter,
@@ -172,7 +196,6 @@ public class GraphFactory
         {
             var anyVirtualSinkEdgesAdded = AddVirtualSinkEdges(
                 capacityGraph,
-                balanceGraph,
                 sourceId.Value,
                 virtualSinkAddress.Value,
                 virtualSinkTrustedTokens);
@@ -190,7 +213,6 @@ public class GraphFactory
         // STEP 8: Add regular trust-based capacity edges
         AddTrustBasedCapacityEdges(
             capacityGraph,
-            balanceGraph,
             trustLookup,
             virtualSinkAddress,
             sinkId,
@@ -201,6 +223,75 @@ public class GraphFactory
     }
 
     #region Helper Methods
+
+    private readonly struct _SimBal
+    {
+        public int HolderId { get; init; }
+        public int TokenId { get; init; }
+        public long Amount { get; init; }
+        public bool IsWrapped { get; init; }
+        public bool IsStatic { get; init; }
+    }
+
+    private List<_SimBal> NormalizeSimulatedBalances(List<SimulatedBalance>? raw)
+    {
+        if (raw == null || raw.Count == 0)
+        {
+            return new List<_SimBal>(0);
+        }
+
+        var acc = new Dictionary<(int holder, int token, bool isWrapped, bool isStatic), long>();
+
+        for (int i = 0; i < raw.Count; i++)
+        {
+            var sb = raw[i];
+            bool holderMissing = string.IsNullOrWhiteSpace(sb.Holder);
+            bool tokenMissing = string.IsNullOrWhiteSpace(sb.Token);
+            bool amountMissing = string.IsNullOrWhiteSpace(sb.Amount);
+            if (holderMissing || tokenMissing || amountMissing)
+            {
+                continue;
+            }
+
+            int holderId = AddressIdPool.IdOf(sb.Holder.ToLowerInvariant());
+            int tokenId = AddressIdPool.IdOf(sb.Token.ToLowerInvariant());
+
+            var amt = CirclesConverter.TruncateToInt64(UInt256.Parse(sb.Amount));
+            if (amt <= 0)
+            {
+                continue;
+            }
+
+            bool isWrapped = sb.IsWrapped ?? false;
+            bool isStatic = sb.IsStatic ?? false;
+
+            var key = (holderId, tokenId, isWrapped, isStatic);
+            if (acc.TryGetValue(key, out var existing))
+            {
+                long sum = existing + amt;
+                acc[key] = sum < 0 ? long.MaxValue : sum; // saturate guard
+            }
+            else
+            {
+                acc[key] = amt;
+            }
+        }
+
+        var list = new List<_SimBal>(acc.Count);
+        foreach (var kvp in acc)
+        {
+            list.Add(new _SimBal
+            {
+                HolderId = kvp.Key.holder,
+                TokenId = kvp.Key.token,
+                IsWrapped = kvp.Key.isWrapped,
+                IsStatic = kvp.Key.isStatic,
+                Amount = kvp.Value
+            });
+        }
+
+        return list;
+    }
 
     private void AddAllAvatarNodes(
         CapacityGraph capacityGraph,
@@ -233,7 +324,8 @@ public class GraphFactory
         CapacityGraph capacityGraph,
         int sourceAddress,
         HashSet<int> toTokensFilter,
-        BalanceGraph balanceGraph)
+        BalanceGraph balanceGraph,
+        HashSet<int> wrappedTokensInSim)
     {
         var virtualSinkAddress = sourceAddress + VIRTUAL_SINK_SUFFIX;
         var virtualSinkAddressId = AddressIdPool.IdOf(virtualSinkAddress);
@@ -248,7 +340,9 @@ public class GraphFactory
             bool isWrapped = balanceGraph.BalanceNodes.Values
                 .Any(bn => bn.Token == token && bn.IsWrapped);
 
-            if (isWrapped)
+            bool tokenWrappedInSim = wrappedTokensInSim.Contains(token);
+            bool shouldSkip = isWrapped || tokenWrappedInSim;
+            if (shouldSkip)
             {
                 // // Console.WriteLine($"Skipping wrapped token {token} for virtual sink trust");
                 continue;
@@ -259,6 +353,82 @@ public class GraphFactory
         }
 
         return (virtualSinkAddressId, virtualSinkTrustedTokens);
+    }
+
+    private void AddSimulatedBalances(
+        CapacityGraph capacityGraph,
+        List<_SimBal> simulated,
+        FlowRequest request,
+        bool sourceEqualsSink,
+        HashSet<int> fromTokensFilter,
+        HashSet<int> toTokensFilter,
+        HashSet<int> excludedFromTokensFilter)
+    {
+        int? sourceId = !string.IsNullOrWhiteSpace(request.Source) ? AddressIdPool.IdOf(request.Source!) : null;
+
+        foreach (var sb in simulated)
+        {
+            bool isSource = sourceId.HasValue && sb.HolderId == sourceId.Value;
+
+            bool skipSelfToTokenWhenSourceEqualsSink =
+                sourceEqualsSink &&
+                isSource &&
+                toTokensFilter.Count > 0 &&
+                toTokensFilter.Contains(sb.TokenId);
+
+            if (skipSelfToTokenWhenSourceEqualsSink)
+            {
+                continue;
+            }
+
+            bool sourceFromTokensMismatch =
+                isSource &&
+                fromTokensFilter.Count > 0 &&
+                !fromTokensFilter.Contains(sb.TokenId);
+
+            if (sourceFromTokensMismatch)
+            {
+                continue;
+            }
+
+            bool sourceExcludedFromToken =
+                isSource &&
+                excludedFromTokensFilter.Count > 0 &&
+                excludedFromTokensFilter.Contains(sb.TokenId);
+
+            if (sourceExcludedFromToken)
+            {
+                continue;
+            }
+
+            bool isWrapped = sb.IsWrapped;
+            bool withWrapRequested = request.WithWrap == true;
+            bool shouldSkipWrapped = isWrapped && !withWrapRequested;
+            if (shouldSkipWrapped)
+            {
+                continue;
+            }
+
+            bool wrappedNotHeldBySource = isWrapped && !isSource;
+            if (wrappedNotHeldBySource)
+            {
+                continue;
+            }
+
+            // Create balance node id separate from snapshot nodes to avoid collisions.
+            int bnId = AddressIdPool.BalanceNodeIdOf($"{sb.HolderId}-{sb.TokenId}-sim");
+
+            capacityGraph.AddBalanceNode(
+                sb.HolderId,
+                sb.TokenId,
+                sb.Amount,
+                sb.IsWrapped,
+                sb.IsStatic,
+                bnId);
+
+            // Mirror snapshot behavior: add BN → holder capacity with the simulated amount.
+            capacityGraph.AddCapacityEdge(sb.HolderId, bnId, sb.TokenId, sb.Amount);
+        }
     }
 
     private void AddFilteredBalanceNodes(
@@ -369,30 +539,22 @@ public class GraphFactory
 
     private bool AddVirtualSinkEdges(
         CapacityGraph capacityGraph,
-        BalanceGraph balanceGraph,
         int sourceAddress,
         int virtualSinkAddress,
-        HashSet<int> virtualSinkTrustedTokenIds
-    )
+        HashSet<int> virtualSinkTrustedTokenIds)
     {
         bool anyEdgeAdded = false;
 
-        foreach (var bn in balanceGraph.BalanceNodes.Values)
+        foreach (var bn in capacityGraph.BalanceNodes.Values)
         {
-            // skip balances the capacity graph didn’t keep
-            if (!capacityGraph.Nodes.ContainsKey(bn.Address))
+            bool isSourceOwnBalance = bn.Holder == sourceAddress;
+            if (isSourceOwnBalance)
             {
                 continue;
             }
 
-            // never draw from the source’s own balances
-            if (bn.Holder == sourceAddress)
-            {
-                continue;
-            }
-
-            // does the virtual sink accept this token?
-            if (!virtualSinkTrustedTokenIds.Contains(bn.Token))
+            bool tokenAccepted = virtualSinkTrustedTokenIds.Contains(bn.Token);
+            if (!tokenAccepted)
             {
                 continue;
             }
@@ -418,32 +580,32 @@ public class GraphFactory
     /// </summary>
     private void AddTrustBasedCapacityEdges(
         CapacityGraph capacityGraph,
-        BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         int? virtualSinkAddress,
         int? sinkAddress,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
-        /* build “token ➜ avatars that trust it”, applying sink filters inline */
         var tokenToAvatars = new Dictionary<int, List<int>>();
 
         foreach (var (avatar, trustedTokens) in accountTrusts)
         {
             foreach (var token in trustedTokens)
             {
-                // If the avatar is the real sink, enforce toTokens / excludedToTokens
-                if (avatar == sinkAddress)
-                {
-                    if (toTokensFilter.Count > 0 && !toTokensFilter.Contains(token))
-                    {
-                        continue;
-                    }
+                bool isSink = sinkAddress.HasValue && avatar == sinkAddress.Value;
 
-                    if (excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(token))
-                    {
-                        continue;
-                    }
+                bool excludedByToTokensFilter =
+                    isSink && toTokensFilter.Count > 0 && !toTokensFilter.Contains(token);
+                if (excludedByToTokensFilter)
+                {
+                    continue;
+                }
+
+                bool excludedByExcludeToTokens = isSink && excludedToTokensFilter.Count > 0 &&
+                                                 excludedToTokensFilter.Contains(token);
+                if (excludedByExcludeToTokens)
+                {
+                    continue;
                 }
 
                 if (!tokenToAvatars.TryGetValue(token, out var list))
@@ -458,7 +620,7 @@ public class GraphFactory
         /* create edges in parallel */
         var edgeBag = new ConcurrentBag<(int From, int To, int Token, long Amount)>();
 
-        Parallel.ForEach(balanceGraph.BalanceNodes.Values, bn =>
+        Parallel.ForEach(capacityGraph.BalanceNodes.Values, bn =>
         {
             if (!tokenToAvatars.TryGetValue(bn.Token, out var avatars))
             {
@@ -469,18 +631,22 @@ public class GraphFactory
             {
                 var avatar = avatars[i];
 
-                if (avatar == bn.Holder)
-                {
-                    continue; // no self-edge
-                }
-
-                if (virtualSinkAddress.HasValue && avatar == virtualSinkAddress)
+                bool selfEdge = avatar == bn.Holder;
+                if (selfEdge)
                 {
                     continue;
                 }
 
-                if (!capacityGraph.Nodes.ContainsKey(bn.Address) ||
-                    !capacityGraph.Nodes.ContainsKey(avatar))
+                bool isVirtualSink = virtualSinkAddress.HasValue && avatar == virtualSinkAddress.Value;
+                if (isVirtualSink)
+                {
+                    continue;
+                }
+
+                bool nodesPresent =
+                    capacityGraph.Nodes.ContainsKey(bn.Address) &&
+                    capacityGraph.Nodes.ContainsKey(avatar);
+                if (!nodesPresent)
                 {
                     continue;
                 }
