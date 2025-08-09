@@ -106,6 +106,7 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
 });
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
+// ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findMaxFlow", async (
     string from,
     string to,
@@ -115,6 +116,7 @@ app.MapGet("/findMaxFlow", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
+    string? simulatedBalances, // NEW: JSON array as query param
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -124,6 +126,22 @@ app.MapGet("/findMaxFlow", async (
     {
         log.LogWarning("Bad amount format");
         return Results.BadRequest("amount must be a valid integer.");
+    }
+
+    List<SimulatedBalance>? sim = null;
+    if (!string.IsNullOrWhiteSpace(simulatedBalances))
+    {
+        try
+        {
+            sim = JsonSerializer.Deserialize<List<SimulatedBalance>>(
+                simulatedBalances,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Invalid simulatedBalances query JSON");
+            return Results.BadRequest("simulatedBalances must be a JSON array of objects.");
+        }
     }
 
     if (!sem.Wait(0))
@@ -144,19 +162,19 @@ app.MapGet("/findMaxFlow", async (
         }
 
         var trustGraph = state.AccountTrusts;
-
         var pathfinder = new V2Pathfinder();
 
         var request = new FlowRequest
         {
-            Source = from.ToLower(),
-            Sink = to.ToLower(),
+            Source = from.ToLowerInvariant(),
+            Sink = to.ToLowerInvariant(),
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
             ExcludedFromTokens = excludedFromTokens?.ToList(),
             ExcludedToTokens = excludedToTokens?.ToList(),
-            WithWrap = withWrap
+            WithWrap = withWrap,
+            SimulatedBalances = sim // NEW
         };
 
         using (var h = await pool.Rent(request, balanceGraph, trustGraph))
@@ -167,7 +185,7 @@ app.MapGet("/findMaxFlow", async (
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findPath threw non-fatal exception");
+        log.LogWarning(ex, "findMaxFlow threw non-fatal exception");
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
     finally
@@ -176,6 +194,7 @@ app.MapGet("/findMaxFlow", async (
         FindPathMetrics.InFlightRequestsGauge.Dec();
     }
 });
+
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findPath", async (
@@ -187,6 +206,7 @@ app.MapGet("/findPath", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
+    string? simulatedBalances, // NEW: JSON array as query param
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -207,6 +227,22 @@ app.MapGet("/findPath", async (
         return Results.BadRequest("amount must be a valid integer.");
     }
 
+    List<SimulatedBalance>? sim = null;
+    if (!string.IsNullOrWhiteSpace(simulatedBalances))
+    {
+        try
+        {
+            sim = JsonSerializer.Deserialize<List<SimulatedBalance>>(
+                simulatedBalances,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Invalid simulatedBalances query JSON");
+            return Results.BadRequest("simulatedBalances must be a JSON array of objects.");
+        }
+    }
+
     if (!sem.Wait(0))
     {
         FindPathMetrics.RejectedRequestsCounter.Inc();
@@ -230,14 +266,15 @@ app.MapGet("/findPath", async (
 
         var request = new FlowRequest
         {
-            Source = from.ToLower(),
-            Sink = to.ToLower(),
+            Source = from.ToLowerInvariant(),
+            Sink = to.ToLowerInvariant(),
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
             ExcludedFromTokens = excludedFromTokens?.ToList(),
             ExcludedToTokens = excludedToTokens?.ToList(),
-            WithWrap = withWrap
+            WithWrap = withWrap,
+            SimulatedBalances = sim // NEW
         };
 
         var requestId = Guid.NewGuid();
@@ -249,7 +286,6 @@ app.MapGet("/findPath", async (
             MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
 
             _ = logDb.LogResponse(requestId, result, true);
-
             return Results.Ok(result);
         }
         catch (Exception ex)
@@ -346,7 +382,7 @@ app.MapPost("/findPath", async (
     }
 });
 
-app.MapGet("/snapshot", async (NetworkState state) =>
+app.MapGet("/snapshot", (NetworkState state) =>
 {
     var graphsReady = state.BalanceGraph is not null &&
                       state.AccountTrusts.Count > 0;
