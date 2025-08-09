@@ -21,6 +21,17 @@ public static class CirclesConverter
     // ───────────────────────────── public high-level API ──────────────────────────
 
     /// <summary>
+    /// Day index since <see cref="INFLATION_DAY_ZERO_UNIX"/> for the *current*
+    /// UTC day (truncated, no time–of-day component).
+    /// </summary>
+    public static ulong CurrentDayIndexUtc() =>
+        (ulong)((DateTimeOffset.UtcNow.ToUnixTimeSeconds() - INFLATION_DAY_ZERO_UNIX) / SECONDS_PER_DAY);
+
+    /// <summary>Unix-seconds timestamp for 00:00 UTC at <paramref name="dayIndex"/>.</summary>
+    public static ulong DayStartUnix(ulong dayIndex) =>
+        INFLATION_DAY_ZERO_UNIX + dayIndex * SECONDS_PER_DAY;
+
+    /// <summary>
     /// Converts an atto-Circles amount (18 decimals, BigInteger) to whole
     /// Circles as a <see cref="decimal"/>.  
     /// Throws <see cref="OverflowException"/> if the value cannot fit inside
