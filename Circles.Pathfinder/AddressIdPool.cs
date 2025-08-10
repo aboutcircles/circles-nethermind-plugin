@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Circles.Pathfinder;
 
 /// <summary>
@@ -6,64 +8,94 @@ namespace Circles.Pathfinder;
 /// </summary>
 public static class AddressIdPool
 {
-    private static readonly Dictionary<string, int> Map = new();
-    private static readonly List<string> Reverse = new();
+    private static int _next; // 0-based ids
+
+    private static readonly ConcurrentDictionary<string, int> Map =
+        new(concurrencyLevel: Environment.ProcessorCount, capacity: 1024, comparer: StringComparer.Ordinal);
+
+    private static readonly ConcurrentDictionary<int, string> Reverse =
+        new(concurrencyLevel: Environment.ProcessorCount, capacity: 1024);
+
+    // Marker set: which ids correspond to balance-node strings ("holder-token" / "...-sim")
+    private static readonly ConcurrentDictionary<int, byte> BalanceNodeIds =
+        new(concurrencyLevel: Environment.ProcessorCount, capacity: 1024);
 
     public static List<string> GetAvatarSnapshot()
     {
-        lock (Map)
+        // Snapshot enumeration of ConcurrentDictionary is safe; we still filter out balance-node strings
+        // (we keep the legacy "-" heuristic) and anything we explicitly tagged as a balance node.
+        var result = new List<string>(Reverse.Count);
+        foreach (var kv in Reverse)
         {
-            return [..Reverse.Where(o => !o.Contains('-'))];
-        }
-    }
+            int id = kv.Key;
+            string s = kv.Value;
 
-    private static readonly Dictionary<string, int> BalanceNodeMap = new();
-    private static int _next;
+            bool looksLikeBalanceNode = s.Contains('-');
+            bool isBalanceNode = BalanceNodeIds.ContainsKey(id);
+            bool include = !looksLikeBalanceNode && !isBalanceNode;
+
+            if (include)
+            {
+                result.Add(s);
+            }
+        }
+
+        return result;
+    }
 
     public static int IdOf(string _address)
     {
-        var lower = _address.ToLower();
-        if (Map.TryGetValue(lower, out var id))
-            return id;
+        string lower = _address.ToLowerInvariant();
 
-        lock (Map) // cheap – only when we meet a new string
+        if (Map.TryGetValue(lower, out int id))
         {
-            if (Map.TryGetValue(lower, out id))
-                return id;
-
-            id = _next++;
-            Map[lower] = id;
-            Reverse.Add(lower);
             return id;
         }
+
+        // Allocate a new id; GetOrAdd ensures only one winner for each key.
+        int newId = Interlocked.Increment(ref _next) - 1;
+        id = Map.GetOrAdd(lower, newId);
+        if (id == newId)
+        {
+            Reverse[id] = lower;
+        }
+
+        return id;
     }
 
-    public static string StringOf(int id) => Reverse[id];
+    public static string StringOf(int id)
+    {
+        if (Reverse.TryGetValue(id, out string? value))
+        {
+            return value;
+        }
+
+        throw new KeyNotFoundException($"Unknown id: {id}");
+    }
 
     public static int BalanceNodeIdOf(string _balanceNodeString)
     {
-        var lower = _balanceNodeString.ToLower();
-        if (Map.TryGetValue(lower, out var id))
-            return id;
+        string lower = _balanceNodeString.ToLowerInvariant();
 
-        lock (Map) // cheap – only when we meet a new string
+        if (Map.TryGetValue(lower, out int existing))
         {
-            if (Map.TryGetValue(lower, out id))
-                return id;
-
-            id = _next++;
-            Map[lower] = id;
-            BalanceNodeMap[lower] = id;
-            Reverse.Add(lower);
-            return id;
+            BalanceNodeIds.TryAdd(existing, 0);
+            return existing;
         }
+
+        int newId = Interlocked.Increment(ref _next) - 1;
+        int id = Map.GetOrAdd(lower, newId);
+        if (id == newId)
+        {
+            Reverse[id] = lower;
+        }
+
+        BalanceNodeIds.TryAdd(id, 0);
+        return id;
     }
 
     public static bool IsBalanceNode(int nodeAddress)
     {
-        lock (BalanceNodeMap)
-        {
-            return BalanceNodeMap.ContainsKey(StringOf(nodeAddress));
-        }
+        return BalanceNodeIds.ContainsKey(nodeAddress);
     }
 }
