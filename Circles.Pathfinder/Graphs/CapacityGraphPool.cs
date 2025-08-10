@@ -77,9 +77,15 @@ public sealed class CapacityGraphPool
             (r.ExcludedToTokens?.Any() ?? false);
 
         bool hasWrap = r.WithWrap == true;
-        bool hasSimulated = r.SimulatedBalances?.Any() ?? false;
+        bool hasSimulatedBalances = r.SimulatedBalances?.Any() ?? false;
+        bool hasSimulatedTrusts = r.SimulatedTrusts?.Any() ?? false;
 
-        bool needsFiltering = hasIncludeFilters || hasExcludeFilters || hasWrap || hasSimulated;
+        bool needsFiltering = hasIncludeFilters
+                              || hasExcludeFilters
+                              || hasWrap
+                              || hasSimulatedBalances
+                              || hasSimulatedTrusts;
+
         return needsFiltering;
     }
 }

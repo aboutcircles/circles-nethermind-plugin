@@ -116,6 +116,19 @@ public class GraphFactory
             capacityGraph.AddAvatar(sb.TokenId);
         }
 
+        // STEP 1c: Add simulated trust relations
+        var simulatedTrust = NormalizeSimulatedTrusts(r?.SimulatedTrusts);
+        foreach (var kv in simulatedTrust)
+        {
+            capacityGraph.AddAvatar(kv.Key);
+            foreach (var trustee in kv.Value)
+            {
+                capacityGraph.AddAvatar(trustee);
+            }
+        }
+
+        var mergedTrust = simulatedTrust.Count == 0 ? trustLookup : MergeTrust(trustLookup, simulatedTrust);
+
         int? virtualSinkAddress = null;
         HashSet<int> virtualSinkTrustedTokens = new HashSet<int>();
 
@@ -152,7 +165,7 @@ public class GraphFactory
                 .Where(x => x.IsWrapped)
                 .Select(x => x.TokenId)
                 .ToHashSet();
-
+            
             (virtualSinkAddress, virtualSinkTrustedTokens) = CreateVirtualSink(
                 capacityGraph,
                 sourceId.Value,
@@ -213,7 +226,7 @@ public class GraphFactory
         // STEP 8: Add regular trust-based capacity edges
         AddTrustBasedCapacityEdges(
             capacityGraph,
-            trustLookup,
+            mergedTrust,
             virtualSinkAddress,
             sinkId,
             toTokensFilter,
@@ -231,6 +244,66 @@ public class GraphFactory
         public long Amount { get; init; }
         public bool IsWrapped { get; init; }
         public bool IsStatic { get; init; }
+    }
+
+    private Dictionary<int, HashSet<int>> NormalizeSimulatedTrusts(List<SimulatedTrust>? raw)
+    {
+        var result = new Dictionary<int, HashSet<int>>();
+        if (raw == null || raw.Count == 0)
+        {
+            return result;
+        }
+
+        for (int i = 0; i < raw.Count; i++)
+        {
+            var st = raw[i];
+            bool missing = string.IsNullOrWhiteSpace(st.Truster) || string.IsNullOrWhiteSpace(st.Trustee);
+            if (missing)
+            {
+                continue;
+            }
+
+            int trusterId = AddressIdPool.IdOf(st.Truster.ToLowerInvariant());
+            int trusteeId = AddressIdPool.IdOf(st.Trustee.ToLowerInvariant());
+
+            if (!result.TryGetValue(trusterId, out var set))
+            {
+                set = new HashSet<int>();
+                result[trusterId] = set;
+            }
+
+            set.Add(trusteeId);
+        }
+
+        return result;
+    }
+
+    private IReadOnlyDictionary<int, HashSet<int>> MergeTrust(
+        IReadOnlyDictionary<int, HashSet<int>> onchain,
+        Dictionary<int, HashSet<int>> simulated)
+    {
+        var merged = new Dictionary<int, HashSet<int>>(onchain.Count + simulated.Count);
+
+        foreach (var kv in onchain)
+        {
+            merged[kv.Key] = new HashSet<int>(kv.Value);
+        }
+
+        foreach (var kv in simulated)
+        {
+            if (!merged.TryGetValue(kv.Key, out var set))
+            {
+                set = new HashSet<int>();
+                merged[kv.Key] = set;
+            }
+
+            foreach (var t in kv.Value)
+            {
+                set.Add(t);
+            }
+        }
+
+        return merged;
     }
 
     private List<_SimBal> NormalizeSimulatedBalances(List<SimulatedBalance>? raw)
@@ -333,15 +406,21 @@ public class GraphFactory
         capacityGraph.AddAvatar(virtualSinkAddressId);
         capacityGraph.VirtualSinkAddress = virtualSinkAddressId;
 
+        // Build a set of wrapped tokens once (snapshot) to avoid O(|toTokens|*|balances|)
+        var snapshotWrappedTokens = new HashSet<int>();
+        foreach (var bn in balanceGraph.BalanceNodes.Values)
+        {
+            if (bn.IsWrapped) snapshotWrappedTokens.Add(bn.Token);
+        }
+
         // Collect tokens trusted by virtual sink (excluding wrapped tokens)
         var virtualSinkTrustedTokens = new HashSet<int>();
         foreach (var token in toTokensFilter)
         {
-            bool isWrapped = balanceGraph.BalanceNodes.Values
-                .Any(bn => bn.Token == token && bn.IsWrapped);
-
+            bool tokenWrappedInSnapshot = snapshotWrappedTokens.Contains(token);
             bool tokenWrappedInSim = wrappedTokensInSim.Contains(token);
-            bool shouldSkip = isWrapped || tokenWrappedInSim;
+
+            bool shouldSkip = tokenWrappedInSnapshot || tokenWrappedInSim;
             if (shouldSkip)
             {
                 // // Console.WriteLine($"Skipping wrapped token {token} for virtual sink trust");
