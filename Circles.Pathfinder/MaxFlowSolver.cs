@@ -17,10 +17,24 @@ internal static class MaxFlowSolver
          * Arc-id 0      : super-source ➜ real source
          * Arc-id 1..N   : real capacity edges (same order as edgesList)
          * ---------------------------------------------------------------- */
-        int superSource = capacityEdges.Count > 0
-            ? Math.Max(capacityEdges.Max(e => Math.Max(e.From, e.To)), sourceAvatar) + 1
-            : sourceAvatar + 1;
+        int n = capacityEdges.Count;
+        int maxVertex = sourceAvatar;
+        for (int i = 0; i < n; i++)
+        {
+            var e = capacityEdges[i];
+            if (e.From > maxVertex)
+            {
+                maxVertex = e.From;
+            }
 
+            if (e.To > maxVertex)
+            {
+                maxVertex = e.To;
+            }
+        }
+
+        // Super-source is always one past the max vertex id (works for empty lists too).
+        int superSource = maxVertex + 1;
         maxFlow.AddArcWithCapacity(superSource, sourceAvatar, targetFlow);
 
         /* Add the real arcs — their ids are predictable: offset + index  */

@@ -98,4 +98,7 @@ public static class AddressIdPool
     {
         return BalanceNodeIds.ContainsKey(nodeAddress);
     }
+    
+    public static int TokenPoolIdOf(int tokenId)
+        => BalanceNodeIdOf($"tpool-{tokenId}");
 }

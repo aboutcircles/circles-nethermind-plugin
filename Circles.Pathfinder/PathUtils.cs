@@ -12,7 +12,7 @@ internal static class PathUtils
         /* --------------------------------------------------------------------
          * Build adjacency: map  node → List<SimpleEdge> that still have flow.
          * ------------------------------------------------------------------ */
-        var adjacency = new Dictionary<int, List<SimpleEdge>>();
+        var adjacency = new Dictionary<int, List<SimpleEdge>>(capacity: Math.Max(4, edges.Count));
 
         foreach (var edge in edges)
         {
@@ -40,39 +40,52 @@ internal static class PathUtils
         {
             var parent = new Dictionary<int, SimpleEdge>(); // child → edge used to reach it
             var queue = new Queue<int>();
+            var seen = new HashSet<int> { source };
+            bool foundSink = false;
+
             queue.Enqueue(source);
 
             /* ---------- BFS restricted to positive-flow arcs ---------------- */
-            while (queue.Count > 0)
+            while (queue.Count > 0 && !foundSink)
             {
                 int current = queue.Dequeue();
-                bool sinkReached = parent.ContainsKey(sink);
-                if (sinkReached)
-                {
-                    break;
-                }
 
-                if (!adjacency.TryGetValue(current, out var outgoing))
+                bool hasOutgoing = adjacency.TryGetValue(current, out var outgoing);
+                if (!hasOutgoing)
                 {
                     continue;
                 }
 
-                foreach (var edge in outgoing)
+                for (int i = 0; i < outgoing.Count; i++)
                 {
+                    var edge = outgoing[i];
+
                     bool edgeHasResidual = edge.Flow > 0;
-                    bool nodeSeen = parent.ContainsKey(edge.To);
-                    bool skipEdge = !edgeHasResidual || nodeSeen;
-                    if (skipEdge)
+                    if (!edgeHasResidual)
+                    {
+                        continue;
+                    }
+
+                    bool newlySeen = seen.Add(edge.To);
+                    if (!newlySeen)
                     {
                         continue;
                     }
 
                     parent[edge.To] = edge;
+
+                    bool reachedSink = edge.To == sink;
+                    if (reachedSink)
+                    {
+                        foundSink = true;
+                        break;
+                    }
+
                     queue.Enqueue(edge.To);
                 }
             }
 
-            bool noPathFound = !parent.ContainsKey(sink);
+            bool noPathFound = !foundSink;
             if (noPathFound)
             {
                 break;
@@ -108,13 +121,26 @@ internal static class PathUtils
 
             result.Add(pathCopy);
 
-            /* ----------------------------------------------------------------
-             * Peel the bottleneck amount off the residual capacities so we can
-             * search for the next augmenting path.
-             * ---------------------------------------------------------------- */
+            // Peel the bottleneck amount off; prune depleted edges from adjacency.
             foreach (var edge in peel)
             {
                 edge.Flow -= minFlow;
+
+                bool depleted = edge.Flow <= 0;
+                if (!depleted)
+                {
+                    continue;
+                }
+
+                if (adjacency.TryGetValue(edge.From, out var list))
+                {
+                    list.Remove(edge);
+                    bool listEmpty = list.Count == 0;
+                    if (listEmpty)
+                    {
+                        adjacency.Remove(edge.From);
+                    }
+                }
             }
         }
 
