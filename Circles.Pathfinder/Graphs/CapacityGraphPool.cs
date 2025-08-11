@@ -27,7 +27,7 @@ public sealed class CapacityGraphPool
     /* Renting                                                            */
     /* ------------------------------------------------------------------ */
 
-    public async Task<CapacityGraphHandle> Rent(FlowRequest r,
+    public Task<CapacityGraphHandle> Rent(FlowRequest r,
         BalanceGraph balances,
         IReadOnlyDictionary<int, HashSet<int>> trust)
     {
@@ -38,12 +38,12 @@ public sealed class CapacityGraphPool
         {
             // build ad-hoc filtered graph
             var g = _gf.CreateCapacityGraph(balances, trust, r);
-            return new CapacityGraphHandle(g, null, this);
+            return Task.FromResult(new CapacityGraphHandle(g, null, this));
         }
 
         var snap = _current;
         _ref.AddOrUpdate(snap, _ => 1, (_, c) => c + 1);
-        return new CapacityGraphHandle(snap.Base, snap, this);
+        return Task.FromResult(new CapacityGraphHandle(snap.Base, snap, this));
     }
 
     internal void Release(CapacityGraphSnapshot snap)
@@ -58,12 +58,12 @@ public sealed class CapacityGraphPool
     /* One-off builder used by the background service                     */
     /* ------------------------------------------------------------------ */
 
-    public static async Task<CapacityGraph> BuildFullGraph(
+    public static Task<CapacityGraph> BuildFullGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts)
     {
         var gf = new GraphFactory();
-        return gf.CreateCapacityGraph(balanceGraph, accountTrusts, new FlowRequest());
+        return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts, new FlowRequest()));
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)
@@ -77,8 +77,15 @@ public sealed class CapacityGraphPool
             (r.ExcludedToTokens?.Any() ?? false);
 
         bool hasWrap = r.WithWrap == true;
+        bool hasSimulatedBalances = r.SimulatedBalances?.Any() ?? false;
+        bool hasSimulatedTrusts = r.SimulatedTrusts?.Any() ?? false;
 
-        bool needsFiltering = hasIncludeFilters || hasExcludeFilters || hasWrap;
+        bool needsFiltering = hasIncludeFilters
+                              || hasExcludeFilters
+                              || hasWrap
+                              || hasSimulatedBalances
+                              || hasSimulatedTrusts;
+
         return needsFiltering;
     }
 }

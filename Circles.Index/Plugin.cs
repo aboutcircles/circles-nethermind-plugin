@@ -30,7 +30,7 @@ public class Plugin : INethermindPlugin
     private long _latestHeadToIndex = -1;
     private Task? _ipfsDownloader;
 
-    public async Task Init(INethermindApi nethermindApi)
+    public Task Init(INethermindApi nethermindApi)
     {
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
@@ -140,6 +140,8 @@ public class Plugin : INethermindPlugin
         // Run the downloader
         _ipfsDownloader = Task.Run(async () => await RunIpfsDownloader(settings),
             _cancellationTokenSource.Token);
+        
+        return Task.CompletedTask;
     }
 
     private async Task RunIpfsDownloader(Settings settings)
