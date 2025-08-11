@@ -238,11 +238,7 @@ public class V2Pathfinder
                     token = edge.Token;
                 }
 
-                int toAvatar = toIsBal
-                    ? int.Parse(AddressIdPool.StringOf(edge.To).Split('-')[0])
-                    : edge.To;
-
-                /* Balance-node chain “balance → avatar” collapses into one step */
+                /* Detect chain BEFORE computing toAvatar to avoid parsing "tpool-*" ids */
                 bool beginsChain = toIsBal &&
                                    i + 1 < path.Count &&
                                    path[i + 1].From == edge.To;
@@ -264,6 +260,11 @@ public class V2Pathfinder
                 }
                 else
                 {
+                    // Only compute toAvatar here (non-chain case)
+                    int toAvatar = toIsBal
+                        ? int.Parse(AddressIdPool.StringOf(edge.To).Split('-')[0])
+                        : edge.To;
+
                     var key = (fromAvatar, toAvatar, token);
                     if (agg.TryGetValue(key, out long existing))
                         agg[key] = existing + edge.Flow;
