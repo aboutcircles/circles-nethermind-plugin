@@ -20,6 +20,7 @@ public class Plugin : INethermindPlugin
         "Indexes Circles related events and provides query capabilities via JSON-RPC.";
 
     public string Author => "Gnosis";
+    public bool Enabled { get; } = true;
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
@@ -120,7 +121,7 @@ public class Plugin : INethermindPlugin
         {
             logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
         }
-        
+
 
         _indexerContext = new Context(
             nethermindApi,
@@ -140,7 +141,7 @@ public class Plugin : INethermindPlugin
         // Run the downloader
         _ipfsDownloader = Task.Run(async () => await RunIpfsDownloader(settings),
             _cancellationTokenSource.Token);
-        
+
         return Task.CompletedTask;
     }
 
