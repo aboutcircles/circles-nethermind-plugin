@@ -12,6 +12,7 @@ public class FlowRequest
     public bool? WithWrap { get; set; }
     public List<SimulatedBalance>? SimulatedBalances { get; set; }
     public List<SimulatedTrust>? SimulatedTrusts { get; set; }
+    public bool? Prune { get; set; }
 }
 
 public class SimulatedBalance

@@ -206,7 +206,8 @@ app.MapGet("/findPath", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
-    string? simulatedBalances, // NEW: JSON array as query param
+    string? simulatedBalances, // JSON array as query param
+    bool? prune, // toggle pruning on/off (if null → env default)
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -274,7 +275,8 @@ app.MapGet("/findPath", async (
             ExcludedFromTokens = excludedFromTokens?.ToList(),
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
-            SimulatedBalances = sim // NEW
+            SimulatedBalances = sim,
+            Prune = prune // NEW
         };
 
         var requestId = Guid.NewGuid();
@@ -308,7 +310,7 @@ app.MapGet("/findPath", async (
 
 // POST  /findPath  -----------------------------------------------------------
 app.MapPost("/findPath", async (
-    [FromBody] FlowRequest request, // body-bound request DTO
+    [FromBody] FlowRequest request,
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -321,7 +323,7 @@ app.MapPost("/findPath", async (
     act?.SetTag("to", request.Sink);
     act?.SetTag("amount", request.TargetFlow);
 
-    // Normalise addresses so matching is case-insensitive
+    // Normalise addresses
     request.Source = request.Source?.ToLowerInvariant();
     request.Sink = request.Sink?.ToLowerInvariant();
 
@@ -357,8 +359,7 @@ app.MapPost("/findPath", async (
         try
         {
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
-            MaxFlowResponse result =
-                pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+            MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
 
             _ = logDb.LogResponse(requestId, result, true);
             return Results.Ok(result);

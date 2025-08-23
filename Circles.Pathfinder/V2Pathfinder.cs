@@ -71,7 +71,7 @@ public class V2Pathfinder
         UInt256 targetFlow)
     {
         /* --------------------------------------------------------------------
-         * 1. Resolve ids and basic guards
+         * 1) Guards
          * ------------------------------------------------------------------ */
         int sinkId = AddressIdPool.IdOf(request.Sink);
         int effSink = capacityGraph.VirtualSinkAddress ?? sinkId;
@@ -80,27 +80,49 @@ public class V2Pathfinder
         bool srcMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
         bool dstMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
         if (srcMissing)
+        {
             throw new ArgumentException($"Source '{request.Source}' isn’t in the graph snapshot.");
+        }
+
         if (dstMissing)
+        {
             throw new ArgumentException($"Sink '{request.Sink}' isn’t in the graph snapshot.");
+        }
 
         /* --------------------------------------------------------------------
-         * 2. Run max-flow and peel paths
+         * 2) Solve + peel paths
          * ------------------------------------------------------------------ */
         long tgt = CirclesConverter.TruncateToInt64(targetFlow);
         var solved = MaxFlowSolver.Solve(capacityGraph.Edges, sourceId, effSink, tgt);
-        var simplePath = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
+        var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
 
         /* --------------------------------------------------------------------
-         * 3. Convert SimpleEdge ➜ FlowEdge
+         * 3) Optional pruning to block gas budget
          * ------------------------------------------------------------------ */
-        var flowPaths = new List<List<FlowEdge>>(simplePath.Count);
+        bool defaultPruneEnabled = GetDefaultPruneEnabled();
+        bool shouldPrune = request.Prune ?? defaultPruneEnabled;
 
-        foreach (var path in simplePath)
+        if (shouldPrune && simplePaths.Count > 0)
         {
+            long gasBudget = GetBlockGasLimit();
+            int gasPerHop = GetGasPerHop();
+            int gasPerPathOverhead = GetGasPerPathOverhead();
+
+            simplePaths = PruneToGasBudget(simplePaths, gasBudget, gasPerHop, gasPerPathOverhead);
+        }
+
+        /* --------------------------------------------------------------------
+         * 4) Convert SimpleEdge → FlowEdge
+         * ------------------------------------------------------------------ */
+        var flowPaths = new List<List<FlowEdge>>(simplePaths.Count);
+        for (int i = 0; i < simplePaths.Count; i++)
+        {
+            var path = simplePaths[i];
             var list = new List<FlowEdge>(path.Count);
-            foreach (var e in path)
+
+            for (int j = 0; j < path.Count; j++)
             {
+                var e = path[j];
                 var fe = new FlowEdge(e.From, e.To, e.Token, e.Capacity)
                 {
                     Flow = e.Flow,
@@ -113,18 +135,21 @@ public class V2Pathfinder
         }
 
         /* --------------------------------------------------------------------
-         * 4. Replace virtual-sink ids (if any) with the real sink id
+         * 5) Replace virtual-sink ids with real sink id
          * ------------------------------------------------------------------ */
         if (capacityGraph.VirtualSinkAddress != null)
         {
             int vs = capacityGraph.VirtualSinkAddress.Value;
 
             var replaced = new List<List<FlowEdge>>(flowPaths.Count);
-            foreach (var path in flowPaths)
+            for (int i = 0; i < flowPaths.Count; i++)
             {
+                var path = flowPaths[i];
                 var fixedPath = new List<FlowEdge>(path.Count);
-                foreach (var fe in path)
+
+                for (int j = 0; j < path.Count; j++)
                 {
+                    var fe = path[j];
                     int from = fe.From == vs ? sinkId : fe.From;
                     int to = fe.To == vs ? sinkId : fe.To;
 
@@ -143,19 +168,20 @@ public class V2Pathfinder
         }
 
         /* --------------------------------------------------------------------
-         * 5. Collapse balance nodes + aggregate identical edges
+         * 6) Collapse balance nodes + aggregate identical edges
          * ------------------------------------------------------------------ */
         var collapsed = CollapseBalanceNodes(flowPaths);
-        var aggregated = collapsed.AggregateIdenticalEdges(); // legacy helper
+        var aggregated = collapsed.AggregateIdenticalEdges();
 
         /* --------------------------------------------------------------------
-         * 6. Build DTOs
+         * 7) DTO
          * ------------------------------------------------------------------ */
         var transfer = new List<TransferPathStep>();
-
-        foreach (var e in aggregated.Edges)
+        for (int i = 0; i < aggregated.Edges.Count; i++)
         {
-            if (e.Flow <= 0)
+            var e = aggregated.Edges[i];
+            bool hasFlow = e.Flow > 0;
+            if (!hasFlow)
             {
                 continue;
             }
@@ -173,11 +199,14 @@ public class V2Pathfinder
         }
 
         UInt256 maxFlowWei = 0;
-        foreach (var t in transfer)
+        for (int i = 0; i < transfer.Count; i++)
         {
+            var t = transfer[i];
             bool fromIsSource = AddressIdPool.IdOf(t.From) == sourceId;
             if (fromIsSource)
+            {
                 maxFlowWei += UInt256.Parse(t.Value);
+            }
         }
 
         return new MaxFlowResponse(
@@ -185,9 +214,9 @@ public class V2Pathfinder
             transfer);
     }
 
-/* ------------------------------------------------------------------------
- * Collapse balance nodes in a set of paths.
- * --------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------------
+     * Collapse balance nodes in a set of paths.
+     * --------------------------------------------------------------------- */
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
     {
         var collapsed = new FlowGraph();
@@ -293,6 +322,126 @@ public class V2Pathfinder
         }
 
         return collapsed;
+    }
+
+    /* ------------------------------------------------------------------------
+     * GAS-BUDGET PRUNING
+     * --------------------------------------------------------------------- */
+    private static List<List<SimpleEdge>> PruneToGasBudget(
+        List<List<SimpleEdge>> paths,
+        long gasBudget,
+        int gasPerHop,
+        int gasPerPathOverhead)
+    {
+        if (paths.Count == 0)
+        {
+            return paths;
+        }
+
+        // Build table: each path has (flow, hops, cost, path)
+        var items = new List<(List<SimpleEdge> Path, long Flow, int Hops, long Cost)>(paths.Count);
+        for (int i = 0; i < paths.Count; i++)
+        {
+            var p = paths[i];
+            int hops = p.Count;
+            long flow = p[0].Flow; // invariant: all edges carry same flow after peeling
+            long cost = gasPerPathOverhead + (long)hops * gasPerHop;
+            items.Add((p, flow, hops, cost));
+        }
+
+        // Drop any path that by itself exceeds the gas budget (can’t be executed anyway).
+        var feasible = new List<(List<SimpleEdge> Path, long Flow, int Hops, long Cost)>(items.Count);
+        for (int i = 0; i < items.Count; i++)
+        {
+            bool pathFits = items[i].Cost <= gasBudget;
+            if (pathFits)
+            {
+                feasible.Add(items[i]);
+            }
+        }
+
+        if (feasible.Count == 0)
+        {
+            // Nothing can be executed in a single block; return empty set.
+            return new List<List<SimpleEdge>>(0);
+        }
+
+        long totalCost = 0;
+        for (int i = 0; i < feasible.Count; i++)
+        {
+            totalCost += feasible[i].Cost;
+        }
+
+        bool underBudget = totalCost <= gasBudget;
+        if (underBudget)
+        {
+            var ok = new List<List<SimpleEdge>>(feasible.Count);
+            for (int i = 0; i < feasible.Count; i++)
+            {
+                ok.Add(feasible[i].Path);
+            }
+
+            return ok;
+        }
+
+        // Remove the smallest-flow paths first; on tie, remove the gas-heavier one.
+        feasible.Sort((a, b) =>
+        {
+            int byFlow = a.Flow.CompareTo(b.Flow); // ascending flow
+            if (byFlow != 0) return byFlow;
+            return b.Cost.CompareTo(a.Cost); // heavier gas first on tie
+        });
+
+        int removeIdx = 0;
+        while (totalCost > gasBudget && removeIdx < feasible.Count)
+        {
+            totalCost -= feasible[removeIdx].Cost;
+            removeIdx++;
+        }
+
+        // Keep the suffix [removeIdx..end)
+        var kept = new List<List<SimpleEdge>>(Math.Max(0, feasible.Count - removeIdx));
+        for (int i = removeIdx; i < feasible.Count; i++)
+        {
+            kept.Add(feasible[i].Path);
+        }
+
+        return kept;
+    }
+
+    private static bool GetDefaultPruneEnabled()
+    {
+        string? raw = Environment.GetEnvironmentVariable("PATHFINDER_PRUNE_DEFAULT");
+        return bool.TryParse(raw, out bool v) ? v : true;
+    }
+
+    private static long GetBlockGasLimit()
+    {
+        return 17_000_000L;
+    }
+
+    private static int GetGasPerHop()
+    {
+        // TODO:
+        //   Gas per hop is variable and consists of:
+        //   * unpackCoordinates
+        //   * verifyFlowMatrix
+        //     * isPermittedFlow
+        //   * effectPathTransfers
+        //     * update
+        //       * balanceOfOnDay
+        //       * TransferSingle
+        //       * DiscountCost (not always)
+        //       * updateBalance
+        //       * discountAndAddToBalance
+        //   * callAcceptanceChecks
+
+        return 20_000;
+    }
+
+    private static int GetGasPerPathOverhead()
+    {
+        return 25_000;
     }
 
     private bool IsBalanceNode(int addr) => AddressIdPool.IsBalanceNode(addr);
