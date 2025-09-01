@@ -105,6 +105,8 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public void Migrate()
     {
+        // TODO: Make sure that all tables are created first, then the views follow.
+
         using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
@@ -114,6 +116,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             StringBuilder ddlSql = new StringBuilder();
             foreach (var table in Schema.Tables)
             {
+                Console.WriteLine($"PostgresDb.Migrate: Creating DDL for table " + table + "...");
                 var ddl = GetDdl(table.Value);
                 ddlSql.AppendLine(ddl);
             }
@@ -123,6 +126,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             StringBuilder indexesSql = new StringBuilder();
             foreach (var index in Schema.Indexes)
             {
+                Console.WriteLine($"PostgresDb.Migrate: Creating DDL for index " + index + "...");
                 var ddl = index.Value;
                 indexesSql.AppendLine(ddl);
             }
@@ -132,6 +136,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             StringBuilder primaryKeyDdl = new StringBuilder();
             foreach (var table in Schema.Tables)
             {
+                Console.WriteLine($"PostgresDb.Migrate: Creating Primary Key DDL for table " + table + "...");
                 if (table.Key.Namespace.StartsWith("V_"))
                 {
                     // Skip views

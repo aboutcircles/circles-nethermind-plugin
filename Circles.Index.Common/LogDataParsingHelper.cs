@@ -150,4 +150,14 @@ public static class LogDataParsingHelper
 
         return result;
     }
+
+    /// <summary>
+    /// Reads a dynamic string from <paramref name="data"/> at <paramref name="offset"/> using ABI encoding
+    /// (length as UInt256 followed by UTF-8 bytes).
+    /// </summary>
+    public static string ParseString(ReadOnlySpan<byte> data, int offset)
+    {
+        var bytes = ParseBytes(data, offset);
+        return System.Text.Encoding.UTF8.GetString(bytes);
+    }
 }
