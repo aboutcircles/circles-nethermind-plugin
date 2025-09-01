@@ -8,7 +8,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 {
     // Factory events
     public static readonly EventSchema AccountWeightProviderCreated = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "AccountWeightProviderCreated",
         Keccak.Compute("AccountWeightProviderCreated(address,address)").BytesToArray(),
         [
@@ -23,7 +23,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema ERC20TokenOfferCreated = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "ERC20TokenOfferCreated",
         Keccak.Compute(
             "ERC20TokenOfferCreated(address,address,address,address,uint256,uint256,uint256,uint256,string,address[])"
@@ -48,7 +48,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema ERC20TokenOfferCycleCreated = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "ERC20TokenOfferCycleCreated",
         Keccak.Compute(
             "ERC20TokenOfferCycleCreated(address,address,address,uint256,uint256,string,string)"
@@ -71,7 +71,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 
     // Cycle events
     public static readonly EventSchema CycleConfiguration = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "CycleConfiguration",
         Keccak.Compute(
             "CycleConfiguration(address,address,address,uint256,uint256,bool)"
@@ -92,7 +92,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema NextOfferCreated = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "NextOfferCreated",
         Keccak.Compute(
             "NextOfferCreated(address,uint256,uint256,address[])"
@@ -111,7 +111,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema NextOfferTokensDeposited = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "NextOfferTokensDeposited",
         Keccak.Compute("NextOfferTokensDeposited(address,uint256)").BytesToArray(),
         [
@@ -126,7 +126,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema OfferTrustSynced = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "OfferTrustSynced",
         Keccak.Compute("OfferTrustSynced(uint256,address)").BytesToArray(),
         [
@@ -141,7 +141,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema OfferClaimedFromCycle = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "OfferClaimedFromCycle",
         Keccak.Compute("OfferClaimed(address,address,uint256,uint256)").BytesToArray(),
         [
@@ -158,7 +158,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema UnclaimedTokensWithdrawn = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "UnclaimedTokensWithdrawn",
         Keccak.Compute("UnclaimedTokensWithdrawn(address,uint256)").BytesToArray(),
         [
@@ -174,7 +174,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 
     // Offer events
     public static readonly EventSchema OfferClaimed = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "OfferClaimed",
         Keccak.Compute("OfferClaimed(address,uint256,uint256)").BytesToArray(),
         [
@@ -190,7 +190,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema OfferTokensDeposited = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "OfferTokensDeposited",
         Keccak.Compute("OfferTokensDeposited(uint256)").BytesToArray(),
         [
@@ -205,7 +205,7 @@ public class DatabaseSchema : BaseDatabaseSchema
 
     // Provider events
     public static readonly EventSchema AccountWeightSet = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "AccountWeightSet",
         Keccak.Compute("AccountWeightSet(address,address,uint256)").BytesToArray(),
         [
@@ -221,7 +221,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema WeightsFinalized = new(
-        "CrcV2",
+        "CrcV2_TokenOffers",
         "WeightsFinalized",
         Keccak.Compute("WeightsFinalized(address,uint256,uint256)").BytesToArray(),
         [
@@ -239,7 +239,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public DatabaseSchema()
     {
         AddMappings<AccountWeightProviderCreated>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "AccountWeightProviderCreated",
             AccountWeightProviderCreated,
             [
@@ -249,7 +249,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<ERC20TokenOfferCreated>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "ERC20TokenOfferCreated",
             ERC20TokenOfferCreated,
             [
@@ -267,7 +267,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<ERC20TokenOfferCycleCreated>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "ERC20TokenOfferCycleCreated",
             ERC20TokenOfferCycleCreated,
             [
@@ -282,7 +282,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<CycleConfiguration>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "CycleConfiguration",
             CycleConfiguration,
             [
@@ -296,7 +296,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<NextOfferCreated>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "NextOfferCreated",
             NextOfferCreated,
             [
@@ -308,7 +308,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<NextOfferTokensDeposited>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "NextOfferTokensDeposited",
             NextOfferTokensDeposited,
             [
@@ -318,7 +318,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<OfferTrustSynced>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "OfferTrustSynced",
             OfferTrustSynced,
             [
@@ -328,7 +328,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<OfferClaimedFromCycle>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "OfferClaimedFromCycle",
             OfferClaimedFromCycle,
             [
@@ -340,7 +340,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<UnclaimedTokensWithdrawn>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "UnclaimedTokensWithdrawn",
             UnclaimedTokensWithdrawn,
             [
@@ -350,7 +350,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<OfferClaimed>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "OfferClaimed",
             OfferClaimed,
             [
@@ -361,7 +361,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<OfferTokensDeposited>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "OfferTokensDeposited",
             OfferTokensDeposited,
             [
@@ -370,7 +370,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<AccountWeightSet>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "AccountWeightSet",
             AccountWeightSet,
             [
@@ -381,7 +381,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             ]);
 
         AddMappings<WeightsFinalized>(
-            "CrcV2",
+            "CrcV2_TokenOffers",
             "WeightsFinalized",
             WeightsFinalized,
             [
