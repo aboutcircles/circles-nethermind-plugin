@@ -114,9 +114,23 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         try
         {
             StringBuilder ddlSql = new StringBuilder();
-            foreach (var table in Schema.Tables)
+            var tables = Schema.Tables.Where(o => !o.Key.Namespace.StartsWith("V_")).ToArray();
+            var views = Schema.Tables.Where(o => o.Key.Namespace.StartsWith("V_")).ToArray();
+
+            foreach (var table in tables)
             {
                 Console.WriteLine($"PostgresDb.Migrate: Creating DDL for table " + table + "...");
+                var ddl = GetDdl(table.Value);
+                ddlSql.AppendLine(ddl);
+            }
+
+            ExecuteNonQuery(connection, ddlSql.ToString());
+
+            ddlSql.Clear();
+
+            foreach (var table in views)
+            {
+                Console.WriteLine($"PostgresDb.Migrate: Creating DDL for view " + table + "...");
                 var ddl = GetDdl(table.Value);
                 ddlSql.AppendLine(ddl);
             }
@@ -134,14 +148,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ExecuteNonQuery(connection, indexesSql.ToString());
 
             StringBuilder primaryKeyDdl = new StringBuilder();
-            foreach (var table in Schema.Tables)
+            foreach (var table in tables)
             {
                 Console.WriteLine($"PostgresDb.Migrate: Creating Primary Key DDL for table " + table + "...");
-                if (table.Key.Namespace.StartsWith("V_"))
-                {
-                    // Skip views
-                    continue;
-                }
 
                 if (HasPrimaryKey(connection, table.Value))
                 {
