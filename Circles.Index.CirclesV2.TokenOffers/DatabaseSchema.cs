@@ -258,10 +258,10 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("offerOwner", e => e.OfferOwner),
                 ("accountWeightProvider", e => e.AccountWeightProvider),
                 ("offerToken", e => e.OfferToken),
-                ("tokenPriceInCRC", e => e.TokenPriceInCRC),
-                ("offerLimitInCRC", e => e.OfferLimitInCRC),
-                ("offerStart", e => e.OfferStart),
-                ("offerEnd", e => e.OfferEnd),
+                ("tokenPriceInCRC", e => (BigInteger)e.TokenPriceInCRC),
+                ("offerLimitInCRC", e => (BigInteger)e.OfferLimitInCRC),
+                ("offerStart", e => (BigInteger)e.OfferStart),
+                ("offerEnd", e => (BigInteger)e.OfferEnd),
                 ("orgName", e => e.OrgName),
                 ("acceptedCRC", e => e.AcceptedCRC)
             ]);
@@ -275,8 +275,8 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("offerCycle", e => e.OfferCycle),
                 ("cycleOwner", e => e.CycleOwner),
                 ("offerToken", e => e.OfferToken),
-                ("offersStart", e => e.OffersStart),
-                ("offerDuration", e => e.OfferDuration),
+                ("offersStart", e => (BigInteger)e.OffersStart),
+                ("offerDuration", e => (BigInteger)e.OfferDuration),
                 ("offerName", e => e.OfferName),
                 ("cycleName", e => e.CycleName)
             ]);
@@ -290,8 +290,8 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("admin", e => e.Admin),
                 ("accountWeightProvider", e => e.AccountWeightProvider),
                 ("offerToken", e => e.OfferToken),
-                ("offersStart", e => e.OffersStart),
-                ("offerDuration", e => e.OfferDuration),
+                ("offersStart", e => (BigInteger)e.OffersStart),
+                ("offerDuration", e => (BigInteger)e.OfferDuration),
                 ("softLockEnabled", e => e.SoftLockEnabled)
             ]);
 
@@ -302,8 +302,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("nextOffer", e => e.NextOffer),
-                ("tokenPriceInCRC", e => e.TokenPriceInCRC),
-                ("offerLimitInCRC", e => e.OfferLimitInCRC),
+                ("tokenPriceInCRC", e => (BigInteger)e.TokenPriceInCRC),
+                ("offerLimitInCRC", e => (BigInteger)e.OfferLimitInCRC),
                 ("acceptedCRC", e => e.AcceptedCRC)
             ]);
 
@@ -314,7 +314,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("nextOffer", e => e.NextOffer),
-                ("amount", e => e.Amount)
+                ("amount", e => (BigInteger)e.Amount)
             ]);
 
         AddMappings<OfferTrustSynced>(
@@ -323,7 +323,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             OfferTrustSynced,
             [
                 ("emitter", e => e.Emitter),
-                ("offerId", e => e.OfferId),
+                ("offerId", e => (BigInteger)e.OfferId),
                 ("offer", e => e.Offer)
             ]);
 
@@ -335,8 +335,8 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("emitter", e => e.Emitter),
                 ("offer", e => e.Offer),
                 ("account", e => e.Account),
-                ("received", e => e.Received),
-                ("spent", e => e.Spent)
+                ("received", e => (BigInteger)e.Received),
+                ("spent", e => (BigInteger)e.Spent)
             ]);
 
         AddMappings<UnclaimedTokensWithdrawn>(
@@ -346,7 +346,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("offer", e => e.Offer),
-                ("amount", e => e.Amount)
+                ("amount", e => (BigInteger)e.Amount)
             ]);
 
         AddMappings<OfferClaimed>(
@@ -356,8 +356,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("account", e => e.Account),
-                ("spent", e => e.Spent),
-                ("received", e => e.Received)
+                ("spent", e => (BigInteger)e.Spent),
+                ("received", e => (BigInteger)e.Received)
             ]);
 
         AddMappings<OfferTokensDeposited>(
@@ -366,7 +366,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             OfferTokensDeposited,
             [
                 ("emitter", e => e.Emitter),
-                ("amount", e => e.Amount)
+                ("amount", e => (BigInteger)e.Amount)
             ]);
 
         AddMappings<AccountWeightSet>(
@@ -377,7 +377,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("emitter", e => e.Emitter),
                 ("offer", e => e.Offer),
                 ("account", e => e.Account),
-                ("weight", e => e.Weight)
+                ("weight", e => (BigInteger)e.Weight)
             ]);
 
         AddMappings<WeightsFinalized>(
@@ -387,8 +387,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("emitter", e => e.Emitter),
                 ("offer", e => e.Offer),
-                ("accountsCount", e => e.AccountsCount),
-                ("totalWeight", e => e.TotalWeight)
+                ("accountsCount", e => (BigInteger)e.AccountsCount),
+                ("totalWeight", e => (BigInteger)e.TotalWeight)
             ]);
     }
 }
