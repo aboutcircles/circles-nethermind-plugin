@@ -35,6 +35,7 @@
       <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj" />
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />

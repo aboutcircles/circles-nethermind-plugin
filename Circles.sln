@@ -31,6 +31,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		general-example-requests.md = general-example-requests.md
 		all_tables.html = all_tables.html
 		pathfinder-host.Dockerfile = pathfinder-host.Dockerfile
+		docker-compose.gnosis-live.yml = docker-compose.gnosis-live.yml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Postgres", "Circles.Index.Postgres\Circles.Index.Postgres.csproj", "{8ED5FCD0-0995-44E7-9A11-E0EB03BB0832}"
@@ -72,6 +73,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.ContractClient", "Circles.Index.ContractClient\Circles.Index.ContractClient.csproj", "{32C6C815-041E-472A-B748-458A5EE99065}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.AffiliateGroupRegistry", "Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj", "{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.TokenOffers", "Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj", "{FFE61C6C-6023-44D4-A8EE-B7AC44983962}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -171,6 +174,10 @@ Global
 		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFE61C6C-6023-44D4-A8EE-B7AC44983962}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFE61C6C-6023-44D4-A8EE-B7AC44983962}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFE61C6C-6023-44D4-A8EE-B7AC44983962}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFE61C6C-6023-44D4-A8EE-B7AC44983962}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
@@ -184,5 +191,6 @@ Global
 		{C95155BB-B159-4A82-9503-F129A82D806B} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 		{58B46B62-06DF-4623-8ADF-3715523FED67} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 		{6FE46CBA-EA43-412C-B5A1-6F395917A5F2} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
+		{FFE61C6C-6023-44D4-A8EE-B7AC44983962} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
 	EndGlobalSection
 EndGlobal

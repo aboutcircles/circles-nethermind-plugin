@@ -34,6 +34,13 @@ public class Settings
                 .ToArray()
             : [];
 
+    public readonly Address[] CirclesTokenOfferFactoryAddress =
+        Environment.GetEnvironmentVariable("V2_TOKEN_OFFER_FACTORY_ADDRESS") != null
+            ? Environment.GetEnvironmentVariable("V2_TOKEN_OFFER_FACTORY_ADDRESS")!.Split(',')
+                .Select(x => new Address(x.Trim()))
+                .ToArray()
+            : [];
+
     public readonly Address[] CMGroupDeployer =
         Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER") != null
             ? Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")!.Split(',')
@@ -58,9 +65,10 @@ public class Settings
     public readonly string? ExternalPathfinderUrl =
         Environment.GetEnvironmentVariable("EXTERNAL_PATHFINDER_URL");
 
-    public readonly Address? CirclesV1NameRegistry = Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS") != null
-        ? new(Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS")!)
-        : null;
+    public readonly Address? CirclesV1NameRegistry =
+        Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS") != null
+            ? new(Environment.GetEnvironmentVariable("V1_NAME_REGISTRY_ADDRESS")!)
+            : null;
 
     public readonly Address? AffiliateGroupRegistry =
         Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS") != null
