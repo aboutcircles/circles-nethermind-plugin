@@ -56,6 +56,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new CirclesV2.LBP.DatabaseSchema());
         }
 
+        if (settings.CirclesTokenOfferFactoryAddress.Length > 0)
+        {
+            schemas.Add(new CirclesV2.TokenOffers.DatabaseSchema());
+        }
+
         if (settings.AffiliateGroupRegistry != null)
         {
             schemas.Add(new CirclesV2.AffiliateGroupRegistry.DatabaseSchema());
@@ -105,6 +110,12 @@ public class Plugin : INethermindPlugin
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
             logParsers.Add(new Safe.LogParser(settings.SafeProxyFactoryAddresses.ToImmutableHashSet()));
+        }
+
+        if (settings.CirclesTokenOfferFactoryAddress.Length > 0)
+        {
+            logParsers.Add(
+                new CirclesV2.TokenOffers.LogParser(settings.CirclesTokenOfferFactoryAddress.ToImmutableHashSet()));
         }
 
         if (settings.CirclesV1NameRegistry != null)
@@ -243,6 +254,7 @@ public class Plugin : INethermindPlugin
             settings.CMGroupDeployer.Select(o => o.ToString(true, false))));
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
         pluginLogger.Info(" * V2 Affiliate group registry address: " + settings.AffiliateGroupRegistry);
+        pluginLogger.Info(" * V2 Token offer factory address: " + settings.CirclesTokenOfferFactoryAddress);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
             settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
