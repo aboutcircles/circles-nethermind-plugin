@@ -42,7 +42,8 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
     {
         // Seed from previously indexed tables
         var seedsCycles = new Dictionary<Address, object?>();
-        var cycles = new Circles.Index.Query.Select("CrcV2", "ERC20TokenOfferCycleCreated", ["offerCycle"], [], [],
+        var cycles = new Circles.Index.Query.Select("CrcV2_TokenOffers", "ERC20TokenOfferCycleCreated", ["offerCycle"],
+            [], [],
             int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(cycles.ToSql(database)).Rows)
         {
@@ -54,7 +55,8 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
 
         var seedsOffers = new Dictionary<Address, object?>();
-        var offers1 = new Circles.Index.Query.Select("CrcV2", "ERC20TokenOfferCreated", ["tokenOffer"], [], [],
+        var offers1 = new Circles.Index.Query.Select("CrcV2_TokenOffers", "ERC20TokenOfferCreated", ["tokenOffer"], [],
+            [],
             int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(offers1.ToSql(database)).Rows)
         {
@@ -62,7 +64,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         }
 
         // also NextOfferCreated
-        var offers2 = new Circles.Index.Query.Select("CrcV2", "NextOfferCreated", ["nextOffer"], [], [],
+        var offers2 = new Circles.Index.Query.Select("CrcV2_TokenOffers", "NextOfferCreated", ["nextOffer"], [], [],
             int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(offers2.ToSql(database)).Rows)
         {
@@ -74,7 +76,8 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
 
         var seedsProviders = new Dictionary<Address, object?>();
-        var providers = new Circles.Index.Query.Select("CrcV2", "AccountWeightProviderCreated", ["provider"], [],
+        var providers = new Circles.Index.Query.Select("CrcV2_TokenOffers", "AccountWeightProviderCreated",
+            ["provider"], [],
             [], int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(providers.ToSql(database)).Rows)
         {
@@ -82,7 +85,8 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         }
 
         // plus providers from CycleConfiguration (accountWeightProvider)
-        var providers2 = new Circles.Index.Query.Select("CrcV2", "CycleConfiguration", ["accountWeightProvider"],
+        var providers2 = new Circles.Index.Query.Select("CrcV2_TokenOffers", "CycleConfiguration",
+            ["accountWeightProvider"],
             [], [], int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(providers2.ToSql(database)).Rows)
         {
