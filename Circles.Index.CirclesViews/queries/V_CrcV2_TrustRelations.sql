@@ -38,4 +38,3 @@ FROM (
 WHERE rn = 1
     AND "expiryTime" > ((SELECT max("System_Block"."timestamp") AS max
                         FROM "System_Block"))::numeric
-ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC;
