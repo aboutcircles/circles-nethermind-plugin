@@ -66,6 +66,11 @@ public class Plugin : INethermindPlugin
             schemas.Add(new CirclesV2.AffiliateGroupRegistry.DatabaseSchema());
         }
 
+        if (settings.InvitationEscrowContract != null)
+        {
+            schemas.Add(new CirclesV2.InvitationEscrow.DatabaseSchema());
+        }
+
         if (settings.SafeProxyFactoryAddresses.Length > 0)
         {
             schemas.Add(new Circles.Index.Safe.DatabaseSchema());
@@ -133,6 +138,10 @@ public class Plugin : INethermindPlugin
             logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
         }
 
+        if (settings.InvitationEscrowContract != null)
+        {
+            logParsers.Add(new CirclesV2.InvitationEscrow.LogParser(settings.InvitationEscrowContract));
+        }
 
         _indexerContext = new Context(
             nethermindApi,
@@ -255,6 +264,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
         pluginLogger.Info(" * V2 Affiliate group registry address: " + settings.AffiliateGroupRegistry);
         pluginLogger.Info(" * V2 Token offer factory address: " + settings.CirclesTokenOfferFactoryAddress);
+        pluginLogger.Info(" * V2 Invitation escrow address: " + settings.InvitationEscrowContract);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
             settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
