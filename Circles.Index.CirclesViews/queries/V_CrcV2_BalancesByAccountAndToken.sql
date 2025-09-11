@@ -30,59 +30,39 @@ END;
 $$ LANGUAGE plpgsql;
 
 create or replace view public."V_CrcV2_BalancesByAccountAndToken"
-    (account, "tokenId", "tokenAddress", "lastActivity", "totalBalance", "demurragedTotalBalance") as
-WITH 
-transfers AS (
-    SELECT 
-        "CrcV2_TransferSingle"."timestamp",
-        "CrcV2_TransferSingle"."from",
-        "CrcV2_TransferSingle"."to",
-        "CrcV2_TransferSingle".id,
-        "CrcV2_TransferSingle".value,
-        "CrcV2_TransferSingle"."tokenAddress"
-    FROM "CrcV2_TransferSingle"
-    UNION ALL
-    SELECT 
-        "CrcV2_TransferBatch"."timestamp",
-        "CrcV2_TransferBatch"."from",
-        "CrcV2_TransferBatch"."to",
-        "CrcV2_TransferBatch".id,
-        "CrcV2_TransferBatch".value,
-        "CrcV2_TransferBatch"."tokenAddress"
-    FROM "CrcV2_TransferBatch"
-),
-"accountBalances" AS (
-    SELECT 
-        all_transfers.account,
-        all_transfers.id,
-        sum(all_transfers.amount)      AS balance,
-        max(all_transfers."timestamp") AS "timestamp",
-        all_transfers."tokenAddress"
-    FROM (
-        SELECT 
-            transfers."from"  AS account,
-            transfers.id,
-            - transfers.value AS amount,
-            transfers."timestamp",
-            transfers."tokenAddress"
-        FROM transfers
-        UNION ALL
-        SELECT transfers."to"  AS account,
-            transfers.id,
-            transfers.value AS amount,
-            transfers."timestamp",
-            transfers."tokenAddress"
-        FROM transfers
-    ) all_transfers
-    GROUP BY all_transfers.account, all_transfers.id, all_transfers."tokenAddress"
-)
-SELECT 
+            (account, "tokenId", "tokenAddress", "lastActivity", "totalBalance", "demurragedTotalBalance") as
+with
+/* Unpivot debits/credits once, from both single and batch transfers. */
+    tx as (
+        select "timestamp", "from" as account, "tokenAddress", id, -value as delta
+        from "CrcV2_TransferSingle"
+        union all
+        select "timestamp", "to"   as account, "tokenAddress", id,  value as delta
+        from "CrcV2_TransferSingle"
+        union all
+        select "timestamp", "from" as account, "tokenAddress", id, -value as delta
+        from "CrcV2_TransferBatch"
+        union all
+        select "timestamp", "to"   as account, "tokenAddress", id,  value as delta
+        from "CrcV2_TransferBatch"
+    ),
+    agg as (
+        select
+            account,
+            id,
+            "tokenAddress",
+            sum(delta)                    as balance,
+            max("timestamp")              as last_ts
+        from tx
+        group by account, id, "tokenAddress"
+    )
+select
     account,
-    id::text                                                       AS "tokenId",
+    id::text                         as "tokenId",
     "tokenAddress",
-    "timestamp"                                                    AS "lastActivity",
-    balance                                                        AS "totalBalance",
-    floor(crc_demurrage(1675209600::bigint, "timestamp", balance)) AS "demurragedTotalBalance"
-FROM "accountBalances"
-WHERE account <> '0x0000000000000000000000000000000000000000'::text
-    AND balance > 0::numeric;
+    last_ts                          as "lastActivity",
+    balance                          as "totalBalance",
+    floor(crc_demurrage(1675209600::bigint, last_ts, balance)) as "demurragedTotalBalance"
+from agg
+where account <> '0x0000000000000000000000000000000000000000'
+  and balance > 0::numeric;
