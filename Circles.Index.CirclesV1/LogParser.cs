@@ -502,6 +502,9 @@ public class LogParser(Address v1HubAddress) : ILogParser
         string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         UInt256 amount = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
+        MaintainBalanceCache(block.Number, (long)block.Timestamp, from, to, log.Address.ToString(true, false),
+            (BigInteger)amount);
+
         return new HubTransfer(
             receipt.BlockNumber,
             (long)block.Timestamp,
