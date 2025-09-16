@@ -437,6 +437,10 @@ public class LogParser(Address v1HubAddress) : ILogParser
         // parse single 256-bit value from log.Data
         UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
+
+        MaintainBalanceCache(block.Number, (long)block.Timestamp, from, to, log.Address.ToString(true, false),
+            (BigInteger)value);
+
         return new Transfer(
             receipt.BlockNumber,
             (long)block.Timestamp,
@@ -501,9 +505,6 @@ public class LogParser(Address v1HubAddress) : ILogParser
         string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         UInt256 amount = LogDataParsingHelper.ParseSingleUInt256(log.Data);
-
-        MaintainBalanceCache(block.Number, (long)block.Timestamp, from, to, log.Address.ToString(true, false),
-            (BigInteger)amount);
 
         return new HubTransfer(
             receipt.BlockNumber,
