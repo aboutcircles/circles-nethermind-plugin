@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Circles.Pathfinder;
 using Circles.Pathfinder.DTOs;
-using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.LogDb;
@@ -206,7 +205,8 @@ app.MapGet("/findPath", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
-    string? simulatedBalances, // NEW: JSON array as query param
+    string? simulatedBalances,
+    int? maxTransfers,
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -274,7 +274,8 @@ app.MapGet("/findPath", async (
             ExcludedFromTokens = excludedFromTokens?.ToList(),
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
-            SimulatedBalances = sim // NEW
+            SimulatedBalances = sim,
+            MaxTransfers = maxTransfers
         };
 
         var requestId = Guid.NewGuid();
