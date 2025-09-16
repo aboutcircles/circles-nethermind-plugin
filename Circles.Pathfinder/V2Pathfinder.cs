@@ -89,14 +89,32 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
         long tgt = CirclesConverter.TruncateToInt64(targetFlow);
         var solved = MaxFlowSolver.Solve(capacityGraph.Edges, sourceId, effSink, tgt);
-        var simplePath = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
+        var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
+
+        /* --------------------------------------------------------------------
+         * 2b. Optional pruning to fit a transfer-step budget
+         *      We keep the biggest-flow paths first and count "steps" after
+         *      collapsing balance nodes (avatar→avatar per token).
+         * ------------------------------------------------------------------ */
+        bool hasStepCap = request.MaxTransfers.HasValue && request.MaxTransfers.Value > 0;
+        if (hasStepCap)
+        {
+            int stepCap = request.MaxTransfers!.Value;
+            int currentSteps = CountCollapsedTransferSteps(simplePaths);
+
+            bool needsPrune = currentSteps > stepCap;
+            if (needsPrune)
+            {
+                simplePaths = PrunePathsByStepLimit(simplePaths, stepCap);
+            }
+        }
 
         /* --------------------------------------------------------------------
          * 3. Convert SimpleEdge ➜ FlowEdge
          * ------------------------------------------------------------------ */
-        var flowPaths = new List<List<FlowEdge>>(simplePath.Count);
+        var flowPaths = new List<List<FlowEdge>>(simplePaths.Count);
 
-        foreach (var path in simplePath)
+        foreach (var path in simplePaths)
         {
             var list = new List<FlowEdge>(path.Count);
             foreach (var e in path)
@@ -219,57 +237,35 @@ public class V2Pathfinder
         {
             for (int i = 0; i < path.Count; i++)
             {
-                var edge = path[i];
-                bool fromIsBal = IsBalanceNode(edge.From);
-                bool toIsBal = IsBalanceNode(edge.To);
+                var e = path[i];
 
-                /* Resolve avatar / token ids */
-                int fromAvatar;
-                int token;
-                if (fromIsBal)
+                bool eToIsPool = IsBalanceNode(e.To);
+                bool hasNext = (i + 1) < path.Count;
+                bool nextContinuesFromPool = hasNext && path[i + 1].From == e.To;
+                bool isChain = eToIsPool && nextContinuesFromPool;
+
+                if (isChain)
                 {
-                    string[] parts = AddressIdPool.StringOf(edge.From).Split('-');
-                    fromAvatar = int.Parse(parts[0]);
-                    token = int.Parse(parts[1]);
-                }
-                else
-                {
-                    fromAvatar = edge.From;
-                    token = edge.Token;
-                }
+                    // Fold Avatar → TokenPool(token) → Avatar
+                    var next = path[i + 1];
 
-                /* Detect chain BEFORE computing toAvatar to avoid parsing "tpool-*" ids */
-                bool beginsChain = toIsBal &&
-                                   i + 1 < path.Count &&
-                                   path[i + 1].From == edge.To;
+                    int fromAvatar = e.From; // Avatar
+                    int toAvatar = next.To; // Avatar
+                    int token = e.Token;
 
-                if (beginsChain)
-                {
-                    var nextEdge = path[++i]; // consume the next edge
-                    int nextToAv = IsBalanceNode(nextEdge.To)
-                        ? int.Parse(AddressIdPool.StringOf(nextEdge.To).Split('-')[0])
-                        : nextEdge.To;
-
-                    long flow = Math.Min(edge.Flow, nextEdge.Flow);
-                    var key = (fromAvatar, nextToAv, token);
-
-                    if (agg.TryGetValue(key, out long existing))
-                        agg[key] = existing + flow;
-                    else
-                        agg[key] = flow;
-                }
-                else
-                {
-                    // Only compute toAvatar here (non-chain case)
-                    int toAvatar = toIsBal
-                        ? int.Parse(AddressIdPool.StringOf(edge.To).Split('-')[0])
-                        : edge.To;
-
+                    long flow = Math.Min(e.Flow, next.Flow);
                     var key = (fromAvatar, toAvatar, token);
+
                     if (agg.TryGetValue(key, out long existing))
-                        agg[key] = existing + edge.Flow;
+                    {
+                        agg[key] = existing + flow;
+                    }
                     else
-                        agg[key] = edge.Flow;
+                    {
+                        agg[key] = flow;
+                    }
+
+                    i += 1; // consume the next edge too
                 }
             }
         }
@@ -296,4 +292,205 @@ public class V2Pathfinder
     }
 
     private bool IsBalanceNode(int addr) => AddressIdPool.IsBalanceNode(addr);
+
+    // Count how many (From,To,Token) transfer steps remain after collapsing
+    // all paths (Avatar→TokenPool→Avatar folds to Avatar→Avatar per token).
+    private static int CountCollapsedTransferSteps(IReadOnlyList<List<SimpleEdge>> paths)
+    {
+        var unique = new HashSet<(int From, int To, int Token)>();
+
+        for (int i = 0; i < paths.Count; i++)
+        {
+            var triples = CollapsePathToTransfers(paths[i]);
+            for (int j = 0; j < triples.Count; j++)
+            {
+                unique.Add(triples[j]);
+            }
+        }
+
+        return unique.Count;
+    }
+
+    // Greedy pruning: pick paths that give the highest flow per *marginal* step
+    // (steps that aren't already "paid for" by previously picked paths), until
+    // we reach the step budget.
+    private static List<List<SimpleEdge>> PrunePathsByStepLimit(
+        IReadOnlyList<List<SimpleEdge>> original,
+        int stepCap)
+    {
+        // Precompute collapsed triples for each path + path flow.
+        var metas = new List<(int Index, long Flow, HashSet<(int F, int T, int K)> Triples)>(original.Count);
+        for (int i = 0; i < original.Count; i++)
+        {
+            var path = original[i];
+            long flow = 0;
+            if (path.Count > 0)
+            {
+                // Each edge in the peeled path has the same min-bottleneck flow.
+                flow = path[0].Flow;
+            }
+
+            var triples = new HashSet<(int F, int T, int K)>(CollapsePathToTransfers(path)
+                .Select(t => (t.From, t.To, t.Token)));
+
+            metas.Add((i, flow, triples));
+        }
+
+        var picked = new bool[original.Count];
+        var selectedEdges = new HashSet<(int F, int T, int K)>();
+        int stepsLeft = stepCap;
+
+        while (stepsLeft > 0)
+        {
+            int bestIdx = -1;
+            long bestFlow = 0;
+            int bestDelta = 0;
+
+            for (int i = 0; i < metas.Count; i++)
+            {
+                if (picked[i])
+                {
+                    continue;
+                }
+
+                // How many *new* steps would this path introduce?
+                int delta = 0;
+                foreach (var tr in metas[i].Triples)
+                {
+                    bool isNew = !selectedEdges.Contains(tr);
+                    if (isNew)
+                    {
+                        delta++;
+                    }
+                }
+
+                bool fitsBudget = delta <= stepsLeft;
+                if (!fitsBudget)
+                {
+                    continue;
+                }
+
+                // Prefer zero-delta (free) additions first.
+                if (bestIdx == -1)
+                {
+                    bestIdx = i;
+                    bestFlow = metas[i].Flow;
+                    bestDelta = delta;
+                    continue;
+                }
+
+                if (delta == 0 && bestDelta != 0)
+                {
+                    bestIdx = i;
+                    bestFlow = metas[i].Flow;
+                    bestDelta = 0;
+                    continue;
+                }
+
+                if (delta == 0 && bestDelta == 0)
+                {
+                    bool betterFlow = metas[i].Flow > bestFlow;
+                    if (betterFlow)
+                    {
+                        bestIdx = i;
+                        bestFlow = metas[i].Flow;
+                        bestDelta = 0;
+                    }
+
+                    continue;
+                }
+
+                if (bestDelta == 0)
+                {
+                    // Current best is free; keep it.
+                    continue;
+                }
+
+                // Compare flow/delta without floating point: a/b > c/d  <=>  a*d > c*b
+                long a = metas[i].Flow;
+                long b = delta;
+                long c = bestFlow;
+                long d = bestDelta;
+
+                bool betterRatio = a * d > c * b;
+                bool tieBreakFewerSteps = a * d == c * b && delta < bestDelta;
+                bool better = betterRatio || tieBreakFewerSteps;
+
+                if (better)
+                {
+                    bestIdx = i;
+                    bestFlow = metas[i].Flow;
+                    bestDelta = delta;
+                }
+            }
+
+            if (bestIdx == -1)
+            {
+                // Nothing else fits in the remaining budget.
+                break;
+            }
+
+            // Commit the chosen path
+            picked[bestIdx] = true;
+            foreach (var tr in metas[bestIdx].Triples)
+            {
+                bool added = selectedEdges.Add(tr);
+                if (added)
+                {
+                    stepsLeft--;
+                    if (stepsLeft == 0)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Preserve original order for stability.
+        var pruned = new List<List<SimpleEdge>>();
+        for (int i = 0; i < original.Count; i++)
+        {
+            if (picked[i])
+            {
+                pruned.Add(original[i]);
+            }
+        }
+
+        return pruned;
+    }
+
+    // Collapse ONE peeled path into transfer triples (FromAvatar, ToAvatar, Token).
+    // Mirrors the logic in CollapseBalanceNodes, but works on SimpleEdge.
+    private static List<(int From, int To, int Token)> CollapsePathToTransfers(List<SimpleEdge> path)
+    {
+        // Returns triples (AvatarFrom, AvatarTo, Token) for a single peeled path.
+        // With pooled graphs, paths alternate Avatar→TokenPool→Avatar; we fold those pairs.
+        var triples = new List<(int From, int To, int Token)>(Math.Max(1, path.Count / 2));
+
+        int i = 0;
+        while (i < path.Count)
+        {
+            var e = path[i];
+
+            bool eToIsPool = AddressIdPool.IsBalanceNode(e.To);
+            bool hasNext = (i + 1) < path.Count;
+            bool nextContinuesFromPool = hasNext && path[i + 1].From == e.To;
+            bool isChain = eToIsPool && nextContinuesFromPool;
+
+            if (isChain)
+            {
+                // Fold Avatar → TokenPool(token) → Avatar
+                var next = path[i + 1];
+                triples.Add((e.From, next.To, e.Token));
+                i += 2;
+                continue;
+            }
+
+            // Fallback: treat as direct Avatar→Avatar hop (rare / not expected here)
+            triples.Add((e.From, e.To, e.Token));
+            i += 1;
+        }
+
+        return triples;
+    }
 }

@@ -24,18 +24,6 @@ public class FlowGraph : IGraph<FlowEdge>
         }
     }
 
-    public FlowGraph(
-        IDictionary<int, Node> nodes,
-        IDictionary<int, AvatarNode> avatarNodes,
-        IDictionary<int, BalanceNode> balanceNodes,
-        List<FlowEdge> edges)
-    {
-        Nodes = nodes;
-        AvatarNodes = avatarNodes;
-        BalanceNodes = balanceNodes;
-        Edges = edges;
-    }
-
     public void AddAvatar(int avatarAddress)
     {
         if (!AvatarNodes.ContainsKey(avatarAddress))
@@ -98,118 +86,6 @@ public class FlowGraph : IGraph<FlowEdge>
                     toBalance.IsStatic);
             }
         }
-    }
-
-    /// <summary>
-    /// Searches the graph for liquid paths from the source node to the sink node.
-    /// </summary>
-    public List<List<FlowEdge>> ExtractPathsWithFlow(int sourceNode, int sinkNode, long minFlowThreshold)
-    {
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
-
-        var resultPaths = new List<List<FlowEdge>>();
-
-        // Build adjacency lists containing only edges with positive flow
-        var adjacency = new Dictionary<int, List<FlowEdge>>();
-        foreach (var e in Edges)
-        {
-            if (e.Flow <= 0) continue;
-            if (!adjacency.ContainsKey(e.From))
-            {
-                adjacency[e.From] = new List<FlowEdge>();
-            }
-
-            adjacency[e.From].Add(e);
-        }
-
-        while (true)
-        {
-            // BFS to find path from source -> sink
-            var queue = new Queue<int>();
-            var visited = new HashSet<int>();
-            var parent = new Dictionary<int, FlowEdge>();
-
-            queue.Enqueue(sourceNode);
-            visited.Add(sourceNode);
-
-            bool foundSink = false;
-            while (queue.Count > 0 && !foundSink)
-            {
-                var current = queue.Dequeue();
-                if (!adjacency.TryGetValue(current, out var value))
-                {
-                    continue;
-                }
-
-                foreach (var edge in value)
-                {
-                    if (visited.Contains(edge.To)) continue;
-                    if (edge.Flow < minFlowThreshold) continue; // usually minFlowThreshold=0
-
-                    visited.Add(edge.To);
-                    parent[edge.To] = edge;
-
-                    if (edge.To == sinkNode)
-                    {
-                        foundSink = true;
-                        break;
-                    }
-
-                    queue.Enqueue(edge.To);
-                }
-            }
-
-            if (!foundSink)
-            {
-                break; // no more augmenting paths
-            }
-
-            // Reconstruct path by backtracking from sinkNode -> sourceNode
-            var pathEdges = new List<FlowEdge>();
-            int node = sinkNode;
-            while (node != sourceNode)
-            {
-                var e = parent[node];
-                pathEdges.Add(e);
-                node = e.From;
-            }
-
-            pathEdges.Reverse();
-
-            // The path flow is the min edge.Flow along that path
-            long pathFlow = pathEdges.Min(e => e.Flow);
-
-            // Build a copy of the path with each edge having Flow=pathFlow
-            var onePath = new List<FlowEdge>();
-            foreach (var e in pathEdges)
-            {
-                var copy = new FlowEdge(e.From, e.To, e.Token, e.CurrentCapacity)
-                {
-                    Flow = pathFlow
-                };
-                onePath.Add(copy);
-            }
-
-            resultPaths.Add(onePath);
-
-            // Subtract pathFlow from each edge in the path
-            foreach (var e in pathEdges)
-            {
-                e.Flow -= pathFlow;
-
-                // If e.Flow <= 0, remove it from adjacency so BFS won't use it next time
-                if (e.Flow <= 0 && adjacency.ContainsKey(e.From))
-                {
-                    adjacency[e.From].Remove(e);
-                }
-            }
-        }
-
-        sw.Stop();
-        // Console.WriteLine($"TIMING: FlowGraph.ExtractPathsWithFlow took {sw.ElapsedMilliseconds}ms");
-
-        return resultPaths;
     }
 
 
