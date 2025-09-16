@@ -237,57 +237,35 @@ public class V2Pathfinder
         {
             for (int i = 0; i < path.Count; i++)
             {
-                var edge = path[i];
-                bool fromIsBal = IsBalanceNode(edge.From);
-                bool toIsBal = IsBalanceNode(edge.To);
+                var e = path[i];
 
-                /* Resolve avatar / token ids */
-                int fromAvatar;
-                int token;
-                if (fromIsBal)
+                bool eToIsPool = IsBalanceNode(e.To);
+                bool hasNext = (i + 1) < path.Count;
+                bool nextContinuesFromPool = hasNext && path[i + 1].From == e.To;
+                bool isChain = eToIsPool && nextContinuesFromPool;
+
+                if (isChain)
                 {
-                    string[] parts = AddressIdPool.StringOf(edge.From).Split('-');
-                    fromAvatar = int.Parse(parts[0]);
-                    token = int.Parse(parts[1]);
-                }
-                else
-                {
-                    fromAvatar = edge.From;
-                    token = edge.Token;
-                }
+                    // Fold Avatar → TokenPool(token) → Avatar
+                    var next = path[i + 1];
 
-                /* Detect chain BEFORE computing toAvatar to avoid parsing "tpool-*" ids */
-                bool beginsChain = toIsBal &&
-                                   i + 1 < path.Count &&
-                                   path[i + 1].From == edge.To;
+                    int fromAvatar = e.From; // Avatar
+                    int toAvatar = next.To; // Avatar
+                    int token = e.Token;
 
-                if (beginsChain)
-                {
-                    var nextEdge = path[++i]; // consume the next edge
-                    int nextToAv = IsBalanceNode(nextEdge.To)
-                        ? int.Parse(AddressIdPool.StringOf(nextEdge.To).Split('-')[0])
-                        : nextEdge.To;
-
-                    long flow = Math.Min(edge.Flow, nextEdge.Flow);
-                    var key = (fromAvatar, nextToAv, token);
-
-                    if (agg.TryGetValue(key, out long existing))
-                        agg[key] = existing + flow;
-                    else
-                        agg[key] = flow;
-                }
-                else
-                {
-                    // Only compute toAvatar here (non-chain case)
-                    int toAvatar = toIsBal
-                        ? int.Parse(AddressIdPool.StringOf(edge.To).Split('-')[0])
-                        : edge.To;
-
+                    long flow = Math.Min(e.Flow, next.Flow);
                     var key = (fromAvatar, toAvatar, token);
+
                     if (agg.TryGetValue(key, out long existing))
-                        agg[key] = existing + edge.Flow;
+                    {
+                        agg[key] = existing + flow;
+                    }
                     else
-                        agg[key] = edge.Flow;
+                    {
+                        agg[key] = flow;
+                    }
+
+                    i += 1; // consume the next edge too
                 }
             }
         }
@@ -485,58 +463,31 @@ public class V2Pathfinder
     // Mirrors the logic in CollapseBalanceNodes, but works on SimpleEdge.
     private static List<(int From, int To, int Token)> CollapsePathToTransfers(List<SimpleEdge> path)
     {
-        var triples = new List<(int From, int To, int Token)>(Math.Max(1, path.Count));
+        // Returns triples (AvatarFrom, AvatarTo, Token) for a single peeled path.
+        // With pooled graphs, paths alternate Avatar→TokenPool→Avatar; we fold those pairs.
+        var triples = new List<(int From, int To, int Token)>(Math.Max(1, path.Count / 2));
 
         int i = 0;
         while (i < path.Count)
         {
             var e = path[i];
-            bool fromIsBal = AddressIdPool.IsBalanceNode(e.From);
-            bool toIsBal = AddressIdPool.IsBalanceNode(e.To);
 
-            // Resolve from-avatar and token. For "balance" ids we expect "<holder>-<token>".
-            int fromAvatar;
-            int token;
+            bool eToIsPool = AddressIdPool.IsBalanceNode(e.To);
+            bool hasNext = (i + 1) < path.Count;
+            bool nextContinuesFromPool = hasNext && path[i + 1].From == e.To;
+            bool isChain = eToIsPool && nextContinuesFromPool;
 
-            if (fromIsBal)
+            if (isChain)
             {
-                string[] parts = AddressIdPool.StringOf(e.From).Split('-');
-                // parts[0] can be "tpool" for token-pool nodes. In the pattern
-                // Avatar→TokenPool→Avatar we *always* enter the "beginsChain" branch
-                // below while 'i' points at Avatar→TokenPool, so we never parse
-                // "tpool-*" as <holder>-<token> here.
-                fromAvatar = int.Parse(parts[0]);
-                token = int.Parse(parts[1]);
-            }
-            else
-            {
-                fromAvatar = e.From;
-                token = e.Token;
-            }
-
-            bool hasNextHop = (i + 1) < path.Count;
-            bool nextContinuesFromBalance = hasNextHop && path[i + 1].From == e.To;
-            bool beginsChain = toIsBal && nextContinuesFromBalance;
-
-            if (beginsChain)
-            {
-                // Consume the TokenPool/Balance hop and jump to the next avatar.
-                var nextEdge = path[i + 1];
-                int toAvatar = AddressIdPool.IsBalanceNode(nextEdge.To)
-                    ? int.Parse(AddressIdPool.StringOf(nextEdge.To).Split('-')[0])
-                    : nextEdge.To;
-
-                triples.Add((fromAvatar, toAvatar, token));
-                i += 2; // consumed two edges
+                // Fold Avatar → TokenPool(token) → Avatar
+                var next = path[i + 1];
+                triples.Add((e.From, next.To, e.Token));
+                i += 2;
                 continue;
             }
 
-            // Non-chain case: direct avatar on the 'to' side (or no immediate collapse).
-            int finalTo = toIsBal
-                ? int.Parse(AddressIdPool.StringOf(e.To).Split('-')[0])
-                : e.To;
-
-            triples.Add((fromAvatar, finalTo, token));
+            // Fallback: treat as direct Avatar→Avatar hop (rare / not expected here)
+            triples.Add((e.From, e.To, e.Token));
             i += 1;
         }
 
