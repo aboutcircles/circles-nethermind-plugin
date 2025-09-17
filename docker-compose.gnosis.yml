@@ -1,11 +1,49 @@
 services:
+  jwt-gnosis-secret:
+    image: alpine:3.20
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    volumes:
+      - .state/jwtsecret-gnosis:/jwt
+    environment:
+      - MY_UID=${MY_UID:-}
+      - MY_GID=${MY_GID:-}
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        mkdir -p /jwt
+        if [ ! -s /jwt/jwt.hex ]; then
+          # keep it simple & reliable: use openssl
+          if ! command -v openssl >/dev/null 2>&1; then
+            apk add --no-cache openssl >/dev/null 2>&1
+          fi
+          openssl rand -hex 32 > /jwt/jwt.hex
+          chmod 0644 /jwt/jwt.hex
+          if [ -n "${MY_UID:-}" ] && [ -n "${MY_GID:-}" ]; then
+            chown "${MY_UID}:${MY_GID}" /jwt/jwt.hex || true
+          fi
+        fi
+        exec tail -f /dev/null
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /jwt/jwt.hex"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 1s
+
   nethermind-gnosis:
     build:
       context: .
       dockerfile: x64.Dockerfile
     restart: unless-stopped
     depends_on:
-      - postgres-gnosis
+      postgres-gnosis:
+        condition: service_started
+      jwt-gnosis-secret:
+        condition: service_healthy
     networks:
       - circles-gnosis
     ports:
@@ -47,11 +85,7 @@ services:
       - V2_AFFILIATE_GROUP_REGISTRY_ADDRESS=0xca8222e780d046707083f51377B5Fd85E2866014
       - V2_TOKEN_OFFER_FACTORY_ADDRESS=0x43C8e7cb2fea3A55B52867bb521EBf8cb072fECa
       - V2_INVITATION_ESCROW_ADDRESS=0x0956C08aD2DcC6f4a1e0Cc5Ffa3a08D2A6D85F29
-      # Circles safe proxy factory address (original circles safe factory): 0x8b4404DE0CaECE4b966a9959f134f0eFDa636156
-      # Safe Proxy Factory v1.0.0: 0x12302fE9c02ff50939BaAaaf415fc226C078613C
-      # Safe Proxy Factory v1.1.1: 0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B
-      # Safe Proxy Factory v1.3.0: 0xA6B71E26C5e0845f74C812102Ca7114b6a896Ab2
-      # Safe Proxy Factory v1.4.1: 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+      - V2_OIC_ADDRESS=0x9b60fb8ceadd6b61d6acdd4a0e8311095365dc2e
       - SAFE_PROXY_FACTORY_ADDRESSES=0x8b4404DE0CaECE4b966a9959f134f0eFDa636156,0x12302fE9c02ff50939BaAaaf415fc226C078613C,0x76E2cFc1F5Fa8F6a5b3fC4c8F4788F0116861F9B,0xA6B71E26C5e0845f74C812102Ca7114b6a896Ab2,0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
       - BASE_GROUP_DEPLOYER=0xD0B5Bd9962197BEaC4cbA24244ec3587f19Bd06d
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;
@@ -60,42 +94,16 @@ services:
       - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
       - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
       - IPFS_MAX_PARALLELISM=192
-  
-  pathfinder:
-    build:
-      context: .
-      dockerfile: pathfinder-host.Dockerfile
-    depends_on:
-      - nethermind-gnosis
-    restart: unless-stopped
-    networks:
-      - circles-gnosis
-    ports:
-      - 8081:8080
-    environment:
-      - CIRCLES_RPC_URL=http://nethermind-gnosis:8545
-      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
-
-  postgres-gnosis:
-    image: postgres:17
-    command: -c 'max_connections=100'
-    restart: unless-stopped
-    networks:
-      - circles-gnosis
-    ports:
-      - 5432:5432
-    env_file:
-      - .env
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_USER: ${POSTGRES_USER}
-    volumes:
-      - ./.state/postgres-gnosis:/var/lib/postgresql/data
 
   consensus-gnosis:
     container_name: consensus-gnosis
     image: sigp/lighthouse:v7.0.1
     restart: always
+    depends_on:
+      nethermind-gnosis:
+        condition: service_started
+      jwt-gnosis-secret:
+        condition: service_healthy
     networks:
       - circles-gnosis
     ports:
@@ -122,6 +130,49 @@ services:
       --execution-endpoint=http://nethermind-gnosis:8551
       --execution-jwt=/jwt.hex
       --checkpoint-sync-url=https://checkpoint.gnosischain.com
+
+  pathfinder:
+    build:
+      context: .
+      dockerfile: pathfinder-host.Dockerfile
+    depends_on:
+      - nethermind-gnosis
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 8081:8080
+    environment:
+      - CIRCLES_RPC_URL=http://nethermind-gnosis:8545
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+  
+#  profile-service:
+#    image: jaensen/circles-profile-pinning-service:v0.4.6
+#    depends_on:
+#      - nethermind-gnosis
+#    restart: unless-stopped
+#    networks:
+#      - circles-gnosis
+#    ports:
+#      - 3000:3000
+#    env_file:
+#      - .env
+
+  postgres-gnosis:
+    image: postgres:17
+    command: -c 'max_connections=100'
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 5432:5432
+    env_file:
+      - .env
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+    volumes:
+      - ./.state/postgres-gnosis:/var/lib/postgresql/data
 
 networks:
   circles-gnosis:
