@@ -25,6 +25,7 @@ COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.BaseGroupDe
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.AffiliateGroupRegistry.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.InvitationEscrow.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.TokenOffers.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.OIC.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Safe.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Postgres.dll /nethermind/plugins
