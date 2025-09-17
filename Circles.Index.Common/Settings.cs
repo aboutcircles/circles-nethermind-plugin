@@ -80,6 +80,11 @@ public class Settings
             ? new(Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS")!)
             : null;
 
+    public readonly Address? OICContractAddress =
+        Environment.GetEnvironmentVariable("V2_OIC_ADDRESS") != null
+            ? new(Environment.GetEnvironmentVariable("V2_OIC_ADDRESS")!)
+            : null;
+
     public readonly long StartBlock = Environment.GetEnvironmentVariable("START_BLOCK") != null
         ? long.Parse(Environment.GetEnvironmentVariable("START_BLOCK")!)
         : 0L;

@@ -437,7 +437,6 @@ public class LogParser(Address v1HubAddress) : ILogParser
         // parse single 256-bit value from log.Data
         UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-
         MaintainBalanceCache(block.Number, (long)block.Timestamp, from, to, log.Address.ToString(true, false),
             (BigInteger)value);
 
