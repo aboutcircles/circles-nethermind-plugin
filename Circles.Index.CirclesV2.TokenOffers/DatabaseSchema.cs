@@ -44,7 +44,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("offerStart", ValueTypes.BigInt, true),
             new("offerEnd", ValueTypes.BigInt, true),
             new("orgName", ValueTypes.String, true),
-            new("acceptedCRC", ValueTypes.AddressArray, true)
+            new("acceptedCRC", ValueTypes.AddressArray, false)
         ]);
 
     public static readonly EventSchema ERC20TokenOfferCycleCreated = new(
@@ -105,9 +105,9 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("transactionHash", ValueTypes.String, true),
             new("emitter", ValueTypes.String, true),
             new("nextOffer", ValueTypes.Address, true),
-            new("tokenPriceInCRC", ValueTypes.BigInt, true),
-            new("offerLimitInCRC", ValueTypes.BigInt, true),
-            new("acceptedCRC", ValueTypes.AddressArray, true)
+            new("tokenPriceInCRC", ValueTypes.BigInt, false),
+            new("offerLimitInCRC", ValueTypes.BigInt, false),
+            new("acceptedCRC", ValueTypes.AddressArray, false)
         ]);
 
     public static readonly EventSchema NextOfferTokensDeposited = new(
@@ -122,7 +122,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("transactionHash", ValueTypes.String, true),
             new("emitter", ValueTypes.String, true),
             new("nextOffer", ValueTypes.Address, true),
-            new("amount", ValueTypes.BigInt, true)
+            new("amount", ValueTypes.BigInt, false)
         ]);
 
     public static readonly EventSchema OfferTrustSynced = new(
@@ -153,8 +153,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("emitter", ValueTypes.String, true),
             new("offer", ValueTypes.Address, true),
             new("account", ValueTypes.Address, true),
-            new("received", ValueTypes.BigInt, true),
-            new("spent", ValueTypes.BigInt, true)
+            new("received", ValueTypes.BigInt, false),
+            new("spent", ValueTypes.BigInt, false)
         ]);
 
     public static readonly EventSchema UnclaimedTokensWithdrawn = new(
@@ -169,7 +169,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("transactionHash", ValueTypes.String, true),
             new("emitter", ValueTypes.String, true),
             new("offer", ValueTypes.Address, true),
-            new("amount", ValueTypes.BigInt, true)
+            new("amount", ValueTypes.BigInt, false)
         ]);
 
     // Offer events
@@ -185,8 +185,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("transactionHash", ValueTypes.String, true),
             new("emitter", ValueTypes.String, true),
             new("account", ValueTypes.Address, true),
-            new("spent", ValueTypes.BigInt, true),
-            new("received", ValueTypes.BigInt, true)
+            new("spent", ValueTypes.BigInt, false),
+            new("received", ValueTypes.BigInt, false)
         ]);
 
     public static readonly EventSchema OfferTokensDeposited = new(
@@ -200,7 +200,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("logIndex", ValueTypes.Int, true, true),
             new("transactionHash", ValueTypes.String, true),
             new("emitter", ValueTypes.String, true),
-            new("amount", ValueTypes.BigInt, true)
+            new("amount", ValueTypes.BigInt, false)
         ]);
 
     // Provider events
@@ -217,7 +217,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("emitter", ValueTypes.String, true),
             new("offer", ValueTypes.Address, true),
             new("account", ValueTypes.Address, true),
-            new("weight", ValueTypes.BigInt, true)
+            new("weight", ValueTypes.BigInt, false)
         ]);
 
     public static readonly EventSchema WeightsFinalized = new(
@@ -232,8 +232,8 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("transactionHash", ValueTypes.String, true),
             new("emitter", ValueTypes.String, true),
             new("offer", ValueTypes.Address, true),
-            new("accountsCount", ValueTypes.BigInt, true),
-            new("totalWeight", ValueTypes.BigInt, true)
+            new("accountsCount", ValueTypes.BigInt, false),
+            new("totalWeight", ValueTypes.BigInt, false)
         ]);
 
     public DatabaseSchema()
