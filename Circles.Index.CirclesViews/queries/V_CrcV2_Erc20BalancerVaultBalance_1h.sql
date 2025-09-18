@@ -20,7 +20,7 @@ balancer_vault_diffs AS (
 			,amount AS "vaultBalanceDiff"
 		FROM "CrcV2_Erc20WrapperTransfer"
 		WHERE 
-			"to" = LOWER('0xBA12222222228d8Ba445958a75a0704d566BF2C8')
+			"to" = '0xba12222222228d8ba445958a75a0704d566bf2c8'
 		UNION ALL
 		SELECT 
 			"timestamp"
@@ -28,7 +28,7 @@ balancer_vault_diffs AS (
 			,-amount AS "vaultBalanceDiff"
 		FROM "CrcV2_Erc20WrapperTransfer"
 		WHERE 
-			"from" = LOWER('0xBA12222222228d8Ba445958a75a0704d566BF2C8')
+			"from" = '0xba12222222228d8ba445958a75a0704d566bf2c8'
 	)
 	GROUP BY 1, 2
 ),
