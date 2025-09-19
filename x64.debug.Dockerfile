@@ -51,6 +51,9 @@ COPY --from=build /circles-nethermind-plugin/Circles.Index.Query.pdb ./artifacts
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Profiles.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Profiles.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
 COPY --from=build /circles-nethermind-plugin/Dapper.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Abstractions.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Memory.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
+
 COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/
 COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.pdb ./artifacts/bin/Nethermind.Runner/debug/plugins/
 COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll ./artifacts/bin/Nethermind.Runner/debug/plugins/

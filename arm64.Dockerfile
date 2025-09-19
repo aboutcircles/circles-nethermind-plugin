@@ -34,6 +34,8 @@ COPY --from=build /circles-nethermind-plugin/Circles.Pathfinder.dll /nethermind/
 COPY --from=build /circles-nethermind-plugin/Nethermind.Int256.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Npgsql.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Dapper.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Abstractions.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Memory.dll /nethermind/plugins
 
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins

@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Npgsql;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Circles.Index.Rpc;
 
@@ -25,11 +26,18 @@ public class CirclesRpcModule : ICirclesRpcModule
     private readonly InterfaceLogger _pluginLogger;
     private readonly Context _indexerContext;
 
+    private readonly MemoryCache _profileByCidCache;
+
     public CirclesRpcModule(Context indexerContext)
     {
         ILogger baseLogger = indexerContext.NethermindApi.LogManager.GetClassLogger();
         _pluginLogger = new LoggerWithPrefix("Circles.Index.Rpc:", baseLogger);
         _indexerContext = indexerContext;
+
+        _profileByCidCache = new MemoryCache(new MemoryCacheOptions
+        {
+            SizeLimit = 10_000
+        });
     }
 
     // Helpers for ABI words ------------------------------------------------------
@@ -476,23 +484,27 @@ public class CirclesRpcModule : ICirclesRpcModule
         int? version = null)
     {
         var v1Sql = @"
-            select trustee
-            from ""V_Crc_TrustRelations""
-            where truster in (@address1, @address2)
-            and trustee not in (@address1, @address2)
-            and version = 1
-            group by trustee
-            having count(truster) > 1
+        select distinct a.trustee as mid
+        from ""V_Crc_TrustRelations"" a
+        join ""V_Crc_TrustRelations"" b
+          on a.trustee = b.truster
+        where a.truster = @address1
+          and b.trustee = @address2
+          and a.trustee not in (@address1, @address2)
+          and a.version = 1
+          and b.version = 1
         ";
 
         var v2Sql = @"
-            select trustee
-            from ""V_Crc_TrustRelations""
-            where truster in (@address1, @address2)
-            and trustee not in (@address1, @address2)
-            and version = 2
-            group by trustee
-            having count(truster) > 1
+        select distinct a.trustee as mid
+        from ""V_Crc_TrustRelations"" a
+        join ""V_Crc_TrustRelations"" b
+          on a.trustee = b.truster
+        where a.truster = @address1
+          and b.trustee = @address2
+          and a.trustee not in (@address1, @address2)
+          and a.version = 2
+          and b.version = 2
         ";
 
         var sql = version == 1
@@ -501,16 +513,25 @@ public class CirclesRpcModule : ICirclesRpcModule
                 ? v2Sql
                 : $"{v1Sql} union {v2Sql}";
 
-        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, [
+        var parameters = new[]
+        {
             _indexerContext.ReadonlyDatabase.CreateParameter("address1", address1.ToString(true, false)),
             _indexerContext.ReadonlyDatabase.CreateParameter("address2", address2.ToString(true, false))
-        ]));
+        };
 
-        var commonTrust = result.Rows
+        var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, parameters));
+
+        if (result.Rows is null)
+        {
+            throw new Exception("Failed to retrieve common trust intersections.");
+        }
+
+        var safer = result.Rows
             .Select(row => new Address(row[0]?.ToString() ?? throw new Exception("Address is null")))
+            .Distinct()
             .ToArray();
 
-        return Task.FromResult(ResultWrapper<Address[]>.Success(commonTrust));
+        return Task.FromResult(ResultWrapper<Address[]>.Success(safer));
     }
 
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
@@ -973,7 +994,19 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<ResultWrapper<Profile>> circles_getProfileByCid(string cid)
     {
-        var query = "select payload from ipfs_files where cid = @cid";
+        bool cidIsNullOrWhiteSpace = string.IsNullOrWhiteSpace(cid);
+        if (cidIsNullOrWhiteSpace)
+        {
+            return ResultWrapper<Profile>.Fail("CID must not be empty.");
+        }
+
+        bool inCache = _profileByCidCache.TryGetValue(cid, out Profile? cached);
+        if (inCache && cached is not null)
+        {
+            return ResultWrapper<Profile>.Success(cached);
+        }
+
+        const string query = "select payload from ipfs_files where cid = @cid";
 
         await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
         await using var command = new NpgsqlCommand(query, connection);
@@ -981,53 +1014,124 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         command.Parameters.AddWithValue("cid", cid);
         await using var reader = await command.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+
+        bool hasRow = await reader.ReadAsync();
+        if (!hasRow)
         {
             return ResultWrapper<Profile>.Fail($"No profile found for cid {cid}");
         }
 
-        var payload = reader.GetString(0);
+        string payload = reader.GetString(0);
         var profile = JsonSerializer.Deserialize<Profile>(payload);
 
-        return ResultWrapper<Profile>.Success(profile);
+        bool deserializationFailed = profile is null;
+        if (deserializationFailed)
+        {
+            return ResultWrapper<Profile>.Fail($"Failed to deserialize profile for cid {cid}");
+        }
+
+        _profileByCidCache.Set(
+            key: cid,
+            value: profile!,
+            options: new MemoryCacheEntryOptions
+            {
+                Size = 1
+            });
+
+        return ResultWrapper<Profile>.Success(profile!);
     }
 
     public async Task<ResultWrapper<Profile?[]>> circles_getProfileByCidBatch(string[] cids)
     {
-        if (cids.Length > 1000)
+        bool exceedsLimit = cids.Length > 1000;
+        if (exceedsLimit)
         {
             throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 1000");
         }
 
-        var query = @"
-            select f.payload
-            from unnest(@cids) WITH ORDINALITY as u(_cid, _index)
-            left join ipfs_files f on f.cid = u._cid
-            order by u._index;";
+        var resultList = new Profile?[cids.Length];
+        var missingCidIndexes = new List<int>(cids.Length);
+        var missingCids = new List<string>(cids.Length);
+
+        for (int i = 0; i < cids.Length; i++)
+        {
+            string? currentCid = cids[i];
+            bool cidIsInvalid = string.IsNullOrWhiteSpace(currentCid);
+            if (cidIsInvalid)
+            {
+                resultList[i] = null;
+                continue;
+            }
+
+            bool hit = _profileByCidCache.TryGetValue(currentCid!, out Profile? cached);
+            if (hit && cached is not null)
+            {
+                resultList[i] = cached;
+            }
+            else
+            {
+                missingCidIndexes.Add(i);
+                missingCids.Add(currentCid!);
+            }
+        }
+
+        bool nothingToQuery = missingCids.Count == 0;
+        if (nothingToQuery)
+        {
+            return ResultWrapper<Profile?[]>.Success(resultList);
+        }
+
+        const string query = @"
+        select f.payload
+        from unnest(@cids) WITH ORDINALITY as u(_cid, _index)
+        left join ipfs_files f on f.cid = u._cid
+        order by u._index;";
 
         await using var connection = new NpgsqlConnection(_indexerContext.Settings.IndexReadonlyDbConnectionString);
         await using var command = new NpgsqlCommand(query, connection);
         await connection.OpenAsync();
 
-        command.Parameters.AddWithValue("cids", cids);
+        command.Parameters.AddWithValue("cids", missingCids.ToArray());
         await using var reader = await command.ExecuteReaderAsync();
 
-        var resultList = new List<Profile?>();
+        int readCount = 0;
         while (await reader.ReadAsync())
         {
-            var payloadCellValue = reader.GetValue(0);
-            if (payloadCellValue is string payload)
+            object payloadCellValue = reader.GetValue(0);
+
+            int targetIndex = missingCidIndexes[readCount];
+            string targetCid = cids[targetIndex];
+
+            bool hasPayload = payloadCellValue is string;
+            if (hasPayload)
             {
-                var profile = JsonSerializer.Deserialize<Profile>(payload);
-                resultList.Add(profile);
+                var profile = JsonSerializer.Deserialize<Profile>((string)payloadCellValue);
+                bool deserializeFailed = profile is null;
+                if (deserializeFailed)
+                {
+                    resultList[targetIndex] = null;
+                }
+                else
+                {
+                    resultList[targetIndex] = profile;
+                    _profileByCidCache.Set(
+                        key: targetCid,
+                        value: profile!,
+                        options: new MemoryCacheEntryOptions
+                        {
+                            Size = 1
+                        });
+                }
             }
             else
             {
-                resultList.Add(null);
+                resultList[targetIndex] = null;
             }
+
+            readCount++;
         }
 
-        return ResultWrapper<Profile?[]>.Success(resultList.ToArray());
+        return ResultWrapper<Profile?[]>.Success(resultList);
     }
 
     public async Task<ResultWrapper<Profile>> circles_getProfileByAddress(Address avatar)
