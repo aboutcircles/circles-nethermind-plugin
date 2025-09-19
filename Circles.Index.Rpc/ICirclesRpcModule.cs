@@ -160,7 +160,12 @@ public record Profile(
     float[]? geoLocation,
     float? longitude,
     float? latitude,
-    string? shortName);
+    string? shortName)
+{
+    // New, optional: avatar type of the result (e.g. CrcV2_RegisterHuman, CrcV2_RegisterGroup, ...)
+    public string? avatarType { get; init; }
+}
+
 
 #endregion
 
@@ -265,6 +270,7 @@ public interface ICirclesRpcModule : IRpcModule
     Task<ResultWrapper<Profile[]>> circles_searchProfiles(
         string text, // search term(s)
         int? limit = 20, // default page size
-        int? offset = 0 // pagination offset
+        int? offset = 0, // pagination offset
+        string[]? types = null
     );
 }
