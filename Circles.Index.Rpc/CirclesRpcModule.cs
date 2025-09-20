@@ -470,20 +470,19 @@ public class CirclesRpcModule : ICirclesRpcModule
         return new CirclesTrustRelations(address, outgoingTrusts.ToArray(), incomingTrusts.ToArray());
     }
 
-    // public async Task<ResultWrapper<CirclesTokenBalance[]>> circles_getTokenBalances(Address address)
-    // {
-    //     var balances = await GetTokenBalancesForAccount(address,
-    //         _indexerContext.Settings.CirclesV2HubAddress);
-    //
-    //     return ResultWrapper<CirclesTokenBalance[]>.Success(balances.ToArray());
-    // }
-
     public Task<ResultWrapper<Address[]>> circles_getCommonTrust(
         Address address1,
         Address address2,
         int? version = null)
     {
-        var v1Sql = @"
+        // Determine whether address2 is a V2 human (only relevant for version 2)
+        string address2String = address2.ToString(true, false);
+        bool hasV2Avatar = CirclesV2.LogParser.V2Avatars.TryGetValue(address2String, out var v2AvatarMeta);
+        bool address2IsV2Human =
+            hasV2Avatar && string.Equals(v2AvatarMeta.Type, "CrcV2_RegisterHuman", StringComparison.Ordinal);
+
+        // SQL fragments:
+        const string saferV1 = @"
         select distinct a.trustee as mid
         from ""V_Crc_TrustRelations"" a
         join ""V_Crc_TrustRelations"" b
@@ -493,9 +492,9 @@ public class CirclesRpcModule : ICirclesRpcModule
           and a.trustee not in (@address1, @address2)
           and a.version = 1
           and b.version = 1
-        ";
+    ";
 
-        var v2Sql = @"
+        const string saferV2 = @"
         select distinct a.trustee as mid
         from ""V_Crc_TrustRelations"" a
         join ""V_Crc_TrustRelations"" b
@@ -505,13 +504,56 @@ public class CirclesRpcModule : ICirclesRpcModule
           and a.trustee not in (@address1, @address2)
           and a.version = 2
           and b.version = 2
-        ";
+    ";
 
-        var sql = version == 1
-            ? v1Sql
-            : version == 2
-                ? v2Sql
-                : $"{v1Sql} union {v2Sql}";
+        const string sharedOutV1 = @"
+        select distinct a.trustee as mid
+        from ""V_Crc_TrustRelations"" a
+        join ""V_Crc_TrustRelations"" b
+          on a.trustee = b.trustee
+        where a.truster = @address1
+          and b.truster = @address2
+          and a.trustee not in (@address1, @address2)
+          and a.version = 1
+          and b.version = 1
+    ";
+
+        const string sharedOutV2 = @"
+        select distinct a.trustee as mid
+        from ""V_Crc_TrustRelations"" a
+        join ""V_Crc_TrustRelations"" b
+          on a.trustee = b.trustee
+        where a.truster = @address1
+          and b.truster = @address2
+          and a.trustee not in (@address1, @address2)
+          and a.version = 2
+          and b.version = 2
+    ";
+
+        // Choose the SQL depending on version and address2 type
+        string sql;
+        bool isVersion1 = version == 1;
+        bool isVersion2 = version == 2;
+
+        if (isVersion1)
+        {
+            // v1: no human/group type, use outgoing ∩ outgoing
+            sql = sharedOutV1;
+        }
+        else if (isVersion2)
+        {
+            // v2: people => outgoing ∩ incoming, else outgoing ∩ outgoing
+            bool useSaferForV2Human = address2IsV2Human;
+            sql = useSaferForV2Human ? saferV2 : sharedOutV2;
+        }
+        else
+        {
+            // both versions: v1 uses outgoing ∩ outgoing; v2 depends on address2 type
+            bool useSaferForV2Human = address2IsV2Human;
+            sql = useSaferForV2Human
+                ? $"{sharedOutV1} union {saferV2}"
+                : $"{sharedOutV1} union {sharedOutV2}";
+        }
 
         var parameters = new[]
         {
@@ -521,17 +563,18 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var result = _indexerContext.ReadonlyDatabase.Select(new ParameterizedSql(sql, parameters));
 
-        if (result.Rows is null)
+        bool rowsMissing = result.Rows is null;
+        if (rowsMissing)
         {
             throw new Exception("Failed to retrieve common trust intersections.");
         }
 
-        var safer = result.Rows
+        Address[] mids = result.Rows
             .Select(row => new Address(row[0]?.ToString() ?? throw new Exception("Address is null")))
             .Distinct()
             .ToArray();
 
-        return Task.FromResult(ResultWrapper<Address[]>.Success(safer));
+        return Task.FromResult(ResultWrapper<Address[]>.Success(mids));
     }
 
     public ResultWrapper<DatabaseQueryResult> circles_query(SelectDto query)
