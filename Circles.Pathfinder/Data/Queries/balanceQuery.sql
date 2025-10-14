@@ -118,4 +118,5 @@ select balance::text
      , "isWrapped"
      , "circlesType"
 from all_transfers
-where balance > 0;
+where balance > 0
+order by balance, account, "tokenAddress";
