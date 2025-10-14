@@ -108,6 +108,18 @@
       "excludedToTokens": [],
       "withWrap": false
     },
+     {
+      "name": "SelfConversionWithToTokensFilter-Fail",
+      "description": "Self-conversion",
+      "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "targetFlow": "100000000000000000000000000000",
+      "fromTokens": [],
+      "toTokens": ["0x7e09438a61ba64b2866b5fefb350146f93db7959"],
+      "excludedFromTokens": [],
+      "excludedToTokens": [],
+      "withWrap": false
+    },
     {
         "name": "SelfConversionWithToTokensFilter-2",
         "description": "Self-conversion",
@@ -207,5 +219,89 @@
       "excludedFromTokens": [],
       "excludedToTokens": [],
       "withWrap": false
-    }
+    },
+    {
+    "name": "RouterGroupMinting-Basic",
+    "description": "Test basic flow through Router and Group for minting",
+    "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": ["0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b"],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  },
+  {
+    "name": "RouterGroupMinting-SpecificFromToken",
+    "description": "Test Router->Group flow with specific source token",
+    "source": "0x14aaB8D72B68c79cbb7873D003585a7C3EF98633",
+    "sink": "0x76A42aEbb2c54d7E259b1C7e4Eb0Cadf5897a7de",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": [],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  },
+  {
+    "name": "GroupAsSource-ShouldFail",
+    "description": "Test that groups cannot be used as source (should return no path)",
+    "source": "0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b",
+    "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": [],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  },
+  {
+    "name": "GroupAsSink-ShouldFail",
+    "description": "Test that groups cannot be used as sink (should return no path)",
+    "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "sink": "0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": [],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  },
+  {
+    "name": "MultipleGroupTokens",
+    "description": "Test sink accepting multiple group tokens",
+    "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": ["0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b", "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  },
+  {
+    "name": "SelfConversionToGroupToken",
+    "description": "Convert own tokens to group tokens (source=sink)",
+    "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": ["0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b"],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  },
+  {
+    "name": "test",
+    "description": "Convert own tokens to group tokens (source=sink)",
+    "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+    "targetFlow": "1000000000000000000",
+    "fromTokens": [],
+    "toTokens": ["0xbfce3136dbe261e4dbd757bb9a718bed8a9993d5"],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": false
+  }
   ]
