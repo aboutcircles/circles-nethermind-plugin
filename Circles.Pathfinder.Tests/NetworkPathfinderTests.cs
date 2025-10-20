@@ -77,6 +77,7 @@ public class BalanceNodeJson
 public class NetworkPathfinderTests
 {
     private readonly string _pathfinderBaseUrl;
+    private readonly string _rpcUrl;
     private HttpClient? _httpClient;
     private readonly JsonSerializerOptions _jsonOptions;
 
@@ -89,7 +90,9 @@ public class NetworkPathfinderTests
     // Router and Groups - loaded dynamically from database
     private readonly string _routerAddress;
     private HashSet<string> _dynamicGroups = new(StringComparer.OrdinalIgnoreCase);
+
     private Dictionary<string, HashSet<string>> _groupTrustedTokens = new(StringComparer.OrdinalIgnoreCase);
+
     // ANSI color escape sequences for console output
     private static class ConsoleColors
     {
@@ -105,7 +108,8 @@ public class NetworkPathfinderTests
     public NetworkPathfinderTests()
     {
         // Set the base URL for your Pathfinder service
-        _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8545";
+        _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8081";
+        _rpcUrl = Environment.GetEnvironmentVariable("RPC_URL") ?? "http://localhost:8545";
 
         // Get router address from environment or use default
         _routerAddress = Environment.GetEnvironmentVariable("ROUTER_ADDRESS")
@@ -143,15 +147,16 @@ public class NetworkPathfinderTests
     private void LoadGraphs()
     {
         var settings = new Settings();
-        
+
         // First try to load from snapshot endpoint
         try
         {
-            Console.WriteLine($"{ConsoleColors.Cyan}Loading network graphs from pathfinder snapshot...{ConsoleColors.Reset}");
-            
+            Console.WriteLine(
+                $"{ConsoleColors.Cyan}Loading network graphs from pathfinder snapshot...{ConsoleColors.Reset}");
+
             var loadTask = LoadGraphsFromSnapshot();
             loadTask.Wait(); // Wait synchronously since we're in a non-async method
-            
+
             if (_graphsLoaded)
             {
                 return; // Successfully loaded from snapshot
@@ -661,7 +666,7 @@ public class NetworkPathfinderTests
 
         try
         {
-            var response = await _httpClient.PostAsync(_pathfinderBaseUrl, content);
+            var response = await _httpClient.PostAsync(_rpcUrl, content);
             response.EnsureSuccessStatusCode();
 
             var responseContent = await response.Content.ReadAsStringAsync();

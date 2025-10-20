@@ -10,7 +10,9 @@ public class Settings
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
 
     public readonly string? IndexReadonlyDbConnectionString =
-        Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
+        Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING")
+        ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
+        ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
 
     #region Nethermind plug-in only configuration
 
