@@ -30,7 +30,11 @@ public class NetworkStateUpdaterService : BackgroundService
     {
         var loadGraph = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
         var graphFactory = new GraphFactory();
+        graphFactory.SetLoadGraph(loadGraph);
 
+        _pool.SetLoadGraph(loadGraph);
+        _pool.SetRouterAddress(_settings.RouterAddress);
+        
         long lastBlock = 0;
 
         while (!stoppingToken.IsCancellationRequested)
@@ -39,7 +43,7 @@ public class NetworkStateUpdaterService : BackgroundService
             lastBlock = await WaitForNextBlock(stoppingToken, lastBlock);
             _networkState.Replace(lastKnownBlockNumber: lastBlock);
 
-            _log.LogDebug("↳ got block {Block}", lastBlock);
+            _log.LogDebug("→ got block {Block}", lastBlock);
 
             var swTotal = Stopwatch.StartNew();
 
@@ -64,9 +68,12 @@ public class NetworkStateUpdaterService : BackgroundService
             await Task.WhenAll(trustTask, balanceTask);
             swTotal.Stop();
 
+            // Build full capacity graph with router address
             var cap = await CapacityGraphPool.BuildFullGraph(
                 _networkState.BalanceGraph,
-                _networkState.AccountTrusts
+                _networkState.AccountTrusts,
+                loadGraph,
+                _settings.RouterAddress
             );
             var snap = new CapacityGraphSnapshot(lastBlock, cap);
             _pool.UpdateSnapshot(snap);

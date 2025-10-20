@@ -25,13 +25,13 @@ public class V2Pathfinder
         bool sourceMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
         if (sourceMissing)
         {
-            throw new ArgumentException($"Source '{flowRequest.Source}' isn’t in the graph snapshot.");
+            throw new ArgumentException($"Source '{flowRequest.Source}' isn't in the graph snapshot.");
         }
 
         bool sinkMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
         if (sinkMissing)
         {
-            throw new ArgumentException($"Sink '{flowRequest.Sink}' isn’t in the graph snapshot.");
+            throw new ArgumentException($"Sink '{flowRequest.Sink}' isn't in the graph snapshot.");
         }
 
         /* --------------------------------------------------------------------
@@ -80,9 +80,9 @@ public class V2Pathfinder
         bool srcMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
         bool dstMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
         if (srcMissing)
-            throw new ArgumentException($"Source '{request.Source}' isn’t in the graph snapshot.");
+            throw new ArgumentException($"Source '{request.Source}' isn't in the graph snapshot.");
         if (dstMissing)
-            throw new ArgumentException($"Sink '{request.Sink}' isn’t in the graph snapshot.");
+            throw new ArgumentException($"Sink '{request.Sink}' isn't in the graph snapshot.");
 
         /* --------------------------------------------------------------------
          * 2. Run max-flow and peel paths
@@ -100,17 +100,17 @@ public class V2Pathfinder
         if (hasStepCap)
         {
             int stepCap = request.MaxTransfers!.Value;
-            int currentSteps = CountCollapsedTransferSteps(simplePaths);
+            int currentSteps = CountCollapsedTransferSteps(simplePaths, capacityGraph);
 
             bool needsPrune = currentSteps > stepCap;
             if (needsPrune)
             {
-                simplePaths = PrunePathsByStepLimit(simplePaths, stepCap);
+                simplePaths = PrunePathsByStepLimit(simplePaths, stepCap, capacityGraph);
             }
         }
 
         /* --------------------------------------------------------------------
-         * 3. Convert SimpleEdge ➜ FlowEdge
+         * 3. Convert SimpleEdge → FlowEdge
          * ------------------------------------------------------------------ */
         var flowPaths = new List<List<FlowEdge>>(simplePaths.Count);
 
@@ -163,15 +163,20 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 5. Collapse balance nodes + aggregate identical edges
          * ------------------------------------------------------------------ */
-        var collapsed = CollapseBalanceNodes(flowPaths);
-        var aggregated = collapsed.AggregateIdenticalEdges(); // legacy helper
+        var collapsed = CollapseBalanceNodes(flowPaths, capacityGraph);
+        var aggregated = collapsed.AggregateIdenticalEdges();
 
         /* --------------------------------------------------------------------
-         * 6. Build DTOs
+         * 6. Post-process to insert Router between Avatar → Group transfers
+         * ------------------------------------------------------------------ */
+        var processedEdges = InsertRouterInTransfers(aggregated.Edges, capacityGraph);
+
+        /* --------------------------------------------------------------------
+         * 7. Build DTOs
          * ------------------------------------------------------------------ */
         var transfer = new List<TransferPathStep>();
 
-        foreach (var e in aggregated.Edges)
+        foreach (var e in processedEdges)
         {
             if (e.Flow <= 0)
             {
@@ -203,10 +208,58 @@ public class V2Pathfinder
             transfer);
     }
 
-/* ------------------------------------------------------------------------
- * Collapse balance nodes in a set of paths.
- * --------------------------------------------------------------------- */
-    private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow)
+    /* ------------------------------------------------------------------------
+     * Post-process: Insert Router node between Avatar → Group transfers.
+     * The router itself is not part of the capacity graph during pathfinding,
+     * but the contract requires all Avatar→Group transfers to route through it.
+     * This method splits any Avatar→Group edge into Avatar→Router→Group.
+     * Group→Avatar minting transfers are left as-is (direct edge).
+     * --------------------------------------------------------------------- */
+    private List<FlowEdge> InsertRouterInTransfers(List<FlowEdge> transfers, CapacityGraph capacityGraph)
+    {
+        if (capacityGraph.RouterNode == null)
+            return transfers;
+
+        var result = new List<FlowEdge>();
+        int routerId = capacityGraph.RouterNode.Value;
+
+        foreach (var transfer in transfers)
+        {
+            // If this is Avatar → Group transfer, insert Router in between
+            // (Group → Avatar minting transfers are left as-is)
+            if (!capacityGraph.IsGroup(transfer.From) && 
+                !capacityGraph.IsRouter(transfer.From) &&
+                capacityGraph.IsGroup(transfer.To))
+            {
+                // Split into Avatar → Router → Group
+                // Avatar → Router (same token)
+                result.Add(new FlowEdge(transfer.From, routerId, transfer.Token, transfer.InitialCapacity)
+                {
+                    Flow = transfer.Flow,
+                    CurrentCapacity = transfer.CurrentCapacity
+                });
+                
+                // Router → Group (same token)
+                result.Add(new FlowEdge(routerId, transfer.To, transfer.Token, transfer.InitialCapacity)
+                {
+                    Flow = transfer.Flow,
+                    CurrentCapacity = transfer.CurrentCapacity
+                });
+            }
+            else
+            {
+                // Keep as-is (includes Group → Avatar minting transfers)
+                result.Add(transfer);
+            }
+        }
+
+        return result;
+    }
+
+    /* ------------------------------------------------------------------------
+     * Collapse balance nodes and token pools in a set of paths.
+     * --------------------------------------------------------------------- */
+    private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow, CapacityGraph capacityGraph)
     {
         var collapsed = new FlowGraph();
 
@@ -217,10 +270,10 @@ public class V2Pathfinder
         {
             foreach (var edge in path)
             {
-                if (!IsBalanceNode(edge.From))
+                if (!IsPoolNode(edge.From))
                     avatarSet.Add(edge.From);
 
-                if (!IsBalanceNode(edge.To))
+                if (!IsPoolNode(edge.To))
                     avatarSet.Add(edge.To);
             }
         }
@@ -230,44 +283,12 @@ public class V2Pathfinder
             collapsed.AddAvatar(a);
         }
 
-        /* ---------------- aggregate avatar-to-avatar flows ----------------- */
+        /* ---------------- aggregate flows ----------------- */
         var agg = new Dictionary<(int From, int To, int Token), long>();
 
         foreach (var path in pathsWithFlow)
         {
-            for (int i = 0; i < path.Count; i++)
-            {
-                var e = path[i];
-
-                bool eToIsPool = IsBalanceNode(e.To);
-                bool hasNext = (i + 1) < path.Count;
-                bool nextContinuesFromPool = hasNext && path[i + 1].From == e.To;
-                bool isChain = eToIsPool && nextContinuesFromPool;
-
-                if (isChain)
-                {
-                    // Fold Avatar → TokenPool(token) → Avatar
-                    var next = path[i + 1];
-
-                    int fromAvatar = e.From; // Avatar
-                    int toAvatar = next.To; // Avatar
-                    int token = e.Token;
-
-                    long flow = Math.Min(e.Flow, next.Flow);
-                    var key = (fromAvatar, toAvatar, token);
-
-                    if (agg.TryGetValue(key, out long existing))
-                    {
-                        agg[key] = existing + flow;
-                    }
-                    else
-                    {
-                        agg[key] = flow;
-                    }
-
-                    i += 1; // consume the next edge too
-                }
-            }
+            CollapseSinglePath(path, capacityGraph, agg);
         }
 
         /* ---------------- materialise collapsed edges ---------------------- */
@@ -291,17 +312,89 @@ public class V2Pathfinder
         return collapsed;
     }
 
+    private void CollapseSinglePath(
+        List<FlowEdge> path,
+        CapacityGraph capacityGraph,
+        Dictionary<(int From, int To, int Token), long> agg)
+    {
+        int i = 0;
+        while (i < path.Count)
+        {
+            var e = path[i];
+
+            // Case 1: Standard TokenPool collapse (Avatar → TokenPool → Avatar/Group)
+            if (IsPoolNode(e.To))
+            {
+                bool hasNext = (i + 1) < path.Count;
+                if (hasNext && path[i + 1].From == e.To)
+                {
+                    var next = path[i + 1];
+                    
+                    // Collapse Avatar → TokenPool → (Avatar/Group)
+                    // Result: Avatar → (Avatar/Group)
+                    AddToAggregation(agg, e.From, next.To, e.Token, Math.Min(e.Flow, next.Flow));
+                    i += 2;
+                    continue;
+                }
+            }
+
+            // Case 2: Group → Avatar (group token minting, keep as-is)
+            if (capacityGraph.IsGroup(e.From))
+            {
+                // Keep Group → Avatar edge with group token
+                AddToAggregation(agg, e.From, e.To, e.Token, e.Flow);
+                i += 1;
+                continue;
+            }
+
+            // Case 3: Any other direct edge (keep as-is)
+            if (!IsPoolNode(e.To))
+            {
+                AddToAggregation(agg, e.From, e.To, e.Token, e.Flow);
+                i += 1;
+                continue;
+            }
+
+            // Shouldn't reach here in normal operation, but handle gracefully
+            i += 1;
+        }
+    }
+
+    private void AddToAggregation(
+        Dictionary<(int From, int To, int Token), long> agg,
+        int from,
+        int to,
+        int token,
+        long flow)
+    {
+        var key = (from, to, token);
+        if (agg.TryGetValue(key, out long existing))
+        {
+            agg[key] = existing + flow;
+        }
+        else
+        {
+            agg[key] = flow;
+        }
+    }
+
     private bool IsBalanceNode(int addr) => AddressIdPool.IsBalanceNode(addr);
+    
+    private bool IsPoolNode(int addr)
+    {
+        if (!AddressIdPool.IsBalanceNode(addr)) return false;
+        var str = AddressIdPool.StringOf(addr);
+        return str.StartsWith("tpool-");
+    }
 
     // Count how many (From,To,Token) transfer steps remain after collapsing
-    // all paths (Avatar→TokenPool→Avatar folds to Avatar→Avatar per token).
-    private static int CountCollapsedTransferSteps(IReadOnlyList<List<SimpleEdge>> paths)
+    private static int CountCollapsedTransferSteps(IReadOnlyList<List<SimpleEdge>> paths, CapacityGraph capacityGraph)
     {
         var unique = new HashSet<(int From, int To, int Token)>();
 
         for (int i = 0; i < paths.Count; i++)
         {
-            var triples = CollapsePathToTransfers(paths[i]);
+            var triples = CollapsePathToTransfers(paths[i], capacityGraph);
             for (int j = 0; j < triples.Count; j++)
             {
                 unique.Add(triples[j]);
@@ -312,11 +405,10 @@ public class V2Pathfinder
     }
 
     // Greedy pruning: pick paths that give the highest flow per *marginal* step
-    // (steps that aren't already "paid for" by previously picked paths), until
-    // we reach the step budget.
     private static List<List<SimpleEdge>> PrunePathsByStepLimit(
         IReadOnlyList<List<SimpleEdge>> original,
-        int stepCap)
+        int stepCap,
+        CapacityGraph capacityGraph)
     {
         // Precompute collapsed triples for each path + path flow.
         var metas = new List<(int Index, long Flow, HashSet<(int F, int T, int K)> Triples)>(original.Count);
@@ -326,11 +418,10 @@ public class V2Pathfinder
             long flow = 0;
             if (path.Count > 0)
             {
-                // Each edge in the peeled path has the same min-bottleneck flow.
                 flow = path[0].Flow;
             }
 
-            var triples = new HashSet<(int F, int T, int K)>(CollapsePathToTransfers(path)
+            var triples = new HashSet<(int F, int T, int K)>(CollapsePathToTransfers(path, capacityGraph)
                 .Select(t => (t.From, t.To, t.Token)));
 
             metas.Add((i, flow, triples));
@@ -460,33 +551,36 @@ public class V2Pathfinder
     }
 
     // Collapse ONE peeled path into transfer triples (FromAvatar, ToAvatar, Token).
-    // Mirrors the logic in CollapseBalanceNodes, but works on SimpleEdge.
-    private static List<(int From, int To, int Token)> CollapsePathToTransfers(List<SimpleEdge> path)
+    private static List<(int From, int To, int Token)> CollapsePathToTransfers(
+        List<SimpleEdge> path, 
+        CapacityGraph capacityGraph)
     {
-        // Returns triples (AvatarFrom, AvatarTo, Token) for a single peeled path.
-        // With pooled graphs, paths alternate Avatar→TokenPool→Avatar; we fold those pairs.
-        var triples = new List<(int From, int To, int Token)>(Math.Max(1, path.Count / 2));
+        var triples = new List<(int From, int To, int Token)>(Math.Max(1, path.Count));
 
         int i = 0;
         while (i < path.Count)
         {
             var e = path[i];
 
-            bool eToIsPool = AddressIdPool.IsBalanceNode(e.To);
-            bool hasNext = (i + 1) < path.Count;
-            bool nextContinuesFromPool = hasNext && path[i + 1].From == e.To;
-            bool isChain = eToIsPool && nextContinuesFromPool;
-
-            if (isChain)
+            // Check if this is a pool node
+            bool eToIsPool = AddressIdPool.IsBalanceNode(e.To) && 
+                            AddressIdPool.StringOf(e.To).StartsWith("tpool-");
+            
+            // Standard pool collapse: Avatar → TokenPool → Next
+            if (eToIsPool)
             {
-                // Fold Avatar → TokenPool(token) → Avatar
-                var next = path[i + 1];
-                triples.Add((e.From, next.To, e.Token));
-                i += 2;
-                continue;
+                bool hasNext = (i + 1) < path.Count;
+                if (hasNext && path[i + 1].From == e.To)
+                {
+                    var next = path[i + 1];
+                    // Collapse to Avatar → Next
+                    triples.Add((e.From, next.To, e.Token));
+                    i += 2;
+                    continue;
+                }
             }
 
-            // Fallback: treat as direct Avatar→Avatar hop (rare / not expected here)
+            // Direct edges (including Group → Avatar minting)
             triples.Add((e.From, e.To, e.Token));
             i += 1;
         }

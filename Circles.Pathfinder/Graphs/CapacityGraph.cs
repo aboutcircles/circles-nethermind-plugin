@@ -11,6 +11,13 @@ public class CapacityGraph : IGraph<CapacityEdge>
     public List<CapacityEdge> Edges { get; } = new();
 
     public int? VirtualSinkAddress { get; set; }
+
+    // Track special avatar types
+    public HashSet<int> GroupNodes { get; } = new HashSet<int>();
+    public int? RouterNode { get; set; }
+    
+    // Track which tokens each group trusts
+    public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
     
     public void AddTokenNode(int tokenId, int? poolNodeId = null)
     {
@@ -33,6 +40,26 @@ public class CapacityGraph : IGraph<CapacityEdge>
             Nodes.Add(avatarAddress, AvatarNodes[avatarAddress]);
         }
     }
+
+    // Add a group
+    public void AddGroup(int groupAddress)
+    {
+        AddAvatar(groupAddress); 
+        GroupNodes.Add(groupAddress);
+    }
+
+    // Track the router node ID for post-processing.
+    // Note: Router is added as an avatar node but has no edges in the capacity graph during construction.
+    // It's only used during path post-processing to insert router steps between Avatar→Group transfers.
+    public void SetRouter(int routerAddress)
+    {
+        AddAvatar(routerAddress);
+        RouterNode = routerAddress;
+    }
+
+    // Helper methods
+    public bool IsGroup(int nodeAddress) => GroupNodes.Contains(nodeAddress);
+    public bool IsRouter(int nodeAddress) => RouterNode.HasValue && RouterNode.Value == nodeAddress;
 
     public void AddCapacityEdge(int from, int to, int token, long capacity)
     {
