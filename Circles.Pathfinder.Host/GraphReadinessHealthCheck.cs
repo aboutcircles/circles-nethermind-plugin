@@ -3,21 +3,14 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Circles.Pathfinder.Host;
 
-public sealed class GraphReadinessHealthCheck : IHealthCheck
+public sealed class GraphReadinessHealthCheck(NetworkState state) : IHealthCheck
 {
-    private readonly NetworkState _state;
-
-    public GraphReadinessHealthCheck(NetworkState state)
-    {
-        _state = state;
-    }
-
     public Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
-        CancellationToken    ct = default)
+        CancellationToken ct = default)
     {
-        var balanceGraphLoaded = _state.BalanceGraph is not null;
-        var trustLoaded        = _state.AccountTrusts.Count > 0;
+        var balanceGraphLoaded = state.BalanceGraph is not null;
+        var trustLoaded = state.AccountTrusts.Count > 0;
 
         var ready = balanceGraphLoaded && trustLoaded;
         if (ready)

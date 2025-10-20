@@ -319,7 +319,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private async Task<ResultWrapper<string>> GetTotalBalance(Address address, int version, bool? asTimeCircles)
     {
-        var balances = await GetTokenBalancesForAccount(address, _indexerContext.Settings.CirclesV2HubAddress);
+        var balances = await GetTokenBalancesForAccount(address, new(_indexerContext.Settings.CirclesV2HubAddress));
         var relevantBalances = balances.Where(o => o.Version == version);
 
         if (asTimeCircles == null || asTimeCircles == true)
@@ -844,6 +844,9 @@ public class CirclesRpcModule : ICirclesRpcModule
     private static long _totalTimeSpentProxying = 0L;
     private static long _totalProxyCount = 0L;
 
+    private readonly InsertBuffer<PathfinderRequestLog> _pathfinderRequests = new();
+    private readonly InsertBuffer<PathfinderResponseLog> _pathfinderResponses = new();
+
     public async Task<ResultWrapper<MaxFlowResponse>> circlesV2_findPath(FlowRequest flowRequest)
     {
         var sw = Stopwatch.StartNew();
@@ -851,9 +854,31 @@ public class CirclesRpcModule : ICirclesRpcModule
         var baseUrl = _indexerContext.Settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath"; // POST body carries the payload
 
+        var requestId = Guid.NewGuid().ToString();
+        var blockNumber = _indexerContext.NethermindApi.BlockTree.Head?.Number ?? -1;
+        var targetFlow = BigInteger.Parse(flowRequest.TargetFlow);
+
+
+        _pathfinderRequests.Add(new PathfinderRequestLog
+        {
+            BlockNumber = blockNumber,
+            RequestId = requestId,
+            Timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds(),
+            From = flowRequest.Source,
+            To = flowRequest.Sink,
+            TargetFlow = targetFlow,
+            WithWrap = flowRequest.WithWrap,
+            FromTokens = flowRequest.FromTokens?.ToArray(),
+            ToTokens = flowRequest.ToTokens?.ToArray(),
+            ExcludeFromTokens = flowRequest.ExcludedFromTokens?.ToArray(),
+            ExcludeToTokens = flowRequest.ExcludedToTokens?.ToArray(),
+            MaxTransfers = flowRequest.MaxTransfers,
+            SimulatedBalances = JsonSerializer.Serialize(flowRequest.SimulatedBalances),
+            SimulatedTrusts = JsonSerializer.Serialize(flowRequest.SimulatedTrusts)
+        });
+
         // Send the request
         using var response = await HttpClient.PostAsJsonAsync(url, flowRequest);
-
         response.EnsureSuccessStatusCode();
 
         var maxFlowResponse = await response.Content.ReadFromJsonAsync<MaxFlowResponse>();
@@ -874,6 +899,22 @@ public class CirclesRpcModule : ICirclesRpcModule
             Console.WriteLine($"Total proxy count: {_totalProxyCount}");
             Console.WriteLine($"Avg. duration: {_totalTimeSpentProxying / _totalProxyCount}ms");
         }
+
+        var maxFlow = BigInteger.TryParse(flowRequest.TargetFlow, out var tf) ? tf : 0;
+
+        _pathfinderResponses.Add(new PathfinderResponseLog
+        {
+            RequestId = requestId,
+            Timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds(),
+            BlockNumber = blockNumber,
+            MaxFlow = maxFlow,
+            Transfers = JsonSerializer.Serialize(maxFlowResponse.Transfers)
+        });
+
+        await _indexerContext.Sink.Database.WriteBatch("System", DatabaseSchema.PathfinderRequestLog,
+            _pathfinderRequests.TakeSnapshot(), _indexerContext.Database.Schema.SchemaPropertyMap);
+        await _indexerContext.Sink.Database.WriteBatch("System", DatabaseSchema.PathfinderResponseLog,
+            _pathfinderResponses.TakeSnapshot(), _indexerContext.Database.Schema.SchemaPropertyMap);
 
         return ResultWrapper<MaxFlowResponse>.Success(maxFlowResponse!);
     }

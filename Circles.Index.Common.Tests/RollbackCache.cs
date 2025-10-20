@@ -194,7 +194,7 @@ public sealed class RollbackCacheTests
     /* ----------------------------------------------------------------- */
 
     [Test]
-    [Timeout(15_000)]
+    [CancelAfter(15_000)]
     public async Task ConcurrentReaders_DoNotThrow()
     {
         const int readerCount = 16;

@@ -169,11 +169,29 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                 else if (table.Value is
                          {
                              Namespace: Common.DatabaseSchema.SystemNamespace,
-                             Table: Common.DatabaseSchema.EventTableHeadTable
+                             Table: Common.DatabaseSchema.EventTableHead
                          })
                 {
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"tableName\");");
+                }
+                else if (table.Value is
+                         {
+                             Namespace: Common.DatabaseSchema.SystemNamespace,
+                             Table: Common.DatabaseSchema.PathfinderRequestLog
+                         })
+                {
+                    primaryKeyDdl.AppendLine(
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"requestId\");");
+                }
+                else if (table.Value is
+                         {
+                             Namespace: Common.DatabaseSchema.SystemNamespace,
+                             Table: Common.DatabaseSchema.PathfinderResponseLog
+                         })
+                {
+                    primaryKeyDdl.AppendLine(
+                        $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"requestId\");");
                 }
                 else
                 {
@@ -403,7 +421,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             transaction = await connection.BeginTransactionAsync();
             foreach (var table in Schema.Tables.Values)
             {
-                if (table.Namespace.StartsWith("V_"))
+                if (table.Namespace.StartsWith("V_") 
+                    || table.Table == DatabaseSchema.PathfinderRequestLog 
+                    || table.Table == DatabaseSchema.PathfinderResponseLog)
                 {
                     // Dirty way to skip views
                     continue;

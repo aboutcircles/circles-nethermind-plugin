@@ -1,24 +1,16 @@
 using System.Collections.Concurrent;
+using Circles.Index.Common;
 using Circles.Pathfinder.Data; 
 using Circles.Pathfinder.DTOs;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool
+public sealed class CapacityGraphPool(Settings settings, LoadGraph loadGraph)
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
-    private readonly GraphFactory _gf = new();
+    private readonly GraphFactory _gf = new(settings.BaseGroupRouter, loadGraph);
 
-    public void SetLoadGraph(LoadGraph loadGraph)
-    {
-        _gf.SetLoadGraph(loadGraph);
-    }
-
-    public void SetRouterAddress(string routerAddress)
-    {
-        _gf.SetRouterAddress(routerAddress);
-    }
 
     /* ------------------------------------------------------------------ */
     /* Snapshot                                                           */
@@ -59,7 +51,7 @@ public sealed class CapacityGraphPool
 
     internal void Release(CapacityGraphSnapshot snap)
     {
-        if (!_ref.TryGetValue(snap, out var c)) return;
+        if (!_ref.TryGetValue(snap, out _)) return;
         var nc = _ref.AddOrUpdate(snap, _ => 0, (_, x) => x - 1);
         if (nc == 0 && snap != _current)
             _ref.TryRemove(snap, out _);
@@ -72,18 +64,10 @@ public sealed class CapacityGraphPool
     public static Task<CapacityGraph> BuildFullGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
-        LoadGraph? loadGraph = null,
-        string? routerAddress = null)
+        LoadGraph loadGraph,
+        string routerAddress)
     {
-        var gf = new GraphFactory();
-        if (loadGraph != null)
-        {
-            gf.SetLoadGraph(loadGraph);
-        }
-        if (routerAddress != null)
-        {
-            gf.SetRouterAddress(routerAddress);
-        }
+        var gf = new GraphFactory(routerAddress, loadGraph);
         return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts, new FlowRequest()));
     }
 
