@@ -96,7 +96,7 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
     public CapacityGraph CreateCapacityGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
-        FlowRequest? request)
+        FlowRequest? request = null)
     {
         Interlocked.Increment(ref _createdCount);
         Console.WriteLine($"Creating capacity graph {_createdCount}...");
