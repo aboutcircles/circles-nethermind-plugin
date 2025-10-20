@@ -16,4 +16,10 @@ public class Settings
     public readonly int MaxConcurrentRequests = Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS")!)
         : Environment.ProcessorCount * 2;
+
+    // Router address used for post-processing Avatar→Group transfers.
+    // The router node is tracked but not part of the capacity graph during pathfinding.
+    public readonly string RouterAddress =
+        Environment.GetEnvironmentVariable("ROUTER_ADDRESS")
+        ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f"; 
 }

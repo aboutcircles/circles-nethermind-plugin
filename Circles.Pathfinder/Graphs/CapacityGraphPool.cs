@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Circles.Pathfinder.Data; 
 using Circles.Pathfinder.DTOs;
 
 namespace Circles.Pathfinder.Graphs;
@@ -8,6 +9,16 @@ public sealed class CapacityGraphPool
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
     private readonly GraphFactory _gf = new();
+
+    public void SetLoadGraph(LoadGraph loadGraph)
+    {
+        _gf.SetLoadGraph(loadGraph);
+    }
+
+    public void SetRouterAddress(string routerAddress)
+    {
+        _gf.SetRouterAddress(routerAddress);
+    }
 
     /* ------------------------------------------------------------------ */
     /* Snapshot                                                           */
@@ -60,9 +71,19 @@ public sealed class CapacityGraphPool
 
     public static Task<CapacityGraph> BuildFullGraph(
         BalanceGraph balanceGraph,
-        IReadOnlyDictionary<int, HashSet<int>> accountTrusts)
+        IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
+        LoadGraph? loadGraph = null,
+        string? routerAddress = null)
     {
         var gf = new GraphFactory();
+        if (loadGraph != null)
+        {
+            gf.SetLoadGraph(loadGraph);
+        }
+        if (routerAddress != null)
+        {
+            gf.SetRouterAddress(routerAddress);
+        }
         return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts, new FlowRequest()));
     }
 

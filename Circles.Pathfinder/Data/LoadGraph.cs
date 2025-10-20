@@ -13,6 +13,9 @@ namespace Circles.Pathfinder.Data
             LoadV2Balances();
 
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
+
+        IEnumerable<string> LoadGroups();
+        IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
     }
 
     public class LoadGraph : ILoadGraph
@@ -105,6 +108,43 @@ namespace Circles.Pathfinder.Data
                 var trustee = reader.GetString(1);
 
                 yield return (truster, trustee, 100); // Assuming a default trust limit of 100 in V2
+            }
+        }
+
+        // Load groups
+        public IEnumerable<string> LoadGroups()
+        {
+            var groupQuery = LoadQueryFromResource("groupQuery.sql");
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(groupQuery, connection);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                var groupAddress = reader.GetString(0);
+                yield return groupAddress;
+            }
+        }
+
+        // Load group trust relationships
+        public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
+        {
+            var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(groupTrustQuery, connection);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                var groupAddress = reader.GetString(0);
+                var trustedToken = reader.GetString(1);
+                yield return (groupAddress, trustedToken);
             }
         }
     }

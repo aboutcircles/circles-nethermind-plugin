@@ -8,6 +8,18 @@ namespace Circles.Pathfinder.Graphs;
 public class GraphFactory
 {
     private const string VIRTUAL_SINK_SUFFIX = "_virtual_sink";
+    private LoadGraph? _loadGraph; 
+    private string _routerAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f"; // Default fallback
+
+    public void SetLoadGraph(LoadGraph loadGraph)
+    {
+        _loadGraph = loadGraph;
+    }
+
+    public void SetRouterAddress(string routerAddress)
+    {
+        _routerAddress = routerAddress;
+    }
 
     public static Dictionary<int, HashSet<int>> BuildTrustLookup(TrustGraph graph)
     {
@@ -91,9 +103,10 @@ public class GraphFactory
     /// Also sets up a "virtual sink" if source == sink and toTokens are specified.
     /// </summary>
     /// <param name="balanceGraph">The balance graph to use.</param>
-    /// <param name="trustGraph">The trust graph to use.</param>
+    /// <param name="trustLookup">The trust graph to use.</param>
     /// <param name="request">Flow request parameters.</param>
     /// <returns>A capacity graph created from the balance and trust graphs.</returns>
+    
     public CapacityGraph CreateCapacityGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
@@ -126,38 +139,66 @@ public class GraphFactory
             }
         }
 
+        // STEP 1d: Load groups and track router node for post-processing
+        // Only load if we have a LoadGraph instance available
+        if (_loadGraph != null)
+        {
+            LoadGroupsAndTrackRouter(capacityGraph, _loadGraph, _routerAddress);
+        }
+
         var mergedTrust = simulatedTrust.Count == 0 ? trustLookup : MergeTrust(trustLookup, simulatedTrust);
 
         int? virtualSinkAddress = null;
         HashSet<int> virtualSinkTrustedTokens = new HashSet<int>();
 
-        var sourceEqualsSink = r.Source?.Trim().ToLowerInvariant() == r.Sink?.Trim().ToLowerInvariant();
+        var sourceEqualsSink = r?.Source?.Trim().ToLowerInvariant() == r?.Sink?.Trim().ToLowerInvariant();
 
         // Setup key filters
-        var toTokensFilter = r.ToTokens?
-                                 .Select(AddressIdPool.IdOf)
-                                 .ToHashSet()
-                             ?? new HashSet<int>();
+        var toTokensFilter = r?.ToTokens?
+                                .Select(AddressIdPool.IdOf)
+                                .ToHashSet()
+                            ?? new HashSet<int>();
 
-        var fromTokensFilter = r.FromTokens?
-                                   .Select(AddressIdPool.IdOf)
-                                   .ToHashSet()
-                               ?? new HashSet<int>();
+        var fromTokensFilter = r?.FromTokens?
+                                .Select(AddressIdPool.IdOf)
+                                .ToHashSet()
+                            ?? new HashSet<int>();
 
-        var excludedFromTokensFilter = r.ExcludedFromTokens?
-                                           .Select(AddressIdPool.IdOf)
-                                           .ToHashSet()
-                                       ?? new HashSet<int>();
+        var excludedFromTokensFilter = r?.ExcludedFromTokens?
+                                        .Select(AddressIdPool.IdOf)
+                                        .ToHashSet()
+                                    ?? new HashSet<int>();
 
-        var excludedToTokensFilter = r.ExcludedToTokens?
-                                         .Select(AddressIdPool.IdOf)
-                                         .ToHashSet()
-                                     ?? new HashSet<int>();
+        var excludedToTokensFilter = r?.ExcludedToTokens?
+                                        .Select(AddressIdPool.IdOf)
+                                        .ToHashSet()
+                                    ?? new HashSet<int>();
 
-        // STEP 2: Create a virtual sink if needed
-        int? sourceId = !string.IsNullOrWhiteSpace(r.Source) ? AddressIdPool.IdOf(r.Source) : null;
-        int? sinkId = !string.IsNullOrWhiteSpace(r.Sink) ? AddressIdPool.IdOf(r.Sink) : null;
+        // STEP 2: Validate source and sink are not groups or router
+        int? sourceId = !string.IsNullOrWhiteSpace(r?.Source) ? AddressIdPool.IdOf(r.Source) : null;
+        int? sinkId = !string.IsNullOrWhiteSpace(r?.Sink) ? AddressIdPool.IdOf(r.Sink) : null;
 
+        if (sourceId != null && capacityGraph.IsGroup(sourceId.Value))
+        {
+            throw new ArgumentException($"Groups cannot be source. '{r!.Source}' is a group.");
+        }
+
+        if (sinkId != null && capacityGraph.IsGroup(sinkId.Value))
+        {
+            throw new ArgumentException($"Groups cannot be sink. '{r!.Sink}' is a group.");
+        }
+
+        if (sourceId != null && capacityGraph.IsRouter(sourceId.Value))
+        {
+            throw new ArgumentException($"Router cannot be source. '{r!.Source}' is the router.");
+        }
+
+        if (sinkId != null && capacityGraph.IsRouter(sinkId.Value))
+        {
+            throw new ArgumentException($"Router cannot be sink. '{r!.Sink}' is the router.");
+        }
+
+        // STEP 2b: Create a virtual sink if needed
         if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
         {
             var wrappedTokensInSim = simulated
@@ -170,7 +211,8 @@ public class GraphFactory
                 sourceId.Value,
                 toTokensFilter,
                 balanceGraph,
-                wrappedTokensInSim);
+                wrappedTokensInSim,
+                mergedTrust);
         }
 
         // STEP 3: Add pooled H→TokenPool edges from snapshot balances (applying filters)
@@ -202,10 +244,20 @@ public class GraphFactory
         }
 
         // STEP 6/7/8: Add trust-based out-edges from TokenPool→avatars (+ virtual sink in swap mode)
+        // Groups can now receive tokens directly
         AddTokenPoolOutEdges(
             capacityGraph,
             mergedTrust,
             virtualSinkAddress,
+            virtualSinkTrustedTokens,  
+            sinkId,
+            toTokensFilter,
+            excludedToTokensFilter);
+
+        // STEP 8: Add Group minting edges (Group → Avatar with group token)
+        AddGroupMintingEdges(
+            capacityGraph,
+            mergedTrust,
             sinkId,
             toTokensFilter,
             excludedToTokensFilter);
@@ -224,7 +276,6 @@ public class GraphFactory
 
         return capacityGraph;
     }
-
 
     #region Helper Methods
 
@@ -357,6 +408,46 @@ public class GraphFactory
         return list;
     }
 
+    // Load groups and router
+    private void LoadGroupsAndTrackRouter(CapacityGraph capacityGraph, LoadGraph loadGraph, string routerAddress)
+    {
+        try
+        {
+            // Track router node ID for post-processing (inserting router between Avatar->Group transfers)
+            // Note: Router node is added to graph but has no edges during graph construction
+            int routerId = AddressIdPool.IdOf(routerAddress.ToLowerInvariant());
+            capacityGraph.SetRouter(routerId);
+
+            // Load groups
+            var groups = loadGraph.LoadGroups().ToList();
+            foreach (var groupAddress in groups)
+            {
+                int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+                capacityGraph.AddGroup(groupId);
+            }
+
+            // Load group trust relationships
+            var groupTrusts = loadGraph.LoadGroupTrusts().ToList();
+            foreach (var (groupAddress, trustedToken) in groupTrusts)
+            {
+                int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+                int tokenId = AddressIdPool.IdOf(trustedToken.ToLowerInvariant());
+
+                if (!capacityGraph.GroupTrustedTokens.TryGetValue(groupId, out var trustedSet))
+                {
+                    trustedSet = new HashSet<int>();
+                    capacityGraph.GroupTrustedTokens[groupId] = trustedSet;
+                }
+                trustedSet.Add(tokenId);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail if groups/router can't be loaded
+            Console.WriteLine($"Warning: Could not load groups and router tracking: {ex.Message}");
+        }
+    }
+
     private void AddHolderToTokenEdges_Pooled(
         CapacityGraph g,
         BalanceGraph snapshot,
@@ -370,6 +461,10 @@ public class GraphFactory
 
         foreach (var bn in snapshot.BalanceNodes.Values)
         {
+            // Skip if holder is Router or Group (they don't use token pools)
+            if (g.IsRouter(bn.Holder) || g.IsGroup(bn.Holder))
+                continue;
+
             bool isSource = sourceId.HasValue && bn.Holder == sourceId.Value;
 
             // keep all your existing filters verbatim:
@@ -401,6 +496,10 @@ public class GraphFactory
 
         foreach (var sb in simulated)
         {
+            // Skip if holder is Router or Group
+            if (g.IsRouter(sb.HolderId) || g.IsGroup(sb.HolderId))
+                continue;
+
             bool isSource = sourceId.HasValue && sb.HolderId == sourceId.Value;
 
             if (sourceEqualsSink && isSource && toTokensFilter.Count > 0 &&
@@ -419,18 +518,27 @@ public class GraphFactory
         }
     }
 
+    // Modified version of AddTokenPoolOutEdges that allows Groups to receive tokens directly
     private void AddTokenPoolOutEdges(
         CapacityGraph g,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         int? virtualSink,
+        HashSet<int> virtualSinkTrustedTokens,
         int? sinkId,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedToTokensFilter)
     {
-        // Build token -> list of avatars who trust that token (same as before)
+        // Build token -> list of avatars who trust that token
         var tokenToAvatars = new Dictionary<int, List<int>>();
+        
         foreach (var (truster, trustedTokens) in accountTrusts)
         {
+            // Skip Router - it doesn't directly receive from pools
+            if (g.IsRouter(truster))
+                continue;
+            
+            // Groups CAN be trusters now - they receive tokens directly
+
             foreach (var t in trustedTokens)
             {
                 bool isSink = sinkId.HasValue && truster == sinkId.Value;
@@ -443,16 +551,28 @@ public class GraphFactory
             }
         }
 
+        // Groups can receive tokens they trust directly from token pools
+        foreach (var groupId in g.GroupNodes)
+        {
+            if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
+            {
+                foreach (var token in trustedTokens)
+                {
+                    if (!tokenToAvatars.TryGetValue(token, out var list))
+                        tokenToAvatars[token] = list = new List<int>();
+                    if (!list.Contains(groupId))
+                        list.Add(groupId);
+                }
+            }
+        }
+
         foreach (var (token, acceptors) in tokenToAvatars)
         {
             int pool = AddressIdPool.TokenPoolIdOf(token);
             if (!g.Nodes.ContainsKey(pool)) continue; // no supply -> no out-edges
 
-            // Capacity tip: bound each out-edge by the total token supply to help the solver.
             foreach (var a in acceptors)
             {
-                // we deliberately keep 'self' edges (pool->holder) out; holders already contribute via H->pool
-                // but there is no concept of "holder" on pool edges; skip avatar==source in certain swap cases below
                 g.AddCapacityEdge(pool, a, token, long.MaxValue);
             }
         }
@@ -460,11 +580,52 @@ public class GraphFactory
         // Virtual sink edges (swap mode): TokenPool(token) -> virtualSink
         if (virtualSink is int vs)
         {
-            foreach (var t in toTokensFilter)
+            foreach (var t in virtualSinkTrustedTokens) 
             {
                 int pool = AddressIdPool.TokenPoolIdOf(t);
                 if (!g.Nodes.ContainsKey(pool)) continue;
                 g.AddCapacityEdge(pool, vs, t, long.MaxValue);
+            }
+        }
+    }
+
+    // Add Group → Avatar edges for group token minting
+    private void AddGroupMintingEdges(
+        CapacityGraph g,
+        IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
+        int? sinkId,
+        HashSet<int> toTokensFilter,
+        HashSet<int> excludedToTokensFilter)
+    {
+        foreach (var groupId in g.GroupNodes)
+        {
+            // Each group mints its own token (the group address IS the token address)
+            int groupToken = groupId;
+
+            // Find avatars that trust this group's token
+            var trustingAvatars = new List<int>();
+            foreach (var (truster, trustedTokens) in accountTrusts)
+            {
+                // Skip other groups and router
+                if (g.IsGroup(truster) || g.IsRouter(truster))
+                    continue;
+
+                if (trustedTokens.Contains(groupToken))
+                {
+                    bool isSink = sinkId.HasValue && truster == sinkId.Value;
+                    if (isSink && toTokensFilter.Count > 0 && !toTokensFilter.Contains(groupToken)) 
+                        continue;
+                    if (isSink && excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(groupToken)) 
+                        continue;
+
+                    trustingAvatars.Add(truster);
+                }
+            }
+
+            // Add Group → Avatar edges for group token
+            foreach (var avatar in trustingAvatars)
+            {
+                g.AddCapacityEdge(groupId, avatar, groupToken, long.MaxValue);
             }
         }
     }
@@ -516,7 +677,8 @@ public class GraphFactory
         int sourceAddress,
         HashSet<int> toTokensFilter,
         BalanceGraph balanceGraph,
-        HashSet<int> wrappedTokensInSim)
+        HashSet<int> wrappedTokensInSim,
+        IReadOnlyDictionary<int, HashSet<int>> mergedTrust)  
     {
         var virtualSinkAddress = sourceAddress + VIRTUAL_SINK_SUFFIX;
         var virtualSinkAddressId = AddressIdPool.IdOf(virtualSinkAddress);
@@ -531,22 +693,34 @@ public class GraphFactory
             if (bn.IsWrapped) snapshotWrappedTokens.Add(bn.Token);
         }
 
-        // Collect tokens trusted by virtual sink (excluding wrapped tokens)
+        // Get tokens that the source actually trusts
+        HashSet<int> sourceTrustedTokens = new HashSet<int>();
+        if (mergedTrust.TryGetValue(sourceAddress, out var trustedBySource))
+        {
+            sourceTrustedTokens = trustedBySource;
+        }
+
+        // Collect tokens trusted by virtual sink (must be in toTokensFilter AND trusted by source)
         var virtualSinkTrustedTokens = new HashSet<int>();
         foreach (var token in toTokensFilter)
         {
+            // Check if source actually trusts this token
+            if (!sourceTrustedTokens.Contains(token))
+            {
+                // Source doesn't trust this token, so virtual sink can't receive it
+                continue;
+            }
+
             bool tokenWrappedInSnapshot = snapshotWrappedTokens.Contains(token);
             bool tokenWrappedInSim = wrappedTokensInSim.Contains(token);
 
             bool shouldSkip = tokenWrappedInSnapshot || tokenWrappedInSim;
             if (shouldSkip)
             {
-                // // Console.WriteLine($"Skipping wrapped token {token} for virtual sink trust");
                 continue;
             }
 
             virtualSinkTrustedTokens.Add(token);
-            // // Console.WriteLine($"Virtual sink trusts token: {token}");
         }
 
         return (virtualSinkAddressId, virtualSinkTrustedTokens);
