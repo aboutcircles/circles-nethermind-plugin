@@ -1,1 +1,0 @@
-alter table request add column block_no bigint;

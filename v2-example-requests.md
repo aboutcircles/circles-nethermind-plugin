@@ -47,7 +47,7 @@ curl -X POST --data '{
 
 ```shell
 # Calculate a path between two addresses with a target flow.
-curl 'https://rpc.circlesubi.network/' \
+curl 'http://localhost:8545/' \
  -H 'Content-Type: application/json' \
  --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
 ```

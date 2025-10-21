@@ -4,8 +4,6 @@ using System.Text.Json;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
-using Circles.Pathfinder.Edges;
-using Circles.Pathfinder.Nodes;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Circles.Index.Common;
@@ -44,17 +42,13 @@ public class PathfinderTestCase
 /// </summary>
 public class NetworkSnapshotResponse
 {
-    [JsonPropertyName("blockNumber")] 
-    public long BlockNumber { get; set; }
-    
-    [JsonPropertyName("addresses")] 
-    public List<string> Addresses { get; set; } = new();
-    
-    [JsonPropertyName("trust")] 
-    public Dictionary<int, HashSet<int>> Trust { get; set; } = new();
-    
-    [JsonPropertyName("balance")] 
-    public Dictionary<int, List<BalanceNodeJson>> Balance { get; set; } = new();
+    [JsonPropertyName("blockNumber")] public long BlockNumber { get; set; }
+
+    [JsonPropertyName("addresses")] public List<string> Addresses { get; set; } = new();
+
+    [JsonPropertyName("trust")] public Dictionary<int, HashSet<int>> Trust { get; set; } = new();
+
+    [JsonPropertyName("balance")] public Dictionary<int, List<BalanceNodeJson>> Balance { get; set; } = new();
 }
 
 /// <summary>
@@ -62,23 +56,17 @@ public class NetworkSnapshotResponse
 /// </summary>
 public class BalanceNodeJson
 {
-    [JsonPropertyName("address")] 
-    public int Address { get; set; }
-    
-    [JsonPropertyName("holder")] 
-    public int Holder { get; set; }
-    
-    [JsonPropertyName("token")] 
-    public int Token { get; set; }
-    
-    [JsonPropertyName("amount")] 
-    public long Amount { get; set; }
-    
-    [JsonPropertyName("isWrapped")] 
-    public bool IsWrapped { get; set; }
-    
-    [JsonPropertyName("isStatic")] 
-    public bool IsStatic { get; set; }
+    [JsonPropertyName("address")] public int Address { get; set; }
+
+    [JsonPropertyName("holder")] public int Holder { get; set; }
+
+    [JsonPropertyName("token")] public int Token { get; set; }
+
+    [JsonPropertyName("amount")] public long Amount { get; set; }
+
+    [JsonPropertyName("isWrapped")] public bool IsWrapped { get; set; }
+
+    [JsonPropertyName("isStatic")] public bool IsStatic { get; set; }
 }
 
 /// <summary>
@@ -89,6 +77,7 @@ public class BalanceNodeJson
 public class NetworkPathfinderTests
 {
     private readonly string _pathfinderBaseUrl;
+    private readonly string _rpcUrl;
     private HttpClient? _httpClient;
     private readonly JsonSerializerOptions _jsonOptions;
 
@@ -100,8 +89,10 @@ public class NetworkPathfinderTests
 
     // Router and Groups - loaded dynamically from database
     private readonly string _routerAddress;
-    private HashSet<string> _dynamicGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    private Dictionary<string, HashSet<string>> _groupTrustedTokens = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _dynamicGroups = new(StringComparer.OrdinalIgnoreCase);
+
+    private Dictionary<string, HashSet<string>> _groupTrustedTokens = new(StringComparer.OrdinalIgnoreCase);
+
     // ANSI color escape sequences for console output
     private static class ConsoleColors
     {
@@ -117,18 +108,18 @@ public class NetworkPathfinderTests
     public NetworkPathfinderTests()
     {
         // Set the base URL for your Pathfinder service
-        _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8545";
+        _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8081";
+        _rpcUrl = Environment.GetEnvironmentVariable("RPC_URL") ?? "http://localhost:8545";
 
         // Get router address from environment or use default
-        _routerAddress = Environment.GetEnvironmentVariable("ROUTER_ADDRESS") 
-                        ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+        _routerAddress = Environment.GetEnvironmentVariable("ROUTER_ADDRESS")
+                         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
-
     }
 
     [OneTimeSetUp]
@@ -155,14 +146,17 @@ public class NetworkPathfinderTests
     /// </summary>
     private void LoadGraphs()
     {
+        var settings = new Settings();
+
         // First try to load from snapshot endpoint
         try
         {
-            Console.WriteLine($"{ConsoleColors.Cyan}Loading network graphs from pathfinder snapshot...{ConsoleColors.Reset}");
-            
+            Console.WriteLine(
+                $"{ConsoleColors.Cyan}Loading network graphs from pathfinder snapshot...{ConsoleColors.Reset}");
+
             var loadTask = LoadGraphsFromSnapshot();
             loadTask.Wait(); // Wait synchronously since we're in a non-async method
-            
+
             if (_graphsLoaded)
             {
                 return; // Successfully loaded from snapshot
@@ -176,9 +170,7 @@ public class NetworkPathfinderTests
 
         // Fall back to original database loading method
         // Get connection string from environment variable
-        string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
-
-        if (string.IsNullOrEmpty(connectionString))
+        if (string.IsNullOrEmpty(settings.IndexReadonlyDbConnectionString))
         {
             Console.WriteLine(
                 $"{ConsoleColors.Red}Warning: POSTGRES_READONLY_CONNECTION_STRING environment variable is not set.{ConsoleColors.Reset}");
@@ -191,17 +183,17 @@ public class NetworkPathfinderTests
         {
             Console.WriteLine($"{ConsoleColors.Cyan}Loading network graphs from database...{ConsoleColors.Reset}");
 
-            var loadGraph = new LoadGraph(connectionString);
-            _graphFactory = new GraphFactory();
+            var loadGraph = new LoadGraph(settings);
+            _graphFactory = new GraphFactory(settings.BaseGroupRouter, loadGraph);
 
             // Load the graphs
             if (_graphFactory != null)
             {
                 Console.WriteLine("Loading trust graph...");
-                _trustGraph = _graphFactory.V2TrustGraph(loadGraph);
+                _trustGraph = _graphFactory.V2TrustGraph();
 
                 Console.WriteLine("Loading balance graph...");
-                _balanceGraph = _graphFactory.V2BalanceGraph(loadGraph);
+                _balanceGraph = _graphFactory.V2BalanceGraph();
 
                 // Load groups dynamically from database
                 Console.WriteLine("Loading groups...");
@@ -210,6 +202,7 @@ public class NetworkPathfinderTests
                 {
                     _dynamicGroups.Add(groupAddress.ToLowerInvariant());
                 }
+
                 Console.WriteLine($"Loaded {_dynamicGroups.Count} groups from database");
 
                 // Load group trust relationships
@@ -223,6 +216,7 @@ public class NetworkPathfinderTests
                         trustedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         _groupTrustedTokens[groupLower] = trustedSet;
                     }
+
                     trustedSet.Add(trustedToken.ToLowerInvariant());
                 }
 
@@ -259,29 +253,30 @@ public class NetworkPathfinderTests
         {
             // Get the current snapshot from the pathfinder
             var response = await _httpClient!.GetAsync($"{_pathfinderBaseUrl}/snapshot");
-            
+
             if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
             {
-                Console.WriteLine($"{ConsoleColors.Yellow}Pathfinder graphs not ready yet. Falling back to database.{ConsoleColors.Reset}");
+                Console.WriteLine(
+                    $"{ConsoleColors.Yellow}Pathfinder graphs not ready yet. Falling back to database.{ConsoleColors.Reset}");
                 return;
             }
-            
+
             response.EnsureSuccessStatusCode();
             var json = await response.Content.ReadAsStringAsync();
-            
+
             // Deserialize the snapshot
             var snapshot = JsonSerializer.Deserialize<NetworkSnapshotResponse>(json, _jsonOptions);
-            
+
             if (snapshot == null)
             {
                 Console.WriteLine($"{ConsoleColors.Red}Failed to deserialize snapshot response{ConsoleColors.Reset}");
                 return;
             }
-            
+
             Console.WriteLine($"Loaded snapshot at block {snapshot.BlockNumber}");
             Console.WriteLine($"Trust relationships: {snapshot.Trust.Count} trusters");
             Console.WriteLine($"Balance holders: {snapshot.Balance.Count}");
-            
+
             // Build trust graph from snapshot
             _trustGraph = new TrustGraph();
             foreach (var (trusterId, trustees) in snapshot.Trust)
@@ -290,17 +285,18 @@ public class NetworkPathfinderTests
                 {
                     _trustGraph.AddAvatar(trusterId);
                 }
-                
+
                 foreach (var trusteeId in trustees)
                 {
                     if (!_trustGraph.AvatarNodes.ContainsKey(trusteeId))
                     {
                         _trustGraph.AddAvatar(trusteeId);
                     }
+
                     _trustGraph.AddTrustEdge(trusterId, trusteeId);
                 }
             }
-            
+
             // Build balance graph from snapshot
             _balanceGraph = new BalanceGraph();
             foreach (var (holderId, balanceNodes) in snapshot.Balance)
@@ -309,16 +305,16 @@ public class NetworkPathfinderTests
                 {
                     _balanceGraph.AddAvatar(holderId);
                 }
-                
+
                 foreach (var node in balanceNodes)
                 {
                     _balanceGraph.AddBalance(node.Holder, node.Token, node.Amount, node.IsWrapped, node.IsStatic);
                 }
             }
-            
+
             // Try to identify groups from snapshot using the router
             int routerId = AddressIdPool.IdOf(_routerAddress.ToLowerInvariant());
-            
+
             // Check if router exists in trust data and what it trusts (likely groups)
             if (snapshot.Trust.TryGetValue(routerId, out var routerTrusts))
             {
@@ -328,12 +324,12 @@ public class NetworkPathfinderTests
                     _dynamicGroups.Add(address);
                 }
             }
-            
+
             // Extract group trust relationships
             foreach (var groupAddress in _dynamicGroups)
             {
                 int groupId = AddressIdPool.IdOf(groupAddress);
-                
+
                 if (snapshot.Trust.TryGetValue(groupId, out var trustedTokens))
                 {
                     var trustedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -341,23 +337,24 @@ public class NetworkPathfinderTests
                     {
                         trustedSet.Add(AddressIdPool.StringOf(tokenId));
                     }
+
                     _groupTrustedTokens[groupAddress] = trustedSet;
                 }
             }
-            
+
             // Try to load additional groups from database if available
             string? connectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
             if (!string.IsNullOrEmpty(connectionString))
             {
                 try
                 {
-                    var loadGraph = new LoadGraph(connectionString);
+                    var loadGraph = new LoadGraph(new Settings());
                     var groups = loadGraph.LoadGroups();
                     foreach (var groupAddress in groups)
                     {
                         _dynamicGroups.Add(groupAddress.ToLowerInvariant());
                     }
-                    
+
                     // Load group trust relationships
                     var groupTrusts = loadGraph.LoadGroupTrusts();
                     foreach (var (groupAddress, trustedToken) in groupTrusts)
@@ -368,17 +365,19 @@ public class NetworkPathfinderTests
                             trustedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                             _groupTrustedTokens[groupLower] = trustedSet;
                         }
+
                         trustedSet.Add(trustedToken.ToLowerInvariant());
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"{ConsoleColors.Yellow}Could not load additional groups from database: {ex.Message}{ConsoleColors.Reset}");
+                    Console.WriteLine(
+                        $"{ConsoleColors.Yellow}Could not load additional groups from database: {ex.Message}{ConsoleColors.Reset}");
                 }
             }
-            
+
             _graphsLoaded = true;
-            
+
             Console.WriteLine($"{ConsoleColors.Green}Successfully loaded graphs from snapshot{ConsoleColors.Reset}");
             Console.WriteLine($"Trust graph: {_trustGraph.Edges.Count} trust relationships");
             Console.WriteLine($"Balance graph: {_balanceGraph.BalanceNodes.Count} balance nodes");
@@ -437,11 +436,12 @@ public class NetworkPathfinderTests
         {
             var receiverLower = receiver.ToLowerInvariant();
             var tokenLower = token.ToLowerInvariant();
-            
+
             if (_groupTrustedTokens.TryGetValue(receiverLower, out var trustedTokens))
             {
                 return trustedTokens.Contains(tokenLower);
             }
+
             // If no trust info found, assume it's valid (was validated during edge creation)
             return true;
         }
@@ -468,38 +468,37 @@ public class NetworkPathfinderTests
     private List<List<string>> IdentifyMintingPaths(List<TransferPathStep> transfers)
     {
         var paths = new List<List<string>>();
-        
+
         // Look for transfers that go through Router
         var routerIncoming = transfers.Where(t => IsRouter(t.To)).ToList();
-        
+
         foreach (var incoming in routerIncoming)
         {
             // Find the corresponding Router -> Group transfer
-            var routerToGroup = transfers.FirstOrDefault(t => 
-                IsRouter(t.From) && 
-                IsGroup(t.To) && 
+            var routerToGroup = transfers.FirstOrDefault(t =>
+                IsRouter(t.From) &&
+                IsGroup(t.To) &&
                 t.TokenOwner.Equals(incoming.TokenOwner, StringComparison.OrdinalIgnoreCase));
-            
+
             if (routerToGroup != null)
             {
                 // Find the Group -> Avatar transfer (with group token)
                 var groupToAvatar = transfers.FirstOrDefault(t =>
                     t.From.Equals(routerToGroup.To, StringComparison.OrdinalIgnoreCase) &&
                     t.TokenOwner.Equals(t.From, StringComparison.OrdinalIgnoreCase)); // Group token
-                
+
                 if (groupToAvatar != null)
                 {
-                    paths.Add(new List<string> 
-                    { 
-                        incoming.From, 
-                        _routerAddress, 
-                        routerToGroup.To, 
-                        groupToAvatar.To 
-                    });
+                    paths.Add([
+                        incoming.From,
+                        _routerAddress,
+                        routerToGroup.To,
+                        groupToAvatar.To
+                    ]);
                 }
             }
         }
-        
+
         return paths;
     }
 
@@ -667,7 +666,7 @@ public class NetworkPathfinderTests
 
         try
         {
-            var response = await _httpClient.PostAsync(_pathfinderBaseUrl, content);
+            var response = await _httpClient.PostAsync(_rpcUrl, content);
             response.EnsureSuccessStatusCode();
 
             var responseContent = await response.Content.ReadAsStringAsync();
@@ -807,7 +806,7 @@ public class NetworkPathfinderTests
                 {
                     var groupInflow = CalculateTotalFlow(transfers, t => t.To.ToLower() == node);
                     var groupOutflow = CalculateTotalFlow(transfers, t => t.From.ToLower() == node);
-                    
+
                     // For groups, inflow and outflow should match (minting preserves value)
                     bool groupFlowValid = groupInflow == groupOutflow;
                     if (!groupFlowValid)
@@ -819,7 +818,8 @@ public class NetworkPathfinderTests
                     }
                     else
                     {
-                        Console.WriteLine($"Group {node} minting: {groupInflow} -> {groupOutflow} {ConsoleColors.Green}VALID{ConsoleColors.Reset}");
+                        Console.WriteLine(
+                            $"Group {node} minting: {groupInflow} -> {groupOutflow} {ConsoleColors.Green}VALID{ConsoleColors.Reset}");
                     }
                 }
                 else if (IsRouter(node))
@@ -827,7 +827,7 @@ public class NetworkPathfinderTests
                     // Router should have balanced flow
                     var routerInflow = CalculateTotalFlow(transfers, t => t.To.ToLower() == node);
                     var routerOutflow = CalculateTotalFlow(transfers, t => t.From.ToLower() == node);
-                    
+
                     bool routerFlowValid = routerInflow == routerOutflow;
                     if (!routerFlowValid)
                     {
@@ -908,8 +908,9 @@ public class NetworkPathfinderTests
 
             if (routerTransfers.Any() || groupTransfers.Any())
             {
-                Console.WriteLine($"Found {routerTransfers.Count} router transfers and {groupTransfers.Count} group transfers");
-                
+                Console.WriteLine(
+                    $"Found {routerTransfers.Count} router transfers and {groupTransfers.Count} group transfers");
+
                 // Validate Router constraints
                 foreach (var transfer in routerTransfers)
                 {
@@ -919,23 +920,23 @@ public class NetworkPathfinderTests
                         if (!IsGroup(transfer.To))
                         {
                             Console.WriteLine($"{ConsoleColors.Red}INVALID ROUTER TRANSFER:{ConsoleColors.Reset} " +
-                                            $"Router sending to non-group address {transfer.To}");
+                                              $"Router sending to non-group address {transfer.To}");
                             routerGroupValidationPassed = false;
                         }
                     }
-                    
+
                     if (IsRouter(transfer.To))
                     {
                         // Router can only receive from avatars (not groups or itself)
                         if (IsSpecialNode(transfer.From))
                         {
                             Console.WriteLine($"{ConsoleColors.Red}INVALID ROUTER TRANSFER:{ConsoleColors.Reset} " +
-                                            $"Router receiving from special node {transfer.From}");
+                                              $"Router receiving from special node {transfer.From}");
                             routerGroupValidationPassed = false;
                         }
                     }
                 }
-                
+
                 // Validate Group constraints
                 foreach (var transfer in groupTransfers)
                 {
@@ -945,31 +946,31 @@ public class NetworkPathfinderTests
                         if (!transfer.TokenOwner.Equals(transfer.From, StringComparison.OrdinalIgnoreCase))
                         {
                             Console.WriteLine($"{ConsoleColors.Red}INVALID GROUP MINTING:{ConsoleColors.Reset} " +
-                                            $"Group {transfer.From} sending token {transfer.TokenOwner} instead of its own token");
+                                              $"Group {transfer.From} sending token {transfer.TokenOwner} instead of its own token");
                             routerGroupValidationPassed = false;
                         }
-                        
+
                         // Group should not send to Router or other groups
                         if (IsSpecialNode(transfer.To))
                         {
                             Console.WriteLine($"{ConsoleColors.Red}INVALID GROUP TRANSFER:{ConsoleColors.Reset} " +
-                                            $"Group {transfer.From} sending to special node {transfer.To}");
+                                              $"Group {transfer.From} sending to special node {transfer.To}");
                             routerGroupValidationPassed = false;
                         }
                     }
-                    
+
                     if (IsGroup(transfer.To))
                     {
                         // Group can only receive from Router
                         if (!IsRouter(transfer.From))
                         {
                             Console.WriteLine($"{ConsoleColors.Red}INVALID GROUP TRANSFER:{ConsoleColors.Reset} " +
-                                            $"Group {transfer.To} receiving from non-router {transfer.From}");
+                                              $"Group {transfer.To} receiving from non-router {transfer.From}");
                             routerGroupValidationPassed = false;
                         }
                     }
                 }
-                
+
                 // Check for proper minting flow pattern: Avatar -> Router -> Group -> Avatar
                 // This is a more complex check that looks for complete minting paths
                 var mintingPaths = IdentifyMintingPaths(transfers);
@@ -1057,7 +1058,7 @@ public class NetworkPathfinderTests
                 foreach (var senderEntry in senderTokenOutflows)
                 {
                     string sender = senderEntry.Key;
-                    
+
                     // Skip balance checks for Router and Groups (they don't need balances)
                     if (IsRouter(sender) || IsGroup(sender))
                     {
@@ -1065,7 +1066,7 @@ public class NetworkPathfinderTests
                             $"{ConsoleColors.Green}SPECIAL NODE:{ConsoleColors.Reset} {sender} is a special node (Router/Group), skipping balance check");
                         continue;
                     }
-                    
+
                     int senderId = AddressIdPool.IdOf(senderEntry.Key);
 
                     foreach (var tokenEntry in senderEntry.Value)
