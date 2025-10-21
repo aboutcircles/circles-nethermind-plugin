@@ -856,26 +856,24 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var requestId = Guid.NewGuid().ToString();
         var blockNumber = _indexerContext.NethermindApi.BlockTree.Head?.Number ?? -1;
-        var targetFlow = BigInteger.Parse(flowRequest.TargetFlow);
+        var hasFlow = BigInteger.TryParse(flowRequest.TargetFlow, out var targetFlow);
 
-
-        _pathfinderRequests.Add(new PathfinderRequestLog
-        {
-            BlockNumber = blockNumber,
-            RequestId = requestId,
-            Timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds(),
-            From = flowRequest.Source,
-            To = flowRequest.Sink,
-            TargetFlow = targetFlow,
-            WithWrap = flowRequest.WithWrap,
-            FromTokens = flowRequest.FromTokens?.ToArray(),
-            ToTokens = flowRequest.ToTokens?.ToArray(),
-            ExcludeFromTokens = flowRequest.ExcludedFromTokens?.ToArray(),
-            ExcludeToTokens = flowRequest.ExcludedToTokens?.ToArray(),
-            MaxTransfers = flowRequest.MaxTransfers,
-            SimulatedBalances = JsonSerializer.Serialize(flowRequest.SimulatedBalances),
-            SimulatedTrusts = JsonSerializer.Serialize(flowRequest.SimulatedTrusts)
-        });
+        _pathfinderRequests.Add(new PathfinderRequestLog(
+            blockNumber,
+            requestId,
+            new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds(),
+            flowRequest.Source,
+            flowRequest.Sink,
+            hasFlow ? targetFlow : new(0),
+            flowRequest.WithWrap,
+            flowRequest.FromTokens?.ToArray() ?? [],
+            flowRequest.ToTokens?.ToArray() ?? [],
+            flowRequest.ExcludedFromTokens?.ToArray() ?? [],
+            flowRequest.ExcludedToTokens?.ToArray() ?? [],
+            JsonSerializer.Serialize(flowRequest.SimulatedBalances),
+            JsonSerializer.Serialize(flowRequest.SimulatedTrusts),
+            flowRequest.MaxTransfers
+        ));
 
         // Send the request
         using var response = await HttpClient.PostAsJsonAsync(url, flowRequest);
@@ -903,13 +901,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         var maxFlow = BigInteger.TryParse(flowRequest.TargetFlow, out var tf) ? tf : 0;
 
         _pathfinderResponses.Add(new PathfinderResponseLog
-        {
-            RequestId = requestId,
-            Timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds(),
-            BlockNumber = blockNumber,
-            MaxFlow = maxFlow,
-            Transfers = JsonSerializer.Serialize(maxFlowResponse.Transfers)
-        });
+        (
+            blockNumber,
+            requestId,
+            new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds(),
+            maxFlow,
+            JsonSerializer.Serialize(maxFlowResponse.Transfers)
+        ));
 
         await _indexerContext.Sink.Database.WriteBatch("System", DatabaseSchema.PathfinderRequestLog,
             _pathfinderRequests.TakeSnapshot(), _indexerContext.Database.Schema.SchemaPropertyMap);
