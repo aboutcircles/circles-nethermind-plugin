@@ -160,7 +160,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                 if (table.Value is
                     {
                         Namespace: Common.DatabaseSchema.SystemNamespace,
-                        Table: Common.DatabaseSchema.BlockTable
+                        Table: Common.DatabaseSchema.Block
                     })
                 {
                     primaryKeyDdl.AppendLine(

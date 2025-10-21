@@ -34,7 +34,7 @@ public record PathfinderResponseLog(
 public class DatabaseSchema : IDatabaseSchema
 {
     public const string SystemNamespace = "System";
-    public const string BlockTable = "Block";
+    public const string Block = "Block";
     public const string EventTableHead = "EventTableHead";
     public const string PathfinderRequestLog = "PathfinderRequestLog";
     public const string PathfinderResponseLog = "PathfinderResponseLog";
@@ -46,8 +46,8 @@ public class DatabaseSchema : IDatabaseSchema
         new Dictionary<(string Namespace, string Table), EventSchema>
         {
             {
-                ("System", BlockTable),
-                new EventSchema("System", BlockTable, new byte[32], [
+                ("System", Block),
+                new EventSchema("System", Block, new byte[32], [
                     new("blockNumber", ValueTypes.Int, false),
                     new("timestamp", ValueTypes.Int, true),
                     new("blockHash", ValueTypes.String, false),
@@ -97,7 +97,7 @@ public class DatabaseSchema : IDatabaseSchema
 
     public DatabaseSchema()
     {
-        SchemaPropertyMap.Add(("System", BlockTable), new Dictionary<string, Func<BlockWithEventCounts, object?>>
+        SchemaPropertyMap.Add(("System", Block), new Dictionary<string, Func<BlockWithEventCounts, object?>>
         {
             { "blockNumber", o => o.Block.Number },
             { "timestamp", o => (long)o.Block.Timestamp },
