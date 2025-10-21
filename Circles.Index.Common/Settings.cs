@@ -123,9 +123,9 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
-    public readonly string BaseGroupDeployer = Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER") != null
-        ? Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
-        : "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
+    public readonly string BaseGroupDeployer = 
+        Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
+        ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
     #endregion
 }
