@@ -60,9 +60,7 @@ public class Plugin : INethermindPlugin
 
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
-        IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
-            ? new PostgresDb(settings.IndexReadonlyDbConnectionString, databaseSchema)
-            : database;
+        IReadonlyDatabase readonlyDatabase = new PostgresDb(settings.IndexReadonlyDbConnectionString, databaseSchema);
 
         LogSettings(pluginLogger, settings, database);
         database.Migrate();
