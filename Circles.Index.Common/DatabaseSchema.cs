@@ -8,32 +8,28 @@ public record BlockWithEventCounts(Block Block, IDictionary<string, int> EventCo
 
 public record EventTableHead(string TableName, int BlockNumber);
 
-public record PathfinderRequestLog
-{
-    public long BlockNumber { get; set; }
-    public string RequestId { get; set; }
-    public long Timestamp { get; set; }
-    public string From { get; set; }
-    public string To { get; set; }
-    public BigInteger? TargetFlow { get; set; }
-    public bool? WithWrap { get; set; }
-    public string[] FromTokens { get; set; }
-    public string[] ToTokens { get; set; }
-    public string[] ExcludeFromTokens { get; set; }
-    public string[] ExcludeToTokens { get; set; }
-    public string SimulatedBalances { get; set; }
-    public string SimulatedTrusts { get; set; }
-    public int? MaxTransfers { get; set; }
-}
+public record PathfinderRequestLog(
+    long BlockNumber,
+    string RequestId,
+    long Timestamp,
+    string From,
+    string To,
+    BigInteger TargetFlow,
+    bool? WithWrap,
+    string[] FromTokens,
+    string[] ToTokens,
+    string[] ExcludeFromTokens,
+    string[] ExcludeToTokens,
+    string SimulatedBalances,
+    string SimulatedTrusts,
+    int? MaxTransfers);
 
-public record PathfinderResponseLog
-{
-    public long BlockNumber { get; set; }
-    public string RequestId { get; set; }
-    public long Timestamp { get; set; }
-    public BigInteger? MaxFlow { get; set; }
-    public string Transfers { get; set; }
-}
+public record PathfinderResponseLog(
+    long BlockNumber,
+    string RequestId,
+    long Timestamp,
+    BigInteger? MaxFlow,
+    string Transfers);
 
 public class DatabaseSchema : IDatabaseSchema
 {
