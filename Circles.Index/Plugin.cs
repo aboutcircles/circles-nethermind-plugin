@@ -4,6 +4,7 @@ using Circles.Index.Postgres;
 using Circles.Index.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -48,44 +49,18 @@ public class Plugin : INethermindPlugin
             new CirclesV2.StandardTreasury.DatabaseSchema(),
             new CirclesV2.CMGroupDeployer.DatabaseSchema(),
             new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
+            new CirclesV2.LBP.DatabaseSchema(),
+            new CirclesV2.TokenOffers.DatabaseSchema(),
+            new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
+            new CirclesV2.InvitationEscrow.DatabaseSchema(),
+            new CirclesV2.OIC.DatabaseSchema(),
+            new Circles.Index.Safe.DatabaseSchema(),
             new CirclesViews.DatabaseSchema()
         };
 
-        if (settings.CirclesLBPFactoryAddress != null)
-        {
-            schemas.Add(new CirclesV2.LBP.DatabaseSchema());
-        }
-
-        if (settings.CirclesTokenOfferFactoryAddress.Length > 0)
-        {
-            schemas.Add(new CirclesV2.TokenOffers.DatabaseSchema());
-        }
-
-        if (settings.AffiliateGroupRegistry != null)
-        {
-            schemas.Add(new CirclesV2.AffiliateGroupRegistry.DatabaseSchema());
-        }
-
-        if (settings.InvitationEscrowContract != null)
-        {
-            schemas.Add(new CirclesV2.InvitationEscrow.DatabaseSchema());
-        }
-
-        if (settings.OICContractAddress != null)
-        {
-            schemas.Add(new CirclesV2.OIC.DatabaseSchema());
-        }
-
-        if (settings.SafeProxyFactoryAddresses.Length > 0)
-        {
-            schemas.Add(new Circles.Index.Safe.DatabaseSchema());
-        }
-
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
-        IReadonlyDatabase readonlyDatabase = settings.IndexReadonlyDbConnectionString != null
-            ? new PostgresDb(settings.IndexReadonlyDbConnectionString, databaseSchema)
-            : database;
+        IReadonlyDatabase readonlyDatabase = new PostgresDb(settings.IndexReadonlyDbConnectionString, databaseSchema);
 
         LogSettings(pluginLogger, settings, database);
         database.Migrate();
@@ -101,57 +76,23 @@ public class Plugin : INethermindPlugin
         //
         var logParsers = new List<ILogParser>
         {
-            new CirclesV1.LogParser(settings.CirclesV1HubAddress),
-            new CirclesV2.LogParser(settings.CirclesV2HubAddress, settings.CirclesErc20LiftAddress),
-            new CirclesV2.NameRegistry.LogParser(settings.CirclesNameRegistryAddress),
-            new CirclesV2.StandardTreasury.LogParser(settings.CirclesStandardTreasuryAddress)
+            new CirclesV1.LogParser(new(settings.CirclesV1HubAddress)),
+            new CirclesV2.LogParser(new(settings.CirclesV2HubAddress), new(settings.CirclesErc20LiftAddress)),
+            new CirclesV2.NameRegistry.LogParser(new(settings.CirclesNameRegistryAddress)),
+            new CirclesV2.StandardTreasury.LogParser(new(settings.CirclesStandardTreasuryAddress)),
+            new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress.Select(o => new Address(o))
+                .ToImmutableHashSet()),
+            new CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.Select(o => new Address(o))
+                .ToImmutableHashSet()),
+            new Safe.LogParser(settings.SafeProxyFactoryAddresses.Select(o => new Address(o)).ToImmutableHashSet()),
+            new CirclesV2.TokenOffers.LogParser(settings.CirclesTokenOfferFactoryAddress.Select(o => new Address(o))
+                .ToImmutableHashSet()),
+            new CirclesV1.NameRegistry.LogParser(new(settings.CirclesV1NameRegistry)),
+            new CirclesV2.BaseGroupDeployer.LogParser(new(settings.BaseGroupDeployer)),
+            new CirclesV2.AffiliateGroupRegistry.LogParser(new(settings.AffiliateGroupRegistry)),
+            new CirclesV2.InvitationEscrow.LogParser(new(settings.InvitationEscrowContract)),
+            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress))
         };
-
-        if (settings.CirclesLBPFactoryAddress != null)
-        {
-            logParsers.Add(new CirclesV2.LBP.LogParser(settings.CirclesLBPFactoryAddress.ToImmutableHashSet()));
-        }
-
-        if (settings.CMGroupDeployer.Length > 0)
-        {
-            logParsers.Add(new CirclesV2.CMGroupDeployer.LogParser(settings.CMGroupDeployer.ToImmutableHashSet()));
-        }
-
-        if (settings.SafeProxyFactoryAddresses.Length > 0)
-        {
-            logParsers.Add(new Safe.LogParser(settings.SafeProxyFactoryAddresses.ToImmutableHashSet()));
-        }
-
-        if (settings.CirclesTokenOfferFactoryAddress.Length > 0)
-        {
-            logParsers.Add(
-                new CirclesV2.TokenOffers.LogParser(settings.CirclesTokenOfferFactoryAddress.ToImmutableHashSet()));
-        }
-
-        if (settings.CirclesV1NameRegistry != null)
-        {
-            logParsers.Add(new CirclesV1.NameRegistry.LogParser(settings.CirclesV1NameRegistry));
-        }
-
-        if (settings.BaseGroupDeployer != null)
-        {
-            logParsers.Add(new CirclesV2.BaseGroupDeployer.LogParser(settings.BaseGroupDeployer));
-        }
-
-        if (settings.AffiliateGroupRegistry != null)
-        {
-            logParsers.Add(new CirclesV2.AffiliateGroupRegistry.LogParser(settings.AffiliateGroupRegistry));
-        }
-
-        if (settings.InvitationEscrowContract != null)
-        {
-            logParsers.Add(new CirclesV2.InvitationEscrow.LogParser(settings.InvitationEscrowContract));
-        }
-
-        if (settings.OICContractAddress != null)
-        {
-            logParsers.Add(new CirclesV2.OIC.LogParser(settings.OICContractAddress));
-        }
 
         _indexerContext = new Context(
             nethermindApi,
@@ -263,21 +204,20 @@ public class Plugin : INethermindPlugin
         }
 
         pluginLogger.Info("Contract addresses: ");
-        pluginLogger.Info(" * V1 Hub address: " + settings.CirclesV1HubAddress);
-        pluginLogger.Info(" * V1 Name Registry address: " + settings.CirclesV1NameRegistry);
-        pluginLogger.Info(" * V2 Hub address: " + settings.CirclesV2HubAddress);
-        pluginLogger.Info(" * V2 Name Registry address: " + settings.CirclesNameRegistryAddress);
-        pluginLogger.Info(" * V2 Standard Treasury address: " + settings.CirclesStandardTreasuryAddress);
-        pluginLogger.Info(" * V2 LBP Factory address: " + settings.CirclesLBPFactoryAddress);
-        pluginLogger.Info(" * V2 CMGroup Deployer address: " + string.Join(", ",
-            settings.CMGroupDeployer.Select(o => o.ToString(true, false))));
-        pluginLogger.Info(" * V2 Erc20 Lift address: " + settings.CirclesErc20LiftAddress);
-        pluginLogger.Info(" * V2 Affiliate group registry address: " + settings.AffiliateGroupRegistry);
-        pluginLogger.Info(" * V2 Token offer factory address: " + settings.CirclesTokenOfferFactoryAddress);
-        pluginLogger.Info(" * V2 Invitation escrow address: " + settings.InvitationEscrowContract);
-        pluginLogger.Info(" * V2 OIC Address: " + settings.OICContractAddress);
-        pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ",
-            settings.SafeProxyFactoryAddresses.Select(o => o.ToString(true, false))));
+        pluginLogger.Info(" * V1 Hub: " + settings.CirclesV1HubAddress);
+        pluginLogger.Info(" * V1 Name Registry: " + settings.CirclesV1NameRegistry);
+        pluginLogger.Info(" * V2 Hub: " + settings.CirclesV2HubAddress);
+        pluginLogger.Info(" * V2 Name Registry: " + settings.CirclesNameRegistryAddress);
+        pluginLogger.Info(" * V2 Standard Treasury: " + settings.CirclesStandardTreasuryAddress);
+        pluginLogger.Info(" * V2 LBP Factory: " + string.Join(", ", settings.CirclesLBPFactoryAddress));
+        pluginLogger.Info(" * V2 CMGroup Deployer: " + string.Join(", ", settings.CMGroupDeployer));
+        pluginLogger.Info(" * V2 Erc20 Lift: " + settings.CirclesErc20LiftAddress);
+        pluginLogger.Info(" * V2 Affiliate group registry: " + settings.AffiliateGroupRegistry);
+        pluginLogger.Info(" * V2 Token offer factory: " + string.Join(", ", settings.CirclesTokenOfferFactoryAddress));
+        pluginLogger.Info(" * V2 Invitation escrow: " + settings.InvitationEscrowContract);
+        pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
+        pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
+        pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ", settings.SafeProxyFactoryAddresses));
         // pluginLogger.Info("Start index from: " + settings.StartBlock);
 
         if (!string.IsNullOrWhiteSpace(settings.ExternalPathfinderUrl))

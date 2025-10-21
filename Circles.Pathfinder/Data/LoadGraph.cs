@@ -18,15 +18,8 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
     }
 
-    public class LoadGraph : ILoadGraph
+    public class LoadGraph(Settings settings) : ILoadGraph
     {
-        private readonly string _connectionString;
-
-        public LoadGraph(string connectionString)
-        {
-            _connectionString = connectionString;
-        }
-
         private string LoadQueryFromResource(string resourceName)
         {
             var assembly = Assembly.GetExecutingAssembly();
@@ -48,7 +41,7 @@ namespace Circles.Pathfinder.Data
             // We now only have one balance query that includes the isWrapped column
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
 
-            using var connection = new NpgsqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
@@ -96,7 +89,7 @@ namespace Circles.Pathfinder.Data
             // We now only have one trust query that includes wrap tokens
             var trustQuery = LoadQueryFromResource("trustQuery.sql");
 
-            using var connection = new NpgsqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(trustQuery, connection);
@@ -116,7 +109,7 @@ namespace Circles.Pathfinder.Data
         {
             var groupQuery = LoadQueryFromResource("groupQuery.sql");
 
-            using var connection = new NpgsqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(groupQuery, connection);
@@ -134,7 +127,7 @@ namespace Circles.Pathfinder.Data
         {
             var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
 
-            using var connection = new NpgsqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);

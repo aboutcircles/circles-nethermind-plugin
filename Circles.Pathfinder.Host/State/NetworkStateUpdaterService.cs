@@ -5,35 +5,34 @@ using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Index.Common;
 
 namespace Circles.Pathfinder.Host.State;
 
 public class NetworkStateUpdaterService : BackgroundService
 {
     private readonly NetworkState _networkState;
-    private readonly Settings _settings = new();
+    private readonly Settings _settings;
     private readonly List<Exception> _getCurrentBlockErrors = new();
     private static readonly HttpClient HttpClient = new();
     private readonly ILogger<NetworkStateUpdaterService> _log;
     private readonly CapacityGraphPool _pool;
 
     public NetworkStateUpdaterService(NetworkState networkState,
+        Settings settings,
         ILogger<NetworkStateUpdaterService> log,
         CapacityGraphPool pool)
     {
         _networkState = networkState;
+        _settings = settings;
         _log = log;
         _pool = pool;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var loadGraph = new LoadGraph(_settings.IndexReadonlyDbConnectionString);
-        var graphFactory = new GraphFactory();
-        graphFactory.SetLoadGraph(loadGraph);
-
-        _pool.SetLoadGraph(loadGraph);
-        _pool.SetRouterAddress(_settings.RouterAddress);
+        var loadGraph = new LoadGraph(_settings);
+        var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
         
         long lastBlock = 0;
 
@@ -50,7 +49,7 @@ public class NetworkStateUpdaterService : BackgroundService
             var swTrustGraph = Stopwatch.StartNew();
             var trustTask = Task.Run(() =>
             {
-                var graph = graphFactory.V2TrustGraph(loadGraph);
+                var graph = graphFactory.V2TrustGraph();
                 var lookup = GraphFactory.BuildTrustLookup(graph);
 
                 _networkState.Replace(accountTrusts: lookup);
@@ -60,7 +59,7 @@ public class NetworkStateUpdaterService : BackgroundService
             var swBalanceGraph = Stopwatch.StartNew();
             var balanceTask = Task.Run(() =>
             {
-                var graph = graphFactory.V2BalanceGraph(loadGraph);
+                var graph = graphFactory.V2BalanceGraph();
                 _networkState.Replace(balanceGraph: graph);
                 swBalanceGraph.Stop();
             }, stoppingToken);
@@ -73,7 +72,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 _networkState.BalanceGraph,
                 _networkState.AccountTrusts,
                 loadGraph,
-                _settings.RouterAddress
+                _settings.BaseGroupRouter
             );
             var snap = new CapacityGraphSnapshot(lastBlock, cap);
             _pool.UpdateSnapshot(snap);

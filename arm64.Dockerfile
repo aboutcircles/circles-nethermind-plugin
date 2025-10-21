@@ -4,7 +4,7 @@ WORKDIR /src
 COPY . .
 
 RUN dotnet restore
-RUN dotnet publish -c Release -o /circles-nethermind-plugin
+RUN dotnet  publish -c Release -o /circles-nethermind-plugin
 
 FROM nethermind/nethermind:1.32.4 AS base
 

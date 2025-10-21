@@ -2,11 +2,12 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Index.Common;
 using Circles.Pathfinder;
+using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
-using Circles.Pathfinder.Host.LogDb;
 using Circles.Pathfinder.Host.State;
 using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -31,15 +32,20 @@ Console.WriteLine($"* DB Name: {csb.Database}");
 Console.WriteLine($"* DB Port: {csb.Port}");
 Console.WriteLine($"* Circles RPC URL: {settings.CirclesRpcUrl}");
 
+var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
+
 var builder = WebApplication.CreateSlimBuilder(args);
+builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton(semaphore);
+builder.Services.AddSingleton<NetworkState>();
+builder.Services.AddSingleton<LoadGraph>();
+builder.Services.AddSingleton<CapacityGraphPool>();
+builder.Services.AddHostedService<NetworkStateUpdaterService>();
+builder.Services.AddHostedService<LogStatsService>();
 
 // ─── Logging ────────────────────────────────────────────────────────────────
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole(o =>
-{
-    o.FormatterName = ConsoleFormatterNames.Simple;
-    o.IncludeScopes = true;
-});
+builder.Logging.AddConsole(o => { o.FormatterName = ConsoleFormatterNames.Simple; });
 builder.Logging.Configure(o =>
 {
     o.ActivityTrackingOptions = ActivityTrackingOptions.TraceId |
@@ -69,15 +75,6 @@ builder.Services
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(_ => { });
 
-var sem = new SemaphoreSlim(settings.MaxConcurrentRequests,
-    settings.MaxConcurrentRequests);
-builder.Services.AddSingleton(sem);
-
-builder.Services.AddSingleton<NetworkState>();
-builder.Services.AddSingleton(new PathLogDb());
-builder.Services.AddSingleton(new CapacityGraphPool());
-builder.Services.AddHostedService<NetworkStateUpdaterService>();
-builder.Services.AddHostedService<LogStatsService>();
 
 var app = builder.Build();
 
@@ -104,7 +101,6 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
     }
 });
 
-// ─── Routes ─────────────────────────────────────────────────────────────────
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findMaxFlow", async (
     string from,
@@ -210,8 +206,7 @@ app.MapGet("/findPath", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
-    ILogger<Program> log,
-    PathLogDb logDb) =>
+    ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
     act?.SetTag("http.route", "/findPath");
@@ -278,22 +273,10 @@ app.MapGet("/findPath", async (
             MaxTransfers = maxTransfers
         };
 
-        var requestId = Guid.NewGuid();
-        _ = logDb.LogRequest(requestId, state.LastKnownBlockNumber, request);
+        using var h = await pool.Rent(request, balanceGraph, trustGraph);
+        MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
 
-        try
-        {
-            using var h = await pool.Rent(request, balanceGraph, trustGraph);
-            MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
-
-            _ = logDb.LogResponse(requestId, result, true);
-            return Results.Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _ = logDb.LogResponse(requestId, null, false, ex.Message + "\n" + ex.StackTrace);
-            throw;
-        }
+        return Results.Ok(result);
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
@@ -313,8 +296,7 @@ app.MapPost("/findPath", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
-    ILogger<Program> log,
-    PathLogDb logDb) =>
+    ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
     act?.SetTag("http.route", "/findPath");
@@ -352,24 +334,12 @@ app.MapPost("/findPath", async (
         }
 
         var pathfinder = new V2Pathfinder();
-        var requestId = Guid.NewGuid();
-        _ = logDb.LogRequest(requestId, state.LastKnownBlockNumber, request);
 
-        try
-        {
-            using var h = await pool.Rent(request, balanceGraph, trustGraph);
-            MaxFlowResponse result =
-                pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+        using var h = await pool.Rent(request, balanceGraph, trustGraph);
+        MaxFlowResponse result =
+            pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
 
-            _ = logDb.LogResponse(requestId, result, true);
-            return Results.Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _ = logDb.LogResponse(requestId, null, false,
-                ex.Message + "\n" + ex.StackTrace);
-            throw;
-        }
+        return Results.Ok(result);
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
