@@ -201,7 +201,7 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
         AddHolderToTokenEdges_Pooled(
             capacityGraph,
             balanceGraph,
-            request!,
+            request,
             sourceEqualsSink,
             fromTokensFilter,
             toTokensFilter,
@@ -211,7 +211,7 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
         AddSimulatedBalances_Pooled(
             capacityGraph,
             simulated,
-            request!,
+            request,
             sourceEqualsSink,
             fromTokensFilter,
             toTokensFilter,
@@ -434,13 +434,13 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
     private void AddHolderToTokenEdges_Pooled(
         CapacityGraph g,
         BalanceGraph snapshot,
-        FlowRequest req,
+        FlowRequest? req,
         bool sourceEqualsSink,
         HashSet<int> fromTokensFilter,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedFromTokensFilter)
     {
-        int? sourceId = !string.IsNullOrWhiteSpace(req.Source) ? AddressIdPool.IdOf(req.Source!) : null;
+        int? sourceId = !string.IsNullOrWhiteSpace(req?.Source) ? AddressIdPool.IdOf(req.Source!) : null;
 
         foreach (var bn in snapshot.BalanceNodes.Values)
         {
@@ -454,7 +454,7 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
             if (sourceEqualsSink && isSource && toTokensFilter.Count > 0 && toTokensFilter.Contains(bn.Token)) continue;
             if (isSource && fromTokensFilter.Count > 0 && !fromTokensFilter.Contains(bn.Token)) continue;
             if (isSource && excludedFromTokensFilter.Count > 0 && excludedFromTokensFilter.Contains(bn.Token)) continue;
-            if (bn.IsWrapped && (req.WithWrap == null || req.WithWrap == false)) continue;
+            if (bn.IsWrapped && !(req?.WithWrap ?? false)) continue;
             if (bn.IsWrapped && !isSource) continue;
 
             // ensure the pool node exists
@@ -469,13 +469,13 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
     private void AddSimulatedBalances_Pooled(
         CapacityGraph g,
         List<SimulatedBalance> simulated,
-        FlowRequest req,
+        FlowRequest? req,
         bool sourceEqualsSink,
         HashSet<int> fromTokensFilter,
         HashSet<int> toTokensFilter,
         HashSet<int> excludedFromTokensFilter)
     {
-        int? sourceId = !string.IsNullOrWhiteSpace(req.Source) ? AddressIdPool.IdOf(req.Source!) : null;
+        int? sourceId = !string.IsNullOrWhiteSpace(req?.Source) ? AddressIdPool.IdOf(req.Source!) : null;
 
         foreach (var sb in simulated)
         {
