@@ -35,8 +35,8 @@ public class Settings
         Environment.GetEnvironmentVariable("CIRCLES_RPC_URL");
 
     public readonly int MaxConcurrentRequests =
-        Environment.GetEnvironmentVariable("PATHFINDER_MAX_CONCURRENT_REQUESTS") != null
-            ? int.Parse(Environment.GetEnvironmentVariable("PATHFINDER_MAX_CONCURRENT_REQUESTS"))
+        int.TryParse(Environment.GetEnvironmentVariable("PATHFINDER_MAX_CONCURRENT_REQUESTS"), out var maxRequests)
+            ? maxRequests
             : Environment.ProcessorCount;
 
     #endregion
