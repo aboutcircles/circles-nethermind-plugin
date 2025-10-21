@@ -9,7 +9,7 @@ public class Settings
         Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
 
-    public readonly string? IndexReadonlyDbConnectionString =
+    public readonly string IndexReadonlyDbConnectionString =
         Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING")
         ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
