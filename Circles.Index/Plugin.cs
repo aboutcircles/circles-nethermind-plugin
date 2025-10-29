@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using Autofac;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Rpc;
@@ -7,6 +8,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Npgsql;
@@ -307,12 +309,18 @@ public class Plugin : INethermindPlugin
         getFromAPi.RpcModuleProvider?.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
-        if (getFromAPi.SubscriptionFactory == null)
+        if (_indexerContext?.NethermindApi?.Context == null)
         {
-            throw new Exception("getFromAPi.SubscriptionFactory is not set");
+            throw new Exception("_indexerContext.NethermindApi.Context is not set");
         }
 
-        getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
+        var subscriptionFactory = _indexerContext.NethermindApi.Context.Resolve<ISubscriptionFactory>();
+        if (subscriptionFactory == null)
+        {
+            throw new Exception("subscriptionFactory is not set");
+        }
+
+        subscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
             (client, param) => new CirclesSubscription(client, _indexerContext, param));
 
@@ -325,11 +333,11 @@ public class Plugin : INethermindPlugin
 
             _indexerContext.NethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
             {
-                var fullSyncInfo = _indexerContext.NethermindApi.EthSyncingInfo?.GetFullInfo();
+                var syncingInfo = _indexerContext.NethermindApi.SyncModeSelector?.Current;
 
-                if (fullSyncInfo?.IsSyncing ?? true)
+                if (syncingInfo != null)
                 {
-                    switch (fullSyncInfo?.SyncMode)
+                    switch (syncingInfo)
                     {
                         // Should handle blocks in the following sync modes:
                         case SyncMode.Full:
