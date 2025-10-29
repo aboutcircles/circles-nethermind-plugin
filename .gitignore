@@ -3,3 +3,4 @@
 **/bin
 **/._*
 .state
+.env
