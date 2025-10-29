@@ -32,7 +32,7 @@ COPY . .
 # Build and publish
 RUN dotnet publish -c Release -o /circles-nethermind-plugin
 
-FROM nethermind/nethermind:1.32.4 AS base
+FROM nethermind/nethermind:1.35.0 AS base
 
 # dotnet libs
 COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json /nethermind/plugins
