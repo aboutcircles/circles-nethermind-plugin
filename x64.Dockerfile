@@ -1,11 +1,42 @@
 FROM mcr.microsoft.com/dotnet/sdk:latest AS build
 WORKDIR /src
 
+# Copy .csproj files first for better caching
+COPY Circles.Index/Circles.Index.csproj ./Circles.Index/
+COPY Circles.Index.CirclesV1/Circles.Index.CirclesV1.csproj ./Circles.Index.CirclesV1/
+COPY Circles.Index.CirclesV1.NameRegistry/Circles.Index.CirclesV1.NameRegistry.csproj ./Circles.Index.CirclesV1.NameRegistry/
+COPY Circles.Index.CirclesV2/Circles.Index.CirclesV2.csproj ./Circles.Index.CirclesV2/
+COPY Circles.Index.CirclesV2.AffiliateGroupRegistry/Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj ./Circles.Index.CirclesV2.AffiliateGroupRegistry/
+COPY Circles.Index.CirclesV2.BaseGroupDeployer/Circles.Index.CirclesV2.BaseGroupDeployer.csproj ./Circles.Index.CirclesV2.BaseGroupDeployer/
+COPY Circles.Index.CirclesV2.CMGroupDeployer/Circles.Index.CirclesV2.CMGroupDeployer.csproj ./Circles.Index.CirclesV2.CMGroupDeployer/
+COPY Circles.Index.CirclesV2.Erc20Lift/Circles.Index.CirclesV2.Erc20Lift.csproj ./Circles.Index.CirclesV2.Erc20Lift/
+COPY Circles.Index.CirclesV2.InvitationEscrow/Circles.Index.CirclesV2.InvitationEscrow.csproj ./Circles.Index.CirclesV2.InvitationEscrow/
+COPY Circles.Index.CirclesV2.LBP/Circles.Index.CirclesV2.LBP.csproj ./Circles.Index.CirclesV2.LBP/
+COPY Circles.Index.CirclesV2.NameRegistry/Circles.Index.CirclesV2.NameRegistry.csproj ./Circles.Index.CirclesV2.NameRegistry/
+COPY Circles.Index.CirclesV2.OIC/Circles.Index.CirclesV2.OIC.csproj ./Circles.Index.CirclesV2.OIC/
+COPY Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.StandardTreasury.csproj ./Circles.Index.CirclesV2.StandardTreasury/
+COPY Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Circles.Index.CirclesV2.TokenOffers/
+COPY Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Circles.Index.CirclesViews/
+COPY Circles.Index.Common/Circles.Index.Common.csproj ./Circles.Index.Common/
+COPY Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj ./Circles.Index.Common.Tests/
+COPY Circles.Index.ContractClient/Circles.Index.ContractClient.csproj ./Circles.Index.ContractClient/
+COPY Circles.Index.Postgres/Circles.Index.Postgres.csproj ./Circles.Index.Postgres/
+COPY Circles.Index.Profiles/Circles.Index.Profiles.csproj ./Circles.Index.Profiles/
+COPY Circles.Index.Query/Circles.Index.Query.csproj ./Circles.Index.Query/
+COPY Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj ./Circles.Index.Query.Tests/
+COPY Circles.Index.Rpc/Circles.Index.Rpc.csproj ./Circles.Index.Rpc/
+COPY Circles.Index.Safe/Circles.Index.Safe.csproj ./Circles.Index.Safe/
+COPY Circles.Pathfinder/Circles.Pathfinder.csproj ./Circles.Pathfinder/
+COPY Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj ./Circles.Pathfinder.Host/
+COPY Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj ./Circles.Pathfinder.Tests/
+
+# Restore dependencies
+RUN dotnet restore ./Circles.Index/Circles.Index.csproj
+
+# Copy all source code
 COPY . .
-RUN find . -type f -name "._*" -delete && \
-    find . -type f -name "*.cs" -exec dos2unix {} \;
-    
-RUN dotnet restore
+
+# Build and publish
 RUN dotnet publish -c Release -o /circles-nethermind-plugin
 
 FROM nethermind/nethermind:1.32.4 AS base
