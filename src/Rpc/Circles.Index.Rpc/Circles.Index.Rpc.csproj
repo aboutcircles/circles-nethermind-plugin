@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+      <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.3" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.35.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\Index\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
+      <ProjectReference Include="..\..\Pathfinder\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+    </ItemGroup>
+
+</Project>

@@ -24,7 +24,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
     </ItemGroup>
 
 </Project>
