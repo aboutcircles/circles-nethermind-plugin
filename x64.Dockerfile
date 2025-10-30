@@ -18,17 +18,10 @@ COPY Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.StandardTr
 COPY Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Circles.Index.CirclesV2.TokenOffers/
 COPY Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Circles.Index.CirclesViews/
 COPY Circles.Index.Common/Circles.Index.Common.csproj ./Circles.Index.Common/
-COPY Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj ./Circles.Index.Common.Tests/
-COPY Circles.Index.ContractClient/Circles.Index.ContractClient.csproj ./Circles.Index.ContractClient/
 COPY Circles.Index.Postgres/Circles.Index.Postgres.csproj ./Circles.Index.Postgres/
 COPY Circles.Index.Profiles/Circles.Index.Profiles.csproj ./Circles.Index.Profiles/
-COPY Circles.Index.Query/Circles.Index.Query.csproj ./Circles.Index.Query/
-COPY Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj ./Circles.Index.Query.Tests/
 COPY Circles.Index.Rpc/Circles.Index.Rpc.csproj ./Circles.Index.Rpc/
 COPY Circles.Index.Safe/Circles.Index.Safe.csproj ./Circles.Index.Safe/
-COPY Circles.Pathfinder/Circles.Pathfinder.csproj ./Circles.Pathfinder/
-COPY Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj ./Circles.Pathfinder.Host/
-COPY Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj ./Circles.Pathfinder.Tests/
 
 # Restore dependencies
 RUN dotnet restore ./Circles.Index/Circles.Index.csproj
