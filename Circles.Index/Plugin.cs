@@ -306,19 +306,15 @@ public class Plugin : INethermindPlugin
         var (getFromAPi, _) = _indexerContext.NethermindApi.ForRpc;
 
         CirclesRpcModule circlesRpcModule = new(_indexerContext);
-        getFromAPi.RpcModuleProvider?.Register(
+        getFromAPi.RpcModuleProvider.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
-        if (_indexerContext?.NethermindApi?.Context == null)
-        {
-            throw new Exception("_indexerContext.NethermindApi.Context is not set");
-        }
+        if (_indexerContext?.NethermindApi?.Context is null)
+            throw new InvalidOperationException("_indexerContext.NethermindApi.Context is not set");
 
-        var subscriptionFactory = _indexerContext.NethermindApi.Context.Resolve<ISubscriptionFactory>();
-        if (subscriptionFactory == null)
-        {
-            throw new Exception("subscriptionFactory is not set");
-        }
+
+        if (!_indexerContext.NethermindApi.Context.TryResolve(out ISubscriptionFactory? subscriptionFactory))
+            throw new InvalidOperationException("ISubscriptionFactory not registered in Nethermind DI context");
 
         subscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",

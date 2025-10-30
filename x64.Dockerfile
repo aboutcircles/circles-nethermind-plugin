@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:latest AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy .csproj files first for better caching
@@ -63,7 +63,6 @@ COPY --from=build /circles-nethermind-plugin/Dapper.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Abstractions.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Memory.dll /nethermind/plugins
 
-COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/runtimes/linux-x64/native/* /nethermind/plugins/
