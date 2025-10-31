@@ -6,12 +6,12 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <InvariantGlobalization>true</InvariantGlobalization>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-        <AssemblyVersion>1.25.2</AssemblyVersion>
-        <FileVersion>1.25.2</FileVersion>
+        <AssemblyVersion>1.25.0</AssemblyVersion>
+        <FileVersion>1.25.0</FileVersion>
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+        <ProjectReference Include="..\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
         <ProjectReference Include="..\..\Index\Circles.Index\Circles.Index.csproj" />
     </ItemGroup>
 
