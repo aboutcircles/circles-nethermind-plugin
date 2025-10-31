@@ -11,7 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+        <ProjectReference Include="..\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
         <ProjectReference Include="..\..\Index\Circles.Index\Circles.Index.csproj" />
     </ItemGroup>
 
