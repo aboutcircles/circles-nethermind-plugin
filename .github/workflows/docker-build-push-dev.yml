@@ -38,3 +38,11 @@ jobs:
           file: pathfinder-host.Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:dev
+
+      - name: Build & push rpc (dev)
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: rpc-host.Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:dev
