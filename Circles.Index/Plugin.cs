@@ -337,9 +337,14 @@ public class Plugin : INethermindPlugin
                     {
                         // Should handle blocks in the following sync modes:
                         case SyncMode.Full:
+                        case SyncMode.WaitingForBlock:
                         case SyncMode.DbLoad:
+                            _indexerContext.Logger.Info(
+                                $"New head block while syncingInfo is SyncMode.Full or SyncMode.DbLoad. New head will be processed.");
                             break;
                         default:
+                            _indexerContext.Logger.Warn(
+                                $"New head block while syncingInfo not SyncMode.Full or SyncMode.DbLoad. New head will be skipped. Current sync-status: {syncingInfo.ToString()}");
                             return;
                     }
                 }
