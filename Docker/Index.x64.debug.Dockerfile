@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:latest AS build
 WORKDIR /src
 
-COPY . .
+COPY ./src/Index .
 
 RUN dotnet restore
 RUN dotnet publish -c Debug -o /circles-nethermind-plugin
