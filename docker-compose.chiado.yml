@@ -2,7 +2,7 @@ services:
   nethermind-chiado:
     build:
       context: .
-      dockerfile: x64.Dockerfile
+      dockerfile: Docker/Index.x64.Dockerfile
     restart: unless-stopped
     networks:
       - circles-chiado

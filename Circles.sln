@@ -8,12 +8,16 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{1A7A
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB76D-01EE-4E92-AEE5-27224DA53350}"
 	ProjectSection(SolutionItems) = preProject
-		x64.Dockerfile = x64.Dockerfile
-		arm64.Dockerfile = arm64.Dockerfile
+		Docker/Index.x64.Dockerfile = Index.x64.Dockerfile
+		Docker/Index.arm64.Dockerfile = Index.arm64.Dockerfile
+		Docker/pathfinder-host.Dockerfile = pathfinder-host.Dockerfile
+		Docker/rpc-host.Dockerfile = rpc-host.Dockerfile
+		Docker/Index.x64.debug.Dockerfile = Index.x64.debug.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
+		docker-compose.gnosis.yml = docker-compose.gnosis.yml
 		.dockerignore = .dockerignore
-		x64.debug.Dockerfile = x64.debug.Dockerfile
 		.env.example = .env.example
+		.env = .env
 		Readme.md = Readme.md
 		.gitmodules = .gitmodules
 		.gitignore = .gitignore
@@ -21,10 +25,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		v1-example-requests.md = v1-example-requests.md
 		general-example-requests.md = general-example-requests.md
 		all_tables.html = all_tables.html
-		pathfinder-host.Dockerfile = pathfinder-host.Dockerfile
-		rpc-host.Dockerfile = rpc-host.Dockerfile
-		docker-compose.gnosis.yml = docker-compose.gnosis.yml
-		.env = .env
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
