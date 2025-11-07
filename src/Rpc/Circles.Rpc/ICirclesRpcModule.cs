@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
-namespace Circles.Index.Rpc;
+namespace Circles.Rpc;
 
 #region DTOs
 

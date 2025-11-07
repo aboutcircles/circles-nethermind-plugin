@@ -8,7 +8,7 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
     * [Run a node](#run-a-node)
         * [Clone the repository](#1-clone-the-repository)
         * [Create a jwtsecret](#2-create-a-jwtsecret)
-        * [Set up the .env file](#3-set-up-the-env-file)
+        * [Set up the - .env file](#3-set-up-the-env-file)
         * [Run node](#4-run-node)
             * [Ports](#ports)
             * [Volumes](#volumes)
@@ -86,12 +86,12 @@ mkdir -p ./.state/jwtsecret-chiado
 openssl rand -hex 32 > ./.state/jwtsecret-chiado/jwt.hex
 ```
 
-#### 3. Set up the .env file
+#### 3. Set up the - .env file
 
-Copy the `.env.example` file to `.env` and adjust the values to your needs.
+Copy the `- .env.example` file to `- .env` and adjust the values to your needs.
 
 ```bash
-cp .env.example .env
+cp - .env.example - .env
 ```
 
 #### 4. Run node

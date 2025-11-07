@@ -29,7 +29,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
-      <ProjectReference Include="..\..\Rpc\Circles.Index.Rpc\Circles.Index.Rpc.csproj" />
+      <ProjectReference Include="..\..\Rpc\Circles.Rpc\Circles.Rpc.csproj" />
     </ItemGroup>
 
 </Project>

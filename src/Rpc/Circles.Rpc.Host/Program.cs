@@ -1,6 +1,6 @@
 using System.IO.Compression;
 using Circles.Index.Common;
-using Circles.Index.Rpc.Host;
+using Circles.Rpc.Host;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;

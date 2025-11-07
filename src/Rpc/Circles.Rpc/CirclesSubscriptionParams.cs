@@ -2,7 +2,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 
-namespace Circles.Index.Rpc;
+namespace Circles.Rpc;
 
 public class CirclesSubscriptionParams : IJsonRpcParam
 {
