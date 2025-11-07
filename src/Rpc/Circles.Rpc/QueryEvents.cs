@@ -5,7 +5,7 @@ using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Nethermind.Core;
 
-namespace Circles.Index.Rpc;
+namespace Circles.Rpc;
 
 public class QueryEvents(Context context)
 {

@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
-namespace Circles.Index.Rpc;
+namespace Circles.Rpc;
 
 public class NotifyEventArgs(CirclesEvent[] events) : EventArgs
 {

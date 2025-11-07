@@ -5,7 +5,7 @@ services:
     networks:
       - circles-gnosis
     volumes:
-      - .state/jwtsecret-gnosis:/jwt
+      - ../.state/jwtsecret-gnosis:/jwt
     environment:
       - MY_UID=${MY_UID:-}
       - MY_GID=${MY_GID:-}
@@ -35,9 +35,11 @@ services:
       start_period: 1s
 
   nethermind-gnosis:
+    # image: circles-nethermind-plugin:v1.35.0
     build:
-      context: .
-      dockerfile: Docker/Index.x64.Dockerfile
+      context: ..
+      dockerfile: docker/Index.arm64.Dockerfile
+      # dockerfile: Index.x64.Dockerfile
     restart: unless-stopped
     depends_on:
       postgres-gnosis:
@@ -53,8 +55,8 @@ services:
     expose:
       - 8551 # engine api
     volumes:
-      - .state/nethermind-gnosis:/data
-      - .state/jwtsecret-gnosis/jwt.hex:/jwt.hex
+      - ../.state/nethermind-gnosis:/data
+      - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -99,8 +101,8 @@ services:
     expose:
       - 4000 # http
     volumes:
-      - .state/consensus-gnosis/data:/data
-      - .state/jwtsecret-gnosis/jwt.hex:/jwt.hex
+      - ../.state/consensus-gnosis/data:/data
+      - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -119,8 +121,8 @@ services:
 
   pathfinder:
     build:
-      context: .
-      dockerfile: pathfinder-host.Dockerfile
+      context: ..
+      dockerfile: docker/pathfinder-host.Dockerfile
     depends_on:
       - nethermind-gnosis
     restart: unless-stopped

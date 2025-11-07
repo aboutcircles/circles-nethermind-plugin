@@ -2,7 +2,7 @@ using Nethermind.Api;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 
-namespace Circles.Index.Rpc;
+namespace Circles.Rpc;
 
 public class RentedEthRpcModule(INethermindApi nethermindApi) : IDisposable
 {

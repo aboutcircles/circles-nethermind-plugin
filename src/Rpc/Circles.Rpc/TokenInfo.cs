@@ -1,6 +1,6 @@
 using Nethermind.Core;
 
-namespace Circles.Index.Rpc;
+namespace Circles.Rpc;
 
 public record TokenInfo(
     Address TokenAddress,

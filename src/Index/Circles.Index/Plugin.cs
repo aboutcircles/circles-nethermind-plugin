@@ -2,7 +2,7 @@
 using Autofac;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
-using Circles.Index.Rpc;
+using Circles.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;

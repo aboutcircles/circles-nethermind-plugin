@@ -8,11 +8,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{1A7A
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB76D-01EE-4E92-AEE5-27224DA53350}"
 	ProjectSection(SolutionItems) = preProject
-		Docker/Index.x64.Dockerfile = Index.x64.Dockerfile
-		Docker/Index.arm64.Dockerfile = Index.arm64.Dockerfile
-		Docker/pathfinder-host.Dockerfile = pathfinder-host.Dockerfile
-		Docker/rpc-host.Dockerfile = rpc-host.Dockerfile
-		Docker/Index.x64.debug.Dockerfile = Index.x64.debug.Dockerfile
+		docker/Index.x64.Dockerfile = Index.x64.Dockerfile
+		docker/Index.arm64.Dockerfile = Index.arm64.Dockerfile
+		docker/pathfinder-host.Dockerfile = pathfinder-host.Dockerfile
+		docker/rpc-host.Dockerfile = rpc-host.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
 		docker-compose.gnosis.yml = docker-compose.gnosis.yml
 		.dockerignore = .dockerignore
@@ -85,9 +84,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index", "src\Index\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Rpc", "Rpc", "{93D007DF-0658-4AC1-FBB8-A8BE14510E37}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Rpc", "src\Rpc\Circles.Index.Rpc\Circles.Index.Rpc.csproj", "{17358715-203F-4AFC-9D18-FBE6C61F4AB1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Rpc", "src\Rpc\Circles.Rpc\Circles.Rpc.csproj", "{17358715-203F-4AFC-9D18-FBE6C61F4AB1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.Rpc.Host", "src\Rpc\Circles.Index.Rpc.Host\Circles.Index.Rpc.Host.csproj", "{829D18AE-EA12-4ECC-833F-266CFF1082E3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Rpc.Host", "src\Rpc\Circles.Rpc.Host\Circles.Rpc.Host.csproj", "{829D18AE-EA12-4ECC-833F-266CFF1082E3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

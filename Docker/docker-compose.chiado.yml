@@ -1,8 +1,8 @@
 services:
   nethermind-chiado:
     build:
-      context: .
-      dockerfile: Docker/Index.x64.Dockerfile
+      context: ..
+      dockerfile: ./Index.x64.Dockerfile
     restart: unless-stopped
     networks:
       - circles-chiado
@@ -13,8 +13,8 @@ services:
     expose:
       - 8551 # engine api
     volumes:
-      - .state/nethermind-chiado:/data
-      - .state/jwtsecret-chiado/jwt.hex:/jwt.hex
+      - ../.state/nethermind-chiado:/data
+      - ../.state/jwtsecret-chiado/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |
@@ -85,8 +85,8 @@ services:
     expose:
       - 4000 # http
     volumes:
-      - .state/consensus-chiado/data:/data
-      - .state/jwtsecret-chiado/jwt.hex:/jwt.hex
+      - ../.state/consensus-chiado/data:/data
+      - ../.state/jwtsecret-chiado/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     command: |

@@ -1,5 +1,5 @@
-// Circles.Index.Rpc.Host/Constants/LoggingConstants.cs
-namespace Circles.Index.Rpc.Host;
+// Circles.Rpc.Host/Constants/LoggingConstants.cs
+namespace Circles.Rpc.Host;
 
 /// <summary>
 /// Central place for tunable timings & log settings.
