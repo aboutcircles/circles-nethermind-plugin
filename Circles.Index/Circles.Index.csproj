@@ -21,8 +21,9 @@
 
 
     <ItemGroup>
+      <PackageReference Include="Autofac" Version="8.4.0" />
       <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.4" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.32.4" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.35.0" />
     </ItemGroup>
 
 

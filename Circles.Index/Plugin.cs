@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using Autofac;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Rpc;
@@ -7,6 +8,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Npgsql;
@@ -304,15 +306,17 @@ public class Plugin : INethermindPlugin
         var (getFromAPi, _) = _indexerContext.NethermindApi.ForRpc;
 
         CirclesRpcModule circlesRpcModule = new(_indexerContext);
-        getFromAPi.RpcModuleProvider?.Register(
+        getFromAPi.RpcModuleProvider.Register(
             new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
-        if (getFromAPi.SubscriptionFactory == null)
-        {
-            throw new Exception("getFromAPi.SubscriptionFactory is not set");
-        }
+        if (_indexerContext?.NethermindApi?.Context is null)
+            throw new InvalidOperationException("_indexerContext.NethermindApi.Context is not set");
 
-        getFromAPi.SubscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
+
+        if (!_indexerContext.NethermindApi.Context.TryResolve(out ISubscriptionFactory? subscriptionFactory))
+            throw new InvalidOperationException("ISubscriptionFactory not registered in Nethermind DI context");
+
+        subscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
             "circles",
             (client, param) => new CirclesSubscription(client, _indexerContext, param));
 
@@ -325,17 +329,22 @@ public class Plugin : INethermindPlugin
 
             _indexerContext.NethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
             {
-                var fullSyncInfo = _indexerContext.NethermindApi.EthSyncingInfo?.GetFullInfo();
+                var syncingInfo = _indexerContext.NethermindApi.SyncModeSelector?.Current;
 
-                if (fullSyncInfo?.IsSyncing ?? true)
+                if (syncingInfo != null)
                 {
-                    switch (fullSyncInfo?.SyncMode)
+                    switch (syncingInfo)
                     {
                         // Should handle blocks in the following sync modes:
                         case SyncMode.Full:
+                        case SyncMode.WaitingForBlock:
                         case SyncMode.DbLoad:
+                            _indexerContext.Logger.Info(
+                                $"New head block while syncingInfo is SyncMode.Full or SyncMode.DbLoad. New head will be processed.");
                             break;
                         default:
+                            _indexerContext.Logger.Warn(
+                                $"New head block while syncingInfo not SyncMode.Full or SyncMode.DbLoad. New head will be skipped. Current sync-status: {syncingInfo.ToString()}");
                             return;
                     }
                 }
