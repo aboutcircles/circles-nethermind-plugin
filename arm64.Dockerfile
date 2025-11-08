@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:latest AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy .csproj files first for better caching
@@ -32,7 +32,7 @@ COPY . .
 # Build and publish
 RUN dotnet publish -c Release -o /circles-nethermind-plugin
 
-FROM nethermind/nethermind:1.32.4 AS base
+FROM nethermind/nethermind:1.35.0 AS base
 
 # dotnet libs
 COPY --from=build /circles-nethermind-plugin/Circles.Index.deps.json /nethermind/plugins
@@ -63,7 +63,6 @@ COPY --from=build /circles-nethermind-plugin/Dapper.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Abstractions.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Microsoft.Extensions.Caching.Memory.dll /nethermind/plugins
 
-COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.OrTools.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Google.Protobuf.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/runtimes/linux-arm64/native/* /nethermind/plugins/

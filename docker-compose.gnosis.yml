@@ -133,17 +133,17 @@ services:
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
   
-  #  profile-service:
-  #    image: jaensen/circles-profile-pinning-service:v0.4.6
-  #    depends_on:
-  #      - nethermind-gnosis
-  #    restart: unless-stopped
-  #    networks:
-  #      - circles-gnosis
-  #    ports:
-  #      - 3000:3000
-  #    env_file:
-  #      - .env
+  profile-service:
+    image: jaensen/circles-profile-pinning-service:0.5.0-rc1
+    depends_on:
+      - nethermind-gnosis
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 3000:3000
+    env_file:
+      - .env
 
   postgres-gnosis:
     image: postgres:17
