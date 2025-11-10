@@ -2,7 +2,7 @@
 using Autofac;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
-using Circles.Rpc;
+// using Circles.Rpc;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
@@ -305,21 +305,19 @@ public class Plugin : INethermindPlugin
 
         var (getFromAPi, _) = _indexerContext.NethermindApi.ForRpc;
 
-        CirclesRpcModule circlesRpcModule = new(_indexerContext);
-        getFromAPi.RpcModuleProvider.Register(
-            new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
+        // CirclesRpcModule circlesRpcModule = new(_indexerContext);
+        // getFromAPi.RpcModuleProvider.Register(
+        //     new SingletonModulePool<ICirclesRpcModule>(circlesRpcModule));
 
         if (_indexerContext?.NethermindApi?.Context is null)
             throw new InvalidOperationException("_indexerContext.NethermindApi.Context is not set");
 
-
         if (!_indexerContext.NethermindApi.Context.TryResolve(out ISubscriptionFactory? subscriptionFactory))
             throw new InvalidOperationException("ISubscriptionFactory not registered in Nethermind DI context");
 
-        subscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
-            "circles",
-            (client, param) => new CirclesSubscription(client, _indexerContext, param));
-
+        // subscriptionFactory.RegisterSubscriptionType<CirclesSubscriptionParams>(
+        //     "circles",
+        //     (client, param) => new CirclesSubscription(client, _indexerContext, param));
 
         // Start the actual processing (give the other rpc modules enough time to initialize)
         // TODO: Any event we can subscribe to that indicates that rpc is ready?

@@ -40,7 +40,7 @@ COPY ./src/Rpc/Circles.Rpc ./Rpc/Circles.Rpc
 # Build and publish
 RUN dotnet publish ./Index/Circles.Index/Circles.Index.csproj -c Release -o /circles-nethermind-plugin
 
-FROM nethermind/nethermind:1.35.2 AS base
+FROM nethermind/nethermind:1.35.0 AS base
 
 WORKDIR /nethermind/plugins
 

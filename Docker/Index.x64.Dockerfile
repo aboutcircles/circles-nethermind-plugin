@@ -20,6 +20,7 @@ COPY src/Index/Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./In
 COPY src/Index/Circles.Index.Common/Circles.Index.Common.csproj ./Index/Circles.Index.Common/
 COPY src/Index/Circles.Index.Postgres/Circles.Index.Postgres.csproj ./Index/Circles.Index.Postgres/
 COPY src/Index/Circles.Index.Profiles/Circles.Index.Profiles.csproj ./Index/Circles.Index.Profiles/
+COPY src/Index/Circles.Index.Query/Circles.Index.Query.csproj ./Index/Circles.Index.Query/
 COPY src/Index/Circles.Index.Safe/Circles.Index.Safe.csproj ./Index/Circles.Index.Safe/
 
 # TODO: remove once rpc / pathfinder have their own published module
