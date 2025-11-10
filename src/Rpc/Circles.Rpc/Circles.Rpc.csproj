@@ -12,23 +12,27 @@
     <OutputType>Library</OutputType>
   </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
-      <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
-      <!-- <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.3" /> -->
-      <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
-      <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
-      <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Facade\Nethermind.Facade.csproj" />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
+  </ItemGroup>
 
-      <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />
+  <ItemGroup>
+    <ProjectReference
+      Include="..\..\nethermind\src\Nethermind\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference
+      Include="..\..\nethermind\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference
+      Include="..\..\nethermind\src\Nethermind\Nethermind.Facade\Nethermind.Facade.csproj" />
+    <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference
+      Include="..\..\nethermind\src\Nethermind\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
+  </ItemGroup>
 
-      <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
-      <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Evm\Nethermind.Evm.csproj" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.5" />
-      <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.5" />
+    <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
+  </ItemGroup>
 
 </Project>
