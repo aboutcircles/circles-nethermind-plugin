@@ -12,6 +12,7 @@
     <FileVersion>1.25.0</FileVersion>
     <PackageId>Gnosis.Circles.Nethermind.Plugin</PackageId>
     <OutputType>Library</OutputType>
+    <!-- Copy all Circles.Index.*.dlls into the final nupkg -->
     <TargetsForTfmSpecificBuildOutput>
       $(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
   </PropertyGroup>

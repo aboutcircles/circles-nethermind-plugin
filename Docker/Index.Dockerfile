@@ -23,28 +23,22 @@ COPY src/Index/Circles.Index.Profiles/Circles.Index.Profiles.csproj ./Index/Circ
 COPY src/Index/Circles.Index.Query/Circles.Index.Query.csproj ./Index/Circles.Index.Query/
 COPY src/Index/Circles.Index.Safe/Circles.Index.Safe.csproj ./Index/Circles.Index.Safe/
 
-# TODO: remove once rpc / pathfinder have their own published module
-COPY src/Rpc/Circles.Rpc/Circles.Rpc.csproj ./Rpc/Circles.Rpc/
-# COPY src/Pathfinder/Circles.Pathfinder/Circles.Pathfinder.csproj ./Pathfinder/Circles.Pathfinder/
-
 # Restore dependencies
 RUN dotnet restore ./Index/Circles.Index/Circles.Index.csproj
 
 # Copy all source code
-# TODO: remove once rpc / pathfinder have their own published module
-COPY ./src/Index ./Index
-COPY ./src/Rpc/Circles.Rpc ./Rpc/Circles.Rpc
-# COPY ./src/Pathfinder/Circles.Pathfinder ./Pathfinder/Circles.Pathfinder
-
+COPY ./src/Index .
+WORKDIR /src/Circles.Index
 
 # Build and publish
-RUN dotnet publish ./Index/Circles.Index/Circles.Index.csproj -c Release -o /circles-nethermind-plugin
+RUN dotnet publish \
+    -c Release \
+    -o /circles-nethermind-plugin \
+    --no-restore
 
-FROM nethermind/nethermind:1.35.0 AS base
-
+FROM nethermind/nethermind:1.35.2 AS base
 WORKDIR /nethermind/plugins
 
 # dotnet libs
 COPY --from=build /circles-nethermind-plugin/ .
-
 WORKDIR /nethermind
