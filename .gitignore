@@ -3,4 +3,6 @@
 **/bin
 **/._*
 .state
+nupkgs
+
 .env

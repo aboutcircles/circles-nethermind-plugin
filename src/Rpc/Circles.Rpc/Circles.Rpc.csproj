@@ -1,10 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.0.1</Version>
+    <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
+    <Copyright>Gnosis Service GmbH</Copyright>
+    <Product>Circles</Product>
+    <PackageId>Gnosis.Circles.Rpc</PackageId>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
 
     <ItemGroup>
       <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
@@ -14,13 +20,15 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\Index\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj" />
+      <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.5" />
+      <!-- <ProjectReference Include="..\..\Index\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj" />
       <ProjectReference Include="..\..\Index\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
       <ProjectReference Include="..\..\Index\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
       <ProjectReference Include="..\..\Index\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
       <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
-      <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
-      <ProjectReference Include="..\..\Pathfinder\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+      <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" /> -->
+      <!-- <ProjectReference Include="..\..\Pathfinder\Circles.Pathfinder\Circles.Pathfinder.csproj" /> -->
+      <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
     </ItemGroup>
 
 </Project>

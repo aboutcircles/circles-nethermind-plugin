@@ -1,58 +1,95 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <Version>1.0</Version>
-        <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
-        <Copyright>Gnosis Service GmbH</Copyright>
-        <Product>Circles</Product>
-        <AssemblyVersion>1.25.2</AssemblyVersion>
-        <FileVersion>1.25.2</FileVersion>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.0.5</Version>
+    <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
+    <Copyright>Gnosis Service GmbH</Copyright>
+    <Product>Circles</Product>
+    <AssemblyVersion>1.25.0</AssemblyVersion>
+    <FileVersion>1.25.0</FileVersion>
+    <PackageId>Gnosis.Circles.Nethermind.Plugin</PackageId>
+    <OutputType>Library</OutputType>
+    <TargetsForTfmSpecificBuildOutput>
+      $(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Autofac" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.4" />
+  </ItemGroup>
 
 
+  <ItemGroup>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.CMGroupDeployer\Circles.Index.CirclesV2.CMGroupDeployer.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.Profiles\Circles.Index.Profiles.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.Safe\Circles.Index.Safe.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <!-- <ProjectReference Include="..\..\Rpc\Circles.Rpc\Circles.Rpc.csproj" /> -->
+  </ItemGroup>
+
+  <!-- https://yer.ac/blog/2019/09/05/dotnet-pack-project-reference-and-nuget-dependency/ -->
+  <Target DependsOnTargets="ResolveReferences" Name="CopyProjectReferencesToPackage">
     <ItemGroup>
-      <None Remove="known_relevant_blocks.csv" />
-      <None Remove="arm64.Dockerfile" />
-      <None Remove="circles-chainspec.json" />
+      <BuildOutputInPackage
+        Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
     </ItemGroup>
-
-
-    <ItemGroup>
-      <PackageReference Include="Autofac" Version="8.4.0" />
-      <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.4" />
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.35.0" />
-    </ItemGroup>
-
-
-    <ItemGroup>
-      <ProjectReference Include="..\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.CMGroupDeployer\Circles.Index.CirclesV2.CMGroupDeployer.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj" />
-      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
-      <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
-      <ProjectReference Include="..\Circles.Index.Profiles\Circles.Index.Profiles.csproj" />
-      <ProjectReference Include="..\Circles.Index.Safe\Circles.Index.Safe.csproj" />
-      <ProjectReference Include="..\..\Rpc\Circles.Rpc\Circles.Rpc.csproj" />
-    </ItemGroup>
-
-
-    <ItemGroup>
-      <None Remove="cheatcodes\spam_accounts.csv" />
-    </ItemGroup>
-
-
+  </Target>
 </Project>

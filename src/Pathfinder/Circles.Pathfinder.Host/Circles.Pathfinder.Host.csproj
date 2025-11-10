@@ -2,17 +2,24 @@
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
-        <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
         <InvariantGlobalization>true</InvariantGlobalization>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-        <AssemblyVersion>1.25.2</AssemblyVersion>
-        <FileVersion>1.25.2</FileVersion>
+        <AssemblyVersion>1.25.0</AssemblyVersion>
+        <FileVersion>1.25.0</FileVersion>
+
+        <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+        <SelfContained>true</SelfContained>
+        <Configuration>Release</Configuration>
+        <PublishSingleFile>true</PublishSingleFile>
+        <PublishTrimmed>false</PublishTrimmed>
     </PropertyGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
-        <ProjectReference Include="..\..\Index\Circles.Index\Circles.Index.csproj" />
+        <!-- <ProjectReference Include="..\..\Index\Circles.Index\Circles.Index.csproj" /> -->
+        <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.5" />
     </ItemGroup>
 
     <ItemGroup>

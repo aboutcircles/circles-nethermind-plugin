@@ -2,3 +2,5 @@
 circles-contracts
 circles-contracts-v2
 node_modules
+**/bin/
+**/obj/

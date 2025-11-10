@@ -1,5 +1,5 @@
 using Circles.Index.Common;
-using Circles.Rpc;
+// using Circles.Rpc;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 
@@ -139,19 +139,22 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState<Range<long>> importedBlockRange:
-                            context.Logger.Info(
-                                $"Notifying {CirclesSubscription.SubscriberCount} subscribers about new blocks: " +
+                            context.Logger.Warn(
+                                $"Notifying subscribers about new blocks currently NOT implemented: " +
                                 $"{importedBlockRange.Arg.Min} - {importedBlockRange.Arg.Max}");
+                            // context.Logger.Info(
+                            //     $"Notifying {CirclesSubscription.SubscriberCount} subscribers about new blocks: " +
+                            //     $"{importedBlockRange.Arg.Min} - {importedBlockRange.Arg.Max}");
 
-                            if (importedBlockRange.Arg.Max - importedBlockRange.Arg.Min > 1000)
-                            {
-                                context.Logger.Warn(
-                                    $"Too many blocks to notify: {importedBlockRange.Arg.Max - importedBlockRange.Arg.Min}");
-                            }
-                            else
-                            {
-                                CirclesSubscription.Notify(context, importedBlockRange.Arg);
-                            }
+                            // if (importedBlockRange.Arg.Max - importedBlockRange.Arg.Min > 1000)
+                            // {
+                            //     context.Logger.Warn(
+                            //         $"Too many blocks to notify: {importedBlockRange.Arg.Max - importedBlockRange.Arg.Min}");
+                            // }
+                            // else
+                            // {
+                            //     CirclesSubscription.Notify(context, importedBlockRange.Arg);
+                            // }
 
                             await TransitionTo(State.WaitForNewBlock);
                             return;
