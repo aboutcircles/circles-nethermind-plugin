@@ -1,5 +1,5 @@
 using Circles.Index.Common;
-// using Circles.Rpc;
+using Circles.Rpc;
 using Circles.Rpc.Host;
 
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -38,8 +38,8 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
 app.MapPost("/", async (
     JsonRpcRequest request,
     Settings settings,
-    ILogger<Program> logger
-    // CirclesRpcModule rpcModule
+    ILogger<Program> logger,
+    CirclesRpcModule rpcModule
     ) =>
 {
     if (request.Jsonrpc != "2.0" || string.IsNullOrEmpty(request.Method))
@@ -53,13 +53,13 @@ app.MapPost("/", async (
 
     try
     {
-        // object rpcResult = request.Method switch
-        // {
-        //     "circles_getTotalBalance" => await CirclesRpcHandlers.HandleGetTotalBalance(request, settings, logger, rpcModule),
-        //     // "circles_getTokenBalances" => await HandleGetTokenBalances(request, settings, logger),
+        object rpcResult = request.Method switch
+        {
+            "circles_getTotalBalance" => await CirclesRpcHandlers.HandleGetTotalBalance(request, settings, logger, rpcModule),
+            // "circles_getTokenBalances" => await HandleGetTokenBalances(request, settings, logger),
 
-        //     _ => throw new RpcMethodNotFoundException(request.Method)
-        // };
+            _ => throw new RpcMethodNotFoundException(request.Method)
+        };
 
         return Results.Ok(new JsonRpcResponse
         {

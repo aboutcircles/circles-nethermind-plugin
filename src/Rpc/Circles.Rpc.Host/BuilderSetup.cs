@@ -14,7 +14,7 @@ public static class BuilderSetup
 
         var settings = new Settings();
 
-        Console.WriteLine("Starting Circles.Index.Rpc service...");
+        Console.WriteLine("Starting Circles.Rpc service...");
         Console.WriteLine($"* Max concurrent requests: {settings.MaxConcurrentRequests}");
 
         var csb = new NpgsqlConnectionStringBuilder(settings.IndexReadonlyDbConnectionString);
@@ -40,7 +40,7 @@ public static class BuilderSetup
                                         ActivityTrackingOptions.SpanId;
         });
         builder.Logging.SetMinimumLevel(LogLevel.Information);
-        builder.Logging.AddFilter("Circles.Index.Rpc.Host", LogLevel.Debug);
+        builder.Logging.AddFilter("Circles.Rpc.Host", LogLevel.Debug);
 
         builder.Services.AddResponseCompression(options =>
         {

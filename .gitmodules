@@ -4,3 +4,6 @@
 [submodule "circles-contracts"]
 	path = circles-contracts
 	url = git@github.com:CirclesUBI/circles-contracts.git
+[submodule "src/nethermind"]
+	path = src/nethermind
+	url = https://github.com/NethermindEth/nethermind.git
