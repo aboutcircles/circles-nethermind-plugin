@@ -23,7 +23,7 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
     * [circles_getCommonTrust](#circles_getcommontrust)
     * [circles_getAvatarInfo / circles_getAvatarInfoBatch](#circles_getavatarinfo--circles_getavatarinfobatch)
     * [circles_getProfileCid / circles_getProfileCidBatch](#circles_getprofilecid--circles_getprofilecidbatch)
-    * [circles_getProfileByCid / circles_getProfileByCidBatch](#circles_getprofilebycid--circles_getprofilecidbatch)
+    * [circles_getProfileByCid / circles_getProfileByCidBatch](#circles_getprofilebycid--circles_getprofilecidbybatch)
     * [circles_getProfileByAddress / circles_getProfileByAddressBatch](#circles_getprofilebyaddress--circles_getprofilebyaddressbatch)
     * [circles_getTokenInfo / circles_getTokenInfoBatch](#circles_gettokeninfo--circles_gettokeninfobatch)
     * [circles_tables](#circles_tables)
