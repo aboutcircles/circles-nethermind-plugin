@@ -4,6 +4,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Npgsql;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.Logging;
 
 namespace Circles.Rpc.Host;
 
@@ -11,7 +12,6 @@ public static class BuilderSetup
 {
     public static WebApplicationBuilder ConfigureBuilder(string[] args)
     {
-
         var settings = new Settings();
 
         Console.WriteLine("Starting Circles.Rpc service...");
@@ -29,6 +29,8 @@ public static class BuilderSetup
         var builder = WebApplication.CreateSlimBuilder(args);
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(semaphore);
+
+        // Use the existing CirclesRpcModule
         builder.Services.AddSingleton<CirclesRpcModule>();
 
         // ─── Logging ────────────────────────────────────────────────────────────────
@@ -62,6 +64,5 @@ public static class BuilderSetup
         builder.Services.ConfigureHttpJsonOptions(_ => { });
 
         return builder;
-
     }
 }

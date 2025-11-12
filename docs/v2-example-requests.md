@@ -28,7 +28,7 @@ curl -X POST --data '{
 
 ```shell
 # Calculate a path between two addresses with a target flow.
-curl 'http://localhost:8545/' \
+curl 'http://localhost:5000/' \
  -H 'Content-Type: application/json' \
  --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999","EnableGroupMinting":true}]}'
 ```
@@ -42,7 +42,7 @@ curl 'http://localhost:8545/' \
 
 ```shell
 # Calculate a path that swaps one token into another (circular path)
-curl 'http://localhost:8545/' \
+curl 'http://localhost:5000/' \
   -H 'Content-Type: application/json' \
   --data-raw '{
   "jsonrpc": "2.0",
@@ -388,5 +388,5 @@ curl -X POST --data '{
 	"0xf908b9e395ed3f2eb923b7f74b6d74580f5b70d9"
 ]],
 	"id":1
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" http://localhost:5000/
 ```

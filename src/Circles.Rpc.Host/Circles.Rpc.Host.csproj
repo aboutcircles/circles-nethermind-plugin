@@ -17,8 +17,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Circles.Rpc\Circles.Rpc.csproj" />
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.5" />
+    <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,12 +26,12 @@
     <PackageReference Include="prometheus-net" Version="8.2.1" />
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.4" />
   </ItemGroup>
 
   <ItemGroup>
-
-    <!-- <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.6" /> -->
     <PackageReference Include="Autofac" Version="8.4.0" />
+    <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
 
 </Project>

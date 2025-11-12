@@ -3,44 +3,99 @@
 A [Nethermind](https://www.nethermind.io/nethermind-client) plugin to index and
 query [Circles](https://www.aboutcircles.com/) protocol events.
 
-* [Quickstart](#quickstart)
-    * [Query a node](#query-a-node)
-    * [Run a node](#run-a-node)
-        * [Clone the repository](#1-clone-the-repository)
-        * [Create a jwtsecret](#2-create-a-jwtsecret)
-        * [Set up the - .env file](#3-set-up-the-env-file)
-        * [Run node](#4-run-node)
-            * [Ports](#ports)
-            * [Volumes](#volumes)
-* [Circles RPC methods](#circles-rpc-methods)
-    * [circles_getTotalBalance / circlesV2_getTotalBalance](#circles_gettotalbalance--circlesv2_gettotalbalance)
-    * [circles_getTokenBalances](#circles_gettokenbalances)
-    * [circles_query](#circles_query)
-    * [circles_events](#circles_events)
-    * [eth_subscribe("circles")](#eth_subscribecircles)
-    * [circlesV2_findPath](#circlesv2_findpath)
-    * [circles_getTrustRelations](#circles_gettrustrelations)
-    * [circles_getCommonTrust](#circles_getcommontrust)
-    * [circles_getAvatarInfo / circles_getAvatarInfoBatch](#circles_getavatarinfo--circles_getavatarinfobatch)
-    * [circles_getProfileCid / circles_getProfileCidBatch](#circles_getprofilecid--circles_getprofilecidbatch)
-    * [circles_getProfileByCid / circles_getProfileByCidBatch](#circles_getprofilebycid--circles_getprofilecidbybatch)
-    * [circles_getProfileByAddress / circles_getProfileByAddressBatch](#circles_getprofilebyaddress--circles_getprofilebyaddressbatch)
-    * [circles_getTokenInfo / circles_getTokenInfoBatch](#circles_gettokeninfo--circles_gettokeninfobatch)
-    * [circles_tables](#circles_tables)
-    * [circles_health](#circles_health)
-    * [circles_getNetworkSnapshot](#circles_getnetworksnapshot)
-    * [circles_searchProfiles](#circles_searchprofiles)
-* [Add a custom protocol](#add-a-custom-protocol)
-    * [DatabaseSchema.cs](#databaseschemacs)
-        * [Tables](#tables)
-        * [EventDtoTableMap](#eventdtotablemap)
-        * [SchemaPropertyMap](#schemapropertymap)
-    * [Events.cs](#eventscs)
-    * [LogParser.cs](#logparsercs)
-    * [Register the protocol](#register-the-protocol)
-        * [Register the schema](#register-the-schema)
-        * [Register the SchemaPropertyMap and EventDtoTableMap](#register-the-schemapropertymap-and-eventdtotablemap)
-        * [Register the LogParser](#register-the-logparser)
+- [Circles Nethermind Plug-in](#circles-nethermind-plug-in)
+  - [Quickstart](#quickstart)
+    - [Query a node](#query-a-node)
+    - [Run a node](#run-a-node)
+      - [1. Clone the repository](#1-clone-the-repository)
+      - [2. Create a jwtsecret](#2-create-a-jwtsecret)
+      - [3. Set up the - .env file](#3-set-up-the---env-file)
+      - [4. Run node](#4-run-node)
+        - [Ports:](#ports)
+        - [Volumes](#volumes)
+  - [Circles RPC methods](#circles-rpc-methods)
+    - [circles\_getTotalBalance / circlesV2\_getTotalBalance](#circles_gettotalbalance--circlesv2_gettotalbalance)
+      - [Example V1](#example-v1)
+      - [Example V2](#example-v2)
+      - [Response](#response)
+    - [circles\_getTokenBalances](#circles_gettokenbalances)
+      - [Example](#example)
+      - [Response](#response-1)
+    - [circles\_query](#circles_query)
+      - [Example](#example-1)
+      - [Response](#response-2)
+      - [Available namespaces, tables and columns](#available-namespaces-tables-and-columns)
+  - [Available Namespaces, Tables, and Columns](#available-namespaces-tables-and-columns-1)
+    - [Namespaces and Tables:](#namespaces-and-tables)
+      - [CrcV1](#crcv1)
+      - [CrcV2](#crcv2)
+      - [CrcV2 (NameRegistry)](#crcv2-nameregistry)
+      - [CrcV2 (StandardTreasury)](#crcv2-standardtreasury)
+      - [V\_CrcV1 (Circles v1 views)](#v_crcv1-circles-v1-views)
+      - [V\_CrcV2 (Circles v2 views)](#v_crcv2-circles-v2-views)
+      - [V\_Crc (Views combining v1 and v2 data)](#v_crc-views-combining-v1-and-v2-data)
+      - [Available filter types](#available-filter-types)
+      - [Pagination](#pagination)
+    - [circles\_events](#circles_events)
+      - [Example](#example-2)
+      - [Response](#response-3)
+      - [Filtering](#filtering)
+    - [eth\_subscribe("circles")](#eth_subscribecircles)
+      - [Example](#example-3)
+      - [Response](#response-4)
+    - [circlesV2\_findPath](#circlesv2_findpath)
+      - [Example - Standard Path](#example---standard-path)
+      - [Example - Token Swap](#example---token-swap)
+      - [Response](#response-5)
+    - [circles\_getTrustRelations](#circles_gettrustrelations)
+      - [Example](#example-4)
+      - [Response](#response-6)
+    - [circles\_getCommonTrust](#circles_getcommontrust)
+      - [Example](#example-5)
+      - [Response](#response-7)
+    - [circles\_getAvatarInfo / circles\_getAvatarInfoBatch](#circles_getavatarinfo--circles_getavatarinfobatch)
+      - [Example - Single Avatar](#example---single-avatar)
+      - [Example - Batch Query](#example---batch-query)
+      - [Response](#response-8)
+    - [circles\_getProfileCid / circles\_getProfileCidBatch](#circles_getprofilecid--circles_getprofilecidbatch)
+      - [Example - Single Address](#example---single-address)
+      - [Example - Batch Query](#example---batch-query-1)
+      - [Response](#response-9)
+    - [circles\_getProfileByCid / circles\_getProfileByCidBatch](#circles_getprofilebycid--circles_getprofilebycidbatch)
+      - [Example - Single CID](#example---single-cid)
+      - [Example - Batch Query](#example---batch-query-2)
+      - [Response](#response-10)
+    - [circles\_getProfileByAddress / circles\_getProfileByAddressBatch](#circles_getprofilebyaddress--circles_getprofilebyaddressbatch)
+      - [Example - Single Address](#example---single-address-1)
+      - [Example - Batch Query](#example---batch-query-3)
+      - [Response](#response-11)
+    - [circles\_getTokenInfo / circles\_getTokenInfoBatch](#circles_gettokeninfo--circles_gettokeninfobatch)
+      - [Example - Single Token](#example---single-token)
+      - [Example - Batch Query](#example---batch-query-4)
+      - [Response](#response-12)
+    - [circles\_tables](#circles_tables)
+      - [Example](#example-6)
+      - [Response](#response-13)
+    - [circles\_health](#circles_health)
+      - [Example](#example-7)
+      - [Response](#response-14)
+    - [circles\_getNetworkSnapshot](#circles_getnetworksnapshot)
+      - [Example](#example-8)
+      - [Response](#response-15)
+    - [circles\_searchProfiles](#circles_searchprofiles)
+      - [Example](#example-9)
+      - [Response](#response-16)
+  - [Add a custom protocol](#add-a-custom-protocol)
+    - [DatabaseSchema.cs](#databaseschemacs)
+      - [Tables](#tables)
+      - [EventDtoTableMap](#eventdtotablemap)
+      - [SchemaPropertyMap](#schemapropertymap)
+    - [Events.cs](#eventscs)
+    - [LogParser.cs](#logparsercs)
+    - [Register the protocol](#register-the-protocol)
+      - [Register the schema](#register-the-schema)
+      - [Register the SchemaPropertyMap and EventDtoTableMap](#register-the-schemapropertymap-and-eventdtotablemap)
+      - [Register the LogParser](#register-the-logparser)
 
 ## Quickstart
 
@@ -48,9 +103,9 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
 
 If you're just looking for a way to query Circles events, you can check out the query examples:
 
-* [General examples](general-example-requests.md)
-* [Circles v1 examples](v1-example-requests.md)
-* [Circles v2 examples](v2-example-requests.md)
+- [General examples](general-example-requests.md)
+- [Circles v1 examples](v1-example-requests.md)
+- [Circles v2 examples](v2-example-requests.md)
 
 For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
 
@@ -114,29 +169,28 @@ at the same RPC endpoint.
 
 ##### Ports:
 
-* `30303/tcp` (nethermind p2p)
-* `30303/udp` (nethermind p2p)
-* `8545/tcp` (nethermind rpc)
-* `5432/tcp` (postgres)
-* `9000/tcp` (consensus p2p)
-* `9000/udp` (consensus p2p)
-* `5054/tcp` (consensus metrics)
+- `30303/tcp` (nethermind p2p)
+- `30303/udp` (nethermind p2p)
+- `8545/tcp` (nethermind rpc)
+- `5432/tcp` (postgres)
+- `9000/tcp` (consensus p2p)
+- `9000/udp` (consensus p2p)
+- `5054/tcp` (consensus metrics)
 
 ##### Volumes
 
-* `./.state` - Directory containing all host mapped docker volumes
-    * `./.state/consensus-chiado|consensus-chiado` - Lighthouse consensus engine data
-    * `./.state/nethermind-chiado|nethermind-gnosis` - Nethermind data
-    * `./.state/postgres-chiado|postgres-gnosis` - Postgres data
-    * `./.state/jwtsecret-chiado|jwtsecret-gnosis` - Shared secret between execution and consensus engine
-
+- `./.state` - Directory containing all host mapped docker volumes
+  - `./.state/consensus-chiado|consensus-chiado` - Lighthouse consensus engine data
+  - `./.state/nethermind-chiado|nethermind-gnosis` - Nethermind data
+  - `./.state/postgres-chiado|postgres-gnosis` - Postgres data
+  - `./.state/jwtsecret-chiado|jwtsecret-gnosis` - Shared secret between execution and consensus engine
 
 ## Circles RPC methods
 
 The plugin extends the Nethermind JSON-RPC API with additional methods to query Circles events and aggregate values.
 
-You can find concrete examples for all rpc-methods in the [v1-example-requests.md](v1-example-requests.md)
-and [v2-example-requests.md](v2-example-requests.md) files.
+You can find concrete examples for all rpc-methods in the [v1-example-requests.md](./docs/v1-example-requests.md)
+and [v2-example-requests.md](./docs/v2-example-requests.md) files.
 
 ### circles_getTotalBalance / circlesV2_getTotalBalance
 
@@ -144,8 +198,8 @@ These methods allow you to query the total Circles (v1/v2) holdings of an addres
 
 **Signature**:
 
-* `circles_getTotalBalance(address: string, asTimeCircles: bool = false)`.
-* `circlesV2_getTotalBalance(address: string, asTimeCircles: bool = false)`.
+- `circles_getTotalBalance(address: string, asTimeCircles: bool = false)`.
+- `circlesV2_getTotalBalance(address: string, asTimeCircles: bool = false)`.
 
 #### Example V1
 
@@ -186,7 +240,7 @@ These methods allow you to query all individual Circles (v1/v2) holdings of an a
 
 **Signature**:
 
-* `circles_getTokenBalances(address: string, asTimeCircles: bool = false)`.
+- `circles_getTokenBalances(address: string, asTimeCircles: bool = false)`.
 
 #### Example
 
@@ -205,9 +259,9 @@ curl -X POST --data '{
 
 This method returns an array of objects with the following properties:
 
-* `tokenId` - The address of the token.
-* `balance` - The balance of the token.
-* `tokenOwner` - The address of the token owner.
+- `tokenId` - The address of the token.
+- `balance` - The balance of the token.
+- `tokenOwner` - The address of the token owner.
 
 If `asTimeCircles` is set to `true`, the value is formatted
 as [TimeCircles](https://github.com/CirclesUBI/timecircles) floating point number instead of the raw BigInteger value.
@@ -217,13 +271,13 @@ as [TimeCircles](https://github.com/CirclesUBI/timecircles) floating point numbe
 This method allows you to query Circles events. The method takes a single parameter, which is a JSON object with the
 following properties:
 
-* `namespace` - The protocol namespace to query (System, CrcV1 or CrcV2).
-* `table` - The table to query (e.g. `Signup`, `Trust`, etc.).
-* `columns` - An array of column names to return or `[]` to return all columns of the table.
-* `filter` - Filters that can be used e.g. for pagination or to search for specific values.
-* `order` - A list of columns to order the results by.
-* `distinct` - If set to `true`, only distinct rows are returned.
-* `limit` - The maximum number of rows to return (defaults to max. 1000).
+- `namespace` - The protocol namespace to query (System, CrcV1 or CrcV2).
+- `table` - The table to query (e.g. `Signup`, `Trust`, etc.).
+- `columns` - An array of column names to return or `[]` to return all columns of the table.
+- `filter` - Filters that can be used e.g. for pagination or to search for specific values.
+- `order` - A list of columns to order the results by.
+- `distinct` - If set to `true`, only distinct rows are returned.
+- `limit` - The maximum number of rows to return (defaults to max. 1000).
 
 _NOTE: There is no default order, so make sure to always add sensible order columns._
 
@@ -264,17 +318,17 @@ curl -X POST --data '{
 
 The result is a JSON object that resembles a table with rows and columns:
 
-* `Columns` - An array of column names.
-* `Rows` - An array of rows, where each row is an array of values.
+- `Columns` - An array of column names.
+- `Rows` - An array of rows, where each row is an array of values.
 
 #### Available namespaces, tables and columns
 
 Every table has at least the following columns:
 
-* `blockNumber` - The block number the event was emitted in.
-* `timestamp` - The unix timestamp of the event.
-* `transactionIndex` - The index of the transaction in the block.
-* `logIndex` - The index of the log in the transaction.
+- `blockNumber` - The block number the event was emitted in.
+- `timestamp` - The unix timestamp of the event.
+- `transactionIndex` - The index of the transaction in the block.
+- `logIndex` - The index of the log in the transaction.
 
 Tables for batch events have an additional `batchIndex` column.
 The items of a batch are treated like individual events that can only be distinguished by the `batchIndex`.
@@ -284,177 +338,187 @@ Namespaces and tables:
 ## Available Namespaces, Tables, and Columns
 
 Every table has at least the following columns:
-* `blockNumber` - The block number the event was emitted in.
-* `timestamp` - The unix timestamp of the event.
-* `transactionIndex` - The index of the transaction in the block.
-* `logIndex` - The index of the log in the transaction.
-* `transactionHash` - The hash of the transaction.
+
+- `blockNumber` - The block number the event was emitted in.
+- `timestamp` - The unix timestamp of the event.
+- `transactionIndex` - The index of the transaction in the block.
+- `logIndex` - The index of the log in the transaction.
+- `transactionHash` - The hash of the transaction.
 
 Tables for batch events have an additional `batchIndex` column.
 
 ### Namespaces and Tables:
 
 #### CrcV1
-* `HubTransfer`
-    * `from` (Address)
-    * `to` (Address)
-    * `amount` (BigInteger)
-* `Signup`
-    * `user` (Address)
-    * `token` (Address)
-* `OrganizationSignup`
-    * `organization` (Address)
-* `Trust`
-    * `canSendTo` (Address)
-    * `user` (Address)
-    * `limit` (BigInteger)
-* `Transfer`
-    * `tokenAddress` (Address)
-    * `from` (Address)
-    * `to` (Address)
-    * `amount` (BigInteger)
+
+- `HubTransfer`
+  - `from` (Address)
+  - `to` (Address)
+  - `amount` (BigInteger)
+- `Signup`
+  - `user` (Address)
+  - `token` (Address)
+- `OrganizationSignup`
+  - `organization` (Address)
+- `Trust`
+  - `canSendTo` (Address)
+  - `user` (Address)
+  - `limit` (BigInteger)
+- `Transfer`
+  - `tokenAddress` (Address)
+  - `from` (Address)
+  - `to` (Address)
+  - `amount` (BigInteger)
 
 #### CrcV2
-* `PersonalMint`
-    * `human` (Address)
-    * `amount` (BigInteger)
-    * `startPeriod` (BigInteger)
-    * `endPeriod` (BigInteger)
-* `RegisterGroup`
-    * `group` (Address)
-    * `mint` (Address)
-    * `treasury` (Address)
-    * `name` (String)
-    * `symbol` (String)
-* `RegisterHuman`
-    * `avatar` (Address)
-* `RegisterOrganization`
-    * `organization` (Address)
-    * `name` (String)
-* `Stopped`
-    * `avatar` (Address)
-* `Trust`
-    * `truster` (Address)
-    * `trustee` (Address)
-    * `expiryTime` (BigInteger)
-* `TransferSingle`
-    * `operator` (Address)
-    * `from` (Address)
-    * `to` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
-* `TransferBatch`
-    * `operator` (Address)
-    * `from` (Address)
-    * `to` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
-* `URI`
-    * `value` (String)
-    * `id` (BigInteger)
-* `ApprovalForAll`
-    * `account` (Address)
-    * `operator` (Address)
-    * `approved` (Boolean)
-* `Erc20WrapperDeployed`
-    * `avatar` (Address)
-    * `erc20Wrapper` (Address)
-    * `circlesType` (Int64)
-* `Erc20WrapperTransfer`
-    * `tokenAddress` (Address)
-    * `from` (Address)
-    * `to` (Address)
-    * `amount` (BigInteger)
-* `DepositInflationary`
-    * `account` (Address)
-    * `amount` (BigInteger)
-    * `demurragedAmount` (BigInteger)
-* `WithdrawInflationary`
-    * `account` (Address)
-    * `amount` (BigInteger)
-    * `demurragedAmount` (BigInteger)
-* `DepositDemurraged`
-    * `account` (Address)
-    * `amount` (BigInteger)
-    * `inflationaryAmount` (BigInteger)
-* `WithdrawDemurraged`
-    * `account` (Address)
-    * `amount` (BigInteger)
-    * `inflationaryAmount` (BigInteger)
-* `StreamCompleted`
-    * `operator` (Address)
-    * `from` (Address)
-    * `to` (Address)
-    * `id` (BigInteger)
-    * `amount` (BigInteger)
+
+- `PersonalMint`
+  - `human` (Address)
+  - `amount` (BigInteger)
+  - `startPeriod` (BigInteger)
+  - `endPeriod` (BigInteger)
+- `RegisterGroup`
+  - `group` (Address)
+  - `mint` (Address)
+  - `treasury` (Address)
+  - `name` (String)
+  - `symbol` (String)
+- `RegisterHuman`
+  - `avatar` (Address)
+- `RegisterOrganization`
+  - `organization` (Address)
+  - `name` (String)
+- `Stopped`
+  - `avatar` (Address)
+- `Trust`
+  - `truster` (Address)
+  - `trustee` (Address)
+  - `expiryTime` (BigInteger)
+- `TransferSingle`
+  - `operator` (Address)
+  - `from` (Address)
+  - `to` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
+- `TransferBatch`
+  - `operator` (Address)
+  - `from` (Address)
+  - `to` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
+- `URI`
+  - `value` (String)
+  - `id` (BigInteger)
+- `ApprovalForAll`
+  - `account` (Address)
+  - `operator` (Address)
+  - `approved` (Boolean)
+- `Erc20WrapperDeployed`
+  - `avatar` (Address)
+  - `erc20Wrapper` (Address)
+  - `circlesType` (Int64)
+- `Erc20WrapperTransfer`
+  - `tokenAddress` (Address)
+  - `from` (Address)
+  - `to` (Address)
+  - `amount` (BigInteger)
+- `DepositInflationary`
+  - `account` (Address)
+  - `amount` (BigInteger)
+  - `demurragedAmount` (BigInteger)
+- `WithdrawInflationary`
+  - `account` (Address)
+  - `amount` (BigInteger)
+  - `demurragedAmount` (BigInteger)
+- `DepositDemurraged`
+  - `account` (Address)
+  - `amount` (BigInteger)
+  - `inflationaryAmount` (BigInteger)
+- `WithdrawDemurraged`
+  - `account` (Address)
+  - `amount` (BigInteger)
+  - `inflationaryAmount` (BigInteger)
+- `StreamCompleted`
+  - `operator` (Address)
+  - `from` (Address)
+  - `to` (Address)
+  - `id` (BigInteger)
+  - `amount` (BigInteger)
 
 #### CrcV2 (NameRegistry)
-* `RegisterShortName`
-    * `avatar` (Address)
-    * `shortName` (UInt72)
-    * `nonce` (BigInteger)
-* `UpdateMetadataDigest`
-    * `avatar` (Address)
-    * `metadataDigest` (Bytes32)
-* `CidV0`
-    * `avatar` (Address)
-    * `cidV0Digest` (Bytes32)
+
+- `RegisterShortName`
+  - `avatar` (Address)
+  - `shortName` (UInt72)
+  - `nonce` (BigInteger)
+- `UpdateMetadataDigest`
+  - `avatar` (Address)
+  - `metadataDigest` (Bytes32)
+- `CidV0`
+  - `avatar` (Address)
+  - `cidV0Digest` (Bytes32)
 
 #### CrcV2 (StandardTreasury)
-* `CreateVault`
-    * `group` (Address)
-    * `vault` (Address)
-* `CollateralLockedSingle`
-    * `group` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
-    * `userData` (Bytes)
-* `CollateralLockedBatch`
-    * `group` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
-    * `userData` (Bytes)
-* `GroupRedeem`
-    * `group` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
-    * `data` (Bytes)
-* `GroupRedeemCollateralReturn`
-    * `group` (Address)
-    * `to` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
-* `GroupRedeemCollateralBurn`
-    * `group` (Address)
-    * `id` (BigInteger)
-    * `value` (BigInteger)
+
+- `CreateVault`
+  - `group` (Address)
+  - `vault` (Address)
+- `CollateralLockedSingle`
+  - `group` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
+  - `userData` (Bytes)
+- `CollateralLockedBatch`
+  - `group` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
+  - `userData` (Bytes)
+- `GroupRedeem`
+  - `group` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
+  - `data` (Bytes)
+- `GroupRedeemCollateralReturn`
+  - `group` (Address)
+  - `to` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
+- `GroupRedeemCollateralBurn`
+  - `group` (Address)
+  - `id` (BigInteger)
+  - `value` (BigInteger)
 
 #### V_CrcV1 (Circles v1 views)
+
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
+
 #### V_CrcV2 (Circles v2 views)
+
     * `Avatars` (view combining `CrcV2_RegisterHuman`, `CrcV2_RegisterGroup` and
       `CrcV2_RegisterOrganization`)
     * `TrustRelations` (view filtered to represent all current `Trust` relations)
     * `Transfers` (view combining `CrcV2_TransferBatch`, `CrcV2_TransferSingle` and `CrcV2_Erc20WrapperTransfer`)
     * `GroupMemberships` (view combining `CrcV2_RegisterGroup`, `V_CrcV2_TrustRelations` and `V_CrcV2_Avatars`)
+
 #### V_Crc (Views combining v1 and v2 data)
+
     * `Avatars` (view combining `V_CrcV1_Avatars` and `V_CrcV2_Avatars`)
     * `TrustRelations` (view combining `V_CrcV1_TrustRelations` and `V_CrcV2_TrustRelations`)
     * `Transfers` (view combining `V_CrcV1_Transfer` and `V_CrcV2_Transfers`)
 
 #### Available filter types
 
-* `Equals`
-* `NotEquals`
-* `GreaterThan`
-* `GreaterThanOrEquals`
-* `LessThan`
-* `LessThanOrEquals`
-* `Like`
-* `NotLike`
-* `In`
-* `NotIn`
+- `Equals`
+- `NotEquals`
+- `GreaterThan`
+- `GreaterThanOrEquals`
+- `LessThan`
+- `LessThanOrEquals`
+- `Like`
+- `NotLike`
+- `In`
+- `NotIn`
 
 #### Pagination
 
@@ -489,21 +553,22 @@ curl -X POST --data '{
 
 The response generally contains the following fields:
 
-* `event` - The name of the event (See
+- `event` - The name of the event (See
   [Available namespaces, tables and columns](#available-namespaces-tables-and-columns) for available event types).
-* `values` - The values of the event.
+- `values` - The values of the event.
 
 The values contain at least the following fields:
 
-* `blockNumber` - The block number the event was emitted in.
-* `timestamp` - The unix timestamp of the event.
-* `transactionIndex` - The index of the transaction in the block.
-* `logIndex` - The index of the log in the transaction.
-* `transactionHash` - The hash of the transaction.
+- `blockNumber` - The block number the event was emitted in.
+- `timestamp` - The unix timestamp of the event.
+- `transactionIndex` - The index of the transaction in the block.
+- `logIndex` - The index of the log in the transaction.
+- `transactionHash` - The hash of the transaction.
 
 #### Filtering
 
 The `circles_events` method can be filtered by specifying a filter as the last parameter:
+
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
@@ -557,12 +622,12 @@ Finds a transitive transfer path between two addresses in the Circles V2 graph. 
 
 The `FlowRequest` object has the following properties:
 
-* `Source` - The address initiating the transfer
-* `Sink` - The target address
-* `TargetFlow` - The desired amount to transfer (as a string)
-* `FromTokens` - (Optional) Array of token addresses to use as sources
-* `ToTokens` - (Optional) Array of token addresses to accept as destinations
-* `SimulatedBalances` - (Optional) Array of balance overrides for simulation
+- `Source` - The address initiating the transfer
+- `Sink` - The target address
+- `TargetFlow` - The desired amount to transfer (as a string)
+- `FromTokens` - (Optional) Array of token addresses to use as sources
+- `ToTokens` - (Optional) Array of token addresses to accept as destinations
+- `SimulatedBalances` - (Optional) Array of balance overrides for simulation
 
 #### Example - Standard Path
 
@@ -632,9 +697,9 @@ curl -X POST --data '{
 
 Returns an object with the following properties:
 
-* `User` - The queried address
-* `Trusts` - Array of addresses that the user trusts with their trust limits
-* `TrustedBy` - Array of addresses that trust the user
+- `User` - The queried address
+- `Trusts` - Array of addresses that the user trusts with their trust limits
+- `TrustedBy` - Array of addresses that trust the user
 
 ### circles_getCommonTrust
 
@@ -668,8 +733,8 @@ Gets essential information about one or more Circles avatars.
 
 **Signature**:
 
-* `circles_getAvatarInfo(address: string)`
-* `circles_getAvatarInfoBatch(addresses: string[])`
+- `circles_getAvatarInfo(address: string)`
+- `circles_getAvatarInfoBatch(addresses: string[])`
 
 #### Example - Single Avatar
 
@@ -705,17 +770,17 @@ curl -X POST --data '{
 
 Returns an `AvatarRow` (or array of `AvatarRow?`) containing:
 
-* `Version` - Active Circles version (1 or 2)
-* `Type` - Avatar type (e.g., 'CrcV2_RegisterHuman', 'CrcV2_RegisterGroup', etc.)
-* `Avatar` - The avatar address
-* `TokenId` - The token address or encoded token ID
-* `HasV1` - Whether the avatar is signed up at v1
-* `V1Token` - The v1 token address (if applicable)
-* `CidV0Digest` - Metadata CIDv0 bytes
-* `CidV0` - The CIDv0 string
-* `IsHuman` - Whether the avatar is a human
-* `Name` - Group name (if applicable)
-* `Symbol` - Group symbol (if applicable)
+- `Version` - Active Circles version (1 or 2)
+- `Type` - Avatar type (e.g., 'CrcV2_RegisterHuman', 'CrcV2_RegisterGroup', etc.)
+- `Avatar` - The avatar address
+- `TokenId` - The token address or encoded token ID
+- `HasV1` - Whether the avatar is signed up at v1
+- `V1Token` - The v1 token address (if applicable)
+- `CidV0Digest` - Metadata CIDv0 bytes
+- `CidV0` - The CIDv0 string
+- `IsHuman` - Whether the avatar is a human
+- `Name` - Group name (if applicable)
+- `Symbol` - Group symbol (if applicable)
 
 ### circles_getProfileCid / circles_getProfileCidBatch
 
@@ -723,8 +788,8 @@ Gets the profile CID for one or more avatar addresses.
 
 **Signature**:
 
-* `circles_getProfileCid(address: string)`
-* `circles_getProfileCidBatch(addresses: string[])`
+- `circles_getProfileCid(address: string)`
+- `circles_getProfileCidBatch(addresses: string[])`
 
 #### Example - Single Address
 
@@ -765,8 +830,8 @@ Gets profile data by CID (or multiple CIDs).
 
 **Signature**:
 
-* `circles_getProfileByCid(cid: string)`
-* `circles_getProfileByCidBatch(cids: string[])`
+- `circles_getProfileByCid(cid: string)`
+- `circles_getProfileByCidBatch(cids: string[])`
 
 #### Example - Single CID
 
@@ -801,20 +866,20 @@ curl -X POST --data '{
 
 Returns a `Profile` object (or array of `Profile?`) containing:
 
-* `address` - Avatar address
-* `CID` - The profile CID
-* `lastUpdatedAt` - Unix timestamp of last update
-* `name` - Profile name
-* `description` - Profile description
-* `registeredName` - Registered short name (if any)
-* `location` - Profile location
-* `imageUrl` - Avatar image URL
-* `previewImageUrl` - Preview image URL
-* `geoLocation` - Geo coordinates [longitude, latitude]
-* `longitude` - Longitude coordinate
-* `latitude` - Latitude coordinate
-* `shortName` - Short name
-* `avatarType` - Avatar type
+- `address` - Avatar address
+- `CID` - The profile CID
+- `lastUpdatedAt` - Unix timestamp of last update
+- `name` - Profile name
+- `description` - Profile description
+- `registeredName` - Registered short name (if any)
+- `location` - Profile location
+- `imageUrl` - Avatar image URL
+- `previewImageUrl` - Preview image URL
+- `geoLocation` - Geo coordinates [longitude, latitude]
+- `longitude` - Longitude coordinate
+- `latitude` - Latitude coordinate
+- `shortName` - Short name
+- `avatarType` - Avatar type
 
 ### circles_getProfileByAddress / circles_getProfileByAddressBatch
 
@@ -822,8 +887,8 @@ Gets profile data by avatar address (or multiple addresses).
 
 **Signature**:
 
-* `circles_getProfileByAddress(avatar: string)`
-* `circles_getProfileByAddressBatch(avatars: string[])`
+- `circles_getProfileByAddress(avatar: string)`
+- `circles_getProfileByAddressBatch(avatars: string[])`
 
 #### Example - Single Address
 
@@ -864,8 +929,8 @@ Gets token metadata for one or more token addresses.
 
 **Signature**:
 
-* `circles_getTokenInfo(tokenAddress: string)`
-* `circles_getTokenInfoBatch(tokenAddresses: string[])`
+- `circles_getTokenInfo(tokenAddress: string)`
+- `circles_getTokenInfoBatch(tokenAddresses: string[])`
 
 #### Example - Single Token
 
@@ -921,8 +986,8 @@ curl -X POST --data '{
 
 Returns an array of `DatabaseNamespace` objects, each containing:
 
-* `Namespace` - The namespace name (e.g., "V_Crc", "CrcV1", "CrcV2")
-* `Tables` - Array of `DatabaseTable` objects with table name, topic, and columns
+- `Namespace` - The namespace name (e.g., "V_Crc", "CrcV1", "CrcV2")
+- `Tables` - Array of `DatabaseTable` objects with table name, topic, and columns
 
 ### circles_health
 
@@ -972,10 +1037,10 @@ Searches for profiles by name, description, or address using full-text search.
 
 **Signature**: `circles_searchProfiles(text: string, limit?: int, offset?: int, types?: string[])`.
 
-* `text` - Search term(s)
-* `limit` - Maximum number of results (default: 20)
-* `offset` - Pagination offset (default: 0)
-* `types` - Optional array of avatar types to filter by
+- `text` - Search term(s)
+- `limit` - Maximum number of results (default: 20)
+- `offset` - Pagination offset (default: 0)
+- `types` - Optional array of avatar types to filter by
 
 #### Example
 
@@ -1001,17 +1066,17 @@ Returns an array of `Profile` objects matching the search criteria.
 The plugin parses the log entries of all transaction receipts, filters them and stores them in a database.
 To do so it needs the following information:
 
-* The event topic
-* The address of the contract that emits the event
-* A table schema for the database
+- The event topic
+- The address of the contract that emits the event
+- A table schema for the database
 
 All the above information are packaged into an own assembly per protocol.
 It's structured like this:
 
-* [your-protocol].csproj
-    * `DatabaseSchema.cs` - Pulls together all information about the indexed events of a protocol.
-    * `Events.cs` - Contains the DTOs for the events (usually just Records).
-    * `LogParser.cs` - Extracts events from the transaction receipt logs.
+- [your-protocol].csproj
+  - `DatabaseSchema.cs` - Pulls together all information about the indexed events of a protocol.
+  - `Events.cs` - Contains the DTOs for the events (usually just Records).
+  - `LogParser.cs` - Extracts events from the transaction receipt logs.
 
 ### DatabaseSchema.cs
 
@@ -1023,11 +1088,11 @@ and a mapping of the event properties to the table columns.
 ```csharp
 public class DatabaseSchema : IDatabaseSchema
 {
-    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; } 
+    public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
         = new Dictionary<(string Namespace, string Table), EventSchema>();
-    
+
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
-    
+
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
 }
 ```
@@ -1134,7 +1199,7 @@ The log parser is responsible for extracting the events from the transaction rec
 public class LogParser(Address emitterAddress) : ILogParser {
     // Use the topics previously defined in the schema
     Hash256 _transferTopic = new(DatabaseSchema.Transfer.Topic)
-    
+
     public IEnumerable<IIndexEvent> ParseLog(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         List<IIndexEvent> events = new();
@@ -1142,14 +1207,14 @@ public class LogParser(Address emitterAddress) : ILogParser {
         {
             return events;
         }
-        
+
         // Parse the log entry and add the resulting event DTOs to the list
         var topic = log.Topics[0];
         if (topic == _transferTopic))
         {
             events.Add(Erc20Transfer(block, receipt, log, logIndex));
         }
-        
+
         return events;
     }
 }
@@ -1161,7 +1226,7 @@ The schema, property map and log parser must be registered in the main plugin fi
 
 On first execution, the plugin will create the necessary tables in the database.
 
-___Note:___ _The plugin will not create new tables if the schema changes. You have to manually update the database
+**_Note:_** _The plugin will not create new tables if the schema changes. You have to manually update the database
 schema._
 
 #### Register the schema

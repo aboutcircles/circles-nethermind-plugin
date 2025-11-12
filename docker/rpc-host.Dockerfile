@@ -2,12 +2,11 @@
 WORKDIR /src
 
 # use dotnet related caching
-COPY ./src/Rpc/Circles.Rpc/Circles.Rpc.csproj ./Circles.Rpc/
-COPY ./src/Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj ./Circles.Rpc.Host/
+COPY ./src/Circles.Rpc.Host/Circles.Rpc.Host.csproj ./Circles.Rpc.Host/
 RUN dotnet restore ./Circles.Rpc.Host/Circles.Rpc.Host.csproj
 
 # Copy all source code
-COPY ./src/Rpc .
+COPY ./src/Circles.Rpc.Host .
 WORKDIR /src/Circles.Rpc.Host
 RUN dotnet publish \
     -c Release \

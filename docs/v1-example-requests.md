@@ -1,11 +1,19 @@
 ## Circles V1 RPC examples
 
-1. [circles_getTotalBalance](#circles_getTotalBalance)
-2. [circles_getTokenBalances](#circles_getTokenBalances)
-3. [circles_getTrustRelations](#circles_getTrustRelations) (deprecated)
-4. circles_query  
-   4.1. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)  
-   4.2. [Get the transaction history of a wallet](#get-the-transaction-history-of-a-wallet)
+- [Circles V1 RPC examples](#circles-v1-rpc-examples)
+  - [circles\_getTotalBalance](#circles_gettotalbalance)
+    - [Request:](#request)
+      - [Response:](#response)
+  - [circles\_getTokenBalance](#circles_gettokenbalance)
+    - [Request:](#request-1)
+      - [Response:](#response-1)
+  - [circles\_getTrustRelations](#circles_gettrustrelations)
+    - [Request:](#request-2)
+      - [Response:](#response-2)
+    - [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)
+      - [Response:](#response-3)
+    - [Get the transaction history of a wallet](#get-the-transaction-history-of-a-wallet)
+      - [Response:](#response-4)
 
 ### circles_getTotalBalance
 
@@ -20,7 +28,7 @@ curl -X POST --data '{
 "params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
 "id":1
 }' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
-````
+```
 
 ##### Response:
 
@@ -79,7 +87,7 @@ curl -X POST --data '{
 "params":["0x2091e2fb4dcfed050adcdd518e57fbfea7e32e5c"],
 "id":1
 }' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
-````
+```
 
 ##### Response:
 
@@ -288,12 +296,11 @@ curl -X POST --data '{
 }
 ```
 
-
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_health",
   "params": []
-}' -H "Content-Type: application/json" http://localhost:8545/
+}' -H "Content-Type: application/json" http://localhost:5000/
 ```
