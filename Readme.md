@@ -18,6 +18,18 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
     * [circles_query](#circles_query)
     * [circles_events](#circles_events)
     * [eth_subscribe("circles")](#eth_subscribecircles)
+    * [circlesV2_findPath](#circlesv2_findpath)
+    * [circles_getTrustRelations](#circles_gettrustrelations)
+    * [circles_getCommonTrust](#circles_getcommontrust)
+    * [circles_getAvatarInfo / circles_getAvatarInfoBatch](#circles_getavatarinfo--circles_getavatarinfobatch)
+    * [circles_getProfileCid / circles_getProfileCidBatch](#circles_getprofilecid--circles_getprofilecidbatch)
+    * [circles_getProfileByCid / circles_getProfileByCidBatch](#circles_getprofilebycid--circles_getProfileByCidBatch)
+    * [circles_getProfileByAddress / circles_getProfileByAddressBatch](#circles_getprofilebyaddress--circles_getprofilebyaddressbatch)
+    * [circles_getTokenInfo / circles_getTokenInfoBatch](#circles_gettokeninfo--circles_gettokeninfobatch)
+    * [circles_tables](#circles_tables)
+    * [circles_health](#circles_health)
+    * [circles_getNetworkSnapshot](#circles_getnetworksnapshot)
+    * [circles_searchProfiles](#circles_searchprofiles)
 * [Add a custom protocol](#add-a-custom-protocol)
     * [DatabaseSchema.cs](#databaseschemacs)
         * [Tables](#tables)
@@ -135,13 +147,26 @@ These methods allow you to query the total Circles (v1/v2) holdings of an addres
 * `circles_getTotalBalance(address: string, asTimeCircles: bool = false)`.
 * `circlesV2_getTotalBalance(address: string, asTimeCircles: bool = false)`.
 
-#### Example
+#### Example V1
 
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_getTotalBalance",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Example V2
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circlesV2_getTotalBalance",
   "params": [
     "0xde374ece6fa50e781e81aac78e811b33d16912c7"
   ]
@@ -523,6 +548,453 @@ npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,
 
 The emitted events are the same as the objects returned by the `circles_events` ([circles_events Response](#response-1))
 method.
+
+### circlesV2_findPath
+
+Finds a transitive transfer path between two addresses in the Circles V2 graph. Can be used to calculate paths for swaps and payments.
+
+**Signature**: `circlesV2_findPath(flowRequest: FlowRequest)`.
+
+The `FlowRequest` object has the following properties:
+
+* `Source` - The address initiating the transfer
+* `Sink` - The target address
+* `TargetFlow` - The desired amount to transfer (as a string)
+* `FromTokens` - (Optional) Array of token addresses to use as sources
+* `ToTokens` - (Optional) Array of token addresses to accept as destinations
+* `SimulatedBalances` - (Optional) Array of balance overrides for simulation
+
+#### Example - Standard Path
+
+```shell
+curl 'http://localhost:8545/' \
+ -H 'Content-Type: application/json' \
+ --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
+```
+
+#### Example - Token Swap
+
+```shell
+curl 'http://localhost:8545/' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{
+  "jsonrpc": "2.0",
+  "id": 0,
+  "method": "circlesV2_findPath",
+  "params": [
+    {
+      "Source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "Sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "TargetFlow": "100000000000000000000",
+      "FromTokens": [
+        "0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b"
+      ],
+      "ToTokens": [
+        "0x6B69683C8897e3d18e74B1Ba117b49f80423Da5d"
+      ],
+      "SimulatedBalances": [
+        {
+          "Holder": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+          "Token": "0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b",
+          "Amount": "100000000000000000000",
+          "IsWrapped": false
+        }
+      ]
+    }
+  ]
+}'
+```
+
+#### Response
+
+Returns a `MaxFlowResponse` object containing the calculated transfer path and flow information.
+
+### circles_getTrustRelations
+
+Gets all trust relations for a specific address.
+
+**Signature**: `circles_getTrustRelations(address: string)`.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getTrustRelations",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns an object with the following properties:
+
+* `User` - The queried address
+* `Trusts` - Array of addresses that the user trusts with their trust limits
+* `TrustedBy` - Array of addresses that trust the user
+
+### circles_getCommonTrust
+
+Gets the common trust relations between two addresses. Only considers common outgoing trust relations.
+
+**Signature**: `circles_getCommonTrust(address1: string, address2: string, version?: int)`.
+
+The optional `version` parameter can be used to filter by Circles version (1 or 2). If not specified, returns trusts from both versions.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getCommonTrust",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns an array of addresses that both users have outgoing trust relations to.
+
+### circles_getAvatarInfo / circles_getAvatarInfoBatch
+
+Gets essential information about one or more Circles avatars.
+
+**Signature**:
+
+* `circles_getAvatarInfo(address: string)`
+* `circles_getAvatarInfoBatch(addresses: string[])`
+
+#### Example - Single Avatar
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getAvatarInfo",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Example - Batch Query
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getAvatarInfoBatch",
+  "params": [
+    [
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "0xc3a1428c04c426cdf513c6fc8e09f55ddaf50cd7",
+      "0xf712d3b31de494b5c0ea51a6a407460ca66b12e8"
+    ]
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns an `AvatarRow` (or array of `AvatarRow?`) containing:
+
+* `Version` - Active Circles version (1 or 2)
+* `Type` - Avatar type (e.g., 'CrcV2_RegisterHuman', 'CrcV2_RegisterGroup', etc.)
+* `Avatar` - The avatar address
+* `TokenId` - The token address or encoded token ID
+* `HasV1` - Whether the avatar is signed up at v1
+* `V1Token` - The v1 token address (if applicable)
+* `CidV0Digest` - Metadata CIDv0 bytes
+* `CidV0` - The CIDv0 string
+* `IsHuman` - Whether the avatar is a human
+* `Name` - Group name (if applicable)
+* `Symbol` - Group symbol (if applicable)
+
+### circles_getProfileCid / circles_getProfileCidBatch
+
+Gets the profile CID for one or more avatar addresses.
+
+**Signature**:
+
+* `circles_getProfileCid(address: string)`
+* `circles_getProfileCidBatch(addresses: string[])`
+
+#### Example - Single Address
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getProfileCid",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Example - Batch Query
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getProfileCidBatch",
+  "params": [
+    [
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "0xc3a1428c04c426cdf513c6fc8e09f55ddaf50cd7"
+    ]
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns the CIDv0 string for the profile, or `null` if not found.
+
+### circles_getProfileByCid / circles_getProfileByCidBatch
+
+Gets profile data by CID (or multiple CIDs).
+
+**Signature**:
+
+* `circles_getProfileByCid(cid: string)`
+* `circles_getProfileByCidBatch(cids: string[])`
+
+#### Example - Single CID
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getProfileByCid",
+  "params": [
+    "Qmb2s3hjxXXcFqWvDDSPCd1fXXa9gcFJd8bzdZNNAvkq9W"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Example - Batch Query
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getProfileByCidBatch",
+  "params": [
+    [
+      "Qmb2s3hjxXXcFqWvDDSPCd1fXXa9gcFJd8bzdZNNAvkq9W",
+      "QmZuR1Jkhs9RLXVY28eTTRSnqbxLTBSoggp18Yde858xCM"
+    ]
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns a `Profile` object (or array of `Profile?`) containing:
+
+* `address` - Avatar address
+* `CID` - The profile CID
+* `lastUpdatedAt` - Unix timestamp of last update
+* `name` - Profile name
+* `description` - Profile description
+* `registeredName` - Registered short name (if any)
+* `location` - Profile location
+* `imageUrl` - Avatar image URL
+* `previewImageUrl` - Preview image URL
+* `geoLocation` - Geo coordinates [longitude, latitude]
+* `longitude` - Longitude coordinate
+* `latitude` - Latitude coordinate
+* `shortName` - Short name
+* `avatarType` - Avatar type
+
+### circles_getProfileByAddress / circles_getProfileByAddressBatch
+
+Gets profile data by avatar address (or multiple addresses).
+
+**Signature**:
+
+* `circles_getProfileByAddress(avatar: string)`
+* `circles_getProfileByAddressBatch(avatars: string[])`
+
+#### Example - Single Address
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getProfileByAddress",
+  "params": [
+    "0xc3a1428c04c426cdf513c6fc8e09f55ddaf50cd7"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Example - Batch Query
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getProfileByAddressBatch",
+  "params": [
+    [
+      "0xc3a1428c04c426cdf513c6fc8e09f55ddaf50cd7",
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+    ]
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns a `Profile` object (or array of `Profile?`) with the same structure as `circles_getProfileByCid`.
+
+### circles_getTokenInfo / circles_getTokenInfoBatch
+
+Gets token metadata for one or more token addresses.
+
+**Signature**:
+
+* `circles_getTokenInfo(tokenAddress: string)`
+* `circles_getTokenInfoBatch(tokenAddresses: string[])`
+
+#### Example - Single Token
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getTokenInfo",
+  "params": [
+    "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e"
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Example - Batch Query
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getTokenInfoBatch",
+  "params": [
+    [
+      "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e",
+      "0x42cedde51198d1773590311e2a340dc06b24cb37"
+    ]
+  ]
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns a `TokenInfo` object (or array of `TokenInfo?`) containing token metadata.
+
+### circles_tables
+
+Returns all available indexed tables and namespaces that can be queried with `circles_query`.
+
+**Signature**: `circles_tables()`.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 0,
+  "method": "circles_tables",
+  "params": []
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
+```
+
+#### Response
+
+Returns an array of `DatabaseNamespace` objects, each containing:
+
+* `Namespace` - The namespace name (e.g., "V_Crc", "CrcV1", "CrcV2")
+* `Tables` - Array of `DatabaseTable` objects with table name, topic, and columns
+
+### circles_health
+
+Checks if the database is available and the indexing is progressing as expected.
+
+**Signature**: `circles_health()`.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_health",
+  "params": []
+}' -H "Content-Type: application/json" http://localhost:8545/
+```
+
+#### Response
+
+Returns a string status message indicating the health of the indexer.
+
+### circles_getNetworkSnapshot
+
+Retrieves a complete snapshot of the Circles network state, including all current trust relations and balances.
+
+**Signature**: `circles_getNetworkSnapshot()`.
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_getNetworkSnapshot",
+  "params": []
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
+```
+
+#### Response
+
+Returns a JSON object containing the complete network state with all avatars, trust relations, and balances.
+
+### circles_searchProfiles
+
+Searches for profiles by name, description, or address using full-text search.
+
+**Signature**: `circles_searchProfiles(text: string, limit?: int, offset?: int, types?: string[])`.
+
+* `text` - Search term(s)
+* `limit` - Maximum number of results (default: 20)
+* `offset` - Pagination offset (default: 0)
+* `types` - Optional array of avatar types to filter by
+
+#### Example
+
+```shell
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_searchProfiles",
+  "params": [
+    "berlin",
+    10,
+    0
+  ]
+}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
+```
+
+#### Response
+
+Returns an array of `Profile` objects matching the search criteria.
 
 ## Add a custom protocol
 
