@@ -8,8 +8,7 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <AssemblyVersion>1.25.0</AssemblyVersion>
     <FileVersion>1.25.0</FileVersion>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <Configuration>Release</Configuration>
     <PublishSingleFile>true</PublishSingleFile>

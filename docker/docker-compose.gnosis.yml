@@ -35,11 +35,9 @@ services:
       start_period: 1s
 
   nethermind-gnosis:
-    # image: circles-nethermind-plugin:v1.35.0
     build:
       context: ..
-      dockerfile: docker/Index.arm64.Dockerfile
-      # dockerfile: Index.x64.Dockerfile
+      dockerfile: docker/Index.Dockerfile
     restart: unless-stopped
     depends_on:
       postgres-gnosis:
