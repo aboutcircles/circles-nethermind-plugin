@@ -158,6 +158,8 @@ services:
       - circles-gnosis
     ports:
       - 3000:3000
+    volumes:
+      - ../.state/profile-service:/data
     env_file:
       - .env
 

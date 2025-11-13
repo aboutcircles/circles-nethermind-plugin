@@ -3,7 +3,36 @@
 A [Nethermind](https://www.nethermind.io/nethermind-client) plugin to index and
 query [Circles](https://www.aboutcircles.com/) protocol events.
 
+## For Developers
+
+If you're developing the plugin, building packages, or running services locally, see:
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guide with build scripts, testing, and local development
+- **[scripts/README.md](scripts/README.md)** - Detailed documentation for all build and deployment scripts
+- **[CI/CD Documentation](docs/CI-CD.md)** - Automated testing, building, and deployment workflows
+
+Quick commands for developers:
+```bash
+make all                    # Build, test, and pack
+./scripts/docker-build.sh   # Build Docker images
+./scripts/test.sh           # Run tests
+./scripts/run-pathfinder.sh # Run Pathfinder locally
+```
+
+### CI/CD Workflows
+
+This project uses automated workflows for:
+- **Continuous Integration**: Automated builds and tests on every PR
+- **Docker Image Publishing**: Multi-architecture images on Docker Hub
+- **NuGet Package Publishing**: Automated package releases to NuGet.org
+- **Code Quality**: Automated security scanning and formatting checks
+- **Dependency Updates**: Automated dependency updates via Dependabot
+
+See [CI/CD Documentation](docs/CI-CD.md) for complete guide.
+
+---
+
 - [Circles Nethermind Plug-in](#circles-nethermind-plug-in)
+  - [For Developers](#for-developers)
   - [Quickstart](#quickstart)
     - [Query a node](#query-a-node)
     - [Run a node](#run-a-node)
@@ -141,13 +170,17 @@ mkdir -p ./.state/jwtsecret-chiado
 openssl rand -hex 32 > ./.state/jwtsecret-chiado/jwt.hex
 ```
 
-#### 3. Set up the - .env file
+#### 3. Set up the .env file
 
-Copy the `- .env.example` file to `- .env` and adjust the values to your needs.
+Copy the `.env.example` file to `.env` in the `docker/` directory and adjust the values to your needs.
 
 ```bash
-cp - .env.example - .env
+cp docker/.env.example docker/.env
 ```
+
+The default values should work for most setups. You may want to change:
+- `POSTGRES_PASSWORD` - PostgreSQL password
+- `MY_UID` and `MY_GID` - Your user/group ID for file permissions (run `id -u` and `id -g` to find yours)
 
 #### 4. Run node
 

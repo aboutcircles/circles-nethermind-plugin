@@ -1,6 +1,10 @@
 ﻿FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
+# Detect target architecture
+ARG TARGETARCH
+RUN echo "Building for architecture: ${TARGETARCH}"
+
 # use dotnet related caching
 COPY src/Pathfinder/Circles.Pathfinder/Circles.Pathfinder.csproj ./Circles.Pathfinder/
 COPY src/Pathfinder/Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj ./Circles.Pathfinder.Host/
@@ -11,6 +15,7 @@ COPY ./src/Pathfinder .
 WORKDIR /src/Circles.Pathfinder.Host
 RUN dotnet publish \
     -c Release \
+    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
     -o /app/publish \
     --no-restore
 
