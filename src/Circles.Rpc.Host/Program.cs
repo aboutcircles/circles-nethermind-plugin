@@ -340,7 +340,7 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
 
     if (parameters == null || parameters.Length == 0)
     {
-        return await rpcModule.GetEvents(null, null, null, null, false);
+        return await rpcModule.GetEvents(null, null, null, null, null, false);
     }
 
     if (parameters.Length > 0 && parameters[0] != null)
@@ -359,12 +359,19 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
     {
         eventTypes = JsonSerializer.Deserialize<string[]>(JsonSerializer.Serialize(parameters[3]));
     }
+
+    FilterPredicateDto[]? filterPredicates = null;
     if (parameters.Length > 4 && parameters[4] != null)
     {
-        sortAscending = Convert.ToBoolean(parameters[4]);
+        filterPredicates = JsonSerializer.Deserialize<FilterPredicateDto[]>(JsonSerializer.Serialize(parameters[4]));
     }
 
-    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, sortAscending);
+    if (parameters.Length > 5 && parameters[5] != null)
+    {
+        sortAscending = Convert.ToBoolean(parameters[5]);
+    }
+
+    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending);
 }
 
 static async Task<object> HandleHealth(JsonRpcRequest request, CirclesRpcModule rpcModule)

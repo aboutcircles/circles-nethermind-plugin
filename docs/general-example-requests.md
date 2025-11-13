@@ -2,11 +2,19 @@
 
 The examples in this file are general Circles RPC methods that can be used to query Circles V1 and V2 data.
 
-1. [circles subscription](#circles-subscription)
-2. [circles_events](#circles_events)
-3. [circles_query](#circles_query)      
-   3.1. [Get a list of Circles avatars](#get-a-list-of-circles-users)  
-   3.2. [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)
+- [General circles RPC examples](#general-circles-rpc-examples)
+  - [circles subscription](#circles-subscription)
+    - [Example](#example)
+  - [circles\_events](#circles_events)
+    - [Example](#example-1)
+    - [Response](#response)
+  - [circles\_query](#circles_query)
+      - [Get a paginated list of trust relations](#get-a-paginated-list-of-trust-relations)
+      - [Get a list of Circles avatars](#get-a-list-of-circles-avatars)
+      - [Response:](#response-1)
+      - [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)
+      - [Response:](#response-2)
+  - [circles\_events](#circles_events-1)
 
 ### circles subscription
 
@@ -38,7 +46,7 @@ curl -X POST --data '{
     30282299,
     null
   ]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 #### Response
@@ -146,7 +154,7 @@ curl -X POST --data '{
         ]
       }]
   }]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 
 ```
 
@@ -188,7 +196,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -318,7 +326,7 @@ curl -X POST --data '{
       ]
     }
   ]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 ##### Response:
@@ -378,5 +386,507 @@ curl -X POST --data '{
   "id": 1,
   "method": "circles_events",
   "params": ["0x389522f8f44cd5cd835d510a17b5f65f74a46468", 9000000]
-}' -H "Content-Type: application/json" https://chiado-rpc.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
+
+### circles_getTokenInfo
+
+Get information about a specific token.
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTokenInfo",
+  "params": ["0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e"],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "token": "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e",
+    "tokenOwner": "0x1f689e9a6f075dac566d5c93419a3fd372dee154",
+    "version": 2,
+    "type": "Avatar",
+    "isErc20": true,
+    "isErc1155": false,
+    "isWrapped": false,
+    "isInflationary": false,
+    "isGroup": false
+  },
+  "id": 1
+}
+```
+
+### circles_getTokenInfoBatch
+
+Get information about multiple tokens in batch.
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTokenInfoBatch",
+  "params": [
+    ["0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e", "0x42cedde51198d1773590311e340dc06b24cb37"]
+  ],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "token": "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e",
+      "version": 2,
+      "type": "Avatar"
+    },
+    {
+      "token": "0x42cedde51198d1773590311e340dc06b24cb37",
+      "version": 1,
+      "type": "Avatar"
+    }
+  ],
+  "id": 1
+}
+```
+
+### circles_getAvatarInfo
+
+Get avatar information for a single address. Returns both V1 and V2 avatar data.
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getAvatarInfo",
+  "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Response (Phase 1):
+
+**V2 Avatar with V1 Compatibility:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "version": 2,
+    "type": "CrcV2_RegisterHuman",
+    "avatar": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "tokenId": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "hasV1": true,
+    "v1Token": "0x1234567890abcdef1234567890abcdef12345678",
+    "cidV0Digest": "",
+    "cidV0": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+    "isHuman": true,
+    "name": "Alice",
+    "symbol": "",
+    "shortName": "alice"
+  },
+  "id": 1
+}
+```
+
+**V1-Only Avatar:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "version": 1,
+    "type": "CrcV1_Signup",
+    "avatar": "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c",
+    "tokenId": "0xabcdef1234567890abcdef1234567890abcdef12",
+    "hasV1": true,
+    "v1Token": "0xabcdef1234567890abcdef1234567890abcdef12",
+    "cidV0Digest": "",
+    "cidV0": "QmXwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+    "isHuman": true,
+    "name": null,
+    "symbol": "",
+    "shortName": null
+  },
+  "id": 1
+}
+```
+
+#### Field Descriptions:
+
+- `version`: 1 for V1 avatars, 2 for V2 avatars
+- `type`: Event type (`CrcV1_Signup`, `CrcV2_RegisterHuman`, `CrcV2_RegisterGroup`)
+- `avatar`: Avatar address
+- `tokenId`: For V1, the token address; for V2, the avatar address (ERC-1155)
+- `hasV1`: Whether this address has a V1 signup
+- `v1Token`: V1 token address (null if no V1 signup)
+- `cidV0`: IPFS CID for profile metadata (V2 takes priority, V1 fallback)
+- `isHuman`: Whether avatar is human (true) or group/organization (false)
+- `name`: Avatar name (V2 only)
+- `shortName`: Short name for V2 avatars (V2 only)
+
+### circles_getAvatarInfoBatch
+
+Get avatar information for multiple addresses (batch version).
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getAvatarInfoBatch",
+  "params": [
+    ["0xde374ece6fa50e781e81aac78e811b33d16912c7", "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"]
+  ],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Response (Phase 1):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "version": 2,
+      "type": "CrcV2_RegisterHuman",
+      "avatar": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "tokenId": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "hasV1": true,
+      "v1Token": "0x1234567890abcdef1234567890abcdef12345678",
+      "cidV0": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+      "isHuman": true,
+      "name": "Alice",
+      "shortName": "alice"
+    },
+    {
+      "version": 1,
+      "type": "CrcV1_Signup",
+      "avatar": "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c",
+      "tokenId": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "hasV1": true,
+      "v1Token": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "cidV0": "QmXwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+      "isHuman": true,
+      "name": null,
+      "shortName": null
+    }
+  ],
+  "id": 1
+}
+```
+
+**Note**: Maximum 1000 addresses per batch request.
+
+### circles_getTokenBalances
+
+Get all token balances for a specific address. Returns detailed balance information for V1, V2 ERC-1155, and V2 ERC-20 wrapped tokens.
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTokenBalances",
+  "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Response (Phase 1):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "tokenAddress": "0x1234567890abcdef1234567890abcdef12345678",
+      "tokenId": "0x1234567890abcdef1234567890abcdef12345678",
+      "tokenOwner": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "tokenType": "CrcV1_Signup",
+      "version": 1,
+      "attoCircles": "1000000000000000000",
+      "circles": 1.0,
+      "staticAttoCircles": "1000000000000000000",
+      "staticCircles": 1.0,
+      "attoCrc": "1000000000000000000",
+      "crc": 1.0,
+      "isErc20": true,
+      "isErc1155": false,
+      "isWrapped": false,
+      "isInflationary": true,
+      "isGroup": false
+    },
+    {
+      "tokenAddress": "0x9876543210abcdef9876543210abcdef98765432",
+      "tokenId": "123456789012345678901234567890",
+      "tokenOwner": "0x9876543210abcdef9876543210abcdef98765432",
+      "tokenType": "CrcV2_RegisterHuman",
+      "version": 2,
+      "attoCircles": "500000000000000000",
+      "circles": 0.5,
+      "staticAttoCircles": "500000000000000000",
+      "staticCircles": 0.5,
+      "attoCrc": "500000000000000000",
+      "crc": 0.5,
+      "isErc20": false,
+      "isErc1155": true,
+      "isWrapped": false,
+      "isInflationary": false,
+      "isGroup": false
+    }
+  ],
+  "id": 1
+}
+```
+
+#### Field Descriptions:
+
+- `tokenAddress`: Address of the token contract
+- `tokenId`: For V1, same as tokenAddress; for V2 ERC-1155, uint256 token ID
+- `tokenOwner`: Avatar that owns the token
+- `tokenType`: Type of token (`CrcV1_Signup`, `CrcV2_RegisterHuman`, `CrcV2_RegisterGroup`, `CrcV2_ERC20WrapperDeployed_Inflationary`, `CrcV2_ERC20WrapperDeployed_Demurraged`)
+- `version`: 1 for V1, 2 for V2
+- `attoCircles`: Balance in atto-circles (10^-18 circles)
+- `circles`: Balance in circles (decimal)
+- `staticAttoCircles`: Static balance (for inflationary tokens)
+- `staticCircles`: Static balance in circles (decimal)
+- `attoCrc`: Balance in atto-CRC
+- `crc`: Balance in CRC (decimal)
+- `isErc20`: Whether token is ERC-20
+- `isErc1155`: Whether token is ERC-1155
+- `isWrapped`: Whether token is a V2 wrapped token
+- `isInflationary`: Whether token is inflationary
+- `isGroup`: Whether token belongs to a group
+
+#### Important Phase 1 Limitations:
+
+**Database-Only Calculations**: The returned balances are raw sums of historical transfers from the database. They do **NOT** account for time-based adjustments:
+
+- **V1 tokens**: No inflation adjustment applied (actual balance may be higher)
+- **V2 demurraged tokens**: No demurrage decay applied (actual balance may be lower)
+- **V2 inflationary tokens**: No inflation adjustment applied (actual balance may differ)
+
+**In Phase 1**:
+- `attoCircles` = `staticAttoCircles` = `attoCrc` (no conversion)
+- All decimal values are based on the same underlying raw database sum
+
+**In Phase 3** (with blockchain connector):
+- These values will differ based on current timestamp and token type
+- Accurate inflation/demurrage calculations will be applied
+- Real-time balance queries via `eth_call` will be available
+
+For accurate balances with time-based adjustments, wait for Phase 3 or query the blockchain directly.
+
+### circles_getProfileByAddress
+
+Get enriched profile information for an address. Combines IPFS profile data with on-chain metadata.
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getProfileByAddress",
+  "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Response (Phase 1 - Enriched Profile):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "name": "Alice",
+    "description": "Circles user from Berlin",
+    "imageUrl": "https://example.com/avatar.jpg",
+    "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "shortName": "alice",
+    "avatarType": "CrcV2_RegisterHuman",
+    "CID": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"
+  },
+  "id": 1
+}
+```
+
+#### Enrichment Features (Phase 1):
+
+- **IPFS Profile Data**: `name`, `description`, `imageUrl` from IPFS
+- **On-Chain Metadata** (Phase 1 additions):
+  - `address`: Avatar address
+  - `shortName`: V2 short name from `CrcV2_RegisterShortName`
+  - `avatarType`: Type from `V_CrcV2_Avatars` or `CrcV1_Signup`
+  - `CID`: IPFS CID (V2 takes priority, V1 fallback)
+
+### circles_getProfileByAddressBatch
+
+Get enriched profiles for multiple addresses in batch.
+
+#### Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_getProfileByAddressBatch",
+  "params": [
+    ["0xde374ece6fa50e781e81aac78e811b33d16912c7", "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"]
+  ],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+**Note**: Maximum 1000 addresses per batch request.
+
+### circles_events (with filtering)
+
+Query events with basic and advanced filtering. Phase 1 adds support for advanced filter predicates.
+
+#### Parameters:
+
+1. `address` (string, optional): Filter by address
+2. `fromBlock` (number, optional): Starting block number (inclusive)
+3. `toBlock` (number, optional): Ending block number (inclusive)
+4. `eventTypes` (string[], optional): Filter by event types
+5. `filterPredicates` (FilterPredicate[], optional): **Phase 1 Addition** - Advanced filters
+6. `sortAscending` (boolean, optional): Sort order (default: false/descending)
+
+#### Basic Filtering Request:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_events",
+  "params": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    38000000,
+    null,
+    ["CrcV1_Trust"],
+    null,
+    false
+  ],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Advanced Filtering Request (Phase 1):
+
+Query events with value greater than 1 CRC:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_events",
+  "params": [
+    null,
+    38000000,
+    39000000,
+    ["CrcV1_Transfer"],
+    [
+      {
+        "column": "amount",
+        "filterType": "GreaterThan",
+        "value": "1000000000000000000"
+      }
+    ],
+    false
+  ],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Multiple Predicates Example:
+
+Query transfers to specific addresses with amount range:
+
+```bash
+curl -X POST --data '{
+  "jsonrpc": "2.0",
+  "method": "circles_events",
+  "params": [
+    null,
+    38000000,
+    null,
+    ["CrcV2_TransferSingle"],
+    [
+      {
+        "column": "to",
+        "filterType": "In",
+        "value": ["0xabc...", "0xdef...", "0x123..."]
+      },
+      {
+        "column": "value",
+        "filterType": "GreaterThanOrEquals",
+        "value": "100000000000000000"
+      }
+    ],
+    false
+  ],
+  "id": 1
+}' -H "Content-Type: application/json" http://localhost:5000/
+```
+
+#### Supported FilterTypes (Phase 1):
+
+- `Equals`: Exact match
+- `NotEquals`: Not equal to
+- `GreaterThan`: Greater than (numeric)
+- `GreaterThanOrEquals`: Greater than or equal (numeric)
+- `LessThan`: Less than (numeric)
+- `LessThanOrEquals`: Less than or equal (numeric)
+- `Like`: SQL LIKE pattern match (case-sensitive)
+- `ILike`: SQL ILIKE pattern match (case-insensitive)
+- `NotLike`: SQL NOT LIKE
+- `In`: Value in array
+- `NotIn`: Value not in array
+- `IsNull`: Column is NULL
+- `IsNotNull`: Column is NOT NULL
+
+#### Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "events": [
+      {
+        "blockNumber": 38000001,
+        "transactionHash": "0x1234567890abcdef",
+        "logIndex": 0,
+        "event": "CrcV1_Transfer",
+        "payload": {
+          "blockNumber": 38000001,
+          "transactionIndex": 0,
+          "logIndex": 0,
+          "transactionHash": "0x1234567890abcdef",
+          "from": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+          "to": "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c",
+          "amount": "1000000000000000000",
+          "tokenAddress": "0xabc..."
+        }
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+#### Notes:
+
+- All predicates are combined with AND logic
+- Maximum 1000 events returned
+- Predicates use parameterized queries (SQL injection safe)
+- Backward compatible with existing simple filtering

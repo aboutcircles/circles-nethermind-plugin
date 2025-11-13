@@ -13,7 +13,7 @@ using static Circles.Rpc.Host.JsonRpcHelpers;
 
 namespace Circles.Rpc.Host;
 
-public class CirclesRpcModule
+public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly Settings _settings;
     private readonly string _readOnlyDbConnectionString;
@@ -43,7 +43,7 @@ public class CirclesRpcModule
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
         var result = await command.ExecuteScalarAsync();
-        return result as string ?? "0";
+        return result?.ToString() ?? "0";
     }
 
     public async Task<object> GetTotalBalanceV2(string address)
@@ -82,19 +82,291 @@ public class CirclesRpcModule
 
     public async Task<object> GetTokenBalances(string address)
     {
-        // NOTE: This method currently only returns V1 token balances. The returned balances are
-        // raw sums of historical transfers and do not account for time-based inflation.
-        using var connection = await CreateConnectionAsync();
-        const string sql = @"SELECT t.""tokenAddress"", COALESCE(SUM(CASE WHEN t.""to"" = @address THEN t.amount WHEN t.""from"" = @address THEN -t.amount ELSE 0 END), 0) as balance FROM ""CrcV1_Transfer"" t WHERE t.""to"" = @address OR t.""from"" = @address GROUP BY t.""tokenAddress"" HAVING SUM(CASE WHEN t.""to"" = @address THEN t.amount WHEN t.""from"" = @address THEN -t.amount ELSE 0 END) > 0 ORDER BY balance DESC";
-        using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address", address.ToLower());
-        var results = new List<object>();
-        using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        // NOTE: The returned balances are raw sums of historical transfers.
+        // They do NOT account for time-based adjustments:
+        // - V1 tokens: No inflation adjustment applied
+        // - V2 demurraged tokens: No demurrage decay applied
+        // - V2 inflationary tokens: No inflation adjustment applied
+        // For accurate balances, a blockchain connector service is required (Phase 3).
+
+        var lowerAddress = address.ToLower();
+        await using var connection = await CreateConnectionAsync();
+
+        var tokenBalances = new List<CirclesTokenBalance>();
+
+        // Current timestamp for conversion placeholders
+        var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // ===== V1 Token Balances =====
+        const string v1Sql = @"
+            SELECT
+                t.""tokenAddress"",
+                COALESCE(SUM(CASE
+                    WHEN t.""to"" = @address THEN t.amount::numeric
+                    WHEN t.""from"" = @address THEN -t.amount::numeric
+                    ELSE 0
+                END), 0) as balance,
+                s.""user"" as owner
+            FROM ""CrcV1_Transfer"" t
+            JOIN ""CrcV1_Signup"" s ON s.token = t.""tokenAddress""
+            WHERE t.""to"" = @address OR t.""from"" = @address
+            GROUP BY t.""tokenAddress"", s.""user""
+            HAVING SUM(CASE
+                WHEN t.""to"" = @address THEN t.amount::numeric
+                WHEN t.""from"" = @address THEN -t.amount::numeric
+                ELSE 0
+            END) > 0";
+
+        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
         {
-            results.Add(new { token = reader.GetString(0), balance = reader.GetString(1) });
+            cmd.Parameters.AddWithValue("address", lowerAddress);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var tokenAddress = reader.GetString(0);
+                var balanceStr = reader.GetString(1);
+                var owner = reader.GetString(2);
+
+                if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
+                    continue;
+
+                // V1 tokens are inflationary CRC (demurraged)
+                var attoCrc = rawBalance;
+                var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+                var attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
+                var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                var staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+
+                tokenBalances.Add(new CirclesTokenBalance(
+                    TokenAddress: tokenAddress,
+                    TokenId: tokenAddress,
+                    TokenOwner: owner,
+                    TokenType: "CrcV1_Signup",
+                    Version: 1,
+                    AttoCircles: attoCircles.ToString(),
+                    Circles: circles,
+                    StaticAttoCircles: staticAttoCircles.ToString(),
+                    StaticCircles: staticCircles,
+                    AttoCrc: attoCrc.ToString(),
+                    Crc: crc,
+                    IsErc20: true,
+                    IsErc1155: false,
+                    IsWrapped: false,
+                    IsInflationary: true,
+                    IsGroup: false
+                ));
+            }
         }
-        return results;
+
+        // ===== V2 ERC-1155 Token Balances (Demurraged) =====
+        const string v2Erc1155Sql = @"
+            WITH transfers AS (
+                SELECT
+                    ""tokenAddress"",
+                    SUM(CASE
+                        WHEN ""to"" = @address THEN value::numeric
+                        WHEN ""from"" = @address THEN -value::numeric
+                        ELSE 0
+                    END) as balance
+                FROM ""CrcV2_TransferSingle""
+                WHERE ""to"" = @address OR ""from"" = @address
+                GROUP BY ""tokenAddress""
+
+                UNION ALL
+
+                SELECT
+                    ""tokenAddress"",
+                    SUM(CASE
+                        WHEN ""to"" = @address THEN value::numeric
+                        WHEN ""from"" = @address THEN -value::numeric
+                        ELSE 0
+                    END) as balance
+                FROM ""CrcV2_TransferBatch""
+                WHERE ""to"" = @address OR ""from"" = @address
+                GROUP BY ""tokenAddress""
+            ),
+            balances AS (
+                SELECT
+                    ""tokenAddress"",
+                    SUM(balance) as total_balance
+                FROM transfers
+                GROUP BY ""tokenAddress""
+                HAVING SUM(balance) > 0
+            )
+            SELECT
+                b.""tokenAddress"",
+                b.total_balance,
+                COALESCE(rh.avatar, rg.avatar) as owner,
+                CASE
+                    WHEN rh.avatar IS NOT NULL THEN 'CrcV2_RegisterHuman'
+                    WHEN rg.avatar IS NOT NULL THEN 'CrcV2_RegisterGroup'
+                    ELSE 'Unknown'
+                END as token_type,
+                CASE WHEN rg.avatar IS NOT NULL THEN true ELSE false END as is_group
+            FROM balances b
+            LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = b.""tokenAddress""
+            LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.avatar = b.""tokenAddress""";
+
+        await using (var cmd = new NpgsqlCommand(v2Erc1155Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", lowerAddress);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var tokenAddress = reader.GetString(0);
+                var balanceStr = reader.GetString(1);
+                var owner = reader.IsDBNull(2) ? tokenAddress : reader.GetString(2);
+                var tokenType = reader.GetString(3);
+                var isGroup = reader.GetBoolean(4);
+
+                if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
+                    continue;
+
+                // V2 ERC-1155 tokens are demurraged (stored in attoCircles)
+                var attoCircles = rawBalance;
+                var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                var staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+
+                var attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+                // For V2 ERC-1155, tokenId is derived from the address
+                var tokenId = AddressToTokenId(tokenAddress);
+
+                tokenBalances.Add(new CirclesTokenBalance(
+                    TokenAddress: tokenAddress,
+                    TokenId: tokenId,
+                    TokenOwner: owner,
+                    TokenType: tokenType,
+                    Version: 2,
+                    AttoCircles: attoCircles.ToString(),
+                    Circles: circles,
+                    StaticAttoCircles: staticAttoCircles.ToString(),
+                    StaticCircles: staticCircles,
+                    AttoCrc: attoCrc.ToString(),
+                    Crc: crc,
+                    IsErc20: false,
+                    IsErc1155: true,
+                    IsWrapped: false,
+                    IsInflationary: false,
+                    IsGroup: isGroup
+                ));
+            }
+        }
+
+        // ===== V2 ERC-20 Wrapped Token Balances =====
+        const string v2Erc20Sql = @"
+            SELECT
+                t.""tokenAddress"",
+                COALESCE(SUM(CASE
+                    WHEN t.""to"" = @address THEN t.amount::numeric
+                    WHEN t.""from"" = @address THEN -t.amount::numeric
+                    ELSE 0
+                END), 0) as balance,
+                wd.avatar as owner,
+                wd.""circlesType""
+            FROM ""CrcV2_Erc20WrapperTransfer"" t
+            JOIN ""CrcV2_ERC20WrapperDeployed"" wd ON wd.""erc20Wrapper"" = t.""tokenAddress""
+            WHERE t.""to"" = @address OR t.""from"" = @address
+            GROUP BY t.""tokenAddress"", wd.avatar, wd.""circlesType""
+            HAVING SUM(CASE
+                WHEN t.""to"" = @address THEN t.amount::numeric
+                WHEN t.""from"" = @address THEN -t.amount::numeric
+                ELSE 0
+            END) > 0";
+
+        await using (var cmd = new NpgsqlCommand(v2Erc20Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", lowerAddress);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var tokenAddress = reader.GetString(0);
+                var balanceStr = reader.GetString(1);
+                var owner = reader.GetString(2);
+                var circlesType = reader.GetInt32(3); // 0 = demurraged, 1 = inflationary
+
+                if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
+                    continue;
+
+                bool isInflationary = circlesType == 1;
+                string tokenType = isInflationary
+                    ? "CrcV2_ERC20WrapperDeployed_Inflationary"
+                    : "CrcV2_ERC20WrapperDeployed_Demurraged";
+
+                BigInteger attoCircles;
+                BigInteger staticAttoCircles;
+                BigInteger attoCrc;
+
+                if (isInflationary)
+                {
+                    // Inflationary wrapped tokens store staticAttoCircles
+                    staticAttoCircles = rawBalance;
+                    attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                    attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                }
+                else
+                {
+                    // Demurraged wrapped tokens store attoCircles
+                    attoCircles = rawBalance;
+                    staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                    attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                }
+
+                var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+                tokenBalances.Add(new CirclesTokenBalance(
+                    TokenAddress: tokenAddress,
+                    TokenId: tokenAddress,
+                    TokenOwner: owner,
+                    TokenType: tokenType,
+                    Version: 2,
+                    AttoCircles: attoCircles.ToString(),
+                    Circles: circles,
+                    StaticAttoCircles: staticAttoCircles.ToString(),
+                    StaticCircles: staticCircles,
+                    AttoCrc: attoCrc.ToString(),
+                    Crc: crc,
+                    IsErc20: true,
+                    IsErc1155: false,
+                    IsWrapped: true,
+                    IsInflationary: isInflationary,
+                    IsGroup: false
+                ));
+            }
+        }
+
+        // Order by circles value (descending)
+        var orderedBalances = tokenBalances
+            .OrderByDescending(b => b.Circles)
+            .ToList();
+
+        return orderedBalances;
+    }
+
+    /// <summary>
+    /// Converts an Ethereum address to a uint256 token ID.
+    /// This mimics the conversion used in ERC-1155 for Circles V2.
+    /// </summary>
+    private static string AddressToTokenId(string address)
+    {
+        // Remove 0x prefix if present
+        var hex = address.StartsWith("0x") ? address.Substring(2) : address;
+
+        // Parse as BigInteger (treating as big-endian hex)
+        if (BigInteger.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var tokenId))
+        {
+            return tokenId.ToString();
+        }
+
+        return "0";
     }
 
     public async Task<object> GetTokenInfo(string tokenAddress)
@@ -195,101 +467,508 @@ public class CirclesRpcModule
 
     public async Task<object> GetAvatarInfo(string address)
     {
-        using var connection = await CreateConnectionAsync();
-        const string sql = @"SELECT t.avatar, t.""timestamp"", t.name, t.type FROM ""V_CrcV2_Avatars"" t WHERE t.avatar = @address LIMIT 1";
-        using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address", address.ToLower());
-        using var reader = await command.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
+        var results = await GetAvatarInfoBatchInternal(new[] { address });
+        var result = results[0];
+
+        if (result == null)
         {
-            return new { version = 2, type = reader.GetString(3), avatar = reader.GetString(0), tokenId = "1", hasV1 = false, v1Token = (string?)null, cidV0Digest = "", cidV0 = (string?)null, isHuman = reader.GetString(3) == "CrcV2_RegisterHuman", name = reader.IsDBNull(2) ? null : reader.GetString(2), symbol = "" };
+            return CreateError($"No avatar found for address {address}");
         }
-        return CreateError($"No avatar found for address {address}");
+
+        return result;
     }
 
     public async Task<object> GetAvatarInfoBatch(string[] addresses)
     {
-        var results = new List<object?>();
-        foreach (var address in addresses)
+        return await GetAvatarInfoBatchInternal(addresses);
+    }
+
+    private async Task<object?[]> GetAvatarInfoBatchInternal(string[] addresses)
+    {
+        if (addresses.Length > 1000)
         {
-            try { results.Add(await GetAvatarInfo(address)); }
-            catch { results.Add(null); }
+            throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
-        return results.ToArray();
+
+        var lowerAddresses = addresses.Select(a => a.ToLower()).ToArray();
+        var result = new object?[addresses.Length];
+
+        await using var connection = await CreateConnectionAsync();
+
+        // First, check for V2 avatars
+        var v2AvatarMap = new Dictionary<string, object>();
+        const string v2Sql = @"
+            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.cid, rsn.""shortName""
+            FROM ""V_CrcV2_Avatars"" a
+            LEFT JOIN ""CrcV2_RegisterName"" rn ON rn.avatar = a.avatar
+            LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
+            WHERE a.avatar = ANY(@addresses)";
+
+        await using (var cmd = new NpgsqlCommand(v2Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var avatarType = reader.GetString(3);
+                var isHuman = avatarType == "CrcV2_RegisterHuman";
+                var cid = reader.IsDBNull(4) ? null : reader.GetString(4);
+                var shortName = reader.IsDBNull(5) ? null : reader.GetString(5);
+
+                v2AvatarMap[avatar] = new
+                {
+                    version = 2,
+                    type = avatarType,
+                    avatar,
+                    tokenId = avatar,  // For V2, tokenId is the avatar address (for ERC1155)
+                    hasV1 = false,
+                    v1Token = (string?)null,
+                    cidV0Digest = "",
+                    cidV0 = cid,
+                    isHuman,
+                    name = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    symbol = "",
+                    shortName
+                };
+            }
+        }
+
+        // Then, check for V1 avatars (those not found in V2)
+        var v1AvatarMap = new Dictionary<string, object>();
+        const string v1Sql = @"
+            SELECT s.""user"", s.token
+            FROM ""CrcV1_Signup"" s
+            WHERE s.""user"" = ANY(@addresses)";
+
+        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var userAddress = reader.GetString(0);
+                var tokenAddress = reader.GetString(1);
+
+                v1AvatarMap[userAddress] = new
+                {
+                    version = 1,
+                    type = "CrcV1_Signup",
+                    avatar = userAddress,
+                    tokenId = tokenAddress,
+                    hasV1 = true,
+                    v1Token = tokenAddress,
+                    cidV0Digest = "",
+                    cidV0 = (string?)null,
+                    isHuman = true,  // V1 signups are always human
+                    name = (string?)null,
+                    symbol = "",
+                    shortName = (string?)null
+                };
+            }
+        }
+
+        // Get V1 CIDs for V1 avatars
+        var v1CidSql = @"
+            SELECT avatar, cid
+            FROM ""CrcV1_RegisterName""
+            WHERE avatar = ANY(@addresses)";
+
+        var v1CidMap = new Dictionary<string, string>();
+        await using (var cmd = new NpgsqlCommand(v1CidSql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var cid = reader.GetString(1);
+                v1CidMap[avatar] = cid;
+            }
+        }
+
+        // Populate results
+        for (int i = 0; i < lowerAddresses.Length; i++)
+        {
+            var addr = lowerAddresses[i];
+
+            // Check V2 first (takes priority)
+            if (v2AvatarMap.TryGetValue(addr, out var v2Avatar))
+            {
+                // If this address also has V1, merge the info
+                if (v1AvatarMap.TryGetValue(addr, out var v1Avatar))
+                {
+                    var v2Dict = (dynamic)v2Avatar;
+                    result[i] = new
+                    {
+                        version = v2Dict.version,
+                        type = v2Dict.type,
+                        avatar = v2Dict.avatar,
+                        tokenId = v2Dict.tokenId,
+                        hasV1 = true,
+                        v1Token = ((dynamic)v1Avatar).v1Token,
+                        cidV0Digest = v2Dict.cidV0Digest,
+                        cidV0 = v2Dict.cidV0 ?? (v1CidMap.TryGetValue(addr, out var v1Cid) ? v1Cid : null),
+                        isHuman = v2Dict.isHuman,
+                        name = v2Dict.name,
+                        symbol = v2Dict.symbol,
+                        shortName = v2Dict.shortName
+                    };
+                }
+                else
+                {
+                    result[i] = v2Avatar;
+                }
+            }
+            // If no V2, check V1
+            else if (v1AvatarMap.TryGetValue(addr, out var v1Avatar))
+            {
+                var v1Dict = (dynamic)v1Avatar;
+                result[i] = new
+                {
+                    version = v1Dict.version,
+                    type = v1Dict.type,
+                    avatar = v1Dict.avatar,
+                    tokenId = v1Dict.tokenId,
+                    hasV1 = v1Dict.hasV1,
+                    v1Token = v1Dict.v1Token,
+                    cidV0Digest = v1Dict.cidV0Digest,
+                    cidV0 = v1CidMap.TryGetValue(addr, out var v1Cid) ? v1Cid : null,
+                    isHuman = v1Dict.isHuman,
+                    name = v1Dict.name,
+                    symbol = v1Dict.symbol,
+                    shortName = v1Dict.shortName
+                };
+            }
+            else
+            {
+                result[i] = null;
+            }
+        }
+
+        return result;
     }
 
     public async Task<object> GetProfileCid(string address)
     {
-        using var connection = await CreateConnectionAsync();
-        const string sql = @"SELECT cid FROM ""CrcV2_RegisterName"" WHERE avatar = @address LIMIT 1";
-        using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address", address.ToLower());
-        var result = await command.ExecuteScalarAsync();
-        return result != null ? result.ToString()! : CreateError("No profile found");
+        var results = await GetProfileCidBatchInternal(new[] { address });
+        var cid = results[0];
+        return cid != null ? cid : CreateError("No profile found");
     }
 
     public async Task<object> GetProfileCidBatch(string[] addresses)
     {
-        var results = new List<string?>();
-        foreach (var address in addresses)
+        return await GetProfileCidBatchInternal(addresses);
+    }
+
+    private async Task<string?[]> GetProfileCidBatchInternal(string[] addresses)
+    {
+        if (addresses.Length > 1000)
         {
-            try
-            {
-                var cid = await GetProfileCid(address);
-                results.Add(cid is string s ? s : null);
-            }
-            catch { results.Add(null); }
+            throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
-        return results.ToArray();
+
+        var lowerAddresses = addresses.Select(a => a.ToLower()).ToArray();
+        var result = new string?[addresses.Length];
+
+        await using var connection = await CreateConnectionAsync();
+
+        // First, check V2 CIDs
+        var v2CidMap = new Dictionary<string, string>();
+        const string v2Sql = @"SELECT avatar, cid FROM ""CrcV2_RegisterName"" WHERE avatar = ANY(@addresses)";
+
+        await using (var cmd = new NpgsqlCommand(v2Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var cid = reader.GetString(1);
+                v2CidMap[avatar] = cid;
+            }
+        }
+
+        // Then, check V1 CIDs (for those not found in V2)
+        var v1CidMap = new Dictionary<string, string>();
+        const string v1Sql = @"SELECT avatar, cid FROM ""CrcV1_RegisterName"" WHERE avatar = ANY(@addresses)";
+
+        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var cid = reader.GetString(1);
+                v1CidMap[avatar] = cid;
+            }
+        }
+
+        // Populate results (V2 takes priority)
+        for (int i = 0; i < lowerAddresses.Length; i++)
+        {
+            var addr = lowerAddresses[i];
+            if (v2CidMap.TryGetValue(addr, out var v2Cid))
+            {
+                result[i] = v2Cid;
+            }
+            else if (v1CidMap.TryGetValue(addr, out var v1Cid))
+            {
+                result[i] = v1Cid;
+            }
+            else
+            {
+                result[i] = null;
+            }
+        }
+
+        return result;
     }
 
     public async Task<object> GetProfileByAddress(string address)
     {
-        var cid = await GetProfileCid(address);
-        return cid is string cidString ? await GetProfileByCid(cidString) : CreateError($"No profile found for address {address}");
+        var results = await GetProfileByAddressBatchInternal(new[] { address });
+        var profile = results[0];
+        return profile ?? CreateError($"No profile found for address {address}");
     }
 
     public async Task<object> GetProfileByAddressBatch(string[] addresses)
     {
-        var results = new List<object?>();
-        foreach (var address in addresses)
+        return await GetProfileByAddressBatchInternal(addresses);
+    }
+
+    private async Task<object?[]> GetProfileByAddressBatchInternal(string[] addresses)
+    {
+        if (addresses.Length > 1000)
         {
-            try { results.Add(await GetProfileByAddress(address)); }
-            catch { results.Add(null); }
+            throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
-        return results.ToArray();
+
+        var lowerAddresses = addresses.Select(a => a.ToLower()).ToArray();
+        var result = new object?[addresses.Length];
+
+        // Get CIDs for all addresses
+        var cids = await GetProfileCidBatchInternal(lowerAddresses);
+
+        // Get short names and avatar types for enrichment
+        await using var connection = await CreateConnectionAsync();
+
+        var shortNameMap = new Dictionary<string, string>();
+        var avatarTypeMap = new Dictionary<string, string>();
+
+        // Get V2 short names
+        const string shortNameSql = @"SELECT avatar, ""shortName"" FROM ""CrcV2_RegisterShortName"" WHERE avatar = ANY(@addresses)";
+        await using (var cmd = new NpgsqlCommand(shortNameSql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var shortName = reader.GetString(1);
+                shortNameMap[avatar] = shortName;
+            }
+        }
+
+        // Get avatar types from V2
+        const string v2TypeSql = @"SELECT avatar, type FROM ""V_CrcV2_Avatars"" WHERE avatar = ANY(@addresses)";
+        await using (var cmd = new NpgsqlCommand(v2TypeSql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var avatarType = reader.GetString(1);
+                avatarTypeMap[avatar] = avatarType;
+            }
+        }
+
+        // Get avatar types from V1 (for those not in V2)
+        const string v1TypeSql = @"SELECT ""user"", 'CrcV1_Signup' as type FROM ""CrcV1_Signup"" WHERE ""user"" = ANY(@addresses)";
+        await using (var cmd = new NpgsqlCommand(v1TypeSql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                // Only set if not already set by V2
+                if (!avatarTypeMap.ContainsKey(avatar))
+                {
+                    avatarTypeMap[avatar] = "CrcV1_Signup";
+                }
+            }
+        }
+
+        // Fetch profiles by CID
+        var validCids = cids.Where(c => c != null).Distinct().ToArray();
+        var profileByCidMap = new Dictionary<string, object?>();
+
+        if (validCids.Length > 0)
+        {
+            var profiles = await GetProfileByCidBatchInternal(validCids!);
+            for (int i = 0; i < validCids.Length; i++)
+            {
+                profileByCidMap[validCids[i]!] = profiles[i];
+            }
+        }
+
+        // Assemble enriched profiles
+        for (int i = 0; i < lowerAddresses.Length; i++)
+        {
+            var addr = lowerAddresses[i];
+            var cid = cids[i];
+
+            object? baseProfile = null;
+            if (cid != null && profileByCidMap.TryGetValue(cid, out var profile))
+            {
+                baseProfile = profile;
+            }
+
+            // Get enrichment data
+            var hasShortName = shortNameMap.TryGetValue(addr, out var shortName);
+            var hasAvatarType = avatarTypeMap.TryGetValue(addr, out var avatarType);
+
+            // If we have a profile, enrich it
+            if (baseProfile != null)
+            {
+                // Deserialize to dictionary for enrichment
+                var profileJson = JsonSerializer.Serialize(baseProfile);
+                var profileDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(profileJson);
+
+                if (profileDict != null)
+                {
+                    profileDict["address"] = addr;
+                    if (hasShortName) profileDict["shortName"] = shortName;
+                    if (hasAvatarType) profileDict["avatarType"] = avatarType;
+                    if (cid != null) profileDict["CID"] = cid;
+
+                    result[i] = profileDict;
+                }
+                else
+                {
+                    result[i] = baseProfile;
+                }
+            }
+            // If no profile but we have metadata, create a minimal profile
+            else if (hasAvatarType || hasShortName)
+            {
+                result[i] = new
+                {
+                    address = addr,
+                    avatarType = hasAvatarType ? avatarType : null,
+                    shortName = hasShortName ? shortName : null,
+                    CID = cid,
+                    name = (string?)null,
+                    description = (string?)null
+                };
+            }
+            else
+            {
+                result[i] = null;
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<object?[]> GetProfileByCidBatchInternal(string[] cids)
+    {
+        if (cids.Length > 1000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 1000");
+        }
+
+        var result = new object?[cids.Length];
+        var missingCidIndexes = new List<int>();
+        var missingCids = new List<string>();
+
+        // Check cache first
+        for (int i = 0; i < cids.Length; i++)
+        {
+            var currentCid = cids[i];
+            if (string.IsNullOrWhiteSpace(currentCid))
+            {
+                result[i] = null;
+                continue;
+            }
+
+            if (_profileByCidCache.TryGetValue(currentCid, out var cached) && cached != null)
+            {
+                result[i] = cached;
+            }
+            else
+            {
+                missingCidIndexes.Add(i);
+                missingCids.Add(currentCid);
+            }
+        }
+
+        if (missingCids.Count == 0)
+        {
+            return result;
+        }
+
+        // Fetch missing profiles from database
+        const string query = @"
+            SELECT f.payload
+            FROM unnest(@cids) WITH ORDINALITY as u(_cid, _index)
+            LEFT JOIN ipfs_files f ON f.cid = u._cid
+            ORDER BY u._index";
+
+        await using var connection = await CreateConnectionAsync();
+        await using var command = new NpgsqlCommand(query, connection);
+        command.Parameters.AddWithValue("cids", missingCids.ToArray());
+
+        await using var reader = await command.ExecuteReaderAsync();
+        int readCount = 0;
+        while (await reader.ReadAsync())
+        {
+            var payloadCellValue = reader.GetValue(0);
+            int targetIndex = missingCidIndexes[readCount];
+            string targetCid = cids[targetIndex];
+
+            if (payloadCellValue is string payloadStr)
+            {
+                var profile = JsonSerializer.Deserialize<object>(payloadStr);
+                if (profile != null)
+                {
+                    result[targetIndex] = profile;
+                    _profileByCidCache.Set(targetCid, profile, new MemoryCacheEntryOptions { Size = 1 });
+                }
+                else
+                {
+                    result[targetIndex] = null;
+                }
+            }
+            else
+            {
+                result[targetIndex] = null;
+            }
+
+            readCount++;
+        }
+
+        return result;
     }
 
     public async Task<object> GetProfileByCid(string cid)
     {
-        if (_profileByCidCache.TryGetValue(cid, out object? cached) && cached != null) return cached;
-        using var connection = await CreateConnectionAsync();
-        const string query = "select payload from ipfs_files where cid = @cid";
-        using var command = new NpgsqlCommand(query, connection);
-        command.Parameters.AddWithValue("cid", cid);
-        using var reader = await command.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
+        if (string.IsNullOrWhiteSpace(cid))
         {
-            string payload = reader.GetString(0);
-            var profile = JsonSerializer.Deserialize<object>(payload);
-            if (profile != null)
-            {
-                _profileByCidCache.Set(cid, profile, new MemoryCacheEntryOptions { Size = 1 });
-                return profile;
-            }
+            return CreateError("CID must not be empty.");
         }
-        return CreateError($"No profile found for cid {cid}");
+
+        var results = await GetProfileByCidBatchInternal(new[] { cid });
+        var profile = results[0];
+        return profile ?? CreateError($"No profile found for cid {cid}");
     }
 
     public async Task<object> GetProfileByCidBatch(string[] cids)
     {
-        var results = new List<object?>();
-        foreach (var cid in cids)
-        {
-            try { results.Add(await GetProfileByCid(cid)); }
-            catch { results.Add(null); }
-        }
-        return results.ToArray();
+        return await GetProfileByCidBatchInternal(cids);
     }
 
     public async Task<object> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
@@ -452,14 +1131,23 @@ public class CirclesRpcModule
     {
         using var connection = await CreateConnectionAsync();
         const string sql = @"
-            SELECT ""user"", ""canSendTo"", ""limit""
-            FROM (
-                SELECT ""user"", ""canSendTo"", ""limit"",
-                       ROW_NUMBER() OVER (PARTITION BY ""user"", ""canSendTo"" ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
-                FROM ""CrcV1_Trust""
-                WHERE ""user"" = @address OR ""canSendTo"" = @address
-            ) t
-            WHERE rn = 1";
+            select ""user"",
+                   ""canSendTo"",
+                   ""limit""
+            from (
+                     select ""blockNumber"",
+                            ""transactionIndex"",
+                            ""logIndex"",
+                            ""user"",
+                            ""canSendTo"",
+                            ""limit"",
+                            row_number() over (partition by ""user"", ""canSendTo"" order by ""blockNumber"" desc, ""transactionIndex"" desc, ""logIndex"" desc) as rn
+                     from ""CrcV1_Trust""
+                 ) t
+            where rn = 1
+              and (""user"" = @address
+               or ""canSendTo"" = @address)
+        ";
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
         var trusts = new Dictionary<string, int>();
@@ -616,7 +1304,13 @@ public class CirclesRpcModule
         }
     }
 
-    public async Task<object> GetEvents(string? address, long? fromBlock, long? toBlock, string[]? eventTypes, bool? sortAscending = false)
+    public async Task<object> GetEvents(
+        string? address,
+        long? fromBlock,
+        long? toBlock,
+        string[]? eventTypes,
+        FilterPredicateDto[]? filterPredicates = null,
+        bool? sortAscending = false)
     {
         // A predefined map of event tables and their columns that contain addresses.
         var eventTables = new Dictionary<string, string[]>
@@ -643,6 +1337,7 @@ public class CirclesRpcModule
             ? eventTables
             : eventTables.Where(kvp => eventTypes.Contains(kvp.Key)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
+        // Add basic filter parameters
         if (address != null) parameters.Add(new NpgsqlParameter("address", address.ToLower()));
         if (fromBlock.HasValue) parameters.Add(new NpgsqlParameter("fromBlock", fromBlock.Value));
         if (toBlock.HasValue) parameters.Add(new NpgsqlParameter("toBlock", toBlock.Value));
@@ -650,12 +1345,32 @@ public class CirclesRpcModule
         foreach (var table in relevantTables)
         {
             var whereClauses = new List<string>();
+
+            // Basic address filter
             if (address != null && table.Value.Any())
             {
                 whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
             }
+
+            // Block range filters
             if (fromBlock.HasValue) whereClauses.Add("t.\"blockNumber\" >= @fromBlock");
             if (toBlock.HasValue) whereClauses.Add("t.\"blockNumber\" <= @toBlock");
+
+            // Advanced filter predicates
+            if (filterPredicates != null && filterPredicates.Length > 0)
+            {
+                foreach (var predicate in filterPredicates)
+                {
+                    if (string.IsNullOrWhiteSpace(predicate.Column))
+                        continue;
+
+                    var predicateClause = BuildPredicateClause(predicate, parameters, table.Key);
+                    if (!string.IsNullOrEmpty(predicateClause))
+                    {
+                        whereClauses.Add(predicateClause);
+                    }
+                }
+            }
 
             var whereSql = whereClauses.Count > 0 ? $"WHERE {string.Join(" AND ", whereClauses)}" : "";
             queries.Add($@"SELECT t.""blockNumber"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t {whereSql}");
@@ -688,6 +1403,79 @@ public class CirclesRpcModule
             });
         }
         return new { events };
+    }
+
+    /// <summary>
+    /// Builds a WHERE clause from a FilterPredicateDto.
+    /// </summary>
+    private string BuildPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
+    {
+        var column = $"t.\"{predicate.Column}\"";
+        var paramName = $"@pred_{tablePrefix}_{predicate.Column}_{parameters.Count}";
+
+        switch (predicate.FilterType)
+        {
+            case FilterType.Equals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} = {paramName}";
+
+            case FilterType.NotEquals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} != {paramName}";
+
+            case FilterType.GreaterThan:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} > {paramName}";
+
+            case FilterType.GreaterThanOrEquals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} >= {paramName}";
+
+            case FilterType.LessThan:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} < {paramName}";
+
+            case FilterType.LessThanOrEquals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} <= {paramName}";
+
+            case FilterType.Like:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} LIKE {paramName}";
+
+            case FilterType.ILike:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} ILIKE {paramName}";
+
+            case FilterType.NotLike:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} NOT LIKE {paramName}";
+
+            case FilterType.In:
+                if (predicate.Value is Array arr)
+                {
+                    parameters.Add(new NpgsqlParameter(paramName, arr));
+                    return $"{column} = ANY({paramName})";
+                }
+                return "";
+
+            case FilterType.NotIn:
+                if (predicate.Value is Array arr2)
+                {
+                    parameters.Add(new NpgsqlParameter(paramName, arr2));
+                    return $"{column} != ALL({paramName})";
+                }
+                return "";
+
+            case FilterType.IsNull:
+                return $"{column} IS NULL";
+
+            case FilterType.IsNotNull:
+                return $"{column} IS NOT NULL";
+
+            default:
+                return "";
+        }
     }
 
     public async Task<object> GetHealth()
