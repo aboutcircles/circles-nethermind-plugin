@@ -230,6 +230,10 @@ This script will:
 **Prerequisites:**
 
 - Nethermind source code in `src/nethermind/` directory (clone from <https://github.com/NethermindEth/nethermind>)
+  - This is set up as a git submodule. If you've just cloned the repository, you may need to initialize it:
+    ```bash
+    git submodule update --init --recursive
+    ```
 - PostgreSQL running (via Docker or locally)
 - ~700GB+ free disk space for blockchain data
 - .NET 9.0 SDK
