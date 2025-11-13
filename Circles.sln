@@ -8,22 +8,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{1A7A
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB76D-01EE-4E92-AEE5-27224DA53350}"
 	ProjectSection(SolutionItems) = preProject
-		docker\Index.x64.Dockerfile = docker\Index.x64.Dockerfile
-		docker\Index.arm64.Dockerfile = docker\Index.arm64.Dockerfile
+		docker\Index.Dockerfile = docker\Index.Dockerfile
 		docker\pathfinder-host.Dockerfile = docker\pathfinder-host.Dockerfile
 		docker\rpc-host.Dockerfile = docker\rpc-host.Dockerfile
 		docker-compose.chiado.yml = docker-compose.chiado.yml
 		docker-compose.gnosis.yml = docker-compose.gnosis.yml
-		.dockerignore = .dockerignore
-		.env.example = .env.example
-		.env = .env
-		Readme.md = Readme.md
-		.gitmodules = .gitmodules
-		.gitignore = .gitignore
-		v2-example-requests.md = v2-example-requests.md
-		v1-example-requests.md = v1-example-requests.md
-		general-example-requests.md = general-example-requests.md
-		all_tables.html = all_tables.html
+		docker-compose.spaceneth.yml = docker-compose.spaceneth.yml
+		docker\.env.example = docker\.env.example
+		docker\.env = docker\.env
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
@@ -87,6 +79,27 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Rpc.Host", "src\Rpc\Circles.Rpc.Host\Circles.Rpc.Host.csproj", "{829D18AE-EA12-4ECC-833F-266CFF1082E3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Rpc.Host.Tests", "src\Rpc\Circles.Rpc.Host.Tests\Circles.Rpc.Host.Tests.csproj", "{032768CB-CF53-45AE-ADC7-A9D883A1CDF0}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{208BA388-4CEE-2CBF-559C-5607C099C1F8}"
+	ProjectSection(SolutionItems) = preProject
+		docs\v2-example-requests.md = docs\v2-example-requests.md
+		docs\v1-example-requests.md = docs\v1-example-requests.md
+		docs\general-example-requests.md = docs\general-example-requests.md
+		docs\rpc-host-discrepancies.md = docs\rpc-host-discrepancies.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "files", "files", "{9F5E6384-8D91-7B30-BF94-463B36B69FC3}"
+	ProjectSection(SolutionItems) = preProject
+		.dockerignore = .dockerignore
+		.env.local = .env.local
+		.env.local.example = .env.local.example
+		.gitignore = .gitignore
+		.gitmodules = .gitmodules
+		all_tables.html = all_tables.html
+		DEVELOPMENT.md = DEVELOPMENT.md
+		Makefile = Makefile
+		README.md = README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -453,8 +466,8 @@ Global
 		{761E5B16-E5B9-4C8C-93BB-C062089B47F7} = {664289F4-DCD6-D41D-7163-C693306A2F35}
 		{DD92C7B6-42BA-4193-BD30-02675D8C1EF0} = {664289F4-DCD6-D41D-7163-C693306A2F35}
 		{2D115D41-991B-4405-A9C1-49ACD9EFBAB4} = {664289F4-DCD6-D41D-7163-C693306A2F35}
-		{829D18AE-EA12-4ECC-833F-266CFF1082E3} = {93D007DF-0658-4AC1-FBB8-A8BE14510E37}
 		{93D007DF-0658-4AC1-FBB8-A8BE14510E37} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{829D18AE-EA12-4ECC-833F-266CFF1082E3} = {93D007DF-0658-4AC1-FBB8-A8BE14510E37}
 		{032768CB-CF53-45AE-ADC7-A9D883A1CDF0} = {93D007DF-0658-4AC1-FBB8-A8BE14510E37}
 	EndGlobalSection
 EndGlobal
