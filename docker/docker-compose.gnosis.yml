@@ -1,5 +1,6 @@
 services:
   jwt-gnosis-secret:
+    container_name: jwt-gnosis-secret
     image: alpine:3.20
     restart: unless-stopped
     networks:
@@ -35,6 +36,7 @@ services:
       start_period: 1s
 
   nethermind-gnosis:
+    container_name: nethermind-gnosis
     build:
       context: ..
       dockerfile: docker/Index.Dockerfile
@@ -118,6 +120,7 @@ services:
       --checkpoint-sync-url=https://checkpoint.gnosischain.com
 
   pathfinder:
+    container_name: pathfinder
     build:
       context: ..
       dockerfile: docker/pathfinder-host.Dockerfile
@@ -134,6 +137,7 @@ services:
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
 
   rpc:
+    container_name: rpc
     build:
       context: ..
       dockerfile: docker/rpc-host.Dockerfile
@@ -150,6 +154,7 @@ services:
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
 
   profile-service:
+    container_name: profile-service
     image: jaensen/circles-profile-pinning-service:0.5.0-rc1
     depends_on:
       - nethermind-gnosis
@@ -164,6 +169,7 @@ services:
       - .env
 
   postgres-gnosis:
+    container_name: postgres-gnosis
     image: postgres:17
     command: -c 'max_connections=100'
     restart: unless-stopped
