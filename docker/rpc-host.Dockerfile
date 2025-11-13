@@ -1,6 +1,10 @@
 ﻿FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
+# Detect target architecture
+ARG TARGETARCH
+RUN echo "Building for architecture: ${TARGETARCH}"
+
 # use dotnet related caching
 COPY ./src/Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj ./Circles.Rpc.Host/
 RUN dotnet restore ./Circles.Rpc.Host/Circles.Rpc.Host.csproj
@@ -10,6 +14,7 @@ COPY ./src/Rpc .
 WORKDIR /src/Circles.Rpc.Host
 RUN dotnet publish \
     -c Release \
+    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
     -o /app/publish \
     --no-restore
     

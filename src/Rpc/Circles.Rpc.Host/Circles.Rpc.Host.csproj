@@ -8,7 +8,8 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <AssemblyVersion>1.25.0</AssemblyVersion>
     <FileVersion>1.25.0</FileVersion>
-    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <!-- RuntimeIdentifier can be set via CLI: dotnet publish -r linux-x64 or linux-arm64 -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">linux-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <Configuration>Release</Configuration>
     <PublishSingleFile>true</PublishSingleFile>
