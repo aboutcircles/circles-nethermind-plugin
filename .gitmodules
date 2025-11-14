@@ -1,9 +1,9 @@
 [submodule "circles-contracts-v2"]
 	path = circles-contracts-v2
-	url = git@github.com:CirclesUBI/circles-contracts-v2.git
+	url = https://github.com/CirclesUBI/circles-contracts-v2.git
 [submodule "circles-contracts"]
 	path = circles-contracts
-	url = git@github.com:CirclesUBI/circles-contracts.git
+	url = https://github.com/CirclesUBI/circles-contracts.git
 [submodule "src/nethermind"]
 	path = src/nethermind
 	url = https://github.com/NethermindEth/nethermind.git
