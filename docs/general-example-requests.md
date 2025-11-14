@@ -15,6 +15,38 @@ The examples in this file are general Circles RPC methods that can be used to qu
       - [Get the trust relations between avatars](#get-the-trust-relations-between-avatars)
       - [Response:](#response-2)
   - [circles\_events](#circles_events-1)
+  - [circles\_getTokenInfo](#circles_gettokeninfo)
+    - [Request:](#request)
+    - [Response:](#response-3)
+  - [circles\_getTokenInfoBatch](#circles_gettokeninfobatch)
+    - [Request:](#request-1)
+    - [Response:](#response-4)
+  - [circles\_getAvatarInfo](#circles_getavatarinfo)
+    - [Request:](#request-2)
+    - [Response (Phase 1):](#response-phase-1)
+    - [Field Descriptions:](#field-descriptions)
+  - [circles\_getAvatarInfoBatch](#circles_getavatarinfobatch)
+    - [Request:](#request-3)
+    - [Response (Phase 1):](#response-phase-1-1)
+  - [circles\_getTokenBalances](#circles_gettokenbalances)
+    - [Request:](#request-4)
+    - [Response (Phase 1):](#response-phase-1-2)
+    - [Field Descriptions:](#field-descriptions-1)
+    - [Important Phase 1 Limitations:](#important-phase-1-limitations)
+  - [circles\_getProfileByAddress](#circles_getprofilebyaddress)
+    - [Request:](#request-5)
+    - [Response (Phase 1 - Enriched Profile):](#response-phase-1---enriched-profile)
+    - [Enrichment Features (Phase 1):](#enrichment-features-phase-1)
+  - [circles\_getProfileByAddressBatch](#circles_getprofilebyaddressbatch)
+    - [Request:](#request-6)
+  - [circles\_events (with filtering)](#circles_events-with-filtering)
+    - [Parameters:](#parameters)
+    - [Basic Filtering Request:](#basic-filtering-request)
+    - [Advanced Filtering Request (Phase 1):](#advanced-filtering-request-phase-1)
+    - [Multiple Predicates Example:](#multiple-predicates-example)
+    - [Supported FilterTypes (Phase 1):](#supported-filtertypes-phase-1)
+    - [Response:](#response-5)
+    - [Notes:](#notes)
 
 ### circles subscription
 
@@ -25,7 +57,7 @@ The examples in this file are general Circles RPC methods that can be used to qu
 
 ### circles_events
 
-Queries all events that involve a specific address. This is especially useful to update a client once it's address is
+Queries all events that involve a specific address. This is especially useful to update a client once its address is
 involved in an event (see [circles subscription](#circles-subscription))
 or can be used to populate a history view for a specific address.
 

@@ -15,7 +15,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		docker-compose.gnosis.yml = docker-compose.gnosis.yml
 		docker-compose.spaceneth.yml = docker-compose.spaceneth.yml
 		docker\.env.example = docker\.env.example
-		docker\.env = docker\.env
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
@@ -91,7 +90,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "files", "files", "{9F5E6384-8D91-7B30-BF94-463B36B69FC3}"
 	ProjectSection(SolutionItems) = preProject
 		.dockerignore = .dockerignore
-		.env.local = .env.local
 		.env.local.example = .env.local.example
 		.gitignore = .gitignore
 		.gitmodules = .gitmodules

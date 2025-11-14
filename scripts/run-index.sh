@@ -84,7 +84,16 @@ if ! command -v psql &> /dev/null; then
     echo -e "${YELLOW}Warning: psql command not found, skipping database check${NC}"
 else
     # Try to connect to PostgreSQL
-    if ! psql "$POSTGRES_CONNECTION_STRING" -c "SELECT 1" &> /dev/null; then
+    POSTGRES_HOST="${POSTGRES_HOST:-localhost}"  
+    POSTGRES_PORT="${POSTGRES_PORT:-5432}"  
+    # Try to connect to PostgreSQL  
+    if ! PGPASSWORD="$POSTGRES_PASSWORD" psql \
+        --host="$POSTGRES_HOST" \
+        --port="$POSTGRES_PORT" \
+        --username="$POSTGRES_USER" \
+        --dbname="$POSTGRES_DB" \
+        --no-align --tuples-only \
+        -c "SELECT 1" &> /dev/null; then
         echo -e "${RED}Error: Cannot connect to PostgreSQL${NC}"
         echo -e "${YELLOW}Please start PostgreSQL first:${NC}"
         echo -e "${YELLOW}  docker compose -f docker/docker-compose.gnosis.yml up -d postgres-gnosis${NC}"
@@ -124,18 +133,18 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 cd "$NETHERMIND_BIN_DIR"
 
 # Run Nethermind in the foreground
-./nethermind \
-    --config=gnosis \
-    --datadir="$DATA_DIR" \
-    --log=INFO \
-    --JsonRpc.Enabled=true \
-    --JsonRpc.Host=0.0.0.0 \
-    --JsonRpc.Port=8545 \
-    --JsonRpc.EnabledModules='[Web3,Eth,Subscribe,Net,Circles]' \
-    --JsonRpc.JwtSecretFile="$JWT_SECRET_FILE" \
-    --JsonRpc.EngineHost=0.0.0.0 \
-    --JsonRpc.EnginePort=8551 \
-    --Network.DiscoveryPort=30303 \
-    --Network.MaxActivePeers=100 \
-    --HealthChecks.Enabled=true \
-    --HealthChecks.UIEnabled=true
+# ./nethermind \
+#     --config=gnosis \
+#     --datadir="$DATA_DIR" \
+#     --log=INFO \
+#     --JsonRpc.Enabled=true \
+#     --JsonRpc.Host=0.0.0.0 \
+#     --JsonRpc.Port=8545 \
+#     --JsonRpc.EnabledModules='[Web3,Eth,Subscribe,Net,Circles]' \
+#     --JsonRpc.JwtSecretFile="$JWT_SECRET_FILE" \
+#     --JsonRpc.EngineHost=0.0.0.0 \
+#     --JsonRpc.EnginePort=8551 \
+#     --Network.DiscoveryPort=30303 \
+#     --Network.MaxActivePeers=100 \
+#     --HealthChecks.Enabled=true \
+#     --HealthChecks.UIEnabled=true
