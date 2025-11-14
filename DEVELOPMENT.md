@@ -51,10 +51,10 @@ export NUGET_API_KEY='your-api-key'
 # Run Nethermind with Circles Index plugin (requires Nethermind source)
 ./scripts/run-index.sh
 
-# Run Pathfinder service (http://localhost:5001)
+# Run Pathfinder service (http://localhost:8081)
 ./scripts/run-pathfinder.sh
 
-# Run RPC service (http://localhost:5002)
+# Run RPC service (http://localhost:8082)
 ./scripts/run-rpc.sh
 ```
 
@@ -276,13 +276,13 @@ Start services in separate terminals:
 **Terminal 1 - Pathfinder:**
 ```bash
 ./scripts/run-pathfinder.sh
-# Listening on http://localhost:5001
+# Listening on http://localhost:8081
 ```
 
 **Terminal 2 - RPC:**
 ```bash
 ./scripts/run-rpc.sh
-# Listening on http://localhost:5002
+# Listening on http://localhost:8082
 ```
 
 **Terminal 3 - Tests:**

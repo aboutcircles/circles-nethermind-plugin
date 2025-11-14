@@ -63,8 +63,8 @@ app.MapPost("/", async (
             // Avatar & Profile Methods
             "circles_getAvatarInfo" => await HandleGetAvatarInfo(request, rpcModule),
             "circles_getAvatarInfoBatch" => await HandleGetAvatarInfoBatch(request, rpcModule),
-            "circles_getProfileCid" => await HandleGetProfileCid(request, rpcModule),
-            "circles_getProfileCidBatch" => await HandleGetProfileCidBatch(request, rpcModule),
+            "circles_getProfileByCid" => await HandleGetProfileCid(request, rpcModule),
+            "circles_getProfileByCidBatch" => await HandleGetProfileCidBatch(request, rpcModule),
             "circles_getProfileByAddress" => await HandleGetProfileByAddress(request, rpcModule),
             "circles_getProfileByAddressBatch" => await HandleGetProfileByAddressBatch(request, rpcModule),
             "circles_searchProfiles" => await HandleSearchProfiles(request, rpcModule),
@@ -239,30 +239,30 @@ static async Task<object> HandleGetProfileByAddressBatch(JsonRpcRequest request,
 
 static async Task<object> HandleSearchProfiles(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
-    var parameters = JsonSerializer.Deserialize<object[]>(request.Params.GetRawText());
+    var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
     if (parameters == null || parameters.Length == 0)
     {
         throw new ArgumentException("Search text parameter is required");
     }
 
-    string text = parameters[0]?.ToString() ?? "";
+    string text = parameters[0].GetString() ?? "";
     int limit = 20;
     int offset = 0;
     string[]? types = null;
 
-    if (parameters.Length > 1 && parameters[1] != null)
+    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
     {
-        limit = Convert.ToInt32(parameters[1]);
+        limit = parameters[1].GetInt32();
     }
 
-    if (parameters.Length > 2 && parameters[2] != null)
+    if (parameters.Length > 2 && parameters[2].ValueKind != JsonValueKind.Null)
     {
-        offset = Convert.ToInt32(parameters[2]);
+        offset = parameters[2].GetInt32();
     }
 
-    if (parameters.Length > 3 && parameters[3] != null)
+    if (parameters.Length > 3 && parameters[3].ValueKind != JsonValueKind.Null)
     {
-        types = JsonSerializer.Deserialize<string[]>(JsonSerializer.Serialize(parameters[3]));
+        types = parameters[3].Deserialize<string[]>();
     }
 
     return await rpcModule.SearchProfiles(text, limit, offset, types);
@@ -330,7 +330,7 @@ static async Task<object> HandleV2FindPath(JsonRpcRequest request, CirclesRpcMod
 
 static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
-    var parameters = JsonSerializer.Deserialize<object[]>(request.Params.GetRawText());
+    var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
 
     string? address = null;
     long? fromBlock = null;
@@ -343,32 +343,32 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
         return await rpcModule.GetEvents(null, null, null, null, null, false);
     }
 
-    if (parameters.Length > 0 && parameters[0] != null)
+    if (parameters.Length > 0 && parameters[0].ValueKind != JsonValueKind.Null)
     {
-        address = parameters[0].ToString();
+        address = parameters[0].GetString();
     }
-    if (parameters.Length > 1 && parameters[1] != null)
+    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
     {
-        fromBlock = Convert.ToInt64(parameters[1].ToString());
+        fromBlock = parameters[1].GetInt64();
     }
-    if (parameters.Length > 2 && parameters[2] != null)
+    if (parameters.Length > 2 && parameters[2].ValueKind != JsonValueKind.Null)
     {
-        toBlock = Convert.ToInt64(parameters[2].ToString());
+        toBlock = parameters[2].GetInt64();
     }
-    if (parameters.Length > 3 && parameters[3] != null)
+    if (parameters.Length > 3 && parameters[3].ValueKind != JsonValueKind.Null)
     {
-        eventTypes = JsonSerializer.Deserialize<string[]>(JsonSerializer.Serialize(parameters[3]));
+        eventTypes = parameters[3].Deserialize<string[]>();
     }
 
     FilterPredicateDto[]? filterPredicates = null;
-    if (parameters.Length > 4 && parameters[4] != null)
+    if (parameters.Length > 4 && parameters[4].ValueKind != JsonValueKind.Null)
     {
-        filterPredicates = JsonSerializer.Deserialize<FilterPredicateDto[]>(JsonSerializer.Serialize(parameters[4]));
+        filterPredicates = parameters[4].Deserialize<FilterPredicateDto[]>();
     }
 
-    if (parameters.Length > 5 && parameters[5] != null)
+    if (parameters.Length > 5 && parameters[5].ValueKind != JsonValueKind.Null)
     {
-        sortAscending = Convert.ToBoolean(parameters[5]);
+        sortAscending = parameters[5].GetBoolean();
     }
 
     return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending);
@@ -398,4 +398,12 @@ static async Task<object> HandleQuery(JsonRpcRequest request, CirclesRpcModule r
         throw new ArgumentException("Invalid SelectDto parameter");
     }
     return await rpcModule.Query(query);
+}
+
+public static class JsonElementExtensions
+{
+    public static bool IsNullOrUndefined(this JsonElement element)
+    {
+        return element.ValueKind == JsonValueKind.Null;
+    }
 }

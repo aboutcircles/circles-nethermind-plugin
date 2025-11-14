@@ -184,8 +184,8 @@ Runs the Pathfinder host application locally for development.
 
 - `BUILD_CONFIGURATION` - Build configuration (default: Debug)
 - `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
-- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:5001)
-- `ConnectionStrings__Database` - PostgreSQL connection string
+- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8081)
+- `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
 - `Logging__LogLevel__Default` - Log level (default: Information)
 
 **Examples:**
@@ -195,7 +195,7 @@ Runs the Pathfinder host application locally for development.
 ./scripts/run-pathfinder.sh
 
 # Run with custom database
-export ConnectionStrings__Database="Host=localhost;Port=5432;Database=circles_dev;Username=dev;Password=dev123"
+export POSTGRES_READONLY_CONNECTION_STRING="Host=localhost;Port=5432;Database=postgres;Username=dev;Password=dev123"
 ./scripts/run-pathfinder.sh
 
 # Run on different port
@@ -207,8 +207,8 @@ BUILD_CONFIGURATION=Release ./scripts/run-pathfinder.sh
 
 **Default Configuration:**
 
-- URL: http://localhost:5001
-- Database: localhost:5432/circles (user: postgres, pass: postgres)
+- URL: http://localhost:8081
+- Database: localhost:5432/postgres (user: postgres, pass: postgres)
 - Environment: Development
 - Build: Debug
 
@@ -221,16 +221,16 @@ Runs the RPC host application locally for development.
 **Usage:**
 
 ```bash
-./scripts/run-rpc.sh [dotnet-run-args]
+./scripts/run-rpc.sh
 ```
 
 **Environment Variables:**
 
 - `BUILD_CONFIGURATION` - Build configuration (default: Debug)
 - `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
-- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:5002)
-- `ConnectionStrings__Database` - PostgreSQL connection string
-- `PathfinderUrl` - Pathfinder service URL (default: http://localhost:5001)
+- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8082)
+- `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
+- `ExternalPathfinderUrl` - Pathfinder service URL (default: http://localhost:8081)
 - `Logging__LogLevel__Default` - Log level (default: Information)
 
 **Examples:**
@@ -240,21 +240,135 @@ Runs the RPC host application locally for development.
 ./scripts/run-rpc.sh
 
 # Run with custom configuration
-export ConnectionStrings__Database="Host=localhost;Port=5432;Database=circles_dev;Username=dev;Password=dev123"
-export PathfinderUrl="http://localhost:8001"
+export POSTGRES_READONLY_CONNECTION_STRING="Host=localhost;Port=5432;Database=circles_dev;Username=dev;Password=dev123"
+export ExternalPathfinderUrl="http://localhost:8081"
 ./scripts/run-rpc.sh
 
 # Run on different port
-ASPNETCORE_URLS="http://localhost:8002" ./scripts/run-rpc.sh
+RPC_PORT="8002" ./scripts/run-rpc.sh
 ```
 
 **Default Configuration:**
 
-- URL: http://localhost:5002
-- Database: localhost:5432/circles (user: postgres, pass: postgres)
-- Pathfinder: http://localhost:5001
+- URL: http://localhost:8082
+- Database: localhost:5432/postgres (user: postgres, pass: postgres)
+- Pathfinder: http://localhost:8081
 - Environment: Development
 - Build: Debug
+
+---
+
+### `test-rpc.sh` - RPC Endpoint Testing
+
+Tests RPC endpoints by running all documented API calls against a running RPC service.
+
+**Usage:**
+
+```bash
+./scripts/test-rpc.sh [RPC_URL] [--json]
+
+Options:
+  RPC_URL     URL of the RPC endpoint (default: http://localhost:8082)
+  --json      Output JSON format for regression testing (default: pretty format)
+```
+
+**Examples:**
+
+```bash
+# Direct script usage
+./scripts/test-rpc.sh                              # Test local instance
+./scripts/test-rpc.sh http://localhost:8082        # Test custom URL
+./scripts/test-rpc.sh https://rpc.aboutcircles.com # Test production
+./scripts/test-rpc.sh https://rpc.aboutcircles.com --json # JSON output
+
+# Via Makefile
+make test-rpc                                      # Test localhost
+make test-rpc URL=https://rpc.aboutcircles.com     # Test custom URL
+make test-rpc ARGS='--json'                        # JSON output for localhost
+make test-rpc-prod                                 # Test production (pretty output)
+make test-rpc-prod ARGS='--json'                   # Test production (JSON output)
+```
+
+**Tested Methods:**
+
+The script tests the following RPC methods:
+- V1 Methods: `circles_getTotalBalance`, `circles_getTokenBalances`, `circles_getTrustRelations`
+- V2 Methods: `circlesV2_getTotalBalance`, `circlesV2_findPath`
+- Query Methods: `circles_query` (various table queries)
+- Info Methods: `circles_health`, `circles_tables`, `circles_events`, `circles_getAvatarInfo`
+- Profile Methods: `circles_getProfileByCid`, `circles_getProfileByAddress`, `circles_searchProfiles`
+- Network Methods: `circles_getCommonTrust`, `circles_getNetworkSnapshot`
+
+---
+
+### `rpc-regression.sh` - RPC Regression Testing
+
+Compares RPC responses between two endpoints (typically local vs production) to identify discrepancies.
+
+**Usage:**
+
+```bash
+./scripts/rpc-regression.sh [LOCAL_URL] [REMOTE_URL]
+
+Arguments:
+  LOCAL_URL   URL of local RPC endpoint (default: http://localhost:8082)
+  REMOTE_URL  URL of remote RPC endpoint (default: https://rpc.aboutcircles.com)
+```
+
+**Examples:**
+
+```bash
+# Compare local vs production
+./scripts/rpc-regression.sh
+
+# Compare custom endpoints
+./scripts/rpc-regression.sh http://localhost:8082 https://staging.aboutcircles.com
+
+# Compare two remote instances
+./scripts/rpc-regression.sh https://rpc1.aboutcircles.com https://rpc2.aboutcircles.com
+```
+
+**Output:**
+
+Results are saved to `RegressionTestResults/TIMESTAMP/`:
+- `local.json` - Raw JSON responses from local endpoint
+- `remote.json` - Raw JSON responses from remote endpoint
+- `diff.txt` - Detailed comparison showing differences
+- `summary.txt` - Summary report with statistics
+
+**Exit Codes:**
+- `0` - All tests match
+- `1` - Discrepancies found or errors occurred
+
+**Example Output:**
+
+```
+=== RPC Regression Testing ===
+Local URL:  http://localhost:8082
+Remote URL: https://rpc.aboutcircles.com
+Results:    RegressionTestResults/20250114_143022
+
+[1/4] Running tests against local endpoint...
+✓ Local tests completed
+
+[2/4] Running tests against remote endpoint...
+✓ Remote tests completed
+
+[3/4] Analyzing differences...
+✓ Analysis completed
+
+[4/4] Generating summary...
+
+=== Summary ===
+Total tests compared: 24
+Matching responses:   22
+Different responses:  2
+Missing in remote:    0
+Missing in local:     0
+
+⚠ Discrepancies found!
+Review detailed diff: RegressionTestResults/20250114_143022/diff.txt
+```
 
 ---
 
@@ -320,7 +434,7 @@ When using `--coverage`, results are saved to `TestResults/` directory.
 
    ```bash
    docker run -d --name circles-postgres \
-     -e POSTGRES_DB=circles \
+     -e POSTGRES_DB=postgres \
      -e POSTGRES_USER=postgres \
      -e POSTGRES_PASSWORD=postgres \
      -p 5432:5432 \
@@ -342,6 +456,15 @@ When using `--coverage`, results are saved to `TestResults/` directory.
 4. **Run tests** (in another terminal):
    ```bash
    ./scripts/test.sh
+
+   # Test RPC endpoints
+   ./scripts/test-rpc.sh
+   ```
+
+5. **Compare with production** (optional):
+   ```bash
+   # Run regression tests
+   ./scripts/rpc-regression.sh
    ```
 
 ### Building for Production
@@ -471,12 +594,16 @@ scripts/
 ├── nuget-push.sh          # NuGet package publisher
 ├── run-index.sh           # Nethermind with Index plugin dev server
 ├── run-pathfinder.sh      # Pathfinder dev server
+├── run-postgres.sh        # PostgreSQL dev server
 ├── run-rpc.sh             # RPC dev server
 ├── test.sh                # Test runner
+├── test-rpc.sh            # RPC endpoint tester
+├── rpc-regression.sh      # RPC regression testing (local vs production)
 └── README.md              # This file
 
 nupkgs/                    # NuGet packages output (created by nuget-pack.sh)
 TestResults/               # Test coverage results (created by test.sh --coverage)
+RegressionTestResults/       # Regression test results (created by rpc-regression.sh)
 ```
 
 ---

@@ -87,7 +87,7 @@ Error responses:
 
 The service is built as a standard ASP.NET Core application. Once started, it will:
 
-1. Listen on the configured port (default: 5000 for HTTP, 5001 for HTTPS)
+1. Listen on the configured port (default: 8082)
 2. Accept JSON-RPC 2.0 requests at the root endpoint `/`
 3. Return proper JSON-RPC 2.0 responses
 4. Provide health check endpoints at `/live` and `/ready`
