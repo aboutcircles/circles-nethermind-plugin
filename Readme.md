@@ -8,7 +8,6 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
 If you're developing the plugin, building packages, or running services locally, see:
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guide with build scripts, testing, and local development
 - **[scripts/README.md](scripts/README.md)** - Detailed documentation for all build and deployment scripts
-- **[CI/CD Documentation](docs/CI-CD.md)** - Automated testing, building, and deployment workflows
 
 Quick commands for developers:
 ```bash
@@ -17,17 +16,6 @@ make all                    # Build, test, and pack
 ./scripts/test.sh           # Run tests
 ./scripts/run-pathfinder.sh # Run Pathfinder locally
 ```
-
-### CI/CD Workflows
-
-This project uses automated workflows for:
-- **Continuous Integration**: Automated builds and tests on every PR
-- **Docker Image Publishing**: Multi-architecture images on Docker Hub
-- **NuGet Package Publishing**: Automated package releases to NuGet.org
-- **Code Quality**: Automated security scanning and formatting checks
-- **Dependency Updates**: Automated dependency updates via Dependabot
-
-See [CI/CD Documentation](docs/CI-CD.md) for complete guide.
 
 ---
 
