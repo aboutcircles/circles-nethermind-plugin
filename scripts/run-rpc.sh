@@ -8,6 +8,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_PATH="$PROJECT_ROOT/src/Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj"
 
+ENV_FILE="$PROJECT_ROOT/.env.local"
+if [[ -f "$ENV_FILE" ]]; then
+    source "$ENV_FILE"
+fi
+
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -21,13 +26,11 @@ CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
 
 # Environment variables for development
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
-export ASPNETCORE_URLS="${ASPNETCORE_URLS:-http://localhost:5002}"
+export ASPNETCORE_URLS="http://localhost:${RPC_PORT:-8082}"
 
-# Database connection (customize as needed)
-export ConnectionStrings__Database="${ConnectionStrings__Database:-Host=localhost;Port=5432;Database=circles;Username=postgres;Password=postgres}"
-
-# Pathfinder URL (if needed)
-export PathfinderUrl="${PathfinderUrl:-http://localhost:5001}"
+export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
+export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
+export ExternalPathfinderUrl="${ExternalPathfinderUrl:-http://localhost:8081}"
 
 # Logging
 export Logging__LogLevel__Default="${Logging__LogLevel__Default:-Information}"
@@ -36,8 +39,9 @@ echo -e "${YELLOW}Configuration:${NC}"
 echo -e "  Environment: $ASPNETCORE_ENVIRONMENT"
 echo -e "  URLs: $ASPNETCORE_URLS"
 echo -e "  Build Config: $CONFIGURATION"
-echo -e "  Database: ${ConnectionStrings__Database%%Password=*}Password=***"
-echo -e "  Pathfinder: $PathfinderUrl"
+echo -e "  Circles Rpc Url: ${CIRCLES_RPC_URL}"
+echo -e "  Database: ${POSTGRES_CONNECTION_STRING%%Password=*}Password=***"
+echo -e "  Pathfinder: $ExternalPathfinderUrl"
 echo ""
 
 # Check if project exists

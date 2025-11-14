@@ -149,9 +149,9 @@ services:
     ports:
       - 8082:8080
     environment:
-      - CIRCLES_RPC_URL=http://nethermind-gnosis:8545
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+      - ExternalPathfinderUrl=pathfinder:8081
 
   profile-service:
     container_name: profile-service

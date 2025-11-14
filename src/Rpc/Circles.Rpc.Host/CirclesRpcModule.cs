@@ -124,7 +124,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var tokenAddress = reader.GetString(0);
-                var balanceStr = reader.GetString(1);
+                var balanceStr = reader.GetValue(1).ToString();
                 var owner = reader.GetString(2);
 
                 if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
@@ -199,16 +199,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             SELECT
                 b.""tokenAddress"",
                 b.total_balance,
-                COALESCE(rh.avatar, rg.avatar) as owner,
+                COALESCE(rh.avatar, rg.""group"") as owner,
                 CASE
                     WHEN rh.avatar IS NOT NULL THEN 'CrcV2_RegisterHuman'
-                    WHEN rg.avatar IS NOT NULL THEN 'CrcV2_RegisterGroup'
+                    WHEN rg.""group"" IS NOT NULL THEN 'CrcV2_RegisterGroup'
                     ELSE 'Unknown'
                 END as token_type,
-                CASE WHEN rg.avatar IS NOT NULL THEN true ELSE false END as is_group
+                CASE WHEN rg.""group"" IS NOT NULL THEN true ELSE false END as is_group
             FROM balances b
             LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = b.""tokenAddress""
-            LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.avatar = b.""tokenAddress""";
+            LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = b.""tokenAddress""";
 
         await using (var cmd = new NpgsqlCommand(v2Erc1155Sql, connection))
         {
@@ -217,7 +217,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var tokenAddress = reader.GetString(0);
-                var balanceStr = reader.GetString(1);
+                var balanceStr = reader.GetValue(1).ToString();
                 var owner = reader.IsDBNull(2) ? tokenAddress : reader.GetString(2);
                 var tokenType = reader.GetString(3);
                 var isGroup = reader.GetBoolean(4);
@@ -287,7 +287,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var tokenAddress = reader.GetString(0);
-                var balanceStr = reader.GetString(1);
+                var balanceStr = reader.GetValue(1).ToString();
                 var owner = reader.GetString(2);
                 var circlesType = reader.GetInt32(3); // 0 = demurraged, 1 = inflationary
 
@@ -490,7 +490,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
-        var lowerAddresses = addresses.Select(a => a.ToLower()).ToArray();
+        var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new object?[addresses.Length];
 
         await using var connection = await CreateConnectionAsync();
@@ -500,7 +500,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         const string v2Sql = @"
             SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.cid, rsn.""shortName""
             FROM ""V_CrcV2_Avatars"" a
-            LEFT JOIN ""CrcV2_RegisterName"" rn ON rn.avatar = a.avatar
+            LEFT JOIN (SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV2_UpdateMetadataDigest"") rn ON rn.avatar = a.avatar
             LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
             WHERE a.avatar = ANY(@addresses)";
 
@@ -570,21 +570,28 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         // Get V1 CIDs for V1 avatars
         var v1CidSql = @"
-            SELECT avatar, cid
-            FROM ""CrcV1_RegisterName""
+            SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid
+            FROM ""CrcV1_UpdateMetadataDigest""
             WHERE avatar = ANY(@addresses)";
 
         var v1CidMap = new Dictionary<string, string>();
-        await using (var cmd = new NpgsqlCommand(v1CidSql, connection))
+        try
         {
-            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            await using (var cmd = new NpgsqlCommand(v1CidSql, connection))
             {
-                var avatar = reader.GetString(0);
-                var cid = reader.GetString(1);
-                v1CidMap[avatar] = cid;
+                cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var avatar = reader.GetString(0);
+                    var cid = reader.GetString(1);
+                    v1CidMap[avatar] = cid;
+                }
             }
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42P01")
+        {
+            // Table does not exist, skip V1
         }
 
         // Populate results
@@ -668,14 +675,14 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
-        var lowerAddresses = addresses.Select(a => a.ToLower()).ToArray();
+        var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new string?[addresses.Length];
 
         await using var connection = await CreateConnectionAsync();
 
         // First, check V2 CIDs
         var v2CidMap = new Dictionary<string, string>();
-        const string v2Sql = @"SELECT avatar, cid FROM ""CrcV2_RegisterName"" WHERE avatar = ANY(@addresses)";
+        const string v2Sql = @"SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV2_UpdateMetadataDigest"" WHERE avatar = ANY(@addresses)";
 
         await using (var cmd = new NpgsqlCommand(v2Sql, connection))
         {
@@ -691,18 +698,25 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         // Then, check V1 CIDs (for those not found in V2)
         var v1CidMap = new Dictionary<string, string>();
-        const string v1Sql = @"SELECT avatar, cid FROM ""CrcV1_RegisterName"" WHERE avatar = ANY(@addresses)";
-
-        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
+        try
         {
-            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            const string v1Sql = @"SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV1_UpdateMetadataDigest"" WHERE avatar = ANY(@addresses)";
+
+            await using (var cmd = new NpgsqlCommand(v1Sql, connection))
             {
-                var avatar = reader.GetString(0);
-                var cid = reader.GetString(1);
-                v1CidMap[avatar] = cid;
+                cmd.Parameters.AddWithValue("addresses", lowerAddresses);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var avatar = reader.GetString(0);
+                    var cid = reader.GetString(1);
+                    v1CidMap[avatar] = cid;
+                }
             }
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42P01")
+        {
+            // Table does not exist, skip V1
         }
 
         // Populate results (V2 takes priority)
@@ -745,7 +759,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
-        var lowerAddresses = addresses.Select(a => a.ToLower()).ToArray();
+        var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new object?[addresses.Length];
 
         // Get CIDs for all addresses
@@ -1157,7 +1171,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var user = reader.GetString(0);
             var canSendTo = reader.GetString(1);
-            var limit = reader.GetInt32(2);
+            // V1 trust limits are percentages (0-100), stored as uint256 in contract but always fit in int32
+            var limit = Convert.ToInt32(reader.GetValue(2));
             if (user.Equals(address, StringComparison.OrdinalIgnoreCase))
             {
                 trusts[canSendTo] = limit;
@@ -1312,27 +1327,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         FilterPredicateDto[]? filterPredicates = null,
         bool? sortAscending = false)
     {
-        // A predefined map of event tables and their columns that contain addresses.
-        var eventTables = new Dictionary<string, string[]>
-        {
-            { "CrcV1_HubSignup", new[] { "user", "token" } },
-            { "CrcV1_Signup", new[] { "user", "token" } },
-            { "CrcV1_OrganizationSignup", new[] { "user" } },
-            { "CrcV1_Trust", new[] { "user", "canSendTo" } },
-            { "CrcV1_Transfer", new[] { "from", "to", "tokenAddress" } },
-            { "CrcV2_RegisterHuman", new[] { "avatar" } },
-            { "CrcV2_RegisterGroup", new[] { "avatar", "owner" } },
-            { "CrcV2_RegisterOrganization", new[] { "avatar" } },
-            { "CrcV2_TransferSingle", new[] { "operator", "from", "to" } },
-            { "CrcV2_TransferBatch", new[] { "operator", "from", "to" } },
-            { "CrcV2_RegisterName", new[] { "avatar" } },
-            { "CrcV2_ERC20WrapperDeployed", new[] { "erc20Wrapper", "avatar" } },
-            { "CrcV2_Erc20WrapperTransfer", new[] { "from", "to", "tokenAddress" } }
-        };
+        // Use the schema-aware map to get all event tables and their address columns
+        var eventTables = DatabaseSchemaMap.TableAddressColumns;
 
         var queries = new List<string>();
         var parameters = new List<NpgsqlParameter>();
 
+        // Filter to only requested event types, or use all tables if no filter specified
         var relevantTables = eventTypes == null || !eventTypes.Any()
             ? eventTables
             : eventTables.Where(kvp => eventTypes.Contains(kvp.Key)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
@@ -1346,7 +1347,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var whereClauses = new List<string>();
 
-            // Basic address filter
+            // Basic address filter - only add if address is specified and table has address columns
             if (address != null && table.Value.Any())
             {
                 whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
@@ -1373,7 +1374,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
 
             var whereSql = whereClauses.Count > 0 ? $"WHERE {string.Join(" AND ", whereClauses)}" : "";
-            queries.Add($@"SELECT t.""blockNumber"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t {whereSql}");
+
+            // Include transactionIndex in the SELECT to support ORDER BY
+            queries.Add($@"SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t {whereSql}");
         }
 
         if (queries.Count == 0)
@@ -1396,10 +1399,11 @@ public class CirclesRpcModule : ICirclesRpcModule
             events.Add(new
             {
                 blockNumber = reader.GetInt64(0),
-                transactionHash = reader.GetString(1),
-                logIndex = reader.GetInt32(2),
-                @event = reader.GetString(3),
-                payload = JsonSerializer.Deserialize<object>(reader.GetString(4))
+                transactionIndex = reader.GetInt32(1),
+                transactionHash = reader.GetString(2),
+                logIndex = reader.GetInt32(3),
+                @event = reader.GetString(4),
+                payload = JsonSerializer.Deserialize<object>(reader.GetString(5))
             });
         }
         return new { events };
@@ -1496,7 +1500,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     public async Task<object> GetTables()
     {
         using var connection = await CreateConnectionAsync();
-        const string sql = @"SELECT DISTINCT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN (information_schema, pg_catalog) ORDER BY table_schema, table_name";
+        const string sql = @"SELECT DISTINCT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY table_schema, table_name";
         using var command = new NpgsqlCommand(sql, connection);
         using var reader = await command.ExecuteReaderAsync();
         var namespaces = new Dictionary<string, List<string>>();
@@ -1541,7 +1545,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                     FilterType.In => "IN",
                     _ => "="
                 };
-                whereClauses.Add($"\"{filter.Column}\" {op} {paramName}");
+                whereClauses.Add($"\"{filter.Column}\"::text {op} {paramName}::text");
                 parameters.Add(new NpgsqlParameter(paramName, filter.Value));
             }
         }

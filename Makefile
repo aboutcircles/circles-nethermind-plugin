@@ -1,4 +1,4 @@
-.PHONY: help build test docker pack push clean run-pathfinder run-rpc docker-up docker-down docker-logs
+.PHONY: help build test docker pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs
 
 # Default target
 help:
@@ -30,6 +30,15 @@ help:
 	@echo "  make run-index         Run Nethermind with Index plugin (Gnosis)"
 	@echo "  make run-pathfinder    Run Pathfinder service"
 	@echo "  make run-rpc           Run RPC service"
+	@echo "  make run-postgres      Run PostgreSQL database (Gnosis)"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test-rpc                    Run RPC tests (default: localhost:8082)"
+	@echo "  make test-rpc URL=<url>          Run RPC tests against custom URL"
+	@echo "  make test-rpc ARGS='--json'      Run RPC tests with JSON output"
+	@echo "  make test-rpc-prod               Run RPC tests against production"
+	@echo "  make test-rpc-prod ARGS='--json' Run production tests with JSON output"
+	@echo "  make test-rpc-regression         Compare local vs production responses"
 	@echo ""
 	@echo "Complete Workflows:"
 	@echo "  make all               Build, test, and pack"
@@ -110,6 +119,22 @@ run-pathfinder:
 
 run-rpc:
 	./scripts/run-rpc.sh
+
+run-postgres:
+	./scripts/run-postgres.sh
+
+test-rpc:
+	@if [ -n "$(URL)" ]; then \
+		./scripts/test-rpc.sh "$(URL)" $(ARGS); \
+	else \
+		./scripts/test-rpc.sh $(ARGS); \
+	fi
+
+test-rpc-prod:
+	./scripts/test-rpc.sh https://rpc.aboutcircles.com $(ARGS)
+
+test-rpc-regression:
+	./scripts/rpc-regression.sh
 
 # Complete workflows
 all: build test pack

@@ -5,6 +5,7 @@
 .state
 nupkgs
 TestResults
+RegressionTestResults
 nethermind-dev
 
 # Environment files (but keep examples)
