@@ -34,7 +34,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return connection;
     }
 
-    public async Task<object> GetTotalBalanceV1(string address)
+    public async Task<string> GetTotalBalanceV1(string address)
     {
         // NOTE: This balance is a raw sum of historical transfers and does not account for
         // time-based inflation. The actual balance may be higher.
@@ -43,10 +43,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
         var result = await command.ExecuteScalarAsync();
-        return result?.ToString() ?? "0";
+        var sumStr = result?.ToString() ?? "0";
+        var sum = BigInteger.Parse(sumStr);
+        return CirclesConverter.AttoCirclesToCircles(sum).ToString(CultureInfo.InvariantCulture);
     }
 
-    public async Task<object> GetTotalBalanceV2(string address)
+    public async Task<string> GetTotalBalanceV2(string address)
     {
         // NOTE: This balance is a raw sum of historical transfers and does not account for
         // time-based demurrage. The actual balance may be lower.
@@ -60,7 +62,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 SELECT -value FROM ""CrcV2_TransferSingle"" WHERE ""from"" = @address
 
                 UNION ALL
-                
+
                 -- ERC1155 Batch Transfers
                 SELECT value FROM ""CrcV2_TransferBatch"" WHERE ""to"" = @address
                 UNION ALL
@@ -77,10 +79,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
         var result = await command.ExecuteScalarAsync();
-        return result?.ToString() ?? "0";
+        var sumStr = result?.ToString() ?? "0";
+        var sum = BigInteger.Parse(sumStr);
+        return CirclesConverter.AttoCirclesToCircles(sum).ToString(CultureInfo.InvariantCulture);
     }
 
-    public async Task<object> GetTokenBalances(string address)
+    public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
     {
         // NOTE: The returned balances are raw sums of historical transfers.
         // They do NOT account for time-based adjustments:
@@ -346,7 +350,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Order by circles value (descending)
         var orderedBalances = tokenBalances
             .OrderByDescending(b => b.Circles)
-            .ToList();
+            .ToArray();
 
         return orderedBalances;
     }
@@ -369,7 +373,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return "0";
     }
 
-    public async Task<object> GetTokenInfo(string tokenAddress)
+    public async Task<TokenInfo> GetTokenInfo(string tokenAddress)
     {
         await using var connection = await CreateConnectionAsync();
         var lowerTokenAddress = tokenAddress.ToLower();
@@ -382,18 +386,17 @@ public class CirclesRpcModule : ICirclesRpcModule
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                return new
-                {
-                    token = reader.GetString(0),
-                    tokenOwner = reader.GetString(1),
-                    version = 1,
-                    type = "Avatar",
-                    isErc20 = true,
-                    isErc1155 = false,
-                    isWrapped = false,
-                    isInflationary = true,
-                    isGroup = false
-                };
+                return new TokenInfo(
+                    Token: reader.GetString(0),
+                    TokenOwner: reader.GetString(1),
+                    Version: 1,
+                    Type: "Avatar",
+                    IsErc20: true,
+                    IsErc1155: false,
+                    IsWrapped: false,
+                    IsInflationary: true,
+                    IsGroup: false
+                );
             }
         }
 
@@ -407,18 +410,17 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 var type = reader.GetString(1);
                 var isGroup = type == "CrcV2_RegisterGroup";
-                return new
-                {
-                    token = reader.GetString(0),
-                    tokenOwner = reader.GetString(0), // For V2 avatars, the token and owner are the same
-                    version = 2,
-                    type = "Avatar",
-                    isErc20 = false,
-                    isErc1155 = true,
-                    isWrapped = false,
-                    isInflationary = false,
-                    isGroup
-                };
+                return new TokenInfo(
+                    Token: reader.GetString(0),
+                    TokenOwner: reader.GetString(0), // For V2 avatars, the token and owner are the same
+                    Version: 2,
+                    Type: "Avatar",
+                    IsErc20: false,
+                    IsErc1155: true,
+                    IsWrapped: false,
+                    IsInflationary: false,
+                    IsGroup: isGroup
+                );
             }
         }
 
@@ -431,28 +433,27 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 if (await reader.ReadAsync())
                 {
-                    return new
-                    {
-                        token = reader.GetString(0),
-                        tokenOwner = reader.GetString(1),
-                        version = 2,
-                        type = "ERC20",
-                        isErc20 = true,
-                        isErc1155 = false,
-                        isWrapped = true,
-                        isInflationary = false,
-                        isGroup = false
-                    };
+                    return new TokenInfo(
+                        Token: reader.GetString(0),
+                        TokenOwner: reader.GetString(1),
+                        Version: 2,
+                        Type: "ERC20",
+                        IsErc20: true,
+                        IsErc1155: false,
+                        IsWrapped: true,
+                        IsInflationary: false,
+                        IsGroup: false
+                    );
                 }
             }
         }
 
-        return CreateError("No token info found");
+        throw new InvalidOperationException($"No token info found for address {tokenAddress}");
     }
 
-    public async Task<object> GetTokenInfoBatch(string[] tokenAddresses)
+    public async Task<TokenInfo[]> GetTokenInfoBatch(string[] tokenAddresses)
     {
-        var results = new List<object?>();
+        var results = new List<TokenInfo>();
         foreach (var tokenAddress in tokenAddresses)
         {
             try
@@ -460,30 +461,34 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var tokenInfo = await GetTokenInfo(tokenAddress);
                 results.Add(tokenInfo);
             }
-            catch { results.Add(null); }
+            catch
+            {
+                // Skip tokens that don't exist
+            }
         }
-        return results;
+        return results.ToArray();
     }
 
-    public async Task<object> GetAvatarInfo(string address)
+    public async Task<AvatarInfo> GetAvatarInfo(string address)
     {
         var results = await GetAvatarInfoBatchInternal(new[] { address });
         var result = results[0];
 
         if (result == null)
         {
-            return CreateError($"No avatar found for address {address}");
+            throw new InvalidOperationException($"No avatar found for address {address}");
         }
 
         return result;
     }
 
-    public async Task<object> GetAvatarInfoBatch(string[] addresses)
+    public async Task<AvatarInfo[]> GetAvatarInfoBatch(string[] addresses)
     {
-        return await GetAvatarInfoBatchInternal(addresses);
+        var results = await GetAvatarInfoBatchInternal(addresses);
+        return results.Where(r => r != null).ToArray()!;
     }
 
-    private async Task<object?[]> GetAvatarInfoBatchInternal(string[] addresses)
+    private async Task<AvatarInfo?[]> GetAvatarInfoBatchInternal(string[] addresses)
     {
         if (addresses.Length > 1000)
         {
@@ -491,14 +496,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
-        var result = new object?[addresses.Length];
+        var result = new AvatarInfo?[addresses.Length];
 
         await using var connection = await CreateConnectionAsync();
 
         // First, check for V2 avatars
-        var v2AvatarMap = new Dictionary<string, object>();
+        var v2AvatarMap = new Dictionary<string, AvatarInfo>();
         const string v2Sql = @"
-            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.cid, rsn.""shortName""
+            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.cid, rsn.""shortName"", a.""cidV0Digest""
             FROM ""V_CrcV2_Avatars"" a
             LEFT JOIN (SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV2_UpdateMetadataDigest"") rn ON rn.avatar = a.avatar
             LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
@@ -514,28 +519,26 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var avatarType = reader.GetString(3);
                 var isHuman = avatarType == "CrcV2_RegisterHuman";
                 var cid = reader.IsDBNull(4) ? null : reader.GetString(4);
-                var shortName = reader.IsDBNull(5) ? null : reader.GetString(5);
+                var cidV0Digest = reader.IsDBNull(6) ? "" : reader.GetString(6);
 
-                v2AvatarMap[avatar] = new
-                {
-                    version = 2,
-                    type = avatarType,
-                    avatar,
-                    tokenId = avatar,  // For V2, tokenId is the avatar address (for ERC1155)
-                    hasV1 = false,
-                    v1Token = (string?)null,
-                    cidV0Digest = "",
-                    cidV0 = cid,
-                    isHuman,
-                    name = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    symbol = "",
-                    shortName
-                };
+                v2AvatarMap[avatar] = new AvatarInfo(
+                    Version: 2,
+                    Type: avatarType,
+                    Avatar: avatar,
+                    TokenId: avatar,  // For V2, tokenId is the avatar address (for ERC1155)
+                    HasV1: false,
+                    V1Token: null,
+                    CidV0Digest: cidV0Digest,
+                    CidV0: cid,
+                    IsHuman: isHuman,
+                    Name: reader.IsDBNull(2) ? null : reader.GetString(2),
+                    Symbol: reader.IsDBNull(5) ? "" : reader.GetString(5)
+                );
             }
         }
 
         // Then, check for V1 avatars (those not found in V2)
-        var v1AvatarMap = new Dictionary<string, object>();
+        var v1AvatarMap = new Dictionary<string, AvatarInfo>();
         const string v1Sql = @"
             SELECT s.""user"", s.token
             FROM ""CrcV1_Signup"" s
@@ -550,21 +553,19 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var userAddress = reader.GetString(0);
                 var tokenAddress = reader.GetString(1);
 
-                v1AvatarMap[userAddress] = new
-                {
-                    version = 1,
-                    type = "CrcV1_Signup",
-                    avatar = userAddress,
-                    tokenId = tokenAddress,
-                    hasV1 = true,
-                    v1Token = tokenAddress,
-                    cidV0Digest = "",
-                    cidV0 = (string?)null,
-                    isHuman = true,  // V1 signups are always human
-                    name = (string?)null,
-                    symbol = "",
-                    shortName = (string?)null
-                };
+                v1AvatarMap[userAddress] = new AvatarInfo(
+                    Version: 1,
+                    Type: "CrcV1_Signup",
+                    Avatar: userAddress,
+                    TokenId: tokenAddress,
+                    HasV1: true,
+                    V1Token: tokenAddress,
+                    CidV0Digest: "",
+                    CidV0: null,
+                    IsHuman: true,  // V1 signups are always human
+                    Name: null,
+                    Symbol: ""
+                );
             }
         }
 
@@ -605,21 +606,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                 // If this address also has V1, merge the info
                 if (v1AvatarMap.TryGetValue(addr, out var v1Avatar))
                 {
-                    var v2Dict = (dynamic)v2Avatar;
-                    result[i] = new
+                    result[i] = v2Avatar with
                     {
-                        version = v2Dict.version,
-                        type = v2Dict.type,
-                        avatar = v2Dict.avatar,
-                        tokenId = v2Dict.tokenId,
-                        hasV1 = true,
-                        v1Token = ((dynamic)v1Avatar).v1Token,
-                        cidV0Digest = v2Dict.cidV0Digest,
-                        cidV0 = v2Dict.cidV0 ?? (v1CidMap.TryGetValue(addr, out var v1Cid) ? v1Cid : null),
-                        isHuman = v2Dict.isHuman,
-                        name = v2Dict.name,
-                        symbol = v2Dict.symbol,
-                        shortName = v2Dict.shortName
+                        HasV1 = true,
+                        V1Token = v1Avatar.V1Token,
+                        CidV0 = v2Avatar.CidV0 ?? (v1CidMap.TryGetValue(addr, out var v1Cid) ? v1Cid : null)
                     };
                 }
                 else
@@ -630,21 +621,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             // If no V2, check V1
             else if (v1AvatarMap.TryGetValue(addr, out var v1Avatar))
             {
-                var v1Dict = (dynamic)v1Avatar;
-                result[i] = new
+                result[i] = v1Avatar with
                 {
-                    version = v1Dict.version,
-                    type = v1Dict.type,
-                    avatar = v1Dict.avatar,
-                    tokenId = v1Dict.tokenId,
-                    hasV1 = v1Dict.hasV1,
-                    v1Token = v1Dict.v1Token,
-                    cidV0Digest = v1Dict.cidV0Digest,
-                    cidV0 = v1CidMap.TryGetValue(addr, out var v1Cid) ? v1Cid : null,
-                    isHuman = v1Dict.isHuman,
-                    name = v1Dict.name,
-                    symbol = v1Dict.symbol,
-                    shortName = v1Dict.shortName
+                    CidV0 = v1CidMap.TryGetValue(addr, out var v1Cid) ? v1Cid : null
                 };
             }
             else
@@ -656,16 +635,21 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result;
     }
 
-    public async Task<object> GetProfileCid(string address)
+    public async Task<string?> GetProfileCid(string address)
     {
         var results = await GetProfileCidBatchInternal(new[] { address });
-        var cid = results[0];
-        return cid != null ? cid : CreateError("No profile found");
+        return results[0];
     }
 
-    public async Task<object> GetProfileCidBatch(string[] addresses)
+    public async Task<Dictionary<string, string?>> GetProfileCidBatch(string[] addresses)
     {
-        return await GetProfileCidBatchInternal(addresses);
+        var results = await GetProfileCidBatchInternal(addresses);
+        var dict = new Dictionary<string, string?>();
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            dict[addresses[i].ToLower()] = results[i];
+        }
+        return dict;
     }
 
     private async Task<string?[]> GetProfileCidBatchInternal(string[] addresses)
@@ -740,19 +724,24 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result;
     }
 
-    public async Task<object> GetProfileByAddress(string address)
+    public async Task<JsonElement?> GetProfileByAddress(string address)
     {
         var results = await GetProfileByAddressBatchInternal(new[] { address });
-        var profile = results[0];
-        return profile ?? CreateError($"No profile found for address {address}");
+        return results[0];
     }
 
-    public async Task<object> GetProfileByAddressBatch(string[] addresses)
+    public async Task<Dictionary<string, JsonElement?>> GetProfileByAddressBatch(string[] addresses)
     {
-        return await GetProfileByAddressBatchInternal(addresses);
+        var results = await GetProfileByAddressBatchInternal(addresses);
+        var dict = new Dictionary<string, JsonElement?>();
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            dict[addresses[i].ToLower()] = results[i];
+        }
+        return dict;
     }
 
-    private async Task<object?[]> GetProfileByAddressBatchInternal(string[] addresses)
+    private async Task<JsonElement?[]> GetProfileByAddressBatchInternal(string[] addresses)
     {
         if (addresses.Length > 1000)
         {
@@ -760,7 +749,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
-        var result = new object?[addresses.Length];
+        var result = new JsonElement?[addresses.Length];
 
         // Get CIDs for all addresses
         var cids = await GetProfileCidBatchInternal(lowerAddresses);
@@ -818,7 +807,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         // Fetch profiles by CID
         var validCids = cids.Where(c => c != null).Distinct().ToArray();
-        var profileByCidMap = new Dictionary<string, object?>();
+        var profileByCidMap = new Dictionary<string, JsonElement?>();
 
         if (validCids.Length > 0)
         {
@@ -835,7 +824,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var addr = lowerAddresses[i];
             var cid = cids[i];
 
-            object? baseProfile = null;
+            JsonElement? baseProfile = null;
             if (cid != null && profileByCidMap.TryGetValue(cid, out var profile))
             {
                 baseProfile = profile;
@@ -849,17 +838,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (baseProfile != null)
             {
                 // Deserialize to dictionary for enrichment
-                var profileJson = JsonSerializer.Serialize(baseProfile);
-                var profileDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(profileJson);
+                var profileDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(baseProfile.Value.GetRawText());
 
                 if (profileDict != null)
                 {
-                    profileDict["address"] = addr;
-                    if (hasShortName) profileDict["shortName"] = shortName;
-                    if (hasAvatarType) profileDict["avatarType"] = avatarType;
-                    if (cid != null) profileDict["CID"] = cid;
+                    profileDict["address"] = JsonSerializer.SerializeToElement(addr);
+                    if (hasShortName) profileDict["shortName"] = JsonSerializer.SerializeToElement(shortName);
+                    if (hasAvatarType) profileDict["avatarType"] = JsonSerializer.SerializeToElement(avatarType);
+                    if (cid != null) profileDict["CID"] = JsonSerializer.SerializeToElement(cid);
 
-                    result[i] = profileDict;
+                    result[i] = JsonSerializer.SerializeToElement(profileDict);
                 }
                 else
                 {
@@ -869,15 +857,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             // If no profile but we have metadata, create a minimal profile
             else if (hasAvatarType || hasShortName)
             {
-                result[i] = new
+                var minimalProfile = new Dictionary<string, object?>
                 {
-                    address = addr,
-                    avatarType = hasAvatarType ? avatarType : null,
-                    shortName = hasShortName ? shortName : null,
-                    CID = cid,
-                    name = (string?)null,
-                    description = (string?)null
+                    ["address"] = addr,
+                    ["avatarType"] = hasAvatarType ? avatarType : null,
+                    ["shortName"] = hasShortName ? shortName : null,
+                    ["CID"] = cid,
+                    ["name"] = null,
+                    ["description"] = null
                 };
+                result[i] = JsonSerializer.SerializeToElement(minimalProfile);
             }
             else
             {
@@ -888,14 +877,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result;
     }
 
-    private async Task<object?[]> GetProfileByCidBatchInternal(string[] cids)
+    private async Task<JsonElement?[]> GetProfileByCidBatchInternal(string[] cids)
     {
         if (cids.Length > 1000)
         {
             throw new ArgumentOutOfRangeException(nameof(cids), "Batch size exceeds 1000");
         }
 
-        var result = new object?[cids.Length];
+        var result = new JsonElement?[cids.Length];
         var missingCidIndexes = new List<int>();
         var missingCids = new List<string>();
 
@@ -911,7 +900,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             if (_profileByCidCache.TryGetValue(currentCid, out var cached) && cached != null)
             {
-                result[i] = cached;
+                result[i] = (JsonElement)cached;
             }
             else
             {
@@ -946,16 +935,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             if (payloadCellValue is string payloadStr)
             {
-                var profile = JsonSerializer.Deserialize<object>(payloadStr);
-                if (profile != null)
-                {
-                    result[targetIndex] = profile;
-                    _profileByCidCache.Set(targetCid, profile, new MemoryCacheEntryOptions { Size = 1 });
-                }
-                else
-                {
-                    result[targetIndex] = null;
-                }
+                var profile = JsonSerializer.Deserialize<JsonElement>(payloadStr);
+                result[targetIndex] = profile;
+                _profileByCidCache.Set(targetCid, profile, new MemoryCacheEntryOptions { Size = 1 });
             }
             else
             {
@@ -968,29 +950,34 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result;
     }
 
-    public async Task<object> GetProfileByCid(string cid)
+    public async Task<JsonElement?> GetProfileByCid(string cid)
     {
         if (string.IsNullOrWhiteSpace(cid))
         {
-            return CreateError("CID must not be empty.");
+            throw new ArgumentException("CID must not be empty.", nameof(cid));
         }
 
         var results = await GetProfileByCidBatchInternal(new[] { cid });
-        var profile = results[0];
-        return profile ?? CreateError($"No profile found for cid {cid}");
+        return results[0];
     }
 
-    public async Task<object> GetProfileByCidBatch(string[] cids)
+    public async Task<Dictionary<string, JsonElement?>> GetProfileByCidBatch(string[] cids)
     {
-        return await GetProfileByCidBatchInternal(cids);
+        var results = await GetProfileByCidBatchInternal(cids);
+        var dict = new Dictionary<string, JsonElement?>();
+        for (int i = 0; i < cids.Length; i++)
+        {
+            dict[cids[i]] = results[i];
+        }
+        return dict;
     }
 
-    public async Task<object> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
+    public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
     {
         const int hardLimit = 100;
         if (limit > hardLimit)
         {
-            return CreateError($"limit must not exceed {hardLimit} (got {limit}).");
+            throw new ArgumentException($"limit must not exceed {hardLimit} (got {limit}).");
         }
 
         string qText = text.Trim();
@@ -998,12 +985,12 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         if (!tokens.Any(o => o.Length > 1))
         {
-            return Array.Empty<object>();
+            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
         }
 
         if (tokens.Length > 3)
         {
-            return CreateError("Too many search terms. Maximum is 3.");
+            throw new ArgumentException("Too many search terms. Maximum is 3.");
         }
 
         qText = string.Join(' ', tokens);
@@ -1099,7 +1086,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             cmd.Parameters.AddWithValue("types", typeFilter!);
         }
 
-        var profiles = new List<object>();
+        var results = new List<ProfileSearchResultItem>();
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1110,38 +1097,33 @@ public class CirclesRpcModule : ICirclesRpcModule
             var payload = reader.IsDBNull(4) ? null : reader.GetString(4);
             var cid = reader.IsDBNull(5) ? null : reader.GetString(5);
 
+            // Get full avatar info for this result
+            var avatarInfos = await GetAvatarInfoBatchInternal(new[] { avatar });
+            var avatarInfo = avatarInfos[0];
+
+            if (avatarInfo == null)
+            {
+                // Skip if no avatar info available
+                continue;
+            }
+
+            JsonElement? profile = null;
             if (payload != null)
             {
-                var profile = JsonSerializer.Deserialize<Dictionary<string, object?>>(payload);
-                if (profile != null)
-                {
-                    profile["address"] = avatar;
-                    profile["avatarType"] = avatarType;
-                    profile["CID"] = cid;
-                    profile["shortName"] = shortName;
-                    profiles.Add(profile);
-                }
+                profile = JsonSerializer.Deserialize<JsonElement>(payload);
             }
-            else
-            {
-                profiles.Add(new
-                {
-                    address = avatar,
-                    name = avatarName,
-                    avatarType,
-                    CID = cid,
-                    shortName,
-                    description = (string?)null,
-                    imageUrl = (string?)null,
-                    location = (string?)null
-                });
-            }
+
+            results.Add(new ProfileSearchResultItem(
+                Avatar: avatar,
+                AvatarInfo: avatarInfo,
+                Profile: profile
+            ));
         }
 
-        return profiles;
+        return new ProfileSearchResult(Total: results.Count, Results: results.ToArray());
     }
 
-    public async Task<object> GetTrustRelations(string address)
+    public async Task<TrustRelationsResponse> GetTrustRelations(string address)
     {
         using var connection = await CreateConnectionAsync();
         const string sql = @"
@@ -1182,7 +1164,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 trustedBy[user] = limit;
             }
         }
-        return new { user = address.ToLower(), trusts, trustedBy };
+        return new TrustRelationsResponse(User: address.ToLower(), Trusts: trusts, TrustedBy: trustedBy);
     }
 
     private async Task<bool> IsV2Human(string address)
@@ -1195,7 +1177,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result != null;
     }
 
-    public async Task<object> GetCommonTrust(string address1, string address2, int? version = null)
+    public async Task<CommonTrustResponse> GetCommonTrust(string address1, string address2, int? version = null)
     {
         var address2IsV2Human = await IsV2Human(address2);
 
@@ -1262,64 +1244,48 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             commonTrusts.Add(reader.GetString(0));
         }
-        return new { address1 = address1.ToLower(), address2 = address2.ToLower(), commonTrusts };
+        return new CommonTrustResponse(Address1: address1.ToLower(), Address2: address2.ToLower(), CommonTrusts: commonTrusts);
     }
 
-    public async Task<object> GetNetworkSnapshot()
+    public async Task<NetworkSnapshotResponse> GetNetworkSnapshot()
     {
         if (string.IsNullOrEmpty(_settings.ExternalPathfinderUrl))
         {
-            return CreateError("ExternalPathfinderUrl is not configured.");
+            throw new InvalidOperationException("ExternalPathfinderUrl is not configured.");
         }
 
         var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/snapshot";
 
-        try
-        {
-            using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-            response.EnsureSuccessStatusCode();
+        using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
 
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            var snapshot = await JsonSerializer.DeserializeAsync<JsonElement>(stream);
-            return snapshot;
-        }
-        catch (Exception ex)
-        {
-            return CreateError($"Failed to get network snapshot from pathfinder: {ex.Message}");
-        }
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        var snapshot = await JsonSerializer.DeserializeAsync<JsonElement>(stream);
+        return new NetworkSnapshotResponse(Data: snapshot);
     }
 
-    public async Task<object> FindPathV2(FlowRequest flowRequest)
+    public async Task<JsonElement> FindPathV2(FlowRequest flowRequest)
     {
         if (string.IsNullOrEmpty(_settings.ExternalPathfinderUrl))
         {
-            return CreateError("ExternalPathfinderUrl is not configured.");
+            throw new InvalidOperationException("ExternalPathfinderUrl is not configured.");
         }
 
         var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath";
 
-        try
-        {
-            var jsonContent = JsonSerializer.Serialize(flowRequest);
-            using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+        var jsonContent = JsonSerializer.Serialize(flowRequest);
+        using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            using var response = await HttpClient.PostAsync(url, content);
-            response.EnsureSuccessStatusCode();
+        using var response = await HttpClient.PostAsync(url, content);
+        response.EnsureSuccessStatusCode();
 
-            var responseString = await response.Content.ReadAsStringAsync();
-            var maxFlowResponse = JsonSerializer.Deserialize<MaxFlowResponse>(responseString);
-
-            return maxFlowResponse ?? CreateError("Failed to deserialize MaxFlowResponse from pathfinder.");
-        }
-        catch (Exception ex)
-        {
-            return CreateError($"Failed to find path from pathfinder: {ex.Message}");
-        }
+        var responseString = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<JsonElement>(responseString);
     }
 
-    public async Task<object> GetEvents(
+    public async Task<EventsResponse> GetEvents(
         string? address,
         long? fromBlock,
         long? toBlock,
@@ -1381,7 +1347,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         if (queries.Count == 0)
         {
-            return new { events = Array.Empty<object>() };
+            return new EventsResponse(Events: Array.Empty<object>());
         }
 
         var finalSql = string.Join(" UNION ALL ", queries);
@@ -1406,7 +1372,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 payload = JsonSerializer.Deserialize<object>(reader.GetString(5))
             });
         }
-        return new { events };
+        return new EventsResponse(Events: events.ToArray());
     }
 
     /// <summary>
@@ -1482,22 +1448,32 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
     }
 
-    public async Task<object> GetHealth()
+    public async Task<HealthResponse> GetHealth()
     {
         try
         {
             using var connection = await CreateConnectionAsync();
             using var command = new NpgsqlCommand("SELECT 1", connection);
             await command.ExecuteScalarAsync();
-            return new { status = "healthy", timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), database = "connected", index = "synchronized" };
+            return new HealthResponse(
+                Status: "healthy",
+                Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Database: "connected",
+                Index: "synchronized"
+            );
         }
         catch (Exception)
         {
-            return new { status = "unhealthy", timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), database = "disconnected", index = "unknown" };
+            return new HealthResponse(
+                Status: "unhealthy",
+                Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Database: "disconnected",
+                Index: "unknown"
+            );
         }
     }
 
-    public async Task<object> GetTables()
+    public async Task<TablesResponse> GetTables()
     {
         using var connection = await CreateConnectionAsync();
         const string sql = @"SELECT DISTINCT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY table_schema, table_name";
@@ -1511,14 +1487,15 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (!namespaces.ContainsKey(schema)) namespaces[schema] = new List<string>();
             namespaces[schema].Add(table);
         }
-        return new { namespaces = namespaces.Select(kvp => new { name = kvp.Key, tables = kvp.Value.ToArray() }).ToArray() };
+        var schemas = namespaces.Select(kvp => new TableSchema(Name: kvp.Key, Tables: kvp.Value.ToArray())).ToArray();
+        return new TablesResponse(Namespaces: schemas);
     }
 
-    public async Task<object> Query(SelectDto query)
+    public async Task<QueryResponse> Query(SelectDto query)
     {
         if (string.IsNullOrEmpty(query.Table) || string.IsNullOrEmpty(query.Namespace))
         {
-            return CreateError("Namespace and Table must be provided.");
+            throw new ArgumentException("Namespace and Table must be provided.");
         }
 
         var tableName = $"\"{query.Namespace}_{query.Table}\"";
@@ -1588,8 +1565,6 @@ public class CirclesRpcModule : ICirclesRpcModule
             results.Add(row);
         }
 
-        return new { columns = columnNames, rows = results };
+        return new QueryResponse(Columns: columnNames, Rows: results);
     }
-
-    private static object CreateError(string message) => new { error = message };
 }

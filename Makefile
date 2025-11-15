@@ -1,16 +1,16 @@
-.PHONY: help build test docker pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs
+.PHONY: help build test docker pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs call-rpc
 
 # Default target
 help:
 	@echo "Circles Nethermind Plugin - Build Targets"
-	@echo ""
+		@echo ""
 	@echo "Build & Test:"
 	@echo "  make build             Build solution"
 	@echo "  make test              Run all tests"
 	@echo "  make test-coverage     Run tests with coverage"
 	@echo "  make clean             Clean build artifacts"
 	@echo "  make clean-cache       Clear blockchain cache (DESTRUCTIVE)"
-	@echo ""
+		@echo ""
 	@echo "Docker:"
 	@echo "  make docker            Build all Docker images"
 	@echo "  make docker-index      Build Index plugin image"
@@ -20,17 +20,18 @@ help:
 	@echo "  make docker-down       Stop services"
 	@echo "  make docker-logs       View logs (all services)"
 	@echo "  make docker-logs SERVICE=<name>  View logs for specific service"
-	@echo ""
+		@echo ""
 	@echo "NuGet:"
 	@echo "  make pack              Create NuGet packages"
 	@echo "  make pack-clean        Clean and create packages"
 	@echo "  make push              Push packages to NuGet.org"
-	@echo ""
+		@echo ""
 	@echo "Development:"
 	@echo "  make run-index         Run Nethermind with Index plugin (Gnosis)"
 	@echo "  make run-pathfinder    Run Pathfinder service"
 	@echo "  make run-rpc           Run RPC service"
 	@echo "  make run-postgres      Run PostgreSQL database (Gnosis)"
+	@echo "  make call-rpc          Call RPC interactively"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-rpc                    Run RPC tests (default: localhost:8082)"
@@ -39,7 +40,7 @@ help:
 	@echo "  make test-rpc-prod               Run RPC tests against production"
 	@echo "  make test-rpc-prod ARGS='--json' Run production tests with JSON output"
 	@echo "  make test-rpc-regression         Compare local vs production responses"
-	@echo ""
+		@echo ""
 	@echo "Complete Workflows:"
 	@echo "  make all               Build, test, and pack"
 	@echo "  make release           Build, test, pack, and push"
@@ -122,6 +123,9 @@ run-rpc:
 
 run-postgres:
 	./scripts/run-postgres.sh
+
+call-rpc:
+	./scripts/call_rpc.sh $(ARGS)
 
 test-rpc:
 	@if [ -n "$(URL)" ]; then \
