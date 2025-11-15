@@ -26,7 +26,7 @@ make all                    # Build, test, and pack
     - [Run a node](#run-a-node)
       - [1. Clone the repository](#1-clone-the-repository)
       - [2. Create a jwtsecret](#2-create-a-jwtsecret)
-      - [3. Set up the - .env file](#3-set-up-the---env-file)
+      - [3. Set up the .env file](#3-set-up-the-env-file)
       - [4. Run node](#4-run-node)
         - [Ports:](#ports)
         - [Volumes](#volumes)
@@ -176,12 +176,12 @@ Choose if your want to run your node on Gnosis Chain or Chiado.
 
 ```bash
 # Gnosis chain
-docker compose -f docker-compose.gnosis.yml up -d
+docker compose -f docker/docker-compose.gnosis.yml up -d
 ```
 
 ```bash
 # Chiado
-docker compose -f docker-compose.chiado.yml up -d
+docker compose -f docker/docker-compose.chiado.yml up -d
 ```
 
 That's it! The node must be fully synced before you can start querying the Circles events.

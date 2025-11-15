@@ -418,7 +418,7 @@ REDIS_CACHE_ENABLED="true"
 REDIS_DEFAULT_TTL_SECONDS="300"
 
 # Phase 3: Blockchain Connector
-BLOCKCHAIN_CONNECTOR_URL="http://blockchain-connector:8081"
+BLOCKCHAIN_CONNECTOR_URL="http://blockchain-connector:8545"
 BLOCKCHAIN_CONNECTOR_TIMEOUT_MS="5000"
 CIRCLES_V2_HUB_ADDRESS="0x..."
 BALANCE_MODE="database|live|hybrid"  # Default: database

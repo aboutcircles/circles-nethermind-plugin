@@ -184,7 +184,7 @@ Runs the Pathfinder host application locally for development.
 
 - `BUILD_CONFIGURATION` - Build configuration (default: Debug)
 - `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
-- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8081)
+- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8080)
 - `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
 - `Logging__LogLevel__Default` - Log level (default: Information)
 
@@ -207,7 +207,7 @@ BUILD_CONFIGURATION=Release ./scripts/run-pathfinder.sh
 
 **Default Configuration:**
 
-- URL: http://localhost:8081
+- URL: http://localhost:8080
 - Database: localhost:5432/postgres (user: postgres, pass: postgres)
 - Environment: Development
 - Build: Debug
@@ -230,7 +230,7 @@ Runs the RPC host application locally for development.
 - `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
 - `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8082)
 - `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
-- `ExternalPathfinderUrl` - Pathfinder service URL (default: http://localhost:8081)
+- `ExternalPathfinderUrl` - Pathfinder service URL (default: http://localhost:8080)
 - `Logging__LogLevel__Default` - Log level (default: Information)
 
 **Examples:**
@@ -241,7 +241,7 @@ Runs the RPC host application locally for development.
 
 # Run with custom configuration
 export POSTGRES_READONLY_CONNECTION_STRING="Host=localhost;Port=5432;Database=circles_dev;Username=dev;Password=dev123"
-export ExternalPathfinderUrl="http://localhost:8081"
+export ExternalPathfinderUrl="http://localhost:8080"
 ./scripts/run-rpc.sh
 
 # Run on different port
@@ -252,7 +252,7 @@ RPC_PORT="8002" ./scripts/run-rpc.sh
 
 - URL: http://localhost:8082
 - Database: localhost:5432/postgres (user: postgres, pass: postgres)
-- Pathfinder: http://localhost:8081
+- Pathfinder: http://localhost:8080
 - Environment: Development
 - Build: Debug
 

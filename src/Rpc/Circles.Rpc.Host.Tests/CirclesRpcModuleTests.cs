@@ -120,27 +120,26 @@ public class CirclesRpcModuleTests
 
         Assert.That(result, Is.Not.Null);
 
-        // Should return a list (could be empty)
-        if (result is List<CirclesTokenBalance> balances)
+        // Should return an array (could be empty)
+        Assert.That(result, Is.InstanceOf<CirclesTokenBalance[]>());
+
+        // If there are balances, verify structure
+        if (result.Length > 0)
         {
-            // If there are balances, verify structure
-            if (balances.Count > 0)
-            {
-                var balance = balances[0];
-                Assert.That(balance.TokenAddress, Is.Not.Null);
-                Assert.That(balance.TokenId, Is.Not.Null);
-                Assert.That(balance.TokenOwner, Is.Not.Null);
-                Assert.That(balance.Version, Is.GreaterThan(0));
+            var balance = result[0];
+            Assert.That(balance.TokenAddress, Is.Not.Null);
+            Assert.That(balance.TokenId, Is.Not.Null);
+            Assert.That(balance.TokenOwner, Is.Not.Null);
+            Assert.That(balance.Version, Is.GreaterThan(0));
 
-                // Verify all value representations exist
-                Assert.That(balance.AttoCircles, Is.Not.Null);
-                Assert.That(balance.StaticAttoCircles, Is.Not.Null);
-                Assert.That(balance.AttoCrc, Is.Not.Null);
+            // Verify all value representations exist
+            Assert.That(balance.AttoCircles, Is.Not.Null);
+            Assert.That(balance.StaticAttoCircles, Is.Not.Null);
+            Assert.That(balance.AttoCrc, Is.Not.Null);
 
-                // Verify flags
-                Assert.That(balance.IsErc20 || balance.IsErc1155, Is.True,
-                    "Token must be either ERC20 or ERC1155");
-            }
+            // Verify flags
+            Assert.That(balance.IsErc20 || balance.IsErc1155, Is.True,
+                "Token must be either ERC20 or ERC1155");
         }
     }
 
@@ -155,9 +154,9 @@ public class CirclesRpcModuleTests
         var testAddress = "0x0000000000000000000000000000000000000001";
         var result = await _module!.GetTokenBalances(testAddress);
 
-        if (result is List<CirclesTokenBalance> balances && balances.Count > 0)
+        if (result.Length > 0)
         {
-            var balance = balances[0];
+            var balance = result[0];
 
             // In Phase 1, these should be equal (no time-based conversion)
             // In Phase 3, they would differ based on token type
@@ -264,15 +263,15 @@ public class CirclesRpcModuleTests
     }
 
     [Test]
-    public async Task GetProfileCidBatch_WithEmptyArray_ReturnsEmptyArray()
+    public async Task GetProfileCidBatch_WithEmptyArray_ReturnsEmptyDictionary()
     {
         RequireModule();
 
         var result = await _module!.GetProfileCidBatch(Array.Empty<string>());
-        var array = result as string?[];
 
-        Assert.That(array, Is.Not.Null);
-        Assert.That(array!.Length, Is.EqualTo(0));
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.InstanceOf<Dictionary<string, string?>>());
+        Assert.That(result.Count, Is.EqualTo(0));
     }
 
     #endregion
@@ -280,15 +279,15 @@ public class CirclesRpcModuleTests
     #region GetProfileByAddress Tests
 
     [Test]
-    public async Task GetProfileByAddress_WithNonExistentAddress_ReturnsError()
+    public async Task GetProfileByAddress_WithNonExistentAddress_ReturnsNull()
     {
         RequireModule();
 
         var nonExistentAddress = "0x0000000000000000000000000000000000000000";
         var result = await _module!.GetProfileByAddress(nonExistentAddress);
-        var json = JsonSerializer.Serialize(result);
 
-        Assert.That(json, Does.Contain("error"));
+        // Non-existent profiles return null
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -301,10 +300,12 @@ public class CirclesRpcModuleTests
         var result = await _module!.GetProfileByAddressBatch(testAddresses);
 
         Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.InstanceOf<Dictionary<string, JsonElement?>>());
 
-        if (result is object?[] profiles && profiles.Length > 0 && profiles[0] != null)
+        if (result.Count > 0 && result.Values.First().HasValue)
         {
-            var json = JsonSerializer.Serialize(profiles[0]);
+            var profile = result.Values.First();
+            var json = JsonSerializer.Serialize(profile);
 
             // Profile should be enriched with address
             Assert.That(json, Does.Contain("address"),
@@ -322,10 +323,12 @@ public class CirclesRpcModuleTests
         RequireModule();
 
         var result = await _module!.SearchProfiles("", limit: 10);
-        var array = result as object[];
 
-        // Should return empty or error for too-short search
+        // Should return empty result for too-short search
         Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.InstanceOf<ProfileSearchResult>());
+        Assert.That(result.Total, Is.EqualTo(0));
+        Assert.That(result.Results, Is.Empty);
     }
 
     [Test]
@@ -336,6 +339,7 @@ public class CirclesRpcModuleTests
         var result = await _module!.SearchProfiles("test", limit: 10);
 
         Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.InstanceOf<ProfileSearchResult>());
     }
 
     [Test]
