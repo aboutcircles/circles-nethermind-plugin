@@ -31,7 +31,9 @@ LOCAL_URL="${1:-http://localhost:8081}"
 REMOTE_URL="${2:-https://rpc.aboutcircles.com}"
 
 # Output directory for test results
-OUTPUT_DIR="RegressionTestResults"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUTPUT_DIR="$PROJECT_ROOT/RegressionTestResults"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RUN_DIR="$OUTPUT_DIR/$TIMESTAMP"
 

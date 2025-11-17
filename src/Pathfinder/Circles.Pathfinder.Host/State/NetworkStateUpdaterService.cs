@@ -30,60 +30,114 @@ public class NetworkStateUpdaterService : BackgroundService
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        var loadGraph = new LoadGraph(_settings);
-        var graphFactory = new GraphFactory(_settings, loadGraph);
-        
-        long lastBlock = 0;
-
-        while (!stoppingToken.IsCancellationRequested)
         {
-            _log.LogDebug("Waiting for next block…");
-            lastBlock = await WaitForNextBlock(stoppingToken, lastBlock);
-            _networkState.Replace(lastKnownBlockNumber: lastBlock);
-
-            _log.LogDebug("→ got block {Block}", lastBlock);
-
-            var swTotal = Stopwatch.StartNew();
-
-            var swTrustGraph = Stopwatch.StartNew();
-            var trustTask = Task.Run(() =>
+            var loadGraph = new LoadGraph(_settings);
+            var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
+            
+            long lastBlock = 0;
+            int consecutiveErrors = 0;
+            const int maxConsecutiveErrors = 5;
+    
+            while (!stoppingToken.IsCancellationRequested)
             {
-                var graph = graphFactory.V2TrustGraph();
-                var lookup = GraphFactory.BuildTrustLookup(graph);
-
-                _networkState.Replace(accountTrusts: lookup);
-                swTrustGraph.Stop();
-            }, stoppingToken);
-
-            var swBalanceGraph = Stopwatch.StartNew();
-            var balanceTask = Task.Run(() =>
-            {
-                var graph = graphFactory.V2BalanceGraph();
-                _networkState.Replace(balanceGraph: graph);
-                swBalanceGraph.Stop();
-            }, stoppingToken);
-
-            await Task.WhenAll(trustTask, balanceTask);
-            swTotal.Stop();
-
-            // Build full capacity graph with router address
-            var cap = await CapacityGraphPool.BuildFullGraph(
-                _networkState.BalanceGraph,
-                _networkState.AccountTrusts,
-                loadGraph,
-                _settings
-            );
-            var snap = new CapacityGraphSnapshot(lastBlock, cap);
-            _pool.UpdateSnapshot(snap);
-
-            _log.LogInformation(
-                "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
-                swTrustGraph.ElapsedMilliseconds,
-                swBalanceGraph.ElapsedMilliseconds,
-                swTotal.ElapsedMilliseconds);
+                try
+                {
+                    _log.LogDebug("Waiting for next block…");
+                    lastBlock = await WaitForNextBlock(stoppingToken, lastBlock);
+                    _networkState.Replace(lastKnownBlockNumber: lastBlock);
+    
+                    _log.LogDebug("→ got block {Block}", lastBlock);
+    
+                    var swTotal = Stopwatch.StartNew();
+    
+                    var swTrustGraph = Stopwatch.StartNew();
+                    var trustTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var graph = graphFactory.V2TrustGraph();
+                            var lookup = GraphFactory.BuildTrustLookup(graph);
+                            _networkState.Replace(accountTrusts: lookup);
+                            swTrustGraph.Stop();
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogError(ex, "Error loading trust graph");
+                            swTrustGraph.Stop();
+                            throw; // Re-throw to be handled by outer try-catch
+                        }
+                    }, stoppingToken);
+    
+                    var swBalanceGraph = Stopwatch.StartNew();
+                    var balanceTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var graph = graphFactory.V2BalanceGraph();
+                            _networkState.Replace(balanceGraph: graph);
+                            swBalanceGraph.Stop();
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogError(ex, "Error loading balance graph");
+                            swBalanceGraph.Stop();
+                            throw; // Re-throw to be handled by outer try-catch
+                        }
+                    }, stoppingToken);
+    
+                    await Task.WhenAll(trustTask, balanceTask);
+                    swTotal.Stop();
+    
+                    // Build full capacity graph with router address
+                    var cap = await CapacityGraphPool.BuildFullGraph(
+                        _networkState.BalanceGraph,
+                        _networkState.AccountTrusts,
+                        loadGraph,
+                        _settings.BaseGroupRouter
+                    );
+                    var snap = new CapacityGraphSnapshot(lastBlock, cap);
+                    _pool.UpdateSnapshot(snap);
+    
+                    _log.LogInformation(
+                        "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
+                        swTrustGraph.ElapsedMilliseconds,
+                        swBalanceGraph.ElapsedMilliseconds,
+                        swTotal.ElapsedMilliseconds);
+    
+                    // Reset error counter on success
+                    consecutiveErrors = 0;
+                }
+                catch (OperationCanceledException)
+                {
+                    _log.LogInformation("NetworkStateUpdaterService stopping due to cancellation");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    consecutiveErrors++;
+                    _log.LogError(ex, "Error updating network state (attempt {Attempt}/{MaxAttempts})", consecutiveErrors, maxConsecutiveErrors);
+    
+                    if (consecutiveErrors >= maxConsecutiveErrors)
+                    {
+                        _log.LogCritical("Too many consecutive errors ({Count}), giving up", consecutiveErrors);
+                        break;
+                    }
+    
+                    // Wait before retrying with exponential backoff
+                    var retryDelay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, consecutiveErrors)));
+                    _log.LogInformation("Retrying in {Delay} seconds", retryDelay.TotalSeconds);
+                    
+                    try
+                    {
+                        await Task.Delay(retryDelay, stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                }
+            }
         }
-    }
 
     private async Task<long> WaitForNextBlock(CancellationToken stoppingToken, long lastBlock)
     {

@@ -2,6 +2,10 @@ namespace Circles.Pathfinder.Host;
 
 public class Settings : Circles.Index.Common.Settings
 {
+    public new readonly string IndexReadonlyDbConnectionString =
+        Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING")
+        ?? throw new ArgumentException("POSTGRES_READONLY_CONNECTION_STRING is not set.");
+
     public readonly string NethermindRpcUrl =
         Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")
         ?? throw new ArgumentException("NETHERMIND_RPC_URL is not set.");

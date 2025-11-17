@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Circles.Pathfinder.DTOs;
 
 namespace Circles.Rpc.Host;
 
@@ -31,36 +33,4 @@ public class JsonRpcError
     public int Code { get; set; }
     public string? Message { get; set; }
     public object? Data { get; set; }
-}
-
-// Pathfinder DTOs
-public class FlowRequest
-{
-    public string Source { get; set; } = "";
-    public string Sink { get; set; } = "";
-    public string TargetFlow { get; set; } = "0";
-    public bool WithWrap { get; set; }
-    public ISet<string> FromTokens { get; set; } = new HashSet<string>();
-    public ISet<string> ToTokens { get; set; } = new HashSet<string>();
-    public ISet<string> ExcludedFromTokens { get; set; } = new HashSet<string>();
-    public ISet<string> ExcludedToTokens { get; set; } = new HashSet<string>();
-    public IDictionary<string, string> SimulatedBalances { get; set; } = new Dictionary<string, string>();
-    public IDictionary<string, IDictionary<string, int>> SimulatedTrusts { get; set; } = new Dictionary<string, IDictionary<string, int>>();
-    public int MaxTransfers { get; set; } = 10;
-}
-
-public class Transfer
-{
-    public string From { get; set; } = "";
-    public string To { get; set; } = "";
-    public string Token { get; set; } = "";
-    public string Flow { get; set; } = "0";
-}
-
-public class MaxFlowResponse
-{
-    public string Source { get; set; } = "";
-    public string Sink { get; set; } = "";
-    public List<Transfer> Path { get; set; } = new();
-    public string TotalFlow { get; set; } = "0";
 }

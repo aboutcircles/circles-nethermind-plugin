@@ -1,10 +1,12 @@
 using Circles.Index.Common;
 using Circles.Rpc.Host;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
 using Circles.Index.Query.Dto;
+using Circles.Pathfinder.DTOs;
 
 var builder = BuilderSetup.ConfigureBuilder(args);
 
@@ -19,10 +21,10 @@ app.MapHealthChecks("/live", new HealthCheckOptions
     Predicate = hc => hc.Tags.Contains("live")
 });
 
-// readiness: nethermind sync status
+// readiness: nethermind sync status + pathfinder connectivity
 app.MapHealthChecks("/ready", new HealthCheckOptions
 {
-    Predicate = hc => hc.Tags.Contains("nethermind-sync"),
+    Predicate = hc => hc.Tags.Contains("nethermind-sync") || hc.Tags.Contains("pathfinder-connection"),
     AllowCachingResponses = false,
     ResultStatusCodes =
     {
@@ -331,8 +333,16 @@ static async Task<object> HandleV2FindPath(JsonRpcRequest request, CirclesRpcMod
     {
         throw new ArgumentException("FlowRequest parameter is required");
     }
-
-    var flowRequest = JsonSerializer.Deserialize<FlowRequest>(parameters[0].GetRawText());
+    
+    // Configure JSON options to match Pathfinder DTOs
+    var jsonOptions = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNameCaseInsensitive = true
+    };
+    
+    var flowRequest = JsonSerializer.Deserialize<FlowRequest>(parameters[0].GetRawText(), jsonOptions);
     if (flowRequest == null)
     {
         throw new ArgumentException("Invalid FlowRequest parameter");

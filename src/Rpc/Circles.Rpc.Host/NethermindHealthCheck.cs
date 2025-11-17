@@ -61,3 +61,56 @@ public class NethermindSyncHealthCheck : IHealthCheck
         }
     }
 }
+
+/// <summary>
+/// Health check for Pathfinder connectivity.
+/// </summary>
+public class PathfinderConnectionHealthCheck : IHealthCheck
+{
+    private readonly Settings _settings;
+    private readonly IHttpClientFactory _httpClientFactory;
+
+    public PathfinderConnectionHealthCheck(Settings settings, IHttpClientFactory httpClientFactory)
+    {
+        _settings = settings;
+        _httpClientFactory = httpClientFactory;
+    }
+
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        // If pathfinder URL is not configured, consider it healthy (optional dependency)
+        if (string.IsNullOrEmpty(_settings.ExternalPathfinderUrl))
+        {
+            return HealthCheckResult.Degraded("Pathfinder URL not configured");
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(5);
+
+            var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
+            // Check the /ready endpoint which waits for graphs to be fully loaded
+            var readyUrl = $"{baseUrl}/ready";
+
+            var response = await client.GetAsync(readyUrl, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return HealthCheckResult.Healthy($"Pathfinder is ready at {_settings.ExternalPathfinderUrl}");
+            }
+            else
+            {
+                // If the Pathfinder is not ready, provide a detailed status
+                var reason = response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
+                    ? "Pathfinder graphs are still loading"
+                    : $"Pathfinder returned status {response.StatusCode}";
+                return HealthCheckResult.Unhealthy(reason);
+            }
+        }
+        catch (Exception ex)
+        {
+            return HealthCheckResult.Degraded($"Cannot connect to Pathfinder at {_settings.ExternalPathfinderUrl}", ex);
+        }
+    }
+}

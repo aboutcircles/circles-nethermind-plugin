@@ -143,6 +143,7 @@ services:
       dockerfile: docker/rpc-host.Dockerfile
     depends_on:
       - nethermind-gnosis
+      - pathfinder
     restart: unless-stopped
     networks:
       - circles-gnosis

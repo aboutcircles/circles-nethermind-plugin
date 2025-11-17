@@ -35,11 +35,20 @@ Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
 var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
 
 var builder = WebApplication.CreateSlimBuilder(args);
+
+// Configure host to ignore background service exceptions instead of stopping
+builder.Services.Configure<Microsoft.Extensions.Hosting.HostOptions>(opts =>
+{
+    opts.BackgroundServiceExceptionBehavior = Microsoft.Extensions.Hosting.BackgroundServiceExceptionBehavior.Ignore;
+});
+
 builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton<Circles.Index.Common.Settings>(settings);
 builder.Services.AddSingleton(semaphore);
 builder.Services.AddSingleton<NetworkState>();
 builder.Services.AddSingleton<LoadGraph>();
 builder.Services.AddSingleton<CapacityGraphPool>();
+
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
 
@@ -73,7 +82,11 @@ builder.Services
     .AddCheck<GraphReadinessHealthCheck>("graphs_loaded", tags: new[] { "ready" });
 
 // ─── Misc DI ────────────────────────────────────────────────────────────────
-builder.Services.ConfigureHttpJsonOptions(_ => { });
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+});
 
 
 var app = builder.Build();
@@ -296,25 +309,41 @@ app.MapGet("/findPath", async (
 
 // POST  /findPath  -----------------------------------------------------------
 app.MapPost("/findPath", async (
-    [FromBody] FlowRequest request, // body-bound request DTO
+    [FromBody] FlowRequest? request, // body-bound request DTO
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
-    ILogger<Program> log) =>
+    ILogger<Program> log,
+    HttpContext httpContext) =>
 {
+    // Debug the raw request body
+    var rawBody = await new StreamReader(httpContext.Request.Body).ReadToEndAsync();
+    log.LogInformation($"Raw request body: {rawBody}");
+    
+    // Handle JSON deserialization errors gracefully
+    if (request == null)
+    {
+        log.LogWarning("Invalid JSON request body - could not deserialize FlowRequest");
+        return Results.BadRequest("Invalid request body: Unable to deserialize FlowRequest. Check JSON format.");
+    }
+
+    log.LogInformation($"Deserialized request - Source: {request.Source}, Sink: {request.Sink}, TargetFlow: {request.TargetFlow}");
+
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
     act?.SetTag("http.route", "/findPath");
     act?.SetTag("from", request.Source);
     act?.SetTag("to", request.Sink);
     act?.SetTag("amount", request.TargetFlow);
 
+    using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
+
     // Normalise addresses so matching is case-insensitive
     request.Source = request.Source?.ToLowerInvariant();
     request.Sink = request.Sink?.ToLowerInvariant();
 
-    if (!UInt256.TryParse(request.TargetFlow, out var targetFlow))
+    if (string.IsNullOrEmpty(request.TargetFlow) || !UInt256.TryParse(request.TargetFlow, out var targetFlow))
     {
-        log.LogWarning("Bad amount format");
+        log.LogWarning($"Bad amount format - TargetFlow is '{request.TargetFlow}'");
         return Results.BadRequest("amount must be a valid integer.");
     }
 

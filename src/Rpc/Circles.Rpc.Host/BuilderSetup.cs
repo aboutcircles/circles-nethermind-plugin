@@ -31,6 +31,9 @@ public static class BuilderSetup
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(semaphore);
 
+        // HTTP client factory for health checks and external API calls
+        builder.Services.AddHttpClient();
+
         // Nethermind RPC client for health checks and balance queries
         builder.Services.AddSingleton(sp =>
         {
@@ -70,7 +73,9 @@ public static class BuilderSetup
             // nethermind connectivity
             .AddCheck<NethermindConnectionHealthCheck>("nethermind-connection", tags: new[] { "nethermind-connection" })
             // nethermind sync status
-            .AddCheck<NethermindSyncHealthCheck>("nethermind-sync", tags: new[] { "nethermind-sync" });
+            .AddCheck<NethermindSyncHealthCheck>("nethermind-sync", tags: new[] { "nethermind-sync" })
+            // pathfinder connectivity (optional dependency - degrades gracefully)
+            .AddCheck<PathfinderConnectionHealthCheck>("pathfinder-connection", tags: new[] { "pathfinder-connection" });
 
         // ─── Misc DI ────────────────────────────────────────────────────────────────
         builder.Services.ConfigureHttpJsonOptions(_ => { });
