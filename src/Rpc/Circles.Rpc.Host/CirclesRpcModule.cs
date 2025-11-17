@@ -4,9 +4,11 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
+using Circles.Pathfinder.DTOs;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 using static Circles.Rpc.Host.JsonRpcHelpers;
@@ -737,7 +739,10 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var avatarType = reader.GetString(3);
                 var isHuman = avatarType == "CrcV2_RegisterHuman";
                 var cid = reader.IsDBNull(4) ? null : reader.GetString(4);
-                var cidV0Digest = reader.IsDBNull(6) ? "" : reader.GetString(6);
+                // cidV0Digest is stored as bytea - convert to hex string with 0x prefix
+                var cidV0Digest = reader.IsDBNull(6)
+                    ? ""
+                    : "0x" + Convert.ToHexString((byte[])reader.GetValue(6)).ToLowerInvariant();
 
                 v2AvatarMap[avatar] = new AvatarInfo(
                     Version: 2,
@@ -861,11 +866,19 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<Dictionary<string, string?>> GetProfileCidBatch(string[] addresses)
     {
+        if (addresses == null || addresses.Length == 0)
+        {
+            return new Dictionary<string, string?>();
+        }
+
         var results = await GetProfileCidBatchInternal(addresses);
         var dict = new Dictionary<string, string?>();
         for (int i = 0; i < addresses.Length; i++)
         {
-            dict[addresses[i].ToLower()] = results[i];
+            if (addresses[i] != null)
+            {
+                dict[addresses[i].ToLower()] = results[i];
+            }
         }
         return dict;
     }
@@ -950,11 +963,19 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<Dictionary<string, JsonElement?>> GetProfileByAddressBatch(string[] addresses)
     {
+        if (addresses == null || addresses.Length == 0)
+        {
+            return new Dictionary<string, JsonElement?>();
+        }
+
         var results = await GetProfileByAddressBatchInternal(addresses);
         var dict = new Dictionary<string, JsonElement?>();
         for (int i = 0; i < addresses.Length; i++)
         {
-            dict[addresses[i].ToLower()] = results[i];
+            if (addresses[i] != null)
+            {
+                dict[addresses[i].ToLower()] = results[i];
+            }
         }
         return dict;
     }
@@ -1489,19 +1510,34 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             throw new InvalidOperationException("ExternalPathfinderUrl is not configured.");
         }
-
+    
         var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath";
-
-        var jsonContent = JsonSerializer.Serialize(flowRequest);
+    
+        // Configure JSON serialization with camelCase property names to match Pathfinder DTOs
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNameCaseInsensitive = true
+        };
+    
+        var jsonContent = JsonSerializer.Serialize(flowRequest, jsonOptions);
+        
         using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-
+    
         using var response = await HttpClient.PostAsync(url, content);
-        response.EnsureSuccessStatusCode();
-
+    
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException($"Pathfinder service returned {response.StatusCode}: {errorContent}");
+        }
+    
         var responseString = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<JsonElement>(responseString);
     }
+
 
     public async Task<EventsResponse> GetEvents(
         string? address,

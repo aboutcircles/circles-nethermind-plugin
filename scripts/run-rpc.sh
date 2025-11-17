@@ -36,7 +36,7 @@ export POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
 export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
 export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
-export ExternalPathfinderUrl="${ExternalPathfinderUrl:-http://localhost:8080}"
+export EXTERNAL_PATHFINDER_URL="${EXTERNAL_PATHFINDER_URL:-http://localhost:8080}"
 
 # Logging
 export Logging__LogLevel__Default="${Logging__LogLevel__Default:-Information}"
@@ -52,7 +52,7 @@ echo -e "  Build Config: $CONFIGURATION"
 echo -e "  Circles Nethermind RPC URL: ${NETHERMIND_RPC_URL}"
 echo -e "  Circles Balance Mode: ${BALANCE_MODE}"
 echo -e "  Database: ${POSTGRES_CONNECTION_STRING%%Password=*}Password=***"
-echo -e "  Pathfinder: $ExternalPathfinderUrl"
+echo -e "  Pathfinder: $EXTERNAL_PATHFINDER_URL"
 echo ""
 
 # Check if project exists

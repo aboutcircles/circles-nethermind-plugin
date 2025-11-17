@@ -1,17 +1,40 @@
+using System.Text.Json.Serialization;
+
 namespace Circles.Pathfinder.DTOs;
 
 public class FlowRequest
 {
+    [JsonPropertyName("source")]
     public string? Source { get; set; }
+    
+    [JsonPropertyName("sink")]
     public string? Sink { get; set; }
+    
+    [JsonPropertyName("targetFlow")]
     public string? TargetFlow { get; set; }
+    
+    [JsonPropertyName("toTokens")]
     public List<string>? ToTokens { get; set; }
+    
+    [JsonPropertyName("fromTokens")]
     public List<string>? FromTokens { get; set; }
+    
+    [JsonPropertyName("excludedFromTokens")]
     public List<string>? ExcludedFromTokens { get; set; }
+    
+    [JsonPropertyName("excludedToTokens")]
     public List<string>? ExcludedToTokens { get; set; }
+    
+    [JsonPropertyName("withWrap")]
     public bool? WithWrap { get; set; }
+    
+    [JsonPropertyName("simulatedBalances")]
     public List<SimulatedBalance>? SimulatedBalances { get; set; }
+    
+    [JsonPropertyName("simulatedTrusts")]
     public List<SimulatedTrust>? SimulatedTrusts { get; set; }
+    
+    [JsonPropertyName("maxTransfers")]
     public int? MaxTransfers { get; set; }
 }
 

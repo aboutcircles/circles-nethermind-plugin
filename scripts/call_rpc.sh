@@ -117,11 +117,7 @@ case $method in
 esac
 
 # Set URL based on method and choice
-if [ "$method" = "circles_health" ] && [ "$choice" = "3" ]; then
-  url="http://localhost:5000/"
-else
-  url="$RPC_URL"
-fi
+url="$RPC_URL"
 
 # Execute the curl command
 echo "Executing RPC call..."
