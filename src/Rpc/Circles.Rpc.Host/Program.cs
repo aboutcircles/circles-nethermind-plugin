@@ -19,16 +19,29 @@ app.MapHealthChecks("/live", new HealthCheckOptions
     Predicate = hc => hc.Tags.Contains("live")
 });
 
-// readiness: only healthy once the background loader has built the graphs
+// readiness: nethermind sync status
 app.MapHealthChecks("/ready", new HealthCheckOptions
 {
-    Predicate = hc => hc.Tags.Contains("ready"),
+    Predicate = hc => hc.Tags.Contains("nethermind-sync"),
     AllowCachingResponses = false,
     ResultStatusCodes =
     {
         [HealthStatus.Healthy] = StatusCodes.Status200OK,
         [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable,
-        [HealthStatus.Degraded] = StatusCodes.Status429TooManyRequests
+        [HealthStatus.Degraded] = StatusCodes.Status200OK
+    }
+});
+
+// nethermind connectivity
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = hc => hc.Tags.Contains("nethermind-connection"),
+    AllowCachingResponses = false,
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable,
+        [HealthStatus.Degraded] = StatusCodes.Status200OK
     }
 });
 
@@ -36,7 +49,7 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
 
 app.MapPost("/", async (
     JsonRpcRequest request,
-    Settings settings,
+    Circles.Rpc.Host.Settings settings,
     ILogger<Program> logger,
     CirclesRpcModule rpcModule
     ) =>
@@ -382,7 +395,8 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
 
 static async Task<object> HandleHealth(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
-    return await rpcModule.GetHealth();
+    var health = await rpcModule.GetHealth();
+    return health.Status == "healthy" ? "Healthy" : $"Unhealthy: {health.Database}, {health.Index}";
 }
 
 static async Task<object> HandleTables(JsonRpcRequest request, CirclesRpcModule rpcModule)

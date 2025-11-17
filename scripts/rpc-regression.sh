@@ -16,7 +16,7 @@ set -e
 #
 # Examples:
 #   ./rpc-regression.sh                                                    # Default: localhost vs production
-#   ./rpc-regression.sh http://localhost:8082 https://rpc.aboutcircles.com # Custom URLs
+#   ./rpc-regression.sh http://localhost:8081 https://rpc.aboutcircles.com # Custom URLs
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -27,7 +27,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Parse arguments
-LOCAL_URL="${1:-http://localhost:8082}"
+LOCAL_URL="${1:-http://localhost:8081}"
 REMOTE_URL="${2:-https://rpc.aboutcircles.com}"
 
 # Output directory for test results

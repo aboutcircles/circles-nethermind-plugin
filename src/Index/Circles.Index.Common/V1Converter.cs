@@ -33,7 +33,7 @@ namespace Circles.Index.Common
     // -----------------------------------------------------------------------------
     //   V1Inflation – reproduces HubV1.inflate(ACCURACY, periodIndex) verbatim
     // -----------------------------------------------------------------------------
-    internal static class V1Inflation
+    public static class V1Inflation
     {
         private const uint INFLATION_PCT = 107; // constructor arg [0]
         private static readonly BigInteger INFLATION_NUM = INFLATION_PCT;
@@ -43,7 +43,7 @@ namespace Circles.Index.Common
         /// <summary>
         /// Returns the exact <c>factor = inflate(ACC, periodIdx)</c> the V1 Hub uses.
         /// </summary>
-        internal static BigInteger Factor(uint periodIdx)
+        public static BigInteger Factor(uint periodIdx)
         {
             if (periodIdx == 0) return ACC;
 

@@ -59,17 +59,20 @@ These features work without blockchain access or in-memory caches:
    - `GetHealth` ✅ (database connectivity check)
    - `GetTables` ✅ (schema introspection)
 
-### ⚠️ Partially Implemented (Limitations)
+### ~~⚠️ Partially Implemented (Limitations)~~ ✅ **COMPLETED**
 
-1. **Token Balances** (`GetTokenBalances`)
-   - **Current**: Returns V1 balances only via SQL SUM of transfers
-   - **Missing**: V2 balances, demurrage calculations, inflation adjustments
-   - **Note**: Returns raw historical balance, not time-adjusted value
+1. ~~**Token Balances** (`GetTokenBalances`)~~ ✅ **IMPLEMENTED**
+   - ✅ **Database Mode**: Returns V1+V2 balances via SQL SUM of transfers (fast but stale)
+   - ✅ **Live Mode**: Fetches on-chain balances with eth_call and applies time-based adjustments
+   - ✅ **Toggle**: `BALANCE_MODE=database|live` environment variable
+   - ✅ **Returns**: Full `CirclesTokenBalance` with all value representations
+   - ✅ **Feature Parity**: Matches original Nethermind plugin implementation
 
-2. **Total Balances** (`GetTotalBalanceV1`, `GetTotalBalanceV2`)
-   - **Current**: SQL SUM of all transfers
-   - **Missing**: Time-based value adjustments (demurrage/inflation)
-   - **Note**: V1 balance doesn't account for inflation; V2 doesn't account for demurrage
+2. ~~**Total Balances** (`GetTotalBalanceV1`, `GetTotalBalanceV2`)~~ ✅ **IMPLEMENTED**
+   - ✅ **Database Mode**: SQL SUM of all transfers (fast but stale)
+   - ✅ **Live Mode**: Fetches on-chain balances and applies inflation/demurrage
+   - ✅ **Toggle**: Same `BALANCE_MODE` setting
+   - ✅ **Accurate**: Time-based calculations match original implementation
 
 ### ❌ Missing from Original
 
@@ -85,55 +88,82 @@ These features work without blockchain access or in-memory caches:
    - ✅ Queries both V1 and V2 avatars
    - ✅ Merges V1 and V2 data when both exist
 
-3. **Rich Token Balance Details**
-   - Original returned `CirclesTokenBalance` with:
-     - Multiple value representations (attoCircles, circles, staticCircles, crc)
-     - Token metadata (isErc20, isErc1155, isWrapped, isInflationary, isGroup)
-     - Owner information
-   - Current returns simple `{ token, balance }` for V1 only
+3. ~~**Rich Token Balance Details**~~ ✅ **IMPLEMENTED**
+   - ✅ Returns full `CirclesTokenBalance` with:
+     - ✅ Multiple value representations (attoCircles, circles, staticCircles, crc)
+     - ✅ Token metadata (isErc20, isErc1155, isWrapped, isInflationary, isGroup)
+     - ✅ Owner information
+   - ✅ Supports both V1 and V2 tokens
+   - ✅ Database mode and Live mode both return complete data
+
+### ~~🚧 Currently In Development~~ ✅ **COMPLETED: Live Balance Mode**
+
+1. ~~**Live Balance Mode** (Phase 2.5 - Hybrid Implementation)~~ ✅ **COMPLETE**
+   - ✅ **Approach**: Dual mode support (database-only vs. live eth_call)
+   - ✅ **Configuration**: `BALANCE_MODE=database|live` environment variable
+   - ✅ **Implementation**:
+     - ✅ Uses `NethermindRpcClient` for eth_call
+     - ✅ Database-only mode works as fallback
+     - ✅ Demurrage/inflation calculations in live mode
+     - ✅ No caching layer (deferred to Phase 2)
+   - ✅ **Status**: All modes complete and functional
 
 ---
 
-## Functionality That Cannot Be Fully Replicated (Database-Only)
+## ~~Functionality That Cannot Be Fully Replicated (Database-Only)~~ ✅ **NOW IMPLEMENTED**
 
-These features require additional infrastructure:
+~~These features require additional infrastructure:~~ **All critical features have been implemented!**
 
-### 1. Real-Time Token Balance Calculations
+### ~~1. Real-Time Token Balance Calculations~~ ✅ **IMPLEMENTED**
 
-**Problem**: True token values are time-dependent:
-- **V1 Tokens**: Continuous inflation (CRC grows over time)
-- **V2 Demurraged Tokens**: Continuous decay (value decreases)
-- **V2 Inflationary Tokens**: Continuous growth (static CRC grows)
+**~~Problem~~** ✅ **SOLVED**: True token values are time-dependent:
 
-**Original Approach**:
-- Used `eth_call` to query live balances via `balanceOf` and `balanceOfBatch`
-- Applied demurrage calculations using last movement timestamp
-- Converted between value representations (attoCircles ↔ staticCircles ↔ CRC)
+- **V1 Tokens**: Continuous inflation (CRC grows over time) ✅ **NOW SUPPORTED**
+- **V2 Demurraged Tokens**: Continuous decay (value decreases) ✅ **NOW SUPPORTED**
+- **V2 Inflationary Tokens**: Continuous growth (static CRC grows) ✅ **NOW SUPPORTED**
 
-**Current Limitation**:
-- Returns raw sum of historical transfers from database
-- Does **not** account for time-based value changes
-- Balance will be **stale** and increasingly inaccurate over time
+**Original Approach**: ✅ **FULLY RESTORED**
 
-**Solution Path**:
-1. **Short-term**: Document limitation clearly in API responses
-2. **Medium-term**: Add Redis cache with periodic blockchain sync
-3. **Long-term**: Restore `eth_call` capability via separate blockchain connector service
+- Used `eth_call` to query live balances via `balanceOf` and `balanceOfBatch` ✅ **IMPLEMENTED**
+- Applied demurrage calculations using last movement timestamp ✅ **IMPLEMENTED**
+- Converted between value representations (attoCircles ↔ staticCircles ↔ CRC) ✅ **IMPLEMENTED**
 
-### 2. Live Blockchain State
+**~~Current Limitation~~** → **Current Implementation**:
 
-**Problem**: No access to current blockchain state
+- ✅ **Live Mode**: Uses `NethermindRpcClient` for real-time eth_call queries
+- ✅ **Time-based adjustments**: Applies V1 inflation and V2 demurrage calculations
+- ✅ **Accurate balances**: Returns current, time-adjusted values
+- ✅ **Database Mode**: Still available as fast fallback (stale but performant)
+- ✅ **Toggle**: Configure via `BalanceMode=database|live` environment variable
 
-**Original Approach**:
-- Direct `eth_call` via Nethermind's `IEthRpcModule`
-- ABI encoding for complex calls (ERC-1155 `balanceOfBatch`)
+**Implementation Details**:
 
-**Solution Path**:
-- Create a separate **Blockchain Connector Service** that:
-  - Connects to Nethermind RPC endpoint
-  - Provides `eth_call` proxy
+- ✅ `NethermindRpcClient`: HTTP client for JSON-RPC eth_call to Nethermind
+- ✅ `AbiEncoder`: Full ABI encoding/decoding for ERC-20 and ERC-1155 contracts
+- ✅ `CirclesConverter`: Time-based conversion utilities (inflation, demurrage, CRC)
+- ✅ `V1Inflation`: Calculates V1 token inflation factor per period
+- ✅ `Fixed64`: Q64.64 fixed-point math for demurrage (bit-exact with Solidity)
+- ✅ Batch optimization: `balanceOfBatch` for multiple ERC-1155 tokens
+
+### ~~2. Live Blockchain State~~ ✅ **IMPLEMENTED**
+
+**~~Problem~~** ✅ **SOLVED**: ~~No access to current blockchain state~~ **Now fully connected!**
+
+**Original Approach**: ✅ **FULLY RESTORED**
+
+- Direct `eth_call` via Nethermind's `IEthRpcModule` ✅ **NOW: HTTP JSON-RPC**
+- ABI encoding for complex calls (ERC-1155 `balanceOfBatch`) ✅ **IMPLEMENTED**
+
+**Implementation**:
+
+- ✅ **NethermindRpcClient** class provides eth_call via HTTP JSON-RPC
+  - Connects to Nethermind RPC endpoint (configurable URL)
   - Handles ABI encoding/decoding
-  - Can be called via HTTP from Rpc.Host
+  - Supports both ERC-20 `balanceOf(address)` and ERC-1155 `balanceOf(address,uint256)`
+  - Batch queries via `balanceOfBatch(address[],uint256[])`
+- ✅ **Configuration**:
+  - `NethermindRpcUrl`: RPC endpoint (default: `http://localhost:8545`)
+  - `BalanceMode`: Toggle between database and live modes
 
 ### 3. In-Memory State Performance
 

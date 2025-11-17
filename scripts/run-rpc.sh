@@ -29,18 +29,28 @@ CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
 export ASPNETCORE_URLS="http://localhost:8081"
 
-export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
-export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
+# PostgreSQL credentials with defaults
+export POSTGRES_USER="${POSTGRES_USER:-postgres}"
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+export POSTGRES_DB="${POSTGRES_DB:-postgres}"
+
+export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
+export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
 export ExternalPathfinderUrl="${ExternalPathfinderUrl:-http://localhost:8080}"
 
 # Logging
 export Logging__LogLevel__Default="${Logging__LogLevel__Default:-Information}"
 
+# Circles Configuration
+export NETHERMIND_RPC_URL="${NETHERMIND_RPC_URL:-http://localhost:8545}"
+export BALANCE_MODE="${BALANCE_MODE:-live}"
+
 echo -e "${YELLOW}Configuration:${NC}"
 echo -e "  Environment: $ASPNETCORE_ENVIRONMENT"
 echo -e "  URLs: $ASPNETCORE_URLS"
 echo -e "  Build Config: $CONFIGURATION"
-echo -e "  Circles Rpc Url: ${CIRCLES_RPC_URL}"
+echo -e "  Circles Nethermind RPC URL: ${NETHERMIND_RPC_URL}"
+echo -e "  Circles Balance Mode: ${BALANCE_MODE}"
 echo -e "  Database: ${POSTGRES_CONNECTION_STRING%%Password=*}Password=***"
 echo -e "  Pathfinder: $ExternalPathfinderUrl"
 echo ""

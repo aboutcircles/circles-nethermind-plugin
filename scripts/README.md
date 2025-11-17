@@ -228,7 +228,7 @@ Runs the RPC host application locally for development.
 
 - `BUILD_CONFIGURATION` - Build configuration (default: Debug)
 - `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
-- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8082)
+- `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8081)
 - `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
 - `ExternalPathfinderUrl` - Pathfinder service URL (default: http://localhost:8080)
 - `Logging__LogLevel__Default` - Log level (default: Information)
@@ -250,7 +250,7 @@ RPC_PORT="8002" ./scripts/run-rpc.sh
 
 **Default Configuration:**
 
-- URL: http://localhost:8082
+- URL: http://localhost:8081
 - Database: localhost:5432/postgres (user: postgres, pass: postgres)
 - Pathfinder: http://localhost:8080
 - Environment: Development
@@ -268,7 +268,7 @@ Tests RPC endpoints by running all documented API calls against a running RPC se
 ./scripts/test-rpc.sh [RPC_URL] [--json]
 
 Options:
-  RPC_URL     URL of the RPC endpoint (default: http://localhost:8082)
+  RPC_URL     URL of the RPC endpoint (default: http://localhost:8081)
   --json      Output JSON format for regression testing (default: pretty format)
 ```
 
@@ -277,7 +277,7 @@ Options:
 ```bash
 # Direct script usage
 ./scripts/test-rpc.sh                              # Test local instance
-./scripts/test-rpc.sh http://localhost:8082        # Test custom URL
+./scripts/test-rpc.sh http://localhost:8081        # Test custom URL
 ./scripts/test-rpc.sh https://rpc.aboutcircles.com # Test production
 ./scripts/test-rpc.sh https://rpc.aboutcircles.com --json # JSON output
 
@@ -311,7 +311,7 @@ Compares RPC responses between two endpoints (typically local vs production) to 
 ./scripts/rpc-regression.sh [LOCAL_URL] [REMOTE_URL]
 
 Arguments:
-  LOCAL_URL   URL of local RPC endpoint (default: http://localhost:8082)
+  LOCAL_URL   URL of local RPC endpoint (default: http://localhost:8081)
   REMOTE_URL  URL of remote RPC endpoint (default: https://rpc.aboutcircles.com)
 ```
 
@@ -322,7 +322,7 @@ Arguments:
 ./scripts/rpc-regression.sh
 
 # Compare custom endpoints
-./scripts/rpc-regression.sh http://localhost:8082 https://staging.aboutcircles.com
+./scripts/rpc-regression.sh http://localhost:8081 https://staging.aboutcircles.com
 
 # Compare two remote instances
 ./scripts/rpc-regression.sh https://rpc1.aboutcircles.com https://rpc2.aboutcircles.com
@@ -344,7 +344,7 @@ Results are saved to `RegressionTestResults/TIMESTAMP/`:
 
 ```
 === RPC Regression Testing ===
-Local URL:  http://localhost:8082
+Local URL:  http://localhost:8081
 Remote URL: https://rpc.aboutcircles.com
 Results:    RegressionTestResults/20250114_143022
 

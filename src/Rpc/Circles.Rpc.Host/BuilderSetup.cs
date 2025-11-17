@@ -22,13 +22,21 @@ public static class BuilderSetup
         Console.WriteLine($"* DB User: {csb.Username}");
         Console.WriteLine($"* DB Name: {csb.Database}");
         Console.WriteLine($"* DB Port: {csb.Port}");
-        Console.WriteLine($"* Circles RPC URL: {settings.CirclesRpcUrl}");
+        Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
+        Console.WriteLine($"* Balance Mode: {settings.BalanceMode}");
 
         var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
 
         var builder = WebApplication.CreateSlimBuilder(args);
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(semaphore);
+
+        // Nethermind RPC client for health checks and balance queries
+        builder.Services.AddSingleton(sp =>
+        {
+            var settings = sp.GetRequiredService<Settings>();
+            return new NethermindRpcClient(settings.NethermindRpcUrl ?? "http://localhost:8545");
+        });
 
         // Use the existing CirclesRpcModule
         builder.Services.AddSingleton<CirclesRpcModule>();
@@ -58,7 +66,11 @@ public static class BuilderSetup
         builder.Services
             .AddHealthChecks()
             // liveness – always healthy as long as the process answers HTTP
-            .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" });
+            .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
+            // nethermind connectivity
+            .AddCheck<NethermindConnectionHealthCheck>("nethermind-connection", tags: new[] { "nethermind-connection" })
+            // nethermind sync status
+            .AddCheck<NethermindSyncHealthCheck>("nethermind-sync", tags: new[] { "nethermind-sync" });
 
         // ─── Misc DI ────────────────────────────────────────────────────────────────
         builder.Services.ConfigureHttpJsonOptions(_ => { });

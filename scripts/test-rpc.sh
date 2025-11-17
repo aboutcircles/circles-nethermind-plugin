@@ -8,8 +8,8 @@ set -e
 #   ./test-rpc.sh [RPC_URL] [--json]
 #
 # Examples:
-#   ./test-rpc.sh                                          # Test localhost:8082
-#   ./test-rpc.sh http://localhost:8082                    # Test custom local URL
+#   ./test-rpc.sh                                          # Test localhost:8081
+#   ./test-rpc.sh http://localhost:8081                    # Test custom local URL
 #   ./test-rpc.sh https://rpc.aboutcircles.com             # Test production
 #   ./test-rpc.sh https://rpc.aboutcircles.com --json      # Output only JSON (for regression testing)
 
@@ -21,14 +21,14 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Parse arguments
-RPC_URL="${1:-http://localhost:${RPC_PORT:-8082}}"
+RPC_URL="${1:-http://localhost:${RPC_PORT:-8081}}"
 OUTPUT_MODE="${2:-pretty}"
 
 # Check if --json flag is present
 if [[ "$1" == "--json" ]] || [[ "$2" == "--json" ]]; then
     OUTPUT_MODE="json"
     if [[ "$1" == "--json" ]]; then
-        RPC_URL="http://localhost:${RPC_PORT:-8082}"
+        RPC_URL="http://localhost:${RPC_PORT:-8081}"
     fi
 fi
 

@@ -68,7 +68,7 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
 POSTGRES_DB="${POSTGRES_DB:-postgres}"
 
 # Export environment variables for the plugin
-export CIRCLES_RPC_URL="${CIRCLES_RPC_URL:-http://localhost:8545}"
+export NETHERMIND_RPC_URL="${NETHERMIND_RPC_URL:-http://localhost:8545}"
 export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
 export POSTGRES_READONLY_CONNECTION_STRING="$POSTGRES_CONNECTION_STRING"
 export START_BLOCK="${START_BLOCK:-12000000}"
