@@ -24,8 +24,10 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Rpc.Host\Circles.Rpc.Host.csproj" />
-      <ProjectReference Include="..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
-      <ProjectReference Include="..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.6" />
     </ItemGroup>
 
 </Project>

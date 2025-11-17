@@ -20,7 +20,7 @@ using Prometheus;
 using static Circles.Pathfinder.Tracing;
 using Microsoft.AspNetCore.ResponseCompression;
 
-var settings = new Settings();
+var settings = new Circles.Pathfinder.Host.Settings();
 
 Console.WriteLine("Starting Pathfinder service...");
 Console.WriteLine($"* Max concurrent requests: {settings.MaxConcurrentRequests}");
@@ -30,7 +30,7 @@ Console.WriteLine($"* DB Host: {csb.Host}");
 Console.WriteLine($"* DB User: {csb.Username}");
 Console.WriteLine($"* DB Name: {csb.Database}");
 Console.WriteLine($"* DB Port: {csb.Port}");
-Console.WriteLine($"* Circles RPC URL: {settings.CirclesRpcUrl}");
+Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
 
 var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
 

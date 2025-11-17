@@ -19,12 +19,19 @@ public class CirclesRpcModule : ICirclesRpcModule
     private readonly string _readOnlyDbConnectionString;
     private readonly MemoryCache _profileByCidCache;
     private static readonly HttpClient HttpClient = new();
+    private readonly NethermindRpcClient? _nethermindRpcClient;
 
     public CirclesRpcModule(Settings settings)
     {
         _settings = settings;
         _readOnlyDbConnectionString = settings.IndexReadonlyDbConnectionString;
         _profileByCidCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 10_000 });
+
+        // Initialize Nethermind RPC client if BalanceMode is "live"
+        if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase))
+        {
+            _nethermindRpcClient = new NethermindRpcClient(_settings.NethermindRpcUrl);
+        }
     }
 
     private async Task<NpgsqlConnection> CreateConnectionAsync()
@@ -35,6 +42,18 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
     public async Task<string> GetTotalBalanceV1(string address)
+    {
+        if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase) && _nethermindRpcClient != null)
+        {
+            return await GetTotalBalanceV1Live(address);
+        }
+        else
+        {
+            return await GetTotalBalanceV1Database(address);
+        }
+    }
+
+    private async Task<string> GetTotalBalanceV1Database(string address)
     {
         // NOTE: This balance is a raw sum of historical transfers and does not account for
         // time-based inflation. The actual balance may be higher.
@@ -48,7 +67,73 @@ public class CirclesRpcModule : ICirclesRpcModule
         return CirclesConverter.AttoCirclesToCircles(sum).ToString(CultureInfo.InvariantCulture);
     }
 
+    private async Task<string> GetTotalBalanceV1Live(string address)
+    {
+        // Get all V1 token addresses for this user
+        using var connection = await CreateConnectionAsync();
+        const string sql = @"
+            SELECT DISTINCT t.""tokenAddress""
+            FROM ""CrcV1_Transfer"" t
+            WHERE t.""to"" = @address OR t.""from"" = @address
+        ";
+        using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("address", address.ToLower());
+
+        var tokenAddresses = new List<string>();
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            tokenAddresses.Add(reader.GetString(0));
+        }
+
+        if (tokenAddresses.Count == 0)
+        {
+            return "0";
+        }
+
+        // Fetch live balances for all V1 tokens
+        BigInteger totalBalance = BigInteger.Zero;
+        var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        foreach (var tokenAddress in tokenAddresses)
+        {
+            try
+            {
+                // Call balanceOf(address) on the V1 token contract
+                var data = AbiEncoder.EncodeBalanceOfErc20(address);
+                var resultHex = await _nethermindRpcClient!.EthCall(tokenAddress, data);
+                var attoCrc = AbiEncoder.DecodeUint256(resultHex);
+
+                if (attoCrc > 0)
+                {
+                    // Convert V1 CRC to demurraged Circles with inflation
+                    var attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
+                    totalBalance += attoCircles;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log and continue - don't fail the entire request if one token fails
+                Console.WriteLine($"Warning: Failed to fetch balance for V1 token {tokenAddress}: {ex.Message}");
+            }
+        }
+
+        return CirclesConverter.AttoCirclesToCircles(totalBalance).ToString(CultureInfo.InvariantCulture);
+    }
+
     public async Task<string> GetTotalBalanceV2(string address)
+    {
+        if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase) && _nethermindRpcClient != null)
+        {
+            return await GetTotalBalanceV2Live(address);
+        }
+        else
+        {
+            return await GetTotalBalanceV2Database(address);
+        }
+    }
+
+    private async Task<string> GetTotalBalanceV2Database(string address)
     {
         // NOTE: This balance is a raw sum of historical transfers and does not account for
         // time-based demurrage. The actual balance may be lower.
@@ -82,6 +167,139 @@ public class CirclesRpcModule : ICirclesRpcModule
         var sumStr = result?.ToString() ?? "0";
         var sum = BigInteger.Parse(sumStr);
         return CirclesConverter.AttoCirclesToCircles(sum).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private async Task<string> GetTotalBalanceV2Live(string address)
+    {
+        // Get all V2 token addresses and their types for this user
+        using var connection = await CreateConnectionAsync();
+
+        // Query for ERC-1155 tokens (demurraged)
+        const string erc1155Sql = @"
+            SELECT DISTINCT t.""tokenAddress""
+            FROM (
+                SELECT ""tokenAddress"" FROM ""CrcV2_TransferSingle"" WHERE ""to"" = @address OR ""from"" = @address
+                UNION
+                SELECT ""tokenAddress"" FROM ""CrcV2_TransferBatch"" WHERE ""to"" = @address OR ""from"" = @address
+            ) t
+        ";
+
+        // Query for ERC-20 wrapped tokens (can be demurraged or inflationary)
+        const string erc20Sql = @"
+            SELECT DISTINCT t.""tokenAddress"", wd.""circlesType""
+            FROM ""CrcV2_Erc20WrapperTransfer"" t
+            JOIN ""CrcV2_ERC20WrapperDeployed"" wd ON wd.""erc20Wrapper"" = t.""tokenAddress""
+            WHERE t.""to"" = @address OR t.""from"" = @address
+        ";
+
+        // Get ERC-1155 token addresses
+        var erc1155Tokens = new List<string>();
+        using (var cmd = new NpgsqlCommand(erc1155Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", address.ToLower());
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                erc1155Tokens.Add(reader.GetString(0));
+            }
+        }
+
+        // Get ERC-20 wrapped token addresses and types
+        var erc20Tokens = new List<(string address, int circlesType)>();
+        using (var cmd = new NpgsqlCommand(erc20Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", address.ToLower());
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                erc20Tokens.Add((reader.GetString(0), reader.GetInt32(1)));
+            }
+        }
+
+        if (erc1155Tokens.Count == 0 && erc20Tokens.Count == 0)
+        {
+            return "0";
+        }
+
+        BigInteger totalBalance = BigInteger.Zero;
+        var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Fetch ERC-1155 balances from the Hub contract
+        // V2 uses a single Hub contract at a known address
+        const string hubAddress = "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8"; // Gnosis Chain V2 Hub
+
+        if (erc1155Tokens.Count > 0)
+        {
+            // Convert token addresses to token IDs for ERC-1155
+            var tokenIds = erc1155Tokens
+                .Select(addr => AddressToTokenIdBigInt(addr))
+                .ToArray();
+
+            // Create arrays for balanceOfBatch call
+            var owners = Enumerable.Repeat(address, erc1155Tokens.Count).ToArray();
+
+            try
+            {
+                var data = AbiEncoder.EncodeBalanceOfBatch(owners, tokenIds);
+                var resultHex = await _nethermindRpcClient!.EthCall(hubAddress, data);
+                var balances = AbiEncoder.DecodeUint256Array(resultHex);
+
+                for (int i = 0; i < balances.Length; i++)
+                {
+                    if (balances[i] > 0)
+                    {
+                        // V2 ERC-1155 tokens are already in demurraged attoCircles
+                        totalBalance += balances[i];
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to fetch ERC-1155 balances: {ex.Message}");
+            }
+        }
+
+        // Fetch ERC-20 wrapped token balances
+        foreach (var (tokenAddress, circlesType) in erc20Tokens)
+        {
+            try
+            {
+                var data = AbiEncoder.EncodeBalanceOfErc20(address);
+                var resultHex = await _nethermindRpcClient!.EthCall(tokenAddress, data);
+                var balance = AbiEncoder.DecodeUint256(resultHex);
+
+                if (balance > 0)
+                {
+                    // circlesType: 0 = demurraged, 1 = inflationary
+                    if (circlesType == 1)
+                    {
+                        // Inflationary wrapped tokens store staticAttoCircles
+                        var attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(balance);
+                        totalBalance += attoCircles;
+                    }
+                    else
+                    {
+                        // Demurraged wrapped tokens store attoCircles directly
+                        totalBalance += balance;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to fetch balance for ERC-20 token {tokenAddress}: {ex.Message}");
+            }
+        }
+
+        return CirclesConverter.AttoCirclesToCircles(totalBalance).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Converts an Ethereum address to a BigInteger token ID for ERC-1155.
+    /// </summary>
+    private static BigInteger AddressToTokenIdBigInt(string address)
+    {
+        var hex = address.StartsWith("0x") ? address.Substring(2) : address;
+        return BigInteger.Parse("0" + hex, System.Globalization.NumberStyles.HexNumber);
     }
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
@@ -1584,27 +1802,70 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<HealthResponse> GetHealth()
     {
+        string databaseStatus;
+        string indexStatus;
+        string overallStatus;
+
         try
         {
             using var connection = await CreateConnectionAsync();
             using var command = new NpgsqlCommand("SELECT 1", connection);
             await command.ExecuteScalarAsync();
-            return new HealthResponse(
-                Status: "healthy",
-                Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Database: "connected",
-                Index: "synchronized"
-            );
+            databaseStatus = "connected";
         }
         catch (Exception)
         {
+            databaseStatus = "disconnected";
+            indexStatus = "unknown";
+            overallStatus = "unhealthy";
             return new HealthResponse(
-                Status: "unhealthy",
+                Status: overallStatus,
                 Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Database: "disconnected",
-                Index: "unknown"
+                Database: databaseStatus,
+                Index: indexStatus
             );
         }
+
+        // Check indexer synchronization
+        try
+        {
+            // Get latest block from database
+            long? lastPersisted;
+            using var connection = await CreateConnectionAsync();
+            using var command = new NpgsqlCommand("SELECT MAX(\"blockNumber\") as block_number FROM \"System_Block\"", connection);
+            var result = await command.ExecuteScalarAsync();
+            lastPersisted = result is long longResult ? longResult : 0;
+
+            // Get latest block from Nethermind
+            long blockHead = 0;
+            if (_nethermindRpcClient != null)
+            {
+                blockHead = await _nethermindRpcClient.GetLatestBlockNumber();
+            }
+
+            if (blockHead - lastPersisted >= 3)
+            {
+                indexStatus = "lagging";
+                overallStatus = "unhealthy";
+            }
+            else
+            {
+                indexStatus = "synchronized";
+                overallStatus = "healthy";
+            }
+        }
+        catch (Exception)
+        {
+            indexStatus = "unknown";
+            overallStatus = "unhealthy";
+        }
+
+        return new HealthResponse(
+            Status: overallStatus,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Database: databaseStatus,
+            Index: indexStatus
+        );
     }
 
     public async Task<TablesResponse> GetTables()

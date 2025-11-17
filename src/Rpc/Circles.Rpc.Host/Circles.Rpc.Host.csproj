@@ -18,8 +18,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.5" />
+    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.6" />
     <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
+    <PackageReference Include="Nethereum.Util" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>

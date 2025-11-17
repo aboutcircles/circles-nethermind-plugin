@@ -29,9 +29,14 @@ CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
 export ASPNETCORE_URLS="http://localhost:${PATHFINDER_PORT:-8080}"
 
-export CIRCLES_RPC_URL="http://localhost:8545"
-export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
-export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
+# PostgreSQL credentials with defaults
+export POSTGRES_USER="${POSTGRES_USER:-postgres}"
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
+export POSTGRES_DB="${POSTGRES_DB:-postgres}"
+
+export NETHERMIND_RPC_URL="${NETHERMIND_RPC_URL:-http://localhost:8545}"
+export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
+export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
 
 # Logging
 export Logging__LogLevel__Default="${Logging__LogLevel__Default:-Information}"

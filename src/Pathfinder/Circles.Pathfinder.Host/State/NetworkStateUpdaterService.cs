@@ -12,14 +12,14 @@ namespace Circles.Pathfinder.Host.State;
 public class NetworkStateUpdaterService : BackgroundService
 {
     private readonly NetworkState _networkState;
-    private readonly Settings _settings;
+    private readonly Circles.Pathfinder.Host.Settings _settings;
     private readonly List<Exception> _getCurrentBlockErrors = new();
     private static readonly HttpClient HttpClient = new();
     private readonly ILogger<NetworkStateUpdaterService> _log;
     private readonly CapacityGraphPool _pool;
 
     public NetworkStateUpdaterService(NetworkState networkState,
-        Settings settings,
+        Circles.Pathfinder.Host.Settings settings,
         ILogger<NetworkStateUpdaterService> log,
         CapacityGraphPool pool)
     {
@@ -120,7 +120,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 Encoding.UTF8,
                 "application/json");
 
-            using var response = await HttpClient.PostAsync(_settings.CirclesRpcUrl, content);
+            using var response = await HttpClient.PostAsync(_settings.NethermindRpcUrl, content);
             response.EnsureSuccessStatusCode();
 
             var rpcResponse = await response.Content.ReadFromJsonAsync<EthBlockNumberResponse>()

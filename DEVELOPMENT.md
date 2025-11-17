@@ -113,7 +113,7 @@ scripts/
 
 ### Published Packages
 
-1. **Gnosis.Circles.Nethermind.Plugin** (v0.0.5)
+1. **Gnosis.Circles.Nethermind.Plugin** (v0.0.6)
    - Main Nethermind plugin for Circles indexing
    - Includes all sub-packages embedded
 

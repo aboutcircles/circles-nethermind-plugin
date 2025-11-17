@@ -34,7 +34,7 @@ help:
 	@echo "  make call-rpc          Call RPC interactively"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test-rpc                    Run RPC tests (default: localhost:8082)"
+	@echo "  make test-rpc                    Run RPC tests (default: localhost:8081)"
 	@echo "  make test-rpc URL=<url>          Run RPC tests against custom URL"
 	@echo "  make test-rpc ARGS='--json'      Run RPC tests with JSON output"
 	@echo "  make test-rpc-prod               Run RPC tests against production"

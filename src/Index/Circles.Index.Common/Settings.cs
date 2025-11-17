@@ -29,10 +29,10 @@ public class Settings
 
     #endregion
 
-    #region Pathfinder host only configuration
+    #region Shared host configuration
 
-    public readonly string? CirclesRpcUrl =
-        Environment.GetEnvironmentVariable("CIRCLES_RPC_URL");
+    public readonly string? NethermindRpcUrl =
+        Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL");
 
     public readonly int MaxConcurrentRequests =
         int.TryParse(Environment.GetEnvironmentVariable("PATHFINDER_MAX_CONCURRENT_REQUESTS"), out var maxRequests)
