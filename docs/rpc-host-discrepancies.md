@@ -73,13 +73,17 @@ These features work without blockchain access or in-memory caches:
 
 ### ❌ Missing from Original
 
-1. **Advanced Event Filtering**
-   - Original had `FilterPredicateDto[]` support
-   - Current only supports basic filtering (address, block range, event types)
+1. ~~**Advanced Event Filtering**~~ ✅ **IMPLEMENTED**
+   - ✅ `FilterPredicateDto[]` support added
+   - ✅ Supports all filter types: Equals, NotEquals, GreaterThan, GreaterThanOrEquals, LessThan, LessThanOrEquals, Like, ILike, NotLike, In, NotIn, IsNull, IsNotNull
+   - ✅ Supports nested conjunctions (AND/OR logic)
+   - ✅ Parameterized queries prevent SQL injection
+   - Current supports: address, block range, event types, and advanced filter predicates
 
-2. **Batch Avatar Info with V1 Support**
-   - Original included V1 signup data
-   - Current only queries V2 avatars
+2. ~~**Batch Avatar Info with V1 Support**~~ ✅ **IMPLEMENTED**
+   - ✅ V1 signup data now included
+   - ✅ Queries both V1 and V2 avatars
+   - ✅ Merges V1 and V2 data when both exist
 
 3. **Rich Token Balance Details**
    - Original returned `CirclesTokenBalance` with:
@@ -163,16 +167,17 @@ These features require additional infrastructure:
 **Goal**: Implement all features that can work with database access only
 
 #### Tasks:
-- [ ] **Advanced Event Filtering**
-  - Add `FilterPredicateDto[]` support to `GetEvents`
-  - Implement complex filter types (IN, NOT IN, LIKE, etc.)
-  - Extend SQL query builder to support predicate composition
 
-- [ ] **V1 Avatar Support**
-  - Query `CrcV1_Signup` table in `GetAvatarInfo`
-  - Include V1 token address in batch responses
-  - Check both `CrcV1_Trust` and V2 trust tables
-  - Merge V1 and V2 avatar data in responses
+- [x] **Advanced Event Filtering** ✅ **COMPLETED**
+  - ✅ Add `FilterPredicateDto[]` support to `GetEvents`
+  - ✅ Implement complex filter types (IN, NOT IN, LIKE, etc.)
+  - ✅ Extend SQL query builder to support predicate composition
+
+- [x] **V1 Avatar Support** ✅ **COMPLETED**
+  - ✅ Query `CrcV1_Signup` table in `GetAvatarInfo`
+  - ✅ Include V1 token address in batch responses
+  - ✅ Check both `CrcV1_Trust` and V2 trust tables
+  - ✅ Merge V1 and V2 avatar data in responses
 
 - [ ] **Enhanced Token Balances** (database-only version)
   - Add V2 balance calculation from `CrcV2_TransferSingle`, `CrcV2_TransferBatch`, `CrcV2_Erc20WrapperTransfer`
@@ -354,12 +359,12 @@ These features require additional infrastructure:
 | `circles_getTotalBalance` | `GetTotalBalanceV1` | ⚠️ Stale balance |
 | `circlesV2_getTotalBalance` | `GetTotalBalanceV2` | ⚠️ Stale balance |
 | `circles_getTokenBalances` | `GetTokenBalances` | ⚠️ V1 only, stale |
-| `circles_getAvatarInfo` | `GetAvatarInfo` | ⚠️ V2 only |
-| `circles_getAvatarInfoBatch` | `GetAvatarInfoBatch` | ⚠️ V2 only |
+| `circles_getAvatarInfo` | `GetAvatarInfo` | ✅ (V1 + V2) |
+| `circles_getAvatarInfoBatch` | `GetAvatarInfoBatch` | ✅ (V1 + V2) |
 | `circles_getTrustRelations` | `GetTrustRelations` | ✅ |
 | `circles_getCommonTrust` | `GetCommonTrust` | ✅ |
 | `circles_query` | `Query` | ✅ |
-| `circles_events` | `GetEvents` | ⚠️ Missing advanced filters |
+| `circles_events` | `GetEvents` | ✅ (with advanced filters) |
 | `circles_getProfileCid` | `GetProfileCid` | ✅ |
 | `circles_getProfileByCid` | `GetProfileByCid` | ✅ |
 | `circles_getProfileByAddress` | `GetProfileByAddress` | ✅ |

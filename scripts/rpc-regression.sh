@@ -4,6 +4,13 @@ set -e
 # RPC Regression Testing Script
 # Compares responses between two RPC endpoints (typically local vs production)
 #
+# This script runs all tests from test-rpc.sh against both endpoints and compares:
+# - Basic RPC methods (getTotalBalance, getTokenBalances, etc.)
+# - Query methods with complex filters
+# - Advanced FilterPredicate features (GreaterThan, In, Conjunction, etc.)
+# - Profile and avatar methods
+# - Event queries with filters
+#
 # Usage:
 #   ./rpc-regression.sh [LOCAL_URL] [REMOTE_URL]
 #

@@ -27,7 +27,7 @@ CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
 
 # Environment variables for development
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
-export ASPNETCORE_URLS="http://localhost:${RPC_PORT:-8081}"
+export ASPNETCORE_URLS="http://localhost:8081"
 
 export POSTGRES_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"
 export POSTGRES_READONLY_CONNECTION_STRING="Server=localhost;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;"

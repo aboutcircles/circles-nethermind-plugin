@@ -360,10 +360,16 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
         eventTypes = parameters[3].Deserialize<string[]>();
     }
 
-    FilterPredicateDto[]? filterPredicates = null;
+    IFilterPredicateDto[]? filterPredicates = null;
     if (parameters.Length > 4 && parameters[4].ValueKind != JsonValueKind.Null)
     {
-        filterPredicates = parameters[4].Deserialize<FilterPredicateDto[]>();
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        options.Converters.Add(new FilterPredicateArrayConverter());
+        options.Converters.Add(new FilterPredicateDtoConverter());
+        filterPredicates = JsonSerializer.Deserialize<IFilterPredicateDto[]>(parameters[4].GetRawText(), options);
     }
 
     if (parameters.Length > 5 && parameters[5].ValueKind != JsonValueKind.Null)

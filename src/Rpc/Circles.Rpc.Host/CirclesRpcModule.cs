@@ -1146,8 +1146,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         ";
         using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
-        var trusts = new Dictionary<string, int>();
-        var trustedBy = new Dictionary<string, int>();
+        var trusts = new List<TrustRelation>();
+        var trustedBy = new List<TrustRelation>();
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1157,14 +1157,14 @@ public class CirclesRpcModule : ICirclesRpcModule
             var limit = Convert.ToInt32(reader.GetValue(2));
             if (user.Equals(address, StringComparison.OrdinalIgnoreCase))
             {
-                trusts[canSendTo] = limit;
+                trusts.Add(new TrustRelation(User: canSendTo, Limit: limit));
             }
             else
             {
-                trustedBy[user] = limit;
+                trustedBy.Add(new TrustRelation(User: user, Limit: limit));
             }
         }
-        return new TrustRelationsResponse(User: address.ToLower(), Trusts: trusts, TrustedBy: trustedBy);
+        return new TrustRelationsResponse(User: address.ToLower(), Trusts: trusts.ToArray(), TrustedBy: trustedBy.ToArray());
     }
 
     private async Task<bool> IsV2Human(string address)
@@ -1290,7 +1290,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         long? fromBlock,
         long? toBlock,
         string[]? eventTypes,
-        FilterPredicateDto[]? filterPredicates = null,
+        IFilterPredicateDto[]? filterPredicates = null,
         bool? sortAscending = false)
     {
         // Use the schema-aware map to get all event tables and their address columns
@@ -1328,9 +1328,6 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 foreach (var predicate in filterPredicates)
                 {
-                    if (string.IsNullOrWhiteSpace(predicate.Column))
-                        continue;
-
                     var predicateClause = BuildPredicateClause(predicate, parameters, table.Key);
                     if (!string.IsNullOrEmpty(predicateClause))
                     {
@@ -1376,9 +1373,19 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
     /// <summary>
-    /// Builds a WHERE clause from a FilterPredicateDto.
+    /// Builds a WHERE clause from an IFilterPredicateDto.
     /// </summary>
-    private string BuildPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
+    private string BuildPredicateClause(IFilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
+    {
+        return predicate switch
+        {
+            FilterPredicateDto fp => BuildFilterPredicateClause(fp, parameters, tablePrefix),
+            ConjunctionDto conj => BuildConjunctionClause(conj, parameters, tablePrefix),
+            _ => ""
+        };
+    }
+
+    private string BuildFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
     {
         var column = $"t.\"{predicate.Column}\"";
         var paramName = $"@pred_{tablePrefix}_{predicate.Column}_{parameters.Count}";
@@ -1448,6 +1455,133 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
     }
 
+    private string BuildConjunctionClause(ConjunctionDto conjunction, List<NpgsqlParameter> parameters, string tablePrefix)
+    {
+        if (conjunction.Predicates == null || conjunction.Predicates.Length == 0)
+            return "";
+
+        var clauses = new List<string>();
+        foreach (var pred in conjunction.Predicates)
+        {
+            var clause = BuildPredicateClause(pred, parameters, tablePrefix);
+            if (!string.IsNullOrEmpty(clause))
+            {
+                clauses.Add(clause);
+            }
+        }
+
+        if (clauses.Count == 0)
+            return "";
+
+        var joinOperator = conjunction.ConjunctionType == ConjunctionType.And ? " AND " : " OR ";
+        return $"({string.Join(joinOperator, clauses)})";
+    }
+
+    /// <summary>
+    /// Builds a WHERE clause for the Query method.
+    /// </summary>
+    private string BuildQueryPredicateClause(IFilterPredicateDto predicate, List<NpgsqlParameter> parameters)
+    {
+        return predicate switch
+        {
+            FilterPredicateDto fp => BuildQueryFilterPredicateClause(fp, parameters),
+            ConjunctionDto conj => BuildQueryConjunctionClause(conj, parameters),
+            _ => ""
+        };
+    }
+
+    private string BuildQueryFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters)
+    {
+        var column = $"\"{predicate.Column}\"::text";
+        var paramName = $"@p{parameters.Count}";
+
+        switch (predicate.FilterType)
+        {
+            case FilterType.Equals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} = {paramName}::text";
+
+            case FilterType.NotEquals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} != {paramName}::text";
+
+            case FilterType.GreaterThan:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} > {paramName}::text";
+
+            case FilterType.GreaterThanOrEquals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} >= {paramName}::text";
+
+            case FilterType.LessThan:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} < {paramName}::text";
+
+            case FilterType.LessThanOrEquals:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} <= {paramName}::text";
+
+            case FilterType.Like:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} LIKE {paramName}::text";
+
+            case FilterType.ILike:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} ILIKE {paramName}::text";
+
+            case FilterType.NotLike:
+                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                return $"{column} NOT LIKE {paramName}::text";
+
+            case FilterType.In:
+                if (predicate.Value is Array arr)
+                {
+                    parameters.Add(new NpgsqlParameter(paramName, arr));
+                    return $"{column} IN (SELECT unnest({paramName}::text[]))";
+                }
+                return "";
+
+            case FilterType.NotIn:
+                if (predicate.Value is Array arr2)
+                {
+                    parameters.Add(new NpgsqlParameter(paramName, arr2));
+                    return $"{column} NOT IN (SELECT unnest({paramName}::text[]))";
+                }
+                return "";
+
+            case FilterType.IsNull:
+                return $"{column} IS NULL";
+
+            case FilterType.IsNotNull:
+                return $"{column} IS NOT NULL";
+
+            default:
+                return "";
+        }
+    }
+
+    private string BuildQueryConjunctionClause(ConjunctionDto conjunction, List<NpgsqlParameter> parameters)
+    {
+        if (conjunction.Predicates == null || conjunction.Predicates.Length == 0)
+            return "";
+
+        var clauses = new List<string>();
+        foreach (var pred in conjunction.Predicates)
+        {
+            var clause = BuildQueryPredicateClause(pred, parameters);
+            if (!string.IsNullOrEmpty(clause))
+            {
+                clauses.Add(clause);
+            }
+        }
+
+        if (clauses.Count == 0)
+            return "";
+
+        var joinOperator = conjunction.ConjunctionType == ConjunctionType.And ? " AND " : " OR ";
+        return $"({string.Join(joinOperator, clauses)})";
+    }
+
     public async Task<HealthResponse> GetHealth()
     {
         try
@@ -1507,23 +1641,13 @@ public class CirclesRpcModule : ICirclesRpcModule
         var whereClauses = new List<string>();
         if (query.Filter != null)
         {
-            int paramIndex = 0;
-            foreach (var filter in query.Filter.OfType<FilterPredicateDto>())
+            foreach (var filter in query.Filter)
             {
-                var paramName = $"@p{paramIndex++}";
-                var op = filter.FilterType switch
+                var clause = BuildQueryPredicateClause(filter, parameters);
+                if (!string.IsNullOrEmpty(clause))
                 {
-                    FilterType.Equals => "=",
-                    FilterType.NotEquals => "!=",
-                    FilterType.GreaterThan => ">",
-                    FilterType.GreaterThanOrEquals => ">=",
-                    FilterType.LessThan => "<",
-                    FilterType.LessThanOrEquals => "<=",
-                    FilterType.In => "IN",
-                    _ => "="
-                };
-                whereClauses.Add($"\"{filter.Column}\"::text {op} {paramName}::text");
-                parameters.Add(new NpgsqlParameter(paramName, filter.Value));
+                    whereClauses.Add(clause);
+                }
             }
         }
 

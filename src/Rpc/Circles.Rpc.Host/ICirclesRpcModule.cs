@@ -133,7 +133,7 @@ public interface ICirclesRpcModule
 
     /// <summary>
     /// Gets events from the blockchain, filtered by various criteria.
-    /// Supports advanced filtering with FilterPredicateDto for complex queries.
+    /// Supports advanced filtering with FilterPredicateDto and ConjunctionDto for complex queries.
     /// </summary>
     /// <param name="address">Filter by address (null for all addresses)</param>
     /// <param name="fromBlock">Starting block number (inclusive)</param>
@@ -146,7 +146,7 @@ public interface ICirclesRpcModule
         long? fromBlock,
         long? toBlock,
         string[]? eventTypes,
-        FilterPredicateDto[]? filterPredicates = null,
+        IFilterPredicateDto[]? filterPredicates = null,
         bool? sortAscending = false);
 
     // ========================================================================
@@ -244,12 +244,20 @@ public record AvatarInfo(
 );
 
 /// <summary>
+/// Trust relation.
+/// </summary>
+public record TrustRelation(
+    string User,
+    int Limit
+);
+
+/// <summary>
 /// Trust relations response.
 /// </summary>
 public record TrustRelationsResponse(
     string User,
-    Dictionary<string, int> Trusts,
-    Dictionary<string, int> TrustedBy
+    TrustRelation[] Trusts,
+    TrustRelation[] TrustedBy
 );
 
 /// <summary>
