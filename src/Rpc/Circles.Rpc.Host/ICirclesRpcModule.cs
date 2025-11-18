@@ -15,19 +15,23 @@ public interface ICirclesRpcModule
 
     /// <summary>
     /// Gets the total V1 balance for an address.
-    /// NOTE: Returns raw sum of historical transfers without inflation adjustment.
+    /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
+    /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
     Task<string> GetTotalBalanceV1(string address);
 
     /// <summary>
     /// Gets the total V2 balance for an address.
-    /// NOTE: Returns raw sum of historical transfers without demurrage adjustment.
+    /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
+    /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
     Task<string> GetTotalBalanceV2(string address);
 
     /// <summary>
-    /// Gets token balances for an address.
-    /// NOTE: Currently returns V1 balances only. V2 balances and time-based adjustments are not included.
+    /// Gets token balances for an address with full metadata.
+    /// Returns V1 and V2 tokens with complete CirclesTokenBalance information.
+    /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
+    /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
     Task<CirclesTokenBalance[]> GetTokenBalances(string address);
 
@@ -51,13 +55,13 @@ public interface ICirclesRpcModule
 
     /// <summary>
     /// Gets avatar information for a specific address.
-    /// NOTE: Currently returns V2 avatars only.
+    /// Returns both V1 and V2 avatars with merged data when both exist.
     /// </summary>
     Task<AvatarInfo> GetAvatarInfo(string address);
 
     /// <summary>
     /// Gets avatar information for multiple addresses.
-    /// NOTE: Currently returns V2 avatars only.
+    /// Returns both V1 and V2 avatars with merged data when both exist.
     /// </summary>
     Task<AvatarInfo[]> GetAvatarInfoBatch(string[] addresses);
 
@@ -89,11 +93,13 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets a profile by avatar address.
     /// Looks up the CID first, then retrieves the profile.
+    /// Enriched with avatar type and short name from V2 registrations.
     /// </summary>
     Task<JsonElement?> GetProfileByAddress(string address);
 
     /// <summary>
     /// Gets multiple profiles by avatar addresses.
+    /// Enriched with avatar type and short name from V2 registrations.
     /// </summary>
     Task<Dictionary<string, JsonElement?>> GetProfileByAddressBatch(string[] addresses);
 
@@ -113,7 +119,7 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets trust relations for an address.
     /// Returns both trusts (who this address trusts) and trustedBy (who trusts this address).
-    /// NOTE: Currently returns V1 trust relations only.
+    /// Currently returns V1 trust relations only.
     /// </summary>
     Task<TrustRelationsResponse> GetTrustRelations(string address);
 
@@ -181,7 +187,7 @@ public interface ICirclesRpcModule
 
     /// <summary>
     /// Health check endpoint.
-    /// NOTE: Only checks database connectivity, not blockchain sync status.
+    /// Checks database connectivity and blockchain sync status (when live mode is enabled).
     /// </summary>
     Task<HealthResponse> GetHealth();
 
@@ -313,7 +319,7 @@ public record TablesResponse(TableSchema[] Namespaces);
 /// <summary>
 /// Network snapshot (proxied from pathfinder).
 /// </summary>
-public record NetworkSnapshotResponse(JsonElement Data);
+public record NetworkSnapshotResponse(JsonElement BlockNumber, JsonElement Addresses);
 
 /// <summary>
 /// Rich token balance information with multiple value representations.

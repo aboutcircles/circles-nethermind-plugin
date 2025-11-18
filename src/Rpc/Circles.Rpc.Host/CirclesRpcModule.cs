@@ -316,12 +316,23 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
     {
+        if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase) && _nethermindRpcClient != null)
+        {
+            return await GetTokenBalancesLive(address);
+        }
+        else
+        {
+            return await GetTokenBalancesDatabase(address);
+        }
+    }
+
+    private async Task<CirclesTokenBalance[]> GetTokenBalancesDatabase(string address)
+    {
         // NOTE: The returned balances are raw sums of historical transfers.
         // They do NOT account for time-based adjustments:
         // - V1 tokens: No inflation adjustment applied
         // - V2 demurraged tokens: No demurrage decay applied
         // - V2 inflationary tokens: No inflation adjustment applied
-        // For accurate balances, a blockchain connector service is required (Phase 3).
 
         var lowerAddress = address.ToLower();
         await using var connection = await CreateConnectionAsync();
@@ -586,6 +597,263 @@ public class CirclesRpcModule : ICirclesRpcModule
             .ToArray();
 
         return orderedBalances;
+    }
+
+    private async Task<CirclesTokenBalance[]> GetTokenBalancesLive(string address)
+    {
+        var lowerAddress = address.ToLower();
+        await using var connection = await CreateConnectionAsync();
+
+        var tokenBalances = new List<CirclesTokenBalance>();
+        var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // ===== V1 Token Balances (Live) =====
+        // Get all V1 token addresses and their owners
+        const string v1Sql = @"
+            SELECT DISTINCT t.""tokenAddress"", s.""user"" as owner
+            FROM ""CrcV1_Transfer"" t
+            JOIN ""CrcV1_Signup"" s ON s.token = t.""tokenAddress""
+            WHERE t.""to"" = @address OR t.""from"" = @address
+        ";
+
+        var v1Tokens = new List<(string tokenAddress, string owner)>();
+        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", lowerAddress);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                v1Tokens.Add((reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        // Fetch live balances for V1 tokens via eth_call
+        foreach (var (tokenAddress, owner) in v1Tokens)
+        {
+            try
+            {
+                var data = AbiEncoder.EncodeBalanceOfErc20(lowerAddress);
+                var resultHex = await _nethermindRpcClient!.EthCall(tokenAddress, data);
+                var attoCrc = AbiEncoder.DecodeUint256(resultHex);
+
+                if (attoCrc > 0)
+                {
+                    var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                    var attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
+                    var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                    var staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                    var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+
+                    tokenBalances.Add(new CirclesTokenBalance(
+                        TokenAddress: tokenAddress,
+                        TokenId: tokenAddress,
+                        TokenOwner: owner,
+                        TokenType: "CrcV1_Signup",
+                        Version: 1,
+                        AttoCircles: attoCircles.ToString(),
+                        Circles: circles,
+                        StaticAttoCircles: staticAttoCircles.ToString(),
+                        StaticCircles: staticCircles,
+                        AttoCrc: attoCrc.ToString(),
+                        Crc: crc,
+                        IsErc20: true,
+                        IsErc1155: false,
+                        IsWrapped: false,
+                        IsInflationary: true,
+                        IsGroup: false
+                    ));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to fetch balance for V1 token {tokenAddress}: {ex.Message}");
+            }
+        }
+
+        // ===== V2 ERC-1155 Token Balances (Live) =====
+        // Get all V2 ERC-1155 token addresses
+        const string v2Erc1155Sql = @"
+            WITH tokens AS (
+                SELECT DISTINCT ""tokenAddress"" FROM ""CrcV2_TransferSingle"" WHERE ""to"" = @address OR ""from"" = @address
+                UNION
+                SELECT DISTINCT ""tokenAddress"" FROM ""CrcV2_TransferBatch"" WHERE ""to"" = @address OR ""from"" = @address
+            )
+            SELECT
+                t.""tokenAddress"",
+                COALESCE(rh.avatar, rg.""group"") as owner,
+                CASE
+                    WHEN rh.avatar IS NOT NULL THEN 'CrcV2_RegisterHuman'
+                    WHEN rg.""group"" IS NOT NULL THEN 'CrcV2_RegisterGroup'
+                    ELSE 'Unknown'
+                END as token_type,
+                CASE WHEN rg.""group"" IS NOT NULL THEN true ELSE false END as is_group
+            FROM tokens t
+            LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = t.""tokenAddress""
+            LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = t.""tokenAddress""
+        ";
+
+        var erc1155Tokens = new List<(string address, string owner, string type, bool isGroup)>();
+        await using (var cmd = new NpgsqlCommand(v2Erc1155Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", lowerAddress);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var tokenAddr = reader.GetString(0);
+                var owner = reader.IsDBNull(1) ? tokenAddr : reader.GetString(1);
+                var tokenType = reader.GetString(2);
+                var isGroup = reader.GetBoolean(3);
+                erc1155Tokens.Add((tokenAddr, owner, tokenType, isGroup));
+            }
+        }
+
+        // Fetch live balances via balanceOfBatch for ERC-1155 tokens
+        if (erc1155Tokens.Count > 0)
+        {
+            const string hubAddress = "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8"; // Gnosis Chain V2 Hub
+
+            try
+            {
+                var tokenIds = erc1155Tokens.Select(t => AddressToTokenIdBigInt(t.address)).ToArray();
+                var owners = Enumerable.Repeat(lowerAddress, erc1155Tokens.Count).ToArray();
+
+                var data = AbiEncoder.EncodeBalanceOfBatch(owners, tokenIds);
+                var resultHex = await _nethermindRpcClient!.EthCall(hubAddress, data);
+                var balances = AbiEncoder.DecodeUint256Array(resultHex);
+
+                for (int i = 0; i < balances.Length; i++)
+                {
+                    if (balances[i] > 0)
+                    {
+                        var (tokenAddress, owner, tokenType, isGroup) = erc1155Tokens[i];
+
+                        // V2 ERC-1155 tokens are demurraged (attoCircles)
+                        var attoCircles = balances[i];
+                        var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                        var staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                        var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                        var attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                        var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                        var tokenId = AddressToTokenId(tokenAddress);
+
+                        tokenBalances.Add(new CirclesTokenBalance(
+                            TokenAddress: tokenAddress,
+                            TokenId: tokenId,
+                            TokenOwner: owner,
+                            TokenType: tokenType,
+                            Version: 2,
+                            AttoCircles: attoCircles.ToString(),
+                            Circles: circles,
+                            StaticAttoCircles: staticAttoCircles.ToString(),
+                            StaticCircles: staticCircles,
+                            AttoCrc: attoCrc.ToString(),
+                            Crc: crc,
+                            IsErc20: false,
+                            IsErc1155: true,
+                            IsWrapped: false,
+                            IsInflationary: false,
+                            IsGroup: isGroup
+                        ));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to fetch ERC-1155 balances: {ex.Message}");
+            }
+        }
+
+        // ===== V2 ERC-20 Wrapped Token Balances (Live) =====
+        const string v2Erc20Sql = @"
+            SELECT DISTINCT
+                t.""tokenAddress"",
+                wd.avatar as owner,
+                wd.""circlesType""
+            FROM ""CrcV2_Erc20WrapperTransfer"" t
+            JOIN ""CrcV2_ERC20WrapperDeployed"" wd ON wd.""erc20Wrapper"" = t.""tokenAddress""
+            WHERE t.""to"" = @address OR t.""from"" = @address
+        ";
+
+        var erc20Tokens = new List<(string address, string owner, int circlesType)>();
+        await using (var cmd = new NpgsqlCommand(v2Erc20Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("address", lowerAddress);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                erc20Tokens.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
+            }
+        }
+
+        // Fetch live balances for ERC-20 wrapped tokens
+        foreach (var (tokenAddress, owner, circlesType) in erc20Tokens)
+        {
+            try
+            {
+                var data = AbiEncoder.EncodeBalanceOfErc20(lowerAddress);
+                var resultHex = await _nethermindRpcClient!.EthCall(tokenAddress, data);
+                var balance = AbiEncoder.DecodeUint256(resultHex);
+
+                if (balance > 0)
+                {
+                    bool isInflationary = circlesType == 1;
+                    string tokenType = isInflationary
+                        ? "CrcV2_ERC20WrapperDeployed_Inflationary"
+                        : "CrcV2_ERC20WrapperDeployed_Demurraged";
+
+                    BigInteger attoCircles;
+                    BigInteger staticAttoCircles;
+                    BigInteger attoCrc;
+
+                    if (isInflationary)
+                    {
+                        // Inflationary wrapped tokens store staticAttoCircles
+                        staticAttoCircles = balance;
+                        attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                    }
+                    else
+                    {
+                        // Demurraged wrapped tokens store attoCircles
+                        attoCircles = balance;
+                        staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                    }
+
+                    var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                    var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                    var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+                    tokenBalances.Add(new CirclesTokenBalance(
+                        TokenAddress: tokenAddress,
+                        TokenId: tokenAddress,
+                        TokenOwner: owner,
+                        TokenType: tokenType,
+                        Version: 2,
+                        AttoCircles: attoCircles.ToString(),
+                        Circles: circles,
+                        StaticAttoCircles: staticAttoCircles.ToString(),
+                        StaticCircles: staticCircles,
+                        AttoCrc: attoCrc.ToString(),
+                        Crc: crc,
+                        IsErc20: true,
+                        IsErc1155: false,
+                        IsWrapped: true,
+                        IsInflationary: isInflationary,
+                        IsGroup: false
+                    ));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Failed to fetch balance for ERC-20 token {tokenAddress}: {ex.Message}");
+            }
+        }
+
+        // Order by circles value (descending)
+        return tokenBalances
+            .OrderByDescending(b => b.Circles)
+            .ToArray();
     }
 
     /// <summary>
@@ -1514,7 +1782,12 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         var snapshot = await JsonSerializer.DeserializeAsync<JsonElement>(stream);
-        return new NetworkSnapshotResponse(Data: snapshot);
+        
+        // Extract BlockNumber and Addresses directly to match remote response structure
+        var blockNumber = snapshot.GetProperty("BlockNumber");
+        var addresses = snapshot.GetProperty("Addresses");
+        
+        return new NetworkSnapshotResponse(BlockNumber: blockNumber, Addresses: addresses);
     }
 
     public async Task<JsonElement> FindPathV2(FlowRequest flowRequest)
