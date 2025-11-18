@@ -1,0 +1,29 @@
+{
+  "description": "Configuration for RPC regression testing V2",
+  "defaultTolerance": 0.001,
+  "methodTolerances": {
+    "circles_getTotalBalance": 0.1,
+    "circlesV2_getTotalBalance": 0.1,
+    "circles_getTokenBalances": 0.15,
+    "circlesV2_findPath": 1.0,
+    "circles_query": 0.05
+  },
+  "normalizeFields": [
+    "timestamp",
+    "blockNumber",
+    "transactionIndex",
+    "logIndex",
+    "transactionHash",
+    "lastUpdatedAt"
+  ],
+  "expectedFailures": [
+    "circles_getNetworkSnapshot",
+    "circles_health"
+  ],
+  "comments": {
+    "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
+    "methodTolerances": "Method-specific tolerances override the default. Balance methods need higher tolerance due to time-based calculations.",
+    "normalizeFields": "Fields to remove before comparison (dynamic data that legitimately differs)",
+    "expectedFailures": "Tests that are expected to fail (e.g., network state, new features not in production)"
+  }
+}
