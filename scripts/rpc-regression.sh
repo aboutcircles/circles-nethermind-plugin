@@ -92,7 +92,7 @@ echo "" >> "$DIFF_OUTPUT"
 get_response() {
     local file=$1
     local test_name=$2
-    grep -A 1 "\"test\":\"$test_name\"" "$file" | tail -n 1 | jq -c '.result // .error // .'
+    grep -F -A 1 "\"test\":\"$test_name\"" "$file" | tail -n 1 | jq -c '.result // .error // .'
 }
 
 # Function to normalize response (remove dynamic fields)

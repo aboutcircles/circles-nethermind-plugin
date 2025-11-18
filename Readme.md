@@ -6,10 +6,12 @@ query [Circles](https://www.aboutcircles.com/) protocol events.
 ## For Developers
 
 If you're developing the plugin, building packages, or running services locally, see:
+
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guide with build scripts, testing, and local development
 - **[scripts/README.md](scripts/README.md)** - Detailed documentation for all build and deployment scripts
 
 Quick commands for developers:
+
 ```bash
 make all                    # Build, test, and pack
 ./scripts/docker-build.sh   # Build Docker images
@@ -167,6 +169,7 @@ cp docker/.env.example docker/.env
 ```
 
 The default values should work for most setups. You may want to change:
+
 - `POSTGRES_PASSWORD` - PostgreSQL password
 - `MY_UID` and `MY_GID` - Your user/group ID for file permissions (run `id -u` and `id -g` to find yours)
 

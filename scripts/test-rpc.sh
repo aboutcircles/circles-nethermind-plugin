@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+set -o pipefail
 
 # Test script for RPC and Pathfinder hosts
 # Runs all curl commands from the documentation against the local services.

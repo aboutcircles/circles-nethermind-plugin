@@ -1,4 +1,4 @@
-.PHONY: help build test docker pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs call-rpc
+.PHONY: help build test docker pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs call-rpc all release
 
 # Default target
 help:

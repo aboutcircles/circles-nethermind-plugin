@@ -83,7 +83,6 @@ echo -e "${YELLOW}Checking PostgreSQL connection...${NC}"
 if ! command -v psql &> /dev/null; then
     echo -e "${YELLOW}Warning: psql command not found, skipping database check${NC}"
 else
-    # Try to connect to PostgreSQL
     POSTGRES_HOST="${POSTGRES_HOST:-localhost}"  
     POSTGRES_PORT="${POSTGRES_PORT:-5432}"  
     # Try to connect to PostgreSQL  

@@ -1,16 +1,19 @@
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
+using System.Net.Http;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
+using NpgsqlTypes;
 using static Circles.Rpc.Host.JsonRpcHelpers;
 
 namespace Circles.Rpc.Host;
@@ -23,7 +26,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     private static readonly HttpClient HttpClient = new();
     private readonly NethermindRpcClient? _nethermindRpcClient;
 
-    public CirclesRpcModule(Settings settings)
+    public CirclesRpcModule(Settings settings, IHttpClientFactory? httpClientFactory = null)
     {
         _settings = settings;
         _readOnlyDbConnectionString = settings.IndexReadonlyDbConnectionString;
@@ -32,7 +35,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Initialize Nethermind RPC client if BalanceMode is "live"
         if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase))
         {
-            _nethermindRpcClient = new NethermindRpcClient(_settings.NethermindRpcUrl);
+            if (httpClientFactory != null)
+            {
+                _nethermindRpcClient = new NethermindRpcClient(httpClientFactory, _settings.NethermindRpcUrl ?? "http://localhost:8545");
+            }
+            else
+            {
+                _nethermindRpcClient = null; // HttpClientFactory not available, cannot create client
+            }
         }
     }
 
@@ -348,10 +358,11 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var tokenAddress = reader.GetString(0);
-                var balanceStr = reader.GetValue(1).ToString();
+                var balanceValue = reader.GetFieldValue<decimal>(1);
                 var owner = reader.GetString(2);
 
-                if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
+                var rawBalance = new BigInteger(balanceValue);
+                if (rawBalance <= 0)
                     continue;
 
                 // V1 tokens are inflationary CRC (demurraged)
@@ -441,12 +452,13 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var tokenAddress = reader.GetString(0);
-                var balanceStr = reader.GetValue(1).ToString();
+                var balanceValue = reader.GetFieldValue<decimal>(1);
                 var owner = reader.IsDBNull(2) ? tokenAddress : reader.GetString(2);
                 var tokenType = reader.GetString(3);
                 var isGroup = reader.GetBoolean(4);
 
-                if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
+                var rawBalance = new BigInteger(balanceValue);
+                if (rawBalance <= 0)
                     continue;
 
                 // V2 ERC-1155 tokens are demurraged (stored in attoCircles)
@@ -511,11 +523,12 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var tokenAddress = reader.GetString(0);
-                var balanceStr = reader.GetValue(1).ToString();
+                var balanceValue = reader.GetFieldValue<decimal>(1);
                 var owner = reader.GetString(2);
                 var circlesType = reader.GetInt32(3); // 0 = demurraged, 1 = inflationary
 
-                if (!BigInteger.TryParse(balanceStr, out var rawBalance) || rawBalance <= 0)
+                var rawBalance = new BigInteger(balanceValue);
+                if (rawBalance <= 0)
                     continue;
 
                 bool isInflationary = circlesType == 1;
@@ -1922,6 +1935,24 @@ public class CirclesRpcModule : ICirclesRpcModule
         return new TablesResponse(Namespaces: schemas);
     }
 
+    /// <summary>
+    /// Validates that an identifier contains only safe characters (letters, digits, underscore).
+    /// </summary>
+    private static string ValidateIdentifier(string identifier, string identifierType)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+        {
+            throw new ArgumentException($"{identifierType} cannot be empty or whitespace.");
+        }
+
+        if (!Regex.IsMatch(identifier, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+        {
+            throw new ArgumentException($"{identifierType} contains invalid characters. Only letters, digits, and underscores are allowed, and it must start with a letter or underscore.");
+        }
+
+        return identifier;
+    }
+
     public async Task<QueryResponse> Query(SelectDto query)
     {
         if (string.IsNullOrEmpty(query.Table) || string.IsNullOrEmpty(query.Namespace))
@@ -1929,10 +1960,19 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentException("Namespace and Table must be provided.");
         }
 
-        var tableName = $"\"{query.Namespace}_{query.Table}\"";
-        var columns = (query.Columns == null || !query.Columns.Any())
-            ? "*"
-            : string.Join(", ", query.Columns.Select(c => $"\"{c}\""));
+        // Validate and safely construct table name
+        var validatedNamespace = ValidateIdentifier(query.Namespace, "Namespace");
+        var validatedTable = ValidateIdentifier(query.Table, "Table");
+        var tableName = $"\"{validatedNamespace}_{validatedTable}\"";
+
+        // Validate and quote columns
+        var columns = "*";
+        if (query.Columns != null && query.Columns.Any())
+        {
+            var validatedColumns = query.Columns.Select(c => ValidateIdentifier(c, "Column")).ToArray();
+            var quotedColumns = validatedColumns.Select(c => $"\"{c}\"").ToArray();
+            columns = string.Join(", ", quotedColumns);
+        }
 
         var parameters = new List<NpgsqlParameter>();
         var whereClauses = new List<string>();
@@ -1950,14 +1990,42 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
+        // Validate and quote ORDER BY columns
         var orderBySql = "";
         if (query.Order != null && query.Order.Any())
         {
-            var orderByClauses = query.Order.Select(o => $"\"{o.Column}\" {(o.SortOrder?.ToUpper() == "DESC" ? "DESC" : "ASC")}");
+            var orderByClauses = query.Order.Select(o =>
+            {
+                var validatedColumn = ValidateIdentifier(o.Column, "Order column");
+                var quotedColumn = $"\"{validatedColumn}\"";
+                var sortOrder = o.SortOrder?.ToUpper() == "DESC" ? "DESC" : "ASC";
+                return $"{quotedColumn} {sortOrder}";
+            });
             orderBySql = "ORDER BY " + string.Join(", ", orderByClauses);
         }
 
-        var limitSql = query.Limit.HasValue ? $"LIMIT {query.Limit.Value}" : "";
+        // Validate LIMIT and OFFSET parameters
+        const int maxLimit = 10000; // Reasonable safety limit
+        var limitSql = "";
+        if (query.Limit.HasValue)
+        {
+            if (query.Limit.Value <= 0)
+            {
+                throw new ArgumentException("Limit must be greater than 0.");
+            }
+            if (query.Limit.Value > maxLimit)
+            {
+                throw new ArgumentException($"Limit cannot exceed {maxLimit}.");
+            }
+            limitSql = $"LIMIT {query.Limit.Value}";
+        }
+
+        // Note: OFFSET would also need validation if used
+        // const int maxOffset = 1000000;
+        // if (query.Offset.HasValue && query.Offset.Value < 0)
+        // {
+        //     throw new ArgumentException("Offset cannot be negative.");
+        // }
 
         var finalSql = $"SELECT {columns} FROM {tableName} {whereSql} {orderBySql} {limitSql}";
 

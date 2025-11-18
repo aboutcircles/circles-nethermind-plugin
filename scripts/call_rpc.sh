@@ -20,7 +20,7 @@ case $choice in
     RPC_URL="http://localhost:8081/"
     ;;
   *)
-    echo "Invalid choice, using default V2"
+    echo "Invalid choice, using remote mainnet (default)"
     RPC_URL="$DEFAULT_URL"
     ;;
 esac
@@ -37,7 +37,6 @@ methods=(
 "circles_tables"
 "circles_events"
 "circles_getCommonTrust"
-"circles_getTokenBalances_v2"
 "circles_getAvatarInfo"
 "circles_getNetworkSnapshot"
 "circles_getProfileByCid"
@@ -83,11 +82,6 @@ case $method in
     read address
     json='{"jsonrpc":"2.0","method":"circlesV2_getTotalBalance","params":["'$address'"],"id":1}'
     ;;
-  circles_getTokenBalances_v2)
-    echo "Enter address to query V2 token balances:"
-    read address
-    json='{"jsonrpc":"2.0","method":"circles_getTokenBalances","params":["'$address'"],"id":1}'
-    ;;
   circles_getAvatarInfo)
     echo "Enter address to get avatar info:"
     read address
@@ -121,8 +115,5 @@ url="$RPC_URL"
 
 # Execute the curl command
 echo "Executing RPC call..."
-if [[ "$url" == https://* ]]; then
-  curl -k -X POST --data "$json" -H "Content-Type: application/json" "$url"
-else
-  curl -X POST --data "$json" -H "Content-Type: application/json" "$url"
-fi
+
+curl -X POST --data "$json" -H "Content-Type: application/json" "$url"
