@@ -34,6 +34,6 @@ public sealed class NetworkState
         }
 
         // Always update the timestamp when any update occurs
-        Interlocked.Exchange(ref _lastUpdateTime, DateTime.UtcNow);
+        _lastUpdateTime = DateTime.UtcNow;
     }
 }

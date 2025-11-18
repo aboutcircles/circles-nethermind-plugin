@@ -37,7 +37,7 @@ public class NetworkStateUpdaterService : BackgroundService
         var loadGraph = new LoadGraph(_settings);
         var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
 
-        long lastBlock = 0;
+        long lastBlock = _networkState.LastKnownBlockNumber;
         int consecutiveErrors = 0;
         const int maxConsecutiveErrors = 5;
 
@@ -199,7 +199,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
             if (_getCurrentBlockErrors.Count >= Constants.MaxGetBlockErrors)
             {
-                throw new AggregateException("Too many errors getting block number.", _getCurrentBlockErrors);
+                var errors = new List<Exception>(_getCurrentBlockErrors);
+                _getCurrentBlockErrors.Clear();
+                throw new AggregateException("Too many errors getting block number.", errors);
             }
         }
 
