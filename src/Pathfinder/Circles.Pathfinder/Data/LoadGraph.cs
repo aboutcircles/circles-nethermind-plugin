@@ -45,6 +45,7 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
+            command.CommandTimeout = 300; // 5 minutes for complex balance query
             using var reader = command.ExecuteReader();
 
             var now = DateTime.UtcNow;
@@ -93,6 +94,7 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(trustQuery, connection);
+            command.CommandTimeout = 120; // 2 minutes for trust query
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -113,6 +115,7 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(groupQuery, connection);
+            command.CommandTimeout = 60; // 1 minute for group query
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -131,6 +134,7 @@ namespace Circles.Pathfinder.Data
             connection.Open();
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
+            command.CommandTimeout = 60; // 1 minute for group trust query
             using var reader = command.ExecuteReader();
 
             while (reader.Read())

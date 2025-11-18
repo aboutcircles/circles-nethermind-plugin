@@ -36,7 +36,7 @@ public sealed class BackgroundServiceHealthCheck : IHealthCheck
         
         if (timeSinceLastUpdate > MaxStaleDuration)
         {
-            var errorMessage = $"NetworkStateUpdaterService data is stale (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:mm\\:ss}). " +
+            var errorMessage = $"NetworkStateUpdaterService data is stale (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:hh\\:mm\\:ss}). " +
                               "Background service may have failed or network connectivity issues.";
             
             _log.LogWarning("Health check failed: {ErrorMessage}", errorMessage);
@@ -51,7 +51,7 @@ public sealed class BackgroundServiceHealthCheck : IHealthCheck
                 }));
         }
 
-        var successMessage = $"Background services are healthy (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:mm\\:ss})";
+        var successMessage = $"Background services are healthy (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:hh\\:mm\\:ss})";
         
         return Task.FromResult(HealthCheckResult.Healthy(
             successMessage,
