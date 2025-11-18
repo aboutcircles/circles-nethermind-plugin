@@ -1,8 +1,4 @@
-using System.Net.Http.Json;
-using System.Numerics;
-using System.Text;
 using System.Text.Json;
-using Nethereum.Util;
 
 namespace Circles.Rpc.Host;
 
@@ -11,13 +7,13 @@ namespace Circles.Rpc.Host;
 /// </summary>
 public class NethermindRpcClient
 {
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _rpcUrl;
 
-    public NethermindRpcClient(string rpcUrl)
+    public NethermindRpcClient(IHttpClientFactory httpClientFactory, string rpcUrl)
     {
+        _httpClientFactory = httpClientFactory;
         _rpcUrl = rpcUrl;
-        _httpClient = new HttpClient();
     }
 
     /// <summary>
@@ -25,6 +21,8 @@ public class NethermindRpcClient
     /// </summary>
     public async Task<string> EthCall(string to, string data, string? block = "latest")
     {
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
         var request = new
         {
             jsonrpc = "2.0",
@@ -41,7 +39,7 @@ public class NethermindRpcClient
             id = 1
         };
 
-        var response = await _httpClient.PostAsJsonAsync(_rpcUrl, request);
+        var response = await httpClient.PostAsJsonAsync(_rpcUrl, request);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -61,6 +59,8 @@ public class NethermindRpcClient
     /// </summary>
     public async Task<bool> IsSynced()
     {
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
         var request = new
         {
             jsonrpc = "2.0",
@@ -69,7 +69,7 @@ public class NethermindRpcClient
             id = 1
         };
 
-        var response = await _httpClient.PostAsJsonAsync(_rpcUrl, request);
+        var response = await httpClient.PostAsJsonAsync(_rpcUrl, request);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -84,6 +84,8 @@ public class NethermindRpcClient
     /// </summary>
     public async Task<long> GetLatestBlockNumber()
     {
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
         var request = new
         {
             jsonrpc = "2.0",
@@ -92,7 +94,7 @@ public class NethermindRpcClient
             id = 1
         };
 
-        var response = await _httpClient.PostAsJsonAsync(_rpcUrl, request);
+        var response = await httpClient.PostAsJsonAsync(_rpcUrl, request);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();

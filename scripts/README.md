@@ -230,7 +230,7 @@ Runs the RPC host application locally for development.
 - `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
 - `ASPNETCORE_URLS` - Listen URLs (default: http://localhost:8081)
 - `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
-- `ExternalPathfinderUrl` - Pathfinder service URL (default: http://localhost:8080)
+- `EXTERNAL_PATHFINDER_URL` - Pathfinder service URL (default: http://localhost:8080)
 - `Logging__LogLevel__Default` - Log level (default: Information)
 
 **Examples:**

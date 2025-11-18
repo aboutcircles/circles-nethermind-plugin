@@ -34,15 +34,28 @@ public static class BuilderSetup
         // HTTP client factory for health checks and external API calls
         builder.Services.AddHttpClient();
 
+        // HTTP client factory for Nethermind RPC client with timeout configuration
+        builder.Services.AddHttpClient<NethermindRpcClient>()
+            .ConfigureHttpClient(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+
         // Nethermind RPC client for health checks and balance queries
         builder.Services.AddSingleton(sp =>
         {
+            var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
             var settings = sp.GetRequiredService<Settings>();
-            return new NethermindRpcClient(settings.NethermindRpcUrl ?? "http://localhost:8545");
+            return new NethermindRpcClient(httpClientFactory, settings.NethermindRpcUrl ?? "http://localhost:8545");
         });
 
-        // Use the existing CirclesRpcModule
-        builder.Services.AddSingleton<CirclesRpcModule>();
+        // Use the existing CirclesRpcModule with IHttpClientFactory
+        builder.Services.AddSingleton<CirclesRpcModule>(sp =>
+        {
+            var settings = sp.GetRequiredService<Settings>();
+            var httpClientFactory = sp.GetService<IHttpClientFactory>();
+            return new CirclesRpcModule(settings, httpClientFactory);
+        });
 
         // ─── Logging ────────────────────────────────────────────────────────────────
         builder.Logging.ClearProviders();

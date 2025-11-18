@@ -106,23 +106,38 @@ app.MapPost("/", async (
     catch (RpcMethodNotFoundException ex)
     {
         logger.LogWarning("RPC Method not found: {Method}", ex.MethodName);
-        return Results.NotFound(new JsonRpcErrorResponse
+        return Results.Ok(new JsonRpcErrorResponse
         {
             Id = request.Id,
             Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {ex.MethodName}" }
         });
     }
+    catch (ArgumentException ex)
+    {
+        logger.LogWarning(ex, "Invalid params for method: {Method}", request.Method);
+        return Results.Ok(new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new JsonRpcError { Code = -32602, Message = ex.Message }
+        });
+    }
+    catch (JsonException ex)
+    {
+        logger.LogWarning(ex, "Invalid JSON params for method: {Method}", request.Method);
+        return Results.Ok(new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new JsonRpcError { Code = -32602, Message = "Invalid params" }
+        });
+    }
     catch (Exception ex)
     {
         logger.LogError(ex, "Internal Server Error during RPC execution for method: {Method}", request.Method);
-        return Results.Json(
-            new JsonRpcErrorResponse
-            {
-                Id = request.Id,
-                Error = new JsonRpcError { Code = -32603, Message = "Internal server error" }
-            },
-            statusCode: StatusCodes.Status500InternalServerError
-        );
+        return Results.Ok(new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new JsonRpcError { Code = -32603, Message = "Internal server error" }
+        });
     }
 
 }).DisableAntiforgery();
@@ -333,7 +348,7 @@ static async Task<object> HandleV2FindPath(JsonRpcRequest request, CirclesRpcMod
     {
         throw new ArgumentException("FlowRequest parameter is required");
     }
-    
+
     // Configure JSON options to match Pathfinder DTOs
     var jsonOptions = new JsonSerializerOptions
     {
@@ -341,7 +356,7 @@ static async Task<object> HandleV2FindPath(JsonRpcRequest request, CirclesRpcMod
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true
     };
-    
+
     var flowRequest = JsonSerializer.Deserialize<FlowRequest>(parameters[0].GetRawText(), jsonOptions);
     if (flowRequest == null)
     {

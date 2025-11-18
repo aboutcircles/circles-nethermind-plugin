@@ -36,11 +36,8 @@ var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxCo
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
-// Configure host to ignore background service exceptions instead of stopping
-builder.Services.Configure<Microsoft.Extensions.Hosting.HostOptions>(opts =>
-{
-    opts.BackgroundServiceExceptionBehavior = Microsoft.Extensions.Hosting.BackgroundServiceExceptionBehavior.Ignore;
-});
+// Use default background service exception behavior to prevent silent failures
+// Host will stop on background service exceptions, ensuring proper error handling
 
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<Circles.Index.Common.Settings>(settings);
@@ -78,8 +75,9 @@ builder.Services
     .AddHealthChecks()
     // liveness – always healthy as long as the process answers HTTP
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
-    // readiness – needs the graphs
-    .AddCheck<GraphReadinessHealthCheck>("graphs_loaded", tags: new[] { "ready" });
+    // readiness – needs the graphs and healthy background services
+    .AddCheck<GraphReadinessHealthCheck>("graphs_loaded", tags: new[] { "ready" })
+    .AddCheck<BackgroundServiceHealthCheck>("background_services", tags: new[] { "ready" });
 
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -94,6 +92,7 @@ var app = builder.Build();
 app.UseHttpMetrics();
 app.UseResponseCompression();
 app.MapMetrics();
+app.UseMiddleware<RequestBodyLoggingMiddleware>();
 app.UseMiddleware<RequestTimingMiddleware>();
 
 app.MapHealthChecks("/live", new HealthCheckOptions
@@ -309,13 +308,8 @@ app.MapPost("/findPath", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
-    ILogger<Program> log,
-    HttpContext httpContext) =>
+    ILogger<Program> log) =>
 {
-    // Debug the raw request body
-    var rawBody = await new StreamReader(httpContext.Request.Body).ReadToEndAsync();
-    log.LogInformation($"Raw request body: {rawBody}");
-    
     // Handle JSON deserialization errors gracefully
     if (request == null)
     {

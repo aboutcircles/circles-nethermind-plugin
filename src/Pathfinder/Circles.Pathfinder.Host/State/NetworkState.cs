@@ -10,6 +10,8 @@ public sealed class NetworkState
     private long _lastKnownBlockNumber = 0L;
     public BalanceGraph? BalanceGraph => _balanceGraph;
     private BalanceGraph? _balanceGraph;
+    public DateTime LastUpdateTime => _lastUpdateTime;
+    private DateTime _lastUpdateTime = default;
 
     internal void Replace(
         BalanceGraph? balanceGraph = null,
@@ -30,5 +32,8 @@ public sealed class NetworkState
         {
             Interlocked.Exchange(ref _lastKnownBlockNumber, lastKnownBlockNumber.Value);
         }
+
+        // Always update the timestamp when any update occurs
+        Interlocked.Exchange(ref _lastUpdateTime, DateTime.UtcNow);
     }
 }

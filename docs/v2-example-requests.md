@@ -1,5 +1,29 @@
+## Circles V2 Example Requests
+
+- [Circles V2 Example Requests](#circles-v2-example-requests)
+  - [Get the total v2 Circles balance of an account](#get-the-total-v2-circles-balance-of-an-account)
+  - [Find all incoming and outgoing trust relations of a Circles V2 avatar](#find-all-incoming-and-outgoing-trust-relations-of-a-circles-v2-avatar)
+  - [Calculate a path between two addresses with a target flow](#calculate-a-path-between-two-addresses-with-a-target-flow)
+  - [Calculate a path that swaps one token into another (circular path)](#calculate-a-path-that-swaps-one-token-into-another-circular-path)
+  - [Return all available namespaces and tables which can be queried by `circles_query`](#return-all-available-namespaces-and-tables-which-can-be-queried-by-circles_query)
+  - [Query all events of type CrcV1_Trust from block 38000000 to the latest block](#query-all-events-of-type-crcv1_trust-from-block-38000000-to-the-latest-block)
+  - [Query the common trust relations of two addresses (only common outgoing trust relations are considered)](#query-the-common-trust-relations-of-two-addresses-only-common-outgoing-trust-relations-are-considered)
+  - [A fast method to query the balance breakdown of a specific avatar address](#a-fast-method-to-query-the-balance-breakdown-of-a-specific-avatar-address)
+  - [A slower method to query the balance breakdown of a specific avatar address (but with values directly taken from the rpc instead of the index)](#a-slower-method-to-query-the-balance-breakdown-of-a-specific-avatar-address-but-with-values-directly-taken-from-the-rpc-instead-of-the-index)
+  - [Get Avatar Information](#get-avatar-information)
+  - [Get information about a specific token (0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)](#get-information-about-a-specific-token-0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)
+  - [Who holds '0x42cedde51198d1773590311e2a340dc06b24cb37' token?](#who-holds-0x42cedde51198d1773590311e2a340dc06b24cb37-token)
+  - [Who backed their Circles with a Balancer LBP?](#who-backed-their-circles-with-a-balancer-lbp)
+  - [Download a full snapshot of the Circles network state (current trust relations and balances)](#download-a-full-snapshot-of-the-circles-network-state-current-trust-relations-and-balances)
+  - [Get a profile by it's CID](#get-a-profile-by-its-cid)
+  - [Get many profiles by CID](#get-many-profiles-by-cid)
+  - [Query the profile for an avatar address](#query-the-profile-for-an-avatar-address)
+  - [Query profiles by address in batch](#query-profiles-by-address-in-batch)
+  - [Search profiles by name, description or address](#search-profiles-by-name-description-or-address)
+  - [Get Profiles by Address Batch](#get-profiles-by-address-batch)
+
 ```shell
-# Get the total v2 Circles balance of an account
+### Get the total v2 Circles balance of an account
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circlesV2_getTotalBalance",
@@ -9,7 +33,7 @@ curl -X POST --data '{
 ````
 
 ```shell
-# Find all incoming and outgoing trust relations of a Circles V2 avatar:
+### Find all incoming and outgoing trust relations of a Circles V2 avatar
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -46,14 +70,14 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Calculate a path between two addresses with a target flow.
+### Calculate a path between two addresses with a target flow
 curl 'http://localhost:5000/' \
  -H 'Content-Type: application/json' \
  --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
 ```
 
 ```shell
-# Calculate a path that swaps one token into another (circular path)
+### Calculate a path that swaps one token into another (circular path)
 curl 'http://localhost:5000/' \
   -H 'Content-Type: application/json' \
   --data-raw '{
@@ -86,12 +110,12 @@ curl 'http://localhost:5000/' \
 ```
 
 ```shell
-# Return all available namespaces and tables which can be queried by `circles_query`.
+### Return all available namespaces and tables which can be queried by `circles_query`
 curl 'https://rpc.circlesubi.network/' -H 'Content-Type: application/json' --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_tables","params":[]}' | jq
 ```
 
 ```shell
-# Query all events of type CrcV1_Trust from block 38000000 to the latest block.
+### Query all events of type CrcV1_Trust from block 38000000 to the latest block
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -108,7 +132,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Query the common trust relations of two addresses (only common outgoing trust relations are considered).
+### Query the common trust relations of two addresses (only common outgoing trust relations are considered)
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -120,7 +144,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# A fast method to query the balance breakdown of a specific avatar address.
+### A fast method to query the balance breakdown of a specific avatar address
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -130,7 +154,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# A slower method to query the balance breakdown of a specific avatar address (but with values directly taken from the rpc instead of the index).
+### A slower method to query the balance breakdown of a specific avatar address (but with values directly taken from the rpc instead of the index)
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getTokenBalances",
@@ -140,16 +164,18 @@ curl -X POST --data '{
 ```
 
 ```shell
+### Get Avatar Information
+
 curl -X POST --data '{
-    "jsonrpc":"2.0",
-    "method":"circles_getAvatarInfo",
+"jsonrpc":"2.0",
+"method":"circles_getAvatarInfo",
     "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
     "id":1
 }' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 
 ```shell
-# Get information about a specific token (0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)
+### Get information about a specific token (0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -183,7 +209,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Who holds '0x42cedde51198d1773590311e2a340dc06b24cb37' token?
+### Who holds '0x42cedde51198d1773590311e2a340dc06b24cb37' token?
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -209,7 +235,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Who backed their Circles with a Balancer LBP?
+### Who backed their Circles with a Balancer LBP?
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_query",
@@ -232,7 +258,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Download a full snapshot of the Circles network state (current trust relations and balances)
+### Download a full snapshot of the Circles network state (current trust relations and balances)
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getNetworkSnapshot",
@@ -242,7 +268,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Get a profile by it's CID.
+### Get a profile by it's CID
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByCid",
@@ -252,7 +278,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Get many profiles by CID.
+### Get many profiles by CID
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByCidBatch",
@@ -262,7 +288,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Query the profile for an avatar address.
+### Query the profile for an avatar address
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddress",
@@ -272,7 +298,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Query profiles by address in batch.
+### Query profiles by address in batch
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getProfileByAddressBatch",
@@ -282,7 +308,7 @@ curl -X POST --data '{
 ```
 
 ```shell
-# Search profiles by name, description or address
+### Search profiles by name, description or address
 curl -s -X POST https://rpc.circlesubi.network \
   -H 'Content-Type: application/json' \
   -d '{
@@ -294,6 +320,8 @@ curl -s -X POST https://rpc.circlesubi.network \
 ```
 
 ```shell
+### Get Profiles by Address Batch
+
 curl -X POST --data '{
 "jsonrpc":"2.0",
 	"method":"circles_getProfileByAddressBatch",
