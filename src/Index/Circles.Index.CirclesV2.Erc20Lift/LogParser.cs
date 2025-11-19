@@ -1,11 +1,12 @@
-using System.Numerics;
-using Circles.Index.Common;
+namespace Circles.Index.CirclesV2.Erc20Lift;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using System.Numerics;
+using Circles.Index.Common;
 
-namespace Circles.Index.CirclesV2.Erc20Lift;
+using Nethermind.Logging;
 
 public class LogParser(Address standardTreasuryAddress) : ILogParser
 {
@@ -16,7 +17,14 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private readonly Hash256 _groupRedeemCollateralReturnTopic = new(DatabaseSchema.GroupRedeemCollateralReturn.Topic);
     private readonly Hash256 _groupRedeemCollateralBurnTopic = new(DatabaseSchema.GroupRedeemCollateralBurn.Topic);
 
-    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction)
+    public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
+    {
+        return Task.CompletedTask;
+    }
+
+    public IRollbackCache[] Caches { get; } = Array.Empty<IRollbackCache>();
+
+    public IEnumerable<IIndexEvent> ParseTransaction(Block block, int transactionIndex, Transaction transaction, TxReceipt receipt, IReadOnlyList<IIndexEvent> events)
     {
         yield break;
     }
@@ -30,7 +38,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
 
         var topic = log.Topics[0];
 
-        if (log.LoggersAddress == standardTreasuryAddress)
+        if (log.Address == standardTreasuryAddress)
         {
             if (topic == _createVaultTopic)
             {
@@ -84,6 +92,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            standardTreasuryAddress.ToString(),
             groupAddress,
             vaultAddress);
     }
@@ -91,9 +100,9 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private GroupMintSingle GroupMintSingle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 id = new UInt256(log.Topics[2].Bytes, true);
-        UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
-        byte[] userData = log.Data.Slice(32);
+        UInt256 id = new UInt256(log.Topics[2].Bytes, isBigEndian: true);
+        UInt256 value = new UInt256(log.Data.AsSpan().Slice(0, 32), isBigEndian: true);
+        byte[] userData = log.Data.AsSpan().Slice(32).ToArray();
 
         return new GroupMintSingle(
             block.Number,
@@ -101,6 +110,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            standardTreasuryAddress.ToString(),
             groupAddress,
             id,
             value,
@@ -112,27 +122,27 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int idsLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
         for (int i = 0; i < idsLength; i++)
         {
-            ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            ids.Add(new UInt256(log.Data.AsSpan().Slice(offset, 32), isBigEndian: true));
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int valuesLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();
         for (int i = 0; i < valuesLength; i++)
         {
-            values.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            values.Add(new UInt256(log.Data.AsSpan().Slice(offset, 32), isBigEndian: true));
             offset += 32;
         }
 
-        byte[] userData = log.Data.Slice(offset);
+        byte[] userData = log.Data.AsSpan().Slice(offset).ToArray();
 
         for (int i = 0; i < idsLength; i++)
         {
@@ -142,6 +152,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
                 receipt.Index,
                 logIndex,
                 receipt.TxHash!.ToString(),
+                standardTreasuryAddress.ToString(),
                 i,
                 groupAddress,
                 ids[i],
@@ -153,9 +164,9 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
     private GroupRedeem GroupRedeem(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
-        UInt256 id = new UInt256(log.Topics[2].Bytes, true);
-        UInt256 value = new UInt256(log.Data.Slice(0, 32), true);
-        byte[] data = log.Data.Slice(32);
+        UInt256 id = new UInt256(log.Topics[2].Bytes, isBigEndian: true);
+        UInt256 value = new UInt256(log.Data.AsSpan().Slice(0, 32), isBigEndian: true);
+        byte[] data = log.Data.AsSpan().Slice(32).ToArray();
 
         return new GroupRedeem(
             block.Number,
@@ -163,6 +174,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
+            standardTreasuryAddress.ToString(),
             groupAddress,
             id,
             value,
@@ -176,23 +188,23 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string toAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int idsLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
         for (int i = 0; i < idsLength; i++)
         {
-            ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            ids.Add(new UInt256(log.Data.AsSpan().Slice(offset, 32), isBigEndian: true));
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int valuesLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();
         for (int i = 0; i < valuesLength; i++)
         {
-            values.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            values.Add(new UInt256(log.Data.AsSpan().Slice(offset, 32), isBigEndian: true));
             offset += 32;
         }
 
@@ -204,6 +216,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
                 receipt.Index,
                 logIndex,
                 receipt.TxHash!.ToString(),
+                standardTreasuryAddress.ToString(),
                 i,
                 groupAddress,
                 toAddress,
@@ -218,23 +231,23 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int idsLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
         for (int i = 0; i < idsLength; i++)
         {
-            ids.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            ids.Add(new UInt256(log.Data.AsSpan().Slice(offset, 32), isBigEndian: true));
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.Slice(offset, 32).ToArray());
+        int valuesLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();
         for (int i = 0; i < valuesLength; i++)
         {
-            values.Add(new UInt256(log.Data.Slice(offset, 32), true));
+            values.Add(new UInt256(log.Data.AsSpan().Slice(offset, 32), isBigEndian: true));
             offset += 32;
         }
 
@@ -246,6 +259,7 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
                 receipt.Index,
                 logIndex,
                 receipt.TxHash!.ToString(),
+                standardTreasuryAddress.ToString(),
                 i,
                 groupAddress,
                 ids[i],

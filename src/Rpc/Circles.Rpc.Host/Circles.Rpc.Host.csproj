@@ -19,10 +19,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Pathfinder\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index\Circles.Index.csproj" />
     <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
 
-    <!-- <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.6" />
-    <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" /> -->
+    <!-- <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.6" /> -->
+    <!-- <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />  -->
 
     <PackageReference Include="Nethereum.Util" Version="5.0.0" />
   </ItemGroup>

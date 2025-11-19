@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+
 using Circles.Rpc.Host;
 using System.Text.Json;
 using System.Text.Json.Serialization;

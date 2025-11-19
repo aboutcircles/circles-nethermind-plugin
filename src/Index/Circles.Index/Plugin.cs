@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using Autofac;
 using Circles.Index.Common;
 using Circles.Index.Postgres;
@@ -23,6 +23,26 @@ public class Plugin : INethermindPlugin
     public string Author => "Gnosis";
     public bool Enabled { get; } = true;
 
+    public static readonly IReadOnlyList<IDatabaseSchema> AllSchemas = new List<IDatabaseSchema>
+    {
+        new CirclesV1.DatabaseSchema(),
+        new CirclesV1.NameRegistry.DatabaseSchema(),
+        new CirclesV2.DatabaseSchema(),
+        new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
+        new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
+        new CirclesV2.CMGroupDeployer.DatabaseSchema(),
+        new CirclesV2.DatabaseSchema(),
+        new CirclesV2.InvitationEscrow.DatabaseSchema(),
+        new CirclesV2.LBP.DatabaseSchema(),
+        new CirclesV2.NameRegistry.DatabaseSchema(),
+        new CirclesV2.OIC.DatabaseSchema(),
+        new CirclesV2.StandardTreasury.DatabaseSchema(),
+        new CirclesV2.TokenOffers.DatabaseSchema(),
+        new CirclesViews.DatabaseSchema(),
+        new DatabaseSchema(),
+        new Safe.DatabaseSchema(),
+    };
+
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     private StateMachine? _indexerMachine;
@@ -39,24 +59,7 @@ public class Plugin : INethermindPlugin
 
         Settings settings = new();
 
-        var schemas = new List<IDatabaseSchema>
-        {
-            new Common.DatabaseSchema(),
-            new CirclesV1.DatabaseSchema(),
-            new CirclesV1.NameRegistry.DatabaseSchema(),
-            new CirclesV2.DatabaseSchema(),
-            new CirclesV2.NameRegistry.DatabaseSchema(),
-            new CirclesV2.StandardTreasury.DatabaseSchema(),
-            new CirclesV2.CMGroupDeployer.DatabaseSchema(),
-            new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
-            new CirclesV2.LBP.DatabaseSchema(),
-            new CirclesV2.TokenOffers.DatabaseSchema(),
-            new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
-            new CirclesV2.InvitationEscrow.DatabaseSchema(),
-            new CirclesV2.OIC.DatabaseSchema(),
-            new Circles.Index.Safe.DatabaseSchema(),
-            new CirclesViews.DatabaseSchema()
-        };
+        var schemas = AllSchemas;
 
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);

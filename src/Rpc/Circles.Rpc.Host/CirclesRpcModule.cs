@@ -1004,9 +1004,9 @@ public class CirclesRpcModule : ICirclesRpcModule
         // First, check for V2 avatars
         var v2AvatarMap = new Dictionary<string, AvatarInfo>();
         const string v2Sql = @"
-            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.cid, rsn.""shortName"", a.""cidV0Digest""
+            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.""metadataDigest"", rsn.""shortName"", a.""cidV0Digest""
             FROM ""V_CrcV2_Avatars"" a
-            LEFT JOIN (SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV2_UpdateMetadataDigest"") rn ON rn.avatar = a.avatar
+            LEFT JOIN ""CrcV2_UpdateMetadataDigest"" rn ON rn.avatar = a.avatar
             LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
             WHERE a.avatar = ANY(@addresses)";
 
@@ -1019,11 +1019,17 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var avatar = reader.GetString(0);
                 var avatarType = reader.GetString(3);
                 var isHuman = avatarType == "CrcV2_RegisterHuman";
-                var cid = reader.IsDBNull(4) ? null : reader.GetString(4);
-                // cidV0Digest is stored as bytea - convert to hex string with 0x prefix
-                var cidV0Digest = reader.IsDBNull(6)
-                    ? ""
-                    : "0x" + Convert.ToHexString((byte[])reader.GetValue(6)).ToLowerInvariant();
+
+                // Convert metadataDigest bytes to proper IPFS CIDv0
+                string? cid = null;
+                if (!reader.IsDBNull(4))
+                {
+                    var metadataDigest = (byte[])reader.GetValue(4);
+                    cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
+                }
+
+                // cidV0Digest should be empty string per remote implementation
+                var cidV0Digest = "";
 
                 v2AvatarMap[avatar] = new AvatarInfo(
                     Version: 2,
@@ -1075,7 +1081,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         // Get V1 CIDs for V1 avatars
         var v1CidSql = @"
-            SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid
+            SELECT avatar, ""metadataDigest""
             FROM ""CrcV1_UpdateMetadataDigest""
             WHERE avatar = ANY(@addresses)";
 
@@ -1089,7 +1095,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                 while (await reader.ReadAsync())
                 {
                     var avatar = reader.GetString(0);
-                    var cid = reader.GetString(1);
+                    var metadataDigest = (byte[])reader.GetValue(1);
+                    var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
                     v1CidMap[avatar] = cid;
                 }
             }
@@ -1178,7 +1185,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         // First, check V2 CIDs
         var v2CidMap = new Dictionary<string, string>();
-        const string v2Sql = @"SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV2_UpdateMetadataDigest"" WHERE avatar = ANY(@addresses)";
+        const string v2Sql = @"SELECT avatar, ""metadataDigest"" FROM ""CrcV2_UpdateMetadataDigest"" WHERE avatar = ANY(@addresses)";
 
         await using (var cmd = new NpgsqlCommand(v2Sql, connection))
         {
@@ -1187,7 +1194,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             while (await reader.ReadAsync())
             {
                 var avatar = reader.GetString(0);
-                var cid = reader.GetString(1);
+                var metadataDigest = (byte[])reader.GetValue(1);
+                var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
                 v2CidMap[avatar] = cid;
             }
         }
@@ -1196,7 +1204,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var v1CidMap = new Dictionary<string, string>();
         try
         {
-            const string v1Sql = @"SELECT avatar, 'bafy' || encode(""metadataDigest"", 'base64') as cid FROM ""CrcV1_UpdateMetadataDigest"" WHERE avatar = ANY(@addresses)";
+            const string v1Sql = @"SELECT avatar, ""metadataDigest"" FROM ""CrcV1_UpdateMetadataDigest"" WHERE avatar = ANY(@addresses)";
 
             await using (var cmd = new NpgsqlCommand(v1Sql, connection))
             {
@@ -1205,7 +1213,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                 while (await reader.ReadAsync())
                 {
                     var avatar = reader.GetString(0);
-                    var cid = reader.GetString(1);
+                    var metadataDigest = (byte[])reader.GetValue(1);
+                    var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
                     v1CidMap[avatar] = cid;
                 }
             }
@@ -1364,8 +1373,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 {
                     profileDict["address"] = JsonSerializer.SerializeToElement(addr);
                     if (hasShortName) profileDict["shortName"] = JsonSerializer.SerializeToElement(shortName);
-                    if (hasAvatarType) profileDict["avatarType"] = JsonSerializer.SerializeToElement(avatarType);
-                    if (cid != null) profileDict["CID"] = JsonSerializer.SerializeToElement(cid);
+                    // Note: avatarType and CID are NOT included to match remote implementation
 
                     result[i] = JsonSerializer.SerializeToElement(profileDict);
                 }
@@ -1380,9 +1388,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var minimalProfile = new Dictionary<string, object?>
                 {
                     ["address"] = addr,
-                    ["avatarType"] = hasAvatarType ? avatarType : null,
                     ["shortName"] = hasShortName ? shortName : null,
-                    ["CID"] = cid,
                     ["name"] = null,
                     ["description"] = null
                 };
@@ -1836,11 +1842,16 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Use the schema-aware map to get all event tables and their address columns
         var eventTables = DatabaseSchemaMap.TableAddressColumns;
 
+        if (eventTables == null)
+        {
+            return new EventsResponse(Events: Array.Empty<object>());
+        }
+
         var queries = new List<string>();
         var parameters = new List<NpgsqlParameter>();
 
         // Filter to only requested event types, or use all tables if no filter specified
-        var relevantTables = eventTypes == null || !eventTypes.Any()
+        var relevantTables = eventTypes == null || eventTypes.Length == 0
             ? eventTables
             : eventTables.Where(kvp => eventTypes.Contains(kvp.Key)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
@@ -1893,21 +1904,59 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(finalSql, connection);
+        command.CommandTimeout = 30; // 30 second timeout to prevent hanging
         command.Parameters.AddRange(parameters.ToArray());
 
         var events = new List<object>();
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            events.Add(new
+            // Parse the event payload
+            var payloadJson = reader.GetString(5);
+            var payloadDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
+
+            if (payloadDict != null)
             {
-                blockNumber = reader.GetInt64(0),
-                transactionIndex = reader.GetInt32(1),
-                transactionHash = reader.GetString(2),
-                logIndex = reader.GetInt32(3),
-                @event = reader.GetString(4),
-                payload = JsonSerializer.Deserialize<object>(reader.GetString(5))
-            });
+                // Convert numeric fields to hex format for compatibility with remote
+                var values = new Dictionary<string, object?>();
+                foreach (var kvp in payloadDict)
+                {
+                    var key = kvp.Key;
+                    var value = kvp.Value;
+
+                    // Convert numeric types to hex strings
+                    if (key == "blockNumber" || key == "timestamp" || key == "transactionIndex" || key == "logIndex")
+                    {
+                        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long numValue))
+                        {
+                            values[key] = "0x" + numValue.ToString("x");
+                        }
+                        else
+                        {
+                            values[key] = value.ToString();
+                        }
+                    }
+                    else if (value.ValueKind == JsonValueKind.String)
+                    {
+                        values[key] = value.GetString();
+                    }
+                    else if (value.ValueKind == JsonValueKind.Number)
+                    {
+                        // Keep other numbers as strings
+                        values[key] = value.ToString();
+                    }
+                    else
+                    {
+                        values[key] = JsonSerializer.Deserialize<object>(value.GetRawText());
+                    }
+                }
+
+                events.Add(new
+                {
+                    @event = reader.GetString(4),
+                    values = values
+                });
+            }
         }
         return new EventsResponse(Events: events.ToArray());
     }
