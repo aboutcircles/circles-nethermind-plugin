@@ -1901,9 +1901,9 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             var whereSql = whereClauses.Count > 0 ? $" WHERE {string.Join(" AND ", whereClauses)}" : "";
 
-            // Apply ORDER BY and LIMIT to each table query for better performance
+            // Wrap each query in a subquery to apply ORDER BY and LIMIT before UNION
             // This pushes the sorting and limit down to each table scan instead of sorting the entire UNION result
-            var query = $@"SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t{whereSql} ORDER BY t.""blockNumber"" {sortOrder}, t.""transactionIndex"" {sortOrder}, t.""logIndex"" {sortOrder} LIMIT 1000";
+            var query = $@"(SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t{whereSql} ORDER BY t.""blockNumber"" {sortOrder}, t.""transactionIndex"" {sortOrder}, t.""logIndex"" {sortOrder} LIMIT 1000)";
             queries.Add(query);
         }
 
