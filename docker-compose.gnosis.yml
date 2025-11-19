@@ -83,7 +83,7 @@ services:
 
   consensus-gnosis:
     container_name: consensus-gnosis
-    image: sigp/lighthouse:v7.1.0
+    image: sigp/lighthouse:v8.0.0
     restart: always
     depends_on:
       nethermind-gnosis:
@@ -134,7 +134,7 @@ services:
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
   
   profile-service:
-    image: jaensen/circles-profile-pinning-service:0.5.0-rc1
+    image: jaensen/circles-profile-pinning-service:0.5.0-rc2
     depends_on:
       - nethermind-gnosis
     restart: unless-stopped

@@ -218,43 +218,85 @@ public class V2Pathfinder
     private List<FlowEdge> InsertRouterInTransfers(List<FlowEdge> transfers, CapacityGraph capacityGraph)
     {
         if (capacityGraph.RouterNode == null)
+        {
             return transfers;
+        }
 
-        var result = new List<FlowEdge>();
         int routerId = capacityGraph.RouterNode.Value;
+
+        // We keep three buckets:
+        //  - otherEdges          : everything that is not an Avatar→Group mint or Group-token spend
+        //  - routerMintBlocks    : [Avatar→Router, Router→Group] pairs
+        //  - groupTokenSpends    : Group→X edges where the token is the group's own token
+        var otherEdges = new List<FlowEdge>();
+        var routerMintBlocks = new List<(FlowEdge AvatarToRouter, FlowEdge RouterToGroup)>();
+        var groupTokenSpends = new List<FlowEdge>();
 
         foreach (var transfer in transfers)
         {
-            // If this is Avatar → Group transfer, insert Router in between
-            // (Group → Avatar minting transfers are left as-is)
-            if (!capacityGraph.IsGroup(transfer.From) && 
-                !capacityGraph.IsRouter(transfer.From) &&
-                capacityGraph.IsGroup(transfer.To))
+            bool fromIsGroup = capacityGraph.IsGroup(transfer.From);
+            bool toIsGroup = capacityGraph.IsGroup(transfer.To);
+            bool fromIsRouter = capacityGraph.IsRouter(transfer.From);
+
+            // Group-token spend: Group → X using its own token
+            bool isGroupTokenSpend = fromIsGroup && transfer.Token == transfer.From;
+
+            // Avatar → Group collateral leg (to be routed via Router)
+            bool isAvatarToGroupMint =
+                !fromIsGroup &&
+                !fromIsRouter &&
+                toIsGroup;
+
+            if (isAvatarToGroupMint)
             {
-                // Split into Avatar → Router → Group
-                // Avatar → Router (same token)
-                result.Add(new FlowEdge(transfer.From, routerId, transfer.Token, transfer.InitialCapacity)
+                // Split into Avatar → Router and Router → Group, preserving the local order
+                var avatarToRouter = new FlowEdge(transfer.From, routerId, transfer.Token, transfer.InitialCapacity)
                 {
                     Flow = transfer.Flow,
                     CurrentCapacity = transfer.CurrentCapacity
-                });
-                
-                // Router → Group (same token)
-                result.Add(new FlowEdge(routerId, transfer.To, transfer.Token, transfer.InitialCapacity)
+                };
+
+                var routerToGroup = new FlowEdge(routerId, transfer.To, transfer.Token, transfer.InitialCapacity)
                 {
                     Flow = transfer.Flow,
                     CurrentCapacity = transfer.CurrentCapacity
-                });
+                };
+
+                routerMintBlocks.Add((avatarToRouter, routerToGroup));
+            }
+            else if (isGroupTokenSpend)
+            {
+                groupTokenSpends.Add(transfer);
             }
             else
             {
-                // Keep as-is (includes Group → Avatar minting transfers)
-                result.Add(transfer);
+                otherEdges.Add(transfer);
             }
         }
 
+        // Now assemble the final ordered list:
+        //   1) all "ordinary" edges,
+        //   2) all Avatar→Router→Group mint blocks,
+        //   3) all Group-token spends.
+        //
+        // Within each mint block we preserve the Avatar→Router then Router→Group order so
+        // the Router never sends CRC it hasn't received yet.
+        var result = new List<FlowEdge>(
+            otherEdges.Count + routerMintBlocks.Count * 2 + groupTokenSpends.Count);
+
+        result.AddRange(otherEdges);
+
+        foreach (var block in routerMintBlocks)
+        {
+            result.Add(block.AvatarToRouter);
+            result.Add(block.RouterToGroup);
+        }
+
+        result.AddRange(groupTokenSpends);
+
         return result;
     }
+
 
     /* ------------------------------------------------------------------------
      * Collapse balance nodes and token pools in a set of paths.
@@ -329,7 +371,7 @@ public class V2Pathfinder
                 if (hasNext && path[i + 1].From == e.To)
                 {
                     var next = path[i + 1];
-                    
+
                     // Collapse Avatar → TokenPool → (Avatar/Group)
                     // Result: Avatar → (Avatar/Group)
                     AddToAggregation(agg, e.From, next.To, e.Token, Math.Min(e.Flow, next.Flow));
@@ -379,7 +421,7 @@ public class V2Pathfinder
     }
 
     private bool IsBalanceNode(int addr) => AddressIdPool.IsBalanceNode(addr);
-    
+
     private bool IsPoolNode(int addr)
     {
         if (!AddressIdPool.IsBalanceNode(addr)) return false;
@@ -552,7 +594,7 @@ public class V2Pathfinder
 
     // Collapse ONE peeled path into transfer triples (FromAvatar, ToAvatar, Token).
     private static List<(int From, int To, int Token)> CollapsePathToTransfers(
-        List<SimpleEdge> path, 
+        List<SimpleEdge> path,
         CapacityGraph capacityGraph)
     {
         var triples = new List<(int From, int To, int Token)>(Math.Max(1, path.Count));
@@ -563,9 +605,9 @@ public class V2Pathfinder
             var e = path[i];
 
             // Check if this is a pool node
-            bool eToIsPool = AddressIdPool.IsBalanceNode(e.To) && 
-                            AddressIdPool.StringOf(e.To).StartsWith("tpool-");
-            
+            bool eToIsPool = AddressIdPool.IsBalanceNode(e.To) &&
+                             AddressIdPool.StringOf(e.To).StartsWith("tpool-");
+
             // Standard pool collapse: Avatar → TokenPool → Next
             if (eToIsPool)
             {
