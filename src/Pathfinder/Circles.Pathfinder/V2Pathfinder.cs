@@ -17,10 +17,10 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 1. Resolve ids and basic guards
          * ------------------------------------------------------------------ */
-        int sinkId = AddressIdPool.IdOf(flowRequest.Sink);
+        int sinkId = AddressIdPool.IdOf(flowRequest.Sink ?? throw new ArgumentNullException(nameof(flowRequest.Sink)));
         int? vs = capacityGraph.VirtualSinkAddress;
         int effSink = vs ?? sinkId;
-        int sourceId = AddressIdPool.IdOf(flowRequest.Source);
+        int sourceId = AddressIdPool.IdOf(flowRequest.Source ?? throw new ArgumentNullException(nameof(flowRequest.Source)));
 
         bool sourceMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
         if (sourceMissing)
@@ -73,9 +73,9 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 1. Resolve ids and basic guards
          * ------------------------------------------------------------------ */
-        int sinkId = AddressIdPool.IdOf(request.Sink);
+        int sinkId = AddressIdPool.IdOf(request.Sink ?? throw new ArgumentNullException(nameof(request.Sink)));
         int effSink = capacityGraph.VirtualSinkAddress ?? sinkId;
-        int sourceId = AddressIdPool.IdOf(request.Source);
+        int sourceId = AddressIdPool.IdOf(request.Source ?? throw new ArgumentNullException(nameof(request.Source)));
 
         bool srcMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
         bool dstMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
@@ -97,17 +97,17 @@ public class V2Pathfinder
          *      collapsing balance nodes (avatar→avatar per token).
          * ------------------------------------------------------------------ */
         bool hasStepCap = request.MaxTransfers.HasValue && request.MaxTransfers.Value > 0;
-        if (hasStepCap)
-        {
-            int stepCap = request.MaxTransfers!.Value;
-            int currentSteps = CountCollapsedTransferSteps(simplePaths, capacityGraph);
+    if (hasStepCap)
+    {
+        int stepCap = request.MaxTransfers!.Value;
+        int currentSteps = CountCollapsedTransferSteps(simplePaths, capacityGraph);
 
-            bool needsPrune = currentSteps > stepCap;
-            if (needsPrune)
-            {
-                simplePaths = PrunePathsByStepLimit(simplePaths, stepCap, capacityGraph);
-            }
+        bool needsPrune = currentSteps > stepCap;
+        if (needsPrune)
+        {
+            simplePaths = PrunePathsByStepLimit(simplePaths, stepCap, capacityGraph);
         }
+    }
 
         /* --------------------------------------------------------------------
          * 3. Convert SimpleEdge → FlowEdge

@@ -18,8 +18,48 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
     }
 
-    public class LoadGraph(Settings settings) : ILoadGraph
+    public class LoadGraph : ILoadGraph
     {
+        private readonly string _connectionString;
+        private readonly Settings _settings;
+
+        public LoadGraph(string connectionString, Settings settings)
+        {
+            _connectionString = connectionString;
+            _settings = settings;
+        }
+
+        public LoadGraph(Settings settings) : this(GetConnectionStringFromSettings(settings), settings)
+        {
+        }
+
+        private static string GetConnectionStringFromSettings(Settings settings)
+        {
+            // Try to get connection string from environment variable first
+            var connString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING");
+            if (!string.IsNullOrEmpty(connString))
+            {
+                return connString;
+            }
+            
+            // If environment variable is not set, try to get from settings object properties
+            // This handles both host settings (which inherit from base Settings) and library settings
+            var settingsType = settings.GetType();
+            
+            // Look for IndexReadonlyDbConnectionString property
+            var connectionStringProperty = settingsType.GetProperty("IndexReadonlyDbConnectionString");
+            if (connectionStringProperty != null)
+            {
+                var value = connectionStringProperty.GetValue(settings) as string;
+                if (!string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
+            }
+            
+            throw new ArgumentException("POSTGRES_READONLY_CONNECTION_STRING environment variable is not set or connection string not found in settings.");
+        }
+
         private string LoadQueryFromResource(string resourceName)
         {
             var assembly = Assembly.GetExecutingAssembly();
@@ -41,11 +81,11 @@ namespace Circles.Pathfinder.Data
             // We now only have one balance query that includes the isWrapped column
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
 
-            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
-            command.CommandTimeout = 300; // 5 minutes for complex balance query
+            command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
             var now = DateTime.UtcNow;
@@ -90,11 +130,11 @@ namespace Circles.Pathfinder.Data
             // We now only have one trust query that includes wrap tokens
             var trustQuery = LoadQueryFromResource("trustQuery.sql");
 
-            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(trustQuery, connection);
-            command.CommandTimeout = 120; // 2 minutes for trust query
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -111,11 +151,11 @@ namespace Circles.Pathfinder.Data
         {
             var groupQuery = LoadQueryFromResource("groupQuery.sql");
 
-            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(groupQuery, connection);
-            command.CommandTimeout = 60; // 1 minute for group query
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -130,11 +170,11 @@ namespace Circles.Pathfinder.Data
         {
             var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
 
-            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
-            command.CommandTimeout = 60; // 1 minute for group trust query
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
             while (reader.Read())

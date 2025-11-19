@@ -1,7 +1,5 @@
 using System.Collections.Immutable;
 using System.Globalization;
-using System.Linq;
-using System.Net.Http;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
@@ -13,8 +11,7 @@ using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
-using NpgsqlTypes;
-using static Circles.Rpc.Host.JsonRpcHelpers;
+
 
 namespace Circles.Rpc.Host;
 
@@ -1604,6 +1601,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         await using var conn = await CreateConnectionAsync();
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = _settings.ProfileSearchTimeoutSeconds;
         cmd.Parameters.AddWithValue("search", qText);
         cmd.Parameters.AddWithValue("limit", limit);
         cmd.Parameters.AddWithValue("offset", offset);
@@ -1788,11 +1786,11 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         await using var stream = await response.Content.ReadAsStreamAsync();
         var snapshot = await JsonSerializer.DeserializeAsync<JsonElement>(stream);
-        
+
         // Extract BlockNumber and Addresses directly to match remote response structure
         var blockNumber = snapshot.GetProperty("BlockNumber");
         var addresses = snapshot.GetProperty("Addresses");
-        
+
         return new NetworkSnapshotResponse(BlockNumber: blockNumber, Addresses: addresses);
     }
 
@@ -1802,10 +1800,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             throw new InvalidOperationException("ExternalPathfinderUrl is not configured.");
         }
-    
+
         var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath";
-    
+
         // Configure JSON serialization with camelCase property names to match Pathfinder DTOs
         var jsonOptions = new JsonSerializerOptions
         {
@@ -1813,19 +1811,19 @@ public class CirclesRpcModule : ICirclesRpcModule
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNameCaseInsensitive = true
         };
-    
+
         var jsonContent = JsonSerializer.Serialize(flowRequest, jsonOptions);
-        
+
         using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-    
+
         using var response = await HttpClient.PostAsync(url, content);
-    
+
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
             throw new InvalidOperationException($"Pathfinder service returned {response.StatusCode}: {errorContent}");
         }
-    
+
         var responseString = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<JsonElement>(responseString);
     }
@@ -1860,8 +1858,22 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (fromBlock.HasValue) parameters.Add(new NpgsqlParameter("fromBlock", fromBlock.Value));
         if (toBlock.HasValue) parameters.Add(new NpgsqlParameter("toBlock", toBlock.Value));
 
+        // Determine sort order once
+        var sortOrder = sortAscending == true ? "ASC" : "DESC";
+
         foreach (var table in relevantTables)
         {
+            // Skip tables that don't have the required event columns (like System tables)
+            var tableColumns = DatabaseSchemaMap.GetTableColumns(table.Key);
+            if (tableColumns == null ||
+                !tableColumns.ContainsKey("blockNumber") ||
+                !tableColumns.ContainsKey("transactionIndex") ||
+                !tableColumns.ContainsKey("logIndex") ||
+                !tableColumns.ContainsKey("transactionHash"))
+            {
+                continue;
+            }
+
             var whereClauses = new List<string>();
 
             // Basic address filter - only add if address is specified and table has address columns
@@ -1887,10 +1899,12 @@ public class CirclesRpcModule : ICirclesRpcModule
                 }
             }
 
-            var whereSql = whereClauses.Count > 0 ? $"WHERE {string.Join(" AND ", whereClauses)}" : "";
+            var whereSql = whereClauses.Count > 0 ? $" WHERE {string.Join(" AND ", whereClauses)}" : "";
 
-            // Include transactionIndex in the SELECT to support ORDER BY
-            queries.Add($@"SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t {whereSql}");
+            // Apply ORDER BY and LIMIT to each table query for better performance
+            // This pushes the sorting and limit down to each table scan instead of sorting the entire UNION result
+            var query = $@"SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t{whereSql} ORDER BY t.""blockNumber"" {sortOrder}, t.""transactionIndex"" {sortOrder}, t.""logIndex"" {sortOrder} LIMIT 1000";
+            queries.Add(query);
         }
 
         if (queries.Count == 0)
@@ -1898,9 +1912,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             return new EventsResponse(Events: Array.Empty<object>());
         }
 
+        // Combine results from all tables and apply final ORDER BY and LIMIT
         var finalSql = string.Join(" UNION ALL ", queries);
-        var sortOrder = sortAscending == true ? "ASC" : "DESC";
-        finalSql += $" ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder} LIMIT 1000";
+        finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder} LIMIT 1000";
 
         await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(finalSql, connection);
@@ -2262,6 +2276,11 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// </summary>
     private static string ValidateIdentifier(string identifier, string identifierType)
     {
+        if (identifier == null)
+        {
+            throw new ArgumentNullException(nameof(identifier), $"{identifierType} cannot be null.");
+        }
+
         if (string.IsNullOrWhiteSpace(identifier))
         {
             throw new ArgumentException($"{identifierType} cannot be empty or whitespace.");
@@ -2318,6 +2337,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var orderByClauses = query.Order.Select(o =>
             {
+                if (o.Column == null)
+                {
+                    throw new ArgumentNullException("Order column", "Order column cannot be null.");
+                }
                 var validatedColumn = ValidateIdentifier(o.Column, "Order column");
                 var quotedColumn = $"\"{validatedColumn}\"";
                 var sortOrder = o.SortOrder?.ToUpper() == "DESC" ? "DESC" : "ASC";

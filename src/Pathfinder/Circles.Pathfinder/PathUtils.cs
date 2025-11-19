@@ -56,9 +56,9 @@ internal static class PathUtils
                     continue;
                 }
 
-                for (int i = 0; i < outgoing.Count; i++)
+                for (int i = 0; i < outgoing?.Count; i++)
                 {
-                    var edge = outgoing[i];
+                    var edge = outgoing![i];
 
                     bool edgeHasResidual = edge.Flow > 0;
                     if (!edgeHasResidual)
