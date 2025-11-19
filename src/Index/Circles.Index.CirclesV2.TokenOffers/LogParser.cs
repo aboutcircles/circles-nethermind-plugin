@@ -47,7 +47,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(cycles.ToSql(database)).Rows)
         {
-            seedsCycles[new Address(row[0]!.ToString()!)] = null;
+            seedsCycles[new Address(row[0]?.ToString() ?? throw new InvalidOperationException("OfferCycle address is null"))] = null;
         }
 
         OfferCycles.Seed(seedsCycles);
@@ -113,7 +113,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             yield break;
         }
 
-        for (int i = 0; i < receipt.Logs.Length; i++)
+        for (int i = 0; i < receipt.Logs!.Length; i++)
         {
             var log = receipt.Logs[i];
             if (!cyclesInTx.Contains(log.Address.ToString(true, false))) continue;

@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.0.6</Version>
+    <Version>0.0.7</Version>
     <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
     <Copyright>Gnosis Service GmbH</Copyright>
     <Product>Circles</Product>
@@ -87,7 +87,6 @@
     <ProjectReference Include="..\Circles.Index.Safe\Circles.Index.Safe.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
-    <!-- <ProjectReference Include="..\..\Rpc\Circles.Rpc\Circles.Rpc.csproj" /> -->
   </ItemGroup>
 
   <!-- https://yer.ac/blog/2019/09/05/dotnet-pack-project-reference-and-nuget-dependency/ -->

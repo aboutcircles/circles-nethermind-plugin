@@ -412,7 +412,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public async Task DeleteAllGreaterOrEqualBlock(long reorgAt)
     {
-        NpgsqlTransaction transaction = null;
+        NpgsqlTransaction? transaction = null;
         try
         {
             await using var connection = new NpgsqlConnection(ConnectionString);

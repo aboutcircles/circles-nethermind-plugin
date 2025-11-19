@@ -22,10 +22,10 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
             FilterType.ILike => $"{database.QuoteIdentifier(Column)} ILIKE {parameterName}_0",
             FilterType.NotLike => $"{database.QuoteIdentifier(Column)} NOT LIKE {parameterName}_0",
             FilterType.In => ConvertToEnumerable(Value)?.Any() ?? false
-                ? $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value, parameterName)})"
+                ? $"{database.QuoteIdentifier(Column)} IN ({FormatArrayParameter(Value!, parameterName)})"
                 : "1=0 /* empty 'in' filter */",
             FilterType.NotIn => ConvertToEnumerable(Value)?.Any() ?? false
-                ? $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value, parameterName)})"
+                ? $"{database.QuoteIdentifier(Column)} NOT IN ({FormatArrayParameter(Value!, parameterName)})"
                 : "1=0 /* empty 'not in' filter */",
             FilterType.IsNotNull => $"{database.QuoteIdentifier(Column)} IS NOT NULL",
             FilterType.IsNull => $"{database.QuoteIdentifier(Column)} IS NULL",
@@ -70,7 +70,7 @@ public record FilterPredicate(string Column, FilterType FilterType, object? Valu
         }
 
         // For non-In/NotIn filters, return a single-element list
-        return new List<object> { value };
+        return new List<object> { value! };
     }
 
     private IEnumerable<IDbDataParameter> CreateParameters(IDatabaseUtils database, string parameterName, object? value)

@@ -175,7 +175,7 @@ public class LogParser(Address deployerAddress) : ILogParser
             var seed = new Dictionary<Address, object?>(rows.Length + 25_000);
             foreach (var row in rows)
             {
-                var group = new Address(row[0]!.ToString()!);
+                var group = new Address(row[0]?.ToString() ?? throw new InvalidOperationException("Group address is null"));
                 seed[group] = null;
             }
 
@@ -205,7 +205,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         // Find the associated initial OwnerUpdated, ServiceUpdated and FeeCollectionUpdated events.
         // For new groups, these are emitted before the BaseGroupCreated event and thus they aren't
         // picked up in ParseLog().
-        for (var index = 0; index < receipt.Logs.Length; index++)
+        for (var index = 0; index < receipt.Logs!.Length; index++)
         {
             var log = receipt.Logs[index];
             if (!groupsCreatedInTx.ContainsKey(log.Address.ToString(true, false)))

@@ -48,8 +48,8 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         var seed = new Dictionary<Address, string>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            var avatar = new Address(row[0].ToString());
-            seed[avatar] = CidHelper.MetadataDigestToCidV0((byte[])row[1]);
+            var avatar = new Address(row[0]!.ToString()!);
+            seed[avatar] = CidHelper.MetadataDigestToCidV0((byte[])row[1]!);
         }
 
         V2AvatarToCidMap.Seed(seed);
@@ -76,8 +76,8 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
 
         foreach (var row in rows)
         {
-            var avatar = new Address(row[0].ToString());
-            var shortNameUInt256 = BigInteger.Parse(row[1].ToString());
+            var avatar = new Address(row[0]!.ToString()!);
+            var shortNameUInt256 = BigInteger.Parse(row[1]!.ToString()!);
             var shortNameBase58Btc = shortNameUInt256.ToBase58Btc();
             seed1[avatar] = shortNameBase58Btc;
             seed2[shortNameBase58Btc] = avatar;

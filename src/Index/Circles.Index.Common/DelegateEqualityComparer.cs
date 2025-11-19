@@ -5,7 +5,7 @@ public class DelegateEqualityComparer<T>(Func<T, T, bool> equals, Func<T, int> g
 {
     public bool Equals(T? x, T? y)
     {
-        return equals(x, y);
+        return equals(x!, y!);
     }
 
     public int GetHashCode(T obj)

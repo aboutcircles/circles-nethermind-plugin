@@ -58,10 +58,10 @@ public class LogParser(Address v1HubAddress) : ILogParser
         var seed = new Dictionary<string, (string Type, string? Token)>(rows.Length + 10_000);
         foreach (var row in rows)
         {
-            string user = row[0].ToString();
-            string type = row[1].ToString();
+            string user = row[0]?.ToString() ?? throw new InvalidOperationException("User is null");
+            string type = row[1]?.ToString() ?? throw new InvalidOperationException("Type is null");
             string? token = row[2] is not DBNull and not null
-                ? row[2].ToString()
+                ? row[2]!.ToString()
                 : null;
 
             seed.Add(user, (type, token));
@@ -172,8 +172,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
         var seed2 = new Dictionary<Address, Address>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            var userAddress = new Address(row[0].ToString());
-            var tokenAddress = new Address(row[1].ToString());
+            var userAddress = new Address(row[0]?.ToString() ?? throw new InvalidOperationException("User address is null"));
+            var tokenAddress = new Address(row[1]?.ToString() ?? throw new InvalidOperationException("Token address is null"));
             seed[tokenAddress] = userAddress;
             seed2[userAddress] = tokenAddress;
         }
