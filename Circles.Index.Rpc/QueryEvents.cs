@@ -162,10 +162,10 @@ public class QueryEvents(Context context)
         return queries;
     }
 
-    private ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent> ExecuteQueries(
+    private ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex, long? BatchIndex), CirclesEvent> ExecuteQueries(
         List<Select> queries)
     {
-        var events = new ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent>();
+        var events = new ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex, long? BatchIndex), CirclesEvent>();
         var tasks = queries.Select(query => Task.Run(() =>
         {
             var sql = query.ToSql(context.ReadonlyDatabase);
@@ -179,7 +179,8 @@ public class QueryEvents(Context context)
 
                 var key = ((long)(row[0] ?? new Exception("Block number is null")),
                     (long)(row[2] ?? throw new Exception("Transaction index is null")),
-                    (long)(row[3] ?? throw new Exception("Log index is null")));
+                    (long)(row[3] ?? throw new Exception("Log index is null")),
+                    row.Length > 4 && row[4] != null ? Convert.ToInt64(row[4]) : (long?)null);
 
                 events.TryAdd(key, new CirclesEvent(eventName, values));
             }
@@ -191,7 +192,7 @@ public class QueryEvents(Context context)
     }
 
     private CirclesEvent[] SortEvents(
-        ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex), CirclesEvent> events,
+        ConcurrentDictionary<(long BlockNo, long TransactionIndex, long LogIndex, long? BatchIndex), CirclesEvent> events,
         bool? sortAscending = false)
     {
         if (sortAscending == null || sortAscending == false)
@@ -200,6 +201,7 @@ public class QueryEvents(Context context)
                 .OrderByDescending(o => o.Key.BlockNo)
                 .ThenByDescending(o => o.Key.TransactionIndex)
                 .ThenByDescending(o => o.Key.LogIndex)
+                .ThenByDescending(o => o.Key.BatchIndex ?? -1)
                 .Select(o => o.Value)
                 .ToArray();
         }
@@ -208,6 +210,7 @@ public class QueryEvents(Context context)
             .OrderBy(o => o.Key.BlockNo)
             .ThenBy(o => o.Key.TransactionIndex)
             .ThenBy(o => o.Key.LogIndex)
+            .ThenBy(o => o.Key.BatchIndex ?? -1)
             .Select(o => o.Value)
             .ToArray();
     }
