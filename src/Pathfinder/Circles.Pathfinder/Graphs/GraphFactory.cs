@@ -491,7 +491,7 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
             if (isSource && excludedFromTokensFilter.Count > 0 &&
                 excludedFromTokensFilter.Contains(sb.TokenId)) continue;
 
-            if (sb.IsWrapped && !(req.WithWrap ?? false)) continue;
+            if (sb.IsWrapped && !(req?.WithWrap ?? false)) continue;
             if (sb.IsWrapped && !isSource) continue;
 
             g.AddTokenNode(sb.TokenId);

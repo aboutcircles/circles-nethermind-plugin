@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Circles.Index.Common;
 using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.DTOs;
@@ -39,12 +38,17 @@ var builder = WebApplication.CreateSlimBuilder(args);
 // Use default background service exception behavior to prevent silent failures
 // Host will stop on background service exceptions, ensuring proper error handling
 
+// Register the host settings instance and expose its common settings to components that need it
 builder.Services.AddSingleton(settings);
-builder.Services.AddSingleton<Circles.Index.Common.Settings>(settings);
+builder.Services.AddSingleton<Circles.Index.Common.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>().CommonSettings);
+builder.Services.AddSingleton<Circles.Pathfinder.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>());
 builder.Services.AddSingleton(semaphore);
 builder.Services.AddSingleton<NetworkState>();
-builder.Services.AddSingleton<LoadGraph>();
-builder.Services.AddSingleton<CapacityGraphPool>();
+builder.Services.AddSingleton<LoadGraph>(provider => new LoadGraph(settings));
+builder.Services.AddSingleton<CapacityGraphPool>(provider =>
+    new CapacityGraphPool(
+        provider.GetRequiredService<Circles.Index.Common.Settings>(),
+        provider.GetRequiredService<LoadGraph>()));
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();

@@ -12,15 +12,27 @@
     <!-- For local development (dotnet run), don't set a default RuntimeIdentifier -->
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
     <SelfContained>true</SelfContained>
-    <Configuration>Release</Configuration>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Pathfinder\Circles.Pathfinder\Circles.Pathfinder.csproj" />
-    <ProjectReference Include="..\..\Index\Circles.Index\Circles.Index.csproj" />
     <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
+    <ProjectReference
+      Include="..\..\Index\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj" />
+    <ProjectReference
+      Include="..\..\Index\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
+
+    <!-- Reference Nethermind projects from submodule for runtime assemblies -->
+    <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\..\nethermind\src\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj">
+    </ProjectReference>
 
     <!-- <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.6" /> -->
     <!-- <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />  -->

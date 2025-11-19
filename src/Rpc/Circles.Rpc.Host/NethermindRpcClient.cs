@@ -34,7 +34,7 @@ public class NethermindRpcClient
                     to,
                     data
                 },
-                block
+                block ?? "latest"
             },
             id = 1
         };
@@ -45,7 +45,7 @@ public class NethermindRpcClient
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
         var dataStr = result.GetProperty("result").GetString();
 
-        if (dataStr == null || !dataStr.StartsWith("0x"))
+        if (dataStr == null || !dataStr.StartsWith("0x", StringComparison.Ordinal))
         {
             throw new Exception("Invalid eth_call response");
         }

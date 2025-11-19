@@ -231,7 +231,8 @@ static async Task<object> HandleGetProfileCid(JsonRpcRequest request, CirclesRpc
         throw new ArgumentException("Address parameter is required");
     }
 
-    return await rpcModule.GetProfileCid(parameters[0]);
+    var cid = await rpcModule.GetProfileCid(parameters[0]);
+    return cid ?? throw new ArgumentException("Profile CID not found");
 }
 
 static async Task<object> HandleGetProfileCidBatch(JsonRpcRequest request, CirclesRpcModule rpcModule)

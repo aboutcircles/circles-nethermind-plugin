@@ -5,7 +5,7 @@ using Circles.Pathfinder.DTOs;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool(Settings settings, LoadGraph loadGraph)
+public sealed class CapacityGraphPool(Circles.Index.Common.Settings settings, LoadGraph loadGraph)
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;

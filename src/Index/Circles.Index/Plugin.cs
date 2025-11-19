@@ -23,25 +23,7 @@ public class Plugin : INethermindPlugin
     public string Author => "Gnosis";
     public bool Enabled { get; } = true;
 
-    public static readonly IReadOnlyList<IDatabaseSchema> AllSchemas = new List<IDatabaseSchema>
-    {
-        new CirclesV1.DatabaseSchema(),
-        new CirclesV1.NameRegistry.DatabaseSchema(),
-        new CirclesV2.DatabaseSchema(),
-        new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
-        new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
-        new CirclesV2.CMGroupDeployer.DatabaseSchema(),
-        new CirclesV2.DatabaseSchema(),
-        new CirclesV2.InvitationEscrow.DatabaseSchema(),
-        new CirclesV2.LBP.DatabaseSchema(),
-        new CirclesV2.NameRegistry.DatabaseSchema(),
-        new CirclesV2.OIC.DatabaseSchema(),
-        new CirclesV2.StandardTreasury.DatabaseSchema(),
-        new CirclesV2.TokenOffers.DatabaseSchema(),
-        new CirclesViews.DatabaseSchema(),
-        new DatabaseSchema(),
-        new Safe.DatabaseSchema(),
-    };
+    public static IReadOnlyList<IDatabaseSchema> AllSchemas => DatabaseSchemaProvider.AllSchemas;
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 

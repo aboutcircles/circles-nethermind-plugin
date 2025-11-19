@@ -5,14 +5,13 @@ using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Circles.Index.Common;
 
 namespace Circles.Pathfinder.Host.State;
 
 public class NetworkStateUpdaterService : BackgroundService
 {
     private readonly NetworkState _networkState;
-    private readonly Circles.Pathfinder.Host.Settings _settings;
+    private readonly Settings _settings;
     private readonly List<Exception> _getCurrentBlockErrors = new();
     private static readonly HttpClient HttpClient = new()
     {
@@ -54,7 +53,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 var swTotal = Stopwatch.StartNew();
 
                 var swTrustGraph = Stopwatch.StartNew();
-                var trustTask = Task.Run(async () =>
+                var trustTask = Task.Run(() =>
                 {
                     try
                     {
@@ -72,7 +71,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 }, stoppingToken);
 
                 var swBalanceGraph = Stopwatch.StartNew();
-                var balanceTask = Task.Run(async () =>
+                var balanceTask = Task.Run(() =>
                 {
                     try
                     {
@@ -93,8 +92,8 @@ public class NetworkStateUpdaterService : BackgroundService
 
                 // Build full capacity graph with router address
                 var cap = await CapacityGraphPool.BuildFullGraph(
-                    _networkState.BalanceGraph,
-                    _networkState.AccountTrusts,
+                    _networkState.BalanceGraph ?? throw new InvalidOperationException("Balance graph is null"),
+                    _networkState.AccountTrusts ?? throw new InvalidOperationException("Account trusts is null"),
                     loadGraph,
                     _settings.BaseGroupRouter
                 );
