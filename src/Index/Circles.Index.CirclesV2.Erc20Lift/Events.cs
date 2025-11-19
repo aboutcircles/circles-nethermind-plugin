@@ -9,5 +9,68 @@ public record CreateVault(
     int TransactionIndex,
     int LogIndex,
     string TransactionHash,
+    string Emitter,
     string Group,
     string Vault) : IIndexEvent;
+
+public record GroupMintSingle(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Emitter,
+    string Group,
+    UInt256 Id,
+    UInt256 Value,
+    byte[] UserData) : IIndexEvent;
+
+public record GroupMintBatch(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Emitter,
+    int BatchIndex,
+    string Group,
+    UInt256 Id,
+    UInt256 Value,
+    byte[] UserData) : IIndexEvent;
+
+public record GroupRedeem(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Emitter,
+    string Group,
+    UInt256 Id,
+    UInt256 Value,
+    byte[] Data) : IIndexEvent;
+
+public record GroupRedeemCollateralReturn(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Emitter,
+    int BatchIndex,
+    string Group,
+    string To,
+    UInt256 Id,
+    UInt256 Value) : IIndexEvent;
+
+public record GroupRedeemCollateralBurn(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Emitter,
+    int BatchIndex,
+    string Group,
+    UInt256 Id,
+    UInt256 Value) : IIndexEvent;

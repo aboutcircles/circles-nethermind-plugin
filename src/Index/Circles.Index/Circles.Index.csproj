@@ -41,6 +41,10 @@
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
     <ProjectReference
+      Include="..\Circles.Index.CirclesV2.Erc20Lift\Circles.Index.CirclesV2.Erc20Lift.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+    <ProjectReference
       Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>

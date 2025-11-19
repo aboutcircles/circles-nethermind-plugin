@@ -1,8 +1,8 @@
-using System.Numerics;
+namespace Circles.Index.CirclesV2.Erc20Lift;
+
 using Circles.Index.Common;
 using Nethermind.Core.Crypto;
-
-namespace Circles.Index.CirclesV2.Erc20Lift;
+using System.Numerics;
 
 public class DatabaseSchema : IDatabaseSchema
 {
@@ -100,6 +100,8 @@ public class DatabaseSchema : IDatabaseSchema
                 GroupRedeemCollateralBurn
             }
         };
+
+    public IDictionary<string, string> Indexes { get; } = new Dictionary<string, string>();
 
     public DatabaseSchema()
     {
