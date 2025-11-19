@@ -20,7 +20,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
-        <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.6" />
+        <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.7" />
     </ItemGroup>
 
     <ItemGroup>

@@ -96,16 +96,16 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
         foreach (var row in rows)
         {
-            string avatar = row[0].ToString();
-            string type = row[1].ToString();
-            string invitedBy = row[2] is not DBNull and not null
-                ? row[2].ToString()
+            string avatar = row[0]?.ToString() ?? throw new InvalidOperationException("Avatar is null");
+            string type = row[1]?.ToString() ?? throw new InvalidOperationException("Type is null");
+            string? invitedBy = row[2] is not DBNull and not null
+                ? row[2]!.ToString()
                 : null;
-            string tokenId = row[3] is not DBNull and not null
-                ? row[3].ToString()
+            string? tokenId = row[3] is not DBNull and not null
+                ? row[3]!.ToString()
                 : null;
             string? name = row[4] is not DBNull and not null
-                ? row[4].ToString()
+                ? row[4]!.ToString()
                 : null;
 
             seed.Add(avatar, (type, invitedBy, tokenId, name));
@@ -135,11 +135,11 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         var seed = new Dictionary<string, (string, string, string, string)>(rows.Length + 10_000);
         foreach (var row in rows)
         {
-            var group = row[0].ToString();
-            var mint = row[1]!.ToString();
-            var treasury = row[2]!.ToString();
-            var name = row[3]!.ToString();
-            var symbol = row[4]!.ToString();
+            var group = row[0]?.ToString() ?? throw new InvalidOperationException("Group is null");
+            var mint = row[1]?.ToString() ?? throw new InvalidOperationException("Mint is null");
+            var treasury = row[2]?.ToString() ?? throw new InvalidOperationException("Treasury is null");
+            var name = row[3]?.ToString() ?? throw new InvalidOperationException("Name is null");
+            var symbol = row[4]?.ToString() ?? throw new InvalidOperationException("Symbol is null");
             seed[group] = (mint, treasury, name, symbol);
         }
 
@@ -297,9 +297,9 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         var seed = new Dictionary<string, (string, TokenValueRepresentation)>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            var avatar = row[0].ToString();
-            var address = row[1]!.ToString();
-            seed[address] = (avatar, (TokenValueRepresentation)(long)row[2]!);
+            var avatar = row[0]?.ToString() ?? throw new InvalidOperationException("Avatar is null");
+            var address = row[1]?.ToString() ?? throw new InvalidOperationException("Address is null");
+            seed[address] = (avatar, (TokenValueRepresentation)(long)(row[2] ?? throw new InvalidOperationException("CirclesType is null")));
         }
 
         Erc20WrapperAddresses.Seed(seed);

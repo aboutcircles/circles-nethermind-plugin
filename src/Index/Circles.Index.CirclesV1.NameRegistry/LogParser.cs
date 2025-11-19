@@ -36,8 +36,8 @@ public class LogParser(Address v1NameRegistryAddress) : ILogParser
         var seed = new Dictionary<Address, string>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            var avatar = new Address(row[0].ToString());
-            seed[avatar] = CidHelper.MetadataDigestToCidV0((byte[])row[1]);
+            var avatar = new Address(row[0]!.ToString()!);
+            seed[avatar] = CidHelper.MetadataDigestToCidV0((byte[])row[1]!);
         }
 
         V1AvatarToCidMap.Seed(seed);
