@@ -12,6 +12,7 @@ using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
 using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 
@@ -24,12 +25,14 @@ public class CirclesRpcModule : ICirclesRpcModule
     private readonly MemoryCache _profileByCidCache;
     private static readonly HttpClient HttpClient = new();
     private readonly NethermindRpcClient? _nethermindRpcClient;
+    private readonly ILogger<CirclesRpcModule>? _logger;
 
-    public CirclesRpcModule(Settings settings, IHttpClientFactory? httpClientFactory = null)
+    public CirclesRpcModule(Settings settings, IHttpClientFactory? httpClientFactory = null, ILogger<CirclesRpcModule>? logger = null)
     {
         _settings = settings;
         _readOnlyDbConnectionString = settings.IndexReadonlyDbConnectionString;
         _profileByCidCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 10_000 });
+        _logger = logger;
 
         // Initialize Nethermind RPC client if BalanceMode is "live"
         if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase))
@@ -75,6 +78,193 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
     }
 
+    public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
+    {
+        var tokens = GetTokenExposureIds(address);
+
+        if (tokens.Count == 0)
+        {
+            return Array.Empty<CirclesTokenBalance>();
+        }
+
+        var hubAddress = _settings.CirclesV2HubAddress;
+        var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        
+        // Batch fetch balances for efficiency
+        var tokenBalances = new List<CirclesTokenBalance>();
+        
+        // Pre-fetch movement timestamps for demurraged tokens
+        var demurragedTokens = tokens.Values.Where(t => !t.IsInflationary && t.TokenType != "CrcV1_Signup").ToArray();
+        var movementTimestamps = await GetBatchMovementTimestamps(address, demurragedTokens.Select(t => t.TokenAddress).ToArray());
+        
+        foreach (var token in tokens.Values)
+        {
+            var rawBalance = await FetchBalance(
+                token.TokenAddress,
+                address,
+                token.IsErc20,
+                hubAddress);
+
+            BigInteger attoCircles;
+            decimal circles;
+            BigInteger attoCrc;
+            decimal crc;
+            BigInteger staticAttoCircles;
+            decimal staticCircles;
+
+            if (token.TokenType == "CrcV1_Signup")
+            {
+                // OG CRC
+                attoCrc = rawBalance;
+                crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
+                circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+            }
+            else
+            {
+                if (token.IsInflationary)
+                {
+                    staticAttoCircles = rawBalance;
+                    staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+
+                    attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                    circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                    attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                    crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                }
+                else
+                {
+                    // Demurraged Circles - get movement timestamp from batch
+                    if (!movementTimestamps.TryGetValue(token.TokenAddress, out var lastMovementTs) || lastMovementTs == null)
+                    {
+                        // Log warning and skip token - token was never moved
+                        _logger?.LogWarning(
+                            "Account {Address} has a token {TokenAddress} that was never moved, skipping",
+                            address, token.TokenAddress);
+                        continue;
+                    }
+
+                    const uint DAY_ZERO = 1_602_720_000; // 2020-10-31 00:00:00 UTC
+                    
+                    var storedDay = CirclesConverter.DayFromTimestamp(
+                        DateTimeOffset.FromUnixTimeSeconds(lastMovementTs.Value),
+                        DAY_ZERO);
+                    
+                    var todayDay = CirclesConverter.DayFromTimestamp(
+                        DateTimeOffset.UtcNow,
+                        DAY_ZERO);
+                    
+                    var (demurragedAttoCircles, _) = Demurrage.ApplyDemurrage(
+                        storedBalance: rawBalance,
+                        storedDay: storedDay,
+                        targetDay: todayDay);
+
+                    attoCircles = demurragedAttoCircles;
+                    circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                    attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                    crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+                    staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                    staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                }
+            }
+
+            var tokenId = token.IsErc1155
+                ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
+                : token.TokenAddress;
+
+            tokenBalances.Add(new CirclesTokenBalance(
+                TokenAddress: token.TokenAddress,
+                TokenId: tokenId,
+                TokenOwner: token.TokenOwner,
+                TokenType: token.TokenType,
+                Version: token.Version,
+                AttoCircles: attoCircles.ToString(CultureInfo.InvariantCulture),
+                Circles: circles,
+                StaticAttoCircles: staticAttoCircles.ToString(CultureInfo.InvariantCulture),
+                StaticCircles: staticCircles,
+                AttoCrc: attoCrc.ToString(CultureInfo.InvariantCulture),
+                Crc: crc,
+                IsErc20: token.IsErc20,
+                IsErc1155: token.IsErc1155,
+                IsWrapped: token.IsWrapped,
+                IsInflationary: token.IsInflationary,
+                IsGroup: token.IsGroup
+            ));
+        }
+        
+        var orderedResult = tokenBalances
+            .Where(o => o.Circles > 0)
+            .OrderByDescending(o => o.Circles)  // Match reference: sort by Circles, not StaticCircles
+            .ToArray();
+
+        return orderedResult;
+    }
+    /// <summary>
+    /// Batch fetches movement timestamps for multiple tokens to avoid connection pool exhaustion.
+    /// </summary>
+    private async Task<Dictionary<string, long?>> GetBatchMovementTimestamps(string address, string[] tokenAddresses)
+    {
+        var result = new Dictionary<string, long?>();
+        
+        if (tokenAddresses.Length == 0)
+        {
+            return result;
+        }
+
+        var lowerAddress = address.ToLower();
+        var lowerTokenAddresses = tokenAddresses.Select(t => t.ToLower()).ToArray();
+
+        const string sql = @"
+            SELECT DISTINCT ON (""tokenAddress"") ""tokenAddress"", ""timestamp""
+            FROM (
+                SELECT ""tokenAddress"", ""timestamp""
+                FROM ""CrcV2_TransferSingle""
+                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
+                UNION ALL
+                SELECT ""tokenAddress"", ""timestamp""
+                FROM ""CrcV2_TransferBatch""
+                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
+                UNION ALL
+                SELECT ""tokenAddress"", ""timestamp""
+                FROM ""CrcV1_Transfer""
+                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
+            ) combined
+            ORDER BY ""tokenAddress"", ""timestamp"" DESC";
+
+        await using var connection = await CreateConnectionAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("address", lowerAddress);
+        command.Parameters.AddWithValue("tokenAddresses", lowerTokenAddresses);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var tokenAddress = reader.GetString(0);
+            if (!reader.IsDBNull(1))
+            {
+                var timestamp = reader.GetInt64(1);
+                result[tokenAddress] = timestamp;
+            }
+        }
+
+        // Initialize missing tokens with null
+        foreach (var tokenAddress in lowerTokenAddresses)
+        {
+            if (!result.ContainsKey(tokenAddress))
+            {
+                result[tokenAddress] = null;
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Converts an Ethereum address to a BigInteger token ID for ERC-1155.
     /// </summary>
@@ -86,30 +276,30 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     // Helper class to represent token information from database
     private class TokenExposureInfo
-    {
-        public string TokenAddress { get; set; }
-        public string TokenOwner { get; set; }
-        public string TokenType { get; set; }
-        public int Version { get; set; }
-        public bool IsErc20 { get; set; }
-        public bool IsErc1155 { get; set; }
-        public bool IsWrapped { get; set; }
-        public bool IsInflationary { get; set; }
-        public bool IsGroup { get; set; }
+{
+    public string TokenAddress { get; set; }
+    public string TokenOwner { get; set; }
+    public string TokenType { get; set; }
+    public int Version { get; set; }
+    public bool IsErc20 { get; set; }
+    public bool IsErc1155 { get; set; }
+    public bool IsWrapped { get; set; }
+    public bool IsInflationary { get; set; }
+    public bool IsGroup { get; set; }
 
-        public TokenExposureInfo(string tokenAddress, string tokenOwner, string tokenType, int version,
-            bool isErc20, bool isErc1155, bool isWrapped, bool isInflationary, bool isGroup)
-        {
-            TokenAddress = tokenAddress;
-            TokenOwner = tokenOwner;
-            TokenType = tokenType;
-            Version = version;
-            IsErc20 = isErc20;
-            IsErc1155 = isErc1155;
-            IsWrapped = isWrapped;
-            IsInflationary = isInflationary;
-            IsGroup = isGroup;
-        }
+    public TokenExposureInfo(string tokenAddress, string tokenOwner, string tokenType, int version,
+        bool isErc20, bool isErc1155, bool isWrapped, bool isInflationary, bool isGroup)
+    {
+        TokenAddress = tokenAddress;
+        TokenOwner = tokenOwner;
+        TokenType = tokenType;
+        Version = version;
+        IsErc20 = isErc20;
+        IsErc1155 = isErc1155;
+        IsWrapped = isWrapped;
+        IsInflationary = isInflationary;
+        IsGroup = isGroup;
+    }
     }
 
     private Dictionary<string, TokenExposureInfo> GetTokenExposureIds(string address)
@@ -118,42 +308,46 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         const string sql = @"
             WITH tokens AS (
-                SELECT ""tokenAddress""
+                -- V1 avatar tokens from V1 transfers
+                SELECT t.""tokenAddress""
                      , 'CrcV1_Signup' as ""type""
                      , s.""user"" as ""tokenOwner""
                 FROM  public.""CrcV1_Transfer"" t
                 join ""CrcV1_Signup"" s on s.token = t.""tokenAddress""
-                WHERE ""to"" = @address
+                WHERE t.""to"" = @address
 
                 UNION ALL
-                SELECT ""tokenAddress""
+
+                -- V2 avatar tokens from TransferSingle (ERC1155)
+                SELECT DISTINCT ts.""tokenAddress""
                      , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
-                     , ""tokenAddress"" as ""tokenOwner""
+                     , ts.""tokenAddress"" as ""tokenOwner""
                 FROM  public.""CrcV2_TransferSingle"" ts
                 left join ""CrcV2_RegisterHuman"" rh on rh.avatar = ts.""tokenAddress""
-                WHERE ""to"" = @address
+                WHERE ts.""to"" = @address
 
                 UNION ALL
-                SELECT ""tokenAddress""
+
+                -- V2 avatar tokens from TransferBatch (ERC1155)
+                SELECT DISTINCT tb.""tokenAddress""
                      , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
-                     , ""tokenAddress"" as ""tokenOwner""
+                     , tb.""tokenAddress"" as ""tokenOwner""
                 FROM  public.""CrcV2_TransferBatch"" tb
                 left join ""CrcV2_RegisterHuman"" rh on rh.avatar = tb.""tokenAddress""
-                WHERE ""to"" = @address
+                WHERE tb.""to"" = @address
 
                 UNION ALL
-                SELECT ""tokenAddress""
+
+                -- V2 wrapped ERC20 tokens (both inflationary and demurraged)
+                SELECT DISTINCT wt.""tokenAddress""
                      , case when wd.""circlesType"" = 0 then 'CrcV2_ERC20WrapperDeployed_Demurraged' else 'CrcV2_ERC20WrapperDeployed_Inflationary' end as type
                      , wd.avatar as tokenOwner
                 FROM  public.""CrcV2_Erc20WrapperTransfer"" wt
                 join ""CrcV2_ERC20WrapperDeployed"" wd on wd.""erc20Wrapper"" = wt.""tokenAddress""
-                WHERE ""to"" = @address
-            ), distinct_tokens as (
-                SELECT DISTINCT ""tokenAddress"", ""type"", ""tokenOwner""
-                FROM   tokens
+                WHERE wt.""to"" = @address
             )
-            select ""tokenAddress"", ""type"", ""tokenOwner""
-            from distinct_tokens
+            SELECT DISTINCT ""tokenAddress"", ""type"", ""tokenOwner""
+            FROM tokens
         ";
 
         using var connection = new NpgsqlConnection(_readOnlyDbConnectionString);
