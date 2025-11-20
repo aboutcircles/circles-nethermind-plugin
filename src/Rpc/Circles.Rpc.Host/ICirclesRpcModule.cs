@@ -215,10 +215,10 @@ public record SimpleTokenBalance(string Token, string Balance);
 /// Token information response.
 /// </summary>
 public record TokenInfo(
-    string Token,
+    string TokenAddress,
     string TokenOwner,
+    string TokenType,
     int Version,
-    string Type,
     bool IsErc20,
     bool IsErc1155,
     bool IsWrapped,
