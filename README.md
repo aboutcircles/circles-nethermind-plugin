@@ -9,6 +9,9 @@ If you're developing the plugin, building packages, or running services locally,
 
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Developer guide with build scripts, testing, and local development
 - **[scripts/README.md](scripts/README.md)** - Detailed documentation for all build and deployment scripts
+- **[Indexer](src/Index//README.md)** - Indexer service
+- **[Pathfinder](src/Pathfinder/Circles.Pathfinder/README.md)** - Pathfinding service
+- **[Rpc](src/Rpc/Circles.Rpc.Host/README.md)** - Rpc service
 
 Quick commands for developers:
 

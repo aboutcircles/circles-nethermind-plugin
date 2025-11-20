@@ -1,66 +1,69 @@
 # Circles RPC Host
 
-This implementation provides a comprehensive JSON-RPC 2.0 service for the Circles protocol, exposing all public methods from the `CirclesRpcModule` as HTTP endpoints.
+A JSON-RPC 2.0 service that exposes Circles protocol data and operations through a standardized HTTP API. This service acts as the primary interface for querying Circles blockchain events, user profiles, trust relationships, and pathfinding operations.
 
-## Implemented RPC Methods
+## Overview
 
-### Balance & Token Methods
+The RPC Host provides:
 
-- **`circlesV2_getTotalBalance`** - Get total balance for an address
-- **`circles_getTokenBalances`** - Get token balances for an address
-- **`circles_getTokenInfo`** - Get information about a specific token
-- **`circles_getTokenInfoBatch`** - Get information about multiple tokens
+- **Balance & Token Queries** - Check CRC holdings and token metadata
+- **Profile Management** - Retrieve and search user profiles from IPFS
+- **Trust Networks** - Query trust relationships and find common connections
+- **Event Indexing** - Access indexed blockchain events with advanced filtering
+- **Pathfinding** - Calculate transitive payment paths through the trust network
+- **System Health** - Monitor database and blockchain sync status
 
-### Avatar & Profile Methods
+## Quick Start
 
-- **`circles_getAvatarInfo`** - Get avatar information for an address
-- **`circles_getAvatarInfoBatch`** - Get avatar information for multiple addresses
-- **`circles_getProfileCid`** - Get profile CID for an address
-- **`circles_getProfileCidBatch`** - Get profile information for multiple CIDs
-- **`circles_getProfileByAddress`** - Get profile by address
-- **`circles_getProfileByAddressBatch`** - Get profiles for multiple addresses
-- **`circles_searchProfiles`** - Search profiles by text
+### Running Locally
 
-### Trust & Network Methods
+```bash
+# Using script (recommended)
+./scripts/run-rpc.sh
 
-- **`circles_getTrustRelations`** - Get trust relations for an address
-- **`circles_getCommonTrust`** - Get common trust between two addresses
-- **`circles_getNetworkSnapshot`** - Get current network snapshot
-- **`circlesV2_findPath`** - Find payment path between addresses
+# Or directly with dotnet
+cd src/Rpc/Circles.Rpc.Host
+dotnet run
+```
 
-### System & Query Methods
+Default URL: `http://localhost:8081`
 
-- **`circles_events`** - Query events with filtering
-- **`circles_health`** - Health check endpoint
-- **`circles_tables`** - Get database table information
-- **`circles_query`** - Generic query interface
+### Configuration
 
-## Architecture
+Set environment variables before starting:
 
-### Key Features
+```bash
+# Required
+export POSTGRES_READONLY_CONNECTION_STRING="Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres"
+export NETHERMIND_RPC_URL="http://localhost:8545"
 
-1. **Comprehensive Parameter Validation** - All endpoints validate input parameters
-2. **Error Handling** - Consistent error responses following JSON-RPC 2.0 specification
-3. **Type Safety** - Strong typing for all parameters and return values
-4. **Async/Await Pattern** - All handlers are properly asynchronous
-5. **Consistent API** - All endpoints follow the same request/response pattern
+# Optional
+export BALANCE_MODE="live"  # "live" (eth_call) or "database" (fast but stale)
+export DATABASE_QUERY_TIMEOUT_SECONDS=30
+export PROFILE_SEARCH_TIMEOUT_SECONDS=30
+export EXTERNAL_PATHFINDER_URL="http://localhost:8080"
+```
+
+See `.env.local.example` for full configuration options.
+
+## JSON-RPC 2.0 API
 
 ### Request Format
 
-All RPC requests should be JSON-RPC 2.0 compliant:
+All requests must be valid JSON-RPC 2.0:
 
 ```json
 {
   "jsonrpc": "2.0",
   "method": "circles_getTotalBalance",
-  "params": ["0x1234567890abcdef"],
+  "params": ["0x1234..."],
   "id": 1
 }
 ```
 
 ### Response Format
 
-Successful responses:
+**Success:**
 
 ```json
 {
@@ -70,38 +73,605 @@ Successful responses:
 }
 ```
 
-Error responses:
+**Error:**
 
 ```json
 {
   "jsonrpc": "2.0",
   "error": {
     "code": -32602,
-    "message": "Invalid params: Missing 'address' parameter."
+    "message": "Invalid params: Address parameter is required"
   },
   "id": 1
 }
 ```
 
-## Usage
+**Error Codes:**
 
-The service is built as a standard ASP.NET Core application. Once started, it will:
+- `-32600` - Invalid Request
+- `-32601` - Method not found
+- `-32602` - Invalid params
+- `-32603` - Internal server error
 
-1. Listen on the configured port (default: 8081)
-2. Accept JSON-RPC 2.0 requests at the root endpoint `/`
-3. Return proper JSON-RPC 2.0 responses
-4. Provide health check endpoints at `/live` and `/ready`
-5. Expose metrics at `/metrics` (if Prometheus is enabled)
+## Available RPC Methods
 
-## Configuration
+### Balance & Token Methods
 
-The service is configured through the `Settings` class, which includes:
+#### `circles_getTotalBalance`
 
-- Database connection strings
-- RPC endpoints
-- Performance settings
-- Logging configuration
+Get total V1 Circles balance for an address.
+
+**Parameters:**
+
+- `address` (string) - Ethereum address
+- `asTimeCircles` (boolean, optional) - Format as TimeCircles (default: true)
+
+**Returns:** `string` - Total balance
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTotalBalance",
+  "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", true],
+  "id": 1
+}'
+```
+
+#### `circlesV2_getTotalBalance`
+
+Get total V2 Circles balance for an address.
+
+**Parameters:** Same as `circles_getTotalBalance`
+
+#### `circles_getTokenBalances`
+
+Get detailed token balances for all tokens held by an address.
+
+**Parameters:**
+
+- `address` (string) - Ethereum address
+
+**Returns:** `CirclesTokenBalance[]` - Array of token balances with metadata
+
+**Response Schema:**
+
+```typescript
+{
+  tokenAddress: string
+  tokenId: string
+  tokenOwner: string
+  tokenType: string
+  version: number
+  attoCircles: string
+  circles: number
+  staticAttoCircles: string
+  staticCircles: number
+  attoCrc: string
+  crc: number
+  isErc20: boolean
+  isErc1155: boolean
+  isWrapped: boolean
+  isInflationary: boolean
+  isGroup: boolean
+}
+```
+
+#### `circles_getTokenInfo`
+
+Get metadata for a specific token.
+
+**Parameters:**
+
+- `tokenAddress` (string) - Token address
+
+**Returns:** `TokenInfo`
+
+#### `circles_getTokenInfoBatch`
+
+Get metadata for multiple tokens.
+
+**Parameters:**
+
+- `tokenAddresses` (string[]) - Array of token addresses
+
+**Returns:** `TokenInfo?[]` - Array with nulls for non-existent tokens
+
+### Avatar & Profile Methods
+
+#### `circles_getAvatarInfo`
+
+Get avatar information for an address (V1 and V2 merged).
+
+**Parameters:**
+
+- `address` (string) - Avatar address
+
+**Returns:** `AvatarInfo`
+
+**Response Schema:**
+
+```typescript
+{
+  version: number
+  type: string
+  avatar: string
+  tokenId: string
+  hasV1: boolean
+  v1Token: string | null
+  cidV0Digest: string
+  cidV0: string | null
+  isHuman: boolean
+  name: string | null
+  symbol: string
+}
+```
+
+#### `circles_getAvatarInfoBatch`
+
+Get avatar information for multiple addresses.
+
+**Parameters:**
+
+- `addresses` (string[])
+
+**Returns:** `AvatarInfo[]`
+
+#### `circles_getProfileCid`
+
+Get the IPFS CID for an avatar's profile.
+
+**Parameters:**
+
+- `address` (string)
+
+**Returns:** `string | null` - CIDv0 string
+
+#### `circles_getProfileCidBatch`
+
+Get profile CIDs for multiple addresses.
+
+**Parameters:**
+
+- `addresses` (string[])
+
+**Returns:** `{ [address: string]: string | null }`
+
+#### `circles_getProfileByCid`
+
+Retrieve a profile from IPFS by its CID.
+
+**Parameters:**
+
+- `cid` (string) - CIDv0 string
+
+**Returns:** `JsonElement | null` - Profile data from IPFS
+
+#### `circles_getProfileByCidBatch`
+
+Retrieve multiple profiles by their CIDs.
+
+**Parameters:**
+
+- `cids` (string[])
+
+**Returns:** `{ [cid: string]: JsonElement | null }`
+
+#### `circles_getProfileByAddress`
+
+Get profile data for an avatar address (CID lookup + IPFS fetch).
+
+**Parameters:**
+
+- `address` (string)
+
+**Returns:** `JsonElement | null` - Profile enriched with avatar type and short name
+
+#### `circles_getProfileByAddressBatch`
+
+Get profiles for multiple addresses.
+
+**Parameters:**
+
+- `addresses` (string[])
+
+**Returns:** `{ [address: string]: JsonElement | null }`
+
+#### `circles_searchProfiles`
+
+Full-text search for profiles.
+
+**Parameters:**
+
+- `text` (string) - Search query (max 3 tokens, each > 1 char)
+- `limit` (number, optional) - Max results (default: 20, max: 100)
+- `offset` (number, optional) - Pagination offset (default: 0)
+- `types` (string[], optional) - Filter by avatar types
+
+**Returns:**
+
+```typescript
+{
+  total: number
+  results: Array<{
+    avatar: string
+    avatarInfo: AvatarInfo
+    profile: JsonElement | null
+  }>
+}
+```
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_searchProfiles",
+  "params": ["berlin", 10, 0, ["CrcV2_RegisterHuman"]],
+  "id": 1
+}'
+```
+
+### Trust & Network Methods
+
+#### `circles_getTrustRelations`
+
+Get trust relationships for an address.
+
+**Parameters:**
+
+- `address` (string)
+
+**Returns:**
+
+```typescript
+{
+  user: string
+  trusts: Array<{ user: string; limit: number }>
+  trustedBy: Array<{ user: string; limit: number }>
+}
+```
+
+#### `circles_getCommonTrust`
+
+Find addresses that two users both trust.
+
+**Parameters:**
+
+- `address1` (string)
+- `address2` (string)
+- `version` (number, optional) - Filter by Circles version (1, 2, or null for both)
+
+**Returns:** `string[]` - Array of commonly trusted addresses
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getCommonTrust",
+  "params": ["0xaddr1...", "0xaddr2...", 2],
+  "id": 1
+}'
+```
+
+#### `circles_getNetworkSnapshot`
+
+Get a complete snapshot of the Circles trust network.
+
+**Parameters:** None
+
+**Returns:** `NetworkSnapshotResponse` (proxied from Pathfinder service)
+
+#### `circlesV2_findPath`
+
+Calculate a transitive payment path through the trust network.
+
+**Parameters:**
+
+- `flowRequest` (FlowRequest object):
+  ```typescript
+  {
+    source: string;
+    sink: string;
+    targetFlow: string;
+    fromTokens?: string[];  // Source token filter
+    toTokens?: string[];    // Destination token filter
+    withWrap?: boolean;     // Enable ERC20 wrapping
+  }
+  ```
+
+**Returns:** `JsonElement` - Path response from Pathfinder
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circlesV2_findPath",
+  "params": [{
+    "source": "0xsource...",
+    "sink": "0xsink...",
+    "targetFlow": "1000000000000000000"
+  }],
+  "id": 1
+}'
+```
+
+### Event & Query Methods
+
+#### `circles_events`
+
+Query indexed blockchain events with advanced filtering.
+
+**Parameters:**
+
+- `address` (string, optional) - Filter by address
+- `fromBlock` (number, optional) - Start block (inclusive)
+- `toBlock` (number, optional) - End block (inclusive)
+- `eventTypes` (string[], optional) - Filter by event types
+- `filterPredicates` (FilterPredicate[], optional) - Advanced filters
+- `sortAscending` (boolean, optional) - Sort order (default: false)
+
+**Returns:** `EventsResponse` - Array of events
+
+**Filter Predicates:**
+Supports complex filters:
+
+```typescript
+{
+  type: "FilterPredicate";
+  filterType: "Equals" | "In" | "GreaterThan" | "LessThan" | ...;
+  column: string;
+  value: any;
+}
+```
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_events",
+  "params": ["0xaddr...", 30282299, null],
+  "id": 1
+}'
+```
+
+#### `circles_query`
+
+Generic database query interface using structured DTOs.
+
+**Parameters:**
+
+- `query` (SelectDto):
+  ```typescript
+  {
+    namespace: string;
+    table: string;
+    columns?: string[];
+    filter?: FilterPredicate[];
+    order?: Array<{ column: string; sortOrder: "ASC" | "DESC" }>;
+    limit?: number;
+    distinct?: boolean;
+  }
+  ```
+
+**Returns:**
+
+```typescript
+{
+  columns: string[];
+  rows: Array<{ [key: string]: any }>;
+}
+```
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_query",
+  "params": [{
+    "namespace": "V_Crc",
+    "table": "Avatars",
+    "columns": [],
+    "limit": 10,
+    "order": [{"column": "blockNumber", "sortOrder": "DESC"}]
+  }],
+  "id": 1
+}'
+```
+
+### System Methods
+
+#### `circles_health`
+
+Check service health status.
+
+**Parameters:** None
+
+**Returns:** `string` - "Healthy" or error message
+
+**Health Checks:**
+
+- Database connectivity
+- Blockchain sync status (when `BALANCE_MODE=live`)
+- Pathfinder connectivity
+
+#### `circles_tables`
+
+Get available database tables and schemas.
+
+**Parameters:** None
+
+**Returns:**
+
+```typescript
+Array<{
+  namespace: string
+  tables: Array<{
+    table: string
+    topic: string
+    columns: Array<{ column: string; type: string }>
+  }>
+}>
+```
+
+## Health Check Endpoints
+
+- **`GET /live`** - Liveness probe (service is running)
+- **`GET /ready`** - Readiness probe (service is ready to accept traffic)
+  - Checks: Nethermind sync status, Pathfinder connectivity
+- **`GET /health`** - Nethermind connectivity check
+- **`GET /metrics`** - Prometheus metrics (if enabled)
+
+## Balance Modes
+
+The service supports two balance query modes:
+
+### Live Mode (default)
+
+```bash
+export BALANCE_MODE="live"
+```
+
+- Uses `eth_call` to query live blockchain state
+- Accurate, current balances
+- Slower, requires Nethermind RPC connection
+- Recommended for production
+
+### Database Mode
+
+```bash
+export BALANCE_MODE="database"
+```
+
+- Queries indexed database
+- Fast responses
+- May be slightly stale (depends on indexer sync)
+- Good for development/testing
+
+## Architecture
+
+### Components
+
+1. **CirclesRpcModule** (`CirclesRpcModule.cs`) - Core business logic for all RPC methods
+2. **Program.cs** - ASP.NET Core app, routes requests to handlers
+3. **Settings** - Environment-based configuration
+4. **DatabaseSchemaMap** - Maps database schemas for query operations
+5. **NethermindRpcClient** - Live balance queries via eth_call
+6. **AbiEncoder** - Ethereum ABI encoding for contract calls
+
+### Dependencies
+
+- **Circles.Index.Postgres** - Database access layer
+- **Circles.Index.Query** - Query abstractions and DTOs
+- **Circles.Pathfinder.DTOs** - Pathfinding request/response types
+- **Nethermind RPC** - Live blockchain queries (optional, for balance mode)
+- **External Pathfinder** - Pathfinding service (for `circlesV2_findPath`)
+
+### Data Flow
+
+```
+Client Request
+    ↓
+JSON-RPC 2.0 Parser
+    ↓
+CirclesRpcModule
+    ↓
+┌─────────────┬───────────────┬──────────────┐
+│  Postgres   │  Nethermind   │  Pathfinder  │
+│  (Index DB) │  (eth_call)   │  (External)  │
+└─────────────┴───────────────┴──────────────┘
+    ↓
+JSON-RPC 2.0 Response
+```
 
 ## Development
 
-The implementation compiles successfully with .NET 9.0 and includes comprehensive warning handling for nullability and async patterns.
+### Prerequisites
+
+- .NET 9.0 SDK
+- PostgreSQL 15+ (with indexed Circles data)
+- Nethermind RPC endpoint (optional, for live mode)
+- Pathfinder service (optional, for pathfinding methods)
+
+### Testing
+
+```bash
+# Run tests
+cd src/Rpc/Circles.Rpc.Host.Tests
+dotnet test
+
+# Test specific endpoint
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_health",
+  "params": [],
+  "id": 1
+}'
+```
+
+### Adding New RPC Methods
+
+1. Add method signature to `ICirclesRpcModule.cs`
+2. Implement method in `CirclesRpcModule.cs`
+3. Add handler function in `Program.cs`
+4. Add route mapping in the method switch statement
+5. Update this README with method documentation
+
+## Troubleshooting
+
+### Common Issues
+
+**Port 8081 already in use:**
+
+```bash
+ASPNETCORE_URLS="http://localhost:8082" ./scripts/run-rpc.sh
+```
+
+**Database connection errors:**
+
+```bash
+# Check Postgres is running
+docker ps | grep postgres
+
+# Test connection
+psql -h localhost -U postgres -d postgres -c "SELECT 1"
+```
+
+**Pathfinder methods fail:**
+
+```bash
+# Ensure pathfinder is running
+curl http://localhost:8080/health
+
+# Set pathfinder URL
+export EXTERNAL_PATHFINDER_URL="http://localhost:8080"
+```
+
+**Balance queries timeout:**
+
+```bash
+# Increase timeout
+export DATABASE_QUERY_TIMEOUT_SECONDS=60
+
+# Or switch to database mode
+export BALANCE_MODE="database"
+```
+
+## Performance Tuning
+
+- **Database queries:** Adjust `DATABASE_QUERY_TIMEOUT_SECONDS` (default: 30)
+- **Profile search:** Adjust `PROFILE_SEARCH_TIMEOUT_SECONDS` (default: 30)
+- **Balance mode:** Use `database` mode for faster responses
+- **Connection pooling:** Postgres connection string supports pooling parameters
+
+## Related Documentation
+
+- [Main README](../../../README.md) - Full API documentation with examples
+- [DEVELOPMENT.md](../../../DEVELOPMENT.md) - Build and deployment guide
+- [scripts/README.md](../../../scripts/README.md) - Script documentation
+- [Circles.Pathfinder](../../Pathfinder/Circles.Pathfinder/README.md) - Pathfinding service
