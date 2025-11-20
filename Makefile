@@ -25,6 +25,8 @@ help:
 	@echo "  make pack              Create NuGet packages"
 	@echo "  make pack-clean        Clean and create packages"
 	@echo "  make push              Push packages to NuGet.org"
+	@echo "  make push SOURCE=<url> Push packages to custom repository"
+	@echo "  make push <local-path> Push packages to local directory"
 		@echo ""
 	@echo "Development:"
 	@echo "  make run-index         Run Nethermind with Index plugin (Gnosis)"
@@ -109,7 +111,24 @@ pack-clean:
 	./scripts/nuget-pack.sh --clean
 
 push:
-	./scripts/nuget-push.sh
+	@TARGET=$(firstword $(MAKECMDGOALS)) && \
+	if [ "$$TARGET" != "push" ]; then \
+		if [[ "$$TARGET" == http* ]]; then \
+			NUGET_SOURCE="$$TARGET" ./scripts/nuget-push.sh; \
+		else \
+			NUGET_SOURCE="$$(realpath $$TARGET)" ./scripts/nuget-push.sh; \
+		fi; \
+	elif [ -n "$(SOURCE)" ]; then \
+		if [[ "$(SOURCE)" == http* ]]; then \
+			NUGET_SOURCE="$(SOURCE)" ./scripts/nuget-push.sh; \
+		else \
+			NUGET_SOURCE="$(realpath $(SOURCE))" ./scripts/nuget-push.sh; \
+		fi; \
+	else \
+		./scripts/nuget-push.sh; \
+	fi
+
+push-local: push CirclesLocalFeed
 
 # Run development services
 run-index:

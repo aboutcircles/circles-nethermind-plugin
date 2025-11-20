@@ -537,7 +537,7 @@ ASPNETCORE_URLS="http://localhost:8001" ./scripts/run-pathfinder.sh
 
 ```bash
 docker ps | grep postgres
-psql -h localhost -U postgres -d circles -c "SELECT 1"
+psql -h localhost -U postgres -d postgres -c "SELECT 1"
 ```
 
 ### Test Failures

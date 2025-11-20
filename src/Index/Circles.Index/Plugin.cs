@@ -23,8 +23,6 @@ public class Plugin : INethermindPlugin
     public string Author => "Gnosis";
     public bool Enabled { get; } = true;
 
-    public static IReadOnlyList<IDatabaseSchema> AllSchemas => DatabaseSchemaProvider.AllSchemas;
-
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     private StateMachine? _indexerMachine;
@@ -41,9 +39,7 @@ public class Plugin : INethermindPlugin
 
         Settings settings = new();
 
-        var schemas = AllSchemas;
-
-        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(schemas.ToArray());
+        IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(DatabaseSchemaProvider.Schemas.AllSchemas.ToArray());
         IDatabase database = new PostgresDb(settings.IndexDbConnectionString, databaseSchema);
         IReadonlyDatabase readonlyDatabase = new PostgresDb(settings.IndexReadonlyDbConnectionString, databaseSchema);
 

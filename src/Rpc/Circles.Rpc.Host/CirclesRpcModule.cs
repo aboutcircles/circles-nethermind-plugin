@@ -5,14 +5,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Circles.Index;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
 using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 
 
@@ -55,18 +53,19 @@ public class CirclesRpcModule : ICirclesRpcModule
         return connection;
     }
 
-    public async Task<string> GetTotalBalance(string address, int version, bool? asTimeCircles = true)
+    public async Task<TotalBalanceResponse> GetTotalBalance(string address, int version, bool? asTimeCircles = true)
     {
         var balances = await GetTokenBalancesForAccount(address);
         var relevantBalances = balances.Where(o => o.Version == version);
 
+        string balance;
         if (asTimeCircles == null || asTimeCircles == true)
         {
             var totalBalance = relevantBalances
                 .Select(o => o.Circles)
                 .Sum();
 
-            return totalBalance.ToString(CultureInfo.InvariantCulture);
+            balance = totalBalance.ToString(CultureInfo.InvariantCulture);
         }
         else
         {
@@ -74,8 +73,10 @@ public class CirclesRpcModule : ICirclesRpcModule
                 .Select(o => UInt256.Parse(o.StaticAttoCircles))
                 .Aggregate((UInt256)0, (acc, val) => acc + val);
 
-            return totalBalance.ToString(CultureInfo.InvariantCulture);
+            balance = totalBalance.ToString(CultureInfo.InvariantCulture);
         }
+        
+        return new TotalBalanceResponse(balance);
     }
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
@@ -322,6 +323,15 @@ public class CirclesRpcModule : ICirclesRpcModule
 
                 UNION ALL
 
+                -- V1 tokens where address is the owner (signup)
+                SELECT token AS ""tokenAddress""
+                     , 'CrcV1_Signup' AS ""type""
+                     , ""user"" AS ""tokenOwner""
+                FROM public.""CrcV1_Signup""
+                WHERE ""user"" = @address
+
+                UNION ALL
+
                 -- V2 avatar tokens from TransferSingle (ERC1155)
                 SELECT DISTINCT ts.""tokenAddress""
                      , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
@@ -371,7 +381,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var isWrapped = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary"
                 or "CrcV2_ERC20WrapperDeployed_Demurraged";
 
-            var isInflationary = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary";
+            var isInflationary = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary" || tokenType is "CrcV1_Signup";
             var isGroup = tokenType is "CrcV2_RegisterGroup";
 
             var isErc20 = tokenType == "CrcV1_Signup" || isWrapped;
@@ -849,10 +859,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         return result;
     }
 
-    public async Task<string?> GetProfileCid(string address)
+    public async Task<ProfileCidResponse> GetProfileCid(string address)
     {
         var results = await GetProfileCidBatchInternal(new[] { address });
-        return results[0];
+        return new ProfileCidResponse(results[0]);
     }
 
     public async Task<Dictionary<string, string?>> GetProfileCidBatch(string[] addresses)
@@ -1488,7 +1498,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             commonTrusts.Add(reader.GetString(0));
         }
-        return new CommonTrustResponse(Address1: address1.ToLower(), Address2: address2.ToLower(), CommonTrusts: commonTrusts);
+        return new CommonTrustResponse(Address1: address1.ToLower(), Address2: address2.ToLower(), CommonTrusts: commonTrusts.ToArray());
     }
 
     public async Task<NetworkSnapshotResponse> GetNetworkSnapshot()
@@ -2002,7 +2012,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var namespaces = new List<TableNamespace>();
 
-        foreach (var schema in DatabaseSchemaProvider.AllSchemas)
+        foreach (var schema in Index.DatabaseSchemaProvider.AllSchemas)
         {
             var schemaNamespaces = schema.Tables.GroupBy(o => o.Key.Namespace);
 

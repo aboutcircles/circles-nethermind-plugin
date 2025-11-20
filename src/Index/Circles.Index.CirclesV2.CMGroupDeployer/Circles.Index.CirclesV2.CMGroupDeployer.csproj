@@ -1,6 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
+  <!-- NuGet Package Metadata -->
+  <Version>0.0.1</Version>
+  <Authors>Gnosis Service GmbH</Authors>
+  <Copyright>Gnosis Service GmbH</Copyright>
+  <Product>Circles</Product>
+  <PackageId>Gnosis.Circles.Nethermind.Plugin.CirclesV2.CMGroupDeployer</PackageId>
+  <Description>CM group deployer indexing for Circles V2</Description>
+  <PackageTags>circles;blockchain;indexing</PackageTags>
+  <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
+  <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
+  <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>

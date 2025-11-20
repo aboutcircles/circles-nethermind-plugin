@@ -1,13 +1,13 @@
 using System.Collections.Immutable;
 using Circles.Index.Common;
 
-namespace Circles.Index;
+namespace Circles.Index.DatabaseSchemaProvider;
 
 /// <summary>
 /// Provides access to all database schemas without depending on Nethermind assemblies.
 /// This allows the RPC host to access schema information independently of the main Plugin.
 /// </summary>
-public static class DatabaseSchemaProvider
+public static class Schemas
 {
     /// <summary>
     /// Gets all database schemas registered in the Circles indexer.
@@ -21,7 +21,6 @@ public static class DatabaseSchemaProvider
         new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
         new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
         new CirclesV2.CMGroupDeployer.DatabaseSchema(),
-        new CirclesV2.DatabaseSchema(),
         new CirclesV2.InvitationEscrow.DatabaseSchema(),
         new CirclesV2.LBP.DatabaseSchema(),
         new CirclesV2.NameRegistry.DatabaseSchema(),
