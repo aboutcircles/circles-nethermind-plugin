@@ -1172,12 +1172,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         int readCount = 0;
         while (await reader.ReadAsync())
         {
-            var payloadCellValue = reader.GetValue(0);
             int targetIndex = missingCidIndexes[readCount];
             string targetCid = cids[targetIndex];
 
-            if (payloadCellValue is string payloadStr)
+            if (!reader.IsDBNull(0))
             {
+                var payloadStr = reader.GetString(0);
                 var profile = JsonSerializer.Deserialize<JsonElement>(payloadStr);
                 result[targetIndex] = profile;
                 _profileByCidCache.Set(targetCid, profile, new MemoryCacheEntryOptions { Size = 1 });
