@@ -646,22 +646,31 @@ public class CirclesRpcModule : ICirclesRpcModule
         throw new InvalidOperationException($"No token info found for address {tokenAddress}");
     }
 
-    public async Task<TokenInfo[]> GetTokenInfoBatch(string[] tokenAddresses)
+    public async Task<TokenInfo?[]> GetTokenInfoBatch(string[] tokenAddresses)
     {
-        var results = new List<TokenInfo>();
-        foreach (var tokenAddress in tokenAddresses)
+        if (tokenAddresses.Length > 1000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
+        }
+
+        // Execute all lookups in parallel
+        var getTokenInfoTasks = tokenAddresses.Select(async tokenAddress =>
         {
             try
             {
-                var tokenInfo = await GetTokenInfo(tokenAddress);
-                results.Add(tokenInfo);
+                return await GetTokenInfo(tokenAddress);
             }
             catch
             {
-                // Skip tokens that don't exist
+                // Return null for tokens that don't exist or fail to load
+                return null;
             }
-        }
-        return results.ToArray();
+        }).ToArray();
+
+        var results = await Task.WhenAll(getTokenInfoTasks);
+
+        // Return array with same length as input, preserving positions
+        return results;
     }
 
     public async Task<AvatarInfo> GetAvatarInfo(string address)
