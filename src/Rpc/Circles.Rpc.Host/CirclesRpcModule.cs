@@ -234,6 +234,10 @@ public class CirclesRpcModule : ICirclesRpcModule
                 SELECT ""tokenAddress"", ""timestamp""
                 FROM ""CrcV1_Transfer""
                 WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
+                UNION ALL
+                SELECT ""tokenAddress"", ""timestamp""
+                FROM ""CrcV2_Erc20WrapperTransfer""
+                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
             ) combined
             ORDER BY ""tokenAddress"", ""timestamp"" DESC";
 
@@ -565,10 +569,10 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (await reader.ReadAsync())
             {
                 return new TokenInfo(
-                    Token: reader.GetString(0),
+                    TokenAddress: reader.GetString(0),
                     TokenOwner: reader.GetString(1),
+                    TokenType: "CrcV1_Signup",
                     Version: 1,
-                    Type: "Avatar",
                     IsErc20: true,
                     IsErc1155: false,
                     IsWrapped: false,
@@ -589,10 +593,10 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var type = reader.GetString(1);
                 var isGroup = type == "CrcV2_RegisterGroup";
                 return new TokenInfo(
-                    Token: reader.GetString(0),
+                    TokenAddress: reader.GetString(0),
                     TokenOwner: reader.GetString(0), // For V2 avatars, the token and owner are the same
+                    TokenType: type,
                     Version: 2,
-                    Type: "Avatar",
                     IsErc20: false,
                     IsErc1155: true,
                     IsWrapped: false,
@@ -603,7 +607,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         // 3. Check for V2 Wrapped ERC20 token
-        const string v2WrappedSql = @"SELECT ""erc20Wrapper"", avatar FROM ""CrcV2_ERC20WrapperDeployed"" WHERE ""erc20Wrapper"" = @tokenAddress LIMIT 1";
+        const string v2WrappedSql = @"
+            SELECT wd.""erc20Wrapper"", wd.avatar, wd.""circlesType""
+            FROM ""CrcV2_ERC20WrapperDeployed"" wd
+            WHERE wd.""erc20Wrapper"" = @tokenAddress LIMIT 1";
         await using (var cmd = new NpgsqlCommand(v2WrappedSql, connection))
         {
             cmd.Parameters.AddWithValue("tokenAddress", lowerTokenAddress);
@@ -611,15 +618,25 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 if (await reader.ReadAsync())
                 {
+                    var tokenOwner = reader.GetString(1);
+                    var circlesType = reader.GetInt32(2);
+                    
+                    // Determine token type based on circlesType
+                    // circlesType = 0 for demurraged, 1 for inflationary
+                    var isInflationary = circlesType == 1;
+                    var tokenType = isInflationary
+                        ? "CrcV2_ERC20WrapperDeployed_Inflationary"
+                        : "CrcV2_ERC20WrapperDeployed_Demurraged";
+                    
                     return new TokenInfo(
-                        Token: reader.GetString(0),
-                        TokenOwner: reader.GetString(1),
+                        TokenAddress: reader.GetString(0),
+                        TokenOwner: tokenOwner,
+                        TokenType: tokenType,
                         Version: 2,
-                        Type: "ERC20",
                         IsErc20: true,
                         IsErc1155: false,
                         IsWrapped: true,
-                        IsInflationary: false,
+                        IsInflationary: isInflationary,
                         IsGroup: false
                     );
                 }
