@@ -8,6 +8,8 @@ using Prometheus;
 using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
 
+NethermindAssemblyAnchors.EnsureLoaded();
+
 var builder = BuilderSetup.ConfigureBuilder(args);
 
 var app = builder.Build();

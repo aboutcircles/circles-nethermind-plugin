@@ -11,9 +11,15 @@
     <!-- RuntimeIdentifier can be set via CLI: dotnet publish -r linux-x64 or linux-arm64 -->
     <!-- For local development (dotnet run), don't set a default RuntimeIdentifier -->
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
+    <UseCurrentRuntimeIdentifier>true</UseCurrentRuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <NethermindArtifactsDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\nethermind\src\Nethermind\artifacts'))</NethermindArtifactsDir>
+    <NethermindArtifactsConfiguration>$([System.String]::Copy('$(Configuration)').ToLowerInvariant())</NethermindArtifactsConfiguration>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,8 +45,8 @@
       Include="..\..\nethermind\src\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj">
     </ProjectReference>
 
+    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.7" />
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.Common" Version="0.0.1" />
-    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.DatabaseSchemaProvider" Version="0.0.1" />
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.Query" Version="0.0.1" />
     <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
 
@@ -60,5 +66,23 @@
     <PackageReference Include="Autofac" Version="8.4.0" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
+
+  <ItemGroup>
+    <NethermindRuntimeAssemblies Include="$(NethermindArtifactsDir)\bin\Nethermind.Core\$(NethermindArtifactsConfiguration)\Nethermind.Core.dll" />
+    <NethermindRuntimeAssemblies Include="$(NethermindArtifactsDir)\bin\Nethermind.Logging\$(NethermindArtifactsConfiguration)\Nethermind.Logging.dll" />
+  </ItemGroup>
+
+  <Target Name="CopyNethermindAssemblies" AfterTargets="Build">
+    <ItemGroup>
+      <MissingNethermindAssemblies Include="@(NethermindRuntimeAssemblies)" Condition="!Exists('%(NethermindRuntimeAssemblies.Identity)')" />
+    </ItemGroup>
+
+    <Error Condition="'@(MissingNethermindAssemblies)' != ''"
+           Text="Missing Nethermind runtime assemblies: @(MissingNethermindAssemblies). Ensure the nethermind submodule is initialized and built (see DEVELOPMENT.md)." />
+
+    <Copy SourceFiles="@(NethermindRuntimeAssemblies)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
