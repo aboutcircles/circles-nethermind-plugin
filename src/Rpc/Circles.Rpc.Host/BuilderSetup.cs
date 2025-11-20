@@ -1,10 +1,8 @@
 using System.IO.Compression;
-using Circles.Index.Common;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Npgsql;
 using Microsoft.AspNetCore.ResponseCompression;
-using Microsoft.Extensions.Logging;
 
 namespace Circles.Rpc.Host;
 

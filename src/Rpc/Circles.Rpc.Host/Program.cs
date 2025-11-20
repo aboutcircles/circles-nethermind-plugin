@@ -78,8 +78,10 @@ app.MapPost("/", async (
             // Avatar & Profile Methods
             "circles_getAvatarInfo" => await HandleGetAvatarInfo(request, rpcModule),
             "circles_getAvatarInfoBatch" => await HandleGetAvatarInfoBatch(request, rpcModule),
-            "circles_getProfileByCid" => await HandleGetProfileCid(request, rpcModule),
-            "circles_getProfileByCidBatch" => await HandleGetProfileCidBatch(request, rpcModule),
+            "circles_getProfileCid" => await HandleGetProfileCid(request, rpcModule),
+            "circles_getProfileCidBatch" => await HandleGetProfileCidBatch(request, rpcModule),
+            "circles_getProfileByCid" => await HandleGetProfileByCid(request, rpcModule),
+            "circles_getProfileByCidBatch" => await HandleGetProfileByCidBatch(request, rpcModule),
             "circles_getProfileByAddress" => await HandleGetProfileByAddress(request, rpcModule),
             "circles_getProfileByAddressBatch" => await HandleGetProfileByAddressBatch(request, rpcModule),
             "circles_searchProfiles" => await HandleSearchProfiles(request, rpcModule),
@@ -233,7 +235,15 @@ static async Task<object> HandleGetAvatarInfo(JsonRpcRequest request, CirclesRpc
         throw new ArgumentException("Address parameter is required");
     }
 
-    return await rpcModule.GetAvatarInfo(parameters[0]);
+    try
+    {
+        return await rpcModule.GetAvatarInfo(parameters[0]);
+    }
+    catch (InvalidOperationException ex)
+    {
+        // Return null for non-existent avatars to match reference implementation behavior
+        throw new ArgumentException(ex.Message);
+    }
 }
 
 static async Task<object> HandleGetAvatarInfoBatch(JsonRpcRequest request, CirclesRpcModule rpcModule)
@@ -268,6 +278,29 @@ static async Task<object> HandleGetProfileCidBatch(JsonRpcRequest request, Circl
     }
 
     return await rpcModule.GetProfileCidBatch(parameters[0]);
+}
+
+static async Task<object> HandleGetProfileByCid(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    var parameters = JsonSerializer.Deserialize<string[]>(request.Params.GetRawText());
+    if (parameters == null || parameters.Length == 0)
+    {
+        throw new ArgumentException("CID parameter is required");
+    }
+
+    var profile = await rpcModule.GetProfileByCid(parameters[0]);
+    return profile ?? throw new ArgumentException("Profile not found for CID");
+}
+
+static async Task<object> HandleGetProfileByCidBatch(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    var parameters = JsonSerializer.Deserialize<string[][]>(request.Params.GetRawText());
+    if (parameters == null || parameters.Length == 0)
+    {
+        throw new ArgumentException("CIDs array parameter is required");
+    }
+
+    return await rpcModule.GetProfileByCidBatch(parameters[0]);
 }
 
 static async Task<object> HandleGetProfileByAddress(JsonRpcRequest request, CirclesRpcModule rpcModule)
