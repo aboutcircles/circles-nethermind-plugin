@@ -198,17 +198,8 @@ static async Task<object> HandleGetTokenBalances(JsonRpcRequest request, Circles
         throw new ArgumentException("Address parameter is required");
     }
 
-    var address = parameters[0];
-    bool asTimeCircles = true;
-    if (parameters.Length > 1 && parameters[1] != null)
-    {
-        if (bool.TryParse(parameters[1], out var parsedValue))
-        {
-            asTimeCircles = parsedValue;
-        }
-    }
-
-    var result = await rpcModule.GetTotalBalance(address,5, asTimeCircles);
+    string address = parameters[0];
+    var result = await rpcModule.GetTokenBalances(address);
     return result;
 }
 

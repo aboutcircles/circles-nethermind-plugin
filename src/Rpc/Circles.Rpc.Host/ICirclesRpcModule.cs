@@ -27,7 +27,7 @@ public interface ICirclesRpcModule
     /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
     /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
-    // Task<CirclesTokenBalance[]> GetTokenBalances(string address);
+    Task<CirclesTokenBalance[]> GetTokenBalances(string address);
 
     // ========================================================================
     // Token Information
