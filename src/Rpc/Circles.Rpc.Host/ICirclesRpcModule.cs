@@ -19,7 +19,7 @@ public interface ICirclesRpcModule
     /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
     /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
-    Task<string> GetTotalBalance(string address, int version, bool? asTimeCircles);
+    Task<TotalBalanceResponse> GetTotalBalance(string address, int version, bool? asTimeCircles);
 
     /// <summary>
     /// Gets token balances for an address with full metadata.
@@ -67,7 +67,7 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets the profile CID (Content Identifier) for an address.
     /// </summary>
-    Task<string?> GetProfileCid(string address);
+    Task<ProfileCidResponse> GetProfileCid(string address);
 
     /// <summary>
     /// Gets profile CIDs for multiple addresses.
@@ -198,21 +198,6 @@ public interface ICirclesRpcModule
 // ========================================================================
 
 /// <summary>
-/// Strongly-typed balance string (represents token balance in atto units).
-/// </summary>
-public readonly record struct BalanceString(string Value)
-{
-    public static implicit operator string(BalanceString balance) => balance.Value;
-    public static implicit operator BalanceString(string value) => new(value);
-    public override string ToString() => Value;
-}
-
-/// <summary>
-/// Simple token balance (V1 implementation).
-/// </summary>
-public record SimpleTokenBalance(string Token, string Balance);
-
-/// <summary>
 /// Token information response.
 /// </summary>
 public record TokenInfo(
@@ -267,7 +252,7 @@ public record TrustRelationsResponse(
 public record CommonTrustResponse(
     string Address1,
     string Address2,
-    List<string> CommonTrusts
+    string[] CommonTrusts
 );
 
 /// <summary>
@@ -390,3 +375,73 @@ public record ProfileSearchResultItem(
     AvatarInfo AvatarInfo,
     JsonElement? Profile
 );
+
+/// <summary>
+/// Total balance response. Serializes as a plain string value.
+/// </summary>
+[JsonConverter(typeof(TotalBalanceResponseJsonConverter))]
+public record TotalBalanceResponse(string Balance)
+{
+    public static implicit operator string(TotalBalanceResponse response) => response.Balance;
+    public static implicit operator TotalBalanceResponse(string value) => new(value);
+    public override string ToString() => Balance;
+}
+
+/// <summary>
+/// Profile CID response. Serializes as a plain string value or null.
+/// </summary>
+[JsonConverter(typeof(ProfileCidResponseJsonConverter))]
+public record ProfileCidResponse(string? Cid)
+{
+    public static implicit operator string?(ProfileCidResponse response) => response.Cid;
+    public static implicit operator ProfileCidResponse(string? value) => new(value);
+    public override string? ToString() => Cid;
+}
+
+/// <summary>
+/// JSON converter that serializes TotalBalanceResponse as a plain string value.
+/// </summary>
+public class TotalBalanceResponseJsonConverter : JsonConverter<TotalBalanceResponse>
+{
+    public override TotalBalanceResponse Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var balance = reader.GetString();
+        return new TotalBalanceResponse(balance ?? "");
+    }
+
+    public override void Write(Utf8JsonWriter writer, TotalBalanceResponse value, JsonSerializerOptions options)
+    {
+        // Serialize as plain string value, not as an object
+        writer.WriteStringValue(value.Balance);
+    }
+}
+
+/// <summary>
+/// JSON converter that serializes ProfileCidResponse as a plain string value or null.
+/// </summary>
+public class ProfileCidResponseJsonConverter : JsonConverter<ProfileCidResponse>
+{
+    public override ProfileCidResponse Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return new ProfileCidResponse(null);
+        }
+        
+        var cid = reader.GetString();
+        return new ProfileCidResponse(cid);
+    }
+
+    public override void Write(Utf8JsonWriter writer, ProfileCidResponse value, JsonSerializerOptions options)
+    {
+        // Serialize as plain string value or null, not as an object
+        if (value.Cid == null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteStringValue(value.Cid);
+        }
+    }
+}

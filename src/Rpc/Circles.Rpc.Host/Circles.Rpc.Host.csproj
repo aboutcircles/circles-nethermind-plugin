@@ -39,7 +39,9 @@
       Include="..\..\nethermind\src\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj">
     </ProjectReference>
 
-    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.7" />
+    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.Common" Version="0.0.1" />
+    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.DatabaseSchemaProvider" Version="0.0.1" />
+    <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.Query" Version="0.0.1" />
     <PackageReference Include="Gnosis.Circles.Pathfinder" Version="0.0.1" />
 
     <PackageReference Include="Nethereum.Util" Version="5.0.0" />

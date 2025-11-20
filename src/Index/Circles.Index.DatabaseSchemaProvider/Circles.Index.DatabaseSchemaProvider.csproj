@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+  <!-- NuGet Package Metadata -->
+  <Version>0.0.1</Version>
+  <Authors>Gnosis Service GmbH</Authors>
+  <Copyright>Gnosis Service GmbH</Copyright>
+  <Product>Circles</Product>
+  <PackageId>Gnosis.Circles.Nethermind.Plugin.DatabaseSchemaProvider</PackageId>
+  <Description>Provides access to all database schemas without depending on Nethermind assemblies</Description>
+  <PackageTags>circles;blockchain;indexing</PackageTags>
+  <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
+  <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
+  <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV1.NameRegistry\Circles.Index.CirclesV1.NameRegistry.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.AffiliateGroupRegistry\Circles.Index.CirclesV2.AffiliateGroupRegistry.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.CMGroupDeployer\Circles.Index.CirclesV2.CMGroupDeployer.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.Erc20Lift\Circles.Index.CirclesV2.Erc20Lift.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj">
+    </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV1\Circles.Index.CirclesV1.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2\Circles.Index.CirclesV2.csproj">
+    </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.Safe\Circles.Index.Safe.csproj">
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

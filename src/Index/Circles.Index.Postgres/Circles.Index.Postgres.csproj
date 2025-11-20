@@ -1,6 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
+  <!-- NuGet Package Metadata -->
+  <Version>0.0.1</Version>
+  <Authors>Gnosis Service GmbH</Authors>
+  <Copyright>Gnosis Service GmbH</Copyright>
+  <Product>Circles</Product>
+  <PackageId>Gnosis.Circles.Nethermind.Plugin.Postgres</PackageId>
+  <Description>PostgreSQL database integration for Circles indexing</Description>
+  <PackageTags>circles;blockchain;indexing</PackageTags>
+  <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
+  <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
+  <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>

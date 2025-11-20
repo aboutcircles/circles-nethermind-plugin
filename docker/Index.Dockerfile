@@ -18,6 +18,7 @@ COPY src/Index/Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.
 COPY src/Index/Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Circles.Index.CirclesV2.TokenOffers/
 COPY src/Index/Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Circles.Index.CirclesViews/
 COPY src/Index/Circles.Index.Common/Circles.Index.Common.csproj ./Circles.Index.Common/
+COPY src/Index/Circles.Index.DatabaseSchemaProvider/Circles.Index.DatabaseSchemaProvider.csproj ./Circles.Index.DatabaseSchemaProvider/
 COPY src/Index/Circles.Index.Postgres/Circles.Index.Postgres.csproj ./Circles.Index.Postgres/
 COPY src/Index/Circles.Index.Profiles/Circles.Index.Profiles.csproj ./Circles.Index.Profiles/
 COPY src/Index/Circles.Index.Query/Circles.Index.Query.csproj ./Circles.Index.Query/

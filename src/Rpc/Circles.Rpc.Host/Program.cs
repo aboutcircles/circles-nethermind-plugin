@@ -353,7 +353,33 @@ static async Task<object> HandleSearchProfiles(JsonRpcRequest request, CirclesRp
         types = parameters[3].Deserialize<string[]>();
     }
 
-    return await rpcModule.SearchProfiles(text, limit, offset, types);
+    var searchResults = await rpcModule.SearchProfiles(text, limit, offset, types);
+    var transformedResults = searchResults.Results.Select(item =>
+    {
+        // Extract properties from AvatarInfo
+        var avatarInfo = item.AvatarInfo;
+        var address = avatarInfo.Avatar; // Remote expects "address" instead of "avatar"
+        var cid = avatarInfo.CidV0; // Remote expects "cid"
+        var avatarType = avatarInfo.Type; // Remote expects "avatarType"
+
+        // Extract properties from Profile (JsonElement)
+        var profileName = item.Profile?.TryGetProperty("name", out var nameElement) == true ? nameElement.GetString() : null;
+        var profileDescription = item.Profile?.TryGetProperty("description", out var descElement) == true ? descElement.GetString() : null;
+        var profilePreviewImageUrl = item.Profile?.TryGetProperty("previewImageUrl", out var imageUrlElement) == true ? imageUrlElement.GetString() : null;
+
+        // Construct the flattened anonymous object
+        return new
+        {
+            address = address,
+            cid = cid,
+            name = profileName,
+            description = profileDescription,
+            previewImageUrl = profilePreviewImageUrl,
+            avatarType = avatarType
+        };
+    }).ToArray();
+
+    return transformedResults;
 }
 
 static async Task<object> HandleGetTrustRelations(JsonRpcRequest request, CirclesRpcModule rpcModule)

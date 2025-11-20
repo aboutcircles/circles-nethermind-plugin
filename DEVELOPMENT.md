@@ -427,7 +427,7 @@ ASPNETCORE_URLS="http://localhost:8001" ./scripts/run-pathfinder.sh
 docker ps | grep postgres
 
 # Test connection
-psql -h localhost -U postgres -d circles -c "SELECT 1"
+psql -h localhost -U postgres -d postgres -c "SELECT 1"
 ```
 
 ### Docker Build Fails
