@@ -40,8 +40,9 @@ public interface ICirclesRpcModule
 
     /// <summary>
     /// Gets information about multiple tokens by their addresses.
+    /// Returns array with same length as input, with null entries for tokens that don't exist.
     /// </summary>
-    Task<TokenInfo[]> GetTokenInfoBatch(string[] tokenAddresses);
+    Task<TokenInfo?[]> GetTokenInfoBatch(string[] tokenAddresses);
 
     // ========================================================================
     // Avatar Information
