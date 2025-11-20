@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Circles.Index.Query.Dto;
 using Circles.Pathfinder.DTOs;
 
@@ -18,14 +19,7 @@ public interface ICirclesRpcModule
     /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
     /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
-    Task<string> GetTotalBalanceV1(string address);
-
-    /// <summary>
-    /// Gets the total V2 balance for an address.
-    /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
-    /// Mode is controlled by BALANCE_MODE environment variable.
-    /// </summary>
-    Task<string> GetTotalBalanceV2(string address);
+    Task<string> GetTotalBalance(string address, int version, bool? asTimeCircles);
 
     /// <summary>
     /// Gets token balances for an address with full metadata.
@@ -33,7 +27,7 @@ public interface ICirclesRpcModule
     /// Supports both database mode (fast but stale) and live mode (accurate with eth_call).
     /// Mode is controlled by BALANCE_MODE environment variable.
     /// </summary>
-    Task<CirclesTokenBalance[]> GetTokenBalances(string address);
+    // Task<CirclesTokenBalance[]> GetTokenBalances(string address);
 
     // ========================================================================
     // Token Information
@@ -195,7 +189,7 @@ public interface ICirclesRpcModule
     /// Gets the list of available database tables/schemas.
     /// Useful for discovering what data is available for querying.
     /// </summary>
-    Task<TablesResponse> GetTables();
+    Task<TableNamespace[]> GetTables();
 }
 
 // ========================================================================
@@ -287,9 +281,39 @@ public record EventResponse(
 );
 
 /// <summary>
-/// Events collection response.
+/// Events collection response. Serializes as a plain array for backwards compatibility with remote API.
 /// </summary>
-public record EventsResponse(object[] Events);
+[JsonConverter(typeof(EventsResponseJsonConverter))]
+public class EventsResponse
+{
+    public object[] Events { get; }
+
+    public EventsResponse(object[] events)
+    {
+        Events = events ?? Array.Empty<object>();
+    }
+
+    // Implicit conversion to make it easy to return
+    public static implicit operator EventsResponse(object[] events) => new EventsResponse(events);
+}
+
+/// <summary>
+/// JSON converter that serializes EventsResponse as a plain array (not wrapped in an object).
+/// </summary>
+public class EventsResponseJsonConverter : JsonConverter<EventsResponse>
+{
+    public override EventsResponse Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var events = JsonSerializer.Deserialize<object[]>(ref reader, options);
+        return new EventsResponse(events ?? Array.Empty<object>());
+    }
+
+    public override void Write(Utf8JsonWriter writer, EventsResponse value, JsonSerializerOptions options)
+    {
+        // Serialize as plain array, not as an object with "Events" property
+        JsonSerializer.Serialize(writer, value.Events, options);
+    }
+}
 
 /// <summary>
 /// Query response with columns and rows.
@@ -307,14 +331,19 @@ public record HealthResponse(
 );
 
 /// <summary>
-/// Table schema information.
+/// Column definition in a table schema.
 /// </summary>
-public record TableSchema(string Name, string[] Tables);
+public record TableColumn(string Column, string Type);
 
 /// <summary>
-/// Tables response.
+/// Table definition with columns and topic.
 /// </summary>
-public record TablesResponse(TableSchema[] Namespaces);
+public record TableDefinition(string Table, string Topic, TableColumn[] Columns);
+
+/// <summary>
+/// Namespace containing multiple tables.
+/// </summary>
+public record TableNamespace(string Namespace, TableDefinition[] Tables);
 
 /// <summary>
 /// Network snapshot (proxied from pathfinder).

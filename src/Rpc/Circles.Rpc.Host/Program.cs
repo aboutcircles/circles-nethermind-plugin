@@ -51,7 +51,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 
 app.MapPost("/", async (
     JsonRpcRequest request,
-    Circles.Rpc.Host.Settings settings,
+    Settings settings,
     ILogger<Program> logger,
     CirclesRpcModule rpcModule
     ) =>
@@ -71,7 +71,7 @@ app.MapPost("/", async (
         {
             // Balance & Token Methods
             "circles_getTotalBalance" => await HandleGetTotalBalance(request, rpcModule),
-            "circlesV2_getTotalBalance" => await HandleCirclesV2GetTotalBalance(request, rpcModule),
+            "circlesV2_getTotalBalance" => await HandleV2GetTotalBalance(request, rpcModule),
             "circles_getTokenBalances" => await HandleGetTokenBalances(request, rpcModule),
             "circles_getTokenInfo" => await HandleGetTokenInfo(request, rpcModule),
             "circles_getTokenInfoBatch" => await HandleGetTokenInfoBatch(request, rpcModule),
@@ -154,10 +154,21 @@ static async Task<object> HandleGetTotalBalance(JsonRpcRequest request, CirclesR
         throw new ArgumentException("Address parameter is required");
     }
 
-    return await rpcModule.GetTotalBalanceV1(parameters[0]);
+    string address = parameters[0];
+    bool asTimeCircles = true;
+    if (parameters.Length > 1 && parameters[1] != null)
+    {
+        if (bool.TryParse(parameters[1], out var parsedValue))
+        {
+            asTimeCircles = parsedValue;
+        }
+    }
+
+    var result = await rpcModule.GetTotalBalance(address, 1, asTimeCircles);
+    return result;
 }
 
-static async Task<object> HandleCirclesV2GetTotalBalance(JsonRpcRequest request, CirclesRpcModule rpcModule)
+static async Task<object> HandleV2GetTotalBalance(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
     var parameters = JsonSerializer.Deserialize<string[]>(request.Params.GetRawText());
     if (parameters == null || parameters.Length == 0)
@@ -165,7 +176,18 @@ static async Task<object> HandleCirclesV2GetTotalBalance(JsonRpcRequest request,
         throw new ArgumentException("Address parameter is required");
     }
 
-    return await rpcModule.GetTotalBalanceV2(parameters[0]);
+    string address = parameters[0];
+    bool asTimeCircles = true;
+    if (parameters.Length > 1 && parameters[1] != null)
+    {
+        if (bool.TryParse(parameters[1], out var parsedValue))
+        {
+            asTimeCircles = parsedValue;
+        }
+    }
+
+    var result = await rpcModule.GetTotalBalance(address, 2, asTimeCircles);
+    return result;
 }
 
 static async Task<object> HandleGetTokenBalances(JsonRpcRequest request, CirclesRpcModule rpcModule)
@@ -176,7 +198,18 @@ static async Task<object> HandleGetTokenBalances(JsonRpcRequest request, Circles
         throw new ArgumentException("Address parameter is required");
     }
 
-    return await rpcModule.GetTokenBalances(parameters[0]);
+    var address = parameters[0];
+    bool asTimeCircles = true;
+    if (parameters.Length > 1 && parameters[1] != null)
+    {
+        if (bool.TryParse(parameters[1], out var parsedValue))
+        {
+            asTimeCircles = parsedValue;
+        }
+    }
+
+    var result = await rpcModule.GetTotalBalance(address,5, asTimeCircles);
+    return result;
 }
 
 static async Task<object> HandleGetTokenInfo(JsonRpcRequest request, CirclesRpcModule rpcModule)
@@ -334,7 +367,8 @@ static async Task<object> HandleGetCommonTrust(JsonRpcRequest request, CirclesRp
         }
     }
 
-    return await rpcModule.GetCommonTrust(address1, address2, version);
+    var result = await rpcModule.GetCommonTrust(address1, address2, version);
+    return result.CommonTrusts;
 }
 
 static async Task<object> HandleGetNetworkSnapshot(JsonRpcRequest request, CirclesRpcModule rpcModule)
