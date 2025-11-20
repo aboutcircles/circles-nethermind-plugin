@@ -272,6 +272,11 @@ normalize_response() {
         normalized=$(echo "$normalized" | jq --arg field "$field" 'walk(if type == "object" then del(.[$field]) else . end)' 2>/dev/null || echo "$normalized")
     done <<< "$NORMALIZE_FIELDS"
 
+    # Normalize Int/BigInt type differences in circles_tables responses
+    # This normalizes {"type": "Int"} to {"type": "BigInt"} for comparison
+    # since both are semantically acceptable for bigint database columns
+    normalized=$(echo "$normalized" | jq 'walk(if type == "object" and has("type") and .type == "Int" then .type = "BigInt" else . end)' 2>/dev/null || echo "$normalized")
+
     echo "$normalized"
 }
 
