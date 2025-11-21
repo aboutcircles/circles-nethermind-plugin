@@ -72,7 +72,8 @@ services:
       --JsonRpc.EnginePort=8551
       --Network.DiscoveryPort=30303
       --Network.MaxActivePeers=100
-      --HealthChecks.Enabled=false
+      --HealthChecks.Enabled=true
+      --HealthChecks.UIEnabled true
     env_file:
       - .env
     environment:
@@ -187,6 +188,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
     volumes:
       - ../.state/postgres-gnosis:/var/lib/postgresql/data
+
 
 networks:
   circles-gnosis:
