@@ -1,0 +1,79 @@
+services:
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.54.0
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 9090:9090
+    volumes:
+      - ../.state/prometheus:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+
+  node-exporter:
+    container_name: node-exporter
+    image: prom/node-exporter:v1.8.1
+    restart: unless-stopped
+    pid: host
+    networks:
+      - circles-gnosis
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|run|var/lib/docker/.+)($|/)
+
+  loki:
+    container_name: loki
+    image: grafana/loki:3.0.0
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 3100:3100
+    volumes:
+      - ../.state/loki:/loki
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    container_name: promtail
+    image: grafana/promtail:3.0.0
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    volumes:
+      - ../.state/promtail:/var/log/promtail
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  backup:
+    container_name: postgres-backup
+    image: prodrigestivill/postgres-backup-local:16
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    environment:
+      - POSTGRES_HOST=postgres-gnosis
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - BACKUP_DIR=/backups
+      - SCHEDULE=0 3 * * *
+      - KEEP_DAYS=7
+    depends_on:
+      - postgres-gnosis
+    volumes:
+      - ../.state/backups:/backups
