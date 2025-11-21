@@ -72,7 +72,8 @@ services:
       --JsonRpc.EnginePort=8551
       --Network.DiscoveryPort=30303
       --Network.MaxActivePeers=100
-      --HealthChecks.Enabled=false
+      --HealthChecks.Enabled=true
+      --HealthChecks.UIEnabled true
     env_file:
       - .env
     environment:
@@ -85,7 +86,7 @@ services:
 
   consensus-gnosis:
     container_name: consensus-gnosis
-    image: sigp/lighthouse:v8.0.1
+    image: sigp/lighthouse:v7.1.0
     restart: always
     depends_on:
       nethermind-gnosis:
@@ -188,23 +189,6 @@ services:
     volumes:
       - ../.state/postgres-gnosis:/var/lib/postgresql/data
 
-  trust-missing-avatars:
-    build:
-      context: .
-      dockerfile: trust-missing-avatars.Dockerfile
-    depends_on:
-      - nethermind-gnosis
-      - postgres-gnosis
-    restart: unless-stopped
-    networks:
-      - circles-gnosis
-    env_file:
-      - .env
-    environment:
-      - DATABASE_URL=Host=postgres-gnosis;Port=5432;Database=postgres;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      - RPC_URL=http://nethermind-gnosis:8545
-      - PRIVATE_KEY=<EOA_private_key>
-      - ROUTER_ADDRESS=0xdc287474114cc0551a81ddc2eb51783fbf34802f
 
 networks:
   circles-gnosis:

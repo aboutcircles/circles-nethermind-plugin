@@ -85,6 +85,80 @@ run_test() {
     fi
 }
 
+generate_order_clause() {
+        local columns_json="$1"
+        jq -c -n --argjson cols "$columns_json" '
+            ["blockNumber","transactionIndex","logIndex"]
+            | map(select($cols | index(.) != null))
+            | map({Column:., SortOrder:"DESC"})
+        '
+}
+
+generate_query_payload() {
+        local namespace="$1"
+        local table="$2"
+        local order_clause_json="${3:-[]}";
+        jq -c -n \
+                --arg ns "$namespace" \
+                --arg tbl "$table" \
+                --argjson order "$order_clause_json" '
+                {
+                    jsonrpc:"2.0",
+                    id:1,
+                    method:"circles_query",
+                    params:[{
+                        Namespace:$ns,
+                        Table:$tbl,
+                        Columns:[],
+                        Limit:1,
+                        Order:$order
+                    }]
+                }
+        '
+}
+
+is_event_table() {
+        local columns_json="$1"
+        jq -r -n --argjson cols "$columns_json" '
+            (["blockNumber","transactionIndex","logIndex","transactionHash"]
+                | map(select($cols | index(.) != null))
+                | length) == 4
+        '
+}
+
+generate_events_payload() {
+        local table_name="$1"
+        jq -c -n --arg tbl "$table_name" '
+            {
+                jsonrpc:"2.0",
+                id:1,
+                method:"circles_events",
+                params:[null,null,null,[$tbl],null,false]
+            }
+        '
+}
+
+# Prefetch schema metadata for dynamic coverage tests
+SCHEMA_METADATA_AVAILABLE=false
+declare -a SCHEMA_TABLES=()
+declare -a EVENT_TABLE_NAMES=()
+
+SCHEMA_PAYLOAD='{"jsonrpc":"2.0","id":"schema","method":"circles_tables","params":[]}'
+
+if schema_response=$(curl -s -X POST --data "$SCHEMA_PAYLOAD" -H "Content-Type: application/json" "$RPC_URL" 2>/dev/null); then
+        TABLES_JSON=$(echo "$schema_response" | jq '.result' 2>/dev/null || true)
+        if [[ -n "$TABLES_JSON" && "$TABLES_JSON" != "null" ]]; then
+                mapfile -t SCHEMA_TABLES < <(echo "$TABLES_JSON" | jq -rc '.[] | .Namespace as $ns | (.Tables // [])[] | {namespace:$ns, table:.Table, columns:(.Columns // [] | map(.Column))}')
+                if [[ ${#SCHEMA_TABLES[@]} -gt 0 ]]; then
+                        SCHEMA_METADATA_AVAILABLE=true
+                fi
+        fi
+else
+        if [[ "$OUTPUT_MODE" != "json" ]]; then
+                echo -e "${YELLOW}Warning: Failed to prefetch circles_tables metadata; dynamic coverage tests will be skipped.${NC}"
+        fi
+fi
+
 # ============================================================================
 # V1 tests
 # ============================================================================
@@ -128,6 +202,37 @@ run_test "circlesV2_findPath (circular path with token swap)" "curl -s -X POST -
 run_test "circlesV2_findPath (multiple token balances)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"500000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"0x6D5e20F62C177765f73aee343a307D949c08B9DC\",\"Amount\":\"300000000000000000000\",\"IsWrapped\":false},{\"Holder\":\"$TEST_ADDR_2\",\"Token\":\"0xa0f8904eC48a2775B8a88b40e9c171F05F7d7673\",\"Amount\":\"200000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 run_test "circles_tables" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circles_tables\",\"params\":[]}' -H \"Content-Type: application/json\" $RPC_URL"
+if [[ "$SCHEMA_METADATA_AVAILABLE" == "true" ]]; then
+    EVENT_TABLE_NAMES=()
+
+    if [[ "$OUTPUT_MODE" != "json" ]]; then
+        echo -e "${BLUE}--- circles_query table coverage (${#SCHEMA_TABLES[@]} tables) ---${NC}\n"
+    fi
+
+    for table_json in "${SCHEMA_TABLES[@]}"; do
+        namespace=$(echo "$table_json" | jq -r '.namespace')
+        table=$(echo "$table_json" | jq -r '.table')
+        columns_json=$(echo "$table_json" | jq -c '.columns')
+        order_clause=$(generate_order_clause "$columns_json")
+        query_payload=$(generate_query_payload "$namespace" "$table" "$order_clause")
+        run_test "circles_query (${namespace}_${table})" "curl -s -X POST --data '$query_payload' -H \"Content-Type: application/json\" $RPC_URL"
+
+        if [[ "$(is_event_table "$columns_json")" == "true" ]]; then
+            EVENT_TABLE_NAMES+=("${namespace}_${table}")
+        fi
+    done
+
+    if [[ ${#EVENT_TABLE_NAMES[@]} -gt 0 ]]; then
+        if [[ "$OUTPUT_MODE" != "json" ]]; then
+            echo -e "${BLUE}--- circles_events coverage (${#EVENT_TABLE_NAMES[@]} tables) ---${NC}\n"
+        fi
+
+        for event_table in "${EVENT_TABLE_NAMES[@]}"; do
+            events_payload=$(generate_events_payload "$event_table")
+            run_test "circles_events ($event_table)" "curl -s -X POST --data '$events_payload' -H \"Content-Type: application/json\" $RPC_URL"
+        done
+    fi
+fi
 run_test "circles_events (basic)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,null,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 run_test "circles_getCommonTrust (addr1+addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_getCommonTrust\",\"params\":[\"$TEST_ADDR_1\",\"$TEST_ADDR_2\"]}' -H \"Content-Type: application/json\" $RPC_URL"
