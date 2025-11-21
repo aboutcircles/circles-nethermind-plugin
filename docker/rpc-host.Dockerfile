@@ -24,9 +24,11 @@ RUN dotnet restore ./Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj
 WORKDIR /src/Rpc/Circles.Rpc.Host
 RUN dotnet publish \
     -c Release \
-    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
+    -r linux-$([ "$TARGETARCH" = "x64" ] && echo "arm64" || echo "x64") \
     -o /app/publish \
     --no-restore
+RUN cp /src/nethermind/src/Nethermind/Nethermind.Core/bin/Release/net9.0/*/Nethermind.Core.dll /app/publish/ && \
+    cp /src/nethermind/src/Nethermind/Nethermind.Logging/bin/Release/net9.0/*/Nethermind.Logging.dll /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
