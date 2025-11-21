@@ -19,7 +19,7 @@ WORKDIR /src/Circles.Pathfinder.Host
 # Build and publish (removed --no-restore to allow automatic restore if needed)
 RUN dotnet publish \
     -c Release \
-    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
+    -r linux-$([ "$TARGETARCH" = "x64" ] && echo "arm64" || echo "x64") \
     -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
