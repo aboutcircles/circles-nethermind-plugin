@@ -17,10 +17,11 @@ COPY ./src/Pathfinder/ .
 WORKDIR /src/Circles.Pathfinder.Host
 
 # Build and publish the project for the target architecture
-RUN dotnet publish \
-    -c Release \
-    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
-    -o /app/publish
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        dotnet publish -c Release -r linux-arm64 -o /app/publish; \
+    else \
+        dotnet publish -c Release -r linux-x64 -o /app/publish; \
+    fi
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
