@@ -15,6 +15,23 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Detect platform dynamically (use DOCKER_DEFAULT_PLATFORM if set, else auto-detect)
+if [ -n "$DOCKER_DEFAULT_PLATFORM" ]; then
+    PLATFORM="--platform $DOCKER_DEFAULT_PLATFORM"
+    echo -e "${BLUE}Using DOCKER_DEFAULT_PLATFORM: $DOCKER_DEFAULT_PLATFORM${NC}"
+else
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
+        PLATFORM="--platform linux/arm64"
+    elif [ "$ARCH" = "x86_64" ]; then
+        PLATFORM="--platform linux/amd64"
+    else
+        echo -e "${YELLOW}Unknown architecture: $ARCH, defaulting to linux/amd64${NC}"
+        PLATFORM="--platform linux/amd64"
+    fi
+    echo -e "${BLUE}Auto-detected platform: $(echo $PLATFORM | cut -d' ' -f2)${NC}"
+fi
+
 echo -e "${BLUE}Building all Docker images...${NC}\n"
 
 cd "$DOCKER_DIR"
@@ -45,11 +62,16 @@ for arg in "$@"; do
       echo "  pathfinder    Build Pathfinder host (pathfinder-host.Dockerfile)"
       echo "  rpc           Build RPC host (rpc-host.Dockerfile)"
       echo ""
+      echo "Platform detection:"
+      echo "  - Uses DOCKER_DEFAULT_PLATFORM if set (e.g., export DOCKER_DEFAULT_PLATFORM=linux/arm64)"
+      echo "  - Otherwise auto-detects: arm64/aarch64 -> linux/arm64, x86_64 -> linux/amd64"
+      echo ""
       echo "If no image is specified, all images will be built."
       echo ""
       echo "Examples:"
-      echo "  ./docker-build.sh              # Build all images"
-      echo "  ./docker-build.sh pathfinder   # Build only pathfinder image"
+      echo "  ./docker-build.sh                          # Build all images (auto-detect platform)"
+      echo "  ./docker-build.sh pathfinder               # Build only pathfinder image"
+      echo "  DOCKER_DEFAULT_PLATFORM=linux/amd64 ./docker-build.sh  # Override platform"
       exit 0
       ;;
   esac

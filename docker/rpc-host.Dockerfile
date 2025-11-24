@@ -8,10 +8,10 @@ RUN echo "Building for architecture: ${TARGETARCH}"
 # Copy Nethermind sources (needed to build / include Nethermind.Core)
 COPY ./src/nethermind ./nethermind
 WORKDIR /src/nethermind
-# Build Nethermind.Core so the DLL is available for the RPC host
-# RUN ./scripts/build/build.sh -c Release
-RUN dotnet build src/Nethermind/Nethermind.Core/Nethermind.Core.csproj -c Release
-RUN dotnet build src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj -c Release
+# Build Nethermind assemblies so we get runtime DLLs (not reference assemblies)
+# Using build instead of publish to get proper runtime assemblies
+RUN dotnet build src/Nethermind/Nethermind.Core/Nethermind.Core.csproj -c Release -o /nethermind-libs
+RUN dotnet build src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj -c Release -o /nethermind-libs
 
 WORKDIR /src
 # Copy RPC sources and restore (project path must match publish path)
@@ -24,11 +24,13 @@ RUN dotnet restore ./Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj
 WORKDIR /src/Rpc/Circles.Rpc.Host
 RUN dotnet publish \
     -c Release \
-    -r linux-$([ "$TARGETARCH" = "x64" ] && echo "arm64" || echo "x64") \
+    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
     -o /app/publish \
     --no-restore
-RUN cp /src/nethermind/src/Nethermind/Nethermind.Core/bin/Release/net9.0/*/Nethermind.Core.dll /app/publish/ && \
-    cp /src/nethermind/src/Nethermind/Nethermind.Logging/bin/Release/net9.0/*/Nethermind.Logging.dll /app/publish/
+
+# Copy Nethermind runtime DLLs from the publish output
+RUN cp /nethermind-libs/Nethermind.Core.dll /app/publish/ && \
+    cp /nethermind-libs/Nethermind.Logging.dll /app/publish/
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
