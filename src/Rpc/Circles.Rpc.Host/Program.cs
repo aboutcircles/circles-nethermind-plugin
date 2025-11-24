@@ -23,10 +23,10 @@ app.MapHealthChecks("/live", new HealthCheckOptions
     Predicate = hc => hc.Tags.Contains("live")
 });
 
-// readiness: nethermind sync status + pathfinder connectivity
+// readiness: nethermind sync status + pathfinder connectivity + database connectivity
 app.MapHealthChecks("/ready", new HealthCheckOptions
 {
-    Predicate = hc => hc.Tags.Contains("nethermind-sync") || hc.Tags.Contains("pathfinder-connection"),
+    Predicate = hc => hc.Tags.Contains("nethermind-sync") || hc.Tags.Contains("pathfinder-connection") || hc.Tags.Contains("database-connection"),
     AllowCachingResponses = false,
     ResultStatusCodes =
     {
