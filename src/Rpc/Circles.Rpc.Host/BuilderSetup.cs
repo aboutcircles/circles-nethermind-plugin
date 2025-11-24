@@ -86,7 +86,9 @@ public static class BuilderSetup
             // nethermind sync status
             .AddCheck<NethermindSyncHealthCheck>("nethermind-sync", tags: new[] { "nethermind-sync" })
             // pathfinder connectivity (optional dependency - degrades gracefully)
-            .AddCheck<PathfinderConnectionHealthCheck>("pathfinder-connection", tags: new[] { "pathfinder-connection" });
+            .AddCheck<PathfinderConnectionHealthCheck>("pathfinder-connection", tags: new[] { "pathfinder-connection" })
+            // database connectivity
+            .AddCheck<DatabaseConnectionHealthCheck>("database-connection", tags: new[] { "database-connection" });
 
         // ─── Misc DI ────────────────────────────────────────────────────────────────
         builder.Services.ConfigureHttpJsonOptions(_ => { });

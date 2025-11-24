@@ -1,4 +1,5 @@
  using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Npgsql;
 
 namespace Circles.Rpc.Host;
 
@@ -111,6 +112,38 @@ public class PathfinderConnectionHealthCheck : IHealthCheck
         catch (Exception ex)
         {
             return HealthCheckResult.Degraded($"Cannot connect to Pathfinder at {_settings.ExternalPathfinderUrl}", ex);
+        }
+    }
+}
+
+/// <summary>
+/// Health check for database connectivity.
+/// </summary>
+public class DatabaseConnectionHealthCheck : IHealthCheck
+{
+    private readonly Settings _settings;
+
+    public DatabaseConnectionHealthCheck(Settings settings)
+    {
+        _settings = settings;
+    }
+
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var connection = new NpgsqlConnection(_settings.IndexReadonlyDbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            // Optionally, execute a simple query to verify the connection is fully functional
+            await using var command = new NpgsqlCommand("SELECT 1", connection);
+            await command.ExecuteScalarAsync(cancellationToken);
+
+            return HealthCheckResult.Healthy("Database connection is healthy");
+        }
+        catch (Exception ex)
+        {
+            return HealthCheckResult.Unhealthy("Cannot connect to database", ex);
         }
     }
 }
