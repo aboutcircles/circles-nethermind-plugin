@@ -122,7 +122,8 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
+        var idsLengthBig = new BigInteger(log.Data.AsSpan().Slice(offset, 32), isUnsigned: true, isBigEndian: true);
+        int idsLength = (int)idsLengthBig;
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
@@ -132,7 +133,8 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
+        var valuesLengthBig = new BigInteger(log.Data.AsSpan().Slice(offset, 32), isUnsigned: true, isBigEndian: true);
+        int valuesLength = (int)valuesLengthBig;
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();
@@ -188,7 +190,8 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string toAddress = "0x" + log.Topics[2].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
+        var idsLengthBig = new BigInteger(log.Data.AsSpan().Slice(offset, 32), isUnsigned: true, isBigEndian: true);
+        int idsLength = (int)idsLengthBig;
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
@@ -198,7 +201,8 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
+        var valuesLengthBig = new BigInteger(log.Data.AsSpan().Slice(offset, 32), isUnsigned: true, isBigEndian: true);
+        int valuesLength = (int)valuesLengthBig;
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();
@@ -231,7 +235,8 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
         string groupAddress = "0x" + log.Topics[1].ToString().Substring(Consts.AddressEmptyBytesPrefixLength);
 
         int offset = 0;
-        int idsLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
+        var idsLengthBig = new BigInteger(log.Data.AsSpan().Slice(offset, 32), isUnsigned: true, isBigEndian: true);
+        int idsLength = (int)idsLengthBig;
         offset += 32;
 
         List<UInt256> ids = new List<UInt256>();
@@ -241,7 +246,8 @@ public class LogParser(Address standardTreasuryAddress) : ILogParser
             offset += 32;
         }
 
-        int valuesLength = (int)new BigInteger(log.Data.AsSpan().Slice(offset, 32).ToArray());
+        var valuesLengthBig = new BigInteger(log.Data.AsSpan().Slice(offset, 32), isUnsigned: true, isBigEndian: true);
+        int valuesLength = (int)valuesLengthBig;
         offset += 32;
 
         List<UInt256> values = new List<UInt256>();

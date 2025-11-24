@@ -1237,7 +1237,7 @@ public class LogParser(Address emitterAddress) : ILogParser {
 
         // Parse the log entry and add the resulting event DTOs to the list
         var topic = log.Topics[0];
-        if (topic == _transferTopic))
+        if (topic == _transferTopic)
         {
             events.Add(Erc20Transfer(block, receipt, log, logIndex));
         }
