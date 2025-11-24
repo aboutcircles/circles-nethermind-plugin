@@ -1745,8 +1745,13 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private string BuildFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters, string tablePrefix)
     {
-        var column = $"t.\"{predicate.Column}\"";
-        var paramName = $"@pred_{tablePrefix}_{predicate.Column}_{parameters.Count}";
+        if (predicate.Column == null)
+        {
+            throw new ArgumentNullException(nameof(predicate.Column), "Filter column cannot be null.");
+        }
+        var validatedColumn = ValidateIdentifier(predicate.Column, "Filter column");
+        var column = $"t.\"{validatedColumn}\"";
+        var paramName = $"@pred_{tablePrefix}_{parameters.Count}";
 
         switch (predicate.FilterType)
         {
@@ -1850,7 +1855,12 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private string BuildQueryFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters)
     {
-        var column = $"\"{predicate.Column}\"::text";
+        if (predicate.Column == null)
+        {
+            throw new ArgumentNullException(nameof(predicate.Column), "Filter column cannot be null.");
+        }
+        var validatedColumn = ValidateIdentifier(predicate.Column, "Filter column");
+        var column = $"\"{validatedColumn}\"::text";
         var paramName = $"@p{parameters.Count}";
 
         switch (predicate.FilterType)

@@ -48,8 +48,13 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
         var seed = new Dictionary<Address, string>(rows.Length + 25_000);
         foreach (var row in rows)
         {
-            var avatar = new Address(row[0]!.ToString()!);
-            seed[avatar] = CidHelper.MetadataDigestToCidV0((byte[])row[1]!);
+            if (row[0] is not string avatarStr || row[1] is not byte[] metadataDigest)
+            {
+                logger.Warn($"Skipping row with null or invalid data: avatar={row[0]}, metadataDigest={row[1]}");
+                continue;
+            }
+            var avatar = new Address(avatarStr);
+            seed[avatar] = CidHelper.MetadataDigestToCidV0(metadataDigest);
         }
 
         V2AvatarToCidMap.Seed(seed);

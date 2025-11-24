@@ -16,12 +16,8 @@ RUN dotnet restore Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj
 COPY ./src/Pathfinder/ .
 WORKDIR /src/Circles.Pathfinder.Host
 
-# Build and publish the project for the target architecture
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        dotnet publish -c Release -r linux-arm64 -o /app/publish; \
-    else \
-        dotnet publish -c Release -r linux-x64 -o /app/publish; \
-    fi
+# Build and publish the project
+RUN dotnet publish -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app

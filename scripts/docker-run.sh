@@ -61,7 +61,7 @@ shift
 
 # Get command if provided
 if [ $# -gt 0 ]; then
-  COMMAND="$@"
+  COMMAND=("$@")  
 fi
 
 # Find compose file for network
@@ -90,8 +90,8 @@ echo -e "${BLUE}Running Docker Compose for $NETWORK...${NC}"
 echo -e "${YELLOW}Compose file: $COMPOSE_FILE${NC}"
 echo -e "${YELLOW}Command: $COMMAND${NC}\n"
 
-# Run docker compose (without hyphen - modern syntax)
-docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" $COMMAND
+# Run docker compose
+docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" "${COMMAND[@]}"
 
 echo -e "\n${GREEN}Command completed successfully!${NC}"
 

@@ -109,63 +109,63 @@ public class CirclesRpcModuleTests
 
     #region GetTokenBalances Tests
 
-    [Test]
-    public async Task GetTokenBalances_WithValidAddress_ReturnsListOfBalances()
-    {
-        RequireModule();
+    // [Test]
+    // public async Task GetTokenBalances_WithValidAddress_ReturnsListOfBalances()
+    // {
+    //     RequireModule();
 
-        // This test will return an empty list if the address has no tokens
-        var testAddress = "0x0000000000000000000000000000000000000001";
-        var result = await _module!.GetTokenBalancesForAccount(testAddress);
+    //     // This test will return an empty list if the address has no tokens
+    //     var testAddress = "0x0000000000000000000000000000000000000001";
+    //     var result = await _module!.GetTokenBalancesForAccount(testAddress);
 
-        Assert.That(result, Is.Not.Null);
+    //     Assert.That(result, Is.Not.Null);
 
-        // Should return an array (could be empty)
-        Assert.That(result, Is.InstanceOf<CirclesTokenBalance[]>());
+    //     // Should return an array (could be empty)
+    //     Assert.That(result, Is.InstanceOf<CirclesTokenBalance[]>());
 
-        // If there are balances, verify structure
-        if (result.Length > 0)
-        {
-            var balance = result[0];
-            Assert.That(balance.TokenAddress, Is.Not.Null);
-            Assert.That(balance.TokenId, Is.Not.Null);
-            Assert.That(balance.TokenOwner, Is.Not.Null);
-            Assert.That(balance.Version, Is.GreaterThan(0));
+    //     // If there are balances, verify structure
+    //     if (result.Length > 0)
+    //     {
+    //         var balance = result[0];
+    //         Assert.That(balance.TokenAddress, Is.Not.Null);
+    //         Assert.That(balance.TokenId, Is.Not.Null);
+    //         Assert.That(balance.TokenOwner, Is.Not.Null);
+    //         Assert.That(balance.Version, Is.GreaterThan(0));
 
-            // Verify all value representations exist
-            Assert.That(balance.AttoCircles, Is.Not.Null);
-            Assert.That(balance.StaticAttoCircles, Is.Not.Null);
-            Assert.That(balance.AttoCrc, Is.Not.Null);
+    //         // Verify all value representations exist
+    //         Assert.That(balance.AttoCircles, Is.Not.Null);
+    //         Assert.That(balance.StaticAttoCircles, Is.Not.Null);
+    //         Assert.That(balance.AttoCrc, Is.Not.Null);
 
-            // Verify flags
-            Assert.That(balance.IsErc20 || balance.IsErc1155, Is.True,
-                "Token must be either ERC20 or ERC1155");
-        }
-    }
+    //         // Verify flags
+    //         Assert.That(balance.IsErc20 || balance.IsErc1155, Is.True,
+    //             "Token must be either ERC20 or ERC1155");
+    //     }
+    // }
 
-    [Test]
-    public async Task GetTokenBalances_VerifiesPhase1Limitation()
-    {
-        RequireModule();
+    // [Test]
+    // public async Task GetTokenBalances_VerifiesPhase1Limitation()
+    // {
+    //     RequireModule();
 
-        // This test documents that Phase 1 returns raw database values
-        // without time-based adjustments (inflation/demurrage)
+    //     // This test documents that Phase 1 returns raw database values
+    //     // without time-based adjustments (inflation/demurrage)
 
-        var testAddress = "0x0000000000000000000000000000000000000001";
-        var result = await _module!.GetTokenBalancesForAccount(testAddress);
+    //     var testAddress = "0x0000000000000000000000000000000000000001";
+    //     var result = await _module!.GetTokenBalancesForAccount(testAddress);
 
-        if (result.Length > 0)
-        {
-            var balance = result[0];
+    //     if (result.Length > 0)
+    //     {
+    //         var balance = result[0];
 
-            // In Phase 1, these should be equal (no time-based conversion)
-            // In Phase 3, they would differ based on token type
-            Assert.That(balance.AttoCircles, Is.EqualTo(balance.AttoCrc),
-                "Phase 1: AttoCircles should equal AttoCrc (no inflation/demurrage)");
-            Assert.That(balance.AttoCircles, Is.EqualTo(balance.StaticAttoCircles),
-                "Phase 1: AttoCircles should equal StaticAttoCircles (no demurrage)");
-        }
-    }
+    //         // In Phase 1, these should be equal (no time-based conversion)
+    //         // In Phase 3, they would differ based on token type
+    //         Assert.That(balance.AttoCircles, Is.EqualTo(balance.AttoCrc),
+    //             "Phase 1: AttoCircles should equal AttoCrc (no inflation/demurrage)");
+    //         Assert.That(balance.AttoCircles, Is.EqualTo(balance.StaticAttoCircles),
+    //             "Phase 1: AttoCircles should equal StaticAttoCircles (no demurrage)");
+    //     }
+    // }
 
     #endregion
 

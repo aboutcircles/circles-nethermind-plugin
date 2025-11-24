@@ -28,7 +28,7 @@ help:
 	@echo "  make pack-clean        Clean and create packages"
 	@echo "  make push              Push packages to NuGet.org"
 	@echo "  make push SOURCE=<url> Push packages to custom repository"
-	@echo "  make push <local-path> Push packages to local directory"
+	@echo "  make push SOURCE=<url|path> Push packages to custom repository or local directory"
 		@echo ""
 	@echo "Development:"
 	@echo "  make run-index         Run Nethermind with Index plugin (Gnosis)"
@@ -122,14 +122,7 @@ pack-clean:
 	./scripts/nuget-pack.sh --clean
 
 push:
-	@TARGET=$(firstword $(MAKECMDGOALS)) && \
-	if [ "$$TARGET" != "push" ]; then \
-		if [[ "$$TARGET" == http* ]]; then \
-			NUGET_SOURCE="$$TARGET" ./scripts/nuget-push.sh; \
-		else \
-			NUGET_SOURCE="$$(realpath $$TARGET)" ./scripts/nuget-push.sh; \
-		fi; \
-	elif [ -n "$(SOURCE)" ]; then \
+	@if [ -n "$(SOURCE)" ]; then \
 		if [[ "$(SOURCE)" == http* ]]; then \
 			NUGET_SOURCE="$(SOURCE)" ./scripts/nuget-push.sh; \
 		else \
