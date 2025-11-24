@@ -22,11 +22,11 @@ RUN dotnet restore ./Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj
 
 # Publish RPC host (self-contained with architecture-specific RID)
 WORKDIR /src/Rpc/Circles.Rpc.Host
-RUN dotnet publish \
-    -c Release \
-    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
-    -o /app/publish \
-    --no-restore
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        dotnet publish -c Release -r linux-arm64 -o /app/publish --no-restore; \
+    else \
+        dotnet publish -c Release -r linux-x64 -o /app/publish --no-restore; \
+    fi
 
 # Copy Nethermind runtime DLLs from the publish output
 RUN cp /nethermind-libs/Nethermind.Core.dll /app/publish/ && \
