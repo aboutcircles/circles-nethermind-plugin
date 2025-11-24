@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Detect target architecture
+# Detect target architecture (amd64/arm64)
 ARG TARGETARCH
 RUN echo "Building for architecture: ${TARGETARCH}"
 
@@ -16,10 +16,10 @@ RUN dotnet restore Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj
 COPY ./src/Pathfinder/ .
 WORKDIR /src/Circles.Pathfinder.Host
 
-# Build and publish (removed --no-restore to allow automatic restore if needed)
+# Build and publish the project for the target architecture
 RUN dotnet publish \
     -c Release \
-    -r linux-$([ "$TARGETARCH" = "x64" ] && echo "arm64" || echo "x64") \
+    -r linux-$([ "$TARGETARCH" = "arm64" ] && echo "arm64" || echo "x64") \
     -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
