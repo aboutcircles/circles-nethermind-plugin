@@ -1,4 +1,4 @@
-.PHONY: help build test docker pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs call-rpc all release
+.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs call-rpc all release
 
 # Default target
 help:
@@ -13,6 +13,7 @@ help:
 		@echo ""
 	@echo "Docker:"
 	@echo "  make docker            Build all Docker images"
+	@echo "  make docker-clean      Build all Docker images (no cache, pull latest)"
 	@echo "  make docker-index      Build Index plugin image"
 	@echo "  make docker-pathfinder Build Pathfinder image"
 	@echo "  make docker-rpc        Build RPC image"
@@ -20,6 +21,7 @@ help:
 	@echo "  make docker-down       Stop services"
 	@echo "  make docker-logs       View logs (all services)"
 	@echo "  make docker-logs SERVICE=<name>  View logs for specific service"
+	@echo "  make clean-docker      Clean Docker cache and unused images"
 		@echo ""
 	@echo "NuGet:"
 	@echo "  make pack              Create NuGet packages"
@@ -66,6 +68,11 @@ clean:
 	rm -rf nupkgs/
 	rm -rf TestResults/
 
+# Clean Docker cache and images
+clean-docker:
+	docker system prune -f
+	docker image prune -f
+
 # Clean Docker state and caches (use with caution - will delete all indexed data!)
 clean-cache:
 	@echo "WARNING: This will delete all cached blockchain data!"
@@ -78,6 +85,10 @@ clean-cache:
 # Build all Docker images
 docker:
 	./scripts/docker-build.sh
+
+# Build all Docker images (no cache)
+docker-clean:
+	docker compose -f docker/docker-compose.gnosis.yml build --no-cache --pull
 
 # Build specific Docker images
 docker-index:
