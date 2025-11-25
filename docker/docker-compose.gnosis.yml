@@ -66,7 +66,7 @@ services:
       --JsonRpc.Enabled=true
       --JsonRpc.Host=0.0.0.0
       --JsonRpc.Port=8545
-      --JsonRpc.EnabledModules=[Web3,Eth,Subscribe,Net,Circles]
+      --JsonRpc.EnabledModules=[Web3,Eth,Subscribe,Net,Circles,Debug]
       --JsonRpc.JwtSecretFile=/jwt.hex
       --JsonRpc.EngineHost=0.0.0.0
       --JsonRpc.EnginePort=8551
