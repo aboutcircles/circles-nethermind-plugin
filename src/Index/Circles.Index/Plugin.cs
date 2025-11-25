@@ -217,6 +217,8 @@ public class Plugin : INethermindPlugin
     /// <param name="blockNo">The new chain head</param>
     private void HandleNewHead(long blockNo)
     {
+        _indexerContext!.Logger.Debug($"HandleNewHead called with block {blockNo}");
+
         // Signal that new items have arrived
         Interlocked.Exchange(ref _newItemsArrived, 1);
 
@@ -226,8 +228,13 @@ public class Plugin : INethermindPlugin
         // Start the processing task if it's not already running
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
+            _indexerContext!.Logger.Debug($"Starting ProcessBlocksAsync for block {blockNo}");
             // TODO: Await all ProcessBlocksAsync tasks without blocking the event handler. It's important that we always get all exceptions (e.g. as aggregate exception) of all tasks.
             _ = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
+        }
+        else
+        {
+            _indexerContext!.Logger.Debug($"ProcessBlocksAsync already running, queuing block {blockNo}");
         }
     }
 
@@ -249,7 +256,9 @@ public class Plugin : INethermindPlugin
                     continue;
                 }
 
+                _indexerContext!.Logger.Debug($"Processing block {toIndex} via state machine");
                 await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
+                _indexerContext!.Logger.Debug($"Finished processing block {toIndex}");
 
                 // As long as new items arrive, keep processing
             } while (Interlocked.CompareExchange(ref _newItemsArrived, 0, 1) == 1);
@@ -267,6 +276,7 @@ public class Plugin : INethermindPlugin
         {
             // Mark processing as complete
             Interlocked.Exchange(ref _isProcessing, 0);
+            _indexerContext!.Logger.Debug("ProcessBlocksAsync completed, marked _isProcessing = 0");
         }
     }
 
@@ -292,9 +302,14 @@ public class Plugin : INethermindPlugin
 
         // Start the actual processing (give the other rpc modules enough time to initialize)
         // TODO: Any event we can subscribe to that indicates that rpc is ready?
-        _ = Task.Delay(10_000, _cancellationTokenSource.Token).ContinueWith(async _ =>
+        _ = Task.Run(async () =>
         {
+            _indexerContext.Logger.Debug("Waiting 10 seconds before initializing state machine...");
+            await Task.Delay(10_000, _cancellationTokenSource.Token);
+
+            _indexerContext.Logger.Debug("Starting state machine initialization...");
             await _indexerMachine!.TransitionTo(StateMachine.State.Initial);
+            _indexerContext.Logger.Debug("State machine initialization complete. Subscribing to NewHeadBlock events...");
 
             _indexerContext.NethermindApi.BlockTree!.NewHeadBlock += (_, args) =>
             {
@@ -306,17 +321,19 @@ public class Plugin : INethermindPlugin
                     case SyncMode.Full:
                     case SyncMode.WaitingForBlock:
                     case SyncMode.DbLoad:
-                        _indexerContext.Logger.Info(
-                            $"New head block while syncingInfo is SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be processed.");
+                        _indexerContext.Logger.Debug(
+                            $"New head block {args.Block.Number} while syncingInfo is SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be processed.");
                         break;
                     default:
                         _indexerContext.Logger.Warn(
-                            $"New head block while syncingInfo not SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be skipped. Current sync-status: {syncingInfo.ToString()}");
+                            $"New head block {args.Block.Number} while syncingInfo not SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be skipped. Current sync-status: {syncingInfo}");
                         return;
                 }
 
                 HandleNewHead(args.Block.Number);
             };
+
+            _indexerContext.Logger.Debug("NewHeadBlock event subscription complete.");
         }, _cancellationTokenSource.Token);
 
         return Task.CompletedTask;
