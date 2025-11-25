@@ -62,7 +62,7 @@ services:
     command: |
       --config=gnosis
       --datadir=/data
-      --log=INFO
+      --log=DEBUG
       --JsonRpc.Enabled=true
       --JsonRpc.Host=0.0.0.0
       --JsonRpc.Port=8545
@@ -73,7 +73,7 @@ services:
       --Network.DiscoveryPort=30303
       --Network.MaxActivePeers=100
       --HealthChecks.Enabled=true
-      --HealthChecks.UIEnabled true
+      --HealthChecks.UIEnabled=true
     env_file:
       - .env
     environment:
