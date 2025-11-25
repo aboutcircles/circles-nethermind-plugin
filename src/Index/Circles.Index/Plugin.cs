@@ -199,7 +199,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ", settings.SafeProxyFactoryAddresses));
-        // pluginLogger.Info("Start index from: " + settings.StartBlock);
+        pluginLogger.Debug("Start index from: " + settings.StartBlock);
 
         if (!string.IsNullOrWhiteSpace(settings.ExternalPathfinderUrl))
         {
