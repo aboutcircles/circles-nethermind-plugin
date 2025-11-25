@@ -56,13 +56,20 @@ fi
 
 mkdir -p "$RUN_DIR"
 
-LOCAL_OUTPUT="$RUN_DIR/local.json"
-REMOTE_OUTPUT="$RUN_DIR/remote.json"
+LOCAL_OUTPUT_DIR="$RUN_DIR/local"
+REMOTE_OUTPUT_DIR="$RUN_DIR/remote"
+LOCAL_MANIFEST="$LOCAL_OUTPUT_DIR/manifest.json"
+REMOTE_MANIFEST="$REMOTE_OUTPUT_DIR/manifest.json"
+LOCAL_LOG="$RUN_DIR/local-run.log"
+REMOTE_LOG="$RUN_DIR/remote-run.log"
 DIFF_OUTPUT="$RUN_DIR/diff.txt"
 SUMMARY_OUTPUT="$RUN_DIR/summary.txt"
 METHODS_OUTPUT="$RUN_DIR/methods.txt"
 NORMALIZED_OUTPUT="$RUN_DIR/normalized.txt"
 TEMP_CONFIG="$RUN_DIR/parsed_config.txt"
+CATEGORY_DIFF_DIR="$RUN_DIR/category-diffs"
+
+mkdir -p "$CATEGORY_DIFF_DIR"
 
 # Default configuration (can be overridden by config file)
 DEFAULT_TOLERANCE=0.001
@@ -161,9 +168,11 @@ echo -e "${CYAN}Results:             $RUN_DIR${NC}\n"
 # Step 1: Run tests in parallel
 echo -e "${YELLOW}[1/4] Running tests in parallel...${NC}"
 
+mkdir -p "$LOCAL_OUTPUT_DIR" "$REMOTE_OUTPUT_DIR"
+
 # Start both test runs simultaneously
 (
-    if ! "$SCRIPT_DIR/test-rpc.sh" "$LOCAL_URL" --json > "$LOCAL_OUTPUT" 2>&1; then
+    if ! "$SCRIPT_DIR/test-rpc.sh" "$LOCAL_URL" --json --json-dir "$LOCAL_OUTPUT_DIR" > "$LOCAL_LOG" 2>&1; then
         echo -e "${RED}Error: Failed to run tests against local endpoint${NC}" >&2
         exit 1
     fi
@@ -171,7 +180,7 @@ echo -e "${YELLOW}[1/4] Running tests in parallel...${NC}"
 LOCAL_PID=$!
 
 (
-    if ! "$SCRIPT_DIR/test-rpc.sh" "$REMOTE_URL" --json > "$REMOTE_OUTPUT" 2>&1; then
+    if ! "$SCRIPT_DIR/test-rpc.sh" "$REMOTE_URL" --json --json-dir "$REMOTE_OUTPUT_DIR" > "$REMOTE_LOG" 2>&1; then
         echo -e "${RED}Error: Failed to run tests against remote endpoint${NC}" >&2
         exit 1
     fi
@@ -186,13 +195,13 @@ REMOTE_EXIT=$?
 
 if [[ $LOCAL_EXIT -ne 0 ]]; then
     echo -e "${RED}Error: Failed to run tests against local endpoint${NC}"
-    echo -e "${RED}Check $LOCAL_OUTPUT for details${NC}"
+    echo -e "${RED}Check $LOCAL_LOG for details${NC}"
     exit 1
 fi
 
 if [[ $REMOTE_EXIT -ne 0 ]]; then
     echo -e "${RED}Error: Failed to run tests against remote endpoint${NC}"
-    echo -e "${RED}Check $REMOTE_OUTPUT for details${NC}"
+    echo -e "${RED}Check $REMOTE_LOG for details${NC}"
     exit 1
 fi
 
@@ -201,9 +210,53 @@ echo -e "${GREEN}✓ Parallel tests completed${NC}\n"
 # Step 2: Parse test results
 echo -e "${YELLOW}[2/4] Parsing test results...${NC}"
 
-# Parse test names properly (extract complete test names from JSON)
-LOCAL_TESTS=$(jq -r '.test' "$LOCAL_OUTPUT" 2>/dev/null | sort -u)
-REMOTE_TESTS=$(jq -r '.test' "$REMOTE_OUTPUT" 2>/dev/null | sort -u)
+if [[ ! -f "$LOCAL_MANIFEST" ]]; then
+    echo -e "${RED}Error: Missing manifest at $LOCAL_MANIFEST${NC}"
+    echo -e "${YELLOW}Check $LOCAL_LOG for details.${NC}"
+    exit 1
+fi
+
+if [[ ! -f "$REMOTE_MANIFEST" ]]; then
+    echo -e "${RED}Error: Missing manifest at $REMOTE_MANIFEST${NC}"
+    echo -e "${YELLOW}Check $REMOTE_LOG for details.${NC}"
+    exit 1
+fi
+
+if ! diff -q "$LOCAL_MANIFEST" "$REMOTE_MANIFEST" >/dev/null 2>&1; then
+    echo -e "${YELLOW}Warning: Manifests differ between local and remote; using local ordering.${NC}"
+fi
+
+CATEGORY_JSON=()
+CATEGORY_JSON_RAW=$(jq -c '.categories[]' "$LOCAL_MANIFEST" 2>/dev/null || true)
+if [[ -z "$CATEGORY_JSON_RAW" ]]; then
+    echo -e "${RED}Error: No categories found in $LOCAL_MANIFEST${NC}"
+    exit 1
+fi
+
+while IFS= read -r category_line; do
+    [[ -z "$category_line" ]] && continue
+    CATEGORY_JSON+=("$category_line")
+done <<< "$CATEGORY_JSON_RAW"
+
+declare -a CATEGORY_KEYS_ORDERED
+declare -a CATEGORY_FILES
+declare -a CATEGORY_LABELS
+declare -a CATEGORY_DIFF_FILES
+
+idx=0
+for entry in "${CATEGORY_JSON[@]}"; do
+    key=$(echo "$entry" | jq -r '.key')
+    file=$(echo "$entry" | jq -r '.file')
+    label=$(echo "$entry" | jq -r '.label')
+    CATEGORY_KEYS_ORDERED+=("$key")
+    CATEGORY_FILES+=("$file")
+    CATEGORY_LABELS+=("$label")
+    diff_file=$(printf '%s/%02d-%s.diff.txt' "$CATEGORY_DIFF_DIR" "$idx" "$key")
+    CATEGORY_DIFF_FILES+=("$diff_file")
+    : > "$diff_file"
+    touch "$LOCAL_OUTPUT_DIR/$file" "$REMOTE_OUTPUT_DIR/$file"
+    idx=$((idx + 1))
+done
 
 # Initialize counters
 TOTAL_TESTS=0
@@ -227,7 +280,7 @@ TESTS_EXPECTED_FAILURE_FILE="$RUN_DIR/tests_expected.tmp"
 : > "$TESTS_MATCH_FILE"
 : > "$TESTS_EXPECTED_FAILURE_FILE"
 
-echo -e "${GREEN}✓ Parsing completed${NC}\n"
+echo -e "${GREEN}✓ Parsing completed (${#CATEGORY_KEYS_ORDERED[@]} categories)${NC}\n"
 
 # Step 3: Analyze differences
 echo -e "${YELLOW}[3/4] Analyzing differences with normalization...${NC}"
@@ -397,41 +450,67 @@ compare_responses() {
     fi
 }
 
-# Get all unique test names
-ALL_TESTS=$(echo -e "$LOCAL_TESTS\n$REMOTE_TESTS" | sort -u)
+for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+    key="${CATEGORY_KEYS_ORDERED[$idx]}"
+    label="${CATEGORY_LABELS[$idx]}"
+    local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    category_diff_file="${CATEGORY_DIFF_FILES[$idx]}"
 
-# Progress counter
-current=0
-total=$(echo "$ALL_TESTS" | grep -c . || echo 0)
+    if [[ -s "$local_file" ]]; then
+        local_tests=$(jq -r '.test' "$local_file" 2>/dev/null | sort -u)
+    else
+        local_tests=""
+    fi
 
-# Compare each test
-while IFS= read -r test_name; do
-    [[ -z "$test_name" ]] && continue
+    if [[ -s "$remote_file" ]]; then
+        remote_tests=$(jq -r '.test' "$remote_file" 2>/dev/null | sort -u)
+    else
+        remote_tests=""
+    fi
 
-    current=$((current + 1))
-    echo -ne "\rAnalyzing test $current/$total: $test_name..."
+    cat_all_tests=$(echo -e "$local_tests\n$remote_tests" | sort -u)
+    cat_total=$(echo "$cat_all_tests" | grep -c . || echo 0)
 
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    echo -e "${CYAN}Analyzing ${label} (${key}) - ${cat_total} tests${NC}"
 
-    # Check if test exists in both
-    local_exists=$(echo "$LOCAL_TESTS" | grep -Fx "$test_name" || true)
-    remote_exists=$(echo "$REMOTE_TESTS" | grep -Fx "$test_name" || true)
-
-    if [[ -z "$local_exists" ]]; then
-        echo "$test_name" >> "$TESTS_MISSING_LOCAL_FILE"
-        MISSING_LOCAL=$((MISSING_LOCAL + 1))
+    if [[ $cat_total -eq 0 ]]; then
         continue
     fi
 
-    if [[ -z "$remote_exists" ]]; then
-        echo "$test_name" >> "$TESTS_MISSING_REMOTE_FILE"
-        MISSING_REMOTE=$((MISSING_REMOTE + 1))
-        continue
-    fi
+    while IFS= read -r test_name; do
+        [[ -z "$test_name" ]] && continue
 
-    # Extract responses
-    local_response=$(get_response "$LOCAL_OUTPUT" "$test_name")
-    remote_response=$(get_response "$REMOTE_OUTPUT" "$test_name")
+        TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+        # Check if test exists in both
+        if [[ -n "$local_tests" ]]; then
+            local_exists=$(echo "$local_tests" | grep -Fx "$test_name" || true)
+        else
+            local_exists=""
+        fi
+
+        if [[ -n "$remote_tests" ]]; then
+            remote_exists=$(echo "$remote_tests" | grep -Fx "$test_name" || true)
+        else
+            remote_exists=""
+        fi
+
+        if [[ -z "$local_exists" ]]; then
+            echo "$test_name" >> "$TESTS_MISSING_LOCAL_FILE"
+            MISSING_LOCAL=$((MISSING_LOCAL + 1))
+            continue
+        fi
+
+        if [[ -z "$remote_exists" ]]; then
+            echo "$test_name" >> "$TESTS_MISSING_REMOTE_FILE"
+            MISSING_REMOTE=$((MISSING_REMOTE + 1))
+            continue
+        fi
+
+        # Extract responses
+        local_response=$(get_response "$local_file" "$test_name")
+        remote_response=$(get_response "$remote_file" "$test_name")
 
     # Get tolerance for this specific test
     tolerance=$(get_method_tolerance "$test_name")
@@ -461,7 +540,7 @@ while IFS= read -r test_name; do
                 echo "Local error: $local_error"
                 echo "Remote error: $remote_error"
                 echo ""
-            } >> "$DIFF_OUTPUT"
+            } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
         else
             echo "$test_name" >> "$TESTS_MATCH_FILE"
             MATCHING_TESTS=$((MATCHING_TESTS + 1))
@@ -519,12 +598,13 @@ while IFS= read -r test_name; do
                 diff <(echo "$norm1" | jq -S '.' 2>/dev/null || echo "$norm1") \
                      <(echo "$norm2" | jq -S '.' 2>/dev/null || echo "$norm2") 2>&1 || true
                 echo ""
-            } >> "$DIFF_OUTPUT"
+            } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
             ;;
     esac
-done <<< "$ALL_TESTS"
+    done <<< "$cat_all_tests"
+done
 
-echo -e "\r${GREEN}✓ Analysis completed (${total} tests)${NC}\n"
+echo -e "${GREEN}✓ Analysis completed (${TOTAL_TESTS} tests)${NC}\n"
 
 # Step 4: Generate reports
 echo -e "${YELLOW}[4/4] Generating reports...${NC}"
@@ -597,8 +677,9 @@ Results:
   Methods only in remote:    $MISSING_LOCAL
 
 Files:
-  Local output:      $LOCAL_OUTPUT
-  Remote output:     $REMOTE_OUTPUT
+    Local output dir:  $LOCAL_OUTPUT_DIR
+    Remote output dir: $REMOTE_OUTPUT_DIR
+    Category diffs:    $CATEGORY_DIFF_DIR
   Detailed diff:     $DIFF_OUTPUT
   Methods compare:   $METHODS_OUTPUT
   Normalized data:   $NORMALIZED_OUTPUT
@@ -638,6 +719,7 @@ echo -e "\n${CYAN}Detailed reports:${NC}"
 echo -e "  ${CYAN}Methods:     $METHODS_OUTPUT${NC}"
 echo -e "  ${CYAN}Differences: $DIFF_OUTPUT${NC}"
 echo -e "  ${CYAN}Normalized:  $NORMALIZED_OUTPUT${NC}"
+echo -e "  ${CYAN}Category diffs dir: $CATEGORY_DIFF_DIR${NC}"
 
 # Print status with colors
 echo ""
