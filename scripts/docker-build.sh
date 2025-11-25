@@ -83,7 +83,7 @@ build_image() {
   local dockerfile=$2
 
   echo -e "${GREEN}Building $name from $dockerfile...${NC}"
-  docker build -f "$dockerfile" -t "circles-$name:latest" "$PROJECT_ROOT --no-cache"
+  docker build -f "$dockerfile" -t "circles-$name:latest" "$PROJECT_ROOT" --no-cache
 
   if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Successfully built circles-$name:latest${NC}\n"
