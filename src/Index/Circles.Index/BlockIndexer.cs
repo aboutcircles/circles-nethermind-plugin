@@ -18,6 +18,8 @@ public class ImportFlow(
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
 
+    private bool _firstCirclesEventLogged = false;
+
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
         , int boundedCapacity = -1
@@ -34,8 +36,23 @@ public class ImportFlow(
     private async Task Sink((BlockWithReceipts, IEnumerable<IIndexEvent>) data)
     {
         Dictionary<string, int> eventCounts = new();
+        var allEvents = data.Item2.ToList();
+        var blockNumber = data.Item1.Block.Number;
 
-        foreach (var indexEvent in data.Item2)
+        // Log first Circles event detection
+        if (!_firstCirclesEventLogged && allEvents.Count > 0)
+        {
+            _firstCirclesEventLogged = true;
+            context.Logger.Info($"FIRST CIRCLES EVENT DETECTED at block {blockNumber:N0}! Found {allEvents.Count} event(s)");
+        }
+
+        // Log when we find Circles events in a block
+        if (allEvents.Count > 0)
+        {
+            context.Logger.Debug($"Block {blockNumber:N0}: Found {allEvents.Count} Circles event(s)");
+        }
+
+        foreach (var indexEvent in allEvents)
         {
             await context.Sink.AddEvent(indexEvent);
             var tableName = context.Database.Schema.EventDtoTableMap.Map[indexEvent.GetType()];
@@ -180,6 +197,8 @@ public class ImportFlow(
 
         long min = long.MaxValue;
         long max = long.MinValue;
+        long count = 0;
+        long lastLoggedBlock = 0;
 
         await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
         {
@@ -187,11 +206,21 @@ public class ImportFlow(
 
             min = Math.Min(min, blockNo);
             max = Math.Max(max, blockNo);
+            count++;
+
+            // Log progress every 1000 blocks
+            if (count % 1000 == 0 || blockNo - lastLoggedBlock >= 10000)
+            {
+                context.Logger.Info($"Indexing progress: block {blockNo:N0} ({count:N0} blocks processed)");
+                lastLoggedBlock = blockNo;
+            }
         }
 
         sourceBlock.Complete();
 
         await sinkBlock.Completion;
+
+        context.Logger.Info($"Indexing completed: blocks {min:N0} to {max:N0} ({count:N0} total)");
 
         return new Range<long>
         {
@@ -219,6 +248,12 @@ public class ImportFlow(
         try
         {
             var blocks = _blockBuffer.TakeSnapshot();
+            if (!blocks.IsEmpty)
+            {
+                var minBlock = blocks.Min(b => b.Block.Number);
+                var maxBlock = blocks.Max(b => b.Block.Number);
+                context.Logger.Info($"Flushing {blocks.Count} blocks to database (range: {minBlock:N0} - {maxBlock:N0})");
+            }
             await context.Sink.Database.WriteBatch("System", "Block", blocks,
                 context.Database.Schema.SchemaPropertyMap);
         }
