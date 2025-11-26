@@ -62,8 +62,11 @@ services:
     command: |
       --config=gnosis
       --datadir=/data
-      --Sync.AncientReceiptsBarrier=12000000
+      --Sync.SnapSync=true
+      --Sync.DownloadBodiesInFastSync=true
       --Sync.DownloadReceiptsInFastSync=true
+      --Sync.AncientBodiesBarrier=12500000
+      --Sync.AncientReceiptsBarrier=12500000
       --Receipt.StoreReceipts=true
       --Receipt.TxLookupLimit=0
       --log=INFO
@@ -83,7 +86,7 @@ services:
     environment:
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;
-      - START_BLOCK=12000000
+      - START_BLOCK=12500000
       - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
       - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
       - IPFS_MAX_PARALLELISM=192
