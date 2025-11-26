@@ -37,7 +37,7 @@ RUN dotnet publish \
     -o /circles-nethermind-plugin \
     --no-restore
 
-FROM nethermind/nethermind:1.35.2 AS base
+FROM nethermind/nethermind:1.35.3 AS base
 WORKDIR /nethermind/plugins
 
 # dotnet libs

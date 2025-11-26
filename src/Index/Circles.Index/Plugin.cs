@@ -325,7 +325,7 @@ public class Plugin : INethermindPlugin
                             $"New head block {args.Block.Number} while syncingInfo is SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be processed.");
                         break;
                     default:
-                        _indexerContext.Logger.Warn(
+                        _indexerContext.Logger.Debug(
                             $"New head block {args.Block.Number} while syncingInfo not SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be skipped. Current sync-status: {syncingInfo}");
                         return;
                 }

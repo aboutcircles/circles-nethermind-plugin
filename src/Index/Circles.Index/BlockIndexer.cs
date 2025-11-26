@@ -19,6 +19,9 @@ public class ImportFlow(
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
 
     private bool _firstCirclesEventLogged = false;
+    private long _lastReceiptCheckLogBlock = 0;
+    private long _totalBlocksWithMissingReceipts = 0;
+    private long _totalBlocksWithReceipts = 0;
 
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
@@ -72,7 +75,72 @@ public class ImportFlow(
             CreateOptions(cancellationToken, 3, 3));
 
         TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
-            new(block => new BlockWithReceipts(block, receiptFinder.Get(block))
+            new(block =>
+                {
+                    var receipts = receiptFinder.Get(block);
+
+                    // Track receipt availability statistics
+                    bool hasTransactions = block.Transactions.Length > 0;
+                    bool hasReceipts = receipts != null && receipts.Length > 0;
+
+                    if (hasTransactions)
+                    {
+                        if (hasReceipts)
+                        {
+                            Interlocked.Increment(ref _totalBlocksWithReceipts);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref _totalBlocksWithMissingReceipts);
+                        }
+
+                        // Log progress every 1000 blocks or when we detect missing receipts
+                        long currentLogBlock = Interlocked.Read(ref _lastReceiptCheckLogBlock);
+                        if (!hasReceipts || block.Number - currentLogBlock >= 1000)
+                        {
+                            if (Interlocked.CompareExchange(ref _lastReceiptCheckLogBlock, block.Number, currentLogBlock) == currentLogBlock)
+                            {
+                                long totalWithReceipts = Interlocked.Read(ref _totalBlocksWithReceipts);
+                                long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
+                                long totalChecked = totalWithReceipts + totalMissing;
+
+                                if (totalChecked > 0)
+                                {
+                                    double percentAvailable = totalWithReceipts * 100.0 / totalChecked;
+
+                                    if (hasReceipts)
+                                    {
+                                        context.Logger.Info(
+                                            $"Receipt availability check at block {block.Number:N0}: " +
+                                            $"{totalWithReceipts:N0}/{totalChecked:N0} blocks have receipts ({percentAvailable:F1}%)");
+                                    }
+                                    else
+                                    {
+                                        context.Logger.Warn(
+                                            $"⚠️  Missing receipts at block {block.Number:N0}! " +
+                                            $"Availability so far: {totalWithReceipts:N0}/{totalChecked:N0} ({percentAvailable:F1}%)");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Validate that receipts are available for blocks with transactions
+                    // If a block has transactions but no receipts, Nethermind likely hasn't synced them
+                    // (e.g., blocks before AncientReceiptsBarrier in fast/snap sync mode)
+                    if (hasTransactions && !hasReceipts)
+                    {
+                        throw new InvalidOperationException(
+                            $"Block {block.Number} has {block.Transactions.Length} transaction(s) but no receipts are available. " +
+                            $"This likely means Nethermind hasn't synced receipts for this block yet. " +
+                            $"Check the Sync.AncientReceiptsBarrier setting in your Nethermind config. " +
+                            $"The barrier should be <= your START_BLOCK ({context.Settings.StartBlock}). " +
+                            $"If you just changed the config, wait for Nethermind to download the ancient receipts, " +
+                            $"or consider setting START_BLOCK to a higher value where receipts are already available.");
+                    }
+
+                    return new BlockWithReceipts(block, receipts ?? []);
+                }
                 , CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
 
         sourceBlock.LinkTo(receiptsSourceBlock!, new DataflowLinkOptions { PropagateCompletion = true },
@@ -208,8 +276,8 @@ public class ImportFlow(
             max = Math.Max(max, blockNo);
             count++;
 
-            // Log progress every 1000 blocks
-            if (count % 1000 == 0 || blockNo - lastLoggedBlock >= 10000)
+            // Log progress every 10_000 blocks
+            if (count % 10_000 == 0 || blockNo - lastLoggedBlock >= 10_000)
             {
                 context.Logger.Info($"Indexing progress: block {blockNo:N0} ({count:N0} blocks processed)");
                 lastLoggedBlock = blockNo;
