@@ -20,6 +20,7 @@ public class ImportFlow(
 
     private bool _firstCirclesEventLogged = false;
     private long _lastReceiptCheckLogBlock = 0;
+    private long _lastMissingLogBlock = 0;
     private long _totalBlocksWithMissingReceipts = 0;
     private long _totalBlocksWithReceipts = 0;
 
@@ -88,40 +89,40 @@ public class ImportFlow(
                         if (hasReceipts)
                         {
                             Interlocked.Increment(ref _totalBlocksWithReceipts);
-                        }
-                        else
-                        {
-                            Interlocked.Increment(ref _totalBlocksWithMissingReceipts);
-                        }
 
-                        // Log progress every 1000 blocks or when we detect missing receipts
-                        long currentLogBlock = Interlocked.Read(ref _lastReceiptCheckLogBlock);
-                        if (!hasReceipts || block.Number - currentLogBlock >= 1000)
-                        {
-                            if (Interlocked.CompareExchange(ref _lastReceiptCheckLogBlock, block.Number, currentLogBlock) == currentLogBlock)
+                            // Log progress every 1000 blocks
+                            long currentLogBlock = Interlocked.Read(ref _lastReceiptCheckLogBlock);
+                            if (block.Number - currentLogBlock >= 1000)
                             {
-                                long totalWithReceipts = Interlocked.Read(ref _totalBlocksWithReceipts);
-                                long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
-                                long totalChecked = totalWithReceipts + totalMissing;
-
-                                if (totalChecked > 0)
+                                if (Interlocked.CompareExchange(ref _lastReceiptCheckLogBlock, block.Number, currentLogBlock) == currentLogBlock)
                                 {
-                                    double percentAvailable = totalWithReceipts * 100.0 / totalChecked;
+                                    long totalWithReceipts = Interlocked.Read(ref _totalBlocksWithReceipts);
+                                    long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
+                                    long totalChecked = totalWithReceipts + totalMissing;
 
-                                    if (hasReceipts)
+                                    if (totalChecked > 0)
                                     {
+                                        double percentAvailable = totalWithReceipts * 100.0 / totalChecked;
                                         context.Logger.Info(
                                             $"Receipt availability check at block {block.Number:N0}: " +
                                             $"{totalWithReceipts:N0}/{totalChecked:N0} blocks have receipts ({percentAvailable:F1}%)");
                                     }
-                                    else
-                                    {
-                                        context.Logger.Warn(
-                                            $"⚠️  Missing receipts at block {block.Number:N0}! " +
-                                            $"Availability so far: {totalWithReceipts:N0}/{totalChecked:N0} ({percentAvailable:F1}%)");
-                                    }
                                 }
                             }
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref _totalBlocksWithMissingReceipts);
+
+                            // Always warn about missing receipts
+                            long totalWithReceipts = Interlocked.Read(ref _totalBlocksWithReceipts);
+                            long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
+                            long totalChecked = totalWithReceipts + totalMissing;
+                            double percentAvailable = totalChecked > 0 ? totalWithReceipts * 100.0 / totalChecked : 0;
+
+                            context.Logger.Warn(
+                                $"⚠️  Missing receipts at block {block.Number:N0}! " +
+                                $"Availability so far: {totalWithReceipts:N0}/{totalChecked:N0} ({percentAvailable:F1}%)");
                         }
                     }
 
