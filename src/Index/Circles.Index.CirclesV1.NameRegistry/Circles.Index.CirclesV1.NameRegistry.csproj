@@ -18,9 +18,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Reference Include="Nethermind.Core">
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.35.3" />
+      <!-- <Reference Include="Nethermind.Core">
         <HintPath>..\..\..\..\.nuget\packages\nethermind.referenceassemblies\1.30.3\ref\net9.0\Nethermind.Core.dll</HintPath>
-      </Reference>
+      </Reference> -->
     </ItemGroup>
 
     <ItemGroup>
