@@ -57,8 +57,8 @@ echo ""
 # Ask for confirmation unless --yes flag is passed
 if [[ "$*" != *"--yes"* ]] && [[ "$*" != *"-y"* ]]; then
   echo -e "${YELLOW}Push to: $NUGET_SOURCE${NC}"
-  read -p "Continue? (y/N): " -n 1 -r
-  echo
+  printf "Continue? (y/N): "
+  read -r REPLY
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Push cancelled${NC}"
     exit 0

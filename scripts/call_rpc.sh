@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Default URL for RPC calls
 DEFAULT_URL="https://rpc.aboutcircles.com/"
@@ -8,7 +8,8 @@ echo "Choose RPC endpoint:"
 echo "1) Remote mainnet (rpc.aboutcircles.com)"
 echo "2) Remote testnet (chiado-rpc.aboutcircles.com)"
 echo "3) Local (localhost:8081)"
-read -p "Enter choice (1-3): " choice
+printf "Enter choice (1-3): "
+read choice
 case $choice in
   1)
     RPC_URL="$DEFAULT_URL"
@@ -60,17 +61,17 @@ done
 # Handle method-specific parameter input and execution
 case $method in
   circles_getTotalBalance)
-    echo "Enter address to query total balance:"
+    printf "Enter address to query total balance: "
     read address
     json='{"jsonrpc":"2.0","method":"circles_getTotalBalance","params":["'$address'"],"id":1}'
     ;;
   circles_getTokenBalances)
-    echo "Enter address to query token balances:"
+    printf "Enter address to query token balances: "
     read address
     json='{"jsonrpc":"2.0","method":"circles_getTokenBalances","params":["'$address'"],"id":1}'
     ;;
   circles_getTrustRelations)
-    echo "Enter address to query trust relations:"
+    printf "Enter address to query trust relations: "
     read address
     json='{"jsonrpc":"2.0","method":"circles_getTrustRelations","params":["'$address'"],"id":1}'
     ;;
@@ -78,22 +79,22 @@ case $method in
     json='{"jsonrpc":"2.0","method":"circles_health","params":[],"id":1}'
     ;;
   circlesV2_getTotalBalance)
-    echo "Enter address to query V2 total balance:"
+    printf "Enter address to query V2 total balance: "
     read address
     json='{"jsonrpc":"2.0","method":"circlesV2_getTotalBalance","params":["'$address'"],"id":1}'
     ;;
   circles_getAvatarInfo)
-    echo "Enter address to get avatar info:"
+    printf "Enter address to get avatar info: "
     read address
     json='{"jsonrpc":"2.0","method":"circles_getAvatarInfo","params":["'$address'"],"id":1}'
     ;;
   circles_getProfileByCid)
-    echo "Enter CID to get profile:"
+    printf "Enter CID to get profile: "
     read cid
     json='{"jsonrpc":"2.0","method":"circles_getProfileByCid","params":["'$cid'"],"id":1}'
     ;;
   circles_getProfileByAddress)
-    echo "Enter address to get profile:"
+    printf "Enter address to get profile: "
     read address
     json='{"jsonrpc":"2.0","method":"circles_getProfileByAddress","params":["'$address'"],"id":1}'
     ;;
@@ -104,7 +105,7 @@ case $method in
     json='{"jsonrpc":"2.0","method":"circles_getNetworkSnapshot","params":[],"id":1}'
     ;;
   *)
-    echo "Enter the params as a JSON array (e.g., [\"param1\", \"param2\"]) or [] for no params:"
+    printf "Enter the params as a JSON array (e.g., [\"param1\", \"param2\"]) or [] for no params: "
     read params
     json='{"jsonrpc":"2.0","method":"'$method'","params":'$params',"id":1}'
     ;;

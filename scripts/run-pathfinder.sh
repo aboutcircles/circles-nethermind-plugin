@@ -9,8 +9,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_PATH="$PROJECT_ROOT/src/Pathfinder/Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj"
 
 ENV_FILE="$PROJECT_ROOT/.env.local"
-if [[ -f "$ENV_FILE" ]]; then
-    source "$ENV_FILE"
+if [ -f "$ENV_FILE" ]; then
+    . "$ENV_FILE"
 fi
 
 # Colors for output
