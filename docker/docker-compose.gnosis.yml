@@ -62,7 +62,11 @@ services:
     command: |
       --config=gnosis
       --datadir=/data
-      --log=DEBUG
+      --Sync.AncientReceiptsBarrier=12000000
+      --Sync.DownloadReceiptsInFastSync=true
+      --Receipt.StoreReceipts=true
+      --Receipt.TxLookupLimit=0
+      --log=INFO
       --JsonRpc.Enabled=true
       --JsonRpc.Host=0.0.0.0
       --JsonRpc.Port=8545
