@@ -56,7 +56,7 @@ fi
 if [ -f "$ENV_FILE" ]; then
     echo -e "${YELLOW}⚙️  Loading environment variables from $(basename $ENV_FILE)...${NC}"
     set -a
-    source "$ENV_FILE"
+    . "$ENV_FILE"
     set +a
 else
     echo -e "${YELLOW}Warning: No .env file found. Using default values.${NC}"

@@ -22,7 +22,7 @@ COMPOSE_FILES=(
 
 # Parse arguments
 NETWORK=""
-COMMAND="up -d"
+COMMAND=("up" "-d")
 
 show_help() {
   echo "Usage: ./docker-run.sh <network> [command]"
@@ -88,7 +88,7 @@ fi
 
 echo -e "${BLUE}Running Docker Compose for $NETWORK...${NC}"
 echo -e "${YELLOW}Compose file: $COMPOSE_FILE${NC}"
-echo -e "${YELLOW}Command: $COMMAND${NC}\n"
+echo -e "${YELLOW}Command: ${COMMAND[*]}${NC}\n"
 
 # Run docker compose
 docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" "${COMMAND[@]}"
@@ -96,9 +96,9 @@ docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" "${COMMAND[@]}"
 echo -e "\n${GREEN}Command completed successfully!${NC}"
 
 # Show helpful tips based on command
-if [[ "$COMMAND" == "up"* ]]; then
+if [[ "${COMMAND[0]}" == "up" ]]; then
   echo -e "${YELLOW}View logs: ./docker-run.sh $NETWORK logs -f${NC}"
   echo -e "${YELLOW}Stop services: ./docker-run.sh $NETWORK down${NC}"
-elif [[ "$COMMAND" == "down"* ]]; then
+elif [[ "${COMMAND[0]}" == "down" ]]; then
   echo -e "${YELLOW}Start again: ./docker-run.sh $NETWORK up${NC}"
 fi
