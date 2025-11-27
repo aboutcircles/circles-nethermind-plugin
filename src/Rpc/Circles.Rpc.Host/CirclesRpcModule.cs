@@ -876,23 +876,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         return results[0];
     }
 
-    public async Task<Dictionary<string, JsonElement?>> GetProfileByAddressBatch(string[] addresses)
+    public async Task<JsonElement?[]> GetProfileByAddressBatch(string[] addresses)
     {
         if (addresses == null || addresses.Length == 0)
         {
-            return new Dictionary<string, JsonElement?>();
+            return Array.Empty<JsonElement?>();
         }
 
-        var results = await GetProfileByAddressBatchInternal(addresses);
-        var dict = new Dictionary<string, JsonElement?>();
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            if (addresses[i] != null)
-            {
-                dict[addresses[i].ToLower()] = results[i];
-            }
-        }
-        return dict;
+        return await GetProfileByAddressBatchInternal(addresses);
     }
 
     private async Task<JsonElement?[]> GetProfileByAddressBatchInternal(string[] addresses)
@@ -1134,15 +1125,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         return results[0];
     }
 
-    public async Task<Dictionary<string, JsonElement?>> GetProfileByCidBatch(string[] cids)
+    public async Task<JsonElement?[]> GetProfileByCidBatch(string[] cids)
     {
-        var results = await GetProfileByCidBatchInternal(cids);
-        var dict = new Dictionary<string, JsonElement?>();
-        for (int i = 0; i < cids.Length; i++)
+        if (cids == null || cids.Length == 0)
         {
-            dict[cids[i]] = results[i];
+            return Array.Empty<JsonElement?>();
         }
-        return dict;
+
+        return await GetProfileByCidBatchInternal(cids);
     }
 
     public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
@@ -1966,6 +1956,11 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             foreach (var @namespace in schemaNamespaces)
             {
+                if (@namespace.Key == "System")
+                {
+                    continue;
+                }
+
                 var tableDefinitions = new List<TableDefinition>();
 
                 foreach (var table in @namespace)

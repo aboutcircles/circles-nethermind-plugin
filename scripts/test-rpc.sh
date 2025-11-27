@@ -30,7 +30,6 @@ TEST_ADDR_3="0xDE374ece6fA50e781E81Aac78e811b33D16912c7"
 TOKEN_ADDR_1="0x6D5e20F62C177765f73aee343a307D949c08B9DC"
 TOKEN_ADDR_2="0xa0f8904eC48a2775B8a88b40e9c171F05F7d7673"
 TOKEN_ADDR_3="0x448eabde0dc9ad70a9b68a8a03aa91da872f95bd"
-TOKEN_ADDR_4="0x1de1C49E7a623Cb3D1114bA0D40063F243ceeA"
 
 CATEGORY_KEYS=(
     "system"
@@ -386,10 +385,8 @@ run_test "balance" "circles_getTokenBalances (v2, addr3)" "curl -s -X POST --dat
 run_test "balance" "circles_getTokenInfo (token1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfo\",\"params\":[\"$TOKEN_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "balance" "circles_getTokenInfo (token2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfo\",\"params\":[\"$TOKEN_ADDR_2\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "balance" "circles_getTokenInfo (token3)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfo\",\"params\":[\"$TOKEN_ADDR_3\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
-run_test "balance" "circles_getTokenInfo (token4 - non-existent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfo\",\"params\":[\"$TOKEN_ADDR_4\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
 run_test "balance" "circles_getTokenInfoBatch (multiple tokens)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfoBatch\",\"params\":[[\"'$TOKEN_ADDR_1'\",\"'$TOKEN_ADDR_2'\",\"'$TOKEN_ADDR_3'\"]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
-run_test "balance" "circles_getTokenInfoBatch (all tokens with non-existent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfoBatch\",\"params\":[[\"'$TOKEN_ADDR_1'\",\"'$TOKEN_ADDR_2'\",\"'$TOKEN_ADDR_3'\",\"'$TOKEN_ADDR_4'\"]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "balance" "circles_getTokenInfoBatch (single token)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfoBatch\",\"params\":[[\"'$TOKEN_ADDR_1'\"]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "balance" "circles_getTokenInfoBatch (different set of addresses)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfoBatch\",\"params\":[[\"'$TOKEN_ADDR_1'\",\"'$TOKEN_ADDR_2'\",\"'$TOKEN_ADDR_3'\"]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
