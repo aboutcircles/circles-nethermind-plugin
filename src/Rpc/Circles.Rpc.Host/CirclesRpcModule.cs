@@ -1959,14 +1959,6 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             foreach (var @namespace in schemaNamespaces)
             {
-                // Exclude System namespace to match remote behavior
-                // System tables (Block, EventTableHead, PathfinderRequestLog, etc.) are not event-based
-                // and should not be exposed via circles_tables RPC method
-                if (@namespace.Key == "System")
-                {
-                    continue;
-                }
-
                 var tableDefinitions = new List<TableDefinition>();
 
                 foreach (var table in @namespace)

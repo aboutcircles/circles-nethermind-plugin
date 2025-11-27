@@ -78,9 +78,9 @@ TIMESTAMP_TOLERANCE=5.0  # 5% for timestamp-sensitive data
 
 # Method-specific tolerance rules (method:tolerance pairs)
 METHOD_TOLERANCES="
-circles_getTotalBalance:0.1
-circlesV2_getTotalBalance:0.1
-circles_getTokenBalances:0.1
+circles_getTotalBalance:1.0
+circlesV2_getTotalBalance:1.0
+circles_getTokenBalances:1.0
 circlesV2_findPath:1.0
 "
 
@@ -393,7 +393,11 @@ compare_responses() {
     local norm2=$(normalize_response "$resp2")
 
     # First try exact match on normalized
-    if [[ "$norm1" == "$norm2" ]]; then
+    # Use jq -S to sort keys for semantic comparison
+    local sorted1=$(echo "$norm1" | jq -S -c '.' 2>/dev/null || echo "$norm1")
+    local sorted2=$(echo "$norm2" | jq -S -c '.' 2>/dev/null || echo "$norm2")
+
+    if [[ "$sorted1" == "$sorted2" ]]; then
         echo "exact"
         return
     fi

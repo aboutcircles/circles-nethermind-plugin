@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using Circles.Index.Common;
 
 namespace Circles.Index.CirclesV2.CMGroupDeployer;
