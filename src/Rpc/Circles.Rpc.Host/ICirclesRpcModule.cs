@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Circles.Index.Query.Dto;
-using Circles.Pathfinder.DTOs;
+using Circles.Index.Common.Dto;
 
 namespace Circles.Rpc.Host;
 

@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Circles.Pathfinder.DTOs;
+using Circles.Index.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Nethermind.Int256;

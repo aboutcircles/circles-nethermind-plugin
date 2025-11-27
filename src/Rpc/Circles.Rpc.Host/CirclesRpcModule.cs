@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
-using Circles.Pathfinder.DTOs;
+using Circles.Index.Common.Dto;
 using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;

@@ -39,7 +39,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
     <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
-    <ProjectReference Include="..\..\Pathfinder\Circles.Pathfinder\Circles.Pathfinder.csproj" />
     <ProjectReference
       Include="..\..\Index\Circles.Index.DatabaseSchemaProvider\Circles.Index.DatabaseSchemaProvider.csproj" />
   </ItemGroup>

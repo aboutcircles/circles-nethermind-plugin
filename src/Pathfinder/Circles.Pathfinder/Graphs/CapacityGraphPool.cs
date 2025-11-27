@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using Circles.Index.Common;
 using Circles.Pathfinder.Data; 
-using Circles.Pathfinder.DTOs;
+using Circles.Index.Common.Dto;
 
 namespace Circles.Pathfinder.Graphs;
 
