@@ -17,10 +17,6 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <NethermindArtifactsDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\nethermind\src\Nethermind\artifacts'))</NethermindArtifactsDir>
-    <NethermindArtifactsConfiguration>$([System.String]::Copy('$(Configuration)').ToLowerInvariant())</NethermindArtifactsConfiguration>
-  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.7" />
@@ -43,6 +39,12 @@
   <ItemGroup>
     <PackageReference Include="Autofac" Version="8.4.0" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Index\Circles.Index.DatabaseSchemaProvider\Circles.Index.DatabaseSchemaProvider.csproj">
+      <Aliases>LocalSchemas</Aliases>
+    </ProjectReference>
   </ItemGroup>
 
 

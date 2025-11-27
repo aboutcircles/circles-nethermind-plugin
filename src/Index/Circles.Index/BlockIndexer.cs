@@ -17,8 +17,8 @@ public class ImportFlow(
     private static readonly IndexPerformanceMetrics Metrics = new();
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
+    private long _blocksSinceLastInfoLog = 0;
 
-    private bool _firstCirclesEventLogged = false;
     private long _totalBlocksWithMissingReceipts = 0;
     private long _totalBlocksWithReceipts = 0;
 
@@ -40,13 +40,6 @@ public class ImportFlow(
         Dictionary<string, int> eventCounts = new();
         var allEvents = data.Item2.ToList();
         var blockNumber = data.Item1.Block.Number;
-
-        // Log first Circles event detection
-        if (!_firstCirclesEventLogged && allEvents.Count > 0)
-        {
-            _firstCirclesEventLogged = true;
-            context.Logger.Info($"FIRST CIRCLES EVENT DETECTED at block {blockNumber:N0}! Found {allEvents.Count} event(s)");
-        }
 
         // Log when we find Circles events in a block
         if (allEvents.Count > 0)
@@ -311,7 +304,14 @@ public class ImportFlow(
             {
                 var minBlock = blocks.Min(b => b.Block.Number);
                 var maxBlock = blocks.Max(b => b.Block.Number);
-                context.Logger.Info($"Flushing {blocks.Count} blocks to database (range: {minBlock:N0} - {maxBlock:N0})");
+                _blocksSinceLastInfoLog += blocks.Count;
+                if (_blocksSinceLastInfoLog >= context.Settings.BlockBufferSize)
+                {
+                    context.Logger.Info(
+                        $"Flushed {_blocksSinceLastInfoLog:N0} blocks since last report. " +
+                        $"Latest batch: {blocks.Count:N0} blocks (range: {minBlock:N0} - {maxBlock:N0})");
+                    _blocksSinceLastInfoLog = 0;
+                }
             }
             await context.Sink.Database.WriteBatch("System", "Block", blocks,
                 context.Database.Schema.SchemaPropertyMap);
