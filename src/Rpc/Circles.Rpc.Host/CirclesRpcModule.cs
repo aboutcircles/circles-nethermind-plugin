@@ -1630,15 +1630,15 @@ public class CirclesRpcModule : ICirclesRpcModule
                     }
                 }
 
-                // Add remaining fields in alphabetical order to match remote
-                foreach (var kvp in payloadDict.OrderBy(x => x.Key))
+                // Add remaining fields in alphabetical order but with "limit" last to match remote
+                var remainingFields = payloadDict
+                    .Where(kvp => !orderedValues.ContainsKey(kvp.Key))
+                    .OrderBy(x => x.Key == "limit" ? "zzz" : x.Key); // Sort limit last
+
+                foreach (var kvp in remainingFields)
                 {
                     var key = kvp.Key;
                     var value = kvp.Value;
-
-                    // Skip if already added
-                    if (orderedValues.ContainsKey(key))
-                        continue;
 
                     if (value.ValueKind == JsonValueKind.String)
                     {

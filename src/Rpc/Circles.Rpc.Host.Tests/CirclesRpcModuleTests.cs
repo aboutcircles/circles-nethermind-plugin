@@ -299,11 +299,11 @@ public class CirclesRpcModuleTests
         var result = await _module!.GetProfileByAddressBatch(testAddresses);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.InstanceOf<Dictionary<string, JsonElement?>>());
+        Assert.That(result, Is.InstanceOf<JsonElement?[]>());
 
-        if (result.Count > 0 && result.Values.First().HasValue)
+        if (result.Length > 0 && result[0].HasValue)
         {
-            var profile = result.Values.First();
+            var profile = result[0];
             var json = JsonSerializer.Serialize(profile);
 
             // Profile should be enriched with address
