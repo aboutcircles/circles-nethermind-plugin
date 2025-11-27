@@ -333,11 +333,6 @@ normalize_response() {
     # Sort arrays in result to handle ordering differences (e.g. namespaces in circles_tables)
     normalized=$(echo "$normalized" | jq 'if .result | type == "array" then .result |= sort_by(.namespace // .column // .) else . end' 2>/dev/null || echo "$normalized")
 
-    # Filter out System namespace from circles_tables result to focus on protocol tables
-    if echo "$normalized" | jq -e '.result | type == "array" and (.[0] | has("namespace"))' >/dev/null 2>&1; then
-        normalized=$(echo "$normalized" | jq -c '.result |= map(select(.namespace != "System"))' 2>/dev/null || echo "$normalized")
-    fi
-
     echo "$normalized"
 }
 
