@@ -1,6 +1,5 @@
 using System.Numerics;
 using Circles.Index.Common;
-using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV1;
 
@@ -19,7 +18,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         "event Trust(address indexed canSendTo, address indexed user, uint256 limit)");
 
     public static readonly EventSchema Transfer = new("CrcV1", "Transfer",
-        Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("Transfer(address,address,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),

@@ -1,5 +1,4 @@
 using System.Text;
-using Nethermind.Core.Crypto;
 
 namespace Circles.Index.Common;
 
@@ -115,8 +114,8 @@ public class EventSchema(string @namespace, string table, byte[] topic, List<Eve
 
         eventTopic.Append(')');
 
-        Hash256 topic = Keccak.Compute(eventTopic.ToString());
-        return new EventSchema(@namespace, tableNameOverride ?? eventName, topic.Bytes.ToArray(), columns);
+        byte[] topic = KeccakHelper.ComputeHash(eventTopic.ToString());
+        return new EventSchema(@namespace, tableNameOverride ?? eventName, topic, columns);
     }
 
     private static ValueTypes MapSolidityType(string type)

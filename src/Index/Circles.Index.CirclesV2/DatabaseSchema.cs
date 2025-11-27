@@ -1,6 +1,5 @@
 using System.Numerics;
 using Circles.Index.Common;
-using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV2;
 
@@ -31,7 +30,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             "event DiscountCost(address indexed account, uint256 indexed id, uint256 discountCost)");
 
     public static readonly EventSchema TransferSingle = new("CrcV2", "TransferSingle",
-        Keccak.Compute("TransferSingle(address,address,address,uint256,uint256)").BytesToArray(), [
+        KeccakHelper.ComputeHash("TransferSingle(address,address,address,uint256,uint256)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -50,7 +49,7 @@ public class DatabaseSchema : BaseDatabaseSchema
             "CrcV2", "event ApprovalForAll(address indexed account, address indexed operator, bool approved)");
 
     public static readonly EventSchema TransferBatch = new("CrcV2", "TransferBatch",
-        Keccak.Compute("TransferBatch(address,address,address,uint256[],uint256[])").BytesToArray(),
+        KeccakHelper.ComputeHash("TransferBatch(address,address,address,uint256[],uint256[])"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -67,7 +66,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         ]);
 
     public static readonly EventSchema Erc20WrapperTransfer = new("CrcV2", "Erc20WrapperTransfer",
-        Keccak.Compute("Transfer(address,address,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("Transfer(address,address,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -96,7 +95,7 @@ public class DatabaseSchema : BaseDatabaseSchema
         "event WithdrawDemurraged(address indexed account, uint256 amount, uint256 inflationaryAmount)");
 
     public static readonly EventSchema StreamCompleted = new("CrcV2", "StreamCompleted",
-        Keccak.Compute("StreamCompleted(address,address,address,uint256[],uint256[])").BytesToArray(),
+        KeccakHelper.ComputeHash("StreamCompleted(address,address,address,uint256[],uint256[])"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -115,7 +114,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema GroupMint = new(
         "CrcV2",
         "GroupMint",
-        Keccak.Compute("GroupMint(address,address,address,uint256[],uint256[])").BytesToArray(),
+        KeccakHelper.ComputeHash("GroupMint(address,address,address,uint256[],uint256[])"),
         [
             new EventFieldSchema("blockNumber", ValueTypes.Int, true, true),
             new EventFieldSchema("timestamp", ValueTypes.Int, true),
@@ -138,7 +137,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema FlowEdgesScopeLastEnded = new(
         "CrcV2",
         "FlowEdgesScopeLastEnded",
-        Keccak.Compute("FlowEdgesScopeLastEnded()").BytesToArray(),
+        KeccakHelper.ComputeHash("FlowEdgesScopeLastEnded()"),
         [
             new EventFieldSchema("blockNumber", ValueTypes.Int, true, true),
             new EventFieldSchema("timestamp", ValueTypes.Int, true),

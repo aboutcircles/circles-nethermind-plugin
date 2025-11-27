@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using Circles.Index.Common;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -60,11 +59,11 @@ public class DatabaseSchema : BaseDatabaseSchema
 
 public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
 {
-    private readonly Hash256 _cmGroupCreatedTopicNew =
-        Keccak.Compute("CMGroupCreated(address,address,address,address,address)");
+    private readonly byte[] _cmGroupCreatedTopicNew =
+        KeccakHelper.ComputeHash("CMGroupCreated(address,address,address,address,address)");
 
-    private readonly Hash256 _cmGroupCreatedTopicOld =
-        Keccak.Compute("CMGroupCreated(address,address,address,address)");
+    private readonly byte[] _cmGroupCreatedTopicOld =
+        KeccakHelper.ComputeHash("CMGroupCreated(address,address,address,address)");
 
     public IEnumerable<IIndexEvent> ParseTransaction(
         Block block,
@@ -97,7 +96,7 @@ public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
 
         var topic = log.Topics[0];
 
-        if (topic == _cmGroupCreatedTopicNew || topic == _cmGroupCreatedTopicOld)
+        if (topic.Bytes.SequenceEqual(_cmGroupCreatedTopicNew) || topic.Bytes.SequenceEqual(_cmGroupCreatedTopicOld))
         {
             yield return CMGroupCreated(block, receipt, log, logIndex);
         }

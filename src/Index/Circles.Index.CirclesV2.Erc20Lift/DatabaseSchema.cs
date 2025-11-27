@@ -1,7 +1,6 @@
 namespace Circles.Index.CirclesV2.Erc20Lift;
 
 using Circles.Index.Common;
-using Nethermind.Core.Crypto;
 using System.Numerics;
 
 public class DatabaseSchema : IDatabaseSchema
@@ -20,7 +19,7 @@ public class DatabaseSchema : IDatabaseSchema
 
     public static readonly EventSchema GroupMintBatch =
         new EventSchema("CrcV2", "GroupMintBatch",
-            Keccak.Compute("GroupMintBatch(address,uint256[],uint256[],bytes)").BytesToArray(),
+            KeccakHelper.ComputeHash("GroupMintBatch(address,uint256[],uint256[],bytes)"),
             new List<EventFieldSchema>()
             {
                 new("blockNumber", ValueTypes.Int, true),
@@ -41,7 +40,7 @@ public class DatabaseSchema : IDatabaseSchema
 
     public static readonly EventSchema GroupRedeemCollateralReturn =
         new EventSchema("CrcV2", "GroupRedeemCollateralReturn",
-            Keccak.Compute("GroupRedeemCollateralReturn(address,address,uint256[],uint256[])").BytesToArray(),
+            KeccakHelper.ComputeHash("GroupRedeemCollateralReturn(address,address,uint256[],uint256[])"),
             new List<EventFieldSchema>()
             {
                 new("blockNumber", ValueTypes.Int, true),
@@ -58,7 +57,7 @@ public class DatabaseSchema : IDatabaseSchema
 
     public static readonly EventSchema GroupRedeemCollateralBurn =
         new EventSchema("CrcV2", "GroupRedeemCollateralBurn",
-            Keccak.Compute("GroupRedeemCollateralBurn(address,uint256[],uint256[])").BytesToArray(),
+            KeccakHelper.ComputeHash("GroupRedeemCollateralBurn(address,uint256[],uint256[])"),
             new List<EventFieldSchema>()
             {
                 new("blockNumber", ValueTypes.Int, true),
