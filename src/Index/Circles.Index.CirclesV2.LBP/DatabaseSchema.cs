@@ -1,5 +1,4 @@
 using Circles.Index.Common;
-using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV2.LBP;
 
@@ -8,7 +7,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     // public static readonly EventSchema CirclesBackingDeployed = EventSchema.FromSolidity("CrcV2",
     //     "event CirclesBackingDeployed(address indexed backer, address indexed circlesBackingInstance)");
     public static readonly EventSchema CirclesBackingDeployed = new("CrcV2", "CirclesBackingDeployed",
-        Keccak.Compute("CirclesBackingDeployed(address,address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("CirclesBackingDeployed(address,address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -22,7 +21,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     // public static readonly EventSchema LBPDeployed = EventSchema.FromSolidity("CrcV2",
     //     "event LBPDeployed(address indexed circlesBackingInstance, address indexed lbp)");
     public static readonly EventSchema LBPDeployed = new("CrcV2", "LBPDeployed",
-        Keccak.Compute("LBPDeployed(address,address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("LBPDeployed(address,address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -36,7 +35,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     // public static readonly EventSchema CirclesBackingInitiated = EventSchema.FromSolidity("CrcV2",
     //     "event CirclesBackingInitiated(address indexed backer, address indexed circlesBackingInstance, address indexed backingAsset, address personalCirclesAddress)");
     public static readonly EventSchema CirclesBackingInitiated = new("CrcV2", "CirclesBackingInitiated",
-        Keccak.Compute("CirclesBackingInitiated(address,address,address,address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("CirclesBackingInitiated(address,address,address,address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -52,7 +51,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     // public static readonly EventSchema CirclesBackingCompleted = EventSchema.FromSolidity("CrcV2",
     //     "event CirclesBackingCompleted(address indexed backer, address indexed circlesBackingInstance, address indexed lbp)");
     public static readonly EventSchema CirclesBackingCompleted = new("CrcV2", "CirclesBackingCompleted",
-        Keccak.Compute("CirclesBackingCompleted(address,address,address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("CirclesBackingCompleted(address,address,address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -67,7 +66,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     // public static readonly EventSchema Released = EventSchema.FromSolidity("CrcV2",
     //     "event Released(address indexed backer, address indexed circlesBackingInstance, address indexed lbp)");
     public static readonly EventSchema Released = new("CrcV2", "Released",
-        Keccak.Compute("Released(address,address,address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("Released(address,address,address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),

@@ -1,6 +1,5 @@
 using System.Numerics;
 using Circles.Index.Common;
-using Nethermind.Core.Crypto;
 
 namespace Circles.Index.CirclesV2.TokenOffers;
 
@@ -10,7 +9,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema AccountWeightProviderCreated = new(
         "CrcV2_TokenOffers",
         "AccountWeightProviderCreated",
-        Keccak.Compute("AccountWeightProviderCreated(address,address)").BytesToArray(),
+        KeccakHelper.ComputeHash("AccountWeightProviderCreated(address,address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -25,9 +24,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema ERC20TokenOfferCreated = new(
         "CrcV2_TokenOffers",
         "ERC20TokenOfferCreated",
-        Keccak.Compute(
-            "ERC20TokenOfferCreated(address,address,address,address,uint256,uint256,uint256,uint256,string,address[])"
-        ).BytesToArray(),
+        KeccakHelper.ComputeHash("ERC20TokenOfferCreated(address,address,address,address,uint256,uint256,uint256,uint256,string,address[])"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -50,9 +47,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema ERC20TokenOfferCycleCreated = new(
         "CrcV2_TokenOffers",
         "ERC20TokenOfferCycleCreated",
-        Keccak.Compute(
-            "ERC20TokenOfferCycleCreated(address,address,address,uint256,uint256,string,string)"
-        ).BytesToArray(),
+        KeccakHelper.ComputeHash("ERC20TokenOfferCycleCreated(address,address,address,uint256,uint256,string,string)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -73,9 +68,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema CycleConfiguration = new(
         "CrcV2_TokenOffers",
         "CycleConfiguration",
-        Keccak.Compute(
-            "CycleConfiguration(address,address,address,uint256,uint256,bool)"
-        ).BytesToArray(),
+        KeccakHelper.ComputeHash("CycleConfiguration(address,address,address,uint256,uint256,bool)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -94,9 +87,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema NextOfferCreated = new(
         "CrcV2_TokenOffers",
         "NextOfferCreated",
-        Keccak.Compute(
-            "NextOfferCreated(address,uint256,uint256,address[])"
-        ).BytesToArray(),
+        KeccakHelper.ComputeHash("NextOfferCreated(address,uint256,uint256,address[])"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -113,7 +104,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema NextOfferTokensDeposited = new(
         "CrcV2_TokenOffers",
         "NextOfferTokensDeposited",
-        Keccak.Compute("NextOfferTokensDeposited(address,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("NextOfferTokensDeposited(address,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -128,7 +119,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema OfferTrustSynced = new(
         "CrcV2_TokenOffers",
         "OfferTrustSynced",
-        Keccak.Compute("OfferTrustSynced(uint256,address)").BytesToArray(),
+        KeccakHelper.ComputeHash("OfferTrustSynced(uint256,address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -143,7 +134,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema OfferClaimedFromCycle = new(
         "CrcV2_TokenOffers",
         "OfferClaimedFromCycle",
-        Keccak.Compute("OfferClaimed(address,address,uint256,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("OfferClaimed(address,address,uint256,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -160,7 +151,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema UnclaimedTokensWithdrawn = new(
         "CrcV2_TokenOffers",
         "UnclaimedTokensWithdrawn",
-        Keccak.Compute("UnclaimedTokensWithdrawn(address,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("UnclaimedTokensWithdrawn(address,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -176,7 +167,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema OfferClaimed = new(
         "CrcV2_TokenOffers",
         "OfferClaimed",
-        Keccak.Compute("OfferClaimed(address,uint256,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("OfferClaimed(address,uint256,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -192,7 +183,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema OfferTokensDeposited = new(
         "CrcV2_TokenOffers",
         "OfferTokensDeposited",
-        Keccak.Compute("OfferTokensDeposited(uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("OfferTokensDeposited(uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -207,7 +198,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema AccountWeightSet = new(
         "CrcV2_TokenOffers",
         "AccountWeightSet",
-        Keccak.Compute("AccountWeightSet(address,address,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("AccountWeightSet(address,address,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -223,7 +214,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema WeightsFinalized = new(
         "CrcV2_TokenOffers",
         "WeightsFinalized",
-        Keccak.Compute("WeightsFinalized(address,uint256,uint256)").BytesToArray(),
+        KeccakHelper.ComputeHash("WeightsFinalized(address,uint256,uint256)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),

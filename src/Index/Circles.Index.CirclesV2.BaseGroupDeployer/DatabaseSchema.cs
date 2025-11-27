@@ -1,7 +1,6 @@
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
@@ -63,7 +62,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     //     "event OwnerUpdated(address indexed owner)", "BaseGroupOwnerUpdated");
 
     public static readonly EventSchema OwnerUpdated = new("CrcV2", "BaseGroupOwnerUpdated",
-        Keccak.Compute("OwnerUpdated(address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("OwnerUpdated(address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -77,7 +76,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     //     "event ServiceUpdated(address indexed newService)", "BaseGroupServiceUpdated");
 
     public static readonly EventSchema ServiceUpdated = new("CrcV2", "BaseGroupServiceUpdated",
-        Keccak.Compute("ServiceUpdated(address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("ServiceUpdated(address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),
@@ -91,7 +90,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     //     "event FeeCollectionUpdated(address indexed feeCollection)", "BaseGroupFeeCollectionUpdated");
 
     public static readonly EventSchema FeeCollectionUpdated = new("CrcV2", "BaseGroupFeeCollectionUpdated",
-        Keccak.Compute("FeeCollectionUpdated(address)").BytesToArray(), [
+        KeccakHelper.ComputeHash("FeeCollectionUpdated(address)"), [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
             new("transactionIndex", ValueTypes.Int, true, true),

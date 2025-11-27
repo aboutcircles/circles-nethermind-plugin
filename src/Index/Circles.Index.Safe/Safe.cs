@@ -3,7 +3,6 @@ using System.Numerics;
 using Circles.Index.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -69,7 +68,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema SafeSetup = new(
         "Safe",
         "SafeSetup",
-        Keccak.Compute("SafeSetup(address,address[],uint256,address,address)").BytesToArray(),
+        KeccakHelper.ComputeHash("SafeSetup(address,address[],uint256,address,address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -89,7 +88,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema AddedOwner = new(
         "Safe",
         "AddedOwner",
-        Keccak.Compute("AddedOwner(address)").BytesToArray(),
+        KeccakHelper.ComputeHash("AddedOwner(address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -104,7 +103,7 @@ public class DatabaseSchema : BaseDatabaseSchema
     public static readonly EventSchema RemovedOwner = new(
         "Safe",
         "RemovedOwner",
-        Keccak.Compute("RemovedOwner(address)").BytesToArray(),
+        KeccakHelper.ComputeHash("RemovedOwner(address)"),
         [
             new("blockNumber", ValueTypes.Int, true, true),
             new("timestamp", ValueTypes.Int, true),
@@ -308,7 +307,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
     public IRollbackCache[] Caches { get; } = [KnownSafeProxies];
 
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
-    private readonly Hash256 _legacyCrcProxyCreationTopic = Keccak.Compute("ProxyCreation(address)");
+    private readonly byte[] _legacyCrcProxyCreationTopic = KeccakHelper.ComputeHash("ProxyCreation(address)");
     private readonly Hash256 _safeSetupTopic = new(DatabaseSchema.SafeSetup.Topic);
     private readonly Hash256 _addedOwnerTopic = new(DatabaseSchema.AddedOwner.Topic);
     private readonly Hash256 _removedOwnerTopic = new(DatabaseSchema.RemovedOwner.Topic);
@@ -384,7 +383,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
         if (factoryAddresses.Contains(log.Address))
         {
-            if (topic == _proxyCreationTopic || topic == _legacyCrcProxyCreationTopic)
+            if (topic == _proxyCreationTopic || topic.Bytes.SequenceEqual(_legacyCrcProxyCreationTopic))
             {
                 var evt = ProxyCreation(block, receipt, log, logIndex);
                 KnownSafeProxies.Add(block.Number, new Address(evt.Proxy), null);

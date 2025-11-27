@@ -37,14 +37,6 @@
     <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
     <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" /> -->
 
-    <!-- Reference Nethermind projects from submodule for runtime assemblies -->
-    <ProjectReference
-      Include="..\..\nethermind\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj">
-    </ProjectReference>
-    <ProjectReference
-      Include="..\..\nethermind\src\Nethermind\Nethermind.Logging\Nethermind.Logging.csproj">
-    </ProjectReference>
-
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin" Version="0.0.7" />
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.Common" Version="0.0.1" />
     <PackageReference Include="Gnosis.Circles.Nethermind.Plugin.Query" Version="0.0.1" />
@@ -67,22 +59,5 @@
     <PackageReference Include="Npgsql" Version="9.0.3" />
   </ItemGroup>
 
-  <ItemGroup>
-    <NethermindRuntimeAssemblies Include="$(NethermindArtifactsDir)\bin\Nethermind.Core\$(NethermindArtifactsConfiguration)\Nethermind.Core.dll" />
-    <NethermindRuntimeAssemblies Include="$(NethermindArtifactsDir)\bin\Nethermind.Logging\$(NethermindArtifactsConfiguration)\Nethermind.Logging.dll" />
-  </ItemGroup>
-
-  <Target Name="CopyNethermindAssemblies" AfterTargets="Build">
-    <ItemGroup>
-      <MissingNethermindAssemblies Include="@(NethermindRuntimeAssemblies)" Condition="!Exists('%(NethermindRuntimeAssemblies.Identity)')" />
-    </ItemGroup>
-
-    <Error Condition="'@(MissingNethermindAssemblies)' != ''"
-           Text="Missing Nethermind runtime assemblies: @(MissingNethermindAssemblies). Ensure the nethermind submodule is initialized and built (see DEVELOPMENT.md)." />
-
-    <Copy SourceFiles="@(NethermindRuntimeAssemblies)"
-          DestinationFolder="$(OutDir)"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>
