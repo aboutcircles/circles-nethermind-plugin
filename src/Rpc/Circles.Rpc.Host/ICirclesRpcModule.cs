@@ -36,7 +36,7 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets information about a specific token by its address.
     /// </summary>
-    Task<TokenInfo> GetTokenInfo(string tokenAddress);
+    Task<TokenInfo?> GetTokenInfo(string tokenAddress);
 
     /// <summary>
     /// Gets information about multiple tokens by their addresses.
