@@ -5,19 +5,16 @@ WORKDIR /src
 ARG TARGETARCH
 RUN echo "Building for architecture: ${TARGETARCH}"
 
-# Copy all necessary project files for dependency resolution
-COPY src/Pathfinder/Circles.Pathfinder/Circles.Pathfinder.csproj ./Circles.Pathfinder/
-COPY src/Pathfinder/Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj ./Circles.Pathfinder.Host/
+# Copy Index and Pathfinder sources (Pathfinder depends on Circles.Index.Common)
+COPY ./src/Index ./Index
+COPY ./src/Pathfinder ./Pathfinder
 
-# Restore just the target project - this will automatically restore its dependencies
-RUN dotnet restore Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj
-
-# Copy all source code
-COPY ./src/Pathfinder/ .
-WORKDIR /src/Circles.Pathfinder.Host
+# Restore Pathfinder host and its dependencies
+RUN dotnet restore ./Pathfinder/Circles.Pathfinder.Host/Circles.Pathfinder.Host.csproj
 
 # Build and publish the project
-RUN dotnet publish -c Release -o /app/publish
+WORKDIR /src/Pathfinder/Circles.Pathfinder.Host
+RUN dotnet publish -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app

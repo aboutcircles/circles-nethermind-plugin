@@ -1,4 +1,5 @@
 using Circles.Index.Common;
+using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
 
 namespace Circles.Rpc.Host;
 
@@ -14,7 +15,7 @@ public static class DatabaseSchemaMap
     /// Value: Array of column names that contain addresses
     /// </summary>
     public static readonly Dictionary<string, string[]> TableAddressColumns =
-        Circles.Index.DatabaseSchemaProvider.AllSchemas
+        SchemaProvider.AllSchemas
             .SelectMany(s => s.Tables)
             .GroupBy(kvp => $"{kvp.Key.Namespace}_{kvp.Key.Table}")
             .ToDictionary(
@@ -31,7 +32,7 @@ public static class DatabaseSchemaMap
     /// Value: Dictionary of column names to their types
     /// </summary>
     public static readonly Dictionary<string, Dictionary<string, string>> TableColumns =
-        Circles.Index.DatabaseSchemaProvider.AllSchemas
+        SchemaProvider.AllSchemas
             .SelectMany(s => s.Tables)
             .GroupBy(kvp => $"{kvp.Key.Namespace}_{kvp.Key.Table}")
             .ToDictionary(

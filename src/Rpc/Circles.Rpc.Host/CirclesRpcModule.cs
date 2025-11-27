@@ -12,6 +12,7 @@ using Circles.Pathfinder.DTOs;
 using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
+using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
 
 
 namespace Circles.Rpc.Host;
@@ -1952,7 +1953,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var namespaces = new List<TableNamespace>();
 
-        foreach (var schema in Index.DatabaseSchemaProvider.AllSchemas)
+        foreach (var schema in SchemaProvider.AllSchemas)
         {
             var schemaNamespaces = schema.Tables.GroupBy(o => o.Key.Namespace);
 
