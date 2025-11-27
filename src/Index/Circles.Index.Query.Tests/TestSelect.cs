@@ -169,7 +169,7 @@ public class Tests
 
         var generatedSql = conjunction.ToSql(_database);
 
-        var expectedSql = "(\"Name\" = @Name_[0-9a-f]{32} AND \"Age\" > @Age_[0-9a-f]{32})";
+        var expectedSql = "\\(\"Name\" = @Name_[0-9a-f]{32}(_\\d+)? AND \"Age\" > @Age_[0-9a-f]{32}(_\\d+)?\\)";
         Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(2));
     }
@@ -183,7 +183,7 @@ public class Tests
 
         var generatedSql = conjunction.ToSql(_database);
 
-        var expectedSql = "(\"Name\" = @Name_[0-9a-f]{32} OR \"Age\" > @Age_[0-9a-f]{32})";
+        var expectedSql = "\\(\"Name\" = @Name_[0-9a-f]{32}(_\\d+)? OR \"Age\" > @Age_[0-9a-f]{32}(_\\d+)?\\)";
         Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(2));
     }
@@ -203,7 +203,7 @@ public class Tests
 
         // (("Name" = @Name_56a4d14bb806402bb324662f75c79c14 OR "Age" > @Age_0f82e44befb94ea78ac8b195483e39ee) AND "Country" = @Country_a98a69fdeead40348065abda5b8d72c2)
         var expectedSql =
-            "\\(\\(\"Name\" = @Name_[0-9a-f]{32} OR \"Age\" > @Age_[0-9a-f]{32}\\) AND \"Country\" = @Country_[0-9a-f]{32}\\)";
+            "\\(\\(\"Name\" = @Name_[0-9a-f]{32}(_\\d+)? OR \"Age\" > @Age_[0-9a-f]{32}(_\\d+)?\\) AND \"Country\" = @Country_[0-9a-f]{32}(_\\d+)?\\)";
         Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(3));
     }
@@ -216,7 +216,7 @@ public class Tests
 
         var generatedSql = select.ToSql(_database);
 
-        var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\"";
+        var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\" LIMIT 1000";
         Assert.That(generatedSql.Sql, Is.EqualTo(expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(0));
     }
@@ -230,7 +230,7 @@ public class Tests
 
         var generatedSql = select.ToSql(_database);
 
-        var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\" WHERE \"Name\" = @Name_[0-9a-f]{32}";
+        var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\" WHERE \"Name\" = @Name_[0-9a-f]{32}(_\\d+)? LIMIT 1000";
         Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
@@ -244,7 +244,7 @@ public class Tests
 
         var generatedSql = select.ToSql(_database);
 
-        var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\" ORDER BY \"Age\" DESC";
+        var expectedSql = "SELECT \"Name\", \"Age\" FROM \"public_Users\" ORDER BY \"Age\" DESC LIMIT 1000";
         Assert.That(generatedSql.Sql, Is.EqualTo(expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(0));
     }
@@ -260,7 +260,7 @@ public class Tests
         var generatedSql = select.ToSql(_database);
 
         var expectedSql =
-            "SELECT \"Name\", \"Age\" FROM \"public_Users\" WHERE \"Name\" = @Name_[0-9a-f]{32} ORDER BY \"Age\" DESC";
+            "SELECT \"Name\", \"Age\" FROM \"public_Users\" WHERE \"Name\" = @Name_[0-9a-f]{32}(_\\d+)? ORDER BY \"Age\" DESC LIMIT 1000";
         Assert.That(Regex.IsMatch(generatedSql.Sql, expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(1));
     }
@@ -273,7 +273,7 @@ public class Tests
 
         var generatedSql = select.ToSql(_database);
 
-        var expectedSql = "SELECT DISTINCT \"Name\", \"Age\" FROM \"public_Users\"";
+        var expectedSql = "SELECT DISTINCT \"Name\", \"Age\" FROM \"public_Users\" LIMIT 1000";
         Assert.That(generatedSql.Sql, Is.EqualTo(expectedSql));
         Assert.That(generatedSql.Parameters.Count(), Is.EqualTo(0));
     }

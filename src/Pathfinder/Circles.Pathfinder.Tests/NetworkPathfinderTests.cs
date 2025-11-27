@@ -146,7 +146,7 @@ public class NetworkPathfinderTests
     /// </summary>
     private void LoadGraphs()
     {
-        var settings = new Settings();
+        var settings = new TestSettings();
 
         // First try to load from snapshot endpoint
         try
@@ -1400,5 +1400,22 @@ public class NetworkPathfinderTests
         // Validate the response
         await ValidatePathfinderResponse(jsonRequest, source, sink, fromTokens, toTokens, excludedFromTokens,
             excludedToTokens, withWrap);
+    }
+
+    private class TestSettings : Circles.Pathfinder.Settings
+    {
+        public string IndexReadonlyDbConnectionString { get; }
+        public string BaseGroupRouter { get; }
+
+        public TestSettings()
+        {
+            // Safely try to get values, default to empty/dummy if not present to avoid crashing tests
+            IndexReadonlyDbConnectionString = Environment.GetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING") 
+                                           ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING") 
+                                           ?? "";
+            
+            BaseGroupRouter = Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
+                              ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+        }
     }
 }

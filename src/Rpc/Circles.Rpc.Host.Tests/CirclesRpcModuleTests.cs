@@ -16,7 +16,6 @@ namespace Circles.Rpc.Host.Tests;
 public class CirclesRpcModuleTests
 {
     private CirclesRpcModule? _module;
-    private string? _dbConnection;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -426,7 +425,7 @@ public class CirclesRpcModuleTests
         var testAddress = "0x0000000000000000000000000000000000000001";
 
         // This will use live eth_call if BalanceMode=live, otherwise database
-        var result = await _module!.GetTotalBalanceV2(testAddress);
+        var result = await _module!.GetTotalBalance(testAddress, 2);
 
         Assert.That(result, Is.Not.Null);
         // Result is a string representation of the total balance
@@ -440,7 +439,7 @@ public class CirclesRpcModuleTests
         var testAddress = "0x0000000000000000000000000000000000000001";
 
         // This will use live eth_call if BalanceMode=live, otherwise database
-        var result = await _module!.GetTotalBalanceV1(testAddress);
+        var result = await _module!.GetTotalBalance(testAddress, 1);
 
         Assert.That(result, Is.Not.Null);
     }
@@ -455,7 +454,7 @@ public class CirclesRpcModuleTests
         // V2: Demurrage applied based on days
 
         var testAddress = "0x0000000000000000000000000000000000000001";
-        var result = await _module!.GetTokenBalancesForAccount(testAddress);
+        var result = await _module!.GetTokenBalances(testAddress);
 
         Assert.That(result, Is.Not.Null);
 
@@ -516,7 +515,7 @@ public class CirclesRpcModuleTests
     #region Balance Calculation Integration Tests
 
     [Test]
-    public async Task BalanceCalculation_V2Token_AppliesDemurrage()
+    public void BalanceCalculation_V2Token_AppliesDemurrage()
     {
         RequireModule();
 
@@ -533,7 +532,7 @@ public class CirclesRpcModuleTests
     }
 
     [Test]
-    public async Task BalanceCalculation_V1Token_AppliesInflation()
+    public void BalanceCalculation_V1Token_AppliesInflation()
     {
         RequireModule();
 
@@ -555,7 +554,7 @@ public class CirclesRpcModuleTests
     #region ERC-1155 Batch Balance Tests
 
     [Test]
-    public async Task ERC1155_BatchBalance_HandlesMultipleTokens()
+    public void ERC1155_BatchBalance_HandlesMultipleTokens()
     {
         RequireModule();
 
@@ -573,7 +572,7 @@ public class CirclesRpcModuleTests
     }
 
     [Test]
-    public async Task ERC1155_SingleToken_UsesBalanceOf()
+    public void ERC1155_SingleToken_UsesBalanceOf()
     {
         RequireModule();
 
@@ -738,7 +737,7 @@ public class CirclesRpcModuleTests
     #region Error Handling Tests
 
     [Test]
-    public async Task LiveBalanceMode_InvalidRpcUrl_HandlesGracefully()
+    public void LiveBalanceMode_InvalidRpcUrl_HandlesGracefully()
     {
         // Test that invalid RPC URL is handled gracefully
         // In production, this should log error and potentially fall back to database
@@ -748,7 +747,7 @@ public class CirclesRpcModuleTests
     }
 
     [Test]
-    public async Task LiveBalanceMode_RpcTimeout_HandlesGracefully()
+    public void LiveBalanceMode_RpcTimeout_HandlesGracefully()
     {
         // Test that RPC timeouts are handled gracefully
 
@@ -756,7 +755,7 @@ public class CirclesRpcModuleTests
     }
 
     [Test]
-    public async Task LiveBalanceMode_InvalidContractResponse_HandlesGracefully()
+    public void LiveBalanceMode_InvalidContractResponse_HandlesGracefully()
     {
         // Test that invalid contract responses (non-hex, wrong length) are handled
 
