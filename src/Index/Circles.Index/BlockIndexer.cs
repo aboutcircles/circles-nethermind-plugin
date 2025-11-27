@@ -19,8 +19,6 @@ public class ImportFlow(
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
 
     private bool _firstCirclesEventLogged = false;
-    private long _lastReceiptCheckLogBlock = 0;
-    private long _lastMissingLogBlock = 0;
     private long _totalBlocksWithMissingReceipts = 0;
     private long _totalBlocksWithReceipts = 0;
 
@@ -88,26 +86,17 @@ public class ImportFlow(
                     {
                         if (hasReceipts)
                         {
-                            Interlocked.Increment(ref _totalBlocksWithReceipts);
+                            long totalWithReceipts = Interlocked.Increment(ref _totalBlocksWithReceipts);
 
-                            // Log progress every 1000 blocks
-                            long currentLogBlock = Interlocked.Read(ref _lastReceiptCheckLogBlock);
-                            if (block.Number - currentLogBlock >= 1000)
+                            // Log progress every 10_000 blocks checked
+                            if (totalWithReceipts % 10_000 == 0)
                             {
-                                if (Interlocked.CompareExchange(ref _lastReceiptCheckLogBlock, block.Number, currentLogBlock) == currentLogBlock)
-                                {
-                                    long totalWithReceipts = Interlocked.Read(ref _totalBlocksWithReceipts);
-                                    long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
-                                    long totalChecked = totalWithReceipts + totalMissing;
-
-                                    if (totalChecked > 0)
-                                    {
-                                        double percentAvailable = totalWithReceipts * 100.0 / totalChecked;
-                                        context.Logger.Info(
-                                            $"Receipt availability check at block {block.Number:N0}: " +
-                                            $"{totalWithReceipts:N0}/{totalChecked:N0} blocks have receipts ({percentAvailable:F1}%)");
-                                    }
-                                }
+                                long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
+                                long totalChecked = totalWithReceipts + totalMissing;
+                                double percentAvailable = totalWithReceipts * 100.0 / totalChecked;
+                                context.Logger.Info(
+                                    $"Receipt availability check at block {block.Number:N0}: " +
+                                    $"{totalWithReceipts:N0}/{totalChecked:N0} blocks have receipts ({percentAvailable:F1}%)");
                             }
                         }
                         else
@@ -121,7 +110,7 @@ public class ImportFlow(
                             double percentAvailable = totalChecked > 0 ? totalWithReceipts * 100.0 / totalChecked : 0;
 
                             context.Logger.Warn(
-                                $"⚠️  Missing receipts at block {block.Number:N0}! " +
+                                $"Missing receipts at block {block.Number:N0}! " +
                                 $"Availability so far: {totalWithReceipts:N0}/{totalChecked:N0} ({percentAvailable:F1}%)");
                         }
                     }
@@ -267,7 +256,6 @@ public class ImportFlow(
         long min = long.MaxValue;
         long max = long.MinValue;
         long count = 0;
-        long lastLoggedBlock = 0;
 
         await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
         {
@@ -278,10 +266,9 @@ public class ImportFlow(
             count++;
 
             // Log progress every 10_000 blocks
-            if (count % 10_000 == 0 || blockNo - lastLoggedBlock >= 10_000)
+            if (count % 10_000 == 0)
             {
                 context.Logger.Info($"Indexing progress: block {blockNo:N0} ({count:N0} blocks processed)");
-                lastLoggedBlock = blockNo;
             }
         }
 
@@ -289,7 +276,10 @@ public class ImportFlow(
 
         await sinkBlock.Completion;
 
-        context.Logger.Info($"Indexing completed: blocks {min:N0} to {max:N0} ({count:N0} total)");
+        if (count % 10_000 == 0)
+        {
+            context.Logger.Info($"Indexing completed: blocks {min:N0} to {max:N0} ({count:N0} total)");
+        }
 
         return new Range<long>
         {
