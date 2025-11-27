@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
 using Circles.Index.Query.Dto;
-using Circles.Pathfinder.DTOs;
+using Circles.Index.Common.Dto;
 
 var builder = BuilderSetup.ConfigureBuilder(args);
 
@@ -138,7 +138,7 @@ app.MapPost("/", async (
         return Results.Ok(new JsonRpcErrorResponse
         {
             Id = request.Id,
-            Error = new JsonRpcError { Code = -32603, Message = "Internal server error" }
+            Error = new JsonRpcError { Code = -32603, Message = $"Internal server error: {ex.Message}" }
         });
     }
 

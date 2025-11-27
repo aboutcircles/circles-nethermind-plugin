@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
-using Circles.Pathfinder.DTOs;
+using Circles.Index.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
