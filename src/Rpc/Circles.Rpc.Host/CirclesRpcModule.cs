@@ -90,14 +90,10 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var hubAddress = _settings.CirclesV2HubAddress;
         var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        
+
         // Batch fetch balances for efficiency
         var tokenBalances = new List<CirclesTokenBalance>();
-        
-        // Pre-fetch movement timestamps for demurraged tokens
-        var demurragedTokens = tokens.Values.Where(t => !t.IsInflationary && t.TokenType != "CrcV1_Signup").ToArray();
-        var movementTimestamps = await GetBatchMovementTimestamps(address, demurragedTokens.Select(t => t.TokenAddress).ToArray());
-        
+
         foreach (var token in tokens.Values)
         {
             var rawBalance = await FetchBalance(
@@ -139,32 +135,10 @@ public class CirclesRpcModule : ICirclesRpcModule
                 }
                 else
                 {
-                    // Demurraged Circles - get movement timestamp from batch
-                    if (!movementTimestamps.TryGetValue(token.TokenAddress, out var lastMovementTs) || lastMovementTs == null)
-                    {
-                        // Log warning and skip token - token was never moved
-                        _logger?.LogWarning(
-                            "Account {Address} has a token {TokenAddress} that was never moved, skipping",
-                            address, token.TokenAddress);
-                        continue;
-                    }
-
-                    const uint DAY_ZERO = 1_602_720_000; // 2020-10-31 00:00:00 UTC
-                    
-                    var storedDay = CirclesConverter.DayFromTimestamp(
-                        DateTimeOffset.FromUnixTimeSeconds(lastMovementTs.Value),
-                        DAY_ZERO);
-                    
-                    var todayDay = CirclesConverter.DayFromTimestamp(
-                        DateTimeOffset.UtcNow,
-                        DAY_ZERO);
-                    
-                    var (demurragedAttoCircles, _) = Demurrage.ApplyDemurrage(
-                        storedBalance: rawBalance,
-                        storedDay: storedDay,
-                        targetDay: todayDay);
-
-                    attoCircles = demurragedAttoCircles;
+                    // Demurraged Circles - remote implementation does NOT apply demurrage calculation
+                    // It uses the raw balance directly from the blockchain state
+                    // The on-chain balance already reflects the current demurraged value
+                    attoCircles = rawBalance;
                     circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
                     attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
@@ -201,75 +175,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         
         var orderedResult = tokenBalances
             .Where(o => o.Circles > 0)
-            .OrderByDescending(o => o.Circles)  // Match reference: sort by Circles, not StaticCircles
+            .OrderByDescending(o => o.StaticCircles)  // Match remote: sort by StaticCircles
             .ToArray();
 
         return orderedResult;
     }
-    /// <summary>
-    /// Batch fetches movement timestamps for multiple tokens to avoid connection pool exhaustion.
-    /// </summary>
-    private async Task<Dictionary<string, long?>> GetBatchMovementTimestamps(string address, string[] tokenAddresses)
-    {
-        var result = new Dictionary<string, long?>();
-        
-        if (tokenAddresses.Length == 0)
-        {
-            return result;
-        }
-
-        var lowerAddress = address.ToLower();
-        var lowerTokenAddresses = tokenAddresses.Select(t => t.ToLower()).ToArray();
-
-        const string sql = @"
-            SELECT DISTINCT ON (""tokenAddress"") ""tokenAddress"", ""timestamp""
-            FROM (
-                SELECT ""tokenAddress"", ""timestamp""
-                FROM ""CrcV2_TransferSingle""
-                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
-                UNION ALL
-                SELECT ""tokenAddress"", ""timestamp""
-                FROM ""CrcV2_TransferBatch""
-                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
-                UNION ALL
-                SELECT ""tokenAddress"", ""timestamp""
-                FROM ""CrcV1_Transfer""
-                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
-                UNION ALL
-                SELECT ""tokenAddress"", ""timestamp""
-                FROM ""CrcV2_Erc20WrapperTransfer""
-                WHERE ""to"" = @address AND ""tokenAddress"" = ANY(@tokenAddresses)
-            ) combined
-            ORDER BY ""tokenAddress"", ""timestamp"" DESC";
-
-        await using var connection = await CreateConnectionAsync();
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address", lowerAddress);
-        command.Parameters.AddWithValue("tokenAddresses", lowerTokenAddresses);
-
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            var tokenAddress = reader.GetString(0);
-            if (!reader.IsDBNull(1))
-            {
-                var timestamp = reader.GetInt64(1);
-                result[tokenAddress] = timestamp;
-            }
-        }
-
-        // Initialize missing tokens with null
-        foreach (var tokenAddress in lowerTokenAddresses)
-        {
-            if (!result.ContainsKey(tokenAddress))
-            {
-                result[tokenAddress] = null;
-            }
-        }
-
-        return result;
-    }
-
     /// <summary>
     /// Converts an Ethereum address to a BigInteger token ID for ERC-1155.
     /// </summary>
@@ -565,7 +475,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return tokenBalances.ToArray();
     }
 
-    public async Task<TokenInfo> GetTokenInfo(string tokenAddress)
+    public async Task<TokenInfo?> GetTokenInfo(string tokenAddress)
     {
         await using var connection = await CreateConnectionAsync();
         var lowerTokenAddress = tokenAddress.ToLower();
@@ -653,7 +563,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
         }
 
-        throw new InvalidOperationException($"No token info found for address {tokenAddress}");
+        // Return null for non-existent tokens instead of throwing exception
+        return null;
     }
 
     public async Task<TokenInfo?[]> GetTokenInfoBatch(string[] tokenAddresses)
@@ -1189,8 +1100,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 var payloadStr = reader.GetString(0);
                 var profile = JsonSerializer.Deserialize<JsonElement>(payloadStr);
-                result[targetIndex] = profile;
-                _profileByCidCache.Set(targetCid, profile, new MemoryCacheEntryOptions { Size = 1 });
+                var cleanedProfile = StripJsonLdFields(profile);
+                result[targetIndex] = cleanedProfile;
+                _profileByCidCache.Set(targetCid, cleanedProfile, new MemoryCacheEntryOptions { Size = 1 });
             }
             else
             {
@@ -1365,6 +1277,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (payload != null)
             {
                 profile = JsonSerializer.Deserialize<JsonElement>(payload);
+                profile = StripJsonLdFields(profile);
             }
 
             results.Add(new ProfileSearchResultItem(
@@ -1593,7 +1506,24 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         foreach (var table in relevantTables)
         {
-            // Skip tables that don't have the required event columns (like System tables)
+            // Extract namespace from table name (format: "Namespace_TableName")
+            var parts = table.Key.Split('_', 2);
+            if (parts.Length < 2)
+            {
+                continue; // Skip malformed table names
+            }
+
+            var tableNamespace = parts[0];
+
+            // Skip System namespace and View tables (starting with V_) to match remote behavior
+            // System tables are internal (Block, EventTableHead, PathfinderRequestLog, etc.)
+            // View tables are virtual tables and should not be queried as events
+            if (tableNamespace == "System" || tableNamespace.StartsWith('V'))
+            {
+                continue;
+            }
+
+            // Skip tables that don't have the required event columns
             var tableColumns = DatabaseSchemaMap.GetTableColumns(table.Key);
             if (tableColumns == null ||
                 !tableColumns.ContainsKey("blockNumber") ||
@@ -2028,6 +1958,14 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             foreach (var @namespace in schemaNamespaces)
             {
+                // Exclude System namespace to match remote behavior
+                // System tables (Block, EventTableHead, PathfinderRequestLog, etc.) are not event-based
+                // and should not be exposed via circles_tables RPC method
+                if (@namespace.Key == "System")
+                {
+                    continue;
+                }
+
                 var tableDefinitions = new List<TableDefinition>();
 
                 foreach (var table in @namespace)
@@ -2053,6 +1991,31 @@ public class CirclesRpcModule : ICirclesRpcModule
         return Task.FromResult(namespaces.ToArray());
     }
 
+
+    /// <summary>
+    /// Removes JSON-LD fields (@type, @context) from a profile JsonElement.
+    /// The remote implementation doesn't include these semantic web fields in responses.
+    /// </summary>
+    private static JsonElement? StripJsonLdFields(JsonElement? profile)
+    {
+        if (profile == null || profile.Value.ValueKind != JsonValueKind.Object)
+        {
+            return profile;
+        }
+
+        var dict = new Dictionary<string, JsonElement>();
+        foreach (var prop in profile.Value.EnumerateObject())
+        {
+            // Skip JSON-LD semantic fields to match remote behavior
+            if (prop.Name == "@type" || prop.Name == "@context")
+            {
+                continue;
+            }
+            dict[prop.Name] = prop.Value;
+        }
+
+        return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(dict));
+    }
 
     /// <summary>
     /// Validates that an identifier contains only safe characters (letters, digits, underscore).
