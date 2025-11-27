@@ -83,7 +83,7 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets multiple profiles by their CIDs from IPFS storage.
     /// </summary>
-    Task<Dictionary<string, JsonElement?>> GetProfileByCidBatch(string[] cids);
+    Task<JsonElement?[]> GetProfileByCidBatch(string[] cids);
 
     /// <summary>
     /// Gets a profile by avatar address.
@@ -96,7 +96,7 @@ public interface ICirclesRpcModule
     /// Gets multiple profiles by avatar addresses.
     /// Enriched with avatar type and short name from V2 registrations.
     /// </summary>
-    Task<Dictionary<string, JsonElement?>> GetProfileByAddressBatch(string[] addresses);
+    Task<JsonElement?[]> GetProfileByAddressBatch(string[] addresses);
 
     /// <summary>
     /// Searches for profiles using full-text search.
