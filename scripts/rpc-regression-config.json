@@ -16,10 +16,7 @@
     "transactionHash",
     "lastUpdatedAt"
   ],
-  "expectedFailures": [
-    "circles_getNetworkSnapshot",
-    "circles_health"
-  ],
+  "expectedFailures": [],
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
     "methodTolerances": "Method-specific tolerances override the default. Balance methods need higher tolerance due to time-based calculations.",

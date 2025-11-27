@@ -139,7 +139,7 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState<Range<long>> importedBlockRange:
-                            context.Logger.Warn(
+                            context.Logger.Debug(
                                 $"Notifying subscribers about new blocks currently NOT implemented: " +
                                 $"{importedBlockRange.Arg.Min} - {importedBlockRange.Arg.Max}");
                             // context.Logger.Info(
