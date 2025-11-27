@@ -1,10 +1,14 @@
 using System.Numerics;
 using System.Text.Json;
-using Nethermind.Core;
 
 namespace Circles.Index.Common;
 
-public record BlockWithEventCounts(Block Block, IDictionary<string, int> EventCounts);
+/// <summary>
+/// Simple block representation for database schema without Nethermind.Core dependency.
+/// </summary>
+public record SimpleBlock(long Number, ulong Timestamp, string? Hash);
+
+public record BlockWithEventCounts(SimpleBlock Block, IDictionary<string, int> EventCounts);
 
 public record EventTableHead(string TableName, int BlockNumber);
 
