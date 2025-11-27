@@ -1005,14 +1005,20 @@ public class CirclesRpcModule : ICirclesRpcModule
                     // Add all other fields from the original profile
                     foreach (var kvp in profileDict)
                     {
-                        enrichedProfile[kvp.Key] = kvp.Value;
+                        // Exclude namespaces and signingKeys to match remote
+                        if (kvp.Key != "namespaces" && kvp.Key != "signingKeys")
+                        {
+                            enrichedProfile[kvp.Key] = kvp.Value;
+                        }
                     }
 
                     // Add shortName if available
                     if (hasShortName)
                         enrichedProfile["shortName"] = JsonSerializer.SerializeToElement(shortName);
 
-                    // Note: avatarType and CID are NOT included to match remote implementation
+                    // Add avatarType if available
+                    if (hasAvatarType)
+                        enrichedProfile["avatarType"] = JsonSerializer.SerializeToElement(avatarType);
 
                     result[i] = JsonSerializer.SerializeToElement(enrichedProfile);
                 }
@@ -1029,7 +1035,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                     ["address"] = addr,
                     ["shortName"] = hasShortName ? shortName : null,
                     ["name"] = null,
-                    ["description"] = null
+                    ["description"] = null,
+                    ["avatarType"] = hasAvatarType ? avatarType : null
                 };
                 result[i] = JsonSerializer.SerializeToElement(minimalProfile);
             }

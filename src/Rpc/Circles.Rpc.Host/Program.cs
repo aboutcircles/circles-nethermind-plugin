@@ -150,19 +150,26 @@ app.Run();
 
 static async Task<object> HandleGetTotalBalance(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
-    var parameters = JsonSerializer.Deserialize<string[]>(request.Params.GetRawText());
+    var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
     if (parameters == null || parameters.Length == 0)
     {
         throw new ArgumentException("Address parameter is required");
     }
 
-    string address = parameters[0];
+    string address = parameters[0].GetString() ?? throw new ArgumentException("Address parameter must be a string");
     bool asTimeCircles = true;
-    if (parameters.Length > 1 && parameters[1] != null)
+    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
     {
-        if (bool.TryParse(parameters[1], out var parsedValue))
+        if (parameters[1].ValueKind == JsonValueKind.True || parameters[1].ValueKind == JsonValueKind.False)
         {
-            asTimeCircles = parsedValue;
+            asTimeCircles = parameters[1].GetBoolean();
+        }
+        else if (parameters[1].ValueKind == JsonValueKind.String)
+        {
+            if (bool.TryParse(parameters[1].GetString(), out var parsedValue))
+            {
+                asTimeCircles = parsedValue;
+            }
         }
     }
 
@@ -172,19 +179,26 @@ static async Task<object> HandleGetTotalBalance(JsonRpcRequest request, CirclesR
 
 static async Task<object> HandleV2GetTotalBalance(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
-    var parameters = JsonSerializer.Deserialize<string[]>(request.Params.GetRawText());
+    var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
     if (parameters == null || parameters.Length == 0)
     {
         throw new ArgumentException("Address parameter is required");
     }
 
-    string address = parameters[0];
+    string address = parameters[0].GetString() ?? throw new ArgumentException("Address parameter must be a string");
     bool asTimeCircles = true;
-    if (parameters.Length > 1 && parameters[1] != null)
+    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
     {
-        if (bool.TryParse(parameters[1], out var parsedValue))
+        if (parameters[1].ValueKind == JsonValueKind.True || parameters[1].ValueKind == JsonValueKind.False)
         {
-            asTimeCircles = parsedValue;
+            asTimeCircles = parameters[1].GetBoolean();
+        }
+        else if (parameters[1].ValueKind == JsonValueKind.String)
+        {
+            if (bool.TryParse(parameters[1].GetString(), out var parsedValue))
+            {
+                asTimeCircles = parsedValue;
+            }
         }
     }
 
