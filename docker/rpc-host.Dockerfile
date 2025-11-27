@@ -10,12 +10,9 @@ RUN echo "Building for architecture: ${TARGETARCH}"
 # - Circles.Index.Common
 # - Circles.Index.Query
 # - Circles.Index.DatabaseSchemaProvider
-# Pathfinder depends on:
-# - Circles.Index.Common
 # We copy the entire Index folder since Docker COPY works at directory level
 # and DatabaseSchemaProvider transitively depends on other Index projects
 COPY ./src/Index ./Index
-COPY ./src/Pathfinder ./Pathfinder
 COPY ./src/Rpc ./Rpc
 
 # Restore RPC host and its dependencies

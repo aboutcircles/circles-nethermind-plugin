@@ -55,7 +55,10 @@ public class ImportFlow(
             eventCounts[tableNameString] = eventCounts.GetValueOrDefault(tableNameString) + 1;
         }
 
-        await AddBlock(new BlockWithEventCounts(data.Item1.Block, eventCounts));
+        var block = data.Item1.Block;
+        await AddBlock(new BlockWithEventCounts(
+            new SimpleBlock(block.Number, block.Timestamp, block.Hash?.ToString()),
+            eventCounts));
         Metrics.LogBlockWithReceipts(data.Item1);
     }
 
