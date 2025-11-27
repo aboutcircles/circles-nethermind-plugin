@@ -142,6 +142,9 @@ public class CirclesRpcModule : ICirclesRpcModule
                     attoCircles = rawBalance;
                     circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
+                    // NOTE: attoCrc and crc are time-based calculations using current timestamp
+                    // These values will differ slightly between endpoints due to execution timing differences
+                    // This is expected behavior and differences < 0.001% should be tolerated in comparisons
                     attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
                     crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
@@ -430,6 +433,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                     attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
                     circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
+                    // NOTE: attoCrc and crc are time-based calculations using current timestamp
+                    // These values will differ slightly between endpoints due to execution timing differences
                     attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
                     crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
                 }
@@ -438,6 +443,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                     attoCircles = rawBalance;
                     circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
+                    // NOTE: attoCrc and crc are time-based calculations using current timestamp
+                    // These values will differ slightly between endpoints due to execution timing differences
                     attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
                     crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
@@ -1623,8 +1630,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                     }
                 }
 
-                // Add remaining fields
-                foreach (var kvp in payloadDict)
+                // Add remaining fields in alphabetical order to match remote
+                foreach (var kvp in payloadDict.OrderBy(x => x.Key))
                 {
                     var key = kvp.Key;
                     var value = kvp.Value;

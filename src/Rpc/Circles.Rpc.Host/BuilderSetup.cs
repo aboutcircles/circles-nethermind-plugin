@@ -91,7 +91,11 @@ public static class BuilderSetup
             .AddCheck<DatabaseConnectionHealthCheck>("database-connection", tags: new[] { "database-connection" });
 
         // ─── Misc DI ────────────────────────────────────────────────────────────────
-        builder.Services.ConfigureHttpJsonOptions(_ => { });
+        builder.Services.ConfigureHttpJsonOptions(options =>
+        {
+            options.SerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+            options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        });
 
         return builder;
     }
