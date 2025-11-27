@@ -347,8 +347,27 @@ numeric_compare() {
         return 1
     fi
 
-    # Handle zero values
-    if command -v bc &> /dev/null; then
+    # For very large integers (>15 digits), use awk instead of bc to avoid precision issues
+    local val1_len=${#val1}
+    local val2_len=${#val2}
+    local use_awk=0
+
+    if [[ $val1_len -gt 15 ]] || [[ $val2_len -gt 15 ]]; then
+        use_awk=1
+    fi
+
+    # Use awk for large numbers or as fallback
+    if [[ $use_awk -eq 1 ]] || ! command -v bc &> /dev/null; then
+        awk -v v1="$val1" -v v2="$val2" -v tol="$tolerance" 'BEGIN {
+            if (v1 == 0 && v2 == 0) exit 0;
+            if (v1 == 0 || v2 == 0) exit 1;
+            diff = (v1 > v2) ? v1 - v2 : v2 - v1;
+            avg = (v1 + v2) / 2;
+            percent = (diff / avg) * 100;
+            exit (percent < tol) ? 0 : 1;
+        }'
+    else
+        # Use bc for smaller numbers and floating point
         if (( $(echo "$val1 == 0" | bc -l 2>/dev/null || echo 0) )) && (( $(echo "$val2 == 0" | bc -l 2>/dev/null || echo 0) )); then
             return 0
         fi
@@ -366,16 +385,6 @@ numeric_compare() {
         # Compare with tolerance
         local within_tolerance=$(echo "$percent_diff < $tolerance" | bc -l 2>/dev/null || echo "0")
         [[ "$within_tolerance" == "1" ]]
-    else
-        # Fallback without bc - use awk
-        awk -v v1="$val1" -v v2="$val2" -v tol="$tolerance" 'BEGIN {
-            if (v1 == 0 && v2 == 0) exit 0;
-            if (v1 == 0 || v2 == 0) exit 1;
-            diff = (v1 > v2) ? v1 - v2 : v2 - v1;
-            avg = (v1 + v2) / 2;
-            percent = (diff / avg) * 100;
-            exit (percent < tol) ? 0 : 1;
-        }'
     fi
 }
 
