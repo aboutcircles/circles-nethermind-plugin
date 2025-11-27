@@ -32,9 +32,16 @@ echo ""
 # Check if Nethermind source exists
 if [ ! -d "$NETHERMIND_SOURCE" ]; then
     echo -e "${RED}Error: Nethermind source not found at $NETHERMIND_SOURCE${NC}"
-    echo -e "${YELLOW}Please clone Nethermind source:${NC}"
-    echo -e "${YELLOW}  git clone https://github.com/NethermindEth/nethermind.git $NETHERMIND_SOURCE${NC}"
-    echo -e "${YELLOW}Or set NETHERMIND_SOURCE environment variable to your Nethermind location${NC}"
+    echo -e "${YELLOW}This script requires Nethermind source for local development.${NC}"
+    echo -e "${YELLOW}Options:${NC}"
+    echo -e "${YELLOW}  1. Clone Nethermind to $NETHERMIND_SOURCE:${NC}"
+    echo -e "${YELLOW}     git clone https://github.com/NethermindEth/nethermind.git $NETHERMIND_SOURCE${NC}"
+    echo -e "${YELLOW}  2. Set NETHERMIND_SOURCE environment variable to your Nethermind location${NC}"
+    echo -e "${YELLOW}  3. Use Docker instead (doesn't require Nethermind source):${NC}"
+    echo -e "${YELLOW}     docker compose -f docker/docker-compose.gnosis.yml up${NC}"
+    echo ""
+    echo -e "${BLUE}Note: The Nethermind submodule is no longer included by default.${NC}"
+    echo -e "${BLUE}It's only needed for local development with custom Nethermind builds.${NC}"
     exit 1
 fi
 
