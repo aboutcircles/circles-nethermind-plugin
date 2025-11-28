@@ -34,32 +34,25 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _flowEdgesScopeSingleStarted = new(DatabaseSchema.FlowEdgesScopeSingleStarted.Topic);
     private readonly Hash256 _flowEdgesScopeLastEnded = new(DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
 
-    // Tracks whether a specific address is recognized as an ERC20Wrapper contract
-    // Address -> CirclesType (demurraged = 0 or static = 1)
+    // CRITICAL: Used by TransferSummaryAggregator to determine token type (inflationary vs demurraged)
+    // for correct value conversion during transfer event aggregation.
+    // Cannot be replaced with database queries - would require lookup per transfer event (100s per tx).
     public static readonly RollbackCache<string, (string TokenOwner, TokenValueRepresentation ValueRepresentation)>
         Erc20WrapperAddresses = new("Erc20WrapperAddresses");
 
-    public static readonly RollbackCache<string, ImmutableDictionary<string, (
-            BigInteger Balance,
-            TokenValueRepresentation ValueRepresentation,
-            string TokenOwner
-            )>>
-        BalancesByAccountAndToken = new("V2BalancesByAccountAndToken");
-
-    public static readonly RollbackCache<(string Account, string Token), long>
-        LastTokenMovement = new("V2LastTokenMovement");
-
+    // Used to enrich RegisterGroup events with group metadata.
+    // Maintained for fast lookup during log parsing.
     public static readonly RollbackCache<string, (string MintPolicy, string Treasury, string name, string symbol)>
         Groups = new("Groups");
 
+    // Used to enrich avatar registration events with avatar metadata.
+    // Maintained for fast lookup during log parsing.
     public static readonly RollbackCache<string, (string Type, string? InvitedBy, string? TokenId, string? Name)>
         V2Avatars = new("V2Avatars");
 
     public IRollbackCache[] Caches { get; } =
     [
         Erc20WrapperAddresses,
-        BalancesByAccountAndToken,
-        LastTokenMovement,
         Groups,
         V2Avatars
     ];
@@ -67,8 +60,6 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         InitErc20WrapperCache(logger, database);
-        InitBalanceCache(logger, settings);
-        // LastTokenMovement is initialized with the balances
         InitGroupsCache(logger, database);
         InitAvatarsCache(logger, database);
 
@@ -147,136 +138,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         logger.Info($" * Cached {seed.Count} groups");
     }
 
-    private static void InitBalanceCache(InterfaceLogger logger, Settings settings)
-    {
-        var sql = @"
-            with all_transfers as (
-                select ""blockNumber"",
-                       timestamp,
-                       ""transactionIndex"",
-                       ""logIndex"",
-                       0 as ""batchIndex"",
-                       ""tokenAddress"",
-                       ""from"",
-                       ""to"",
-                       value::text
-                from ""CrcV2_TransferSingle""
-                union all
-                select ""blockNumber"",
-                       timestamp,
-                       ""transactionIndex"",
-                       ""logIndex"",
-                       ""batchIndex"",
-                       ""tokenAddress"",
-                       ""from"",
-                       ""to"",
-                       value::text
-                from ""CrcV2_TransferBatch""
-                union all
-                select ""blockNumber"",
-                       timestamp,
-                       ""transactionIndex"",
-                       ""logIndex"",
-                       0 as ""batchIndex"",
-                       ""tokenAddress"",
-                       ""from"",
-                       ""to"",
-                       amount::text
-                from ""CrcV2_Erc20WrapperTransfer""
-            )
-            select ""blockNumber"",
-                   timestamp,
-                   ""tokenAddress"",
-                   ""from"",
-                   ""to"",
-                   value
-            from all_transfers
-            order by ""blockNumber"", 
-                     ""transactionIndex"",
-                     ""logIndex"", 
-                     ""batchIndex"";
-        ";
 
-        using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
-        connection.Open();
-
-        using var command = new NpgsqlCommand(sql, connection);
-        using var reader = command.ExecuteReader();
-
-        while (reader.Read())
-        {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var tokenAddress = reader.GetString(2);
-            var from = reader.GetString(3);
-            var to = reader.GetString(4);
-            var value = BigInteger.Parse(reader.GetString(5));
-
-            MaintainBalanceCache(blockNumber, timestamp, from, to, tokenAddress, value);
-        }
-
-        logger.Info($" * Cached v2 balances of {BalancesByAccountAndToken.Count} accounts");
-        logger.Info($" * Cached the last movement of {LastTokenMovement.Count} account/token pairs");
-    }
-
-    private static void MaintainBalanceCache(long blockNumber, long timestamp, string from, string to,
-        string tokenAddress, BigInteger amount)
-    {
-        if (!Erc20WrapperAddresses.TryGetValue(tokenAddress, out var tokenValueRepresentation))
-        {
-            tokenValueRepresentation.ValueRepresentation = TokenValueRepresentation.Demurraged;
-            tokenValueRepresentation.TokenOwner = tokenAddress;
-        }
-        else
-        {
-            tokenValueRepresentation.ValueRepresentation |= TokenValueRepresentation.IsWrapped;
-        }
-
-        // Make sure there is an initial dictionary for each account
-        if (!BalancesByAccountAndToken.TryGetValue(from, out var fromBalances))
-        {
-            fromBalances = ImmutableDictionary<string, (BigInteger, TokenValueRepresentation, string)>.Empty;
-            BalancesByAccountAndToken.Add(blockNumber, from, fromBalances);
-        }
-
-        if (!BalancesByAccountAndToken.TryGetValue(to, out var toBalances))
-        {
-            toBalances = ImmutableDictionary<string, (BigInteger, TokenValueRepresentation, string)>.Empty;
-            BalancesByAccountAndToken.Add(blockNumber, to, toBalances);
-        }
-
-        // Update the balances
-        if (fromBalances.TryGetValue(tokenAddress, out var fromBalance))
-        {
-            var newFromBalances = fromBalances.SetItem(tokenAddress,
-                (fromBalance.Item1 - amount, tokenValueRepresentation.ValueRepresentation,
-                    tokenValueRepresentation.TokenOwner));
-            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
-        }
-        else
-        {
-            var newFromBalances = fromBalances.SetItem(tokenAddress,
-                (0 - amount, tokenValueRepresentation.ValueRepresentation, tokenValueRepresentation.TokenOwner));
-            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
-        }
-
-        if (toBalances.TryGetValue(tokenAddress, out var toBalance))
-        {
-            var newToBalances = toBalances.SetItem(tokenAddress,
-                (toBalance.Item1 + amount, tokenValueRepresentation.ValueRepresentation,
-                    tokenValueRepresentation.TokenOwner));
-            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
-        }
-        else
-        {
-            var newToBalances = toBalances.SetItem(tokenAddress,
-                (0 + amount, tokenValueRepresentation.ValueRepresentation, tokenValueRepresentation.TokenOwner));
-            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
-        }
-
-        LastTokenMovement.Add(blockNumber, (from, tokenAddress), timestamp);
-        LastTokenMovement.Add(blockNumber, (to, tokenAddress), timestamp);
-    }
 
     private static void InitErc20WrapperCache(InterfaceLogger logger, IDatabase database)
     {
@@ -333,19 +195,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 continue;
             }
 
-            // Maintain the balance cache
-            if (e is IV2TransferEvent te)
-            {
-                var tokenAddress = e switch
-                {
-                    IV2Erc1155TransferEvent te1155 => AddressConverter.UInt256ToAddress(te1155.Id)
-                        .ToString(true, false),
-                    IV2Erc20TransferEvent te20 => te20.TokenAddress,
-                    _ => throw new Exception("Unsupported transaction type")
-                };
-
-                MaintainBalanceCache(e.BlockNumber, e.Timestamp, te.From, te.To, tokenAddress, (BigInteger)te.Value);
-            }
+            // Balance tracking removed - RPC fetches live balances from Nethermind
+            // and Pathfinder loads from database views
 
             eventsv2.Add(v2);
         }

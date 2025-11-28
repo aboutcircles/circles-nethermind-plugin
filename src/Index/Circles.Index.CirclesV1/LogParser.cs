@@ -13,27 +13,29 @@ namespace Circles.Index.CirclesV1;
 
 public class LogParser(Address v1HubAddress) : ILogParser
 {
+    // Used internally by V1 LogParser to map tokens to their owners
+    // Maintained for fast lookup during log parsing
     public static readonly RollbackCache<Address, Address> CirclesV1TokenOwnersByToken =
         new("CirclesV1TokenOwnersByToken");
 
+    // Used internally by V1 LogParser to map owners to their tokens
+    // Maintained for fast lookup during log parsing
     public static readonly RollbackCache<Address, Address> CirclesV1TokensByTokenOwner =
         new("CirclesV1TokensByTokenOwner");
 
-    public static readonly RollbackCache<string, ImmutableDictionary<string, (BigInteger Balance, string TokenOwner)>>
-        BalancesByAccountAndToken = new("V1BalancesByAccountAndToken");
-
+    // Used to enrich V1 avatar events with avatar metadata
+    // Maintained for fast lookup during log parsing
     public static readonly RollbackCache<string, (string Type, string? TokenAddress)>
         V1Avatars = new("V1Avatars");
 
     public IRollbackCache[] Caches { get; } =
     [
-        CirclesV1TokenOwnersByToken, CirclesV1TokensByTokenOwner, BalancesByAccountAndToken, V1Avatars
+        CirclesV1TokenOwnersByToken, CirclesV1TokensByTokenOwner, V1Avatars
     ];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         InitV1TokenAddresses(logger, database);
-        InitBalanceCache(logger, settings);
         InitAvatarsCache(logger, database);
 
         return Task.CompletedTask;
@@ -72,85 +74,6 @@ public class LogParser(Address v1HubAddress) : ILogParser
         logger.Info($" * Cached {seed.Count} V1 avatars");
     }
 
-    private static void InitBalanceCache(InterfaceLogger logger, Settings settings)
-    {
-        var sql = @"
-            select ""blockNumber"",
-                   timestamp,
-                   ""tokenAddress"",
-                   ""from"",
-                   ""to"",
-                   amount::text
-            from ""CrcV1_Transfer""
-            order by ""blockNumber"", 
-                     ""transactionIndex"",
-                     ""logIndex"";
-        ";
-
-        using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
-        connection.Open();
-
-        using var command = new NpgsqlCommand(sql, connection);
-        using var reader = command.ExecuteReader();
-
-        while (reader.Read())
-        {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var tokenAddress = reader.GetString(2);
-            var from = reader.GetString(3);
-            var to = reader.GetString(4);
-            var value = BigInteger.Parse(reader.GetString(5));
-
-            MaintainBalanceCache(blockNumber, timestamp, from, to, tokenAddress, value);
-        }
-
-        logger.Info($" * Cached v1 balances of {BalancesByAccountAndToken.Count} accounts");
-    }
-
-    private static void MaintainBalanceCache(long blockNumber, long timestamp, string from, string to,
-        string tokenAddress, BigInteger amount)
-    {
-        // Make sure there is an initial dictionary for each account
-        if (!BalancesByAccountAndToken.TryGetValue(from, out var fromBalances))
-        {
-            fromBalances = ImmutableDictionary<string, (BigInteger, string)>.Empty;
-            BalancesByAccountAndToken.Add(blockNumber, from, fromBalances);
-        }
-
-        if (!BalancesByAccountAndToken.TryGetValue(to, out var toBalances))
-        {
-            toBalances = ImmutableDictionary<string, (BigInteger, string)>.Empty;
-            BalancesByAccountAndToken.Add(blockNumber, to, toBalances);
-        }
-
-        var tokenOwner = CirclesV1TokenOwnersByToken.Get(new Address(tokenAddress));
-
-        // Update the balances
-        if (fromBalances.TryGetValue(tokenAddress, out var fromBalance))
-        {
-            var newFromBalances = fromBalances.SetItem(tokenAddress,
-                (fromBalance.Balance - amount, tokenOwner.ToString(true, false)));
-            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
-        }
-        else
-        {
-            var newFromBalances = fromBalances.SetItem(tokenAddress, (0 - amount, tokenOwner.ToString(true, false)));
-            BalancesByAccountAndToken.Add(blockNumber, from, newFromBalances);
-        }
-
-        if (toBalances.TryGetValue(tokenAddress, out var toBalance))
-        {
-            var newToBalances = toBalances.SetItem(tokenAddress,
-                (toBalance.Balance + amount, tokenOwner.ToString(true, false)));
-            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
-        }
-        else
-        {
-            var newToBalances = toBalances.SetItem(tokenAddress, (0 + amount, tokenOwner.ToString(true, false)));
-            BalancesByAccountAndToken.Add(blockNumber, to, newToBalances);
-        }
-    }
 
     private static void InitV1TokenAddresses(InterfaceLogger logger, IDatabase database)
     {
@@ -437,8 +360,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
         // parse single 256-bit value from log.Data
         UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        MaintainBalanceCache(block.Number, (long)block.Timestamp, from, to, log.Address.ToString(true, false),
-            (BigInteger)value);
+        // Balance tracking removed - RPC fetches live balances from Nethermind
+        // and Pathfinder loads from database views
 
         return new Transfer(
             receipt.BlockNumber,
