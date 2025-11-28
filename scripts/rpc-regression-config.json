@@ -14,13 +14,16 @@
     "transactionIndex",
     "logIndex",
     "transactionHash",
-    "lastUpdatedAt"
+    "lastUpdatedAt",
+    "crc",
+    "circles",
+    "staticCircles"
   ],
   "expectedFailures": [],
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
     "methodTolerances": "Method-specific tolerances override the default. Balance methods need higher tolerance due to time-based calculations.",
-    "normalizeFields": "Fields to remove before comparison (dynamic data that legitimately differs)",
+    "normalizeFields": "Fields to remove before comparison. Includes dynamic data (timestamp, blockNumber) and lossy decimal convenience fields (crc, circles, staticCircles) that are derived from precise atto values",
     "expectedFailures": "Tests that are expected to fail (e.g., network state, new features not in production)"
   }
 }
