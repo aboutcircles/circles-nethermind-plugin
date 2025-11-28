@@ -5,7 +5,7 @@ namespace Circles.Rpc.Host;
 /// </summary>
 public class Settings : Circles.Index.Common.Settings
 {
-    public readonly string NethermindRpcUrl =
+    public new readonly string NethermindRpcUrl =
         Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")
         ?? "http://localhost:8545";
 
