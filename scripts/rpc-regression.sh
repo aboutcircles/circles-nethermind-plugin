@@ -356,16 +356,22 @@ numeric_compare() {
         use_awk=1
     fi
 
-    # Use awk for large numbers or as fallback
+    # Use python for large numbers (handles arbitrary precision)
     if [[ $use_awk -eq 1 ]] || ! command -v bc &> /dev/null; then
-        awk -v v1="$val1" -v v2="$val2" -v tol="$tolerance" 'BEGIN {
-            if (v1 == 0 && v2 == 0) exit 0;
-            if (v1 == 0 || v2 == 0) exit 1;
-            diff = (v1 > v2) ? v1 - v2 : v2 - v1;
-            avg = (v1 + v2) / 2;
-            percent = (diff / avg) * 100;
-            exit (percent < tol) ? 0 : 1;
-        }'
+        python3 -c "
+from decimal import Decimal
+v1 = Decimal('$val1')
+v2 = Decimal('$val2')
+tol = Decimal('$tolerance')
+if v1 == 0 and v2 == 0:
+    exit(0)
+if v1 == 0 or v2 == 0:
+    exit(1)
+diff = abs(v1 - v2)
+avg = (v1 + v2) / 2
+percent = (diff / avg) * 100
+exit(0 if percent < tol else 1)
+" 2>/dev/null || return 1
     else
         # Use bc for smaller numbers and floating point
         if (( $(echo "$val1 == 0" | bc -l 2>/dev/null || echo 0) )) && (( $(echo "$val2 == 0" | bc -l 2>/dev/null || echo 0) )); then
@@ -391,7 +397,8 @@ numeric_compare() {
 # Function to extract all numeric values from JSON
 extract_numbers() {
     local json=$1
-    echo "$json" | grep -oE '[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?' | grep -v '^[0-9]$' | head -n 100
+    # Use jq to recursively extract all numeric values (handles large integers correctly)
+    echo "$json" | jq -r '.. | numbers' 2>/dev/null | head -n 100
 }
 
 # Function to compare responses with normalization and tolerance
