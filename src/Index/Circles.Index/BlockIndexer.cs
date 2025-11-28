@@ -18,6 +18,8 @@ public class ImportFlow(
 
     private readonly InsertBuffer<BlockWithEventCounts> _blockBuffer = new();
     private long _blocksSinceLastInfoLog = 0;
+    private DateTime _lastFlushTime = DateTime.UtcNow;
+    private DateTime _lastFlushLogTime = DateTime.UtcNow;
 
     private long _totalBlocksWithMissingReceipts = 0;
     private long _totalBlocksWithReceipts = 0;
@@ -252,6 +254,7 @@ public class ImportFlow(
         long min = long.MaxValue;
         long max = long.MinValue;
         long count = 0;
+        DateTime lastLogTime = DateTime.UtcNow;
 
         await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
         {
@@ -261,10 +264,23 @@ public class ImportFlow(
             max = Math.Max(max, blockNo);
             count++;
 
-            // Log progress every 10_000 blocks
-            if (count % 10_000 == 0)
+            // Log progress every 1000 blocks or every 5 minutes
+            var now = DateTime.UtcNow;
+            var timeSinceLastLog = now - lastLogTime;
+
+            bool isTimeLog = timeSinceLastLog.TotalMinutes >= 5;
+            bool isCountLog = count % 1000 == 0;
+
+            // Suppress count log if it's too frequent (e.g. during fast sync)
+            if (isCountLog && timeSinceLastLog.TotalSeconds < 30)
+            {
+                isCountLog = false;
+            }
+
+            if (isTimeLog || isCountLog)
             {
                 context.Logger.Info($"Indexing progress: block {blockNo:N0} ({count:N0} blocks processed)");
+                lastLogTime = now;
             }
         }
 
@@ -288,13 +304,17 @@ public class ImportFlow(
     {
         _blockBuffer.Add(block);
 
-        if (_blockBuffer.Length >= context.Settings.BlockBufferSize)
+        bool timeToFlush = (DateTime.UtcNow - _lastFlushTime).TotalMinutes >= 5;
+        bool bufferFull = _blockBuffer.Length >= context.Settings.BlockBufferSize;
+
+        if (bufferFull || timeToFlush)
         {
             // FLush events
             await context.Sink.Flush();
 
             // Flush blocks
             await FlushBlocks();
+            _lastFlushTime = DateTime.UtcNow;
         }
     }
 
@@ -308,12 +328,26 @@ public class ImportFlow(
                 var minBlock = blocks.Min(b => b.Block.Number);
                 var maxBlock = blocks.Max(b => b.Block.Number);
                 _blocksSinceLastInfoLog += blocks.Count;
-                if (_blocksSinceLastInfoLog >= context.Settings.BlockBufferSize)
+
+                var now = DateTime.UtcNow;
+                var timeSinceLastLog = now - _lastFlushLogTime;
+
+                bool isTimeLog = timeSinceLastLog.TotalMinutes >= 5;
+                bool isSizeLog = _blocksSinceLastInfoLog >= context.Settings.BlockBufferSize;
+
+                // Suppress size log if it's too frequent (e.g. during fast sync)
+                if (isSizeLog && timeSinceLastLog.TotalSeconds < 30)
+                {
+                    isSizeLog = false;
+                }
+
+                if (isTimeLog || isSizeLog)
                 {
                     context.Logger.Info(
                         $"Flushed {_blocksSinceLastInfoLog:N0} blocks since last report. " +
                         $"Latest batch: {blocks.Count:N0} blocks (range: {minBlock:N0} - {maxBlock:N0})");
                     _blocksSinceLastInfoLog = 0;
+                    _lastFlushLogTime = now;
                 }
             }
             await context.Sink.Database.WriteBatch("System", "Block", blocks,
