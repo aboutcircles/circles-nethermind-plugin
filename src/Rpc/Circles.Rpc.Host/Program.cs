@@ -227,7 +227,7 @@ static async Task<object> HandleGetTokenInfo(JsonRpcRequest request, CirclesRpcM
         throw new ArgumentException("Token address parameter is required");
     }
 
-    return await rpcModule.GetTokenInfo(parameters[0]);
+    return (object?)await rpcModule.GetTokenInfo(parameters[0]) ?? new { };
 }
 
 static async Task<object> HandleGetTokenInfoBatch(JsonRpcRequest request, CirclesRpcModule rpcModule)
