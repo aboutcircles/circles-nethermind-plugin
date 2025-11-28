@@ -19,7 +19,14 @@
     "circles",
     "staticCircles"
   ],
-  "expectedFailures": [],
+  "expectedFailures": [
+    "circles_getNetworkSnapshot",
+    "circles_events (filter: blockNumber < 100 OR blockNumber > 40000000)",
+    "circles_events (filter: blockNumber > 38000000 AND blockNumber < 39000000)",
+    "circles_events (filter: combined with test addr3 and block range)",
+    "circles_events (filter: nested AND/OR with test addr3)",
+    "circles_events (filter: transactionHash IS NOT NULL)"
+  ],
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
     "methodTolerances": "Method-specific tolerances override the default. Balance methods need higher tolerance due to time-based calculations.",

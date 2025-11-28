@@ -2006,14 +2006,23 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         var dict = new Dictionary<string, JsonElement>();
+
+        // Only keep fields that production returns: name and previewImageUrl
+        var allowedFields = new HashSet<string> { "name", "previewImageUrl" };
+
         foreach (var prop in profile.Value.EnumerateObject())
         {
-            // Skip JSON-LD semantic fields to match remote behavior
+            // Skip JSON-LD semantic fields AND extra metadata fields
             if (prop.Name == "@type" || prop.Name == "@context")
             {
                 continue;
             }
-            dict[prop.Name] = prop.Value;
+
+            // Only include allowed fields (name, previewImageUrl)
+            if (allowedFields.Contains(prop.Name))
+            {
+                dict[prop.Name] = prop.Value;
+            }
         }
 
         return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(dict));
