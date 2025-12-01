@@ -136,7 +136,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 }
                 else
                 {
-                    // Demurraged Circles - remote implementation does NOT apply demurrage calculation
+                    // Demurraged Circles
                     // It uses the raw balance directly from the blockchain state
                     // The on-chain balance already reflects the current demurraged value
                     attoCircles = rawBalance;

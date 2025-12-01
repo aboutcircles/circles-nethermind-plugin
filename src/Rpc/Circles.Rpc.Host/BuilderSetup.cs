@@ -1,8 +1,10 @@
 using System.IO.Compression;
+using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Console;
 using Npgsql;
-using Microsoft.AspNetCore.ResponseCompression;
 
 namespace Circles.Rpc.Host;
 
@@ -54,6 +56,9 @@ public static class BuilderSetup
             var httpClientFactory = sp.GetService<IHttpClientFactory>();
             return new CirclesRpcModule(settings, httpClientFactory);
         });
+
+        builder.Services.AddSingleton<CirclesSubscriptionService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<CirclesSubscriptionService>());
 
         // ─── Logging ────────────────────────────────────────────────────────────────
         builder.Logging.ClearProviders();

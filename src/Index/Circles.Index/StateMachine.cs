@@ -2,6 +2,8 @@ using Circles.Index.Common;
 // using Circles.Rpc;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Npgsql;
+using System.Text.Json;
 
 namespace Circles.Index;
 
@@ -139,22 +141,27 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState<Range<long>> importedBlockRange:
-                            context.Logger.Debug(
-                                $"Notifying subscribers about new blocks currently NOT implemented: " +
-                                $"{importedBlockRange.Arg.Min} - {importedBlockRange.Arg.Max}");
-                            // context.Logger.Info(
-                            //     $"Notifying {CirclesSubscription.SubscriberCount} subscribers about new blocks: " +
-                            //     $"{importedBlockRange.Arg.Min} - {importedBlockRange.Arg.Max}");
+                            var range = importedBlockRange.Arg;
+                            var min = range.Min;
+                            var max = range.Max;
 
-                            // if (importedBlockRange.Arg.Max - importedBlockRange.Arg.Min > 1000)
-                            // {
-                            //     context.Logger.Warn(
-                            //         $"Too many blocks to notify: {importedBlockRange.Arg.Max - importedBlockRange.Arg.Min}");
-                            // }
-                            // else
-                            // {
-                            //     CirclesSubscription.Notify(context, importedBlockRange.Arg);
-                            // }
+                            if (!min.HasValue || !max.HasValue || max.Value < min.Value)
+                            {
+                                context.Logger.Debug("No completed block range to notify subscribers about.");
+                                await TransitionTo(State.WaitForNewBlock);
+                                return;
+                            }
+
+                            var span = max.Value - min.Value;
+                            if (span > 1000)
+                            {
+                                context.Logger.Warn(
+                                    $"Skipping LISTEN/NOTIFY broadcast because range {min}-{max} spans {span} blocks.");
+                            }
+                            else
+                            {
+                                await NotifyViaPostgres(range);
+                            }
 
                             await TransitionTo(State.WaitForNewBlock);
                             return;
@@ -287,5 +294,37 @@ public class StateMachine(
         }
 
         return importedBlockRange;
+    }
+
+    private async Task NotifyViaPostgres(Range<long> range)
+    {
+        if (range.Min is null || range.Max is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(context.Settings.IndexDbConnectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                fromBlock = range.Min,
+                toBlock = range.Max,
+                timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            });
+
+            await using var command = new NpgsqlCommand("SELECT pg_notify(@channel, @payload)", connection);
+            command.Parameters.AddWithValue("channel", "circles_events");
+            command.Parameters.AddWithValue("payload", payload);
+
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            context.Logger.Debug($"Sent circles_events notification for blocks {range.Min}-{range.Max}.");
+        }
+        catch (Exception ex)
+        {
+            context.Logger.Error($"Failed to send circles_events notification for blocks {range.Min}-{range.Max}: {ex.Message}");
+        }
     }
 }
