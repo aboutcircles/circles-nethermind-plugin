@@ -731,6 +731,173 @@ if [[ -s "$TESTS_EXPECTED_FAILURE_FILE" ]]; then
     echo "" >> "$SUMMARY_OUTPUT"
 fi
 
+# Generate timing comparison report
+TIMING_OUTPUT="$RUN_DIR/timing_comparison.txt"
+echo -e "${YELLOW}Generating timing comparison...${NC}"
+
+{
+    echo "=== Timing Comparison Report ==="
+    echo "Timestamp: $(date)"
+    echo "Local (Staging):  $LOCAL_URL"
+    echo "Remote (Production): $REMOTE_URL"
+    echo ""
+    echo "Performance Summary:"
+    echo "===================="
+    echo ""
+
+    # Process timing data for all tests
+    local_faster_count=0
+    remote_faster_count=0
+    total_timing_tests=0
+    local_total_time=0
+    remote_total_time=0
+
+    printf "%-60s %12s %12s %12s %s\n" "Test Name" "Local (ms)" "Remote (ms)" "Diff (%)" "Winner"
+    echo "=========================================================================================================="
+
+    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+        local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+        remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+
+        if [[ ! -s "$local_file" ]] || [[ ! -s "$remote_file" ]]; then
+            continue
+        fi
+
+        # Get all test names from both files
+        local_tests=$(jq -r '.test' "$local_file" 2>/dev/null | sort -u)
+        remote_tests=$(jq -r '.test' "$remote_file" 2>/dev/null | sort -u)
+        all_tests=$(echo -e "$local_tests\n$remote_tests" | sort -u)
+
+        while IFS= read -r test_name; do
+            [[ -z "$test_name" ]] && continue
+
+            # Get timing from both endpoints
+            local_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$local_file" 2>/dev/null | head -1)
+            remote_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$remote_file" 2>/dev/null | head -1)
+
+            # Skip if timing data missing
+            if [[ -z "$local_timing" ]] || [[ -z "$remote_timing" ]] || [[ "$local_timing" == "null" ]] || [[ "$remote_timing" == "null" ]]; then
+                continue
+            fi
+
+            total_timing_tests=$((total_timing_tests + 1))
+            local_total_time=$((local_total_time + local_timing))
+            remote_total_time=$((remote_total_time + remote_timing))
+
+            # Calculate difference percentage
+            if [[ $remote_timing -gt 0 ]]; then
+                diff_pct=$(echo "scale=1; (($local_timing - $remote_timing) * 100) / $remote_timing" | bc -l 2>/dev/null || echo "0")
+            else
+                diff_pct="N/A"
+            fi
+
+            # Determine winner
+            winner="="
+            if [[ $local_timing -lt $remote_timing ]]; then
+                local_faster_count=$((local_faster_count + 1))
+                winner="LOCAL"
+            elif [[ $local_timing -gt $remote_timing ]]; then
+                remote_faster_count=$((remote_faster_count + 1))
+                winner="REMOTE"
+            fi
+
+            printf "%-60s %12d %12d %11s%% %s\n" "$test_name" "$local_timing" "$remote_timing" "$diff_pct" "$winner"
+
+        done <<< "$all_tests"
+    done
+
+    echo "=========================================================================================================="
+    echo ""
+    echo "Aggregate Statistics:"
+    echo "---------------------"
+    printf "Total tests with timing data:     %d\n" "$total_timing_tests"
+    printf "Local (staging) faster:            %d tests\n" "$local_faster_count"
+    printf "Remote (production) faster:        %d tests\n" "$remote_faster_count"
+    printf "Equal performance:                 %d tests\n" "$((total_timing_tests - local_faster_count - remote_faster_count))"
+    echo ""
+    printf "Total time (all tests):\n"
+    printf "  Local:                           %d ms\n" "$local_total_time"
+    printf "  Remote:                          %d ms\n" "$remote_total_time"
+    if [[ $total_timing_tests -gt 0 ]]; then
+        local_avg=$((local_total_time / total_timing_tests))
+        remote_avg=$((remote_total_time / total_timing_tests))
+        printf "  Average per test (local):        %d ms\n" "$local_avg"
+        printf "  Average per test (remote):       %d ms\n" "$remote_avg"
+
+        if [[ $remote_avg -gt 0 ]]; then
+            overall_diff=$(echo "scale=1; (($local_avg - $remote_avg) * 100) / $remote_avg" | bc -l 2>/dev/null || echo "0")
+            printf "  Overall performance difference:  %s%%\n" "$overall_diff"
+
+            if (( $(echo "$local_avg < $remote_avg" | bc -l 2>/dev/null || echo 0) )); then
+                echo ""
+                echo "  🚀 LOCAL (STAGING) IS FASTER OVERALL"
+            elif (( $(echo "$local_avg > $remote_avg" | bc -l 2>/dev/null || echo 0) )); then
+                echo ""
+                echo "  ⚠️  REMOTE (PRODUCTION) IS FASTER OVERALL"
+            else
+                echo ""
+                echo "  ⚖️  PERFORMANCE IS EQUAL"
+            fi
+        fi
+    fi
+    echo ""
+
+    # Top 10 slowest endpoints on each
+    echo "Top 10 Slowest Endpoints (Local):"
+    echo "-----------------------------------"
+    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+        local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+        [[ -s "$local_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$local_file" 2>/dev/null
+    done | sort -t$'\t' -k2 -n -r | head -10 | while IFS=$'\t' read -r test time; do
+        printf "  %-60s %12d ms\n" "$test" "$time"
+    done
+    echo ""
+
+    echo "Top 10 Slowest Endpoints (Remote):"
+    echo "------------------------------------"
+    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+        remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+        [[ -s "$remote_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$remote_file" 2>/dev/null
+    done | sort -t$'\t' -k2 -n -r | head -10 | while IFS=$'\t' read -r test time; do
+        printf "  %-60s %12d ms\n" "$test" "$time"
+    done
+    echo ""
+
+    # Biggest performance differences
+    echo "Top 10 Biggest Performance Differences:"
+    echo "----------------------------------------"
+    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+        local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+        remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+
+        if [[ ! -s "$local_file" ]] || [[ ! -s "$remote_file" ]]; then
+            continue
+        fi
+
+        local_tests=$(jq -r '.test' "$local_file" 2>/dev/null | sort -u)
+        while IFS= read -r test_name; do
+            [[ -z "$test_name" ]] && continue
+
+            local_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$local_file" 2>/dev/null | head -1)
+            remote_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$remote_file" 2>/dev/null | head -1)
+
+            if [[ -n "$local_timing" ]] && [[ -n "$remote_timing" ]] && [[ "$local_timing" != "null" ]] && [[ "$remote_timing" != "null" ]]; then
+                abs_diff=$((local_timing > remote_timing ? local_timing - remote_timing : remote_timing - local_timing))
+                echo -e "$test_name\t$local_timing\t$remote_timing\t$abs_diff"
+            fi
+        done <<< "$local_tests"
+    done | sort -t$'\t' -k4 -n -r | head -10 | while IFS=$'\t' read -r test local_t remote_t diff; do
+        if [[ $local_t -lt $remote_t ]]; then
+            winner="LOCAL"
+        else
+            winner="REMOTE"
+        fi
+        printf "  %-50s  L:%5dms  R:%5dms  Diff:%5dms  Winner:%s\n" "$test" "$local_t" "$remote_t" "$diff" "$winner"
+    done
+
+} > "$TIMING_OUTPUT"
+
+echo -e "${GREEN}✓ Timing analysis complete${NC}"
 echo -e "${GREEN}✓ Reports generated${NC}\n"
 
 # Print summary to console
@@ -742,7 +909,16 @@ echo -e "\n${CYAN}Detailed reports:${NC}"
 echo -e "  ${CYAN}Methods:     $METHODS_OUTPUT${NC}"
 echo -e "  ${CYAN}Differences: $DIFF_OUTPUT${NC}"
 echo -e "  ${CYAN}Normalized:  $NORMALIZED_OUTPUT${NC}"
+echo -e "  ${CYAN}Timing:      $TIMING_OUTPUT${NC}"
 echo -e "  ${CYAN}Category diffs dir: $CATEGORY_DIFF_DIR${NC}"
+
+# Print timing summary
+echo ""
+echo -e "${BLUE}=== Performance Summary ===${NC}"
+if [[ -f "$TIMING_OUTPUT" ]]; then
+    # Extract key stats from timing output
+    grep -A 20 "Aggregate Statistics:" "$TIMING_OUTPUT" | head -25
+fi
 
 # Print status with colors
 echo ""

@@ -231,7 +231,7 @@ ensure_category_header() {
     fi
 }
 
-# Function to execute and print curl commands
+# Function to execute and print curl commands (with timing)
 run_test() {
     local category="$1"
     local test_name="$2"
@@ -239,13 +239,46 @@ run_test() {
 
     ensure_category_header "$category"
 
-    local response
+    # Add curl timing flags: -w outputs timing info, -o /dev/stderr sends response to stderr
+    # This allows us to capture timing separately from response
+    local timed_curl="${curl_cmd% \'*\'} -w '\n__TIMING__{\"total\":%{time_total},\"dns\":%{time_namelookup},\"connect\":%{time_connect},\"ttfb\":%{time_starttransfer}}__TIMING__' -s"
+
+    local full_output
     local exit_code
-    response=$(eval "$curl_cmd" 2>&1)
+    # Cross-platform timing fallback (milliseconds)
+    # macOS date doesn't support %N, so we use a simpler approach
+    local start_time=$(python3 -c "import time; print(int(time.time() * 1000))" 2>/dev/null || echo "0")
+    full_output=$(eval "$timed_curl" 2>&1)
     exit_code=$?
+    local end_time=$(python3 -c "import time; print(int(time.time() * 1000))" 2>/dev/null || echo "0")
+
     if [[ $exit_code -ne 0 ]]; then
-        echo -e "${RED}Error executing request for $test_name:${NC} $response" >&2
+        echo -e "${RED}Error executing request for $test_name:${NC} $full_output" >&2
         return 1
+    fi
+
+    # Extract response and timing (timing is on last line between markers)
+    local response=$(echo "$full_output" | sed -n '1,/__TIMING__/p' | sed '$d')
+    local timing_json=$(echo "$full_output" | grep -o '__TIMING__.*__TIMING__' | sed 's/__TIMING__//g' | head -1)
+
+    # Fallback: calculate timing from bash if curl timing failed
+    local time_total_ms=0
+    local time_dns_ms=0
+    local time_connect_ms=0
+    local time_ttfb_ms=0
+
+    if [[ -n "$timing_json" ]] && echo "$timing_json" | jq -e . >/dev/null 2>&1; then
+        time_total_ms=$(echo "$timing_json" | jq -r '(.total * 1000) | floor')
+        time_dns_ms=$(echo "$timing_json" | jq -r '(.dns * 1000) | floor')
+        time_connect_ms=$(echo "$timing_json" | jq -r '(.connect * 1000) | floor')
+        time_ttfb_ms=$(echo "$timing_json" | jq -r '(.ttfb * 1000) | floor')
+    else
+        # Fallback: use python timing (cross-platform, millisecond precision)
+        if [[ $start_time -gt 0 ]] && [[ $end_time -gt 0 ]]; then
+            time_total_ms=$(( end_time - start_time ))
+        else
+            time_total_ms=0
+        fi
     fi
 
     local response_min
@@ -260,12 +293,13 @@ run_test() {
         if [[ -n "$JSON_DIR" ]]; then
             local category_file_path
             category_file_path=$(get_category_file_path "$category")
-            echo "{\"test\":\"$test_name\",\"response\":$response_min}" >> "$category_file_path"
+            # Include timing in JSON output
+            echo "{\"test\":\"$test_name\",\"response\":$response_min,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}" >> "$category_file_path"
         else
-            echo "{\"test\":\"$test_name\",\"response\":$response_min}"
+            echo "{\"test\":\"$test_name\",\"response\":$response_min,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}"
         fi
     else
-        echo -e "${YELLOW}Testing: $test_name${NC}"
+        echo -e "${YELLOW}Testing: $test_name${NC} ${BLUE}[${time_total_ms}ms]${NC}"
         echo -e "${GREEN}Request:${NC}"
         echo "$curl_cmd"
         echo -e "${GREEN}Response:${NC}"
