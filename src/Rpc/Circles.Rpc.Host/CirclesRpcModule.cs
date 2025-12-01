@@ -179,7 +179,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         
         var orderedResult = tokenBalances
             .Where(o => o.Circles > 0)
-            .OrderByDescending(o => o.StaticCircles)  // Match remote: sort by StaticCircles
+            .OrderByDescending(o => o.Circles)  // Match remote: sort by StaticCircles
             .ToArray();
 
         return orderedResult;
@@ -477,7 +477,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             );
         })
         .Where(o => o.Circles > 0)
-        .OrderByDescending(o => o.StaticCircles)
+        .OrderByDescending(o => o.Circles)
         .ToList();
 
         return tokenBalances.ToArray();
