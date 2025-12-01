@@ -1,5 +1,8 @@
-
 using Circles.Rpc.Host;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -11,6 +14,11 @@ using Circles.Index.Common.Dto;
 var builder = BuilderSetup.ConfigureBuilder(args);
 
 var app = builder.Build();
+
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(30)
+});
 
 app.UseHttpMetrics();
 app.UseResponseCompression();
@@ -46,6 +54,46 @@ app.MapHealthChecks("/health", new HealthCheckOptions
         [HealthStatus.Degraded] = StatusCodes.Status200OK
     }
 });
+
+app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService subscriptionService) =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsync("WebSocket request expected.");
+        return;
+    }
+
+    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+    var request = await ReceiveSubscriptionRequestAsync(webSocket, context.RequestAborted);
+
+    if (request == null)
+    {
+        await SendSubscriptionErrorAsync(webSocket, null, "Invalid subscription payload", context.RequestAborted);
+        await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Invalid subscription payload", context.RequestAborted);
+        return;
+    }
+
+    if (!string.Equals(request.Jsonrpc, "2.0", StringComparison.OrdinalIgnoreCase) ||
+        !string.Equals(request.Method, "circles_subscribe", StringComparison.OrdinalIgnoreCase))
+    {
+        await SendSubscriptionErrorAsync(webSocket, request.Id, "Unsupported method", context.RequestAborted);
+        await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Unsupported method", context.RequestAborted);
+        return;
+    }
+
+    var subscriptionId = subscriptionService.Subscribe(webSocket, request.Params?.Address);
+
+    try
+    {
+        await SendSubscriptionAckAsync(webSocket, request.Id, subscriptionId, context.RequestAborted);
+        await PumpWebSocketAsync(webSocket, context.RequestAborted);
+    }
+    finally
+    {
+        subscriptionService.Unsubscribe(subscriptionId);
+    }
+}).DisableAntiforgery();
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
@@ -145,6 +193,95 @@ app.MapPost("/", async (
 }).DisableAntiforgery();
 
 app.Run();
+
+static async Task<SubscriptionRequest?> ReceiveSubscriptionRequestAsync(WebSocket webSocket, CancellationToken cancellationToken)
+{
+    var buffer = new byte[4096];
+    using var stream = new MemoryStream();
+
+    while (true)
+    {
+        var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+
+        if (result.MessageType == WebSocketMessageType.Close)
+        {
+            return null;
+        }
+
+        if (result.MessageType != WebSocketMessageType.Text)
+        {
+            continue;
+        }
+
+        stream.Write(buffer, 0, result.Count);
+
+        if (result.EndOfMessage)
+        {
+            break;
+        }
+    }
+
+    if (stream.Length == 0)
+    {
+        return null;
+    }
+
+    var payload = Encoding.UTF8.GetString(stream.ToArray());
+    return JsonSerializer.Deserialize<SubscriptionRequest>(payload);
+}
+
+static async Task SendSubscriptionAckAsync(WebSocket socket, JsonElement? id, string subscriptionId, CancellationToken cancellationToken)
+{
+    var envelope = BuildSubscriptionResponse(id, new { result = subscriptionId }, null);
+    await socket.SendAsync(envelope, WebSocketMessageType.Text, true, cancellationToken);
+}
+
+static async Task SendSubscriptionErrorAsync(WebSocket socket, JsonElement? id, string message, CancellationToken cancellationToken)
+{
+    var error = new { code = -32600, message };
+    var envelope = BuildSubscriptionResponse(id, null, error);
+    await socket.SendAsync(envelope, WebSocketMessageType.Text, true, cancellationToken);
+}
+
+static async Task PumpWebSocketAsync(WebSocket socket, CancellationToken cancellationToken)
+{
+    var buffer = new byte[1024];
+    while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+    {
+        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+        if (result.MessageType == WebSocketMessageType.Close)
+        {
+            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cancellationToken);
+            break;
+        }
+    }
+}
+
+static ArraySegment<byte> BuildSubscriptionResponse(JsonElement? id, object? result, object? error)
+{
+    var payload = new Dictionary<string, object?>
+    {
+        ["jsonrpc"] = "2.0"
+    };
+
+    if (result != null)
+    {
+        payload["result"] = result;
+    }
+
+    if (error != null)
+    {
+        payload["error"] = error;
+    }
+
+    if (id is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null })
+    {
+        payload["id"] = id.Value;
+    }
+
+    var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
+    return new ArraySegment<byte>(bytes);
+}
 
 // ─── RPC Handler Methods ──────────────────────────────────────────────────
 
