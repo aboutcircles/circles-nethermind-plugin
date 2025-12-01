@@ -14,6 +14,8 @@
 3. [Regression Testing Guide](#regression-testing-guide)
 4. [Performance Analysis](#performance-analysis)
 5. [Testing Results & Validation](#testing-results--validation)
+6. [Real-Time Subscriptions Implementation](#6-real-time-subscriptions-implementation)
+7. [Caching & Optimization Recommendations](#7-caching--optimization-recommendations)
 
 ---
 
@@ -1335,6 +1337,617 @@ curl http://135.181.238.49:8081 -X POST -H "Content-Type: application/json" \
 # Test database connectivity (from host)
 psql -h staging-db -U circles -d circles_db -c "SELECT COUNT(*) FROM \"System_Block\";"
 ```
+
+---
+
+## 6. Real-Time Subscriptions Implementation
+
+### Overview
+
+The old Nethermind plugin had **WebSocket-based event subscriptions** for real-time Circles events. This section documents how to implement subscriptions in the standalone RPC host architecture.
+
+### Architecture: PostgreSQL LISTEN/NOTIFY
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    SUBSCRIPTION ARCHITECTURE                      │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Indexer (Nethermind Plugin)          RPC Host (ASP.NET)        │
+│  ┌────────────────────────┐           ┌────────────────────┐    │
+│  │  StateMachine          │           │  WebSocket API     │    │
+│  │                        │           │  /ws/subscribe     │    │
+│  │  After block import:   │   NOTIFY   │                    │    │
+│  │                        │ ────────▶ │  Subscription Mgr  │    │
+│  │  NOTIFY circles_events │  Postgres  │  - Active clients  │    │
+│  │  Payload: {fromBlock,  │   Channel  │  - Address filters │    │
+│  │            toBlock}    │           │                    │    │
+│  └────────────────────────┘           └─────────┬──────────┘    │
+│                                                  │               │
+│  PostgreSQL Database                             │               │
+│  ┌────────────────────────┐                     │               │
+│  │  Event Tables          │ ◀───────────────────┘               │
+│  │  - CrcV1_Transfer      │      Query events                   │
+│  │  - CrcV2_TransferSingle│      for block range                │
+│  └────────────────────────┘                                     │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### What the Old Subscription Did
+
+**Old Implementation** (Nethermind Plugin):
+
+```csharp
+// File: _resources/Circles.Index.Rpc/CirclesSubscription.cs
+public class CirclesSubscription : Subscription
+{
+    public override string Type => "circles";
+    private static long _subscriberCount;
+
+    // Static event that all subscriptions listen to
+    public static event EventHandler<NotifyEventArgs>? Notification;
+
+    // Called when new blocks are imported
+    public static void Notify(Context context, Range<long> importedRange)
+    {
+        if (_subscriberCount == 0) return;
+
+        var queryEvents = new QueryEvents(context);
+        var events = queryEvents.CirclesEvents(null, importedRange.Min, importedRange.Max);
+
+        if (events.Length > 0)
+        {
+            Notification?.Invoke(null, new NotifyEventArgs(events));
+        }
+    }
+
+    // Per-subscription filter
+    private void OnNotification(object? sender, NotifyEventArgs e)
+    {
+        CirclesEvent[] events;
+
+        if (_param.Address != null)
+        {
+            // Filter events for specific address
+            events = FilterForAffectedAddress(e, _param.Address.ToString());
+        }
+        else
+        {
+            events = e.Events;
+        }
+
+        // Send to WebSocket client
+        JsonRpcResult result = CreateSubscriptionMessage(events);
+        await JsonRpcDuplexClient.SendJsonRpcResult(result);
+    }
+}
+```
+
+**Usage Example**:
+
+```javascript
+// Client connects via WebSocket
+const ws = new WebSocket('ws://rpc.aboutcircles.com');
+
+ws.send(JSON.stringify({
+    jsonrpc: "2.0",
+    method: "circles_subscribe",
+    params: { address: "0x..." },  // Optional filter
+    id: 1
+}));
+
+// Receive subscription ID
+{ "jsonrpc": "2.0", "result": "0x123abc...", "id": 1 }
+
+// Receive events in real-time
+{
+    "jsonrpc": "2.0",
+    "method": "circles_subscription",
+    "params": {
+        "subscription": "0x123abc...",
+        "result": [
+            { "event": "CrcV2_TransferSingle", "values": {...} }
+        ]
+    }
+}
+```
+
+### Step 1: Indexer Changes (Nethermind Plugin)
+
+**Modify `src/Index/Circles.Index/StateMachine.cs`**:
+
+```csharp
+case State.NotifySubscribers:
+    switch (e)
+    {
+        case EnterState<Range<long>> importedBlockRange:
+            context.Logger.Info(
+                $"Notifying subscribers about blocks {importedBlockRange.Arg.Min}-{importedBlockRange.Arg.Max}");
+
+            if (importedBlockRange.Arg.Max - importedBlockRange.Arg.Min > 1000)
+            {
+                context.Logger.Warn($"Block range too large, skipping notification");
+            }
+            else
+            {
+                // NEW: Send PostgreSQL notification instead of in-memory event
+                await NotifyViaPostgres(context, importedBlockRange.Arg);
+            }
+
+            await TransitionTo(State.WaitForNewBlock);
+            return;
+    }
+    break;
+
+private async Task NotifyViaPostgres(Context context, Range<long> blockRange)
+{
+    try
+    {
+        await using var conn = new NpgsqlConnection(context.Settings.IndexDbConnectionString);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand("SELECT pg_notify(@channel, @payload)", conn);
+
+        cmd.Parameters.AddWithValue("channel", "circles_events");
+        cmd.Parameters.AddWithValue("payload", JsonSerializer.Serialize(new
+        {
+            fromBlock = blockRange.Min,
+            toBlock = blockRange.Max,
+            timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        }));
+
+        await cmd.ExecuteNonQueryAsync();
+
+        context.Logger.Debug($"Sent pg_notify for blocks {blockRange.Min}-{blockRange.Max}");
+    }
+    catch (Exception ex)
+    {
+        context.Logger.Error($"Failed to send pg_notify: {ex.Message}");
+        // Don't fail state machine, just log
+    }
+}
+```
+
+### Step 2: RPC Host - Subscription Service
+
+**Create new file: `src/Rpc/Circles.Rpc.Host/CirclesSubscriptionService.cs`**
+
+```csharp
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using Npgsql;
+
+namespace Circles.Rpc.Host;
+
+public class CirclesSubscriptionService : BackgroundService
+{
+    private readonly ILogger<CirclesSubscriptionService> _logger;
+    private readonly Settings _settings;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ConcurrentDictionary<string, WebSocketSubscriber> _subscribers = new();
+
+    public CirclesSubscriptionService(
+        ILogger<CirclesSubscriptionService> logger,
+        Settings settings,
+        IServiceProvider serviceProvider)
+    {
+        _logger = logger;
+        _settings = settings;
+        _serviceProvider = serviceProvider;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Starting Circles subscription service");
+
+        // Keep trying to connect/reconnect
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await ListenForNotifications(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in subscription listener, reconnecting in 5s...");
+                await Task.Delay(5000, stoppingToken);
+            }
+        }
+    }
+
+    private async Task ListenForNotifications(CancellationToken stoppingToken)
+    {
+        await using var conn = new NpgsqlConnection(_settings.IndexReadonlyDbConnectionString);
+        await conn.OpenAsync(stoppingToken);
+
+        conn.Notification += async (sender, args) =>
+        {
+            try
+            {
+                var payload = JsonSerializer.Deserialize<BlockRangePayload>(args.Payload);
+                if (payload == null) return;
+
+                _logger.LogDebug(
+                    "Received notification for blocks {FromBlock}-{ToBlock}, {Count} subscribers",
+                    payload.FromBlock, payload.ToBlock, _subscribers.Count);
+
+                await NotifySubscribers(payload.FromBlock, payload.ToBlock);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing notification");
+            }
+        };
+
+        await using var cmd = new NpgsqlCommand("LISTEN circles_events", conn);
+        await cmd.ExecuteNonQueryAsync(stoppingToken);
+
+        _logger.LogInformation("Listening for circles_events notifications");
+
+        // Keep connection alive
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await conn.WaitAsync(stoppingToken);
+        }
+    }
+
+    private async Task NotifySubscribers(long fromBlock, long toBlock)
+    {
+        if (_subscribers.IsEmpty) return;
+
+        try
+        {
+            // Query events for this block range
+            using var scope = _serviceProvider.CreateScope();
+            var rpcModule = scope.ServiceProvider.GetRequiredService<CirclesRpcModule>();
+
+            var eventsResponse = await rpcModule.GetEvents(
+                address: null,
+                fromBlock: fromBlock,
+                toBlock: toBlock,
+                eventTypes: null,
+                filterPredicates: null,
+                sortAscending: false);
+
+            if (eventsResponse.Events.Length == 0) return;
+
+            _logger.LogInformation(
+                "Broadcasting {EventCount} events to {SubscriberCount} subscribers",
+                eventsResponse.Events.Length, _subscribers.Count);
+
+            // Send to all subscribers
+            var tasks = _subscribers.Values.Select(subscriber =>
+                subscriber.SendEvents(eventsResponse.Events)
+            );
+
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error notifying subscribers");
+        }
+    }
+
+    public string Subscribe(WebSocket webSocket, string? filterAddress)
+    {
+        var subscriptionId = Guid.NewGuid().ToString("N");
+        var subscriber = new WebSocketSubscriber(webSocket, filterAddress, _logger);
+
+        _subscribers[subscriptionId] = subscriber;
+
+        _logger.LogInformation(
+            "New subscription {SubscriptionId} for address {Address}, total: {Count}",
+            subscriptionId, filterAddress ?? "all", _subscribers.Count);
+
+        return subscriptionId;
+    }
+
+    public void Unsubscribe(string subscriptionId)
+    {
+        if (_subscribers.TryRemove(subscriptionId, out var subscriber))
+        {
+            subscriber.Dispose();
+            _logger.LogInformation("Unsubscribed {SubscriptionId}", subscriptionId);
+        }
+    }
+}
+
+internal record BlockRangePayload(long FromBlock, long ToBlock, long Timestamp);
+
+internal class WebSocketSubscriber : IDisposable
+{
+    private readonly WebSocket _webSocket;
+    private readonly string? _filterAddress;
+    private readonly ILogger _logger;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+
+    public WebSocketSubscriber(WebSocket webSocket, string? filterAddress, ILogger logger)
+    {
+        _webSocket = webSocket;
+        _filterAddress = filterAddress?.ToLower();
+        _logger = logger;
+    }
+
+    public async Task SendEvents(object[] allEvents)
+    {
+        if (_webSocket.State != WebSocketState.Open) return;
+
+        try
+        {
+            // Filter events if address filter is set
+            var events = _filterAddress == null
+                ? allEvents
+                : allEvents.Where(e => EventContainsAddress(e, _filterAddress)).ToArray();
+
+            if (events.Length == 0) return;
+
+            var message = new
+            {
+                jsonrpc = "2.0",
+                method = "circles_subscription",
+                @params = new { result = events }
+            };
+
+            var json = JsonSerializer.Serialize(message);
+            var bytes = Encoding.UTF8.GetBytes(json);
+
+            await _sendLock.WaitAsync();
+            try
+            {
+                await _webSocket.SendAsync(
+                    new ArraySegment<byte>(bytes),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    CancellationToken.None);
+            }
+            finally
+            {
+                _sendLock.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending events to subscriber");
+        }
+    }
+
+    private bool EventContainsAddress(object eventObj, string address)
+    {
+        var json = JsonSerializer.Serialize(eventObj);
+        return json.Contains(address, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose()
+    {
+        if (_webSocket.State == WebSocketState.Open)
+        {
+            try
+            {
+                _webSocket.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    "Server shutting down",
+                    CancellationToken.None).Wait(TimeSpan.FromSeconds(5));
+            }
+            catch { /* Ignore */ }
+        }
+        _webSocket.Dispose();
+        _sendLock.Dispose();
+    }
+}
+```
+
+### Step 3: WebSocket Endpoint
+
+**Add to `src/Rpc/Circles.Rpc.Host/Program.cs`**:
+
+```csharp
+// Enable WebSockets
+app.UseWebSockets();
+
+// WebSocket subscription endpoint
+app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService subscriptionService) =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        context.Response.StatusCode = 400;
+        await context.Response.WriteAsync("WebSocket required");
+        return;
+    }
+
+    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+
+    try
+    {
+        // Read subscription request
+        var buffer = new byte[4096];
+        var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+
+        if (result.MessageType == WebSocketMessageType.Close)
+        {
+            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            return;
+        }
+
+        var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+        var request = JsonSerializer.Deserialize<SubscriptionRequest>(message);
+
+        // Create subscription
+        var subscriptionId = subscriptionService.Subscribe(webSocket, request?.Params?.Address);
+
+        // Send subscription ID
+        var response = new { jsonrpc = "2.0", result = subscriptionId, id = request?.Id };
+        var responseJson = JsonSerializer.Serialize(response);
+        await webSocket.SendAsync(
+            Encoding.UTF8.GetBytes(responseJson),
+            WebSocketMessageType.Text, true, CancellationToken.None);
+
+        // Keep alive
+        while (webSocket.State == WebSocketState.Open)
+        {
+            result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+                break;
+            }
+        }
+
+        subscriptionService.Unsubscribe(subscriptionId);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"WebSocket error: {ex.Message}");
+    }
+});
+
+internal record SubscriptionRequest(string JsonRpc, string Method, SubscriptionParams? Params, int Id);
+internal record SubscriptionParams(string? Address);
+```
+
+**Register service in `Program.cs`**:
+
+```csharp
+// Register subscription service
+builder.Services.AddSingleton<CirclesSubscriptionService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CirclesSubscriptionService>());
+```
+
+### Step 4: Testing
+
+```bash
+# Terminal 1: Start RPC
+cd src/Rpc/Circles.Rpc.Host
+dotnet run
+
+# Terminal 2: Test WebSocket
+npm install -g wscat
+wscat -c ws://localhost:5000/ws/subscribe
+
+# Send:
+{"jsonrpc":"2.0","method":"circles_subscribe","params":{},"id":1}
+
+# Receive:
+# 1. Subscription ID: {"jsonrpc":"2.0","result":"abc123...","id":1}
+# 2. Events as blocks indexed: {"jsonrpc":"2.0","method":"circles_subscription","params":{"result":[...]}}
+```
+
+### Benefits of PostgreSQL LISTEN/NOTIFY
+
+✅ **No new infrastructure** - Uses existing PostgreSQL
+✅ **Near real-time** - <100ms latency
+✅ **Reliable** - PostgreSQL guarantees delivery to active connections
+✅ **Scalable** - Supports multiple RPC host instances
+✅ **Simple** - Built-in PostgreSQL feature, minimal code
+
+---
+
+## 7. Caching & Optimization Recommendations
+
+### Current State
+
+**Already Implemented**:
+
+- ✅ Profile CID cache (MemoryCache, 10k entries) - Working well
+
+**Not Implemented** (Removed during refactoring):
+
+- ❌ Token exposure cache
+- ❌ Avatar info cache
+- ❌ Balance cache
+
+### Caching Decision Framework
+
+#### Should You Cache Token Exposure?
+
+**YES if**:
+
+- ✅ You have dashboard/wallet UIs (multiple parallel calls per user)
+- ✅ Activity feeds showing many user balances
+- ✅ Auto-refresh patterns (polling every 10-30 seconds)
+- ✅ Social features (leaderboards, explore pages)
+
+**NO if**:
+
+- ❌ Only one-off API calls (backend service)
+- ❌ No repeated queries per address
+- ❌ Users don't stay on pages >5 minutes
+
+**Cache Hit Rate Estimates**:
+
+- Dashboard load: **50%** (2 parallel calls for same address)
+- Feed/timeline: **70-90%** (many duplicate addresses)
+- Auto-refresh: **95%+** (same address within TTL)
+- One-off calls: **0%** (no benefit)
+
+**Implementation** (if needed):
+
+```csharp
+// src/Rpc/Circles.Rpc.Host/CirclesRpcModule.cs
+
+private readonly IMemoryCache _tokenExposureCache;
+
+private Dictionary<string, TokenExposureInfo> GetTokenExposureIds(string address)
+{
+    if (!_settings.EnableTokenExposureCache)
+    {
+        return QueryTokenExposureFromDB(address);
+    }
+
+    var cacheKey = $"token_exposure:{address.ToLower()}";
+
+    return _tokenExposureCache.GetOrCreate(cacheKey, entry =>
+    {
+        entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+        entry.Size = 1;
+        return QueryTokenExposureFromDB(address);
+    })!;
+}
+```
+
+### Database Indexes (Critical for Performance)
+
+**Verify these indexes exist**:
+
+```sql
+-- Token exposure queries
+CREATE INDEX IF NOT EXISTS "idx_CrcV1_Transfer_to"
+    ON "CrcV1_Transfer"("to", "tokenAddress");
+CREATE INDEX IF NOT EXISTS "idx_CrcV2_TransferSingle_to"
+    ON "CrcV2_TransferSingle"("to", "tokenAddress");
+
+-- Profile lookups
+CREATE INDEX IF NOT EXISTS "idx_CrcV2_UpdateMetadataDigest_avatar"
+    ON "CrcV2_UpdateMetadataDigest"("avatar");
+
+-- Event queries
+CREATE INDEX IF NOT EXISTS "idx_events_blockNumber"
+    ON "CrcV2_TransferSingle"("blockNumber", "transactionIndex", "logIndex");
+```
+
+**Check index usage**:
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT "tokenAddress", "type", "tokenOwner"
+FROM "CrcV1_Transfer" t
+JOIN "CrcV1_Signup" s ON s.token = t."tokenAddress"
+WHERE t."to" = '0xYourAddress';
+
+-- Look for "Index Scan" (good) vs "Seq Scan" (bad)
+```
+
+### PostgreSQL Views (Already Implemented)
+
+**Current views**:
+
+- `V_CrcV2_Avatars` - Aggregates avatar registration
+- `V_Crc_TrustRelations` - Latest trust state with deduplication
+
+**Purpose**: Query simplification, NOT performance improvement
+**Recommendation**: Keep existing views, don't add new ones for performance
 
 ---
 
