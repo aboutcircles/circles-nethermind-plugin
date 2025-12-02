@@ -316,15 +316,15 @@ public class StateMachine(
             });
 
             await using var command = new NpgsqlCommand("SELECT pg_notify(@channel, @payload)", connection);
-            command.Parameters.AddWithValue("channel", "circles_events");
+            command.Parameters.AddWithValue("channel", context.Settings.PgNotifyChannel);
             command.Parameters.AddWithValue("payload", payload);
 
             await command.ExecuteNonQueryAsync(cancellationToken);
-            context.Logger.Debug($"Sent circles_events notification for blocks {range.Min}-{range.Max}.");
+            context.Logger.Debug($"Sent {context.Settings.PgNotifyChannel} notification for blocks {range.Min}-{range.Max}.");
         }
         catch (Exception ex)
         {
-            context.Logger.Error($"Failed to send circles_events notification for blocks {range.Min}-{range.Max}: {ex.Message}");
+            context.Logger.Error($"Failed to send {context.Settings.PgNotifyChannel} notification for blocks {range.Min}-{range.Max}: {ex.Message}");
         }
     }
 }

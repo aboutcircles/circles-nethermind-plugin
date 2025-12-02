@@ -14,6 +14,10 @@ public class Settings
         ?? Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
         ?? throw new Exception("POSTGRES_CONNECTION_STRING is not set.");
 
+    public readonly string PgNotifyChannel =
+        Environment.GetEnvironmentVariable("CIRCLES_PG_NOTIFY_CHANNEL")
+        ?? "circles_index_events";
+
     #region Nethermind plug-in only configuration
 
     public readonly string? ExternalPathfinderUrl =

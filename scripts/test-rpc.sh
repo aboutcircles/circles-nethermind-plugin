@@ -36,6 +36,7 @@ CATEGORY_KEYS=(
     "balance"
     "avatar"
     "trust"
+    "sdk"
     "query"
     "events"
 )
@@ -45,6 +46,7 @@ CATEGORY_LABELS=(
     "Balance & Token Methods"
     "Avatar & Profile Methods"
     "Trust & Network Methods"
+    "SDK Enablement Methods"
     "Query Methods"
     "Events Methods"
 )
@@ -54,8 +56,9 @@ CATEGORY_FILE_NAMES=(
     "02-balance-token-methods.jsonl"
     "03-avatar-profile-methods.jsonl"
     "04-trust-network-methods.jsonl"
-    "05-query-methods.jsonl"
-    "06-events-methods.jsonl"
+    "05-sdk-methods.jsonl"
+    "06-query-methods.jsonl"
+    "07-events-methods.jsonl"
 )
 
 CATEGORY_COUNT=${#CATEGORY_KEYS[@]}
@@ -484,6 +487,54 @@ run_test "trust" "circlesV2_findPath (circular path with token swap)" "curl -s -
 run_test "trust" "circlesV2_findPath (multiple token balances)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"500000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"0x6D5e20F62C177765f73aee343a307D949c08B9DC\",\"Amount\":\"300000000000000000000\",\"IsWrapped\":false},{\"Holder\":\"$TEST_ADDR_2\",\"Token\":\"0xa0f8904eC48a2775B8a88b40e9c171F05F7d7673\",\"Amount\":\"200000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 run_test "trust" "circlesV2_findPath (exclusions)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"1000\",\"excludedFromTokens\":[\"$TOKEN_ADDR_2\"],\"maxTransfers\":5}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# SDK Enablement Methods (Optimized Endpoints)
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- SDK Enablement: Note these endpoints may not exist yet ---${NC}\n"
+fi
+
+# Profile View (consolidates 6-7 calls into 1)
+run_test "sdk" "circles_getProfileView (full profile, addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$TEST_ADDR_1\",{\"includeBalances\":true,\"includeTokens\":true,\"includeTrustSummary\":true,\"includeInviter\":true,\"maxTokens\":20}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getProfileView (minimal, addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$TEST_ADDR_2\",{\"includeBalances\":false,\"includeTokens\":false}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getProfileView (balances only, addr3)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$TEST_ADDR_3\",{\"includeBalances\":true,\"includeTokens\":false,\"includeTrustSummary\":false}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+# Trust Network Summary (consolidates 4 calls into 1)
+run_test "sdk" "circles_getTrustNetworkSummary (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustNetworkSummary\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getTrustNetworkSummary (addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustNetworkSummary\",\"params\":[\"$TEST_ADDR_2\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getTrustNetworkSummary (addr3)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustNetworkSummary\",\"params\":[\"$TEST_ADDR_3\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+# Aggregated Trust Relations (server-side aggregation)
+run_test "sdk" "circles_getAggregatedTrustRelations (addr1, page 1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelations\",\"params\":[\"$TEST_ADDR_1\",100,0],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getAggregatedTrustRelations (addr2, page 1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelations\",\"params\":[\"$TEST_ADDR_2\",100,0],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getAggregatedTrustRelations (addr1, page 2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelations\",\"params\":[\"$TEST_ADDR_1\",50,50],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+# Valid Inviters (consolidates 3-4 calls into 1)
+run_test "sdk" "circles_getValidInviters (addr1, with avatar info)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getValidInviters\",\"params\":[\"$TEST_ADDR_1\",{\"minBalance\":\"96000000000000000000\",\"includeAvatarInfo\":true}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getValidInviters (addr2, minimal)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getValidInviters\",\"params\":[\"$TEST_ADDR_2\",{\"minBalance\":\"96000000000000000000\",\"includeAvatarInfo\":false}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getValidInviters (addr3, custom min balance)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getValidInviters\",\"params\":[\"$TEST_ADDR_3\",{\"minBalance\":\"50000000000000000000\",\"includeAvatarInfo\":true}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+# Transaction History Enriched (server-side amount calculations)
+run_test "sdk" "circles_getTransactionHistoryEnriched (addr1, 20 recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$TEST_ADDR_1\",{\"limit\":20,\"offset\":0,\"includeAmounts\":true,\"direction\":\"both\"}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getTransactionHistoryEnriched (addr2, outgoing only)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$TEST_ADDR_2\",{\"limit\":10,\"offset\":0,\"includeAmounts\":true,\"direction\":\"outgoing\"}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_getTransactionHistoryEnriched (addr3, incoming only)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$TEST_ADDR_3\",{\"limit\":10,\"offset\":0,\"includeAmounts\":true,\"direction\":\"incoming\"}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+# Search Profile by Address or Name (unified search with deduplication)
+run_test "sdk" "circles_searchProfileByAddressOrName (by address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_searchProfileByAddressOrName\",\"params\":[\"$TEST_ADDR_1\",{\"limit\":10,\"offset\":0}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
+
+run_test "sdk" "circles_searchProfileByAddressOrName (by name - may fail if no matching names)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_searchProfileByAddressOrName\",\"params\":[\"alice\",{\"limit\":10,\"offset\":0,\"avatarTypes\":[\"CrcV2_RegisterHuman\"]}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL" || true
 
 ######################################################################
 # Query Methods
