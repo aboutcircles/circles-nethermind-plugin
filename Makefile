@@ -1,4 +1,4 @@
-.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression docker-up docker-down docker-logs call-rpc all release
+.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression test-subscriptions docker-up docker-down docker-logs call-rpc all release
 
 # Default target
 help:
@@ -38,12 +38,15 @@ help:
 	@echo "  make call-rpc          Call RPC interactively"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test-rpc                    Run RPC tests (default: localhost:8081)"
-	@echo "  make test-rpc URL=<url>          Run RPC tests against custom URL"
-	@echo "  make test-rpc ARGS='--json'      Run RPC tests with JSON output"
-	@echo "  make test-rpc-prod               Run RPC tests against production"
-	@echo "  make test-rpc-prod ARGS='--json' Run production tests with JSON output"
-	@echo "  make test-rpc-regression         Compare local vs production responses"
+	@echo "  make test-rpc                              Run RPC tests (default: localhost:8081)"
+	@echo "  make test-rpc URL=<url>                    Run RPC tests against custom URL"
+	@echo "  make test-rpc ARGS='--json'                Run RPC tests with JSON output"
+	@echo "  make test-rpc-prod                         Run RPC tests against production"
+	@echo "  make test-rpc-prod ARGS='--json'           Run production tests with JSON output"
+	@echo "  make test-rpc-regression                   Compare local vs production responses"
+	@echo "  make test-subscriptions                    Test WebSocket subscriptions (default: localhost:8081)"
+	@echo "  make test-subscriptions URL=<ws_url>       Test subscriptions against custom WebSocket URL"
+	@echo "  make test-subscriptions ARGS='--duration 60 --filter 0x...' Test with custom options"
 		@echo ""
 	@echo "Complete Workflows:"
 	@echo "  make all               Build, test, and pack"
@@ -162,6 +165,13 @@ test-rpc-prod:
 
 test-rpc-regression:
 	./scripts/rpc-regression.sh
+
+test-subscriptions:
+	@if [ -n "$(URL)" ]; then \
+		./scripts/test-subscriptions.sh "$(URL)" $(ARGS); \
+	else \
+		./scripts/test-subscriptions.sh $(ARGS); \
+	fi
 
 # Complete workflows
 all: build test pack

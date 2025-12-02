@@ -135,6 +135,12 @@ is_expected_failure() {
     return 1
 }
 
+# Subscription test configuration
+SUBSCRIPTION_ENABLED=false
+SUBSCRIPTION_DURATION=60
+SUBSCRIPTION_MIN_EVENTS=3
+SUBSCRIPTION_FILTER=""
+
 # Load configuration file if provided
 if [[ -n "$CONFIG_FILE" ]] && [[ -f "$CONFIG_FILE" ]]; then
     echo -e "${CYAN}Loading configuration from: $CONFIG_FILE${NC}"
@@ -153,6 +159,16 @@ if [[ -n "$CONFIG_FILE" ]] && [[ -f "$CONFIG_FILE" ]]; then
 
         # Update expected failures
         EXPECTED_FAILURES=$(jq -r '.expectedFailures[]? // empty' "$CONFIG_FILE" 2>/dev/null | tr '\n' '\n')
+
+        # Update subscription test settings
+        sub_enabled=$(jq -r '.subscriptionTest.enabled // false' "$CONFIG_FILE" 2>/dev/null)
+        [[ "$sub_enabled" == "true" ]] && SUBSCRIPTION_ENABLED=true
+        sub_duration=$(jq -r '.subscriptionTest.duration // 60' "$CONFIG_FILE" 2>/dev/null)
+        [[ -n "$sub_duration" ]] && SUBSCRIPTION_DURATION="$sub_duration"
+        sub_min_events=$(jq -r '.subscriptionTest.minEvents // 3' "$CONFIG_FILE" 2>/dev/null)
+        [[ -n "$sub_min_events" ]] && SUBSCRIPTION_MIN_EVENTS="$sub_min_events"
+        sub_filter=$(jq -r '.subscriptionTest.filterAddress // empty' "$CONFIG_FILE" 2>/dev/null)
+        [[ -n "$sub_filter" ]] && SUBSCRIPTION_FILTER="$sub_filter"
     else
         echo -e "${YELLOW}Warning: jq not found, using default configuration${NC}"
     fi
@@ -163,7 +179,11 @@ echo -e "${CYAN}Local URL:           $LOCAL_URL${NC}"
 echo -e "${CYAN}Remote URL:          $REMOTE_URL${NC}"
 echo -e "${CYAN}Default Tolerance:   ${DEFAULT_TOLERANCE}%${NC}"
 echo -e "${CYAN}Balance Tolerance:   ${BALANCE_TOLERANCE}%${NC}"
-echo -e "${CYAN}Results:             $RUN_DIR${NC}\n"
+echo -e "${CYAN}Results:             $RUN_DIR${NC}"
+if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
+    echo -e "${CYAN}Subscription Test:   Enabled (${SUBSCRIPTION_DURATION}s)${NC}"
+fi
+echo ""
 
 # Step 1: Run tests in parallel
 echo -e "${YELLOW}[1/4] Running tests in parallel...${NC}"
@@ -900,6 +920,48 @@ echo -e "${YELLOW}Generating timing comparison...${NC}"
 echo -e "${GREEN}✓ Timing analysis complete${NC}"
 echo -e "${GREEN}✓ Reports generated${NC}\n"
 
+# Optional: Run subscription test on local endpoint
+SUBSCRIPTION_OUTPUT="$RUN_DIR/subscription_test.json"
+SUBSCRIPTION_SUCCESS=true
+
+if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
+    echo -e "${YELLOW}[BONUS] Running WebSocket subscription test on local endpoint...${NC}"
+
+    # Convert HTTP URL to WebSocket URL
+    LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/subscribe
+
+    # Build arguments
+    FILTER_ARG=""
+    if [[ -n "$SUBSCRIPTION_FILTER" ]]; then
+        FILTER_ARG="--filter $SUBSCRIPTION_FILTER"
+    fi
+
+    # Run subscription test with smart termination
+    if "$SCRIPT_DIR/test-subscriptions.sh" "$LOCAL_WS_URL" \
+        --duration "$SUBSCRIPTION_DURATION" \
+        --min-events "$SUBSCRIPTION_MIN_EVENTS" \
+        $FILTER_ARG \
+        --json --json-file "$SUBSCRIPTION_OUTPUT"; then
+        echo -e "${GREEN}✓ Subscription test passed${NC}"
+
+        # Extract summary
+        if command -v jq &> /dev/null && [[ -f "$SUBSCRIPTION_OUTPUT" ]]; then
+            event_count=$(jq -r '.total_events_received // 0' "$SUBSCRIPTION_OUTPUT" 2>/dev/null)
+            sub_id=$(jq -r '.subscription_id // "N/A"' "$SUBSCRIPTION_OUTPUT" 2>/dev/null)
+            ttf=$(jq -r '.time_to_first_event_seconds // "N/A"' "$SUBSCRIPTION_OUTPUT" 2>/dev/null)
+            echo -e "${CYAN}  Subscription ID: $sub_id${NC}"
+            echo -e "${CYAN}  Events received: $event_count${NC}"
+            if [[ "$ttf" != "N/A" ]]; then
+                echo -e "${CYAN}  Time to first:   ${ttf}s${NC}"
+            fi
+        fi
+    else
+        echo -e "${RED}✗ Subscription test failed${NC}"
+        SUBSCRIPTION_SUCCESS=false
+    fi
+    echo ""
+fi
+
 # Print summary to console
 echo ""
 echo -e "${BLUE}=== Summary ===${NC}"
@@ -911,6 +973,9 @@ echo -e "  ${CYAN}Differences: $DIFF_OUTPUT${NC}"
 echo -e "  ${CYAN}Normalized:  $NORMALIZED_OUTPUT${NC}"
 echo -e "  ${CYAN}Timing:      $TIMING_OUTPUT${NC}"
 echo -e "  ${CYAN}Category diffs dir: $CATEGORY_DIFF_DIR${NC}"
+if [[ "$SUBSCRIPTION_ENABLED" == "true" && -f "$SUBSCRIPTION_OUTPUT" ]]; then
+    echo -e "  ${CYAN}Subscription: $SUBSCRIPTION_OUTPUT${NC}"
+fi
 
 # Print timing summary
 echo ""
@@ -938,16 +1003,30 @@ if [[ $MISSING_LOCAL -gt 0 ]] || [[ $MISSING_REMOTE -gt 0 ]]; then
     echo -e "${YELLOW}Review methods comparison: $METHODS_OUTPUT${NC}"
 fi
 
+if [[ "$SUBSCRIPTION_ENABLED" == "true" && "$SUBSCRIPTION_SUCCESS" == "false" ]]; then
+    echo -e "${RED}✗ Subscription test failed${NC}"
+    echo -e "${YELLOW}Review subscription results: $SUBSCRIPTION_OUTPUT${NC}"
+fi
+
 # Cleanup temp files
 rm -f "$TESTS_WITH_DIFFERENCES_FILE" "$TESTS_MISSING_LOCAL_FILE" "$TESTS_MISSING_REMOTE_FILE" \
       "$TESTS_MATCH_FILE" "$TESTS_EXPECTED_FAILURE_FILE" "$TEMP_CONFIG"
 
-if [[ $DIFFERENT_TESTS -eq 0 ]] && [[ $MISSING_LOCAL -eq 0 ]] && [[ $MISSING_REMOTE -eq 0 ]]; then
+# Determine overall success
+OVERALL_SUCCESS=true
+if [[ $DIFFERENT_TESTS -gt 0 ]]; then
+    OVERALL_SUCCESS=false
+fi
+if [[ "$SUBSCRIPTION_ENABLED" == "true" && "$SUBSCRIPTION_SUCCESS" == "false" ]]; then
+    OVERALL_SUCCESS=false
+fi
+
+if [[ "$OVERALL_SUCCESS" == "true" ]] && [[ $MISSING_LOCAL -eq 0 ]] && [[ $MISSING_REMOTE -eq 0 ]]; then
     echo -e "${GREEN}✓✓✓ All tests match perfectly! ✓✓✓${NC}"
     exit 0
 else
     # Exit with error only if there are unexpected differences
-    if [[ $DIFFERENT_TESTS -gt 0 ]]; then
+    if [[ $DIFFERENT_TESTS -gt 0 ]] || [[ "$SUBSCRIPTION_SUCCESS" == "false" ]]; then
         exit 1
     else
         # Only coverage mismatches or expected failures - warn but don't fail
