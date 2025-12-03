@@ -148,11 +148,13 @@ public interface ICirclesRpcModule
     /// <param name="fromBlock">Starting block number</param>
     /// <param name="toBlock">Ending block number (optional)</param>
     /// <param name="limit">Maximum transactions to return (optional, default 20)</param>
-    Task<EnrichedTransactionHistoryResponse> GetTransactionHistoryEnriched(
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    Task<PagedResponse<EnrichedTransaction>> GetTransactionHistoryEnriched(
         string address,
         long fromBlock,
         long? toBlock = null,
-        int? limit = null);
+        int? limit = null,
+        string? cursor = null);
 
     /// <summary>
     /// Unified search across profiles by address prefix OR name/description text.
@@ -654,7 +656,7 @@ public class ProfileCidResponseJsonConverter : JsonConverter<ProfileCidResponse>
 }
 
 // ============================================================================
-// SDK Enablement Response Types (Phase 3)
+// SDK Enablement Response Types
 // ============================================================================
 
 /// <summary>

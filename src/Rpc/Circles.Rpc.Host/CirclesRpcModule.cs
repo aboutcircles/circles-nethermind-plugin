@@ -17,6 +17,111 @@ using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
 
 namespace Circles.Rpc.Host;
 
+/// <summary>
+/// Utility class for cursor-based pagination.
+/// </summary>
+public static class CursorUtils
+{
+    /// <summary>
+    /// Decodes a base64-encoded cursor string into blockNumber, transactionIndex, logIndex.
+    /// </summary>
+    public static (long? blockNumber, int? transactionIndex, int? logIndex) DecodeCursor(string? cursor)
+    {
+        if (string.IsNullOrEmpty(cursor))
+        {
+            return (null, null, null);
+        }
+
+        try
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+            var parts = decoded.Split(':');
+            if (parts.Length >= 3)
+            {
+                return (long.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]));
+            }
+        }
+        catch
+        {
+            // Invalid cursor, ignore
+        }
+
+        return (null, null, null);
+    }
+
+    /// <summary>
+    /// Decodes a base64-encoded cursor string into blockNumber, transactionIndex, logIndex, batchIndex.
+    /// </summary>
+    public static (long? blockNumber, int? transactionIndex, int? logIndex, int? batchIndex) DecodeCursorWithBatch(string? cursor)
+    {
+        if (string.IsNullOrEmpty(cursor))
+        {
+            return (null, null, null, null);
+        }
+
+        try
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+            var parts = decoded.Split(':');
+            if (parts.Length >= 4)
+            {
+                return (long.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3]));
+            }
+            else if (parts.Length >= 3)
+            {
+                return (long.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), 0);
+            }
+        }
+        catch
+        {
+            // Invalid cursor, ignore
+        }
+
+        return (null, null, null, null);
+    }
+
+    /// <summary>
+    /// Encodes blockNumber, transactionIndex, logIndex into a base64-encoded cursor string.
+    /// </summary>
+    public static string? EncodeCursor(long blockNumber, int transactionIndex, int logIndex)
+    {
+        var cursorString = $"{blockNumber}:{transactionIndex}:{logIndex}";
+        return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+    }
+
+    /// <summary>
+    /// Encodes blockNumber, transactionIndex, logIndex, batchIndex into a base64-encoded cursor string.
+    /// </summary>
+    public static string? EncodeCursorWithBatch(long blockNumber, int transactionIndex, int logIndex, int batchIndex)
+    {
+        var cursorString = $"{blockNumber}:{transactionIndex}:{logIndex}:{batchIndex}";
+        return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+    }
+
+    /// <summary>
+    /// Generates a cursor from the last result in a list, using the specified cursor-generating function.
+    /// </summary>
+    public static async Task<string?> GenerateCursorFromLastResult<T>(
+        IReadOnlyList<T> results,
+        Func<T, Task<(long blockNumber, int transactionIndex, int logIndex)?>> getCursorValues,
+        NpgsqlConnection connection)
+    {
+        if (results.Count == 0)
+        {
+            return null;
+        }
+
+        var lastResult = results[^1];
+        var cursorValues = await getCursorValues(lastResult);
+        if (cursorValues.HasValue)
+        {
+            return EncodeCursor(cursorValues.Value.blockNumber, cursorValues.Value.transactionIndex, cursorValues.Value.logIndex);
+        }
+
+        return null;
+    }
+}
+
 public class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly Settings _settings;
@@ -1669,28 +1774,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await using var connection = await CreateConnectionAsync();
         
         // Decode cursor if provided
-        long? cursorBlock = null;
-        int? cursorTxIndex = null;
-        int? cursorLogIndex = null;
-        
-        if (!string.IsNullOrEmpty(cursor))
-        {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
-                var parts = decoded.Split(':');
-                if (parts.Length == 3)
-                {
-                    cursorBlock = long.Parse(parts[0]);
-                    cursorTxIndex = int.Parse(parts[1]);
-                    cursorLogIndex = int.Parse(parts[2]);
-                }
-            }
-            catch
-            {
-                // Invalid cursor, ignore
-            }
-        }
+        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
         
         // Build SQL query with filters
         var sql = new System.Text.StringBuilder(@"
@@ -1781,23 +1865,26 @@ public class CirclesRpcModule : ICirclesRpcModule
         string? nextCursor = null;
         if (hasMore && results.Count > 0)
         {
-            var lastResult = results[^1];
-            await using var cursorCommand = new NpgsqlCommand(@"
-                SELECT ""transactionIndex"", ""logIndex""
-                FROM ""CrcV2_RegisterGroup""
-                WHERE ""group"" = @group AND ""blockNumber"" = @blockNumber
-            ", connection);
-            cursorCommand.Parameters.AddWithValue("group", lastResult.Group);
-            cursorCommand.Parameters.AddWithValue("blockNumber", lastResult.BlockNumber);
-            
-            await using var cursorReader = await cursorCommand.ExecuteReaderAsync();
-            if (await cursorReader.ReadAsync())
-            {
-                var txIndex = cursorReader.GetInt32(0);
-                var logIndex = cursorReader.GetInt32(1);
-                var cursorString = $"{lastResult.BlockNumber}:{txIndex}:{logIndex}";
-                nextCursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
-            }
+            nextCursor = await CursorUtils.GenerateCursorFromLastResult(
+                results,
+                async (groupRow) =>
+                {
+                    await using var cursorCommand = new NpgsqlCommand(@"
+                        SELECT ""transactionIndex"", ""logIndex""
+                        FROM ""CrcV2_RegisterGroup""
+                        WHERE ""group"" = @group AND ""blockNumber"" = @blockNumber
+                    ", connection);
+                    cursorCommand.Parameters.AddWithValue("group", groupRow.Group);
+                    cursorCommand.Parameters.AddWithValue("blockNumber", groupRow.BlockNumber);
+                    
+                    await using var cursorReader = await cursorCommand.ExecuteReaderAsync();
+                    if (await cursorReader.ReadAsync())
+                    {
+                        return (groupRow.BlockNumber, cursorReader.GetInt32(0), cursorReader.GetInt32(1));
+                    }
+                    return null;
+                },
+                connection);
         }
         
         return new PagedResponse<GroupRow>(
@@ -1827,28 +1914,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await using var connection = await CreateConnectionAsync();
         
         // Decode cursor if provided
-        long? cursorBlock = null;
-        int? cursorTxIndex = null;
-        int? cursorLogIndex = null;
-        
-        if (!string.IsNullOrEmpty(cursor))
-        {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
-                var parts = decoded.Split(':');
-                if (parts.Length == 3)
-                {
-                    cursorBlock = long.Parse(parts[0]);
-                    cursorTxIndex = int.Parse(parts[1]);
-                    cursorLogIndex = int.Parse(parts[2]);
-                }
-            }
-            catch
-            {
-                // Invalid cursor, ignore
-            }
-        }
+        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
         
         // Build SQL query
         var filterColumn = filterByGroup ? "\"group\"" : "member";
@@ -1921,8 +1987,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (hasMore && results.Count > 0)
         {
             var lastResult = results[^1];
-            var cursorString = $"{lastResult.BlockNumber}:{lastResult.TransactionIndex}:{lastResult.LogIndex}";
-            nextCursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+            nextCursor = CursorUtils.EncodeCursor(lastResult.BlockNumber, lastResult.TransactionIndex, lastResult.LogIndex);
         }
         
         return new PagedResponse<GroupMembershipRow>(
@@ -1938,30 +2003,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await using var connection = await CreateConnectionAsync();
         
         // Decode cursor if provided
-        long? cursorBlock = null;
-        int? cursorTxIndex = null;
-        int? cursorLogIndex = null;
-        int? cursorBatchIndex = null;
-        
-        if (!string.IsNullOrEmpty(cursor))
-        {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
-                var parts = decoded.Split(':');
-                if (parts.Length == 4)
-                {
-                    cursorBlock = long.Parse(parts[0]);
-                    cursorTxIndex = int.Parse(parts[1]);
-                    cursorLogIndex = int.Parse(parts[2]);
-                    cursorBatchIndex = int.Parse(parts[3]);
-                }
-            }
-            catch
-            {
-                // Invalid cursor format, ignore and return from beginning
-            }
-        }
+        var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
         
         // Build query with cursor pagination
         var sql = @$"
@@ -2080,8 +2122,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var lastResult = results[^1];
             // Include batchIndex in cursor for proper pagination of batch transfers
-            var cursorString = $"{lastResult.BlockNumber}:{lastResult.TransactionIndex}:{lastResult.LogIndex}:0";
-            nextCursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+            nextCursor = CursorUtils.EncodeCursorWithBatch(lastResult.BlockNumber, lastResult.TransactionIndex, lastResult.LogIndex, 0);
         }
         
         return new PagedResponse<TransactionHistoryRow>(
@@ -3086,38 +3127,119 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// Gets transaction history with enriched data including demurrage calculations and profile info.
     /// Reduces need for separate profile lookups and demurrage computations on client side.
     /// </summary>
-    public async Task<EnrichedTransactionHistoryResponse> GetTransactionHistoryEnriched(
+    public async Task<PagedResponse<EnrichedTransaction>> GetTransactionHistoryEnriched(
         string address,
         long fromBlock,
         long? toBlock = null,
-        int? limit = null)
+        int? limit = null,
+        string? cursor = null)
     {
-        // Get events for this address
-        var events = await GetEvents(address, fromBlock, toBlock, null);
-
-        var enrichedTransactions = new List<EnrichedTransaction>();
-        var involvedAddresses = new HashSet<string>();
-
+        var normalizedAddress = address.ToLower();
+        await using var connection = await CreateConnectionAsync();
+        
+        // Decode cursor if provided
+        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
+        
         // Use limit or default to 20 if not specified
         var effectiveLimit = limit ?? 20;
 
-        // Extract all involved addresses from events
-        foreach (var evt in events.Events.Take(effectiveLimit))
-        {
-            if (evt is not JsonElement jsonEvt) continue;
-            var evtObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(jsonEvt.GetRawText());
-            if (evtObj == null) continue;
+        // Build query to get events with cursor pagination
+        var sql = @$"
+            SELECT 
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                event_name,
+                event_payload
+            FROM (
+                SELECT 
+                    e.""blockNumber"",
+                    e.""transactionIndex"",
+                    e.""logIndex"",
+                    e.""transactionHash"",
+                    'transfer' as event_name,
+                    to_jsonb(e) as event_payload
+                FROM ""V_Crc_Transfers"" e
+                WHERE e.version = 2
+                  AND (e.""from"" = @address OR e.""to"" = @address)
+                  AND e.""blockNumber"" >= @fromBlock
+                  {(toBlock.HasValue ? "AND e.\"blockNumber\" <= @toBlock" : "")}
+                  {(cursorBlock.HasValue ? @"AND (
+                    e.""blockNumber"" < @cursorBlock OR
+                    (e.""blockNumber"" = @cursorBlock AND e.""transactionIndex"" < @cursorTxIndex) OR
+                    (e.""blockNumber"" = @cursorBlock AND e.""transactionIndex"" = @cursorTxIndex AND e.""logIndex"" < @cursorLogIndex)
+                  )" : "")}
+                
+                UNION ALL
+                
+                SELECT 
+                    t.""blockNumber"",
+                    t.""transactionIndex"",
+                    t.""logIndex"",
+                    t.""transactionHash"",
+                    'trust' as event_name,
+                    to_jsonb(t) as event_payload
+                FROM ""CrcV2_Trust"" t
+                WHERE (t.truster = @address OR t.trustee = @address)
+                  AND t.""blockNumber"" >= @fromBlock
+                  {(toBlock.HasValue ? "AND t.\"blockNumber\" <= @toBlock" : "")}
+                  {(cursorBlock.HasValue ? @"AND (
+                    t.""blockNumber"" < @cursorBlock OR
+                    (t.""blockNumber"" = @cursorBlock AND t.""transactionIndex"" < @cursorTxIndex) OR
+                    (t.""blockNumber"" = @cursorBlock AND t.""transactionIndex"" = @cursorTxIndex AND t.""logIndex"" < @cursorLogIndex)
+                  )" : "")}
+            ) combined
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+            LIMIT @limit
+        ";
 
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", normalizedAddress);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("limit", effectiveLimit + 1); // Fetch one extra to check for more
+        
+        if (toBlock.HasValue)
+        {
+            cmd.Parameters.AddWithValue("toBlock", toBlock.Value);
+        }
+        
+        if (cursorBlock.HasValue)
+        {
+            cmd.Parameters.AddWithValue("cursorBlock", cursorBlock.Value);
+            cmd.Parameters.AddWithValue("cursorTxIndex", cursorTxIndex!.Value);
+            cmd.Parameters.AddWithValue("cursorLogIndex", cursorLogIndex!.Value);
+        }
+
+        var events = new List<JsonElement>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        while (await reader.ReadAsync())
+        {
+            var eventPayloadJson = reader.GetString(5);
+            var eventPayload = JsonSerializer.Deserialize<JsonElement>(eventPayloadJson);
+            events.Add(eventPayload);
+        }
+
+        // Check if there are more results
+        var hasMore = events.Count > effectiveLimit;
+        if (hasMore)
+        {
+            events.RemoveAt(events.Count - 1); // Remove the extra row
+        }
+
+        // Extract all involved addresses from events
+        var involvedAddresses = new HashSet<string>();
+        foreach (var evt in events)
+        {
             // Extract addresses from different event types
-            if (evtObj.TryGetValue("from", out var from) && from.ValueKind == JsonValueKind.String)
+            if (evt.TryGetProperty("from", out var from) && from.ValueKind == JsonValueKind.String)
                 involvedAddresses.Add(from.GetString()!);
-            if (evtObj.TryGetValue("to", out var to) && to.ValueKind == JsonValueKind.String)
+            if (evt.TryGetProperty("to", out var to) && to.ValueKind == JsonValueKind.String)
                 involvedAddresses.Add(to.GetString()!);
-            if (evtObj.TryGetValue("user", out var user) && user.ValueKind == JsonValueKind.String)
-                involvedAddresses.Add(user.GetString()!);
-            if (evtObj.TryGetValue("truster", out var truster) && truster.ValueKind == JsonValueKind.String)
+            if (evt.TryGetProperty("truster", out var truster) && truster.ValueKind == JsonValueKind.String)
                 involvedAddresses.Add(truster.GetString()!);
-            if (evtObj.TryGetValue("trustee", out var trustee) && trustee.ValueKind == JsonValueKind.String)
+            if (evt.TryGetProperty("trustee", out var trustee) && trustee.ValueKind == JsonValueKind.String)
                 involvedAddresses.Add(trustee.GetString()!);
         }
 
@@ -3135,15 +3257,12 @@ public class CirclesRpcModule : ICirclesRpcModule
             .ToDictionary(x => x.addr, x => x.prof);
 
         // Enrich each event
-        foreach (var evt in events.Events.Take(effectiveLimit))
+        var enrichedTransactions = new List<EnrichedTransaction>();
+        foreach (var evt in events)
         {
-            if (evt is not JsonElement jsonEvt) continue;
-            var evtObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(jsonEvt.GetRawText());
-            if (evtObj == null) continue;
-
             var enriched = new EnrichedTransaction
             {
-                Event = jsonEvt,
+                Event = evt,
                 Participants = new Dictionary<string, ParticipantInfo>()
             };
 
@@ -3161,12 +3280,28 @@ public class CirclesRpcModule : ICirclesRpcModule
             enrichedTransactions.Add(enriched);
         }
 
-        return new EnrichedTransactionHistoryResponse
+        // Generate next cursor
+        string? nextCursor = null;
+        if (hasMore && enrichedTransactions.Count > 0)
         {
-            Address = address,
-            Transactions = enrichedTransactions.ToArray(),
-            TotalCount = events.Events.Length
-        };
+            // Extract cursor from the last event
+            var lastEvent = enrichedTransactions[^1].Event;
+            if (lastEvent.TryGetProperty("blockNumber", out var blockNum) &&
+                lastEvent.TryGetProperty("transactionIndex", out var txIdx) &&
+                lastEvent.TryGetProperty("logIndex", out var logIdx))
+            {
+                nextCursor = CursorUtils.EncodeCursor(
+                    blockNum.GetInt64(),
+                    txIdx.GetInt32(),
+                    logIdx.GetInt32());
+            }
+        }
+
+        return new PagedResponse<EnrichedTransaction>(
+            Results: enrichedTransactions.ToArray(),
+            HasMore: hasMore,
+            NextCursor: nextCursor
+        );
     }
 
     /// <summary>
