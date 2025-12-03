@@ -383,7 +383,21 @@ public class NotificationListenerService : BackgroundService
                 var blockNumber = reader.GetInt64(0);
                 var member = reader.GetString(1);
                 var group = reader.GetString(2);
-                var expiryTime = reader.GetInt64(3);
+                
+                // expiryTime is stored as NUMERIC and can be max decimal value (infinity)
+                // Read as decimal first, then convert safely
+                var expiryTimeDecimal = reader.GetDecimal(3);
+                long expiryTime;
+                
+                // If expiry time is max value (infinity), use Int64.MaxValue as sentinel
+                if (expiryTimeDecimal >= long.MaxValue)
+                {
+                    expiryTime = long.MaxValue;
+                }
+                else
+                {
+                    expiryTime = (long)expiryTimeDecimal;
+                }
 
                 // Check if trustee is a group by looking it up in the Groups cache
                 if (_caches.Groups.TryGetValue(group, out _))
