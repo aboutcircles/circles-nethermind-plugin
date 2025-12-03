@@ -79,7 +79,13 @@ public class CacheWarmupService : BackgroundService
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         var result = await cmd.ExecuteScalarAsync(ct);
-        return result is long blockNumber ? blockNumber : 0L;
+        // blockNumber is BIGINT, can be returned as int or long depending on value
+        return result switch
+        {
+            long l => l,
+            int i => i,
+            _ => 0L
+        };
     }
 
     private async Task ReplayV1EventsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
@@ -392,7 +398,7 @@ public class CacheWarmupService : BackgroundService
         while (await reader.ReadAsync(ct))
         {
             var account = reader.GetString(0);
-            var tokenId = reader.GetString(1);
+            var tokenId = reader.GetFieldValue<decimal>(1).ToString("F0");
             var demurragedBalance = reader.GetDecimal(2);
 
             // Convert to Circles (divide by 10^18)

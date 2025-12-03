@@ -510,7 +510,8 @@ public class NotificationListenerService : BackgroundService
 
             if (result != null && result != DBNull.Value)
             {
-                var totalBalance = Convert.ToDecimal(result);
+                // totalBalance is NUMERIC (BigInt type), read as decimal
+                var totalBalance = result is decimal dec ? dec : Convert.ToDecimal(result);
 
                 // Convert attoCircles to Circles (divide by 10^18)
                 var balance = totalBalance / 1_000_000_000_000_000_000m;
@@ -571,7 +572,7 @@ public class NotificationListenerService : BackgroundService
             while (await accountsReader.ReadAsync(ct))
             {
                 var account = accountsReader.GetString(0);
-                var tokenId = accountsReader.GetString(1);
+                var tokenId = accountsReader.GetFieldValue<decimal>(1).ToString("F0");
                 affectedPairs.Add((account, tokenId));
             }
         }
@@ -592,13 +593,14 @@ public class NotificationListenerService : BackgroundService
 
             await using var balanceCmd = new NpgsqlCommand(balanceSql, conn);
             balanceCmd.Parameters.AddWithValue("account", account);
-            balanceCmd.Parameters.AddWithValue("tokenId", tokenId);
+            balanceCmd.Parameters.AddWithValue("tokenId", decimal.Parse(tokenId));
 
             var result = await balanceCmd.ExecuteScalarAsync(ct);
 
             if (result != null && result != DBNull.Value)
             {
-                var demurragedBalance = Convert.ToDecimal(result);
+                // demurragedTotalBalance is NUMERIC (BigInt type), read as decimal
+                var demurragedBalance = result is decimal dec ? dec : Convert.ToDecimal(result);
 
                 // Convert to Circles (divide by 10^18)
                 var balance = demurragedBalance / 1_000_000_000_000_000_000m;
