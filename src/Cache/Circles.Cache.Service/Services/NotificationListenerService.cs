@@ -444,7 +444,9 @@ public class NotificationListenerService : BackgroundService
                     }
                     else
                     {
-                        _caches.GroupMemberships.Add(blockNumber, key, (member, (long)expiryTime));
+                        // Safely cast expiryTime to long, capping at long.MaxValue for overflow
+                        long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+                        _caches.GroupMemberships.Add(blockNumber, key, (member, expiryLong));
                     }
 
                     count++;
