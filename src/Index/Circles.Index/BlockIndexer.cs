@@ -9,6 +9,14 @@ namespace Circles.Index;
 
 public record BlockWithReceipts(Block Block, TxReceipt[] Receipts);
 
+
+/// <summary>
+/// Represents the import flow for indexing blockchain blocks in the Circles Index system.
+/// This class orchestrates the retrieval of blocks, their associated transaction receipts,
+/// parsing of logs and transactions to extract index events, and sinking those events
+/// into the database. It utilizes a dataflow pipeline for efficient parallel processing
+/// and includes mechanisms for buffering, flushing, and logging progress and statistics.
+/// </summary>
 public class ImportFlow(
     IBlockTree blockTree,
     IReceiptFinder receiptFinder,

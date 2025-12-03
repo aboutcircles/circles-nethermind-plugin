@@ -81,7 +81,13 @@ app.MapGet("/ready", async (CacheServiceState state, CacheServiceSettings settin
         var result = await cmd.ExecuteScalarAsync();
         if (result != null && result != DBNull.Value)
         {
-            dbHead = Convert.ToInt64(result);
+            // blockNumber is BIGINT, can be returned as int or long depending on value
+            dbHead = result switch
+            {
+                long l => l,
+                int i => i,
+                _ => Convert.ToInt64(result)
+            };
         }
     }
     catch (Exception ex)

@@ -63,7 +63,13 @@ public class MetricsUpdateService : BackgroundService
             var result = await cmd.ExecuteScalarAsync(ct);
             if (result != null && result != DBNull.Value)
             {
-                var dbHead = Convert.ToInt64(result);
+                // blockNumber is BIGINT, can be returned as int or long depending on value
+                var dbHead = result switch
+                {
+                    long l => l,
+                    int i => i,
+                    _ => Convert.ToInt64(result)
+                };
                 var lag = _state.GetLag(dbHead);
                 CacheMetrics.DatabaseLag.Set(lag);
             }
