@@ -35,15 +35,19 @@ public class CacheWarmupService : BackgroundService
             await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
             await conn.OpenAsync(stoppingToken);
 
-            // Get the current database head block
-            var dbHead = await GetDatabaseHeadAsync(conn, stoppingToken);
-            _logger.LogInformation("Database head block: {Block}", dbHead);
+            // STEP 1: Get the current database head block and set it as warmup target
+            var warmupTarget = await GetDatabaseHeadAsync(conn, stoppingToken);
+            _state.WarmupTargetBlock = warmupTarget;
+            _logger.LogInformation("Warmup target block set to: {Block}", warmupTarget);
+
+            // STEP 2: Replay all events up to the warmup target
+            _logger.LogInformation("Starting warmup replay up to block {Block}...", warmupTarget);
 
             // Replay V1 events
-            await ReplayV1EventsAsync(conn, dbHead, stoppingToken);
+            await ReplayV1EventsAsync(conn, warmupTarget, stoppingToken);
 
             // Replay V2 events
-            await ReplayV2EventsAsync(conn, dbHead, stoppingToken);
+            await ReplayV2EventsAsync(conn, warmupTarget, stoppingToken);
 
             // Load group memberships
             await LoadGroupMembershipsAsync(conn, stoppingToken);
@@ -56,11 +60,37 @@ public class CacheWarmupService : BackgroundService
             _caches.RebuildSecondaryIndexes();
             _logger.LogInformation("Secondary indexes rebuilt");
 
-            // Mark warmup as complete
-            _state.WarmupComplete = true;
-            _state.LastProcessedBlock = dbHead;
+            // Update state
+            _state.LastProcessedBlock = warmupTarget;
+            _logger.LogInformation("Warmup replay completed at block {Block}", warmupTarget);
 
-            _logger.LogInformation("Cache warmup completed successfully. Processed up to block {Block}", dbHead);
+            // STEP 3: Initialize block ring buffer with recent blocks
+            await InitializeBlockRingBufferAsync(conn, warmupTarget, stoppingToken);
+
+            // STEP 4: Check if new blocks arrived during warmup and process them
+            var currentHead = await GetDatabaseHeadAsync(conn, stoppingToken);
+            if (currentHead > warmupTarget)
+            {
+                _logger.LogInformation(
+                    "New blocks arrived during warmup ({WarmupTarget} -> {CurrentHead}). Processing gap...",
+                    warmupTarget, currentHead);
+
+                // Process the gap using the same notification processing logic
+                await ProcessBlockGapAsync(conn, warmupTarget + 1, currentHead, stoppingToken);
+
+                _state.LastProcessedBlock = currentHead;
+                _logger.LogInformation("Processed {Count} blocks that arrived during warmup",
+                    currentHead - warmupTarget);
+            }
+            else
+            {
+                _logger.LogInformation("No new blocks arrived during warmup");
+            }
+
+            // STEP 5: Mark warmup as complete
+            _state.WarmupComplete = true;
+
+            _logger.LogInformation("Cache warmup completed successfully. Current block: {Block}", _state.LastProcessedBlock);
             _logger.LogInformation("Cache statistics: {Stats}",
                 System.Text.Json.JsonSerializer.Serialize(_caches.GetStatistics()));
         }
@@ -398,7 +428,7 @@ public class CacheWarmupService : BackgroundService
         while (await reader.ReadAsync(ct))
         {
             var account = reader.GetString(0);
-            var tokenId = reader.GetFieldValue<decimal>(1).ToString("F0");
+            var tokenId = reader.GetString(1);
             var demurragedBalance = reader.GetDecimal(2);
 
             // Convert to Circles (divide by 10^18)
@@ -447,32 +477,264 @@ public class CacheWarmupService : BackgroundService
             var group = reader.GetString(0);
             var member = reader.GetString(1);
 
-            // expiryTime is stored as NUMERIC and can be max decimal value (infinity)
-            // Read as decimal first, then convert safely
-            var expiryTimeDecimal = reader.GetDecimal(2);
-            long expiryTime;
-
-            // If expiry time is max value (infinity), use Int64.MaxValue as sentinel
-            if (expiryTimeDecimal >= long.MaxValue)
-            {
-                expiryTime = long.MaxValue;
-            }
-            else
-            {
-                expiryTime = (long)expiryTimeDecimal;
-            }
-
+            var expiryTime = reader.GetFieldValue<decimal>(2);
             var blockNumber = reader.GetInt64(3);
 
             // Composite key: group:member
             var key = $"{group}:{member}";
 
             // Add to cache
-            _caches.GroupMemberships.Add(blockNumber, key, (member, expiryTime));
+            _caches.GroupMemberships.Add(blockNumber, key, (member, (long)expiryTime));
 
             count++;
         }
 
         _logger.LogInformation("Loaded {Count} group memberships", count);
+    }
+
+    /// <summary>
+    /// Initializes the block ring buffer with the most recent blocks from the database.
+    /// </summary>
+    private async Task InitializeBlockRingBufferAsync(NpgsqlConnection conn, long fromBlock, CancellationToken ct)
+    {
+        var capacity = _settings.RollbackCapacity;
+        var startBlock = Math.Max(0, fromBlock - capacity + 1);
+
+        _logger.LogInformation("Initializing block ring buffer with blocks {StartBlock} to {EndBlock}...",
+            startBlock, fromBlock);
+
+        const string sql = @"
+            SELECT ""blockNumber"", ""blockHash""
+            FROM ""System_Block""
+            WHERE ""blockNumber"" >= @startBlock AND ""blockNumber"" <= @endBlock
+            ORDER BY ""blockNumber"" ASC";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("startBlock", startBlock);
+        cmd.Parameters.AddWithValue("endBlock", fromBlock);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var count = 0;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var blockNumber = reader.GetInt64(0);
+            var blockHashStr = reader.GetString(1);
+
+            _state.BlockRingBuffer.Add(blockNumber, blockHashStr);
+            count++;
+        }
+
+        _logger.LogInformation("Block ring buffer initialized with {Count} blocks", count);
+    }
+
+    /// <summary>
+    /// Processes blocks that arrived during the warmup phase.
+    /// Reuses the same logic as the notification listener.
+    /// </summary>
+    private async Task ProcessBlockGapAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        _logger.LogInformation("Processing block gap: {FromBlock} to {ToBlock}", fromBlock, toBlock);
+
+        // Update block ring buffer with new blocks
+        const string blocksSql = @"
+            SELECT ""blockNumber"", ""blockHash""
+            FROM ""System_Block""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            ORDER BY ""blockNumber"" ASC";
+
+        var newBlocks = new List<(long BlockNumber, string BlockHash)>();
+
+        await using (var blocksCmd = new NpgsqlCommand(blocksSql, conn))
+        {
+            blocksCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            blocksCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+            await using var blocksReader = await blocksCmd.ExecuteReaderAsync(ct);
+            while (await blocksReader.ReadAsync(ct))
+            {
+                var blockNumber = blocksReader.GetInt64(0);
+                var blockHashStr = blocksReader.GetString(1);
+                newBlocks.Add((blockNumber, blockHashStr));
+            }
+        }
+
+        // Check for reorgs when updating the ring buffer
+        var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(newBlocks);
+
+        if (reorgPoint.HasValue)
+        {
+            _logger.LogWarning("Reorg detected at block {ReorgBlock} during gap processing! Rolling back caches...",
+                reorgPoint.Value);
+
+            // Rollback all caches
+            _caches.RollbackAll(reorgPoint.Value);
+
+            // Rebuild secondary indexes after rollback
+            _logger.LogInformation("Rebuilding secondary indexes after rollback...");
+            _caches.RebuildSecondaryIndexes();
+
+            // Adjust the fromBlock to start processing from the reorg point
+            fromBlock = reorgPoint.Value;
+        }
+
+        // Process V1 events in this range
+        await ProcessV1EventsInRangeAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V2 events in this range
+        await ProcessV2EventsInRangeAsync(conn, fromBlock, toBlock, ct);
+
+        _logger.LogInformation("Successfully processed block gap {FromBlock} to {ToBlock}", fromBlock, toBlock);
+    }
+
+    /// <summary>
+    /// Process V1 events in a specific block range (used for gap processing).
+    /// </summary>
+    private async Task ProcessV1EventsInRangeAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V1 Signups (humans)
+        const string humanSignupSql = @"
+            SELECT s.""blockNumber"", s.""user"", s.""token""
+            FROM ""CrcV1_Signup"" s
+            WHERE s.""blockNumber"" >= @fromBlock AND s.""blockNumber"" <= @toBlock
+            ORDER BY s.""blockNumber"", s.""transactionIndex"", s.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(humanSignupSql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var user = reader.GetString(1);
+                var token = reader.GetString(2);
+
+                _caches.V1Avatars.Add(blockNumber, user, ("Human", token));
+                _caches.V1TokenOwnerByToken.Add(blockNumber, token, user);
+            }
+        }
+
+        // Process V1 Organization Signups
+        const string orgSignupSql = @"
+            SELECT o.""blockNumber"", o.""organization""
+            FROM ""CrcV1_OrganizationSignup"" o
+            WHERE o.""blockNumber"" >= @fromBlock AND o.""blockNumber"" <= @toBlock
+            ORDER BY o.""blockNumber"", o.""transactionIndex"", o.""logIndex""";
+
+        await using var orgCmd = new NpgsqlCommand(orgSignupSql, conn);
+        orgCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        orgCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        await using (var orgReader = await orgCmd.ExecuteReaderAsync(ct))
+        {
+            while (await orgReader.ReadAsync(ct))
+            {
+                var blockNumber = orgReader.GetInt64(0);
+                var organization = orgReader.GetString(1);
+
+                _caches.V1Avatars.Add(blockNumber, organization, ("Organization", null));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Process V2 events in a specific block range (used for gap processing).
+    /// </summary>
+    private async Task ProcessV2EventsInRangeAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V2 RegisterHuman
+        const string humanSql = @"
+            SELECT r.""blockNumber"", r.""timestamp"", r.""avatar""
+            FROM ""CrcV2_RegisterHuman"" r
+            WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
+            ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
+
+        await using (var cmd = new NpgsqlCommand(humanSql, conn))
+        {
+            cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var timestamp = reader.GetInt64(1);
+                var avatar = reader.GetString(2);
+
+                _caches.V2Avatars.Add(blockNumber, avatar, ("Human", timestamp));
+            }
+        }
+
+        // Process V2 RegisterOrganization
+        const string orgSql = @"
+            SELECT r.""blockNumber"", r.""timestamp"", r.""organization""
+            FROM ""CrcV2_RegisterOrganization"" r
+            WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
+            ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
+
+        await using (var orgCmd = new NpgsqlCommand(orgSql, conn))
+        {
+            orgCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            orgCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+            await using var orgReader = await orgCmd.ExecuteReaderAsync(ct);
+            while (await orgReader.ReadAsync(ct))
+            {
+                var blockNumber = orgReader.GetInt64(0);
+                var timestamp = orgReader.GetInt64(1);
+                var organization = orgReader.GetString(2);
+
+                _caches.V2Avatars.Add(blockNumber, organization, ("Organization", timestamp));
+            }
+        }
+
+        // Process V2 RegisterGroup
+        const string groupSql = @"
+            SELECT r.""blockNumber"", r.""group"", r.""name"", r.""mint""
+            FROM ""CrcV2_RegisterGroup"" r
+            WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
+            ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
+
+        await using (var groupCmd = new NpgsqlCommand(groupSql, conn))
+        {
+            groupCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            groupCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+            await using var groupReader = await groupCmd.ExecuteReaderAsync(ct);
+            while (await groupReader.ReadAsync(ct))
+            {
+                var blockNumber = groupReader.GetInt64(0);
+                var group = groupReader.GetString(1);
+                var name = groupReader.GetString(2);
+                var mint = groupReader.GetString(3);
+
+                _caches.Groups.Add(blockNumber, group, (name, mint));
+            }
+        }
+
+        // Process V2 ERC20WrapperDeployed
+        const string wrapperSql = @"
+            SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper""
+            FROM ""CrcV2_ERC20WrapperDeployed"" e
+            WHERE e.""blockNumber"" >= @fromBlock AND e.""blockNumber"" <= @toBlock
+            ORDER BY e.""blockNumber"", e.""transactionIndex"", e.""logIndex""";
+
+        await using (var wrapperCmd = new NpgsqlCommand(wrapperSql, conn))
+        {
+            wrapperCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            wrapperCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+            await using var wrapperReader = await wrapperCmd.ExecuteReaderAsync(ct);
+            while (await wrapperReader.ReadAsync(ct))
+            {
+                var blockNumber = wrapperReader.GetInt64(0);
+                var avatar = wrapperReader.GetString(1);
+                var erc20Wrapper = wrapperReader.GetString(2);
+
+                _caches.Erc20WrapperAddresses.Add(blockNumber, avatar, erc20Wrapper);
+            }
+        }
     }
 }

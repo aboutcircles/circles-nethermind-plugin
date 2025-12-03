@@ -11,8 +11,41 @@ public class CacheServiceState
 {
     private readonly object _lock = new();
     private long _lastProcessedBlock = -1;
+    private long _warmupTargetBlock = -1;
     private bool _warmupComplete = false;
     private bool _listenerConnected = false;
+
+    /// <summary>
+    /// Ring buffer to track recent blocks and detect reorgs.
+    /// </summary>
+    public BlockRingBuffer BlockRingBuffer { get; }
+
+    public CacheServiceState(int rollbackCapacity)
+    {
+        BlockRingBuffer = new BlockRingBuffer(rollbackCapacity);
+    }
+
+    /// <summary>
+    /// The target block number that warmup should reach.
+    /// This is set at the start of warmup to the database head at that time.
+    /// </summary>
+    public long WarmupTargetBlock
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _warmupTargetBlock;
+            }
+        }
+        set
+        {
+            lock (_lock)
+            {
+                _warmupTargetBlock = value;
+            }
+        }
+    }
 
     /// <summary>
     /// The last block number that has been successfully processed and applied to all caches.
