@@ -149,6 +149,13 @@ app.MapPost("/", async (
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
             "circles_query" => await HandleQuery(request, rpcModule),
+            // SDK Enablement Methods
+            "circles_getProfileView" => await ReflectionHandler(request, rpcModule),
+            "circles_getTrustNetworkSummary" => await ReflectionHandler(request, rpcModule),
+            "circles_getAggregatedTrustRelationsEnriched" => await ReflectionHandler(request, rpcModule),
+            "circles_getValidInviters" => await ReflectionHandler(request, rpcModule),
+            "circles_getTransactionHistoryEnriched" => await ReflectionHandler(request, rpcModule),
+            "circles_searchProfileByAddressOrName" => await ReflectionHandler(request, rpcModule),
 
             _ => throw new RpcMethodNotFoundException(request.Method)
         };
