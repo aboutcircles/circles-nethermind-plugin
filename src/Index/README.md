@@ -21,15 +21,20 @@ The Index plugin monitors the blockchain in real-time, extracts Circles-related 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Nethermind Plugin                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ StateMachine │→ │  LogParsers  │→ │     Sink     │     │
-│  │  (Indexer)   │  │  (V1/V2/...)│  │   (Batch)    │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │ StateMachine │→ │  LogParsers  │→ │     Sink     │       │
+│  │  (Indexer)   │  │  (V1/V2/...) │  │   (Batch)    │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘       │
 │         ↓                  ↓                   ↓            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │              PostgreSQL Database                     │  │
-│  │  (Indexed Circles Events & State)                   │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              PostgreSQL Database                     │   │
+│  │  (Indexed Circles Events & State)                    │   │
+│  │         ↓ pg_notify (LISTEN/NOTIFY)                  │   │
+│  └──────────────────────────────────────────────────────┘   │
+│         ↓                                                   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │      Downstream Services (Cache, RPC, etc.)          │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -40,6 +45,7 @@ The indexer state machine that orchestrates the indexing process:
 - **States:** New → Initial → Syncing → WaitForNewBlock → NotifySubscribers
 - **Reorg Handling:** Detects and handles blockchain reorganizations
 - **Block Processing:** Reads blocks, extracts receipts, parses logs
+- **PostgreSQL NOTIFY:** Broadcasts block range notifications to downstream services after each batch
 - **Cache Management:** Maintains in-memory caches for performance
 
 #### 2. LogParsers
@@ -82,6 +88,7 @@ PostgreSQL integration:
 - **Bulk Inserts:** Efficient batch writes using `COPY`
 - **Query Interface:** Structured query API for RPC layer
 - **Connection Pooling:** Reuses database connections
+- **NOTIFY Support:** Sends real-time notifications via `pg_notify()` for downstream services
 
 ### Project Structure
 
@@ -154,6 +161,8 @@ while (syncing) {
     5. Sink batches events
     6. When batch full, write to database
     7. Update block cursor
+    8. Send PostgreSQL NOTIFY with block range
+       (enables real-time updates for Cache Service)
 }
 ```
 
@@ -221,8 +230,10 @@ public class DatabaseSchema : IDatabaseSchema
 1. Detect reorg (block hash mismatch)
 2. Find common ancestor block
 3. Delete all events from reorg point onwards
-4. Invalidate caches
-5. Resume syncing from common ancestor
+4. Send PostgreSQL NOTIFY with rollback block number
+   (downstream services like Cache will rollback their state)
+5. Invalidate caches
+6. Resume syncing from common ancestor
 ```
 
 ## Running the Index Plugin
@@ -273,6 +284,9 @@ export POSTGRES_READONLY_CONNECTION_STRING="${POSTGRES_CONNECTION_STRING}"
 
 # Optional
 export EVENT_BUFFER_SIZE=1000  # Batch size for event writes
+
+# PostgreSQL NOTIFY/LISTEN channel for real-time updates
+export CIRCLES_PG_NOTIFY_CHANNEL="circles_index_events"  # Default channel name
 ```
 
 ### Contract Addresses (Gnosis Chain)
@@ -534,10 +548,57 @@ export EVENT_BUFFER_SIZE=500
 docker stats circles-index
 ```
 
+## Real-time Notifications
+
+The Index plugin sends PostgreSQL NOTIFY events after processing each block range, enabling downstream services to maintain real-time synchronized state.
+
+### Notification Format
+
+After successfully indexing a block range, the plugin sends a notification via `pg_notify()`:
+
+```json
+{
+  "fromBlock": 31234567,
+  "toBlock": 31234567,
+  "timestamp": 1638360000
+}
+```
+
+**Channel:** Configurable via `CIRCLES_PG_NOTIFY_CHANNEL` (default: `circles_index_events`)
+
+**Payload:** JSON with:
+- `fromBlock` - First block in processed range
+- `toBlock` - Last block in processed range (can be < fromBlock on reorg)
+- `timestamp` - Unix timestamp when notification was sent
+
+### Consuming Notifications
+
+Downstream services can listen for these notifications using PostgreSQL's `LISTEN` command:
+
+```sql
+LISTEN circles_index_events;
+```
+
+When a notification is received:
+- If `toBlock >= lastProcessedBlock`: Query and apply incremental updates
+- If `toBlock < lastProcessedBlock`: Detected reorg - rollback state and rebuild
+
+**Example Consumer:** The [Circles Cache Service](../Cache/README.md) uses these notifications to maintain real-time in-memory caches of balances and avatars.
+
+### Configuration
+
+```bash
+# Set custom notification channel
+export CIRCLES_PG_NOTIFY_CHANNEL="my_custom_channel"
+```
+
+**Note:** Notifications are skipped for block ranges spanning > 1000 blocks (typically during initial sync) to avoid flooding listeners.
+
 ## Related Documentation
 
 - [Main README](../../README.md) - Complete protocol documentation
 - [DEVELOPMENT.md](../../DEVELOPMENT.md) - Build and deployment guide
+- [Circles.Cache.Service](../Cache/README.md) - Real-time cache service (uses LISTEN/NOTIFY)
 - [Circles.Rpc.Host](../Rpc/Circles.Rpc.Host/README.md) - RPC service documentation
 - [Circles.Pathfinder](../Pathfinder/Circles.Pathfinder/README.md) - Pathfinding service
 
