@@ -10,7 +10,7 @@ var settings = CacheServiceSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
 
 // Register cache infrastructure
-builder.Services.AddSingleton<CacheServiceState>();
+builder.Services.AddSingleton(sp => new CacheServiceState(settings.RollbackCapacity));
 builder.Services.AddSingleton(sp => new CacheContainer(settings.RollbackCapacity));
 
 // Register background services

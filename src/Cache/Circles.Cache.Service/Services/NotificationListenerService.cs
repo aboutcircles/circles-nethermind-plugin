@@ -1,13 +1,13 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Metrics;
 using Npgsql;
-using System.Text.Json;
 
 namespace Circles.Cache.Service.Services;
 
 /// <summary>
 /// Background service that listens to PostgreSQL NOTIFY events from the Indexer.
-/// Processes block range notifications and updates caches in real-time.
+/// Treats notifications as "pings" and queries the database directly for block information.
+/// Uses BlockRingBuffer to detect chain reorganizations.
 /// </summary>
 public class NotificationListenerService : BackgroundService
 {
@@ -99,62 +99,105 @@ public class NotificationListenerService : BackgroundService
 
     private async Task HandleNotificationAsync(string payload, CancellationToken ct)
     {
-        _logger.LogDebug("Received notification: {Payload}", payload);
+        _logger.LogDebug("Received notification ping");
 
-        BlockRangeNotification? notification;
-        try
+        // Treat the notification as a ping - don't trust the payload content
+        // Instead, query the database for the actual latest blocks
+
+        await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
+        await conn.OpenAsync(ct);
+
+        // Query the last N blocks from System_Block (where N = rollback capacity)
+        var recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, ct);
+
+        if (recentBlocks.Count == 0)
         {
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            };
-            notification = JsonSerializer.Deserialize<BlockRangeNotification>(payload, options);
-            if (notification == null)
-            {
-                _logger.LogWarning("Failed to deserialize notification payload: {Payload}", payload);
-                return;
-            }
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "Invalid JSON in notification payload: {Payload}", payload);
+            _logger.LogWarning("No blocks found in System_Block table");
             return;
         }
 
-        var fromBlock = notification.FromBlock;
-        var toBlock = notification.ToBlock;
+        // Update the block ring buffer and detect any reorgs
+        var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(recentBlocks);
 
-        _logger.LogInformation("Processing block range {FromBlock} to {ToBlock}", fromBlock, toBlock);
-
-        // Check if this is a reorg (block range is before our last processed block)
-        if (toBlock < _state.LastProcessedBlock)
+        if (reorgPoint.HasValue)
         {
-            _logger.LogWarning("Detected reorg: toBlock {ToBlock} < lastProcessedBlock {LastProcessedBlock}. Rolling back caches...",
-                toBlock, _state.LastProcessedBlock);
+            _logger.LogWarning(
+                "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
+                reorgPoint.Value, reorgPoint.Value);
 
             // Track reorg in metrics
             CacheMetrics.ReorgsDetected.Inc();
 
             // Rollback all caches to the reorg point
-            _caches.RollbackAll(toBlock + 1);
+            _caches.RollbackAll(reorgPoint.Value);
 
             // Rebuild secondary indexes after rollback
             _logger.LogInformation("Rebuilding secondary indexes after rollback...");
             _caches.RebuildSecondaryIndexes();
 
-            _state.LastProcessedBlock = toBlock;
+            // Update state
+            _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
+
+            _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
+                reorgPoint.Value);
         }
 
-        // Process new blocks
-        await ProcessBlockRangeAsync(fromBlock, toBlock, ct);
+        // Process any new blocks that we haven't processed yet
+        var latestBlock = recentBlocks.Max(b => b.BlockNumber);
+        var fromBlock = _state.LastProcessedBlock + 1;
 
-        _state.LastProcessedBlock = toBlock;
+        if (fromBlock <= latestBlock)
+        {
+            _logger.LogInformation("Processing blocks {FromBlock} to {ToBlock}", fromBlock, latestBlock);
 
-        // Track blocks processed
-        var blocksProcessed = toBlock - fromBlock + 1;
-        CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
+            // Process new blocks
+            await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
 
-        _logger.LogDebug("Updated LastProcessedBlock to {Block}", toBlock);
+            _state.LastProcessedBlock = latestBlock;
+
+            // Track blocks processed
+            var blocksProcessed = latestBlock - fromBlock + 1;
+            CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
+
+            _logger.LogDebug("Updated LastProcessedBlock to {Block}", latestBlock);
+        }
+        else
+        {
+            _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
+                _state.LastProcessedBlock, latestBlock);
+        }
+    }
+
+    /// <summary>
+    /// Queries the most recent N blocks from the System_Block table.
+    /// </summary>
+    private async Task<List<(long BlockNumber, string BlockHash)>> GetRecentBlocksAsync(
+        NpgsqlConnection conn, int count, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT ""blockNumber"", ""blockHash""
+            FROM ""System_Block""
+            ORDER BY ""blockNumber"" DESC
+            LIMIT @count";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("count", count);
+
+        var blocks = new List<(long BlockNumber, string BlockHash)>();
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var blockNumber = reader.GetInt64(0);
+            var blockHashStr = reader.GetString(1);
+
+            blocks.Add((blockNumber, blockHashStr));
+        }
+
+        // Reverse to get oldest-to-newest order
+        blocks.Reverse();
+
+        return blocks;
     }
 
     private async Task ProcessBlockRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
@@ -383,21 +426,9 @@ public class NotificationListenerService : BackgroundService
                 var blockNumber = reader.GetInt64(0);
                 var member = reader.GetString(1);
                 var group = reader.GetString(2);
-                
-                // expiryTime is stored as NUMERIC and can be max decimal value (infinity)
-                // Read as decimal first, then convert safely
-                var expiryTimeDecimal = reader.GetDecimal(3);
-                long expiryTime;
-                
-                // If expiry time is max value (infinity), use Int64.MaxValue as sentinel
-                if (expiryTimeDecimal >= long.MaxValue)
-                {
-                    expiryTime = long.MaxValue;
-                }
-                else
-                {
-                    expiryTime = (long)expiryTimeDecimal;
-                }
+
+                var expiryTime = reader.GetDecimal(3);
+
 
                 // Check if trustee is a group by looking it up in the Groups cache
                 if (_caches.Groups.TryGetValue(group, out _))
@@ -413,7 +444,7 @@ public class NotificationListenerService : BackgroundService
                     }
                     else
                     {
-                        _caches.GroupMemberships.Add(blockNumber, key, (member, expiryTime));
+                        _caches.GroupMemberships.Add(blockNumber, key, (member, (long)expiryTime));
                     }
 
                     count++;
@@ -510,7 +541,6 @@ public class NotificationListenerService : BackgroundService
 
             if (result != null && result != DBNull.Value)
             {
-                // totalBalance is NUMERIC (BigInt type), read as decimal
                 var totalBalance = result is decimal dec ? dec : Convert.ToDecimal(result);
 
                 // Convert attoCircles to Circles (divide by 10^18)
@@ -593,13 +623,12 @@ public class NotificationListenerService : BackgroundService
 
             await using var balanceCmd = new NpgsqlCommand(balanceSql, conn);
             balanceCmd.Parameters.AddWithValue("account", account);
-            balanceCmd.Parameters.AddWithValue("tokenId", decimal.Parse(tokenId));
+            balanceCmd.Parameters.AddWithValue("tokenId", tokenId);
 
             var result = await balanceCmd.ExecuteScalarAsync(ct);
 
             if (result != null && result != DBNull.Value)
             {
-                // demurragedTotalBalance is NUMERIC (BigInt type), read as decimal
                 var demurragedBalance = result is decimal dec ? dec : Convert.ToDecimal(result);
 
                 // Convert to Circles (divide by 10^18)
@@ -628,6 +657,4 @@ public class NotificationListenerService : BackgroundService
                 updatedCount, affectedPairs.Count);
         }
     }
-
-    private record BlockRangeNotification(long FromBlock, long ToBlock, long Timestamp);
 }
