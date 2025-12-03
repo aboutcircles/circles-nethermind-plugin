@@ -104,7 +104,11 @@ public class NotificationListenerService : BackgroundService
         BlockRangeNotification? notification;
         try
         {
-            notification = JsonSerializer.Deserialize<BlockRangeNotification>(payload);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            notification = JsonSerializer.Deserialize<BlockRangeNotification>(payload, options);
             if (notification == null)
             {
                 _logger.LogWarning("Failed to deserialize notification payload: {Payload}", payload);
@@ -172,7 +176,7 @@ public class NotificationListenerService : BackgroundService
         // Process V1 Signups
         const string humanSignupSql = @"
             SELECT s.""blockNumber"", s.""user"", s.""token""
-            FROM ""CrcV1"".""Signup"" s
+            FROM ""CrcV1_Signup"" s
             WHERE s.""blockNumber"" >= @fromBlock AND s.""blockNumber"" <= @toBlock
             ORDER BY s.""blockNumber"", s.""transactionIndex"", s.""logIndex""";
 
@@ -180,21 +184,21 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
         var count = 0;
 
-        while (await reader.ReadAsync(ct))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = reader.GetInt64(0);
-            var user = reader.GetString(1);
-            var token = reader.GetString(2);
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var user = reader.GetString(1);
+                var token = reader.GetString(2);
 
-            _caches.V1Avatars.Add(blockNumber, user, ("Human", token));
-            _caches.V1TokenOwnerByToken.Add(blockNumber, token, user);
-            count++;
+                _caches.V1Avatars.Add(blockNumber, user, ("Human", token));
+                _caches.V1TokenOwnerByToken.Add(blockNumber, token, user);
+                count++;
+            }
         }
-
-        await reader.CloseAsync();
 
         if (count > 0)
         {
@@ -204,7 +208,7 @@ public class NotificationListenerService : BackgroundService
         // Process V1 Organization Signups
         const string orgSignupSql = @"
             SELECT o.""blockNumber"", o.""organization""
-            FROM ""CrcV1"".""OrganizationSignup"" o
+            FROM ""CrcV1_OrganizationSignup"" o
             WHERE o.""blockNumber"" >= @fromBlock AND o.""blockNumber"" <= @toBlock
             ORDER BY o.""blockNumber"", o.""transactionIndex"", o.""logIndex""";
 
@@ -212,16 +216,18 @@ public class NotificationListenerService : BackgroundService
         orgCmd.Parameters.AddWithValue("fromBlock", fromBlock);
         orgCmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var orgReader = await orgCmd.ExecuteReaderAsync(ct);
         var orgCount = 0;
 
-        while (await orgReader.ReadAsync(ct))
+        await using (var orgReader = await orgCmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = orgReader.GetInt64(0);
-            var organization = orgReader.GetString(1);
+            while (await orgReader.ReadAsync(ct))
+            {
+                var blockNumber = orgReader.GetInt64(0);
+                var organization = orgReader.GetString(1);
 
-            _caches.V1Avatars.Add(blockNumber, organization, ("Organization", null));
-            orgCount++;
+                _caches.V1Avatars.Add(blockNumber, organization, ("Organization", null));
+                orgCount++;
+            }
         }
 
         if (orgCount > 0)
@@ -258,7 +264,7 @@ public class NotificationListenerService : BackgroundService
     {
         const string sql = @"
             SELECT r.""blockNumber"", r.""timestamp"", r.""avatar""
-            FROM ""CrcV2"".""RegisterHuman"" r
+            FROM ""CrcV2_RegisterHuman"" r
             WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
             ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
 
@@ -266,17 +272,18 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
         var count = 0;
-
-        while (await reader.ReadAsync(ct))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var avatar = reader.GetString(2);
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var timestamp = reader.GetInt64(1);
+                var avatar = reader.GetString(2);
 
-            _caches.V2Avatars.Add(blockNumber, avatar, ("Human", timestamp));
-            count++;
+                _caches.V2Avatars.Add(blockNumber, avatar, ("Human", timestamp));
+                count++;
+            }
         }
 
         if (count > 0)
@@ -289,7 +296,7 @@ public class NotificationListenerService : BackgroundService
     {
         const string sql = @"
             SELECT r.""blockNumber"", r.""timestamp"", r.""organization""
-            FROM ""CrcV2"".""RegisterOrganization"" r
+            FROM ""CrcV2_RegisterOrganization"" r
             WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
             ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
 
@@ -297,17 +304,18 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
         var count = 0;
-
-        while (await reader.ReadAsync(ct))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var organization = reader.GetString(2);
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var timestamp = reader.GetInt64(1);
+                var organization = reader.GetString(2);
 
-            _caches.V2Avatars.Add(blockNumber, organization, ("Organization", timestamp));
-            count++;
+                _caches.V2Avatars.Add(blockNumber, organization, ("Organization", timestamp));
+                count++;
+            }
         }
 
         if (count > 0)
@@ -320,7 +328,7 @@ public class NotificationListenerService : BackgroundService
     {
         const string sql = @"
             SELECT r.""blockNumber"", r.""group"", r.""name"", r.""mint""
-            FROM ""CrcV2"".""RegisterGroup"" r
+            FROM ""CrcV2_RegisterGroup"" r
             WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
             ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
 
@@ -328,18 +336,19 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
         var count = 0;
-
-        while (await reader.ReadAsync(ct))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = reader.GetInt64(0);
-            var group = reader.GetString(1);
-            var name = reader.GetString(2);
-            var mint = reader.GetString(3);
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var group = reader.GetString(1);
+                var name = reader.GetString(2);
+                var mint = reader.GetString(3);
 
-            _caches.Groups.Add(blockNumber, group, (name, mint));
-            count++;
+                _caches.Groups.Add(blockNumber, group, (name, mint));
+                count++;
+            }
         }
 
         if (count > 0)
@@ -366,34 +375,35 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
         var count = 0;
-
-        while (await reader.ReadAsync(ct))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = reader.GetInt64(0);
-            var member = reader.GetString(1);
-            var group = reader.GetString(2);
-            var expiryTime = reader.GetInt64(3);
-
-            // Check if trustee is a group by looking it up in the Groups cache
-            if (_caches.Groups.TryGetValue(group, out _))
+            while (await reader.ReadAsync(ct))
             {
-                // Composite key: group:member
-                var key = $"{group}:{member}";
-                
-                // If expiryTime is 0, this is an untrust - use Remove to delete the membership
-                // Otherwise, add/update the membership
-                if (expiryTime == 0)
+                var blockNumber = reader.GetInt64(0);
+                var member = reader.GetString(1);
+                var group = reader.GetString(2);
+                var expiryTime = reader.GetInt64(3);
+
+                // Check if trustee is a group by looking it up in the Groups cache
+                if (_caches.Groups.TryGetValue(group, out _))
                 {
-                    _caches.GroupMemberships.Remove(key);
+                    // Composite key: group:member
+                    var key = $"{group}:{member}";
+
+                    // If expiryTime is 0, this is an untrust - use Remove to delete the membership
+                    // Otherwise, add/update the membership
+                    if (expiryTime == 0)
+                    {
+                        _caches.GroupMemberships.Remove(key);
+                    }
+                    else
+                    {
+                        _caches.GroupMemberships.Add(blockNumber, key, (member, expiryTime));
+                    }
+
+                    count++;
                 }
-                else
-                {
-                    _caches.GroupMemberships.Add(blockNumber, key, (member, expiryTime));
-                }
-                
-                count++;
             }
         }
 
@@ -407,7 +417,7 @@ public class NotificationListenerService : BackgroundService
     {
         const string sql = @"
             SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper""
-            FROM ""CrcV2"".""ERC20WrapperDeployed"" e
+            FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" >= @fromBlock AND e.""blockNumber"" <= @toBlock
             ORDER BY e.""blockNumber"", e.""transactionIndex"", e.""logIndex""";
 
@@ -415,17 +425,18 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
         var count = 0;
-
-        while (await reader.ReadAsync(ct))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
-            var blockNumber = reader.GetInt64(0);
-            var avatar = reader.GetString(1);
-            var erc20Wrapper = reader.GetString(2);
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var avatar = reader.GetString(1);
+                var erc20Wrapper = reader.GetString(2);
 
-            _caches.Erc20WrapperAddresses.Add(blockNumber, avatar, erc20Wrapper);
-            count++;
+                _caches.Erc20WrapperAddresses.Add(blockNumber, avatar, erc20Wrapper);
+                count++;
+            }
         }
 
         if (count > 0)
@@ -440,11 +451,11 @@ public class NotificationListenerService : BackgroundService
         // We need to update balances for all account-token pairs that were involved in transfers
         const string affectedAccountsSql = @"
             SELECT DISTINCT ""from"" as account, ""tokenAddress""
-            FROM ""CrcV1"".""Transfer"" 
+            FROM ""CrcV1_Transfer""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
             UNION
             SELECT DISTINCT ""to"" as account, ""tokenAddress""
-            FROM ""CrcV1"".""Transfer""
+            FROM ""CrcV1_Transfer""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock";
 
         await using var accountsCmd = new NpgsqlCommand(affectedAccountsSql, conn);
@@ -520,19 +531,19 @@ public class NotificationListenerService : BackgroundService
         // V2 has both TransferSingle and TransferBatch events
         const string affectedAccountsSql = @"
             SELECT DISTINCT ""from"" as account, ""id"" as tokenId
-            FROM ""CrcV2"".""TransferSingle""
+            FROM ""CrcV2_TransferSingle""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
             UNION
             SELECT DISTINCT ""to"" as account, ""id"" as tokenId
-            FROM ""CrcV2"".""TransferSingle""
+            FROM ""CrcV2_TransferSingle""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
             UNION
             SELECT DISTINCT ""from"" as account, ""id"" as tokenId
-            FROM ""CrcV2"".""TransferBatch""
+            FROM ""CrcV2_TransferBatch""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
             UNION
             SELECT DISTINCT ""to"" as account, ""id"" as tokenId
-            FROM ""CrcV2"".""TransferBatch""
+            FROM ""CrcV2_TransferBatch""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock";
 
         await using var accountsCmd = new NpgsqlCommand(affectedAccountsSql, conn);
