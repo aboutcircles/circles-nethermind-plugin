@@ -671,6 +671,11 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
 {
     // Generic handler that uses reflection to call methods with standard parameter patterns
     // Handles methods with signatures like: Task<PagedResponse<T>> Method(string param1, int limit = X, string? cursor = null)
+    if (string.IsNullOrEmpty(request.Method))
+    {
+        throw new ArgumentException("Method parameter is required and cannot be null or empty.");
+    }
+
     var methodName = request.Method.Replace("circles_", "").Replace("circlesV2_", "");
     methodName = char.ToUpper(methodName[0]) + methodName.Substring(1);
     

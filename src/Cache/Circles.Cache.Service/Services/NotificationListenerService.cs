@@ -238,8 +238,11 @@ public class NotificationListenerService : BackgroundService
                 var user = reader.GetString(1);
                 var token = reader.GetString(2);
 
-                _caches.V1Avatars.Add(blockNumber, user, ("Human", token));
-                _caches.V1TokenOwnerByToken.Add(blockNumber, token, user);
+                var userKey = user.ToLowerInvariant();
+                var tokenKey = token.ToLowerInvariant();
+
+                _caches.V1Avatars.Add(blockNumber, userKey, ("Human", token));
+                _caches.V1TokenOwnerByToken.Add(blockNumber, tokenKey, user);
                 count++;
             }
         }
@@ -269,7 +272,9 @@ public class NotificationListenerService : BackgroundService
                 var blockNumber = orgReader.GetInt64(0);
                 var organization = orgReader.GetString(1);
 
-                _caches.V1Avatars.Add(blockNumber, organization, ("Organization", null));
+                var orgKey = organization.ToLowerInvariant();
+
+                _caches.V1Avatars.Add(blockNumber, orgKey, ("Organization", null));
                 orgCount++;
             }
         }
@@ -325,7 +330,9 @@ public class NotificationListenerService : BackgroundService
                 var timestamp = reader.GetInt64(1);
                 var avatar = reader.GetString(2);
 
-                _caches.V2Avatars.Add(blockNumber, avatar, ("Human", timestamp));
+                var avatarKey = avatar.ToLowerInvariant();
+
+                _caches.V2Avatars.Add(blockNumber, avatarKey, ("Human", timestamp));
                 count++;
             }
         }
@@ -357,7 +364,9 @@ public class NotificationListenerService : BackgroundService
                 var timestamp = reader.GetInt64(1);
                 var organization = reader.GetString(2);
 
-                _caches.V2Avatars.Add(blockNumber, organization, ("Organization", timestamp));
+                var orgKey = organization.ToLowerInvariant();
+
+                _caches.V2Avatars.Add(blockNumber, orgKey, ("Organization", timestamp));
                 count++;
             }
         }
@@ -376,22 +385,26 @@ public class NotificationListenerService : BackgroundService
             WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
             ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
-        cmd.Parameters.AddWithValue("toBlock", toBlock);
-
         var count = 0;
-        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        await using (var cmd = new NpgsqlCommand(sql, conn))
         {
-            while (await reader.ReadAsync(ct))
-            {
-                var blockNumber = reader.GetInt64(0);
-                var group = reader.GetString(1);
-                var name = reader.GetString(2);
-                var mint = reader.GetString(3);
+            cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-                _caches.Groups.Add(blockNumber, group, (name, mint));
-                count++;
+            await using (var groupReader = await cmd.ExecuteReaderAsync(ct))
+            {
+                while (await groupReader.ReadAsync(ct))
+                {
+                    var blockNumber = groupReader.GetInt64(0);
+                    var group = groupReader.GetString(1);
+                    var name = groupReader.GetString(2);
+                    var mint = groupReader.GetString(3);
+
+                    var groupKey = group.ToLowerInvariant();
+
+                    _caches.Groups.Add(blockNumber, groupKey, (name, mint));
+                    count++;
+                }
             }
         }
 
@@ -432,10 +445,12 @@ public class NotificationListenerService : BackgroundService
 
 
                 // Check if trustee is a group by looking it up in the Groups cache
-                if (_caches.Groups.TryGetValue(group, out _))
+                var groupKey = group.ToLowerInvariant();
+
+                if (_caches.Groups.ContainsKey(groupKey))
                 {
                     // Composite key: group:member
-                    var key = $"{group}:{member}";
+                    var key = $"{groupKey}:{member.ToLowerInvariant()}";
 
                     // If expiryTime is 0, this is an untrust - use Remove to delete the membership
                     // Otherwise, add/update the membership
@@ -463,33 +478,37 @@ public class NotificationListenerService : BackgroundService
 
     private async Task ProcessV2Erc20WrapperDeployedAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
-        const string sql = @"
+        const string wrapperSql = @"
             SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper""
             FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" >= @fromBlock AND e.""blockNumber"" <= @toBlock
             ORDER BY e.""blockNumber"", e.""transactionIndex"", e.""logIndex""";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
-        cmd.Parameters.AddWithValue("toBlock", toBlock);
-
-        var count = 0;
-        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        await using (var wrapperCmd = new NpgsqlCommand(wrapperSql, conn))
         {
-            while (await reader.ReadAsync(ct))
+            wrapperCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+            wrapperCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+            var count = 0;
+            await using (var wrapperReader = await wrapperCmd.ExecuteReaderAsync(ct))
             {
-                var blockNumber = reader.GetInt64(0);
-                var avatar = reader.GetString(1);
-                var erc20Wrapper = reader.GetString(2);
+                while (await wrapperReader.ReadAsync(ct))
+                {
+                    var blockNumber = wrapperReader.GetInt64(0);
+                    var avatar = wrapperReader.GetString(1);
+                    var erc20Wrapper = wrapperReader.GetString(2);
 
-                _caches.Erc20WrapperAddresses.Add(blockNumber, avatar, erc20Wrapper);
-                count++;
+                    var avatarKey = avatar.ToLowerInvariant();
+
+                    _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, erc20Wrapper);
+                    count++;
+                }
             }
-        }
 
-        if (count > 0)
-        {
-            _logger.LogDebug("Processed {Count} V2 ERC20 wrapper deployments", count);
+            if (count > 0)
+            {
+                _logger.LogDebug("Processed {Count} V2 ERC20 wrapper deployments", count);
+            }
         }
     }
 

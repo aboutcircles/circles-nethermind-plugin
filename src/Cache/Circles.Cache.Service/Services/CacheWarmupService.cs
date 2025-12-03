@@ -172,20 +172,24 @@ public class CacheWarmupService : BackgroundService
             var token = reader.IsDBNull(4) ? null : reader.GetString(4);
             var type = reader.GetString(5);
 
+            var addressKey = address.ToLowerInvariant();
+
             if (type == "Human")
             {
+                var tokenKey = token!.ToLowerInvariant();
+
                 // Add to V1Avatars cache
-                _caches.V1Avatars.Add(blockNumber, address, ("Human", token!));
+                _caches.V1Avatars.Add(blockNumber, addressKey, ("Human", token!));
 
                 // Add to V1TokenOwnerByToken cache (reverse mapping)
-                _caches.V1TokenOwnerByToken.Add(blockNumber, token!, address);
+                _caches.V1TokenOwnerByToken.Add(blockNumber, tokenKey, address);
 
                 humanCount++;
             }
             else
             {
                 // Add to V1Avatars cache (organizations don't have tokens)
-                _caches.V1Avatars.Add(blockNumber, address, ("Organization", null));
+                _caches.V1Avatars.Add(blockNumber, addressKey, ("Organization", null));
 
                 orgCount++;
             }
@@ -283,19 +287,21 @@ public class CacheWarmupService : BackgroundService
             var name = reader.IsDBNull(6) ? null : reader.GetString(6);
             var mint = reader.IsDBNull(7) ? null : reader.GetString(7);
 
+            var addressKey = address.ToLowerInvariant();
+
             if (type == "Human")
             {
-                _caches.V2Avatars.Add(blockNumber, address, ("Human", timestamp));
+                _caches.V2Avatars.Add(blockNumber, addressKey, ("Human", timestamp));
                 humanCount++;
             }
             else if (type == "Organization")
             {
-                _caches.V2Avatars.Add(blockNumber, address, ("Organization", timestamp));
+                _caches.V2Avatars.Add(blockNumber, addressKey, ("Organization", timestamp));
                 orgCount++;
             }
             else if (type == "Group")
             {
-                _caches.Groups.Add(blockNumber, address, (name!, mint!));
+                _caches.Groups.Add(blockNumber, addressKey, (name!, mint!));
                 groupCount++;
             }
 
@@ -337,8 +343,10 @@ public class CacheWarmupService : BackgroundService
             var avatar = reader.GetString(1);
             var erc20Wrapper = reader.GetString(2);
 
+            var avatarKey = avatar.ToLowerInvariant();
+
             // Add to Erc20WrapperAddresses cache
-            _caches.Erc20WrapperAddresses.Add(blockNumber, avatar, erc20Wrapper);
+            _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, erc20Wrapper);
 
             count++;
         }
@@ -387,7 +395,7 @@ public class CacheWarmupService : BackgroundService
             var balance = totalBalance / 1_000_000_000_000_000_000m;
 
             // Composite key: account:tokenAddress
-            var key = $"{account}:{tokenAddress}";
+            var key = $"{account.ToLowerInvariant()}:{tokenAddress.ToLowerInvariant()}";
 
             // Add to cache with block 1 (snapshot data doesn't have specific block)
             _caches.V1BalancesByAccountAndToken.Add(1, key, balance);
@@ -435,7 +443,7 @@ public class CacheWarmupService : BackgroundService
             var balance = demurragedBalance / 1_000_000_000_000_000_000m;
 
             // Composite key: account:tokenId
-            var key = $"{account}:{tokenId}";
+            var key = $"{account.ToLowerInvariant()}:{tokenId}";
 
             // Add to cache with block 1 (snapshot data doesn't have specific block)
             _caches.V2BalancesByAccountAndToken.Add(1, key, balance);
@@ -484,7 +492,7 @@ public class CacheWarmupService : BackgroundService
             long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
 
             // Composite key: group:member
-            var key = $"{group}:{member}";
+            var key = $"{group.ToLowerInvariant()}:{member.ToLowerInvariant()}";
 
             // Add to cache
             _caches.GroupMemberships.Add(blockNumber, key, (member, expiryLong));
@@ -614,8 +622,11 @@ public class CacheWarmupService : BackgroundService
                 var user = reader.GetString(1);
                 var token = reader.GetString(2);
 
-                _caches.V1Avatars.Add(blockNumber, user, ("Human", token));
-                _caches.V1TokenOwnerByToken.Add(blockNumber, token, user);
+                var userKey = user.ToLowerInvariant();
+                var tokenKey = token.ToLowerInvariant();
+
+                _caches.V1Avatars.Add(blockNumber, userKey, ("Human", token));
+                _caches.V1TokenOwnerByToken.Add(blockNumber, tokenKey, user);
             }
         }
 
@@ -637,7 +648,9 @@ public class CacheWarmupService : BackgroundService
                 var blockNumber = orgReader.GetInt64(0);
                 var organization = orgReader.GetString(1);
 
-                _caches.V1Avatars.Add(blockNumber, organization, ("Organization", null));
+                var orgKey = organization.ToLowerInvariant();
+
+                _caches.V1Avatars.Add(blockNumber, orgKey, ("Organization", null));
             }
         }
     }
@@ -666,7 +679,9 @@ public class CacheWarmupService : BackgroundService
                 var timestamp = reader.GetInt64(1);
                 var avatar = reader.GetString(2);
 
-                _caches.V2Avatars.Add(blockNumber, avatar, ("Human", timestamp));
+                var avatarKey = avatar.ToLowerInvariant();
+
+                _caches.V2Avatars.Add(blockNumber, avatarKey, ("Human", timestamp));
             }
         }
 
@@ -689,7 +704,9 @@ public class CacheWarmupService : BackgroundService
                 var timestamp = orgReader.GetInt64(1);
                 var organization = orgReader.GetString(2);
 
-                _caches.V2Avatars.Add(blockNumber, organization, ("Organization", timestamp));
+                var orgKey = organization.ToLowerInvariant();
+
+                _caches.V2Avatars.Add(blockNumber, orgKey, ("Organization", timestamp));
             }
         }
 
@@ -713,7 +730,9 @@ public class CacheWarmupService : BackgroundService
                 var name = groupReader.GetString(2);
                 var mint = groupReader.GetString(3);
 
-                _caches.Groups.Add(blockNumber, group, (name, mint));
+                var groupKey = group.ToLowerInvariant();
+
+                _caches.Groups.Add(blockNumber, groupKey, (name, mint));
             }
         }
 
@@ -736,7 +755,9 @@ public class CacheWarmupService : BackgroundService
                 var avatar = wrapperReader.GetString(1);
                 var erc20Wrapper = wrapperReader.GetString(2);
 
-                _caches.Erc20WrapperAddresses.Add(blockNumber, avatar, erc20Wrapper);
+                var avatarKey = avatar.ToLowerInvariant();
+
+                _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, erc20Wrapper);
             }
         }
     }
