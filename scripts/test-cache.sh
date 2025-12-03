@@ -189,7 +189,7 @@ fi
 
 log_info "=== Health & Readiness Checks ==="
 
-run_cache_test "Health endpoint" "$CACHE_URL/health" 200
+run_cache_test "Health endpoint" "$CACHE_URL/live" 200
 run_cache_test "Ready endpoint" "$CACHE_URL/ready" 200
 
 # Check warmup completion

@@ -1,26 +1,40 @@
 ## Circles V2 Example Requests
 
-- [Circles V2 Example Requests](#circles-v2-example-requests)
-  - [Get the total v2 Circles balance of an account](#get-the-total-v2-circles-balance-of-an-account)
-  - [Find all incoming and outgoing trust relations of a Circles V2 avatar](#find-all-incoming-and-outgoing-trust-relations-of-a-circles-v2-avatar)
-  - [Calculate a path between two addresses with a target flow](#calculate-a-path-between-two-addresses-with-a-target-flow)
-  - [Calculate a path that swaps one token into another (circular path)](#calculate-a-path-that-swaps-one-token-into-another-circular-path)
-  - [Return all available namespaces and tables which can be queried by `circles_query`](#return-all-available-namespaces-and-tables-which-can-be-queried-by-circles_query)
-  - [Query all events of type CrcV1_Trust from block 38000000 to the latest block](#query-all-events-of-type-crcv1_trust-from-block-38000000-to-the-latest-block)
-  - [Query the common trust relations of two addresses (only common outgoing trust relations are considered)](#query-the-common-trust-relations-of-two-addresses-only-common-outgoing-trust-relations-are-considered)
-  - [A fast method to query the balance breakdown of a specific avatar address](#a-fast-method-to-query-the-balance-breakdown-of-a-specific-avatar-address)
-  - [A slower method to query the balance breakdown of a specific avatar address (but with values directly taken from the rpc instead of the index)](#a-slower-method-to-query-the-balance-breakdown-of-a-specific-avatar-address-but-with-values-directly-taken-from-the-rpc-instead-of-the-index)
-  - [Get Avatar Information](#get-avatar-information)
-  - [Get information about a specific token (0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)](#get-information-about-a-specific-token-0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)
-  - [Who holds '0x42cedde51198d1773590311e2a340dc06b24cb37' token?](#who-holds-0x42cedde51198d1773590311e2a340dc06b24cb37-token)
-  - [Who backed their Circles with a Balancer LBP?](#who-backed-their-circles-with-a-balancer-lbp)
-  - [Download a full snapshot of the Circles network state (current trust relations and balances)](#download-a-full-snapshot-of-the-circles-network-state-current-trust-relations-and-balances)
-  - [Get a profile by it's CID](#get-a-profile-by-its-cid)
-  - [Get many profiles by CID](#get-many-profiles-by-cid)
-  - [Query the profile for an avatar address](#query-the-profile-for-an-avatar-address)
-  - [Query profiles by address in batch](#query-profiles-by-address-in-batch)
-  - [Search profiles by name, description or address](#search-profiles-by-name-description-or-address)
-  - [Get Profiles by Address Batch](#get-profiles-by-address-batch)
+## Table of Contents
+
+**Balance Queries**
+- [Get the total v2 Circles balance of an account](#get-the-total-v2-circles-balance-of-an-account)
+- [A fast method to query the balance breakdown of a specific avatar address](#a-fast-method-to-query-the-balance-breakdown-of-a-specific-avatar-address)
+- [A slower method to query the balance breakdown (but with values directly taken from the rpc instead of the index)](#a-slower-method-to-query-the-balance-breakdown-of-a-specific-avatar-address-but-with-values-directly-taken-from-the-rpc-instead-of-the-index)
+
+**Trust Relations**
+- [Find all incoming and outgoing trust relations of a Circles V2 avatar](#find-all-incoming-and-outgoing-trust-relations-of-a-circles-v2-avatar)
+- [Query the common trust relations of two addresses](#query-the-common-trust-relations-of-two-addresses-only-common-outgoing-trust-relations-are-considered)
+
+**Pathfinding**
+- [Calculate a path between two addresses with a target flow](#calculate-a-path-between-two-addresses-with-a-target-flow)
+- [Calculate a path that swaps one token into another (circular path)](#calculate-a-path-that-swaps-one-token-into-another-circular-path)
+
+**Avatar & Profile Information**
+- [Get Avatar Information](#get-avatar-information)
+- [Get a profile by it's CID](#get-a-profile-by-its-cid)
+- [Get many profiles by CID](#get-many-profiles-by-cid)
+- [Query the profile for an avatar address](#query-the-profile-for-an-avatar-address)
+- [Query profiles by address in batch](#query-profiles-by-address-in-batch)
+- [Search profiles by name, description or address](#search-profiles-by-name-description-or-address)
+- [Get Profiles by Address Batch](#get-profiles-by-address-batch)
+
+**Token Information**
+- [Get information about a specific token (0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)](#get-information-about-a-specific-token-0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e)
+- [Who holds '0x42cedde51198d1773590311e2a340dc06b24cb37' token?](#who-holds-0x42cedde51198d1773590311e2a340dc06b24cb37-token)
+
+**Events & Data Queries**
+- [Return all available namespaces and tables which can be queried by `circles_query`](#return-all-available-namespaces-and-tables-which-can-be-queried-by-circles_query)
+- [Query all events of type CrcV1_Trust from block 38000000 to the latest block](#query-all-events-of-type-crcv1_trust-from-block-38000000-to-the-latest-block)
+- [Who backed their Circles with a Balancer LBP?](#who-backed-their-circles-with-a-balancer-lbp)
+- [Download a full snapshot of the Circles network state (current trust relations and balances)](#download-a-full-snapshot-of-the-circles-network-state-current-trust-relations-and-balances)
+
+---
 
 ```shell
 ### Get the total v2 Circles balance of an account
@@ -30,7 +44,7 @@ curl -X POST --data '{
     "params":["0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2"],
     "id":1
 }' -H "Content-Type: application/json" https://rpc.circlesubi.network/
-````
+```
 
 ```shell
 ### Find all incoming and outgoing trust relations of a Circles V2 avatar
@@ -243,17 +257,17 @@ curl -X POST --data '{
       "Namespace": "CrcV2",
       "Table": "CirclesBackingDeployed",
       "Columns": [
-      ],            
+      ],
       "Filter": [{
          "Type": "FilterPredicate",
          "FilterType": "Equals",
          "Column": "emitter",
          "Value": "0xeced91232c609a42f6016860e8223b8aecaa7bd0"
-      }],        
+      }],
       "Order": [],
-      "Limit": 1000      
-    }],            
-    "id":1         
+      "Limit": 1000
+    }],
+    "id":1
 }' -H "Content-Type: application/json" https://rpc.circlesubi.network/
 ```
 
@@ -262,8 +276,8 @@ curl -X POST --data '{
 curl -X POST --data '{
     "jsonrpc":"2.0",
     "method":"circles_getNetworkSnapshot",
-    "params":[],            
-    "id":1         
+    "params":[],
+    "id":1
 }' -H "Content-Type: application/json" https://rpc.circlesubi.network/ | jq
 ```
 

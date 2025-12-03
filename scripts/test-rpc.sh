@@ -489,11 +489,11 @@ run_test "trust" "circlesV2_findPath (multiple token balances)" "curl -s -X POST
 run_test "trust" "circlesV2_findPath (exclusions)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"1000\",\"excludedFromTokens\":[\"$TOKEN_ADDR_2\"],\"maxTransfers\":5}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 ######################################################################
-# SDK Enablement Methods (Optimized Endpoints)
+# SDK Enablement Methods (Phase 3 - Optimized Endpoints)
 ######################################################################
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then
-    echo -e "${BLUE}--- SDK Enablement: Note these endpoints may not exist yet ---${NC}\n"
+    echo -e "${BLUE}--- SDK Enablement: Phase 3 Methods ---${NC}\n"
 fi
 
 # Profile View (consolidates 6-7 calls into 1)
