@@ -11,7 +11,9 @@ Key features:
 - **Fast Balance Queries** - O(1) lookups for token balances (V1 and V2)
 - **Avatar & Profile Caching** - Instant access to avatar info and IPFS CIDs
 - **Real-time Updates** - Listens to PostgreSQL notifications for new blocks
+- **Hash-based Reorg Detection** - Uses block hash comparison for accurate reorganization detection
 - **Rollback Safety** - Automatic cache rollback on chain reorganizations
+- **Gap Processing** - Handles blocks that arrive during warmup phase
 - **REST API** - Simple HTTP endpoints for all cached data
 - **Prometheus Metrics** - Built-in observability and monitoring
 
@@ -30,6 +32,10 @@ Key features:
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │              RollbackCache (In-Memory)                   │   │
 │  │   - V1/V2 Balances    - Avatars    - Profile CIDs        │   │
+│  │  ┌─────────────────────────────────────────────────────┐ │   │
+│  │  │            BlockRingBuffer                          │ │   │
+│  │  │   - Recent block tracking    - Reorg detection      │ │   │
+│  │  └─────────────────────────────────────────────────────┘ │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │         ↑                                                       │
 │  ┌──────────────────────────────────────────────────────────┐   │
@@ -46,18 +52,30 @@ Initial cache population from the database:
 - **Batch Processing:** Efficiently loads data in chunks to reduce memory pressure
 - **Progress Tracking:** Reports warmup progress and completion status
 - **Secondary Indexes:** Builds optimized indexes for O(1) balance lookups by address
+- **Block Ring Buffer:** Initializes recent block history for reorg detection
+- **Gap Processing:** Handles blocks that arrive during warmup phase
 
 #### 2. NotificationListenerService (`Services/NotificationListenerService.cs`)
 
 Real-time cache updates via PostgreSQL LISTEN/NOTIFY:
 
-- **Block Range Notifications:** Receives notifications when new blocks are indexed
-- **Incremental Updates:** Queries only affected data for new blocks
-- **Reorg Detection:** Automatically detects and handles blockchain reorganizations
-- **Rollback Management:** Rolls back caches and rebuilds indexes on reorgs
+- **Notification Pings:** Treats notifications as signals to check for new blocks
+- **Block Querying:** Queries recent blocks directly from database on each ping
+- **Hash-based Reorg Detection:** Uses BlockRingBuffer to detect reorganizations by comparing block hashes
+- **Incremental Updates:** Processes only new blocks since last processed block
 - **Event Processing:** Processes V1/V2 transfers, registrations, trusts, etc.
 
-#### 3. RollbackCache (`Circles.Index.Common/RollbackCache.cs`)
+#### 3. BlockRingBuffer (`BlockRingBuffer.cs`)
+
+Thread-safe ring buffer for tracking recent blocks and detecting reorganizations:
+
+- **Block History:** Maintains last N blocks with numbers and hashes
+- **Reorg Detection:** Compares block hashes to detect chain reorganizations
+- **Rollback Points:** Identifies exact block where reorg occurred
+- **Capacity Management:** Automatically trims old blocks to stay within capacity
+- **Thread Safety:** All operations are thread-safe with proper locking
+
+#### 4. RollbackCache (`Circles.Index.Common/RollbackCache.cs`)
 
 Thread-safe cache with rollback capabilities:
 
@@ -66,7 +84,7 @@ Thread-safe cache with rollback capabilities:
 - **O(1) Operations:** Fast lookups, adds, and removals
 - **Configurable Capacity:** Maintains history of last N blocks (default: 12)
 
-#### 4. CacheContainer (`Caches/CacheContainer.cs`)
+#### 5. CacheContainer (`Caches/CacheContainer.cs`)
 
 Container managing all cache instances:
 
@@ -389,17 +407,20 @@ Returns service information and available endpoints.
 │ 1. Load Settings from Environment                          │
 │ 2. Initialize CacheContainer (create all RollbackCaches)   │
 │ 3. Start CacheWarmupService                                │
+│    ├─ Set warmup target block (current DB head)           │
 │    ├─ Load V1 Avatars & Token Owners                       │
 │    ├─ Load V1 Balances from database views                 │
 │    ├─ Load V2 Avatars & Groups                             │
 │    ├─ Load V2 Balances from database views                 │
 │    ├─ Load Profile CIDs and Short Names                    │
 │    ├─ Build Secondary Indexes (address → token mappings)   │
+│    ├─ Initialize BlockRingBuffer with recent blocks       │
+│    ├─ Process any blocks that arrived during warmup       │
 │    └─ Mark warmup complete                                 │
 │ 4. Start NotificationListenerService                       │
 │    ├─ Wait for warmup to complete                          │
 │    ├─ Connect to PostgreSQL LISTEN channel                 │
-│    └─ Begin processing notifications                       │
+│    └─ Begin processing notification pings                  │
 │ 5. Start MetricsUpdateService                              │
 │ 6. Service Ready (returns 200 on /ready)                   │
 └─────────────────────────────────────────────────────────────┘
@@ -413,16 +434,24 @@ Returns service information and available endpoints.
 │         ↓                                                   │
 │ INSERT new block events into database                      │
 │         ↓                                                   │
-│ NOTIFY circles_index_events                                │
-│   Payload: {"fromBlock": 31234567, "toBlock": 31234567}   │
+│ NOTIFY circles_index_events (ping signal)                 │
 │         ↓                                                   │
-│ NotificationListenerService receives notification          │
+│ NotificationListenerService receives ping                 │
 │         ↓                                                   │
-│ Check for reorg (toBlock < lastProcessedBlock?)           │
-│   Yes → Rollback all caches to toBlock                    │
-│   No  → Proceed with update                                │
+│ Query recent blocks from System_Block table               │
 │         ↓                                                   │
-│ Query affected data from database                          │
+│ BlockRingBuffer.UpdateFromBlocks()                         │
+│   ├─ Compare block hashes for reorg detection             │
+│   ├─ If reorg detected: return rollback point             │
+│   └─ Update ring buffer with new blocks                   │
+│         ↓                                                   │
+│ If reorg detected:                                         │
+│   ├─ Rollback all caches to rollback point                │
+│   ├─ Rebuild secondary indexes                             │
+│   └─ Reset lastProcessedBlock                              │
+│         ↓                                                   │
+│ Process new blocks (from lastProcessedBlock + 1)           │
+│   ├─ Query affected data from database                     │
 │   ├─ V1 Signups (Human, Organization)                     │
 │   ├─ V1 Transfers → Update affected balances              │
 │   ├─ V2 Register (Human, Organization, Group)             │
@@ -442,22 +471,45 @@ Returns service information and available endpoints.
 
 ### 3. Rollback Handling (Reorg)
 
-When a blockchain reorganization is detected:
+When a blockchain reorganization is detected via block hash mismatch:
 
 ```csharp
 // NotificationListenerService.cs - HandleNotificationAsync
-if (toBlock < lastProcessedBlock)
-{
-    logger.LogWarning("Detected reorg: rolling back to block {toBlock}");
+// Query recent blocks and update ring buffer
+var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(recentBlocks);
 
-    // 1. Rollback all caches (delete entries >= toBlock + 1)
-    caches.RollbackAll(toBlock + 1);
+if (reorgPoint.HasValue)
+{
+    logger.LogWarning("Detected reorg at block {ReorgBlock}! Rolling back caches...", reorgPoint.Value);
+
+    // 1. Rollback all caches (delete entries >= reorgPoint)
+    caches.RollbackAll(reorgPoint.Value);
 
     // 2. Rebuild secondary indexes from remaining data
     caches.RebuildSecondaryIndexes();
 
     // 3. Update state
-    state.LastProcessedBlock = toBlock;
+    state.LastProcessedBlock = Math.Min(state.LastProcessedBlock, reorgPoint.Value - 1);
+}
+```
+
+The `BlockRingBuffer` detects reorgs by comparing stored block hashes:
+
+```csharp
+// BlockRingBuffer.cs - DetectReorg
+public long? DetectReorg(long blockNumber, string blockHash)
+{
+    // Find block in buffer
+    var existingBlock = _blocks.FirstOrDefault(b => b.BlockNumber == blockNumber);
+    if (existingBlock != default)
+    {
+        // Compare hashes (case-insensitive)
+        if (!string.Equals(existingBlock.BlockHash, blockHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return blockNumber; // Reorg detected at this block
+        }
+    }
+    return null; // No reorg
 }
 ```
 
@@ -636,6 +688,7 @@ src/Cache/
 │   ├── Program.cs                         # ASP.NET Core app setup
 │   ├── CacheServiceSettings.cs            # Configuration
 │   ├── CacheServiceState.cs               # Service state tracking
+│   ├── BlockRingBuffer.cs                 # Block tracking and reorg detection
 │   ├── Caches/
 │   │   └── CacheContainer.cs              # All cache instances
 │   ├── Controllers/

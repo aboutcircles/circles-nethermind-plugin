@@ -1,6 +1,7 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Metrics;
 using Npgsql;
+using System.Numerics;
 
 namespace Circles.Cache.Service.Services;
 
@@ -604,7 +605,7 @@ public class NotificationListenerService : BackgroundService
             while (await accountsReader.ReadAsync(ct))
             {
                 var account = accountsReader.GetString(0);
-                var tokenId = accountsReader.GetFieldValue<decimal>(1).ToString("F0");
+                var tokenId = accountsReader.GetFieldValue<BigInteger>(1).ToString();
                 affectedPairs.Add((account, tokenId));
             }
         }

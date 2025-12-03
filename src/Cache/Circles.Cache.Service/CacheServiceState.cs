@@ -1,6 +1,3 @@
-using System.Collections.Concurrent;
-using Circles.Index.Common;
-
 namespace Circles.Cache.Service;
 
 /// <summary>
