@@ -480,11 +480,14 @@ public class CacheWarmupService : BackgroundService
             var expiryTime = reader.GetFieldValue<decimal>(2);
             var blockNumber = reader.GetInt64(3);
 
+            // Safely cast expiryTime to long, capping at long.MaxValue for overflow
+            long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+
             // Composite key: group:member
             var key = $"{group}:{member}";
 
             // Add to cache
-            _caches.GroupMemberships.Add(blockNumber, key, (member, (long)expiryTime));
+            _caches.GroupMemberships.Add(blockNumber, key, (member, expiryLong));
 
             count++;
         }
