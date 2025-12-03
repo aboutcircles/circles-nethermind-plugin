@@ -1,6 +1,7 @@
 using Circles.Cache.Service;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Services;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,7 @@ builder.Services.AddSingleton(sp => new CacheContainer(settings.RollbackCapacity
 // Register background services
 builder.Services.AddHostedService<CacheWarmupService>();
 builder.Services.AddHostedService<NotificationListenerService>();
+builder.Services.AddHostedService<MetricsUpdateService>();
 
 // Configure Kestrel to listen on configured port
 builder.WebHost.ConfigureKestrel(options =>
@@ -24,6 +26,9 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // Add health checks
 builder.Services.AddHealthChecks();
+
+// Add controllers for API endpoints
+builder.Services.AddControllers();
 
 // Add logging
 builder.Logging.ClearProviders();
@@ -53,13 +58,37 @@ logger.LogInformation("=======================================");
 // Configure middleware
 app.UseRouting();
 
+// Enable Prometheus metrics collection and HTTP metrics
+app.UseHttpMetrics();
+
+// Map controllers
+app.MapControllers();
+
+// Map Prometheus metrics endpoint
+app.MapMetrics();
+
 // Health check endpoints
 app.MapHealthChecks("/live");
-app.MapGet("/ready", (CacheServiceState state, CacheServiceSettings settings) =>
+app.MapGet("/ready", async (CacheServiceState state, CacheServiceSettings settings) =>
 {
-    // TODO: Get actual DB head from database query
-    // For now, use a placeholder value
-    var dbHead = state.LastProcessedBlock; // Will be updated when warmup is implemented
+    // Query actual DB head from database
+    long dbHead = state.LastProcessedBlock; // Default to current if query fails
+    
+    try
+    {
+        await using var conn = new Npgsql.NpgsqlConnection(settings.PostgresReadonlyConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new Npgsql.NpgsqlCommand("SELECT COALESCE(MAX(\"blockNumber\"), 0) FROM \"System_Block\"", conn);
+        var result = await cmd.ExecuteScalarAsync();
+        if (result != null && result != DBNull.Value)
+        {
+            dbHead = Convert.ToInt64(result);
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to query DB head for readiness check");
+    }
 
     var isReady = state.IsReady(dbHead, settings.MaxCatchupLag);
 
@@ -94,11 +123,24 @@ app.MapGet("/", () => new
 {
     service = "Circles Cache Service",
     version = "1.0.0",
-    status = "Starting",
+    status = "Running",
     endpoints = new
     {
         health = "/live",
-        readiness = "/ready"
+        readiness = "/ready",
+        stats = "/cache/stats",
+        metrics = "/metrics",
+        api = new
+        {
+            balances = "/api/balances/{address}",
+            totalBalance = "/api/balances/{address}/total",
+            totalBalanceV1 = "/api/balances/{address}/total/v1",
+            totalBalanceV2 = "/api/balances/{address}/total/v2",
+            avatarInfo = "/api/avatars/{address}",
+            avatarInfoBatch = "/api/avatars/batch",
+            profileCid = "/api/profiles/{address}/cid",
+            profileCidBatch = "/api/profiles/cid/batch"
+        }
     }
 });
 

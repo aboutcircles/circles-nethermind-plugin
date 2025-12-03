@@ -41,6 +41,7 @@ IMAGES=(
   "index:Index.Dockerfile"
   "pathfinder-host:pathfinder-host.Dockerfile"
   "rpc-host:rpc-host.Dockerfile"
+  "cache-service:cache-service.Dockerfile"
 )
 
 # Parse arguments for specific image
@@ -61,6 +62,7 @@ for arg in "$@"; do
       echo "  index         Build Nethermind plugin (Index.Dockerfile)"
       echo "  pathfinder    Build Pathfinder host (pathfinder-host.Dockerfile)"
       echo "  rpc           Build RPC host (rpc-host.Dockerfile)"
+      echo "  cache         Build cache service (cache-service.Dockerfile)"
       echo ""
       echo "Platform detection:"
       echo "  - Uses DOCKER_DEFAULT_PLATFORM if set (e.g., export DOCKER_DEFAULT_PLATFORM=linux/arm64)"
@@ -110,6 +112,9 @@ else
       ;;
     rpc)
       build_image "rpc-host" "rpc-host.Dockerfile"
+      ;;
+    cache)
+      build_image "cache-service" "cache-service.Dockerfile"
       ;;
     *)
       echo -e "${RED}Unknown image: $SPECIFIC_IMAGE${NC}"

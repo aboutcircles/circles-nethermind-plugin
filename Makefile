@@ -32,6 +32,7 @@ help:
 		@echo ""
 	@echo "Development:"
 	@echo "  make run-index         Run Nethermind with Index plugin (Gnosis)"
+	@echo "  make run-cache-service Run Cache Service"
 	@echo "  make run-pathfinder    Run Pathfinder service"
 	@echo "  make run-rpc           Run RPC service"
 	@echo "  make run-postgres      Run PostgreSQL database (Gnosis)"
@@ -44,6 +45,9 @@ help:
 	@echo "  make test-rpc-prod                         Run RPC tests against production"
 	@echo "  make test-rpc-prod ARGS='--json'           Run production tests with JSON output"
 	@echo "  make test-rpc-regression                   Compare local vs production responses"
+	@echo "  make test-cache                            Test cache service endpoints"
+	@echo "  make test-cache URL=<url>                  Test cache service against custom URL"
+	@echo "  make test-cache ARGS='--performance'       Run cache tests with performance benchmarks"
 	@echo "  make test-subscriptions                    Test WebSocket subscriptions (default: localhost:8081)"
 	@echo "  make test-subscriptions URL=<ws_url>       Test subscriptions against custom WebSocket URL"
 	@echo "  make test-subscriptions ARGS='--duration 60 --filter 0x...' Test with custom options"
@@ -141,6 +145,9 @@ push-local: push CirclesLocalFeed
 run-index:
 	./scripts/run-index.sh
 
+run-cache-service:
+	./scripts/run-cache-service.sh
+
 run-pathfinder:
 	./scripts/run-pathfinder.sh
 
@@ -171,6 +178,13 @@ test-subscriptions:
 		./scripts/test-subscriptions.sh "$(URL)" $(ARGS); \
 	else \
 		./scripts/test-subscriptions.sh $(ARGS); \
+	fi
+
+test-cache:
+	@if [ -n "$(URL)" ]; then \
+		./scripts/test-cache.sh "$(URL)" $(ARGS); \
+	else \
+		./scripts/test-cache.sh $(ARGS); \
 	fi
 
 # Complete workflows

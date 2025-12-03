@@ -37,13 +37,24 @@
 
   <ItemGroup>
     <!-- Reference to Common (for RollbackCache and shared types) -->
-    <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj">
+      <!-- Exclude Nethermind reference assemblies - cache service doesn't need them -->
+      <ExcludeAssets>all</ExcludeAssets>
+      <IncludeAssets>compile;build</IncludeAssets>
+    </ProjectReference>
 
     <!-- Reference to Query (for database access patterns) -->
-    <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
+    <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj">
+      <ExcludeAssets>all</ExcludeAssets>
+      <IncludeAssets>compile;build</IncludeAssets>
+    </ProjectReference>
 
     <!-- Reference to DatabaseSchemaProvider (for DB schema) -->
-    <ProjectReference Include="..\..\Index\Circles.Index.DatabaseSchemaProvider\Circles.Index.DatabaseSchemaProvider.csproj" />
+    <ProjectReference
+      Include="..\..\Index\Circles.Index.DatabaseSchemaProvider\Circles.Index.DatabaseSchemaProvider.csproj">
+      <ExcludeAssets>all</ExcludeAssets>
+      <IncludeAssets>compile;build</IncludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

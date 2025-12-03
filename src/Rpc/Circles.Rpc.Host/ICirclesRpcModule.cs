@@ -108,6 +108,67 @@ public interface ICirclesRpcModule
     Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null);
 
     // ========================================================================
+    // Phase 3: SDK Enablement Methods
+    // ========================================================================
+
+    /// <summary>
+    /// Gets a complete profile view combining avatar, profile, trust stats, and balances.
+    /// Replaces 6-7 separate RPC calls for displaying a user profile.
+    /// </summary>
+    /// <param name="address">Avatar address to query</param>
+    Task<ProfileViewResponse> GetProfileView(string address);
+
+    /// <summary>
+    /// Gets aggregated trust network statistics including mutual trusts and network reach.
+    /// </summary>
+    /// <param name="address">Avatar address to query</param>
+    /// <param name="maxDepth">Maximum depth for network traversal (optional)</param>
+    Task<TrustNetworkSummaryResponse> GetTrustNetworkSummary(string address, int? maxDepth = null);
+
+    /// <summary>
+    /// Gets trust relations categorized by type (mutual, one-way) with enriched avatar info.
+    /// Server-side categorization + batch avatar lookup.
+    /// </summary>
+    /// <param name="address">Avatar address to query</param>
+    Task<AggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(string address);
+
+    /// <summary>
+    /// Gets addresses that trust the given address AND have sufficient balance to invite.
+    /// Useful for invitation flows and sponsor discovery.
+    /// </summary>
+    /// <param name="address">Avatar address to query</param>
+    /// <param name="minimumBalance">Minimum balance required (in CRC, optional, defaults to 96)</param>
+    Task<ValidInvitersResponse> GetValidInviters(string address, string? minimumBalance = null);
+
+    /// <summary>
+    /// Gets transaction history with enriched participant profiles and metadata.
+    /// Replaces circles_events + multiple getProfileByAddress calls.
+    /// </summary>
+    /// <param name="address">Avatar address to query</param>
+    /// <param name="fromBlock">Starting block number</param>
+    /// <param name="toBlock">Ending block number (optional)</param>
+    /// <param name="limit">Maximum transactions to return (optional, default 20)</param>
+    Task<EnrichedTransactionHistoryResponse> GetTransactionHistoryEnriched(
+        string address,
+        long fromBlock,
+        long? toBlock = null,
+        int? limit = null);
+
+    /// <summary>
+    /// Unified search across profiles by address prefix OR name/description text.
+    /// Automatically detects search type (0x prefix = address, otherwise = text).
+    /// </summary>
+    /// <param name="query">Search query (address or text)</param>
+    /// <param name="limit">Maximum results (optional, default 10)</param>
+    /// <param name="offset">Skip N results (optional, default 0)</param>
+    /// <param name="types">Filter by avatar types (optional)</param>
+    Task<ProfileSearchResponse> SearchProfileByAddressOrName(
+        string query,
+        int? limit = null,
+        int? offset = null,
+        string[]? types = null);
+
+    // ========================================================================
     // Trust Relations
     // ========================================================================
 
@@ -117,6 +178,60 @@ public interface ICirclesRpcModule
     /// Currently returns V1 trust relations only.
     /// </summary>
     Task<TrustRelationsResponse> GetTrustRelations(string address);
+
+    /// <summary>
+    /// Gets aggregated trust relations for an address with SDK-compatible format.
+    /// Returns trust relations grouped by counterpart with relation type (mutuallyTrusts/trusts/trustedBy).
+    /// Includes expiryTime and objectAvatarType (Group/Human/Organization) fields.
+    /// </summary>
+    /// <param name="avatar">Avatar address to query</param>
+    Task<AggregatedTrustRelation[]> GetAggregatedTrustRelations(string avatar);
+
+    /// <summary>
+    /// Finds groups with optional filters and cursor-based pagination.
+    /// SDK-compatible method for group discovery.
+    /// </summary>
+    /// <param name="limit">Maximum number of groups to return (default: 50)</param>
+    /// <param name="queryParams">Optional filter parameters (nameStartsWith, symbolStartsWith, ownerIn)</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    Task<PagedResponse<GroupRow>> FindGroups(int limit = 50, GroupQueryParams? queryParams = null, string? cursor = null);
+
+    /// <summary>
+    /// Gets members of a specific group with cursor-based pagination.
+    /// SDK-compatible method for group membership queries.
+    /// </summary>
+    /// <param name="groupAddress">Group address to query members for</param>
+    /// <param name="limit">Maximum number of members to return (default: 100)</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    Task<PagedResponse<GroupMembershipRow>> GetGroupMembers(string groupAddress, int limit = 100, string? cursor = null);
+
+    /// <summary>
+    /// Gets groups that an avatar is a member of with cursor-based pagination.
+    /// SDK-compatible method (inverse of GetGroupMembers).
+    /// </summary>
+    /// <param name="memberAddress">Member address to query group memberships for</param>
+    /// <param name="limit">Maximum number of memberships to return (default: 50)</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    Task<PagedResponse<GroupMembershipRow>> GetGroupMemberships(string memberAddress, int limit = 50, string? cursor = null);
+
+    /// <summary>
+    /// Gets transaction history for an avatar with cursor-based pagination.
+    /// SDK-compatible method with all circle amount formats calculated.
+    /// Queries V2 transfers where avatar is either sender or receiver.
+    /// </summary>
+    /// <param name="avatarAddress">Avatar address to query transaction history for</param>
+    /// <param name="limit">Maximum number of transactions to return (default: 50)</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null);
+
+    /// <summary>
+    /// Gets all holders of a specific token with cursor-based pagination.
+    /// SDK-compatible method to query token distribution.
+    /// </summary>
+    /// <param name="tokenAddress">Token address to query holders for</param>
+    /// <param name="limit">Maximum number of holders to return (default: 100)</param>
+    /// <param name="cursor">Cursor for pagination (account address)</param>
+    Task<PagedResponse<TokenHolderRow>> GetTokenHolders(string tokenAddress, int limit = 100, string? cursor = null);
 
     /// <summary>
     /// Finds common trust connections between two addresses.
@@ -244,6 +359,98 @@ public record TrustRelationsResponse(
     string User,
     TrustRelation[] Trusts,
     TrustRelation[] TrustedBy
+);
+
+/// <summary>
+/// SDK-compatible aggregated trust relation.
+/// Matches SDK AggregatedTrustRelation type with additional fields.
+/// </summary>
+public record AggregatedTrustRelation(
+    [property: JsonPropertyName("subjectAvatar")] string SubjectAvatar,
+    [property: JsonPropertyName("relation")] string Relation,  // "mutuallyTrusts" | "trusts" | "trustedBy"
+    [property: JsonPropertyName("objectAvatar")] string ObjectAvatar,
+    [property: JsonPropertyName("timestamp")] long Timestamp,
+    [property: JsonPropertyName("expiryTime")] long ExpiryTime,
+    [property: JsonPropertyName("objectAvatarType")] string? ObjectAvatarType  // "Human" | "Group" | "Organization"
+);
+
+/// <summary>
+/// SDK-compatible paged response with cursor-based pagination.
+/// </summary>
+public record PagedResponse<T>(
+    [property: JsonPropertyName("results")] T[] Results,
+    [property: JsonPropertyName("hasMore")] bool HasMore,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor
+);
+
+/// <summary>
+/// SDK-compatible GroupRow type.
+/// </summary>
+public record GroupRow(
+    [property: JsonPropertyName("group")] string Group,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("symbol")] string Symbol,
+    [property: JsonPropertyName("mint")] string Mint,
+    [property: JsonPropertyName("treasury")] string Treasury,
+    [property: JsonPropertyName("blockNumber")] long BlockNumber,
+    [property: JsonPropertyName("timestamp")] long Timestamp
+);
+
+/// <summary>
+/// Group query parameters for filtering.
+/// </summary>
+public record GroupQueryParams(
+    [property: JsonPropertyName("nameStartsWith")] string? NameStartsWith = null,
+    [property: JsonPropertyName("symbolStartsWith")] string? SymbolStartsWith = null,
+    [property: JsonPropertyName("ownerIn")] string[]? OwnerIn = null
+);
+
+/// <summary>
+/// SDK-compatible GroupMembershipRow type.
+/// </summary>
+public record GroupMembershipRow(
+    [property: JsonPropertyName("blockNumber")] long BlockNumber,
+    [property: JsonPropertyName("timestamp")] long Timestamp,
+    [property: JsonPropertyName("transactionIndex")] int TransactionIndex,
+    [property: JsonPropertyName("logIndex")] int LogIndex,
+    [property: JsonPropertyName("transactionHash")] string TransactionHash,
+    [property: JsonPropertyName("group")] string Group,
+    [property: JsonPropertyName("member")] string Member,
+    [property: JsonPropertyName("expiryTime")] long ExpiryTime
+);
+
+/// <summary>
+/// SDK-compatible TransactionHistoryRow type with all circle amount formats.
+/// </summary>
+public record TransactionHistoryRow(
+    [property: JsonPropertyName("blockNumber")] long BlockNumber,
+    [property: JsonPropertyName("timestamp")] long Timestamp,
+    [property: JsonPropertyName("transactionIndex")] int TransactionIndex,
+    [property: JsonPropertyName("logIndex")] int LogIndex,
+    [property: JsonPropertyName("transactionHash")] string TransactionHash,
+    [property: JsonPropertyName("version")] int Version,
+    [property: JsonPropertyName("from")] string From,
+    [property: JsonPropertyName("to")] string To,
+    [property: JsonPropertyName("operator")] string? Operator,
+    [property: JsonPropertyName("id")] string? Id,
+    [property: JsonPropertyName("value")] string Value, // Raw demurraged attoCircles as string
+    // Calculated circle amounts (6 formats as per SDK calculateCircleAmounts)
+    [property: JsonPropertyName("circles")] string Circles,
+    [property: JsonPropertyName("attoCircles")] string AttoCircles,
+    [property: JsonPropertyName("crc")] string Crc,
+    [property: JsonPropertyName("attoCrc")] string AttoCrc,
+    [property: JsonPropertyName("staticCircles")] string StaticCircles,
+    [property: JsonPropertyName("staticAttoCircles")] string StaticAttoCircles
+);
+
+/// <summary>
+/// SDK-compatible TokenHolderRow type representing a token holder.
+/// </summary>
+public record TokenHolderRow(
+    [property: JsonPropertyName("account")] string Account,
+    [property: JsonPropertyName("balance")] string Balance,
+    [property: JsonPropertyName("tokenAddress")] string TokenAddress,
+    [property: JsonPropertyName("version")] int Version
 );
 
 /// <summary>
@@ -444,4 +651,122 @@ public class ProfileCidResponseJsonConverter : JsonConverter<ProfileCidResponse>
             writer.WriteStringValue(value.Cid);
         }
     }
+}
+
+// ============================================================================
+// SDK Enablement Response Types (Phase 3)
+// ============================================================================
+
+/// <summary>
+/// Consolidated profile view combining avatar, profile, trust stats, and balances.
+/// </summary>
+public record ProfileViewResponse
+{
+    public string Address { get; init; } = string.Empty;
+    public AvatarInfo? AvatarInfo { get; init; }
+    public JsonElement? Profile { get; init; }
+    public TrustStats TrustStats { get; init; } = new();
+    public string? V1Balance { get; init; }
+    public string? V2Balance { get; init; }
+}
+
+/// <summary>
+/// Trust statistics for an avatar.
+/// </summary>
+public record TrustStats
+{
+    public int TrustsCount { get; init; }
+    public int TrustedByCount { get; init; }
+}
+
+/// <summary>
+/// Aggregated trust network summary with network reach metrics.
+/// </summary>
+public record TrustNetworkSummaryResponse
+{
+    public string Address { get; init; } = string.Empty;
+    public int DirectTrustsCount { get; init; }
+    public int DirectTrustedByCount { get; init; }
+    public int MutualTrustsCount { get; init; }
+    public string[] MutualTrusts { get; init; } = Array.Empty<string>();
+    public int NetworkReach { get; init; }
+}
+
+/// <summary>
+/// Aggregated trust relations categorized by type.
+/// </summary>
+public record AggregatedTrustRelationsResponse
+{
+    public string Address { get; init; } = string.Empty;
+    public TrustRelationInfo[] Mutual { get; init; } = Array.Empty<TrustRelationInfo>();
+    public TrustRelationInfo[] Trusts { get; init; } = Array.Empty<TrustRelationInfo>();
+    public TrustRelationInfo[] TrustedBy { get; init; } = Array.Empty<TrustRelationInfo>();
+}
+
+/// <summary>
+/// Trust relation with enriched avatar info.
+/// </summary>
+public record TrustRelationInfo
+{
+    public string Address { get; init; } = string.Empty;
+    public AvatarInfo? AvatarInfo { get; init; }
+    public string RelationType { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Valid inviters with balance information.
+/// </summary>
+public record ValidInvitersResponse
+{
+    public string Address { get; init; } = string.Empty;
+    public InviterInfo[] ValidInviters { get; init; } = Array.Empty<InviterInfo>();
+}
+
+/// <summary>
+/// Inviter information with balance and avatar data.
+/// </summary>
+public record InviterInfo
+{
+    public string Address { get; init; } = string.Empty;
+    public string Balance { get; init; } = string.Empty;
+    public AvatarInfo? AvatarInfo { get; init; }
+}
+
+/// <summary>
+/// Enriched transaction history with participant profiles.
+/// </summary>
+public record EnrichedTransactionHistoryResponse
+{
+    public string Address { get; init; } = string.Empty;
+    public EnrichedTransaction[] Transactions { get; init; } = Array.Empty<EnrichedTransaction>();
+    public int TotalCount { get; init; }
+}
+
+/// <summary>
+/// Transaction with enriched participant information.
+/// </summary>
+public record EnrichedTransaction
+{
+    public JsonElement Event { get; init; }
+    public Dictionary<string, ParticipantInfo> Participants { get; init; } = new();
+}
+
+/// <summary>
+/// Participant information in a transaction.
+/// </summary>
+public record ParticipantInfo
+{
+    public AvatarInfo? AvatarInfo { get; init; }
+    public JsonElement? Profile { get; init; }
+}
+
+/// <summary>
+/// Unified profile search response.
+/// </summary>
+public record ProfileSearchResponse
+{
+    public string Query { get; init; } = string.Empty;
+    public string SearchType { get; init; } = string.Empty; // "address" or "text"
+    public JsonElement[] Results { get; init; } = Array.Empty<JsonElement>();
+    public int TotalCount { get; init; }
 }

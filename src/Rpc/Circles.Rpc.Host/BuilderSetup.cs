@@ -24,6 +24,8 @@ public static class BuilderSetup
         Console.WriteLine($"* DB Port: {csb.Port}");
         Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
         Console.WriteLine($"* Balance Mode: {settings.BalanceMode}");
+        Console.WriteLine($"* Cache Service URL: {settings.CacheServiceUrl ?? "Not configured"}");
+        Console.WriteLine($"* Use Cache Service: {settings.UseCacheService}");
 
         var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
 
@@ -49,12 +51,26 @@ public static class BuilderSetup
             return new NethermindRpcClient(httpClientFactory, settings.NethermindRpcUrl ?? "http://localhost:8545");
         });
 
+        // Cache Service Client (optional - only if configured)
+        if (settings.UseCacheService && !string.IsNullOrWhiteSpace(settings.CacheServiceUrl))
+        {
+            builder.Services.AddSingleton<CacheServiceClient.CacheServiceClient>(sp =>
+            {
+                var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+                var httpClient = httpClientFactory.CreateClient();
+                var logger = sp.GetService<ILogger<CacheServiceClient.CacheServiceClient>>();
+                return new CacheServiceClient.CacheServiceClient(httpClient, settings.CacheServiceUrl, logger);
+            });
+        }
+
         // Use the existing CirclesRpcModule with IHttpClientFactory
         builder.Services.AddSingleton<CirclesRpcModule>(sp =>
         {
             var settings = sp.GetRequiredService<Settings>();
             var httpClientFactory = sp.GetService<IHttpClientFactory>();
-            return new CirclesRpcModule(settings, httpClientFactory);
+            var logger = sp.GetService<ILogger<CirclesRpcModule>>();
+            var cacheServiceClient = settings.UseCacheService ? sp.GetService<CacheServiceClient.CacheServiceClient>() : null;
+            return new CirclesRpcModule(settings, httpClientFactory, logger, cacheServiceClient);
         });
 
         builder.Services.AddSingleton<CirclesSubscriptionService>();

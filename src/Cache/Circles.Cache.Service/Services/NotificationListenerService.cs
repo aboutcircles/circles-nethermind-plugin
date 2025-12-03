@@ -1,4 +1,5 @@
 using Circles.Cache.Service.Caches;
+using Circles.Cache.Service.Metrics;
 using Npgsql;
 using System.Text.Json;
 
@@ -73,6 +74,7 @@ public class NotificationListenerService : BackgroundService
         {
             try
             {
+                CacheMetrics.NotificationsReceived.Inc();
                 await HandleNotificationAsync(args.Payload, ct);
             }
             catch (Exception ex)
@@ -126,8 +128,16 @@ public class NotificationListenerService : BackgroundService
             _logger.LogWarning("Detected reorg: toBlock {ToBlock} < lastProcessedBlock {LastProcessedBlock}. Rolling back caches...",
                 toBlock, _state.LastProcessedBlock);
 
+            // Track reorg in metrics
+            CacheMetrics.ReorgsDetected.Inc();
+
             // Rollback all caches to the reorg point
             _caches.RollbackAll(toBlock + 1);
+
+            // Rebuild secondary indexes after rollback
+            _logger.LogInformation("Rebuilding secondary indexes after rollback...");
+            _caches.RebuildSecondaryIndexes();
+
             _state.LastProcessedBlock = toBlock;
         }
 
@@ -135,6 +145,11 @@ public class NotificationListenerService : BackgroundService
         await ProcessBlockRangeAsync(fromBlock, toBlock, ct);
 
         _state.LastProcessedBlock = toBlock;
+
+        // Track blocks processed
+        var blocksProcessed = toBlock - fromBlock + 1;
+        CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
+
         _logger.LogDebug("Updated LastProcessedBlock to {Block}", toBlock);
     }
 
@@ -213,6 +228,9 @@ public class NotificationListenerService : BackgroundService
         {
             _logger.LogDebug("Processed {Count} V1 organization signups", orgCount);
         }
+
+        // Process V1 Transfers (for balance updates)
+        await ProcessV1TransfersAsync(conn, fromBlock, toBlock, ct);
     }
 
     private async Task ProcessV2EventsAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
@@ -226,8 +244,14 @@ public class NotificationListenerService : BackgroundService
         // Process V2 RegisterGroup
         await ProcessV2RegisterGroupAsync(conn, fromBlock, toBlock, ct);
 
+        // Process V2 Trust (for group memberships)
+        await ProcessV2TrustAsync(conn, fromBlock, toBlock, ct);
+
         // Process V2 ERC20WrapperDeployed
         await ProcessV2Erc20WrapperDeployedAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V2 Transfers (for balance updates)
+        await ProcessV2TransfersAsync(conn, fromBlock, toBlock, ct);
     }
 
     private async Task ProcessV2RegisterHumanAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
@@ -324,6 +348,61 @@ public class NotificationListenerService : BackgroundService
         }
     }
 
+    private async Task ProcessV2TrustAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Query V_CrcV2_GroupMemberships to get updated trust relationships for group memberships
+        // We only care about trusts where the trustee is a group (creates membership)
+        const string sql = @"
+            SELECT 
+                t.""blockNumber"",
+                t.""truster"" as member,
+                t.""trustee"" as ""group"",
+                t.""expiryTime""
+            FROM ""CrcV2_Trust"" t
+            WHERE t.""blockNumber"" >= @fromBlock AND t.""blockNumber"" <= @toBlock
+            ORDER BY t.""blockNumber"", t.""transactionIndex"", t.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var count = 0;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var blockNumber = reader.GetInt64(0);
+            var member = reader.GetString(1);
+            var group = reader.GetString(2);
+            var expiryTime = reader.GetInt64(3);
+
+            // Check if trustee is a group by looking it up in the Groups cache
+            if (_caches.Groups.TryGetValue(group, out _))
+            {
+                // Composite key: group:member
+                var key = $"{group}:{member}";
+                
+                // If expiryTime is 0, this is an untrust - use Remove to delete the membership
+                // Otherwise, add/update the membership
+                if (expiryTime == 0)
+                {
+                    _caches.GroupMemberships.Remove(key);
+                }
+                else
+                {
+                    _caches.GroupMemberships.Add(blockNumber, key, (member, expiryTime));
+                }
+                
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogDebug("Processed {Count} V2 trust events for group memberships", count);
+        }
+    }
+
     private async Task ProcessV2Erc20WrapperDeployedAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
         const string sql = @"
@@ -352,6 +431,174 @@ public class NotificationListenerService : BackgroundService
         if (count > 0)
         {
             _logger.LogDebug("Processed {Count} V2 ERC20 wrapper deployments", count);
+        }
+    }
+
+    private async Task ProcessV1TransfersAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Query V1 balance view for accounts affected by transfers in this block range
+        // We need to update balances for all account-token pairs that were involved in transfers
+        const string affectedAccountsSql = @"
+            SELECT DISTINCT ""from"" as account, ""tokenAddress""
+            FROM ""CrcV1"".""Transfer"" 
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            UNION
+            SELECT DISTINCT ""to"" as account, ""tokenAddress""
+            FROM ""CrcV1"".""Transfer""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock";
+
+        await using var accountsCmd = new NpgsqlCommand(affectedAccountsSql, conn);
+        accountsCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        accountsCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var affectedPairs = new List<(string account, string tokenAddress)>();
+
+        await using (var accountsReader = await accountsCmd.ExecuteReaderAsync(ct))
+        {
+            while (await accountsReader.ReadAsync(ct))
+            {
+                var account = accountsReader.GetString(0);
+                var tokenAddress = accountsReader.GetString(1);
+                affectedPairs.Add((account, tokenAddress));
+            }
+        }
+
+        if (affectedPairs.Count == 0)
+        {
+            return;
+        }
+
+        // For each affected account-token pair, query the latest balance from the view
+        var updatedCount = 0;
+        foreach (var (account, tokenAddress) in affectedPairs)
+        {
+            const string balanceSql = @"
+                SELECT ""totalBalance""
+                FROM ""V_CrcV1_BalancesByAccountAndToken""
+                WHERE ""account"" = @account AND ""tokenAddress"" = @tokenAddress";
+
+            await using var balanceCmd = new NpgsqlCommand(balanceSql, conn);
+            balanceCmd.Parameters.AddWithValue("account", account);
+            balanceCmd.Parameters.AddWithValue("tokenAddress", tokenAddress);
+
+            var result = await balanceCmd.ExecuteScalarAsync(ct);
+
+            if (result != null && result != DBNull.Value)
+            {
+                var totalBalance = Convert.ToDecimal(result);
+
+                // Convert attoCircles to Circles (divide by 10^18)
+                var balance = totalBalance / 1_000_000_000_000_000_000m;
+
+                // Composite key: account:tokenAddress
+                var key = $"{account}:{tokenAddress}";
+
+                // Update cache (use toBlock as the reference block)
+                _caches.V1BalancesByAccountAndToken.Add(toBlock, key, balance);
+
+                updatedCount++;
+            }
+            else
+            {
+                // Balance is now 0 or doesn't exist, remove from cache
+                var key = $"{account}:{tokenAddress}";
+                _caches.V1BalancesByAccountAndToken.Add(toBlock, key, 0m);
+                updatedCount++;
+            }
+        }
+
+        if (updatedCount > 0)
+        {
+            _logger.LogDebug("Updated {Count} V1 balances from {Transfers} transfer events",
+                updatedCount, affectedPairs.Count);
+        }
+    }
+
+    private async Task ProcessV2TransfersAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Query V2 balance view for accounts affected by transfers in this block range
+        // V2 has both TransferSingle and TransferBatch events
+        const string affectedAccountsSql = @"
+            SELECT DISTINCT ""from"" as account, ""id"" as tokenId
+            FROM ""CrcV2"".""TransferSingle""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            UNION
+            SELECT DISTINCT ""to"" as account, ""id"" as tokenId
+            FROM ""CrcV2"".""TransferSingle""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            UNION
+            SELECT DISTINCT ""from"" as account, ""id"" as tokenId
+            FROM ""CrcV2"".""TransferBatch""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            UNION
+            SELECT DISTINCT ""to"" as account, ""id"" as tokenId
+            FROM ""CrcV2"".""TransferBatch""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock";
+
+        await using var accountsCmd = new NpgsqlCommand(affectedAccountsSql, conn);
+        accountsCmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        accountsCmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var affectedPairs = new List<(string account, string tokenId)>();
+
+        await using (var accountsReader = await accountsCmd.ExecuteReaderAsync(ct))
+        {
+            while (await accountsReader.ReadAsync(ct))
+            {
+                var account = accountsReader.GetString(0);
+                var tokenId = accountsReader.GetString(1);
+                affectedPairs.Add((account, tokenId));
+            }
+        }
+
+        if (affectedPairs.Count == 0)
+        {
+            return;
+        }
+
+        // For each affected account-token pair, query the latest balance from the view
+        var updatedCount = 0;
+        foreach (var (account, tokenId) in affectedPairs)
+        {
+            const string balanceSql = @"
+                SELECT ""demurragedTotalBalance""
+                FROM ""V_CrcV2_BalancesByAccountAndToken""
+                WHERE ""account"" = @account AND ""tokenId"" = @tokenId";
+
+            await using var balanceCmd = new NpgsqlCommand(balanceSql, conn);
+            balanceCmd.Parameters.AddWithValue("account", account);
+            balanceCmd.Parameters.AddWithValue("tokenId", tokenId);
+
+            var result = await balanceCmd.ExecuteScalarAsync(ct);
+
+            if (result != null && result != DBNull.Value)
+            {
+                var demurragedBalance = Convert.ToDecimal(result);
+
+                // Convert to Circles (divide by 10^18)
+                var balance = demurragedBalance / 1_000_000_000_000_000_000m;
+
+                // Composite key: account:tokenId
+                var key = $"{account}:{tokenId}";
+
+                // Update cache (use toBlock as the reference block)
+                _caches.V2BalancesByAccountAndToken.Add(toBlock, key, balance);
+
+                updatedCount++;
+            }
+            else
+            {
+                // Balance is now 0 or doesn't exist, remove from cache
+                var key = $"{account}:{tokenId}";
+                _caches.V2BalancesByAccountAndToken.Add(toBlock, key, 0m);
+                updatedCount++;
+            }
+        }
+
+        if (updatedCount > 0)
+        {
+            _logger.LogDebug("Updated {Count} V2 balances from {Transfers} transfer events",
+                updatedCount, affectedPairs.Count);
         }
     }
 
