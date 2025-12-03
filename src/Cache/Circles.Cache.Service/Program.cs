@@ -30,13 +30,12 @@ builder.Services.AddHealthChecks();
 // Add controllers for API endpoints
 builder.Services.AddControllers();
 
-// Add logging
+// Add logging - use simple console format
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.AddJsonConsole(options =>
+builder.Logging.AddSimpleConsole(options =>
 {
-    options.IncludeScopes = true;
-    options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+    options.SingleLine = true;
+    options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
 });
 
 // Build the app
