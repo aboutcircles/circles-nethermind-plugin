@@ -41,6 +41,7 @@
     <ProjectReference Include="..\..\Index\Circles.Index.Query\Circles.Index.Query.csproj" />
     <ProjectReference
       Include="..\..\Index\Circles.Index.DatabaseSchemaProvider\Circles.Index.DatabaseSchemaProvider.csproj" />
+    <ProjectReference Include="..\Circles.Rpc.CacheServiceClient\Circles.Rpc.CacheServiceClient.csproj" />
   </ItemGroup>
 
 

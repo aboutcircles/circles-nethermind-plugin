@@ -45,6 +45,17 @@ public class CacheWarmupService : BackgroundService
             // Replay V2 events
             await ReplayV2EventsAsync(conn, dbHead, stoppingToken);
 
+            // Load group memberships
+            await LoadGroupMembershipsAsync(conn, stoppingToken);
+
+            // Load balances (this may take longer)
+            await LoadBalancesAsync(conn, stoppingToken);
+
+            // Rebuild secondary indexes for fast balance lookups
+            _logger.LogInformation("Rebuilding secondary indexes...");
+            _caches.RebuildSecondaryIndexes();
+            _logger.LogInformation("Secondary indexes rebuilt");
+
             // Mark warmup as complete
             _state.WarmupComplete = true;
             _state.LastProcessedBlock = dbHead;
@@ -64,7 +75,7 @@ public class CacheWarmupService : BackgroundService
     {
         const string sql = @"
             SELECT COALESCE(MAX(""blockNumber""), 0)
-            FROM ""System"".""Block""";
+            FROM ""System_Block""";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         var result = await cmd.ExecuteScalarAsync(ct);
@@ -83,82 +94,87 @@ public class CacheWarmupService : BackgroundService
 
     private async Task ReplayV1SignupsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
-        // Replay human signups
-        const string humanSignupSql = @"
+        // Replay both human and organization signups in block order
+        const string sql = @"
             SELECT
                 s.""blockNumber"",
-                s.""user"",
-                s.""token""
-            FROM ""CrcV1"".""Signup"" s
+                s.""transactionIndex"",
+                s.""logIndex"",
+                s.""user"" as address,
+                s.""token"",
+                'Human' as type
+            FROM ""CrcV1_Signup"" s
             WHERE s.""blockNumber"" <= @toBlock
-            ORDER BY s.""blockNumber"", s.""transactionIndex"", s.""logIndex""";
 
-        await using var cmd = new NpgsqlCommand(humanSignupSql, conn);
+            UNION ALL
+
+            SELECT
+                o.""blockNumber"",
+                o.""transactionIndex"",
+                o.""logIndex"",
+                o.""organization"" as address,
+                NULL as token,
+                'Organization' as type
+            FROM ""CrcV1_OrganizationSignup"" o
+            WHERE o.""blockNumber"" <= @toBlock
+
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
-        var count = 0;
+        var humanCount = 0;
+        var orgCount = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 10000; // Log every 10000 entries
 
         while (await reader.ReadAsync(ct))
         {
             var blockNumber = reader.GetInt64(0);
-            var user = reader.GetString(1);
-            var token = reader.GetString(2);
+            var address = reader.GetString(3);
+            var token = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var type = reader.GetString(5);
 
-            // Add to V1Avatars cache
-            _caches.V1Avatars.Add(blockNumber, user, ("Human", token));
+            if (type == "Human")
+            {
+                // Add to V1Avatars cache
+                _caches.V1Avatars.Add(blockNumber, address, ("Human", token!));
 
-            // Add to V1TokenOwnerByToken cache (reverse mapping)
-            _caches.V1TokenOwnerByToken.Add(blockNumber, token, user);
+                // Add to V1TokenOwnerByToken cache (reverse mapping)
+                _caches.V1TokenOwnerByToken.Add(blockNumber, token!, address);
 
-            count++;
+                humanCount++;
+            }
+            else
+            {
+                // Add to V1Avatars cache (organizations don't have tokens)
+                _caches.V1Avatars.Add(blockNumber, address, ("Organization", null));
+
+                orgCount++;
+            }
+
+            // Log progress every 10000 entries
+            var totalCount = humanCount + orgCount;
+            if (totalCount % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V1 signup progress: {HumanCount} humans, {OrgCount} orgs ({Rate:F0} entries/sec)",
+                    humanCount, orgCount, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
         }
 
-        await reader.CloseAsync();
-
-        _logger.LogInformation("Replayed {Count} V1 human signups", count);
-
-        // Replay organization signups
-        const string orgSignupSql = @"
-            SELECT
-                o.""blockNumber"",
-                o.""organization""
-            FROM ""CrcV1"".""OrganizationSignup"" o
-            WHERE o.""blockNumber"" <= @toBlock
-            ORDER BY o.""blockNumber"", o.""transactionIndex"", o.""logIndex""";
-
-        await using var orgCmd = new NpgsqlCommand(orgSignupSql, conn);
-        orgCmd.Parameters.AddWithValue("toBlock", toBlock);
-
-        await using var orgReader = await orgCmd.ExecuteReaderAsync(ct);
-        var orgCount = 0;
-
-        while (await orgReader.ReadAsync(ct))
-        {
-            var blockNumber = orgReader.GetInt64(0);
-            var organization = orgReader.GetString(1);
-
-            // Add to V1Avatars cache (organizations don't have tokens)
-            _caches.V1Avatars.Add(blockNumber, organization, ("Organization", null));
-
-            orgCount++;
-        }
-
-        _logger.LogInformation("Replayed {Count} V1 organization signups", orgCount);
+        _logger.LogInformation("Replayed {HumanCount} V1 human signups and {OrgCount} organization signups",
+            humanCount, orgCount);
     }
 
     private async Task ReplayV2EventsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Replaying V2 events...");
 
-        // Replay V2 RegisterHuman
-        await ReplayV2RegisterHumanAsync(conn, toBlock, ct);
-
-        // Replay V2 RegisterOrganization
-        await ReplayV2RegisterOrganizationAsync(conn, toBlock, ct);
-
-        // Replay V2 RegisterGroup
-        await ReplayV2RegisterGroupAsync(conn, toBlock, ct);
+        // Replay V2 avatar registrations (all types in block order)
+        await ReplayV2AvatarRegistrationsAsync(conn, toBlock, ct);
 
         // Replay V2 ERC20WrapperDeployed
         await ReplayV2Erc20WrapperDeployedAsync(conn, toBlock, ct);
@@ -166,102 +182,100 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("V2 event replay completed");
     }
 
-    private async Task ReplayV2RegisterHumanAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
+    private async Task ReplayV2AvatarRegistrationsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
+        // Combine all V2 avatar registration types in block order
         const string sql = @"
             SELECT
                 r.""blockNumber"",
+                r.""transactionIndex"",
+                r.""logIndex"",
+                r.""avatar"" as address,
                 r.""timestamp"",
-                r.""avatar""
-            FROM ""CrcV2"".""RegisterHuman"" r
+                'Human' as type,
+                NULL as name,
+                NULL as mint
+            FROM ""CrcV2_RegisterHuman"" r
             WHERE r.""blockNumber"" <= @toBlock
-            ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("toBlock", toBlock);
+            UNION ALL
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        var count = 0;
-
-        while (await reader.ReadAsync(ct))
-        {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var avatar = reader.GetString(2);
-
-            // Add to V2Avatars cache
-            _caches.V2Avatars.Add(blockNumber, avatar, ("Human", timestamp));
-
-            count++;
-        }
-
-        _logger.LogInformation("Replayed {Count} V2 human registrations", count);
-    }
-
-    private async Task ReplayV2RegisterOrganizationAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
-    {
-        const string sql = @"
             SELECT
                 r.""blockNumber"",
+                r.""transactionIndex"",
+                r.""logIndex"",
+                r.""organization"" as address,
                 r.""timestamp"",
-                r.""organization""
-            FROM ""CrcV2"".""RegisterOrganization"" r
+                'Organization' as type,
+                NULL as name,
+                NULL as mint
+            FROM ""CrcV2_RegisterOrganization"" r
             WHERE r.""blockNumber"" <= @toBlock
-            ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("toBlock", toBlock);
+            UNION ALL
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        var count = 0;
-
-        while (await reader.ReadAsync(ct))
-        {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var organization = reader.GetString(2);
-
-            // Add to V2Avatars cache
-            _caches.V2Avatars.Add(blockNumber, organization, ("Organization", timestamp));
-
-            count++;
-        }
-
-        _logger.LogInformation("Replayed {Count} V2 organization registrations", count);
-    }
-
-    private async Task ReplayV2RegisterGroupAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
-    {
-        const string sql = @"
             SELECT
                 r.""blockNumber"",
-                r.""group"",
+                r.""transactionIndex"",
+                r.""logIndex"",
+                r.""group"" as address,
+                0 as timestamp,
+                'Group' as type,
                 r.""name"",
                 r.""mint""
-            FROM ""CrcV2"".""RegisterGroup"" r
+            FROM ""CrcV2_RegisterGroup"" r
             WHERE r.""blockNumber"" <= @toBlock
-            ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
+
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
-        var count = 0;
+        var humanCount = 0;
+        var orgCount = 0;
+        var groupCount = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 1000; // Log every 1000 entries (V2 has fewer than V1)
 
         while (await reader.ReadAsync(ct))
         {
             var blockNumber = reader.GetInt64(0);
-            var group = reader.GetString(1);
-            var name = reader.GetString(2);
-            var mint = reader.GetString(3);
+            var address = reader.GetString(3);
+            var timestamp = reader.GetInt64(4);
+            var type = reader.GetString(5);
+            var name = reader.IsDBNull(6) ? null : reader.GetString(6);
+            var mint = reader.IsDBNull(7) ? null : reader.GetString(7);
 
-            // Add to Groups cache
-            _caches.Groups.Add(blockNumber, group, (name, mint));
+            if (type == "Human")
+            {
+                _caches.V2Avatars.Add(blockNumber, address, ("Human", timestamp));
+                humanCount++;
+            }
+            else if (type == "Organization")
+            {
+                _caches.V2Avatars.Add(blockNumber, address, ("Organization", timestamp));
+                orgCount++;
+            }
+            else if (type == "Group")
+            {
+                _caches.Groups.Add(blockNumber, address, (name!, mint!));
+                groupCount++;
+            }
 
-            count++;
+            // Log progress every 1000 entries
+            var totalCount = humanCount + orgCount + groupCount;
+            if (totalCount % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V2 registration progress: {HumanCount} humans, {OrgCount} orgs, {GroupCount} groups ({Rate:F0} entries/sec)",
+                    humanCount, orgCount, groupCount, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
         }
 
-        _logger.LogInformation("Replayed {Count} V2 group registrations", count);
+        _logger.LogInformation("Replayed {HumanCount} V2 humans, {OrgCount} organizations, {GroupCount} groups",
+            humanCount, orgCount, groupCount);
     }
 
     private async Task ReplayV2Erc20WrapperDeployedAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
@@ -271,7 +285,7 @@ public class CacheWarmupService : BackgroundService
                 e.""blockNumber"",
                 e.""avatar"",
                 e.""erc20Wrapper""
-            FROM ""CrcV2"".""ERC20WrapperDeployed"" e
+            FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" <= @toBlock
             ORDER BY e.""blockNumber"", e.""transactionIndex"", e.""logIndex""";
 
@@ -294,5 +308,165 @@ public class CacheWarmupService : BackgroundService
         }
 
         _logger.LogInformation("Replayed {Count} V2 ERC20 wrapper deployments", count);
+    }
+
+    private async Task LoadBalancesAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading balances...");
+
+        // Load V1 balances
+        await LoadV1BalancesAsync(conn, ct);
+
+        // Load V2 balances
+        await LoadV2BalancesAsync(conn, ct);
+
+        _logger.LogInformation("Balance loading completed");
+    }
+
+    private async Task LoadV1BalancesAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT
+                ""account"",
+                ""tokenAddress"",
+                ""totalBalance""
+            FROM ""V_CrcV1_BalancesByAccountAndToken""
+            WHERE ""totalBalance"" > 0
+            ORDER BY ""account"", ""tokenAddress""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 300; // 5 minutes for large balance queries
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var count = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 5000; // Log every 5000 entries
+
+        while (await reader.ReadAsync(ct))
+        {
+            var account = reader.GetString(0);
+            var tokenAddress = reader.GetString(1);
+            var totalBalance = reader.GetDecimal(2);
+
+            // Convert attoCircles to Circles (divide by 10^18)
+            var balance = totalBalance / 1_000_000_000_000_000_000m;
+
+            // Composite key: account:tokenAddress
+            var key = $"{account}:{tokenAddress}";
+
+            // Add to cache with block 1 (snapshot data doesn't have specific block)
+            _caches.V1BalancesByAccountAndToken.Add(1, key, balance);
+
+            count++;
+
+            // Log progress every 5000 entries
+            if (count % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V1 balances progress: {Count} loaded ({Rate:F0} entries/sec)",
+                    count, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        _logger.LogInformation("Loaded {Count} V1 balances", count);
+    }
+
+    private async Task LoadV2BalancesAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT
+                ""account"",
+                ""tokenId"",
+                ""demurragedTotalBalance""
+            FROM ""V_CrcV2_BalancesByAccountAndToken""
+            WHERE ""demurragedTotalBalance"" > 0
+            ORDER BY ""account"", ""tokenId""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 300; // 5 minutes for large balance queries
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var count = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 5000; // Log every 5000 entries
+
+        while (await reader.ReadAsync(ct))
+        {
+            var account = reader.GetString(0);
+            var tokenId = reader.GetString(1);
+            var demurragedBalance = reader.GetDecimal(2);
+
+            // Convert to Circles (divide by 10^18)
+            var balance = demurragedBalance / 1_000_000_000_000_000_000m;
+
+            // Composite key: account:tokenId
+            var key = $"{account}:{tokenId}";
+
+            // Add to cache with block 1 (snapshot data doesn't have specific block)
+            _caches.V2BalancesByAccountAndToken.Add(1, key, balance);
+
+            count++;
+
+            // Log progress every 5000 entries
+            if (count % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V2 balances progress: {Count} loaded ({Rate:F0} entries/sec)",
+                    count, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        _logger.LogInformation("Loaded {Count} V2 balances", count);
+    }
+
+    private async Task LoadGroupMembershipsAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading group memberships...");
+
+        const string sql = @"
+            SELECT
+                ""group"",
+                ""member"",
+                ""expiryTime"",
+                ""blockNumber""
+            FROM ""V_CrcV2_GroupMemberships""
+            ORDER BY ""blockNumber"", ""group"", ""member""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var count = 0;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var group = reader.GetString(0);
+            var member = reader.GetString(1);
+
+            // expiryTime is stored as NUMERIC and can be max decimal value (infinity)
+            // Read as decimal first, then convert safely
+            var expiryTimeDecimal = reader.GetDecimal(2);
+            long expiryTime;
+
+            // If expiry time is max value (infinity), use Int64.MaxValue as sentinel
+            if (expiryTimeDecimal >= long.MaxValue)
+            {
+                expiryTime = long.MaxValue;
+            }
+            else
+            {
+                expiryTime = (long)expiryTimeDecimal;
+            }
+
+            var blockNumber = reader.GetInt64(3);
+
+            // Composite key: group:member
+            var key = $"{group}:{member}";
+
+            // Add to cache
+            _caches.GroupMemberships.Add(blockNumber, key, (member, expiryTime));
+
+            count++;
+        }
+
+        _logger.LogInformation("Loaded {Count} group memberships", count);
     }
 }

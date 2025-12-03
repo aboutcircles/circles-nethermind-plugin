@@ -137,6 +137,12 @@ app.MapPost("/", async (
             "circles_getTrustRelations" => await HandleGetTrustRelations(request, rpcModule),
             "circles_getCommonTrust" => await HandleGetCommonTrust(request, rpcModule),
             "circles_getNetworkSnapshot" => await HandleGetNetworkSnapshot(request, rpcModule),
+            "circles_getAggregatedTrustRelations" => await ReflectionHandler(request, rpcModule),
+            "circles_findGroups" => await ReflectionHandler(request, rpcModule),
+            "circles_getGroupMembers" => await ReflectionHandler(request, rpcModule),
+            "circles_getGroupMemberships" => await ReflectionHandler(request, rpcModule),
+            "circles_getTransactionHistory" => await ReflectionHandler(request, rpcModule),
+            "circles_getTokenHolders" => await ReflectionHandler(request, rpcModule),
             "circlesV2_findPath" => await HandleV2FindPath(request, rpcModule),
             // System & Query Methods
             "circles_events" => await HandleEvents(request, rpcModule),
@@ -652,6 +658,68 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
     }
 
     return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending);
+}
+
+static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    // Generic handler that uses reflection to call methods with standard parameter patterns
+    // Handles methods with signatures like: Task<PagedResponse<T>> Method(string param1, int limit = X, string? cursor = null)
+    var methodName = request.Method.Replace("circles_", "").Replace("circlesV2_", "");
+    methodName = char.ToUpper(methodName[0]) + methodName.Substring(1);
+    
+    var method = typeof(CirclesRpcModule).GetMethod(methodName);
+    if (method == null)
+    {
+        throw new RpcMethodNotFoundException(request.Method);
+    }
+    
+    var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
+    var methodParams = method.GetParameters();
+    var args = new object?[methodParams.Length];
+    
+    for (int i = 0; i < methodParams.Length; i++)
+    {
+        if (parameters != null && i < parameters.Length && parameters[i].ValueKind != JsonValueKind.Null)
+        {
+            var paramType = methodParams[i].ParameterType;
+            var underlyingType = Nullable.GetUnderlyingType(paramType) ?? paramType;
+            
+            if (underlyingType == typeof(string))
+            {
+                args[i] = parameters[i].GetString();
+            }
+            else if (underlyingType == typeof(int))
+            {
+                args[i] = parameters[i].GetInt32();
+            }
+            else if (paramType == typeof(string[]))
+            {
+                args[i] = parameters[i].Deserialize<string[]>();
+            }
+            else
+            {
+                args[i] = JsonSerializer.Deserialize(parameters[i].GetRawText(), paramType);
+            }
+        }
+        else if (methodParams[i].HasDefaultValue)
+        {
+            args[i] = methodParams[i].DefaultValue;
+        }
+        else
+        {
+            args[i] = null;
+        }
+    }
+    
+    var result = method.Invoke(rpcModule, args);
+    if (result is Task task)
+    {
+        await task;
+        var resultProperty = task.GetType().GetProperty("Result");
+        return resultProperty?.GetValue(task) ?? new object();
+    }
+    
+    return result ?? new object();
 }
 
 static async Task<object> HandleHealth(JsonRpcRequest request, CirclesRpcModule rpcModule)

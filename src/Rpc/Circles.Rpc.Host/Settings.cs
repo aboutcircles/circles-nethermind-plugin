@@ -13,6 +13,18 @@ public class Settings : Circles.Index.Common.Settings
         Environment.GetEnvironmentVariable("BALANCE_MODE")
         ?? "live"; // "database" or "live"
 
+    public readonly string? CacheServiceUrl =
+        Environment.GetEnvironmentVariable("CACHE_SERVICE_URL");
+    
+    /// <summary>
+    /// Feature flag to enable/disable Cache Service usage (default: false)
+    /// Set to "true" to use Cache Service for balance/avatar queries
+    /// Set to "false" to use traditional DB + Nethermind queries
+    /// </summary>
+    public readonly bool UseCacheService =
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CACHE_SERVICE_URL"))
+        && (Environment.GetEnvironmentVariable("USE_CACHE_SERVICE")?.ToLowerInvariant() == "true");
+
     #region RPC-specific database timeout configuration
 
     /// <summary>

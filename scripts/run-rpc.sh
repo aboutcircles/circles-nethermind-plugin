@@ -45,9 +45,22 @@ export Logging__LogLevel__Default="${Logging__LogLevel__Default:-Information}"
 export NETHERMIND_RPC_URL="${NETHERMIND_RPC_URL:-http://localhost:8545}"
 export BALANCE_MODE="${BALANCE_MODE:-live}"
 
+# Cache Service Configuration (optional)
+export CACHE_SERVICE_URL="${CACHE_SERVICE_URL:-}"
+export USE_CACHE_SERVICE="${USE_CACHE_SERVICE:-false}"
+
 echo -e "${YELLOW}Configuration:${NC}"
 echo -e "  Environment: $ASPNETCORE_ENVIRONMENT"
 echo -e "  URLs: $ASPNETCORE_URLS"
+echo -e "  Database: ${POSTGRES_DB} at localhost:5432"
+echo -e "  Pathfinder URL: $EXTERNAL_PATHFINDER_URL"
+echo -e "  Nethermind RPC: $NETHERMIND_RPC_URL"
+echo -e "  Balance Mode: $BALANCE_MODE"
+if [ -n "$CACHE_SERVICE_URL" ]; then
+    echo -e "  Cache Service: $CACHE_SERVICE_URL (enabled: $USE_CACHE_SERVICE)"
+else
+    echo -e "  Cache Service: ${RED}not configured${NC}"
+fi
 echo -e "  Build Config: $CONFIGURATION"
 echo -e "  Circles Nethermind RPC URL: ${NETHERMIND_RPC_URL}"
 echo -e "  Circles Balance Mode: ${BALANCE_MODE}"

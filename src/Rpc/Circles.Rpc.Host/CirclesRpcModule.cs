@@ -25,13 +25,19 @@ public class CirclesRpcModule : ICirclesRpcModule
     private static readonly HttpClient HttpClient = new();
     private readonly NethermindRpcClient? _nethermindRpcClient;
     private readonly ILogger<CirclesRpcModule>? _logger;
+    private readonly CacheServiceClient.CacheServiceClient? _cacheServiceClient;
 
-    public CirclesRpcModule(Settings settings, IHttpClientFactory? httpClientFactory = null, ILogger<CirclesRpcModule>? logger = null)
+    public CirclesRpcModule(
+        Settings settings, 
+        IHttpClientFactory? httpClientFactory = null, 
+        ILogger<CirclesRpcModule>? logger = null,
+        CacheServiceClient.CacheServiceClient? cacheServiceClient = null)
     {
         _settings = settings;
         _readOnlyDbConnectionString = settings.IndexReadonlyDbConnectionString;
         _profileByCidCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 10_000 });
         _logger = logger;
+        _cacheServiceClient = cacheServiceClient;
 
         // Initialize Nethermind RPC client if BalanceMode is "live"
         if (_settings.BalanceMode.Equals("live", StringComparison.OrdinalIgnoreCase))
@@ -56,6 +62,38 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<TotalBalanceResponse> GetTotalBalance(string address, int version, bool? asTimeCircles = true)
     {
+        // If cache service is enabled and asTimeCircles is true (or null), use cache for performance
+        if (_settings.UseCacheService && _cacheServiceClient != null && (asTimeCircles == null || asTimeCircles == true))
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for total balance query (address={Address}, version={Version})", address, version);
+                
+                string cacheBalance;
+                if (version == 1)
+                {
+                    cacheBalance = await _cacheServiceClient.GetTotalBalanceV1Async(address);
+                }
+                else if (version == 2)
+                {
+                    cacheBalance = await _cacheServiceClient.GetTotalBalanceV2Async(address);
+                }
+                else
+                {
+                    cacheBalance = await _cacheServiceClient.GetTotalBalanceAsync(address);
+                }
+                
+                return new TotalBalanceResponse(cacheBalance);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service query failed, falling back to database (address={Address}, version={Version})", address, version);
+                // Fall through to database query below
+            }
+        }
+        
+        // Fallback: use traditional database + Nethermind approach
+        _logger?.LogDebug("Using database for total balance query (address={Address}, version={Version})", address, version);
         var balances = await GetTokenBalancesForAccount(address);
         var relevantBalances = balances.Where(o => o.Version == version);
 
@@ -82,6 +120,92 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
     {
+        // If cache service is enabled, try using it first
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for token balances query (address={Address})", address);
+                
+                var cacheBalances = await _cacheServiceClient.GetTokenBalancesAsync(address);
+                var cachedTokens = GetTokenExposureIds(address);
+                var cachedHubAddress = _settings.CirclesV2HubAddress;
+                var cachedNow = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                
+                var cachedTokenBalances = new List<CirclesTokenBalance>();
+                
+                foreach (var cacheBalance in cacheBalances)
+                {
+                    // Find token info from exposure
+                    if (!cachedTokens.TryGetValue(cacheBalance.TokenId, out var token))
+                    {
+                        continue;
+                    }
+                    
+                    // Parse cached balance (already in Circles, not attoCircles)
+                    var circles = decimal.Parse(cacheBalance.Balance);
+                    var attoCircles = CirclesConverter.CirclesToAttoCircles(circles);
+                    
+                    BigInteger attoCrc;
+                    decimal crc;
+                    BigInteger staticAttoCircles;
+                    decimal staticCircles;
+                    
+                    if (token.TokenType == "CrcV1_Signup")
+                    {
+                        // OG CRC - cached value is already time-circles
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, cachedNow);
+                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                        staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                    }
+                    else
+                    {
+                        // V2 tokens - cached value is demurraged
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, cachedNow);
+                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                        staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                    }
+                    
+                    var tokenId = token.IsErc1155
+                        ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
+                        : token.TokenAddress;
+                    
+                    cachedTokenBalances.Add(new CirclesTokenBalance(
+                        TokenAddress: token.TokenAddress,
+                        TokenId: tokenId,
+                        TokenOwner: cacheBalance.TokenOwner ?? token.TokenOwner,
+                        TokenType: token.TokenType,
+                        Version: cacheBalance.Version,
+                        AttoCircles: attoCircles.ToString(CultureInfo.InvariantCulture),
+                        Circles: circles,
+                        StaticAttoCircles: staticAttoCircles.ToString(CultureInfo.InvariantCulture),
+                        StaticCircles: staticCircles,
+                        AttoCrc: attoCrc.ToString(CultureInfo.InvariantCulture),
+                        Crc: crc,
+                        IsErc20: token.IsErc20,
+                        IsErc1155: token.IsErc1155,
+                        IsWrapped: token.IsWrapped,
+                        IsInflationary: token.IsInflationary,
+                        IsGroup: token.IsGroup
+                    ));
+                }
+                
+                return cachedTokenBalances
+                    .Where(o => o.Circles > 0)
+                    .OrderByDescending(o => o.Circles)
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service query failed, falling back to database (address={Address})", address);
+                // Fall through to database query below
+            }
+        }
+        
+        // Fallback: use traditional database + Nethermind approach
+        _logger?.LogDebug("Using database for token balances query (address={Address})", address);
         var tokens = GetTokenExposureIds(address);
 
         if (tokens.Count == 0)
@@ -628,6 +752,49 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
+        // If cache service is enabled, try using it first
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for avatar info batch query ({Count} addresses)", addresses.Length);
+                
+                var cacheResults = await _cacheServiceClient.GetAvatarInfoBatchAsync(addresses);
+                
+                // Convert cache results to AvatarInfo
+                var cacheResult = new AvatarInfo?[addresses.Length];
+                for (int i = 0; i < cacheResults.Length; i++)
+                {
+                    var cacheInfo = cacheResults[i];
+                    if (cacheInfo != null)
+                    {
+                        cacheResult[i] = new AvatarInfo(
+                            Version: cacheInfo.Version,
+                            Type: cacheInfo.Type,
+                            Avatar: cacheInfo.Avatar,
+                            TokenId: cacheInfo.TokenId ?? cacheInfo.Avatar,
+                            HasV1: cacheInfo.HasV1,
+                            V1Token: cacheInfo.V1Token,
+                            CidV0Digest: "",
+                            CidV0: cacheInfo.CidV0,
+                            IsHuman: cacheInfo.IsHuman,
+                            Name: cacheInfo.Name,
+                            Symbol: cacheInfo.Symbol ?? ""
+                        );
+                    }
+                }
+                
+                return cacheResult;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service query failed, falling back to database");
+                // Fall through to database query below
+            }
+        }
+
+        // Fallback: use traditional database approach
+        _logger?.LogDebug("Using database for avatar info batch query ({Count} addresses)", addresses.Length);
         var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new AvatarInfo?[addresses.Length];
 
@@ -810,6 +977,33 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(addresses), "Too many addresses. Max allowed are 1000.");
         }
 
+        // If cache service is enabled, try using it first
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for profile CID batch query ({Count} addresses)", addresses.Length);
+                
+                var cacheResults = await _cacheServiceClient.GetProfileCidBatchAsync(addresses);
+                
+                // Convert to string?[] array
+                var cacheResult = new string?[addresses.Length];
+                for (int i = 0; i < cacheResults.Length && i < addresses.Length; i++)
+                {
+                    cacheResult[i] = cacheResults[i].Cid;
+                }
+                
+                return cacheResult;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service query failed, falling back to database");
+                // Fall through to database query below
+            }
+        }
+
+        // Fallback: use traditional database approach
+        _logger?.LogDebug("Using database for profile CID batch query ({Count} addresses)", addresses.Length);
         var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new string?[addresses.Length];
 
@@ -1295,6 +1489,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return new ProfileSearchResult(Total: results.Count, Results: results.ToArray());
     }
 
+
     public async Task<TrustRelationsResponse> GetTrustRelations(string address)
     {
         using var connection = await CreateConnectionAsync();
@@ -1347,6 +1542,621 @@ public class CirclesRpcModule : ICirclesRpcModule
         command.Parameters.AddWithValue("address", address.ToLower());
         var result = await command.ExecuteScalarAsync();
         return result != null;
+    }
+
+    public async Task<AggregatedTrustRelation[]> GetAggregatedTrustRelations(string avatar)
+    {
+        var normalizedAvatar = avatar.ToLower();
+        
+        await using var connection = await CreateConnectionAsync();
+        
+        // Query V2 trust relations for this avatar
+        const string sql = @"
+            SELECT 
+                t.truster,
+                t.trustee,
+                t.""expiryTime"",
+                t.timestamp,
+                a.type as avatar_type
+            FROM ""V_CrcV2_TrustRelations"" t
+            LEFT JOIN ""V_CrcV2_Avatars"" a 
+                ON a.avatar = CASE 
+                    WHEN t.truster = @avatar THEN t.trustee
+                    ELSE t.truster
+                END
+            WHERE t.truster = @avatar OR t.trustee = @avatar
+            ORDER BY t.timestamp DESC";
+        
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("avatar", normalizedAvatar);
+        
+        // Group by counterpart
+        var trustBucket = new Dictionary<string, List<(string truster, string trustee, long expiryTime, long timestamp, string? avatarType)>>();
+        
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var truster = reader.GetString(0);
+            var trustee = reader.GetString(1);
+            var expiryTime = reader.GetInt64(2);
+            var timestamp = reader.GetInt64(3);
+            var avatarType = reader.IsDBNull(4) ? null : reader.GetString(4);
+            
+            // Determine counterpart (not the avatar itself)
+            var counterpart = truster.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase)
+                ? trustee
+                : truster;
+            
+            if (counterpart.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase))
+            {
+                continue; // Skip self-trust
+            }
+            
+            if (!trustBucket.ContainsKey(counterpart))
+            {
+                trustBucket[counterpart] = new List<(string, string, long, long, string?)>();
+            }
+            
+            trustBucket[counterpart].Add((truster, trustee, expiryTime, timestamp, avatarType));
+        }
+        
+        // Determine relation type and create aggregated response
+        var result = new List<AggregatedTrustRelation>();
+        
+        foreach (var (counterpart, rows) in trustBucket)
+        {
+            if (rows.Count == 0) continue;
+            
+            // Get max timestamp and expiryTime for this counterpart
+            var maxTimestamp = rows.Max(r => r.timestamp);
+            var maxExpiryTime = rows.Max(r => r.expiryTime);
+            var avatarType = rows.FirstOrDefault(r => r.avatarType != null).avatarType;
+            
+            // Determine relation type based on number of rows and direction
+            string relationType;
+            if (rows.Count == 2)
+            {
+                // Bidirectional trust = mutual
+                relationType = "mutuallyTrusts";
+            }
+            else if (rows.Count == 1)
+            {
+                var row = rows[0];
+                if (row.trustee.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Someone trusts this avatar
+                    relationType = "trustedBy";
+                }
+                else if (row.truster.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase))
+                {
+                    // This avatar trusts someone
+                    relationType = "trusts";
+                }
+                else
+                {
+                    throw new InvalidOperationException("Unexpected trust relation - couldn't determine direction");
+                }
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unexpected number of trust rows for counterpart: {rows.Count}");
+            }
+            
+            // Map avatar type to simple format
+            string? objectAvatarType = avatarType switch
+            {
+                "Human" => "Human",
+                "Organization" => "Organization", 
+                "Group" => "Group",
+                _ => null
+            };
+            
+            result.Add(new AggregatedTrustRelation(
+                SubjectAvatar: normalizedAvatar,
+                Relation: relationType,
+                ObjectAvatar: counterpart,
+                Timestamp: maxTimestamp,
+                ExpiryTime: maxExpiryTime,
+                ObjectAvatarType: objectAvatarType
+            ));
+        }
+        
+        return result.ToArray();
+    }
+
+    public async Task<PagedResponse<GroupRow>> FindGroups(int limit = 50, GroupQueryParams? queryParams = null, string? cursor = null)
+    {
+        await using var connection = await CreateConnectionAsync();
+        
+        // Decode cursor if provided
+        long? cursorBlock = null;
+        int? cursorTxIndex = null;
+        int? cursorLogIndex = null;
+        
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+                var parts = decoded.Split(':');
+                if (parts.Length == 3)
+                {
+                    cursorBlock = long.Parse(parts[0]);
+                    cursorTxIndex = int.Parse(parts[1]);
+                    cursorLogIndex = int.Parse(parts[2]);
+                }
+            }
+            catch
+            {
+                // Invalid cursor, ignore
+            }
+        }
+        
+        // Build SQL query with filters
+        var sql = new System.Text.StringBuilder(@"
+            SELECT 
+                r.""group"",
+                r.name,
+                r.symbol,
+                r.mint,
+                r.treasury,
+                r.""blockNumber"",
+                r.timestamp,
+                r.""transactionIndex"",
+                r.""logIndex""
+            FROM ""CrcV2_RegisterGroup"" r
+            WHERE 1=1
+        ");
+        
+        var parameters = new List<NpgsqlParameter>();
+        
+        // Apply filters
+        if (queryParams != null)
+        {
+            if (!string.IsNullOrEmpty(queryParams.NameStartsWith))
+            {
+                sql.Append(" AND r.name ILIKE @namePrefix");
+                parameters.Add(new NpgsqlParameter("namePrefix", queryParams.NameStartsWith + "%"));
+            }
+            
+            if (!string.IsNullOrEmpty(queryParams.SymbolStartsWith))
+            {
+                sql.Append(" AND r.symbol ILIKE @symbolPrefix");
+                parameters.Add(new NpgsqlParameter("symbolPrefix", queryParams.SymbolStartsWith + "%"));
+            }
+            
+            if (queryParams.OwnerIn != null && queryParams.OwnerIn.Length > 0)
+            {
+                var normalizedOwners = queryParams.OwnerIn.Select(o => o.ToLower()).ToArray();
+                sql.Append(" AND r.mint = ANY(@owners)");
+                parameters.Add(new NpgsqlParameter("owners", normalizedOwners));
+            }
+        }
+        
+        // Apply cursor for pagination
+        if (cursorBlock.HasValue && cursorTxIndex.HasValue && cursorLogIndex.HasValue)
+        {
+            sql.Append(@" 
+                AND (r.""blockNumber"", r.""transactionIndex"", r.""logIndex"") < (@cursorBlock, @cursorTxIndex, @cursorLogIndex)");
+            parameters.Add(new NpgsqlParameter("cursorBlock", cursorBlock.Value));
+            parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex.Value));
+            parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex.Value));
+        }
+        
+        sql.Append(@"
+            ORDER BY r.""blockNumber"" DESC, r.""transactionIndex"" DESC, r.""logIndex"" DESC
+            LIMIT @limit
+        ");
+        
+        // Fetch one extra to determine if there are more results
+        parameters.Add(new NpgsqlParameter("limit", limit + 1));
+        
+        await using var command = new NpgsqlCommand(sql.ToString(), connection);
+        command.Parameters.AddRange(parameters.ToArray());
+        
+        var results = new List<GroupRow>();
+        await using var reader = await command.ExecuteReaderAsync();
+        
+        while (await reader.ReadAsync())
+        {
+            results.Add(new GroupRow(
+                Group: reader.GetString(0),
+                Name: reader.GetString(1),
+                Symbol: reader.GetString(2),
+                Mint: reader.GetString(3),
+                Treasury: reader.GetString(4),
+                BlockNumber: reader.GetInt64(5),
+                Timestamp: reader.GetInt64(6)
+            ));
+        }
+        
+        // Check if there are more results
+        var hasMore = results.Count > limit;
+        if (hasMore)
+        {
+            results.RemoveAt(results.Count - 1); // Remove the extra row
+        }
+        
+        // Generate next cursor
+        string? nextCursor = null;
+        if (hasMore && results.Count > 0)
+        {
+            var lastResult = results[^1];
+            await using var cursorCommand = new NpgsqlCommand(@"
+                SELECT ""transactionIndex"", ""logIndex""
+                FROM ""CrcV2_RegisterGroup""
+                WHERE ""group"" = @group AND ""blockNumber"" = @blockNumber
+            ", connection);
+            cursorCommand.Parameters.AddWithValue("group", lastResult.Group);
+            cursorCommand.Parameters.AddWithValue("blockNumber", lastResult.BlockNumber);
+            
+            await using var cursorReader = await cursorCommand.ExecuteReaderAsync();
+            if (await cursorReader.ReadAsync())
+            {
+                var txIndex = cursorReader.GetInt32(0);
+                var logIndex = cursorReader.GetInt32(1);
+                var cursorString = $"{lastResult.BlockNumber}:{txIndex}:{logIndex}";
+                nextCursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+            }
+        }
+        
+        return new PagedResponse<GroupRow>(
+            Results: results.ToArray(),
+            HasMore: hasMore,
+            NextCursor: nextCursor
+        );
+    }
+
+    public async Task<PagedResponse<GroupMembershipRow>> GetGroupMembers(string groupAddress, int limit = 100, string? cursor = null)
+    {
+        return await GetGroupMembershipInternal(groupAddress, limit, cursor, filterByGroup: true);
+    }
+
+    public async Task<PagedResponse<GroupMembershipRow>> GetGroupMemberships(string memberAddress, int limit = 50, string? cursor = null)
+    {
+        return await GetGroupMembershipInternal(memberAddress, limit, cursor, filterByGroup: false);
+    }
+
+    private async Task<PagedResponse<GroupMembershipRow>> GetGroupMembershipInternal(
+        string address, 
+        int limit, 
+        string? cursor, 
+        bool filterByGroup)
+    {
+        var normalizedAddress = address.ToLower();
+        await using var connection = await CreateConnectionAsync();
+        
+        // Decode cursor if provided
+        long? cursorBlock = null;
+        int? cursorTxIndex = null;
+        int? cursorLogIndex = null;
+        
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+                var parts = decoded.Split(':');
+                if (parts.Length == 3)
+                {
+                    cursorBlock = long.Parse(parts[0]);
+                    cursorTxIndex = int.Parse(parts[1]);
+                    cursorLogIndex = int.Parse(parts[2]);
+                }
+            }
+            catch
+            {
+                // Invalid cursor, ignore
+            }
+        }
+        
+        // Build SQL query
+        var filterColumn = filterByGroup ? "\"group\"" : "member";
+        var sql = $@"
+            SELECT 
+                ""blockNumber"",
+                timestamp,
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                ""group"",
+                member,
+                ""expiryTime""
+            FROM ""V_CrcV2_GroupMemberships""
+            WHERE {filterColumn} = @address
+        ";
+        
+        var parameters = new List<NpgsqlParameter>
+        {
+            new("address", normalizedAddress)
+        };
+        
+        // Apply cursor for pagination
+        if (cursorBlock.HasValue && cursorTxIndex.HasValue && cursorLogIndex.HasValue)
+        {
+            sql += @" 
+                AND (""blockNumber"", ""transactionIndex"", ""logIndex"") < (@cursorBlock, @cursorTxIndex, @cursorLogIndex)";
+            parameters.Add(new NpgsqlParameter("cursorBlock", cursorBlock.Value));
+            parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex.Value));
+            parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex.Value));
+        }
+        
+        sql += @"
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+            LIMIT @limit
+        ";
+        
+        // Fetch one extra to determine if there are more results
+        parameters.Add(new NpgsqlParameter("limit", limit + 1));
+        
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddRange(parameters.ToArray());
+        
+        var results = new List<GroupMembershipRow>();
+        await using var reader = await command.ExecuteReaderAsync();
+        
+        while (await reader.ReadAsync())
+        {
+            results.Add(new GroupMembershipRow(
+                BlockNumber: reader.GetInt64(0),
+                Timestamp: reader.GetInt64(1),
+                TransactionIndex: reader.GetInt32(2),
+                LogIndex: reader.GetInt32(3),
+                TransactionHash: reader.GetString(4),
+                Group: reader.GetString(5),
+                Member: reader.GetString(6),
+                ExpiryTime: reader.GetInt64(7)
+            ));
+        }
+        
+        // Check if there are more results
+        var hasMore = results.Count > limit;
+        if (hasMore)
+        {
+            results.RemoveAt(results.Count - 1); // Remove the extra row
+        }
+        
+        // Generate next cursor
+        string? nextCursor = null;
+        if (hasMore && results.Count > 0)
+        {
+            var lastResult = results[^1];
+            var cursorString = $"{lastResult.BlockNumber}:{lastResult.TransactionIndex}:{lastResult.LogIndex}";
+            nextCursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+        }
+        
+        return new PagedResponse<GroupMembershipRow>(
+            Results: results.ToArray(),
+            HasMore: hasMore,
+            NextCursor: nextCursor
+        );
+    }
+
+    public async Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null)
+    {
+        var normalizedAddress = avatarAddress.ToLower();
+        await using var connection = await CreateConnectionAsync();
+        
+        // Decode cursor if provided
+        long? cursorBlock = null;
+        int? cursorTxIndex = null;
+        int? cursorLogIndex = null;
+        int? cursorBatchIndex = null;
+        
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+                var parts = decoded.Split(':');
+                if (parts.Length == 4)
+                {
+                    cursorBlock = long.Parse(parts[0]);
+                    cursorTxIndex = int.Parse(parts[1]);
+                    cursorLogIndex = int.Parse(parts[2]);
+                    cursorBatchIndex = int.Parse(parts[3]);
+                }
+            }
+            catch
+            {
+                // Invalid cursor format, ignore and return from beginning
+            }
+        }
+        
+        // Build query with cursor pagination
+        var sql = @$"
+            SELECT 
+                ""blockNumber"",
+                timestamp,
+                ""transactionIndex"",
+                ""logIndex"",
+                ""batchIndex"",
+                ""transactionHash"",
+                version,
+                operator,
+                ""from"",
+                ""to"",
+                id,
+                value
+            FROM ""V_Crc_Transfers""
+            WHERE version = 2
+              AND (""from"" = @address OR ""to"" = @address)
+              {(cursorBlock.HasValue ? @"AND (
+                ""blockNumber"" < @cursorBlock OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" = @cursorLogIndex AND ""batchIndex"" < @cursorBatchIndex)
+              )" : "")}
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC
+            LIMIT @limit
+        ";
+        
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", normalizedAddress);
+        cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra to check for more
+        
+        if (cursorBlock.HasValue)
+        {
+            cmd.Parameters.AddWithValue("cursorBlock", cursorBlock.Value);
+            cmd.Parameters.AddWithValue("cursorTxIndex", cursorTxIndex!.Value);
+            cmd.Parameters.AddWithValue("cursorLogIndex", cursorLogIndex!.Value);
+            cmd.Parameters.AddWithValue("cursorBatchIndex", cursorBatchIndex!.Value);
+        }
+        
+        var results = new List<TransactionHistoryRow>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        while (await reader.ReadAsync())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var transactionIndex = reader.GetInt32(2);
+            var logIndex = reader.GetInt32(3);
+            var batchIndex = reader.GetInt32(4);
+            var transactionHash = reader.GetString(5);
+            var version = reader.GetInt32(6);
+            var operatorAddr = reader.IsDBNull(7) ? null : reader.GetString(7);
+            var from = reader.GetString(8);
+            var to = reader.GetString(9);
+            var id = reader.IsDBNull(10) ? null : reader.GetFieldValue<System.Numerics.BigInteger>(10).ToString();
+            var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
+            
+            // Calculate all circle amount formats
+            // value is demurraged attoCircles from the database
+            
+            // 1. attoCircles = value (demurraged, unchanged)
+            var attoCirclesDemurraged = valueRaw;
+            
+            // 2. circles = convert demurraged attoCircles to decimal
+            var circles = CirclesConverter.AttoCirclesToCircles(attoCirclesDemurraged);
+            
+            // 3. Calculate day from timestamp for conversions
+            var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000); // INFLATION_DAY_ZERO_UNIX
+            
+            // 4. staticAttoCircles = convert demurraged to inflationary (static)
+            var staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
+            
+            // 5. staticCircles = convert staticAttoCircles to decimal
+            var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+            
+            // 6. attoCrc = convert demurraged attoCircles to V1 CRC
+            var attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
+            
+            // 7. crc = convert attoCrc to decimal
+            var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+            
+            results.Add(new TransactionHistoryRow(
+                BlockNumber: blockNumber,
+                Timestamp: timestamp,
+                TransactionIndex: transactionIndex,
+                LogIndex: logIndex,
+                TransactionHash: transactionHash,
+                Version: version,
+                From: from,
+                To: to,
+                Operator: operatorAddr,
+                Id: id,
+                Value: valueRaw.ToString(),
+                Circles: circles.ToString(),
+                AttoCircles: attoCirclesDemurraged.ToString(),
+                Crc: crc.ToString(),
+                AttoCrc: attoCrc.ToString(),
+                StaticCircles: staticCircles.ToString(),
+                StaticAttoCircles: staticAttoCircles.ToString()
+            ));
+        }
+        
+        // Check if there are more results
+        var hasMore = results.Count > limit;
+        if (hasMore)
+        {
+            results.RemoveAt(results.Count - 1); // Remove the extra row
+        }
+        
+        // Generate next cursor
+        string? nextCursor = null;
+        if (hasMore && results.Count > 0)
+        {
+            var lastResult = results[^1];
+            // Include batchIndex in cursor for proper pagination of batch transfers
+            var cursorString = $"{lastResult.BlockNumber}:{lastResult.TransactionIndex}:{lastResult.LogIndex}:0";
+            nextCursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(cursorString));
+        }
+        
+        return new PagedResponse<TransactionHistoryRow>(
+            Results: results.ToArray(),
+            HasMore: hasMore,
+            NextCursor: nextCursor
+        );
+    }
+
+    public async Task<PagedResponse<TokenHolderRow>> GetTokenHolders(string tokenAddress, int limit = 100, string? cursor = null)
+    {
+        var normalizedToken = tokenAddress.ToLower();
+        await using var connection = await CreateConnectionAsync();
+        
+        // Build query with cursor pagination
+        var sql = @$"
+            SELECT 
+                account,
+                balance,
+                ""tokenAddress"",
+                version
+            FROM ""V_Crc_BalancesByAccountAndToken""
+            WHERE ""tokenAddress"" = @tokenAddress
+              AND balance > 0
+              {(!string.IsNullOrEmpty(cursor) ? "AND account > @cursor" : "")}
+            ORDER BY account ASC
+            LIMIT @limit
+        ";
+        
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("tokenAddress", normalizedToken);
+        cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra to check for more
+        
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            cmd.Parameters.AddWithValue("cursor", cursor.ToLower());
+        }
+        
+        var results = new List<TokenHolderRow>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        
+        while (await reader.ReadAsync())
+        {
+            var account = reader.GetString(0);
+            var balance = reader.GetFieldValue<System.Numerics.BigInteger>(1);
+            var tokenAddr = reader.GetString(2);
+            var version = reader.GetInt32(3);
+            
+            results.Add(new TokenHolderRow(
+                Account: account,
+                Balance: balance.ToString(),
+                TokenAddress: tokenAddr,
+                Version: version
+            ));
+        }
+        
+        // Check if there are more results
+        var hasMore = results.Count > limit;
+        if (hasMore)
+        {
+            results.RemoveAt(results.Count - 1); // Remove the extra row
+        }
+        
+        // Generate next cursor
+        string? nextCursor = null;
+        if (hasMore && results.Count > 0)
+        {
+            nextCursor = results[^1].Account;
+        }
+        
+        return new PagedResponse<TokenHolderRow>(
+            Results: results.ToArray(),
+            HasMore: hasMore,
+            NextCursor: nextCursor
+        );
     }
 
     public async Task<CommonTrustResponse> GetCommonTrust(string address1, string address2, int? version = null)
@@ -2050,6 +2860,410 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         return identifier;
     }
+
+    #region SDK Enablement Endpoints (Phase 3)
+
+    /// <summary>
+    /// Gets a consolidated profile view combining avatar info, profile data, trust stats, and balances.
+    /// Replaces 6-7 separate RPC calls typically needed to display a user profile.
+    /// </summary>
+    public async Task<ProfileViewResponse> GetProfileView(string address)
+    {
+        // Get avatar info
+        var avatarInfo = await GetAvatarInfoBatchInternal(new[] { address });
+        var avatar = avatarInfo.FirstOrDefault();
+
+        // Get profile data (if exists)
+        JsonElement? profile = null;
+        try
+        {
+            profile = await GetProfileByAddress(address);
+        }
+        catch
+        {
+            // Profile optional
+        }
+
+        // Get trust relations
+        var trustRelations = await GetTrustRelations(address);
+
+        // Get balances
+        TotalBalanceResponse? v1Balance = null;
+        TotalBalanceResponse? v2Balance = null;
+
+        if (avatar?.HasV1 == true)
+        {
+            try
+            {
+                v1Balance = await GetTotalBalance(address, 1, true);
+            }
+            catch
+            {
+                // Balance query optional
+            }
+        }
+
+        if (avatar?.Version == 2)
+        {
+            try
+            {
+                v2Balance = await GetTotalBalance(address, 2, true);
+            }
+            catch
+            {
+                // Balance query optional
+            }
+        }
+
+        return new ProfileViewResponse
+        {
+            Address = address,
+            AvatarInfo = avatar,
+            Profile = profile,
+            TrustStats = new TrustStats
+            {
+                TrustsCount = trustRelations.Trusts?.Length ?? 0,
+                TrustedByCount = trustRelations.TrustedBy?.Length ?? 0
+            },
+            V1Balance = v1Balance?.Balance,
+            V2Balance = v2Balance?.Balance
+        };
+    }
+
+    /// <summary>
+    /// Gets aggregated trust network summary including trust counts, common trusts, and network depth.
+    /// Server-side aggregation reduces client-side processing.
+    /// </summary>
+    public async Task<TrustNetworkSummaryResponse> GetTrustNetworkSummary(string address, int? maxDepth = 2)
+    {
+        var trustRelations = await GetTrustRelations(address);
+
+        // Calculate network size at different depths
+        var depth1Trusts = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
+        var depth1TrustedBy = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
+
+        // Mutual trusts (intersection)
+        var mutualTrusts = depth1Trusts.Intersect(depth1TrustedBy).ToArray();
+
+        return new TrustNetworkSummaryResponse
+        {
+            Address = address,
+            DirectTrustsCount = depth1Trusts.Count,
+            DirectTrustedByCount = depth1TrustedBy.Count,
+            MutualTrustsCount = mutualTrusts.Length,
+            MutualTrusts = mutualTrusts,
+            NetworkReach = depth1Trusts.Count + depth1TrustedBy.Count - mutualTrusts.Length // Union count
+        };
+    }
+
+    /// <summary>
+    /// Gets aggregated trust relations showing mutual, one-way trusts, and trusted-by in a single call.
+    /// Categorizes relationships for easier UI rendering. Enriched with avatar info.
+    /// </summary>
+    public async Task<AggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(string address)
+    {
+        var trustRelations = await GetTrustRelations(address);
+
+        var trustsSet = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
+        var trustedBySet = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
+
+        var mutualAddresses = trustsSet.Intersect(trustedBySet).ToArray();
+        var oneWayTrustsAddresses = trustsSet.Except(trustedBySet).ToArray();
+        var oneWayTrustedByAddresses = trustedBySet.Except(trustsSet).ToArray();
+
+        // Get avatar info for all addresses
+        var allAddresses = mutualAddresses.Concat(oneWayTrustsAddresses).Concat(oneWayTrustedByAddresses).ToArray();
+        var avatars = allAddresses.Length > 0 ? await GetAvatarInfoBatchInternal(allAddresses) : Array.Empty<AvatarInfo?>();
+        var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
+
+        return new AggregatedTrustRelationsResponse
+        {
+            Address = address,
+            Mutual = mutualAddresses.Select(addr => new TrustRelationInfo
+            {
+                Address = addr,
+                AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                RelationType = "mutual"
+            }).ToArray(),
+            Trusts = oneWayTrustsAddresses.Select(addr => new TrustRelationInfo
+            {
+                Address = addr,
+                AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                RelationType = "trusts"
+            }).ToArray(),
+            TrustedBy = oneWayTrustedByAddresses.Select(addr => new TrustRelationInfo
+            {
+                Address = addr,
+                AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                RelationType = "trustedBy"
+            }).ToArray()
+        };
+    }
+
+    /// <summary>
+    /// Gets list of valid inviters for an address (addresses that trust them and have sufficient balance).
+    /// Useful for invitation flows and invitation escrow scenarios.
+    /// </summary>
+    public async Task<ValidInvitersResponse> GetValidInviters(string address, string? minimumBalance = null)
+    {
+        var trustRelations = await GetTrustRelations(address);
+        var trustedByAddresses = trustRelations.TrustedBy?.Select(t => t.User).ToArray() ?? Array.Empty<string>();
+
+        if (trustedByAddresses.Length == 0)
+        {
+            return new ValidInvitersResponse
+            {
+                Address = address,
+                ValidInviters = Array.Empty<InviterInfo>()
+            };
+        }
+
+        // Get balances for all trusted-by addresses
+        var validInviters = new List<InviterInfo>();
+
+        foreach (var inviterAddress in trustedByAddresses)
+        {
+            try
+            {
+                // Get avatar info to determine version
+                var avatarInfo = await GetAvatarInfoBatchInternal(new[] { inviterAddress });
+                var avatar = avatarInfo.FirstOrDefault();
+
+                if (avatar == null) continue;
+
+                // Get balance (try both v1 and v2)
+                TotalBalanceResponse? balance = null;
+
+                if (avatar.Version == 2)
+                {
+                    try
+                    {
+                        balance = await GetTotalBalance(inviterAddress, 2, true);
+                    }
+                    catch { }
+                }
+                else if (avatar.HasV1 == true)
+                {
+                    try
+                    {
+                        balance = await GetTotalBalance(inviterAddress, 1, true);
+                    }
+                    catch { }
+                }
+
+                if (balance != null)
+                {
+                    // Check minimum balance if specified
+                    if (string.IsNullOrEmpty(minimumBalance) ||
+                        decimal.TryParse(balance.Balance, out var balanceValue) &&
+                        decimal.TryParse(minimumBalance, out var minValue) &&
+                        balanceValue >= minValue)
+                    {
+                        validInviters.Add(new InviterInfo
+                        {
+                            Address = inviterAddress,
+                            Balance = balance.Balance,
+                            AvatarInfo = avatar
+                        });
+                    }
+                }
+            }
+            catch
+            {
+                // Skip inviters with errors
+                continue;
+            }
+        }
+
+        return new ValidInvitersResponse
+        {
+            Address = address,
+            ValidInviters = validInviters.ToArray()
+        };
+    }
+
+    /// <summary>
+    /// Gets transaction history with enriched data including demurrage calculations and profile info.
+    /// Reduces need for separate profile lookups and demurrage computations on client side.
+    /// </summary>
+    public async Task<EnrichedTransactionHistoryResponse> GetTransactionHistoryEnriched(
+        string address,
+        long fromBlock,
+        long? toBlock = null,
+        int? limit = null)
+    {
+        // Get events for this address
+        var events = await GetEvents(address, fromBlock, toBlock, null);
+
+        var enrichedTransactions = new List<EnrichedTransaction>();
+        var involvedAddresses = new HashSet<string>();
+
+        // Use limit or default to 20 if not specified
+        var effectiveLimit = limit ?? 20;
+
+        // Extract all involved addresses from events
+        foreach (var evt in events.Events.Take(effectiveLimit))
+        {
+            if (evt is not JsonElement jsonEvt) continue;
+            var evtObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(jsonEvt.GetRawText());
+            if (evtObj == null) continue;
+
+            // Extract addresses from different event types
+            if (evtObj.TryGetValue("from", out var from) && from.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(from.GetString()!);
+            if (evtObj.TryGetValue("to", out var to) && to.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(to.GetString()!);
+            if (evtObj.TryGetValue("user", out var user) && user.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(user.GetString()!);
+            if (evtObj.TryGetValue("truster", out var truster) && truster.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(truster.GetString()!);
+            if (evtObj.TryGetValue("trustee", out var trustee) && trustee.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(trustee.GetString()!);
+        }
+
+        // Batch fetch avatar info and profiles for all involved addresses
+        var avatars = involvedAddresses.Count > 0
+            ? await GetAvatarInfoBatchInternal(involvedAddresses.ToArray())
+            : Array.Empty<AvatarInfo?>();
+        var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
+
+        var profiles = involvedAddresses.Count > 0
+            ? await GetProfileByAddressBatch(involvedAddresses.ToArray())
+            : Array.Empty<JsonElement?>();
+        var profileDict = involvedAddresses.Zip(profiles, (addr, prof) => new { addr, prof })
+            .Where(x => x.prof != null)
+            .ToDictionary(x => x.addr, x => x.prof);
+
+        // Enrich each event
+        foreach (var evt in events.Events.Take(effectiveLimit))
+        {
+            if (evt is not JsonElement jsonEvt) continue;
+            var evtObj = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(jsonEvt.GetRawText());
+            if (evtObj == null) continue;
+
+            var enriched = new EnrichedTransaction
+            {
+                Event = jsonEvt,
+                Participants = new Dictionary<string, ParticipantInfo>()
+            };
+
+            // Add participant info for all addresses in this event
+            foreach (var addr in involvedAddresses)
+            {
+                var participantInfo = new ParticipantInfo
+                {
+                    AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                    Profile = profileDict.ContainsKey(addr) ? profileDict[addr] : null
+                };
+                enriched.Participants[addr] = participantInfo;
+            }
+
+            enrichedTransactions.Add(enriched);
+        }
+
+        return new EnrichedTransactionHistoryResponse
+        {
+            Address = address,
+            Transactions = enrichedTransactions.ToArray(),
+            TotalCount = events.Events.Length
+        };
+    }
+
+    /// <summary>
+    /// Unified search across profiles by address prefix or name/description text.
+    /// Combines address lookup and full-text search in a single endpoint.
+    /// </summary>
+    public async Task<ProfileSearchResponse> SearchProfileByAddressOrName(
+        string query,
+        int? limit = null,
+        int? offset = null,
+        string[]? types = null)
+    {
+        // Use defaults if not specified
+        var effectiveLimit = limit ?? 10;
+        var effectiveOffset = offset ?? 0;
+
+        // Check if query looks like an address (starts with 0x and is hex)
+        if (query.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+            query.Length >= 10 &&
+            Regex.IsMatch(query, @"^0x[0-9a-fA-F]+$"))
+        {
+            // Address search - find avatars with matching address prefix
+            var selectQuery = new SelectDto
+            {
+                Namespace = "V_Crc",
+                Table = "Avatars",
+                Columns = Array.Empty<string>(),
+                Filter = new IFilterPredicateDto[]
+                {
+                    new FilterPredicateDto
+                    {
+                        Column = "avatar",
+                        FilterType = FilterType.Like,
+                        Value = $"{query.ToLowerInvariant()}%"
+                    }
+                },
+                Order = new[]
+                {
+                    new OrderByDto { Column = "blockNumber", SortOrder = "DESC" }
+                },
+                Limit = effectiveLimit
+            };
+
+            // Add type filter if specified
+            if (types != null && types.Length > 0)
+            {
+                var typeFilter = new FilterPredicateDto
+                {
+                    Column = "type",
+                    FilterType = FilterType.In,
+                    Value = types
+                };
+                var filterList = selectQuery.Filter?.ToList() ?? new List<IFilterPredicateDto>();
+                filterList.Add(typeFilter);
+                selectQuery.Filter = filterList;
+            }
+
+            var results = await Query(selectQuery);
+
+            // Get full profiles for matching addresses
+            var addresses = new List<string>();
+            foreach (var row in results.Rows)
+            {
+                if (row.TryGetValue("avatar", out var avatarValue) && avatarValue is string avatarStr)
+                {
+                    addresses.Add(avatarStr);
+                }
+            }
+
+            var profiles = addresses.Count > 0
+                ? await GetProfileByAddressBatch(addresses.ToArray())
+                : Array.Empty<JsonElement?>();
+
+            return new ProfileSearchResponse
+            {
+                Query = query,
+                SearchType = "address",
+                Results = profiles.Where(p => p != null).Cast<JsonElement>().ToArray(),
+                TotalCount = results.Rows.Count
+            };
+        }
+        else
+        {
+            // Text search - use existing full-text search
+            var searchResults = await SearchProfiles(query, effectiveLimit, effectiveOffset, types);
+
+            return new ProfileSearchResponse
+            {
+                Query = query,
+                SearchType = "text",
+                Results = searchResults.Results.Select(r => r.Profile).Where(p => p != null).Cast<JsonElement>().ToArray(),
+                TotalCount = searchResults.Total
+            };
+        }
+    }
+
+    #endregion
 
     public async Task<QueryResponse> Query(SelectDto query)
     {
