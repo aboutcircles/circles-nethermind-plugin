@@ -566,13 +566,20 @@ public class CacheWarmupService : BackgroundService
             var from = reader.GetString(0);
             var to = reader.GetString(1);
             var tokenAddress = reader.GetString(2);
-            var amount = reader.GetDecimal(3);
+            var amountBig = reader.GetFieldValue<BigInteger>(3);
             var blockNumber = reader.GetInt64(4);
 
-            var tokenKey = tokenAddress.ToLowerInvariant();
+            var divisor = BigInteger.Parse("1000000000000000000");
+            var valueBig = amountBig / divisor;
 
-            // Convert attoCircles to Circles
-            var value = amount / 1_000_000_000_000_000_000m;
+            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            {
+                _logger.LogWarning("Skipping V1 transfer with amount {Amount} that would overflow decimal", amountBig);
+                continue;
+            }
+
+            var value = (decimal)valueBig;
+            var tokenKey = tokenAddress.ToLowerInvariant();
 
             // Skip zero address
             if (from != "0x0000000000000000000000000000000000000000")
@@ -633,12 +640,20 @@ public class CacheWarmupService : BackgroundService
             {
                 var from = singleReader.GetString(0);
                 var to = singleReader.GetString(1);
-                var tokenId = singleReader.GetFieldValue<decimal>(2).ToString();
-                var value = singleReader.GetFieldValue<decimal>(3);
+                var tokenId = singleReader.GetFieldValue<BigInteger>(2).ToString();
+                var valueBig = singleReader.GetFieldValue<BigInteger>(3);
                 var blockNumber = singleReader.GetInt64(4);
 
-                // Convert to Circles
-                var amount = value / 1_000_000_000_000_000_000m;
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var amountBig = valueBig / divisor;
+
+                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
+                {
+                    _logger.LogWarning("Skipping V2 transfer with value {Value} that would overflow decimal", valueBig);
+                    continue;
+                }
+
+                var amount = (decimal)amountBig;
 
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
@@ -688,11 +703,20 @@ public class CacheWarmupService : BackgroundService
             {
                 var from = batchReader.GetString(0);
                 var to = batchReader.GetString(1);
-                var tokenId = batchReader.GetFieldValue<decimal>(2).ToString();
-                var value = batchReader.GetFieldValue<decimal>(3);
+                var tokenId = batchReader.GetFieldValue<BigInteger>(2).ToString();
+                var valueBig = batchReader.GetFieldValue<BigInteger>(3);
                 var blockNumber = batchReader.GetInt64(4);
 
-                var amount = value / 1_000_000_000_000_000_000m;
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var amountBig = valueBig / divisor;
+
+                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
+                {
+                    _logger.LogWarning("Skipping V2 batch transfer with value {Value} that would overflow decimal", valueBig);
+                    continue;
+                }
+
+                var amount = (decimal)amountBig;
 
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
@@ -740,11 +764,11 @@ public class CacheWarmupService : BackgroundService
             var group = reader.GetString(0);
             var member = reader.GetString(1);
 
-            var expiryTime = reader.GetFieldValue<decimal>(2);
+            var expiryTimeBig = reader.GetFieldValue<BigInteger>(2);
             var blockNumber = reader.GetInt64(3);
 
             // Safely cast expiryTime to long, capping at long.MaxValue for overflow
-            long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+            long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
 
             // Composite key: group:member
             var key = $"{group.ToLowerInvariant()}:{member.ToLowerInvariant()}";
@@ -787,7 +811,7 @@ public class CacheWarmupService : BackgroundService
                 var blockNumber = v1Reader.GetInt64(0);
                 var truster = v1Reader.GetString(1);
                 var trustee = v1Reader.GetString(2);
-                var limit = v1Reader.GetFieldValue<decimal>(3);
+                var limitBig = v1Reader.GetFieldValue<BigInteger>(3);
 
                 // For V1, we use limit as the indicator (no expiry time)
                 // Store as 0 for active trust (V1 doesn't have expiry)
@@ -818,9 +842,9 @@ public class CacheWarmupService : BackgroundService
                 var blockNumber = v2Reader.GetInt64(0);
                 var truster = v2Reader.GetString(1);
                 var trustee = v2Reader.GetString(2);
-                var expiryTime = v2Reader.GetFieldValue<decimal>(3);
+                var expiryTimeBig = v2Reader.GetFieldValue<BigInteger>(3);
 
-                long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+                long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
 
                 // Use toBlock as we're loading deduplicated state after event replay
                 var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
