@@ -930,7 +930,7 @@ public class CacheWarmupService : BackgroundService
         {
             var avatar = reader.GetString(0);
             // shortName is stored as numeric (BigInteger) in database
-            var shortNameNumeric = BigInteger.Parse(reader.GetString(1));
+            var shortNameNumeric = reader.GetFieldValue<BigInteger>(1);
             // Convert to Base58Btc format (like "zAlice")
             var shortNameBase58 = shortNameNumeric.ToBase58Btc();
 
