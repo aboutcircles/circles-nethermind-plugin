@@ -39,38 +39,32 @@ public class Sink(
             typeEvents.Add(indexEvent);
         }
 
-        IEnumerable<Task> tasks = eventsByType.Select(o =>
+        IEnumerable<Task> tasks = eventsByType.Select(async o =>
         {
             if (!eventDtoTableMap.Map.TryGetValue(o.Key, out var tableId))
             {
                 // TODO: Use proper logger
                 Console.WriteLine($"Warning: No table mapping for {o.Key}");
-                return Task.CompletedTask;
+                return;
             }
 
-            return Database.WriteBatch(tableId.Namespace, tableId.Table, o.Value, schemaPropertyMap)
-                .ContinueWith(t =>
+            try
+            {
+                await Database.WriteBatch(tableId.Namespace, tableId.Table, o.Value, schemaPropertyMap);
+            }
+            catch (Exception ex)
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine($"Error writing batch to {tableId.Namespace}_{tableId.Table}");
+                sb.AppendLine($"Data: {o.Value.Count} rows:");
+                for (int i = 0; i < o.Value.Count; i++)
                 {
-                    if (t.Exception != null)
-                    {
-                        var e = t.Exception.Flatten();
-                        e.Handle(ex =>
-                        {
-                            var sb = new StringBuilder();
-                            sb.AppendLine($"Error writing batch to {tableId.Namespace}_{tableId.Table}");
-                            sb.AppendLine($"Data: {o.Value.Count} rows:");
-                            for (int i = 0; i < o.Value.Count; i++)
-                            {
-                                sb.AppendLine($"- {i:0000}: {o.Value[i]})");
-                            }
-
-                            sb.AppendLine(ex.ToString());
-                            Console.WriteLine(sb.ToString());
-                            
-                            return false;
-                        });
-                    }
-                });
+                    sb.AppendLine($"- {i:0000}: {o.Value[i]})");
+                }
+                sb.AppendLine(ex.ToString());
+                Console.WriteLine(sb.ToString());
+                throw;
+            }
         });
 
         await Task.WhenAll(tasks);
