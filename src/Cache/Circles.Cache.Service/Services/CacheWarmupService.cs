@@ -858,7 +858,8 @@ public class CacheWarmupService : BackgroundService
             while (await v1CidReader.ReadAsync(ct))
             {
                 var avatar = v1CidReader.GetString(0);
-                var cid = v1CidReader.GetString(1);
+                var metadataDigest = (byte[])v1CidReader.GetValue(1);
+                var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
 
                 var key = avatar.ToLowerInvariant();
                 // Use toBlock as we're loading deduplicated state after event replay
@@ -891,7 +892,8 @@ public class CacheWarmupService : BackgroundService
             while (await v2CidReader.ReadAsync(ct))
             {
                 var avatar = v2CidReader.GetString(0);
-                var cid = v2CidReader.GetString(1);
+                var metadataDigest = (byte[])v2CidReader.GetValue(1);
+                var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
 
                 var key = avatar.ToLowerInvariant();
                 // Use toBlock as we're loading deduplicated state after event replay
