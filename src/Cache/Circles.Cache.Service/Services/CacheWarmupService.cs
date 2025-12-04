@@ -142,7 +142,7 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Waiting for PostgreSQL to be ready...");
 
-        const int maxRetries = 60; // 5 minutes with 5s delay
+        const int maxRetries = 60;
         const int delayMs = 5000;
 
         for (int i = 0; i < maxRetries; i++)
@@ -193,18 +193,40 @@ public class CacheWarmupService : BackgroundService
         // Wait for first notification or cancellation
         using var ctRegistration = ct.Register(() => notificationReceived.TrySetCanceled(ct));
 
+        var lastWaitLogTime = DateTime.UtcNow;
+        const int waitLogIntervalSeconds = 300;
+
         while (!ct.IsCancellationRequested)
         {
-            // Wait for notification with a timeout
+            // Wait for notification with periodic logging
             var waitTask = conn.WaitAsync(ct);
-            var completedTask = await Task.WhenAny(notificationReceived.Task, waitTask);
+            var delayTask = Task.Delay(TimeSpan.FromSeconds(waitLogIntervalSeconds), ct);
+            var completedTask = await Task.WhenAny(notificationReceived.Task, waitTask, delayTask);
 
             if (completedTask == notificationReceived.Task)
             {
                 // Notification received, sync is complete
                 _logger.LogInformation("Initial sync confirmed complete via NOTIFY event");
+
+                // Wait for the WaitAsync to complete if it hasn't already, to exit the waiting state
+                if (!waitTask.IsCompleted)
+                {
+                    await waitTask;
+                }
+
+                // Unlisten to free the connection for subsequent operations
+                await using var unlistenCmd = new NpgsqlCommand($"UNLISTEN {_settings.PgNotifyChannel}", conn);
+                await unlistenCmd.ExecuteNonQueryAsync(ct);
+
                 return;
             }
+            else if (completedTask == delayTask)
+            {
+                // Periodic log to show we're still waiting
+                _logger.LogInformation("Still waiting for first NOTIFY event on channel '{Channel}'...",
+                    _settings.PgNotifyChannel);
+            }
+            // If waitTask completed, it means there's data but not our notification, continue loop
         }
     }
 
