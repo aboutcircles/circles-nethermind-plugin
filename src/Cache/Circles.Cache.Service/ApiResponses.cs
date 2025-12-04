@@ -35,6 +35,7 @@ public record AvatarInfoResponse(
     bool IsHuman = false,
     string? Name = null,
     string? Symbol = null,
+    string? ShortName = null,
     long? RegisteredAt = null,
     long LastProcessedBlock = -1,
     long Timestamp = 0

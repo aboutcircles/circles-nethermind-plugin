@@ -382,7 +382,7 @@ public class NotificationListenerService : BackgroundService
     private async Task ProcessV2RegisterGroupAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
         const string sql = @"
-            SELECT r.""blockNumber"", r.""group"", r.""name"", r.""mint""
+            SELECT r.""blockNumber"", r.""group"", r.""name"", r.""mint"", r.""symbol""
             FROM ""CrcV2_RegisterGroup"" r
             WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
             ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
@@ -401,10 +401,11 @@ public class NotificationListenerService : BackgroundService
                     var group = groupReader.GetString(1);
                     var name = groupReader.GetString(2);
                     var mint = groupReader.GetString(3);
+                    var symbol = groupReader.GetString(4);
 
                     var groupKey = group.ToLowerInvariant();
 
-                    _caches.Groups.Add(blockNumber, groupKey, (name, mint));
+                    _caches.Groups.Add(blockNumber, groupKey, (name, mint, symbol));
                     count++;
                 }
             }
