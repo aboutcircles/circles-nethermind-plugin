@@ -102,12 +102,13 @@ public class CacheServiceClient
         {
             var url = $"{_baseUrl}/api/avatars/{address}";
             var response = await _httpClient.GetAsync(url, cancellationToken);
-            
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound ||
+                response.StatusCode == System.Net.HttpStatusCode.NoContent)
             {
                 return null;
             }
-            
+
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<AvatarInfoResponse>(cancellationToken: cancellationToken);
         }

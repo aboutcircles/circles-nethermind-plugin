@@ -322,11 +322,11 @@ public class Plugin : INethermindPlugin
                     case SyncMode.WaitingForBlock:
                     case SyncMode.DbLoad:
                         _indexerContext.Logger.Debug(
-                            $"New head block {args.Block.Number} while syncingInfo is SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be processed.");
+                            $"New head block {args.Block.Number} in sync mode {syncingInfo}. New head will be processed.");
                         break;
                     default:
                         _indexerContext.Logger.Debug(
-                            $"New head block {args.Block.Number} while syncingInfo not SyncMode.Full, SyncMode.WaitingForBlock, or SyncMode.DbLoad. New head will be skipped. Current sync-status: {syncingInfo}");
+                            $"New head block {args.Block.Number} in sync mode {syncingInfo}. New head will be skipped.");
                         return;
                 }
 

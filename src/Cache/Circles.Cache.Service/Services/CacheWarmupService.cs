@@ -52,6 +52,12 @@ public class CacheWarmupService : BackgroundService
             // Load group memberships
             await LoadGroupMembershipsAsync(conn, stoppingToken);
 
+            // Load trust relations
+            await LoadTrustRelationsAsync(conn, warmupTarget, stoppingToken);
+
+            // Load avatar metadata (CID maps)
+            await LoadAvatarMetadataAsync(conn, stoppingToken);
+
             // Load balances (this may take longer)
             await LoadBalancesAsync(conn, stoppingToken);
 
@@ -62,7 +68,9 @@ public class CacheWarmupService : BackgroundService
 
             // Update state
             _state.LastProcessedBlock = warmupTarget;
-            _logger.LogInformation("Warmup replay completed at block {Block}", warmupTarget);
+            _logger.LogInformation("========================================");
+            _logger.LogInformation("✓ Warmup replay completed at block {Block}", warmupTarget);
+            _logger.LogInformation("========================================");
 
             // STEP 3: Initialize block ring buffer with recent blocks
             await InitializeBlockRingBufferAsync(conn, warmupTarget, stoppingToken);
@@ -356,111 +364,187 @@ public class CacheWarmupService : BackgroundService
 
     private async Task LoadBalancesAsync(NpgsqlConnection conn, CancellationToken ct)
     {
-        _logger.LogInformation("Loading balances...");
+        _logger.LogInformation("Building balances from transfer events...");
 
-        // Load V1 balances
-        await LoadV1BalancesAsync(conn, ct);
+        // Build V1 balances incrementally from transfers
+        await BuildV1BalancesFromTransfersAsync(conn, ct);
 
-        // Load V2 balances
-        await LoadV2BalancesAsync(conn, ct);
+        // Build V2 balances incrementally from transfers
+        await BuildV2BalancesFromTransfersAsync(conn, ct);
 
-        _logger.LogInformation("Balance loading completed");
+        _logger.LogInformation("Balance building completed");
     }
 
-    private async Task LoadV1BalancesAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task BuildV1BalancesFromTransfersAsync(NpgsqlConnection conn, CancellationToken ct)
     {
+        // Process all V1 transfers and build balances incrementally
+        // This is much faster than the aggregate view because it processes each transfer once
         const string sql = @"
             SELECT
-                ""account"",
+                ""from"",
+                ""to"",
                 ""tokenAddress"",
-                ""totalBalance""
-            FROM ""V_CrcV1_BalancesByAccountAndToken""
-            WHERE ""totalBalance"" > 0
-            ORDER BY ""account"", ""tokenAddress""";
+                amount,
+                ""blockNumber""
+            FROM ""CrcV1_Transfer""
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.CommandTimeout = 300; // 5 minutes for large balance queries
+        cmd.CommandTimeout = 600; // 10 minutes for processing all transfers
         await using var reader = await cmd.ExecuteReaderAsync(ct);
-        var count = 0;
+
+        var transferCount = 0;
         var lastLogTime = DateTime.UtcNow;
-        const int logInterval = 5000; // Log every 5000 entries
+        const int logInterval = 100000; // Log every 100k transfers
 
         while (await reader.ReadAsync(ct))
         {
-            var account = reader.GetString(0);
-            var tokenAddress = reader.GetString(1);
-            var totalBalance = reader.GetDecimal(2);
+            var from = reader.GetString(0);
+            var to = reader.GetString(1);
+            var tokenAddress = reader.GetString(2);
+            var amount = reader.GetDecimal(3);
+            var blockNumber = reader.GetInt64(4);
 
-            // Convert attoCircles to Circles (divide by 10^18)
-            var balance = totalBalance / 1_000_000_000_000_000_000m;
+            var tokenKey = tokenAddress.ToLowerInvariant();
 
-            // Composite key: account:tokenAddress
-            var key = $"{account.ToLowerInvariant()}:{tokenAddress.ToLowerInvariant()}";
+            // Convert attoCircles to Circles
+            var value = amount / 1_000_000_000_000_000_000m;
 
-            // Add to cache with block 1 (snapshot data doesn't have specific block)
-            _caches.V1BalancesByAccountAndToken.Add(1, key, balance);
+            // Skip zero address
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                // Subtract from sender
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
+                var currentBalance = _caches.V1BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                _caches.V1BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - value);
+            }
 
-            count++;
+            if (to != "0x0000000000000000000000000000000000000000")
+            {
+                // Add to receiver
+                var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
+                var currentBalance = _caches.V1BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                _caches.V1BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + value);
+            }
 
-            // Log progress every 5000 entries
-            if (count % logInterval == 0)
+            transferCount++;
+
+            if (transferCount % logInterval == 0)
             {
                 var elapsed = DateTime.UtcNow - lastLogTime;
-                _logger.LogInformation("V1 balances progress: {Count} loaded ({Rate:F0} entries/sec)",
-                    count, logInterval / elapsed.TotalSeconds);
+                _logger.LogInformation("V1 balance building progress: {Count} transfers processed ({Rate:F0} transfers/sec)",
+                    transferCount, logInterval / elapsed.TotalSeconds);
                 lastLogTime = DateTime.UtcNow;
             }
         }
 
-        _logger.LogInformation("Loaded {Count} V1 balances", count);
+        _logger.LogInformation("Built V1 balances from {Count} transfers. Total balance entries: {BalanceCount}",
+            transferCount, _caches.V1BalancesByAccountAndToken.Count);
     }
 
-    private async Task LoadV2BalancesAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task BuildV2BalancesFromTransfersAsync(NpgsqlConnection conn, CancellationToken ct)
     {
-        const string sql = @"
+        // Process V2 TransferSingle events
+        const string singleSql = @"
             SELECT
-                ""account"",
-                ""tokenId"",
-                ""demurragedTotalBalance""
-            FROM ""V_CrcV2_BalancesByAccountAndToken""
-            WHERE ""demurragedTotalBalance"" > 0
-            ORDER BY ""account"", ""tokenId""";
+                ""from"",
+                ""to"",
+                id,
+                value,
+                ""blockNumber""
+            FROM ""CrcV2_TransferSingle""
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.CommandTimeout = 300; // 5 minutes for large balance queries
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        var count = 0;
+        await using var singleCmd = new NpgsqlCommand(singleSql, conn);
+        singleCmd.CommandTimeout = 600;
+        await using var singleReader = await singleCmd.ExecuteReaderAsync(ct);
+
+        var transferCount = 0;
         var lastLogTime = DateTime.UtcNow;
-        const int logInterval = 5000; // Log every 5000 entries
+        const int logInterval = 100000;
 
-        while (await reader.ReadAsync(ct))
+        while (await singleReader.ReadAsync(ct))
         {
-            var account = reader.GetString(0);
-            var tokenId = reader.GetString(1);
-            var demurragedBalance = reader.GetDecimal(2);
+            var from = singleReader.GetString(0);
+            var to = singleReader.GetString(1);
+            var tokenId = singleReader.GetFieldValue<decimal>(2).ToString();
+            var value = singleReader.GetFieldValue<decimal>(3);
+            var blockNumber = singleReader.GetInt64(4);
 
-            // Convert to Circles (divide by 10^18)
-            var balance = demurragedBalance / 1_000_000_000_000_000_000m;
+            // Convert to Circles
+            var amount = value / 1_000_000_000_000_000_000m;
 
-            // Composite key: account:tokenId
-            var key = $"{account.ToLowerInvariant()}:{tokenId}";
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+            }
 
-            // Add to cache with block 1 (snapshot data doesn't have specific block)
-            _caches.V2BalancesByAccountAndToken.Add(1, key, balance);
+            if (to != "0x0000000000000000000000000000000000000000")
+            {
+                var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+            }
 
-            count++;
+            transferCount++;
 
-            // Log progress every 5000 entries
-            if (count % logInterval == 0)
+            if (transferCount % logInterval == 0)
             {
                 var elapsed = DateTime.UtcNow - lastLogTime;
-                _logger.LogInformation("V2 balances progress: {Count} loaded ({Rate:F0} entries/sec)",
-                    count, logInterval / elapsed.TotalSeconds);
+                _logger.LogInformation("V2 TransferSingle progress: {Count} transfers ({Rate:F0} transfers/sec)",
+                    transferCount, logInterval / elapsed.TotalSeconds);
                 lastLogTime = DateTime.UtcNow;
             }
         }
 
-        _logger.LogInformation("Loaded {Count} V2 balances", count);
+        // Process V2 TransferBatch events
+        const string batchSql = @"
+            SELECT
+                ""from"",
+                ""to"",
+                id,
+                value,
+                ""blockNumber""
+            FROM ""CrcV2_TransferBatch""
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
+
+        await using var batchCmd = new NpgsqlCommand(batchSql, conn);
+        batchCmd.CommandTimeout = 600;
+        await using var batchReader = await batchCmd.ExecuteReaderAsync(ct);
+
+        var batchCount = 0;
+
+        while (await batchReader.ReadAsync(ct))
+        {
+            var from = batchReader.GetString(0);
+            var to = batchReader.GetString(1);
+            var tokenId = batchReader.GetFieldValue<decimal>(2).ToString();
+            var value = batchReader.GetFieldValue<decimal>(3);
+            var blockNumber = batchReader.GetInt64(4);
+
+            var amount = value / 1_000_000_000_000_000_000m;
+
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+            }
+
+            if (to != "0x0000000000000000000000000000000000000000")
+            {
+                var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+            }
+
+            batchCount++;
+        }
+
+        _logger.LogInformation("Built V2 balances from {SingleCount} TransferSingle + {BatchCount} TransferBatch. Total balance entries: {BalanceCount}",
+            transferCount, batchCount, _caches.V2BalancesByAccountAndToken.Count);
     }
 
     private async Task LoadGroupMembershipsAsync(NpgsqlConnection conn, CancellationToken ct)
@@ -501,6 +585,135 @@ public class CacheWarmupService : BackgroundService
         }
 
         _logger.LogInformation("Loaded {Count} group memberships", count);
+    }
+
+    private async Task LoadTrustRelationsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading trust relations...");
+
+        // Load V1 trust relations - get latest trust status for each pair
+        // Must order by blockNumber for RollbackCache
+        const string v1Sql = @"
+            SELECT t.""blockNumber"", t.truster, t.trustee, t.""limit""
+            FROM (
+                SELECT ""blockNumber"", ""transactionIndex"", ""logIndex"", ""canSendTo"" as truster, ""user"" as trustee, ""limit"",
+                    ROW_NUMBER() OVER (PARTITION BY ""canSendTo"", ""user"" ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
+                FROM ""CrcV1_Trust""
+                WHERE ""blockNumber"" <= @toBlock
+            ) t
+            WHERE t.rn = 1 AND t.""limit"" > 0
+            ORDER BY t.""blockNumber""";
+
+        await using var v1Cmd = new NpgsqlCommand(v1Sql, conn);
+        v1Cmd.Parameters.AddWithValue("toBlock", toBlock);
+        await using var v1Reader = await v1Cmd.ExecuteReaderAsync(ct);
+        var v1Count = 0;
+
+        while (await v1Reader.ReadAsync(ct))
+        {
+            var blockNumber = v1Reader.GetInt64(0);
+            var truster = v1Reader.GetString(1);
+            var trustee = v1Reader.GetString(2);
+            var limit = v1Reader.GetFieldValue<decimal>(3);
+
+            // For V1, we use limit as the indicator (no expiry time)
+            // Store as 0 for active trust (V1 doesn't have expiry)
+            var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
+            _caches.V1TrustRelations.Add(blockNumber, key, 0L);
+
+            v1Count++;
+        }
+
+        _logger.LogInformation("Loaded {Count} V1 trust relations", v1Count);
+
+        // Load V2 trust relations - filter for non-expired
+        const string v2Sql = @"
+            SELECT ""blockNumber"", truster, trustee, ""expiryTime""
+            FROM ""V_CrcV2_TrustRelations""
+            ORDER BY ""blockNumber""";
+
+        await using var v2Cmd = new NpgsqlCommand(v2Sql, conn);
+        await using var v2Reader = await v2Cmd.ExecuteReaderAsync(ct);
+        var v2Count = 0;
+
+        while (await v2Reader.ReadAsync(ct))
+        {
+            var blockNumber = v2Reader.GetInt64(0);
+            var truster = v2Reader.GetString(1);
+            var trustee = v2Reader.GetString(2);
+            var expiryTime = v2Reader.GetFieldValue<decimal>(3);
+
+            long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+
+            var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
+            _caches.V2TrustRelations.Add(blockNumber, key, expiryLong);
+
+            v2Count++;
+        }
+
+        _logger.LogInformation("Loaded {Count} V2 trust relations", v2Count);
+    }
+
+    private async Task LoadAvatarMetadataAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading avatar metadata (CID maps)...");
+
+        // Load V1 avatar CIDs (latest metadata digest for each avatar)
+        const string v1CidSql = @"
+            SELECT m.avatar, m.""metadataDigest""
+            FROM (
+                SELECT avatar, ""metadataDigest"",
+                    ROW_NUMBER() OVER (PARTITION BY avatar ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
+                FROM ""CrcV1_UpdateMetadataDigest""
+            ) m
+            WHERE m.rn = 1";
+
+        await using var v1CidCmd = new NpgsqlCommand(v1CidSql, conn);
+        await using var v1CidReader = await v1CidCmd.ExecuteReaderAsync(ct);
+        var v1CidCount = 0;
+
+        while (await v1CidReader.ReadAsync(ct))
+        {
+            var avatar = v1CidReader.GetString(0);
+            var cid = v1CidReader.GetString(1);
+
+            var key = avatar.ToLowerInvariant();
+            _caches.V1AvatarToCidMap.Add(1, key, cid);
+
+            v1CidCount++;
+        }
+
+        _logger.LogInformation("Loaded {Count} V1 avatar CIDs", v1CidCount);
+
+        // Load V2 avatar CIDs
+        const string v2CidSql = @"
+            SELECT m.avatar, m.""metadataDigest""
+            FROM (
+                SELECT avatar, ""metadataDigest"",
+                    ROW_NUMBER() OVER (PARTITION BY avatar ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
+                FROM ""CrcV2_UpdateMetadataDigest""
+            ) m
+            WHERE m.rn = 1";
+
+        await using var v2CidCmd = new NpgsqlCommand(v2CidSql, conn);
+        await using var v2CidReader = await v2CidCmd.ExecuteReaderAsync(ct);
+        var v2CidCount = 0;
+
+        while (await v2CidReader.ReadAsync(ct))
+        {
+            var avatar = v2CidReader.GetString(0);
+            var cid = v2CidReader.GetString(1);
+
+            var key = avatar.ToLowerInvariant();
+            _caches.V2AvatarToCidMap.Add(1, key, cid);
+
+            v2CidCount++;
+        }
+
+        _logger.LogInformation("Loaded {Count} V2 avatar CIDs", v2CidCount);
+
+        // TODO: Load V2 short names if needed (V2AvatarToShortNameMap)
+        // This would require querying the name registry or similar
     }
 
     /// <summary>
