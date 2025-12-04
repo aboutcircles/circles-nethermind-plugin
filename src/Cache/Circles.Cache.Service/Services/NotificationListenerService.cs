@@ -589,10 +589,19 @@ public class NotificationListenerService : BackgroundService
                 var from = reader.GetString(0);
                 var to = reader.GetString(1);
                 var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
-                var value = reader.GetFieldValue<decimal>(3);
+                var valueBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
 
-                var amount = value / 1_000_000_000_000_000_000m;
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var amountBig = valueBig / divisor;
+
+                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
+                {
+                    _logger.LogWarning("Skipping V2 transfer with value {Value} that would overflow decimal", valueBig);
+                    continue;
+                }
+
+                var amount = (decimal)amountBig;
 
                 // Update sender balance
                 if (from != "0x0000000000000000000000000000000000000000")
@@ -633,10 +642,19 @@ public class NotificationListenerService : BackgroundService
                 var from = reader.GetString(0);
                 var to = reader.GetString(1);
                 var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
-                var value = reader.GetFieldValue<decimal>(3);
+                var valueBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
 
-                var amount = value / 1_000_000_000_000_000_000m;
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var amountBig = valueBig / divisor;
+
+                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
+                {
+                    _logger.LogWarning("Skipping V2 batch transfer with value {Value} that would overflow decimal", valueBig);
+                    continue;
+                }
+
+                var amount = (decimal)amountBig;
 
                 // Update sender balance
                 if (from != "0x0000000000000000000000000000000000000000")
