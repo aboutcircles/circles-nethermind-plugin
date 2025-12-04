@@ -46,6 +46,9 @@ public class CacheWarmupService : BackgroundService
                 await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
                 await conn.OpenAsync(stoppingToken);
 
+                // Wait for initial sync to complete before starting warmup
+                await WaitForInitialSyncAsync(conn, stoppingToken);
+
                 // STEP 1: Get the current database head block and set it as warmup target
                 var warmupTarget = await GetDatabaseHeadAsync(conn, stoppingToken);
                 _state.WarmupTargetBlock = warmupTarget;
@@ -163,6 +166,48 @@ public class CacheWarmupService : BackgroundService
         throw new Exception($"PostgreSQL did not become ready after {maxRetries} attempts");
     }
 
+    /// <summary>
+    /// Waits for the Nethermind plugin to complete initial sync by listening for the first NOTIFY event.
+    /// The plugin only sends NOTIFY events once initial sync is complete and blocks are being streamed live.
+    /// </summary>
+    private async Task WaitForInitialSyncAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Waiting for Nethermind plugin to complete initial sync...");
+        _logger.LogInformation("Listening for first pg_notify event on channel '{Channel}' to detect sync completion...",
+            _settings.PgNotifyChannel);
+
+        // Set up NOTIFY listener
+        var notificationReceived = new TaskCompletionSource<bool>();
+
+        conn.Notification += (sender, args) =>
+        {
+            _logger.LogInformation("Received first NOTIFY event - initial sync is complete!");
+            notificationReceived.TrySetResult(true);
+        };
+
+        await using var cmd = new NpgsqlCommand($"LISTEN {_settings.PgNotifyChannel}", conn);
+        await cmd.ExecuteNonQueryAsync(ct);
+
+        _logger.LogInformation("Subscribed to NOTIFY channel. Waiting for first event...");
+
+        // Wait for first notification or cancellation
+        using var ctRegistration = ct.Register(() => notificationReceived.TrySetCanceled(ct));
+
+        while (!ct.IsCancellationRequested)
+        {
+            // Wait for notification with a timeout
+            var waitTask = conn.WaitAsync(ct);
+            var completedTask = await Task.WhenAny(notificationReceived.Task, waitTask);
+
+            if (completedTask == notificationReceived.Task)
+            {
+                // Notification received, sync is complete
+                _logger.LogInformation("Initial sync confirmed complete via NOTIFY event");
+                return;
+            }
+        }
+    }
+
     private async Task<long> GetDatabaseHeadAsync(NpgsqlConnection conn, CancellationToken ct)
     {
         const string sql = @"
@@ -194,28 +239,29 @@ public class CacheWarmupService : BackgroundService
     {
         // Replay both human and organization signups in block order
         const string sql = @"
-            SELECT
-                s.""blockNumber"",
-                s.""transactionIndex"",
-                s.""logIndex"",
-                s.""user"" as address,
-                s.""token"",
-                'Human' as type
-            FROM ""CrcV1_Signup"" s
-            WHERE s.""blockNumber"" <= @toBlock
+            SELECT * FROM (
+                SELECT
+                    s.""blockNumber"",
+                    s.""transactionIndex"",
+                    s.""logIndex"",
+                    s.""user"" as address,
+                    s.""token"",
+                    'Human' as type
+                FROM ""CrcV1_Signup"" s
+                WHERE s.""blockNumber"" <= @toBlock
 
-            UNION ALL
+                UNION ALL
 
-            SELECT
-                o.""blockNumber"",
-                o.""transactionIndex"",
-                o.""logIndex"",
-                o.""organization"" as address,
-                NULL as token,
-                'Organization' as type
-            FROM ""CrcV1_OrganizationSignup"" o
-            WHERE o.""blockNumber"" <= @toBlock
-
+                SELECT
+                    o.""blockNumber"",
+                    o.""transactionIndex"",
+                    o.""logIndex"",
+                    o.""organization"" as address,
+                    NULL as token,
+                    'Organization' as type
+                FROM ""CrcV1_OrganizationSignup"" o
+                WHERE o.""blockNumber"" <= @toBlock
+            ) AS combined
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -227,12 +273,25 @@ public class CacheWarmupService : BackgroundService
         var lastLogTime = DateTime.UtcNow;
         const int logInterval = 10000; // Log every 10000 entries
 
+        long lastBlockNumber = -1;
         while (await reader.ReadAsync(ct))
         {
             var blockNumber = reader.GetInt64(0);
             var address = reader.GetString(3);
             var token = reader.IsDBNull(4) ? null : reader.GetString(4);
             var type = reader.GetString(5);
+
+            // Validation: Ensure data is actually in order
+            if (blockNumber < lastBlockNumber)
+            {
+                _logger.LogError(
+                    "Database contains out-of-order data! Block {Current} came after block {Previous}. " +
+                    "This indicates the database was not fully synced or contains corrupted data.",
+                    blockNumber, lastBlockNumber);
+                throw new InvalidOperationException(
+                    $"Database integrity error: Block numbers are not in ascending order ({blockNumber} < {lastBlockNumber})");
+            }
+            lastBlockNumber = blockNumber;
 
             var addressKey = address.ToLowerInvariant();
 
@@ -288,46 +347,47 @@ public class CacheWarmupService : BackgroundService
     {
         // Combine all V2 avatar registration types in block order
         const string sql = @"
-            SELECT
-                r.""blockNumber"",
-                r.""transactionIndex"",
-                r.""logIndex"",
-                r.""avatar"" as address,
-                r.""timestamp"",
-                'Human' as type,
-                NULL as name,
-                NULL as mint
-            FROM ""CrcV2_RegisterHuman"" r
-            WHERE r.""blockNumber"" <= @toBlock
+            SELECT * FROM (
+                SELECT
+                    r.""blockNumber"",
+                    r.""transactionIndex"",
+                    r.""logIndex"",
+                    r.""avatar"" as address,
+                    r.""timestamp"",
+                    'Human' as type,
+                    NULL as name,
+                    NULL as mint
+                FROM ""CrcV2_RegisterHuman"" r
+                WHERE r.""blockNumber"" <= @toBlock
 
-            UNION ALL
+                UNION ALL
 
-            SELECT
-                r.""blockNumber"",
-                r.""transactionIndex"",
-                r.""logIndex"",
-                r.""organization"" as address,
-                r.""timestamp"",
-                'Organization' as type,
-                NULL as name,
-                NULL as mint
-            FROM ""CrcV2_RegisterOrganization"" r
-            WHERE r.""blockNumber"" <= @toBlock
+                SELECT
+                    r.""blockNumber"",
+                    r.""transactionIndex"",
+                    r.""logIndex"",
+                    r.""organization"" as address,
+                    r.""timestamp"",
+                    'Organization' as type,
+                    NULL as name,
+                    NULL as mint
+                FROM ""CrcV2_RegisterOrganization"" r
+                WHERE r.""blockNumber"" <= @toBlock
 
-            UNION ALL
+                UNION ALL
 
-            SELECT
-                r.""blockNumber"",
-                r.""transactionIndex"",
-                r.""logIndex"",
-                r.""group"" as address,
-                0 as timestamp,
-                'Group' as type,
-                r.""name"",
-                r.""mint""
-            FROM ""CrcV2_RegisterGroup"" r
-            WHERE r.""blockNumber"" <= @toBlock
-
+                SELECT
+                    r.""blockNumber"",
+                    r.""transactionIndex"",
+                    r.""logIndex"",
+                    r.""group"" as address,
+                    0 as timestamp,
+                    'Group' as type,
+                    r.""name"",
+                    r.""mint""
+                FROM ""CrcV2_RegisterGroup"" r
+                WHERE r.""blockNumber"" <= @toBlock
+            ) AS combined
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
