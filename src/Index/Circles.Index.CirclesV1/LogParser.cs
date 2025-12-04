@@ -315,7 +315,11 @@ public class LogParser(Address v1HubAddress) : ILogParser
         if (topic == _transferTopic &&
             CirclesV1TokenOwnersByToken.ContainsKey(log.Address))
         {
-            events.Add(Erc20Transfer(block, receipt, log, logIndex));
+            var transferEvent = Erc20Transfer(block, receipt, log, logIndex);
+            if (transferEvent != null)
+            {
+                events.Add(transferEvent);
+            }
         }
 
         if (log.Address == v1HubAddress)
@@ -351,30 +355,50 @@ public class LogParser(Address v1HubAddress) : ILogParser
     /// <summary>
     /// event Transfer(address indexed from, address indexed to, uint256 value);
     /// </summary>
-    private IIndexEvent Erc20Transfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private IIndexEvent? Erc20Transfer(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // parse addresses from the 2 topics
-        string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-        string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        try
+        {
+            // parse addresses from the 2 topics
+            string from = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+            string to = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
 
-        // parse single 256-bit value from log.Data
-        UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
+            // parse single 256-bit value from log.Data
+            UInt256 value = LogDataParsingHelper.ParseSingleUInt256(log.Data);
 
-        // Balance tracking removed - RPC fetches live balances from Nethermind
-        // and Pathfinder loads from database views
+            // Validate data
+            if (string.IsNullOrEmpty(from) || !from.StartsWith("0x") || from.Length != 42)
+            {
+                Console.WriteLine($"Invalid 'from' address in Transfer event at block {receipt.BlockNumber}, tx {receipt.TxHash}: {from}");
+                return null; // Skip invalid event
+            }
+            if (string.IsNullOrEmpty(to) || !to.StartsWith("0x") || to.Length != 42)
+            {
+                Console.WriteLine($"Invalid 'to' address in Transfer event at block {receipt.BlockNumber}, tx {receipt.TxHash}: {to}");
+                return null; // Skip invalid event
+            }
 
-        return new Transfer(
-            receipt.BlockNumber,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
-            log.Address.ToString(true, false),
-            from,
-            to,
-            value
-        );
+            // Balance tracking removed - RPC fetches live balances from Nethermind
+            // and Pathfinder loads from database views
+
+            return new Transfer(
+                receipt.BlockNumber,
+                (long)block.Timestamp,
+                receipt.Index,
+                logIndex,
+                receipt.TxHash!.ToString(),
+                log.Address.ToString(true, false),
+                log.Address.ToString(true, false),
+                from,
+                to,
+                value
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error parsing Transfer event at block {receipt.BlockNumber}, tx {receipt.TxHash}: {ex.Message}");
+            return null; // Skip on error
+        }
     }
 
     /// <summary>
