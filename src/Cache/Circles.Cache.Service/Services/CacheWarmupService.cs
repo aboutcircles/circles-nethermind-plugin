@@ -619,47 +619,50 @@ public class CacheWarmupService : BackgroundService
             FROM ""CrcV2_TransferSingle""
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
-        await using var singleCmd = new NpgsqlCommand(singleSql, conn);
-        singleCmd.CommandTimeout = 600;
-        await using var singleReader = await singleCmd.ExecuteReaderAsync(ct);
-
         var transferCount = 0;
-        var lastLogTime = DateTime.UtcNow;
-        const int logInterval = 100000;
 
-        while (await singleReader.ReadAsync(ct))
+        await using (var singleCmd = new NpgsqlCommand(singleSql, conn))
         {
-            var from = singleReader.GetString(0);
-            var to = singleReader.GetString(1);
-            var tokenId = singleReader.GetFieldValue<decimal>(2).ToString();
-            var value = singleReader.GetFieldValue<decimal>(3);
-            var blockNumber = singleReader.GetInt64(4);
+            singleCmd.CommandTimeout = 600;
+            await using var singleReader = await singleCmd.ExecuteReaderAsync(ct);
 
-            // Convert to Circles
-            var amount = value / 1_000_000_000_000_000_000m;
+            var lastLogTime = DateTime.UtcNow;
+            const int logInterval = 100000;
 
-            if (from != "0x0000000000000000000000000000000000000000")
+            while (await singleReader.ReadAsync(ct))
             {
-                var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
-            }
+                var from = singleReader.GetString(0);
+                var to = singleReader.GetString(1);
+                var tokenId = singleReader.GetFieldValue<decimal>(2).ToString();
+                var value = singleReader.GetFieldValue<decimal>(3);
+                var blockNumber = singleReader.GetInt64(4);
 
-            if (to != "0x0000000000000000000000000000000000000000")
-            {
-                var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
-            }
+                // Convert to Circles
+                var amount = value / 1_000_000_000_000_000_000m;
 
-            transferCount++;
+                if (from != "0x0000000000000000000000000000000000000000")
+                {
+                    var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+                }
 
-            if (transferCount % logInterval == 0)
-            {
-                var elapsed = DateTime.UtcNow - lastLogTime;
-                _logger.LogInformation("V2 TransferSingle progress: {Count} transfers ({Rate:F0} transfers/sec)",
-                    transferCount, logInterval / elapsed.TotalSeconds);
-                lastLogTime = DateTime.UtcNow;
+                if (to != "0x0000000000000000000000000000000000000000")
+                {
+                    var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+                }
+
+                transferCount++;
+
+                if (transferCount % logInterval == 0)
+                {
+                    var elapsed = DateTime.UtcNow - lastLogTime;
+                    _logger.LogInformation("V2 TransferSingle progress: {Count} transfers ({Rate:F0} transfers/sec)",
+                        transferCount, logInterval / elapsed.TotalSeconds);
+                    lastLogTime = DateTime.UtcNow;
+                }
             }
         }
 
@@ -674,37 +677,39 @@ public class CacheWarmupService : BackgroundService
             FROM ""CrcV2_TransferBatch""
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
-        await using var batchCmd = new NpgsqlCommand(batchSql, conn);
-        batchCmd.CommandTimeout = 600;
-        await using var batchReader = await batchCmd.ExecuteReaderAsync(ct);
-
         var batchCount = 0;
 
-        while (await batchReader.ReadAsync(ct))
+        await using (var batchCmd = new NpgsqlCommand(batchSql, conn))
         {
-            var from = batchReader.GetString(0);
-            var to = batchReader.GetString(1);
-            var tokenId = batchReader.GetFieldValue<decimal>(2).ToString();
-            var value = batchReader.GetFieldValue<decimal>(3);
-            var blockNumber = batchReader.GetInt64(4);
+            batchCmd.CommandTimeout = 600;
+            await using var batchReader = await batchCmd.ExecuteReaderAsync(ct);
 
-            var amount = value / 1_000_000_000_000_000_000m;
-
-            if (from != "0x0000000000000000000000000000000000000000")
+            while (await batchReader.ReadAsync(ct))
             {
-                var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
-            }
+                var from = batchReader.GetString(0);
+                var to = batchReader.GetString(1);
+                var tokenId = batchReader.GetFieldValue<decimal>(2).ToString();
+                var value = batchReader.GetFieldValue<decimal>(3);
+                var blockNumber = batchReader.GetInt64(4);
 
-            if (to != "0x0000000000000000000000000000000000000000")
-            {
-                var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
-            }
+                var amount = value / 1_000_000_000_000_000_000m;
 
-            batchCount++;
+                if (from != "0x0000000000000000000000000000000000000000")
+                {
+                    var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+                }
+
+                if (to != "0x0000000000000000000000000000000000000000")
+                {
+                    var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+                }
+
+                batchCount++;
+            }
         }
 
         _logger.LogInformation("Built V2 balances from {SingleCount} TransferSingle + {BatchCount} TransferBatch. Total balance entries: {BalanceCount}",
@@ -770,25 +775,28 @@ public class CacheWarmupService : BackgroundService
             WHERE t.rn = 1 AND t.""limit"" > 0
             ORDER BY t.""blockNumber""";
 
-        await using var v1Cmd = new NpgsqlCommand(v1Sql, conn);
-        v1Cmd.Parameters.AddWithValue("toBlock", toBlock);
-        await using var v1Reader = await v1Cmd.ExecuteReaderAsync(ct);
         var v1Count = 0;
 
-        while (await v1Reader.ReadAsync(ct))
+        await using (var v1Cmd = new NpgsqlCommand(v1Sql, conn))
         {
-            var blockNumber = v1Reader.GetInt64(0);
-            var truster = v1Reader.GetString(1);
-            var trustee = v1Reader.GetString(2);
-            var limit = v1Reader.GetFieldValue<decimal>(3);
+            v1Cmd.Parameters.AddWithValue("toBlock", toBlock);
+            await using var v1Reader = await v1Cmd.ExecuteReaderAsync(ct);
 
-            // For V1, we use limit as the indicator (no expiry time)
-            // Store as 0 for active trust (V1 doesn't have expiry)
-            // Use toBlock as we're loading deduplicated state after event replay
-            var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
-            _caches.V1TrustRelations.Add(toBlock, key, 0L);
+            while (await v1Reader.ReadAsync(ct))
+            {
+                var blockNumber = v1Reader.GetInt64(0);
+                var truster = v1Reader.GetString(1);
+                var trustee = v1Reader.GetString(2);
+                var limit = v1Reader.GetFieldValue<decimal>(3);
 
-            v1Count++;
+                // For V1, we use limit as the indicator (no expiry time)
+                // Store as 0 for active trust (V1 doesn't have expiry)
+                // Use toBlock as we're loading deduplicated state after event replay
+                var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
+                _caches.V1TrustRelations.Add(toBlock, key, 0L);
+
+                v1Count++;
+            }
         }
 
         _logger.LogInformation("Loaded {Count} V1 trust relations", v1Count);
@@ -799,24 +807,27 @@ public class CacheWarmupService : BackgroundService
             FROM ""V_CrcV2_TrustRelations""
             ORDER BY ""blockNumber""";
 
-        await using var v2Cmd = new NpgsqlCommand(v2Sql, conn);
-        await using var v2Reader = await v2Cmd.ExecuteReaderAsync(ct);
         var v2Count = 0;
 
-        while (await v2Reader.ReadAsync(ct))
+        await using (var v2Cmd = new NpgsqlCommand(v2Sql, conn))
         {
-            var blockNumber = v2Reader.GetInt64(0);
-            var truster = v2Reader.GetString(1);
-            var trustee = v2Reader.GetString(2);
-            var expiryTime = v2Reader.GetFieldValue<decimal>(3);
+            await using var v2Reader = await v2Cmd.ExecuteReaderAsync(ct);
 
-            long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+            while (await v2Reader.ReadAsync(ct))
+            {
+                var blockNumber = v2Reader.GetInt64(0);
+                var truster = v2Reader.GetString(1);
+                var trustee = v2Reader.GetString(2);
+                var expiryTime = v2Reader.GetFieldValue<decimal>(3);
 
-            // Use toBlock as we're loading deduplicated state after event replay
-            var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
-            _caches.V2TrustRelations.Add(toBlock, key, expiryLong);
+                long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
 
-            v2Count++;
+                // Use toBlock as we're loading deduplicated state after event replay
+                var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
+                _caches.V2TrustRelations.Add(toBlock, key, expiryLong);
+
+                v2Count++;
+            }
         }
 
         _logger.LogInformation("Loaded {Count} V2 trust relations", v2Count);
@@ -837,21 +848,24 @@ public class CacheWarmupService : BackgroundService
             ) m
             WHERE m.rn = 1";
 
-        await using var v1CidCmd = new NpgsqlCommand(v1CidSql, conn);
-        v1CidCmd.Parameters.AddWithValue("toBlock", toBlock);
-        await using var v1CidReader = await v1CidCmd.ExecuteReaderAsync(ct);
         var v1CidCount = 0;
 
-        while (await v1CidReader.ReadAsync(ct))
+        await using (var v1CidCmd = new NpgsqlCommand(v1CidSql, conn))
         {
-            var avatar = v1CidReader.GetString(0);
-            var cid = v1CidReader.GetString(1);
+            v1CidCmd.Parameters.AddWithValue("toBlock", toBlock);
+            await using var v1CidReader = await v1CidCmd.ExecuteReaderAsync(ct);
 
-            var key = avatar.ToLowerInvariant();
-            // Use toBlock as we're loading deduplicated state after event replay
-            _caches.V1AvatarToCidMap.Add(toBlock, key, cid);
+            while (await v1CidReader.ReadAsync(ct))
+            {
+                var avatar = v1CidReader.GetString(0);
+                var cid = v1CidReader.GetString(1);
 
-            v1CidCount++;
+                var key = avatar.ToLowerInvariant();
+                // Use toBlock as we're loading deduplicated state after event replay
+                _caches.V1AvatarToCidMap.Add(toBlock, key, cid);
+
+                v1CidCount++;
+            }
         }
 
         _logger.LogInformation("Loaded {Count} V1 avatar CIDs", v1CidCount);
@@ -867,21 +881,24 @@ public class CacheWarmupService : BackgroundService
             ) m
             WHERE m.rn = 1";
 
-        await using var v2CidCmd = new NpgsqlCommand(v2CidSql, conn);
-        v2CidCmd.Parameters.AddWithValue("toBlock", toBlock);
-        await using var v2CidReader = await v2CidCmd.ExecuteReaderAsync(ct);
         var v2CidCount = 0;
 
-        while (await v2CidReader.ReadAsync(ct))
+        await using (var v2CidCmd = new NpgsqlCommand(v2CidSql, conn))
         {
-            var avatar = v2CidReader.GetString(0);
-            var cid = v2CidReader.GetString(1);
+            v2CidCmd.Parameters.AddWithValue("toBlock", toBlock);
+            await using var v2CidReader = await v2CidCmd.ExecuteReaderAsync(ct);
 
-            var key = avatar.ToLowerInvariant();
-            // Use toBlock as we're loading deduplicated state after event replay
-            _caches.V2AvatarToCidMap.Add(toBlock, key, cid);
+            while (await v2CidReader.ReadAsync(ct))
+            {
+                var avatar = v2CidReader.GetString(0);
+                var cid = v2CidReader.GetString(1);
 
-            v2CidCount++;
+                var key = avatar.ToLowerInvariant();
+                // Use toBlock as we're loading deduplicated state after event replay
+                _caches.V2AvatarToCidMap.Add(toBlock, key, cid);
+
+                v2CidCount++;
+            }
         }
 
         _logger.LogInformation("Loaded {Count} V2 avatar CIDs", v2CidCount);
