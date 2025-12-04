@@ -28,8 +28,15 @@ public class Settings
             ? startBlock
             : 0L;
 
-    public readonly int BlockBufferSize = 20000;
-    public readonly int EventBufferSize = 100000;
+    public readonly int BlockBufferSize =
+        int.TryParse(Environment.GetEnvironmentVariable("BLOCK_BUFFER_SIZE"), out var blockBufferSize)
+            ? blockBufferSize
+            : 20000;
+
+    public readonly int EventBufferSize =
+        int.TryParse(Environment.GetEnvironmentVariable("EVENT_BUFFER_SIZE"), out var eventBufferSize)
+            ? eventBufferSize
+            : 100000;
 
     #endregion
 

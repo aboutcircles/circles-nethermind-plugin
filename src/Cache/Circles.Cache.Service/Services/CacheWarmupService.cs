@@ -402,7 +402,8 @@ public class CacheWarmupService : BackgroundService
                     r.""timestamp"",
                     'Human' as type,
                     NULL as name,
-                    NULL as mint
+                    NULL as mint,
+                    NULL as symbol
                 FROM ""CrcV2_RegisterHuman"" r
                 WHERE r.""blockNumber"" <= @toBlock
 
@@ -416,7 +417,8 @@ public class CacheWarmupService : BackgroundService
                     r.""timestamp"",
                     'Organization' as type,
                     NULL as name,
-                    NULL as mint
+                    NULL as mint,
+                    NULL as symbol
                 FROM ""CrcV2_RegisterOrganization"" r
                 WHERE r.""blockNumber"" <= @toBlock
 

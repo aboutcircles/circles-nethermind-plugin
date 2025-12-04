@@ -229,7 +229,16 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         var columnTypes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
         var columnList = string.Join(", ", columnTypes.Select(o => $"\"{o.Key}\""));
 
-        await using var connection = new NpgsqlConnection(ConnectionString);
+        // Build connection string with extended timeouts for large batch operations
+        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            CommandTimeout = 300,  // 5 minutes command timeout
+            Timeout = 300,         // 5 minutes connection timeout
+            WriteBufferSize = 32768,  // Increase write buffer size to 32KB (default is 8KB)
+            ReadBufferSize = 32768    // Also increase read buffer for consistency
+        };
+
+        await using var connection = new NpgsqlConnection(csb.ToString());
         connection.Open();
 
         await using var writer = await connection.BeginBinaryImportAsync(
