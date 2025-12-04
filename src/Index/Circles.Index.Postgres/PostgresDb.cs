@@ -246,7 +246,23 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             }
         }
 
-        await writer.CompleteAsync();
+        try
+        {
+            await writer.CompleteAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Detailed error in WriteBatch for {tableSchema.Namespace}_{tableSchema.Table}: {ex.Message}");
+            Console.WriteLine($"Inner exception: {ex.InnerException?.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            // Optionally log the data
+            Console.WriteLine($"Data count: {data.Count()}");
+            foreach (var item in data.Take(5)) // Log first 5 items
+            {
+                Console.WriteLine($"Item: {item}");
+            }
+            throw;
+        }
     }
 
     private string GetDdl(EventSchema @event)
