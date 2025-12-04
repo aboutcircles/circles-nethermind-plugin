@@ -14,6 +14,10 @@ public class CacheWarmupService : BackgroundService
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
 
+    // Fields for periodic reminder logging
+    private DateTime _lastReminderLogTime = DateTime.MinValue;
+    private readonly TimeSpan _reminderInterval = TimeSpan.FromMinutes(5);
+
     public CacheWarmupService(
         ILogger<CacheWarmupService> logger,
         CacheServiceSettings settings,
@@ -28,84 +32,107 @@ public class CacheWarmupService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        _logger.LogInformation("Starting cache warmup service");
+
+        while (!stoppingToken.IsCancellationRequested)
         {
-            _logger.LogInformation("Starting cache warmup...");
-
-            // Wait for PostgreSQL to be ready
-            await WaitForDatabaseAsync(stoppingToken);
-
-            await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-            await conn.OpenAsync(stoppingToken);
-
-            // STEP 1: Get the current database head block and set it as warmup target
-            var warmupTarget = await GetDatabaseHeadAsync(conn, stoppingToken);
-            _state.WarmupTargetBlock = warmupTarget;
-            _logger.LogInformation("Warmup target block set to: {Block}", warmupTarget);
-
-            // STEP 2: Replay all events up to the warmup target
-            _logger.LogInformation("Starting warmup replay up to block {Block}...", warmupTarget);
-
-            // Replay V1 events
-            await ReplayV1EventsAsync(conn, warmupTarget, stoppingToken);
-
-            // Replay V2 events
-            await ReplayV2EventsAsync(conn, warmupTarget, stoppingToken);
-
-            // Load group memberships
-            await LoadGroupMembershipsAsync(conn, stoppingToken);
-
-            // Load trust relations
-            await LoadTrustRelationsAsync(conn, warmupTarget, stoppingToken);
-
-            // Load avatar metadata (CID maps)
-            await LoadAvatarMetadataAsync(conn, stoppingToken);
-
-            // Load balances (this may take longer)
-            await LoadBalancesAsync(conn, stoppingToken);
-
-            // Rebuild secondary indexes for fast balance lookups
-            _logger.LogInformation("Rebuilding secondary indexes...");
-            _caches.RebuildSecondaryIndexes();
-            _logger.LogInformation("Secondary indexes rebuilt");
-
-            // Update state
-            _state.LastProcessedBlock = warmupTarget;
-            _logger.LogInformation("========================================");
-            _logger.LogInformation("✓ Warmup replay completed at block {Block}", warmupTarget);
-            _logger.LogInformation("========================================");
-
-            // STEP 3: Initialize block ring buffer with recent blocks
-            await InitializeBlockRingBufferAsync(conn, warmupTarget, stoppingToken);
-
-            // STEP 4: Check if new blocks arrived during warmup and process them
-            var currentHead = await GetDatabaseHeadAsync(conn, stoppingToken);
-            if (currentHead > warmupTarget)
+            try
             {
-                _logger.LogInformation(
-                    "New blocks arrived during warmup ({WarmupTarget} -> {CurrentHead}). Processing gap...",
-                    warmupTarget, currentHead);
+                _logger.LogInformation("Starting cache warmup...");
 
-                // Process the gap using the same notification processing logic
-                await ProcessBlockGapAsync(conn, warmupTarget + 1, currentHead, stoppingToken);
+                // Wait for PostgreSQL to be ready
+                await WaitForDatabaseAsync(stoppingToken);
 
-                _state.LastProcessedBlock = currentHead;
-                _logger.LogInformation("Processed {Count} blocks that arrived during warmup",
-                    currentHead - warmupTarget);
+                await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
+                await conn.OpenAsync(stoppingToken);
+
+                // STEP 1: Get the current database head block and set it as warmup target
+                var warmupTarget = await GetDatabaseHeadAsync(conn, stoppingToken);
+                _state.WarmupTargetBlock = warmupTarget;
+                _logger.LogInformation("Warmup target block set to: {Block}", warmupTarget);
+
+                // STEP 2: Replay all events up to the warmup target
+                _logger.LogInformation("Starting warmup replay up to block {Block}...", warmupTarget);
+
+                // Replay V1 events
+                await ReplayV1EventsAsync(conn, warmupTarget, stoppingToken);
+
+                // Replay V2 events
+                await ReplayV2EventsAsync(conn, warmupTarget, stoppingToken);
+
+                // Load group memberships
+                await LoadGroupMembershipsAsync(conn, stoppingToken);
+
+                // Load trust relations
+                await LoadTrustRelationsAsync(conn, warmupTarget, stoppingToken);
+
+                // Load avatar metadata (CID maps)
+                await LoadAvatarMetadataAsync(conn, stoppingToken);
+
+                // Load balances (this may take longer)
+                await LoadBalancesAsync(conn, stoppingToken);
+
+                // Rebuild secondary indexes for fast balance lookups
+                _logger.LogInformation("Rebuilding secondary indexes...");
+                _caches.RebuildSecondaryIndexes();
+                _logger.LogInformation("Secondary indexes rebuilt");
+
+                // Update state
+                _state.LastProcessedBlock = warmupTarget;
+                _logger.LogInformation("========================================");
+                _logger.LogInformation("✓ Warmup replay completed at block {Block}", warmupTarget);
+                _logger.LogInformation("========================================");
+
+                // STEP 3: Initialize block ring buffer with recent blocks
+                await InitializeBlockRingBufferAsync(conn, warmupTarget, stoppingToken);
+
+                // STEP 4: Check if new blocks arrived during warmup and process them
+                var currentHead = await GetDatabaseHeadAsync(conn, stoppingToken);
+                if (currentHead > warmupTarget)
+                {
+                    _logger.LogInformation(
+                        "New blocks arrived during warmup ({WarmupTarget} -> {CurrentHead}). Processing gap...",
+                        warmupTarget, currentHead);
+
+                    // Process the gap using the same notification processing logic
+                    await ProcessBlockGapAsync(conn, warmupTarget + 1, currentHead, stoppingToken);
+
+                    _state.LastProcessedBlock = currentHead;
+                    _logger.LogInformation("Processed {Count} blocks that arrived during warmup",
+                        currentHead - warmupTarget);
+                }
+                else
+                {
+                    _logger.LogInformation("No new blocks arrived during warmup");
+                }
+
+                // STEP 5: Mark warmup as complete
+                _state.WarmupComplete = true;
+
+                // Reset reminder time on success
+                _lastReminderLogTime = DateTime.MinValue;
+
+                _logger.LogInformation("Cache warmup completed successfully");
+                break; // Exit loop on success
             }
-            else
+            catch (Exception ex)
             {
-                _logger.LogInformation("No new blocks arrived during warmup");
-            }
+                _logger.LogError(ex, "Cache warmup failed");
 
-            // STEP 5: Mark warmup as complete
-            _state.WarmupComplete = true;
+                // Log periodic reminder if enough time has passed since last reminder
+                var now = DateTime.UtcNow;
+                if (now - _lastReminderLogTime >= _reminderInterval)
+                {
+                    _logger.LogWarning("Cache warmup failed. Service will remain unhealthy until manual restart or DB issue is resolved.");
+                    _lastReminderLogTime = now;
+                }
+
+                // Wait before retrying
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Cache warmup failed. Service will remain unhealthy until manual restart or DB issue is resolved.");
-            // Do not rethrow - let the service stay up but unhealthy
-        }
+
+        _logger.LogInformation("Cache warmup service stopped");
     }
 
     private async Task WaitForDatabaseAsync(CancellationToken ct)
