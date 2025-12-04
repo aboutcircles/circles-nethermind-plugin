@@ -5,6 +5,12 @@ using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure host options to ignore background service exceptions
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
+
 // Load settings from environment
 var settings = CacheServiceSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);

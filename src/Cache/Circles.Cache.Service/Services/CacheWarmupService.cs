@@ -32,6 +32,9 @@ public class CacheWarmupService : BackgroundService
         {
             _logger.LogInformation("Starting cache warmup...");
 
+            // Wait for PostgreSQL to be ready
+            await WaitForDatabaseAsync(stoppingToken);
+
             await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
             await conn.OpenAsync(stoppingToken);
 
@@ -97,16 +100,40 @@ public class CacheWarmupService : BackgroundService
 
             // STEP 5: Mark warmup as complete
             _state.WarmupComplete = true;
-
-            _logger.LogInformation("Cache warmup completed successfully. Current block: {Block}", _state.LastProcessedBlock);
-            _logger.LogInformation("Cache statistics: {Stats}",
-                System.Text.Json.JsonSerializer.Serialize(_caches.GetStatistics()));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cache warmup failed");
-            throw;
+            _logger.LogError(ex, "Cache warmup failed. Service will remain unhealthy until manual restart or DB issue is resolved.");
+            // Do not rethrow - let the service stay up but unhealthy
         }
+    }
+
+    private async Task WaitForDatabaseAsync(CancellationToken ct)
+    {
+        _logger.LogInformation("Waiting for PostgreSQL to be ready...");
+
+        const int maxRetries = 60; // 5 minutes with 5s delay
+        const int delayMs = 5000;
+
+        for (int i = 0; i < maxRetries; i++)
+        {
+            try
+            {
+                await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
+                await conn.OpenAsync(ct);
+                await using var cmd = new NpgsqlCommand("SELECT 1", conn);
+                await cmd.ExecuteScalarAsync(ct);
+                _logger.LogInformation("PostgreSQL is ready");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PostgreSQL not ready yet (attempt {Attempt}/{MaxRetries}). Retrying in {Delay}s...", i + 1, maxRetries, delayMs / 1000);
+                await Task.Delay(delayMs, ct);
+            }
+        }
+
+        throw new Exception($"PostgreSQL did not become ready after {maxRetries} attempts");
     }
 
     private async Task<long> GetDatabaseHeadAsync(NpgsqlConnection conn, CancellationToken ct)
