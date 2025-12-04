@@ -32,7 +32,7 @@ public class CacheContainer
     // V2 Caches (simplified - using string tuples for now)
     public RollbackCache<string, (string Type, long RegisteredAt)> V2Avatars { get; private set; } = null!;
     public RollbackCache<string, string> Erc20WrapperAddresses { get; private set; } = null!;
-    public RollbackCache<string, (string Name, string Mint)> Groups { get; private set; } = null!;
+    public RollbackCache<string, (string Name, string Mint, string Symbol)> Groups { get; private set; } = null!;
     public RollbackCache<string, (string Member, long ExpiryTime)> GroupMemberships { get; private set; } = null!;
     public RollbackCache<string, string> V2AvatarToCidMap { get; private set; } = null!;
     public RollbackCache<string, string> V2AvatarToShortNameMap { get; private set; } = null!;
@@ -83,7 +83,7 @@ public class CacheContainer
         // V2 Caches
         V2Avatars = new RollbackCache<string, (string Type, long RegisteredAt)>("V2Avatars");
         Erc20WrapperAddresses = new RollbackCache<string, string>("Erc20WrapperAddresses");
-        Groups = new RollbackCache<string, (string Name, string Mint)>("Groups");
+        Groups = new RollbackCache<string, (string Name, string Mint, string Symbol)>("Groups");
         GroupMemberships = new RollbackCache<string, (string Member, long ExpiryTime)>("GroupMemberships");
         V2AvatarToCidMap = new RollbackCache<string, string>("V2AvatarToCidMap");
         V2AvatarToShortNameMap = new RollbackCache<string, string>("V2AvatarToShortNameMap");

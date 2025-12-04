@@ -51,7 +51,8 @@ public class AvatarsController : ControllerBase
                     CidV0: cid,
                     IsHuman: v2Info.Type.Contains("Human"),
                     Name: isGroup ? groupInfo.Name : null,
-                    Symbol: null, // TODO: Add symbol to Groups cache
+                    Symbol: isGroup ? groupInfo.Symbol : null,
+                    ShortName: shortName,
                     RegisteredAt: v2Info.RegisteredAt,
                     LastProcessedBlock: lastBlock,
                     Timestamp: timestamp
@@ -112,6 +113,7 @@ public class AvatarsController : ControllerBase
                 if (_caches.V2Avatars.TryGetValue(addressLower, out var v2Info))
                 {
                     var cid = _caches.V2AvatarToCidMap.TryGetValue(addressLower, out var c) ? c : null;
+                    var shortName = _caches.V2AvatarToShortNameMap.TryGetValue(addressLower, out var sn) ? sn : null;
                     var isGroup = _caches.Groups.TryGetValue(addressLower, out var groupInfo);
 
                     results.Add(new AvatarInfoResponse(
@@ -121,6 +123,8 @@ public class AvatarsController : ControllerBase
                         CidV0: cid,
                         IsHuman: v2Info.Type.Contains("Human"),
                         Name: isGroup ? groupInfo.Name : null,
+                        Symbol: isGroup ? groupInfo.Symbol : null,
+                        ShortName: shortName,
                         RegisteredAt: v2Info.RegisteredAt,
                         LastProcessedBlock: lastBlock,
                         Timestamp: timestamp

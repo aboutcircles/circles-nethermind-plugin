@@ -1,4 +1,6 @@
+using System.Numerics;
 using Circles.Cache.Service.Caches;
+using Circles.Index.Common;
 using Npgsql;
 
 namespace Circles.Cache.Service.Services;
@@ -74,6 +76,9 @@ public class CacheWarmupService : BackgroundService
 
                 // Load avatar metadata (CID maps)
                 await LoadAvatarMetadataAsync(conn, warmupTarget, stoppingToken);
+
+                // Load V2 short names
+                await LoadV2ShortNamesAsync(conn, warmupTarget, stoppingToken);
 
                 // Load balances (this may take longer)
                 await LoadBalancesAsync(conn, stoppingToken);
@@ -425,7 +430,8 @@ public class CacheWarmupService : BackgroundService
                     0 as timestamp,
                     'Group' as type,
                     r.""name"",
-                    r.""mint""
+                    r.""mint"",
+                    r.""symbol""
                 FROM ""CrcV2_RegisterGroup"" r
                 WHERE r.""blockNumber"" <= @toBlock
             ) AS combined
@@ -449,6 +455,7 @@ public class CacheWarmupService : BackgroundService
             var type = reader.GetString(5);
             var name = reader.IsDBNull(6) ? null : reader.GetString(6);
             var mint = reader.IsDBNull(7) ? null : reader.GetString(7);
+            var symbol = reader.IsDBNull(8) ? null : reader.GetString(8);
 
             var addressKey = address.ToLowerInvariant();
 
@@ -464,7 +471,7 @@ public class CacheWarmupService : BackgroundService
             }
             else if (type == "Group")
             {
-                _caches.Groups.Add(blockNumber, addressKey, (name!, mint!));
+                _caches.Groups.Add(blockNumber, addressKey, (name!, mint!, symbol!));
                 groupCount++;
             }
 
@@ -876,9 +883,44 @@ public class CacheWarmupService : BackgroundService
         }
 
         _logger.LogInformation("Loaded {Count} V2 avatar CIDs", v2CidCount);
+    }
 
-        // TODO: Load V2 short names if needed (V2AvatarToShortNameMap)
-        // This would require querying the name registry or similar
+    private async Task LoadV2ShortNamesAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading V2 short names...");
+
+        // Load V2 short names (latest registration for each avatar)
+        const string shortNameSql = @"
+            SELECT s.avatar, s.""shortName""
+            FROM (
+                SELECT avatar, ""shortName"",
+                    ROW_NUMBER() OVER (PARTITION BY avatar ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
+                FROM ""CrcV2_RegisterShortName""
+                WHERE ""blockNumber"" <= @toBlock
+            ) s
+            WHERE s.rn = 1";
+
+        await using var cmd = new NpgsqlCommand(shortNameSql, conn);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        var count = 0;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var avatar = reader.GetString(0);
+            // shortName is stored as numeric (BigInteger) in database
+            var shortNameNumeric = BigInteger.Parse(reader.GetString(1));
+            // Convert to Base58Btc format (like "zAlice")
+            var shortNameBase58 = shortNameNumeric.ToBase58Btc();
+
+            var key = avatar.ToLowerInvariant();
+            // Use toBlock as we're loading deduplicated state after event replay
+            _caches.V2AvatarToShortNameMap.Add(toBlock, key, shortNameBase58);
+
+            count++;
+        }
+
+        _logger.LogInformation("Loaded {Count} V2 short names", count);
     }
 
     /// <summary>
@@ -1090,7 +1132,7 @@ public class CacheWarmupService : BackgroundService
 
         // Process V2 RegisterGroup
         const string groupSql = @"
-            SELECT r.""blockNumber"", r.""group"", r.""name"", r.""mint""
+            SELECT r.""blockNumber"", r.""group"", r.""name"", r.""mint"", r.""symbol""
             FROM ""CrcV2_RegisterGroup"" r
             WHERE r.""blockNumber"" >= @fromBlock AND r.""blockNumber"" <= @toBlock
             ORDER BY r.""blockNumber"", r.""transactionIndex"", r.""logIndex""";
@@ -1107,10 +1149,11 @@ public class CacheWarmupService : BackgroundService
                 var group = groupReader.GetString(1);
                 var name = groupReader.GetString(2);
                 var mint = groupReader.GetString(3);
+                var symbol = groupReader.GetString(4);
 
                 var groupKey = group.ToLowerInvariant();
 
-                _caches.Groups.Add(blockNumber, groupKey, (name, mint));
+                _caches.Groups.Add(blockNumber, groupKey, (name, mint, symbol));
             }
         }
 
@@ -1150,7 +1193,7 @@ public class CacheWarmupService : BackgroundService
         _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
         _caches.V2Avatars.Seed(new Dictionary<string, (string, long)>());
         _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, string>());
-        _caches.Groups.Seed(new Dictionary<string, (string, string)>());
+        _caches.Groups.Seed(new Dictionary<string, (string, string, string)>());
         _caches.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
         _caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>());
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
