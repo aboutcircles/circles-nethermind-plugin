@@ -49,6 +49,9 @@ public class CacheWarmupService : BackgroundService
                 // Wait for initial sync to complete before starting warmup
                 await WaitForInitialSyncAsync(conn, stoppingToken);
 
+                // Clear caches before replay to ensure monotonic block order
+                ClearCaches();
+
                 // STEP 1: Get the current database head block and set it as warmup target
                 var warmupTarget = await GetDatabaseHeadAsync(conn, stoppingToken);
                 _state.WarmupTargetBlock = warmupTarget;
@@ -64,13 +67,13 @@ public class CacheWarmupService : BackgroundService
                 await ReplayV2EventsAsync(conn, warmupTarget, stoppingToken);
 
                 // Load group memberships
-                await LoadGroupMembershipsAsync(conn, stoppingToken);
+                await LoadGroupMembershipsAsync(conn, warmupTarget, stoppingToken);
 
                 // Load trust relations
                 await LoadTrustRelationsAsync(conn, warmupTarget, stoppingToken);
 
                 // Load avatar metadata (CID maps)
-                await LoadAvatarMetadataAsync(conn, stoppingToken);
+                await LoadAvatarMetadataAsync(conn, warmupTarget, stoppingToken);
 
                 // Load balances (this may take longer)
                 await LoadBalancesAsync(conn, stoppingToken);
@@ -196,37 +199,53 @@ public class CacheWarmupService : BackgroundService
         var lastWaitLogTime = DateTime.UtcNow;
         const int waitLogIntervalSeconds = 300;
 
-        while (!ct.IsCancellationRequested)
+        try
         {
-            // Wait for notification with periodic logging
-            var waitTask = conn.WaitAsync(ct);
-            var delayTask = Task.Delay(TimeSpan.FromSeconds(waitLogIntervalSeconds), ct);
-            var completedTask = await Task.WhenAny(notificationReceived.Task, waitTask, delayTask);
-
-            if (completedTask == notificationReceived.Task)
+            while (!ct.IsCancellationRequested)
             {
-                // Notification received, sync is complete
-                _logger.LogInformation("Initial sync confirmed complete via NOTIFY event");
+                // Wait for notification with periodic logging
+                var waitTask = conn.WaitAsync(ct);
+                var delayTask = Task.Delay(TimeSpan.FromSeconds(waitLogIntervalSeconds), ct);
+                var completedTask = await Task.WhenAny(notificationReceived.Task, waitTask, delayTask);
 
-                // Wait for the WaitAsync to complete if it hasn't already, to exit the waiting state
-                if (!waitTask.IsCompleted)
+                if (completedTask == notificationReceived.Task)
                 {
-                    await waitTask;
+                    // Notification received, sync is complete
+                    _logger.LogInformation("Initial sync confirmed complete via NOTIFY event");
+
+                    // Wait for the WaitAsync to complete if it hasn't already, to exit the waiting state
+                    if (!waitTask.IsCompleted)
+                    {
+                        await waitTask;
+                    }
+
+                    // Unlisten to free the connection for subsequent operations
+                    await using var unlistenCmd = new NpgsqlCommand($"UNLISTEN {_settings.PgNotifyChannel}", conn);
+                    await unlistenCmd.ExecuteNonQueryAsync(ct);
+
+                    return;
                 }
-
-                // Unlisten to free the connection for subsequent operations
-                await using var unlistenCmd = new NpgsqlCommand($"UNLISTEN {_settings.PgNotifyChannel}", conn);
-                await unlistenCmd.ExecuteNonQueryAsync(ct);
-
-                return;
+                else if (completedTask == delayTask)
+                {
+                    // Periodic log to show we're still waiting
+                    _logger.LogInformation("Still waiting for first NOTIFY event on channel '{Channel}'...",
+                        _settings.PgNotifyChannel);
+                }
+                // If waitTask completed, it means there's data but not our notification, continue loop
             }
-            else if (completedTask == delayTask)
+        }
+        finally
+        {
+            // Ensure we always unlisten, even if cancelled or exception occurs
+            try
             {
-                // Periodic log to show we're still waiting
-                _logger.LogInformation("Still waiting for first NOTIFY event on channel '{Channel}'...",
-                    _settings.PgNotifyChannel);
+                await using var unlistenCmd = new NpgsqlCommand($"UNLISTEN {_settings.PgNotifyChannel}", conn);
+                await unlistenCmd.ExecuteNonQueryAsync(CancellationToken.None);
             }
-            // If waitTask completed, it means there's data but not our notification, continue loop
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to UNLISTEN from channel '{Channel}' during cleanup", _settings.PgNotifyChannel);
+            }
         }
     }
 
@@ -683,10 +702,12 @@ public class CacheWarmupService : BackgroundService
             transferCount, batchCount, _caches.V2BalancesByAccountAndToken.Count);
     }
 
-    private async Task LoadGroupMembershipsAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task LoadGroupMembershipsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Loading group memberships...");
 
+        // Load group memberships at the current state
+        // Use toBlock as block number since we're loading the final state
         const string sql = @"
             SELECT
                 ""group"",
@@ -714,8 +735,8 @@ public class CacheWarmupService : BackgroundService
             // Composite key: group:member
             var key = $"{group.ToLowerInvariant()}:{member.ToLowerInvariant()}";
 
-            // Add to cache
-            _caches.GroupMemberships.Add(blockNumber, key, (member, expiryLong));
+            // Add to cache - use toBlock as we're loading deduplicated state after event replay
+            _caches.GroupMemberships.Add(toBlock, key, (member, expiryLong));
 
             count++;
         }
@@ -754,8 +775,9 @@ public class CacheWarmupService : BackgroundService
 
             // For V1, we use limit as the indicator (no expiry time)
             // Store as 0 for active trust (V1 doesn't have expiry)
+            // Use toBlock as we're loading deduplicated state after event replay
             var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
-            _caches.V1TrustRelations.Add(blockNumber, key, 0L);
+            _caches.V1TrustRelations.Add(toBlock, key, 0L);
 
             v1Count++;
         }
@@ -781,8 +803,9 @@ public class CacheWarmupService : BackgroundService
 
             long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
 
+            // Use toBlock as we're loading deduplicated state after event replay
             var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
-            _caches.V2TrustRelations.Add(blockNumber, key, expiryLong);
+            _caches.V2TrustRelations.Add(toBlock, key, expiryLong);
 
             v2Count++;
         }
@@ -790,7 +813,7 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loaded {Count} V2 trust relations", v2Count);
     }
 
-    private async Task LoadAvatarMetadataAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task LoadAvatarMetadataAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Loading avatar metadata (CID maps)...");
 
@@ -801,10 +824,12 @@ public class CacheWarmupService : BackgroundService
                 SELECT avatar, ""metadataDigest"",
                     ROW_NUMBER() OVER (PARTITION BY avatar ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
                 FROM ""CrcV1_UpdateMetadataDigest""
+                WHERE ""blockNumber"" <= @toBlock
             ) m
             WHERE m.rn = 1";
 
         await using var v1CidCmd = new NpgsqlCommand(v1CidSql, conn);
+        v1CidCmd.Parameters.AddWithValue("toBlock", toBlock);
         await using var v1CidReader = await v1CidCmd.ExecuteReaderAsync(ct);
         var v1CidCount = 0;
 
@@ -814,7 +839,8 @@ public class CacheWarmupService : BackgroundService
             var cid = v1CidReader.GetString(1);
 
             var key = avatar.ToLowerInvariant();
-            _caches.V1AvatarToCidMap.Add(1, key, cid);
+            // Use toBlock as we're loading deduplicated state after event replay
+            _caches.V1AvatarToCidMap.Add(toBlock, key, cid);
 
             v1CidCount++;
         }
@@ -828,10 +854,12 @@ public class CacheWarmupService : BackgroundService
                 SELECT avatar, ""metadataDigest"",
                     ROW_NUMBER() OVER (PARTITION BY avatar ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
                 FROM ""CrcV2_UpdateMetadataDigest""
+                WHERE ""blockNumber"" <= @toBlock
             ) m
             WHERE m.rn = 1";
 
         await using var v2CidCmd = new NpgsqlCommand(v2CidSql, conn);
+        v2CidCmd.Parameters.AddWithValue("toBlock", toBlock);
         await using var v2CidReader = await v2CidCmd.ExecuteReaderAsync(ct);
         var v2CidCount = 0;
 
@@ -841,7 +869,8 @@ public class CacheWarmupService : BackgroundService
             var cid = v2CidReader.GetString(1);
 
             var key = avatar.ToLowerInvariant();
-            _caches.V2AvatarToCidMap.Add(1, key, cid);
+            // Use toBlock as we're loading deduplicated state after event replay
+            _caches.V2AvatarToCidMap.Add(toBlock, key, cid);
 
             v2CidCount++;
         }
@@ -1109,5 +1138,26 @@ public class CacheWarmupService : BackgroundService
                 _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, erc20Wrapper);
             }
         }
+    }
+
+    /// <summary>
+    /// Clears all caches to ensure a clean state for warmup replay.
+    /// </summary>
+    private void ClearCaches()
+    {
+        _caches.V1Avatars.Seed(new Dictionary<string, (string, string?)>());
+        _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
+        _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
+        _caches.V2Avatars.Seed(new Dictionary<string, (string, long)>());
+        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, string>());
+        _caches.Groups.Seed(new Dictionary<string, (string, string)>());
+        _caches.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
+        _caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>());
+        _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
+        _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
+        _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
+        _caches.LastTokenMovement.Seed(new Dictionary<string, long>());
+        _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
+        _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
     }
 }
