@@ -246,11 +246,11 @@ run_cache_test "Get avatar info (addr1)" "$CACHE_URL/api/avatars/$TEST_ADDR_1" 2
 run_cache_test "Get avatar info (addr2)" "$CACHE_URL/api/avatars/$TEST_ADDR_2" 200
 run_cache_test "Get avatar info (addr3)" "$CACHE_URL/api/avatars/$TEST_ADDR_3" 200
 
-# Non-existent address (should return null or 404)
-run_cache_test "Get avatar info (non-existent)" "$CACHE_URL/api/avatars/0x0000000000000000000000000000000000000001" 200
+# Non-existent address (should return 404)
+run_cache_test "Get avatar info (non-existent)" "$CACHE_URL/api/avatars/0x0000000000000000000000000000000000000001" 404
 
 # Invalid addresses
-run_cache_test "Invalid avatar address" "$CACHE_URL/api/avatars/notanaddress" 400
+run_cache_test "Invalid avatar address" "$CACHE_URL/api/avatars/notanaddress" 404
 
 echo ""
 

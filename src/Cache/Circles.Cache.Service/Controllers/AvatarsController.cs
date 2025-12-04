@@ -77,7 +77,7 @@ public class AvatarsController : ControllerBase
                 ));
             }
 
-            return Ok(null);
+            return NotFound(new { error = $"No avatar found for address {address}" });
         }
         catch (Exception ex)
         {

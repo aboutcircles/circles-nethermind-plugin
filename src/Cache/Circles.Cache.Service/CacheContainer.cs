@@ -42,6 +42,10 @@ public class CacheContainer
     public RollbackCache<string, decimal> V2BalancesByAccountAndToken { get; private set; } = null!;
     public RollbackCache<string, long> LastTokenMovement { get; private set; } = null!;
 
+    // Trust Relations Caches (key: "truster:trustee", value: expiryTime)
+    public RollbackCache<string, long> V1TrustRelations { get; private set; } = null!;
+    public RollbackCache<string, long> V2TrustRelations { get; private set; } = null!;
+
     // Secondary Indexes for O(1) balance lookups
     // Maps address -> set of token IDs that address holds
     private readonly Dictionary<string, HashSet<string>> _v1BalancesByAddress = new();
@@ -64,7 +68,9 @@ public class CacheContainer
         V2AvatarToShortNameMap,
         V1BalancesByAccountAndToken,
         V2BalancesByAccountAndToken,
-        LastTokenMovement
+        LastTokenMovement,
+        V1TrustRelations,
+        V2TrustRelations
     };
 
     private void InitializeCaches()
@@ -86,6 +92,10 @@ public class CacheContainer
         V1BalancesByAccountAndToken = new RollbackCache<string, decimal>("V1BalancesByAccountAndToken");
         V2BalancesByAccountAndToken = new RollbackCache<string, decimal>("V2BalancesByAccountAndToken");
         LastTokenMovement = new RollbackCache<string, long>("LastTokenMovement");
+
+        // Trust Relations Caches
+        V1TrustRelations = new RollbackCache<string, long>("V1TrustRelations");
+        V2TrustRelations = new RollbackCache<string, long>("V2TrustRelations");
     }
 
     /// <summary>
@@ -225,6 +235,8 @@ public class CacheContainer
                 ["v1_balances"] = V1BalancesByAccountAndToken.Count,
                 ["v2_balances"] = V2BalancesByAccountAndToken.Count,
                 ["last_token_movements"] = LastTokenMovement.Count,
+                ["v1_trust_relations"] = V1TrustRelations.Count,
+                ["v2_trust_relations"] = V2TrustRelations.Count,
                 ["total_entries"] = AllCaches.Sum(c => c.Count),
                 ["v1_indexed_addresses"] = _v1BalancesByAddress.Count,
                 ["v2_indexed_addresses"] = _v2BalancesByAddress.Count
