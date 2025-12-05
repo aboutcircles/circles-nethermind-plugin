@@ -38,6 +38,54 @@ public class Settings
             ? eventBufferSize
             : 100000;
 
+    /// <summary>
+    /// If set, delete all indexed data from this block number onwards and re-sync from there.
+    /// This is useful for fixing indexing issues or re-indexing after a bug fix.
+    /// Set to 0 or unset to disable re-indexing.
+    /// </summary>
+    public readonly long? ReindexFromBlock =
+        long.TryParse(Environment.GetEnvironmentVariable("REINDEX_FROM_BLOCK"), out var reindexBlock) && reindexBlock > 0
+            ? reindexBlock
+            : null;
+
+    /// <summary>
+    /// Comma-separated list of table names to re-index (delete and re-sync).
+    /// If set to "all" or not specified when REINDEX_FROM_BLOCK is set, all tables will be re-indexed.
+    /// Example: "CrcV2_InvitationsAtScale_RegisterHuman,CrcV2_InvitationsAtScale_AccountClaimed"
+    /// </summary>
+    public readonly string[] ReindexTables =
+        Environment.GetEnvironmentVariable("REINDEX_TABLES")?.Split(',')
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrEmpty(x))
+            .ToArray()
+        ?? [];
+
+    /// <summary>
+    /// Per-table start blocks for catching up specific event tables.
+    /// Format: "TableName1:StartBlock1,TableName2:StartBlock2"
+    /// This allows syncing newly added LogParsers from their deployment block while keeping other tables up-to-date.
+    /// Example: "CrcV2_InvitationsAtScale_RegisterHuman:37500000,CrcV2_InvitationsAtScale_AccountClaimed:37500000"
+    /// </summary>
+    public readonly Dictionary<string, long> TableStartBlocks =
+        ParseTableStartBlocks(Environment.GetEnvironmentVariable("TABLE_START_BLOCKS"));
+
+    private static Dictionary<string, long> ParseTableStartBlocks(string? value)
+    {
+        var result = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(value))
+            return result;
+
+        foreach (var pair in value.Split(','))
+        {
+            var parts = pair.Split(':');
+            if (parts.Length == 2 && long.TryParse(parts[1].Trim(), out var block))
+            {
+                result[parts[0].Trim()] = block;
+            }
+        }
+        return result;
+    }
+
     #endregion
 
     #region Shared host configuration

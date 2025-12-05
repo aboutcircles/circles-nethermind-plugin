@@ -53,6 +53,28 @@ public class StateMachine(
                     {
                         case EnterState:
                         {
+                            // Handle re-indexing if REINDEX_FROM_BLOCK is set
+                            if (context.Settings.ReindexFromBlock.HasValue)
+                            {
+                                var reindexFrom = context.Settings.ReindexFromBlock.Value;
+                                context.Logger.Info($"[REINDEX] REINDEX_FROM_BLOCK is set to {reindexFrom}");
+
+                                if (context.Settings.ReindexTables.Length > 0)
+                                {
+                                    // Delete only from specified tables
+                                    context.Logger.Info($"[REINDEX] Deleting data from tables: {string.Join(", ", context.Settings.ReindexTables)} from block {reindexFrom} onwards...");
+                                    await context.Database.DeleteFromTablesGreaterOrEqualBlock(reindexFrom, context.Settings.ReindexTables);
+                                }
+                                else
+                                {
+                                    // Delete from all tables
+                                    context.Logger.Info($"[REINDEX] Deleting ALL data from block {reindexFrom} onwards...");
+                                    await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
+                                }
+
+                                context.Logger.Info("[REINDEX] Re-index data deletion complete. The indexer will now sync from the appropriate block.");
+                            }
+
                             context.Logger.Info("Initializing: Finding the last persisted block...");
                             var lastPersistedBlock = context.Database.FirstGap()
                                                      ?? context.Database.LatestBlock()
