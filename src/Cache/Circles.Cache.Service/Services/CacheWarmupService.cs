@@ -536,6 +536,8 @@ public class CacheWarmupService : BackgroundService
         // Build V2 balances incrementally from transfers
         await BuildV2BalancesFromTransfersAsync(conn, ct);
 
+        await BuildErc20WrapperBalancesFromTransfersAsync(conn, ct);
+
         _logger.LogInformation("Balance building completed");
     }
 
@@ -698,6 +700,79 @@ public class CacheWarmupService : BackgroundService
         }
 
         _logger.LogInformation("Built V2 balances from {Count} transfers. Total balance entries: {BalanceCount}",
+            transferCount, _caches.V2BalancesByAccountAndToken.Count);
+    }
+
+    private async Task BuildErc20WrapperBalancesFromTransfersAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        // Process all ERC20 wrapper transfers and build balances incrementally
+        const string sql = @"
+            SELECT
+                ""from"",
+                ""to"",
+                ""tokenAddress"",
+                amount,
+                ""blockNumber""
+            FROM ""CrcV2_Erc20WrapperTransfer""
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 600; // 10 minutes for processing all transfers
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        var transferCount = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 10000; // Log every 10k transfers (fewer than ERC1155)
+
+        while (await reader.ReadAsync(ct))
+        {
+            var from = reader.GetString(0);
+            var to = reader.GetString(1);
+            var tokenAddress = reader.GetString(2);
+            var amountBig = reader.GetFieldValue<BigInteger>(3);
+            var blockNumber = reader.GetInt64(4);
+
+            var divisor = BigInteger.Parse("1000000000000000000");
+            var valueBig = amountBig / divisor;
+
+            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            {
+                _logger.LogWarning("Skipping ERC20 wrapper transfer with amount {Amount} that would overflow decimal", amountBig);
+                continue;
+            }
+
+            var value = (decimal)valueBig;
+            var tokenKey = tokenAddress.ToLowerInvariant();
+
+            // Skip zero address
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                // Subtract from sender
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - value);
+            }
+
+            if (to != "0x0000000000000000000000000000000000000000")
+            {
+                // Add to receiver
+                var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + value);
+            }
+
+            transferCount++;
+
+            if (transferCount % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("ERC20 wrapper balance building progress: {Count} transfers processed ({Rate:F0} transfers/sec)",
+                    transferCount, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        _logger.LogInformation("Built ERC20 wrapper balances from {Count} transfers. Total V2 balance entries: {BalanceCount}",
             transferCount, _caches.V2BalancesByAccountAndToken.Count);
     }
 
