@@ -292,6 +292,7 @@ make test-rpc-prod ARGS='--json'                   # Test production (JSON outpu
 **Tested Methods:**
 
 The script tests the following RPC methods:
+
 - V1 Methods: `circles_getTotalBalance`, `circles_getTokenBalances`, `circles_getTrustRelations`
 - V2 Methods: `circlesV2_getTotalBalance`, `circlesV2_findPath`
 - Query Methods: `circles_query` (various table queries)
@@ -331,12 +332,14 @@ Arguments:
 **Output:**
 
 Results are saved to `RegressionTestResults/TIMESTAMP/`:
+
 - `local.json` - Raw JSON responses from local endpoint
 - `remote.json` - Raw JSON responses from remote endpoint
 - `diff.txt` - Detailed comparison showing differences
 - `summary.txt` - Summary report with statistics
 
 **Exit Codes:**
+
 - `0` - All tests match
 - `1` - Discrepancies found or errors occurred
 
@@ -426,6 +429,352 @@ When using `--coverage`, results are saved to `TestResults/` directory.
 
 ---
 
+### `bump-index-versions.sh` - Version Bumper for Index Packages
+
+Bumps version numbers in .csproj files for Index sub-packages.
+
+**Usage:**
+
+```bash
+./scripts/bump-index-versions.sh
+```
+
+**Description:**
+
+- Lists all .csproj files in `src/Index/`
+- Lets you select a package
+- Shows current version
+- Prompts for new version
+- Updates the file in-place
+
+**When to use:**
+
+- When releasing new versions of Index sub-packages
+- Before creating NuGet packages with updated versions
+
+---
+
+### `call_rpc.sh` - Interactive RPC Method Caller
+
+Interactive script to call Circles RPC methods against different endpoints.
+
+**Usage:**
+
+```bash
+./scripts/call_rpc.sh
+```
+
+**Description:**
+
+- Prompts for RPC endpoint (remote mainnet, testnet, or local)
+- Lists available Circles RPC methods
+- Prompts for method selection and parameters
+- Makes the RPC call and displays results
+
+**When to use:**
+
+- Manual testing of RPC endpoints
+- Debugging RPC method responses
+- Quick verification of deployed services
+
+---
+
+### `diagnose-data-diff.sh` - Data Difference Diagnostic
+
+Compares indexed data between two Circles RPC endpoints to identify missing or different data.
+
+**Usage:**
+
+```bash
+./scripts/diagnose-data-diff.sh [staging_url] [production_url] [test_address]
+```
+
+**Examples:**
+
+```bash
+./scripts/diagnose-data-diff.sh http://135.181.238.49:8081 https://rpc.aboutcircles.com
+./scripts/diagnose-data-diff.sh http://localhost:8081 https://rpc.aboutcircles.com 0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0
+```
+
+**When to use:**
+
+- Debugging indexing issues between environments
+- Verifying data consistency after deployments
+- Identifying missing blocks or events
+
+---
+
+### `docker-run.sh` - Docker Compose Runner
+
+Convenient wrapper for running Docker Compose configurations for different networks.
+
+**Usage:**
+
+```bash
+./scripts/docker-run.sh <network> [command]
+```
+
+**Networks:**
+
+- `gnosis` - Gnosis mainnet
+
+**Commands:**
+
+- `up` - Start services (default: detached mode)
+- `down` - Stop and remove services
+- `logs` - View logs (use `-f` to follow)
+- `ps` - List running services
+- `restart` - Restart services
+- `stop` - Stop services
+- `start` - Start stopped services
+
+**Examples:**
+
+```bash
+./scripts/docker-run.sh gnosis                    # Start Gnosis mainnet
+./scripts/docker-run.sh gnosis logs -f            # Follow logs
+./scripts/docker-run.sh gnosis down               # Stop services
+```
+
+**When to use:**
+
+- Running full stack in Docker for testing or production
+- When you don't need to modify plugin code locally
+
+---
+
+### `load-test-rpc.sh` - RPC Load Testing
+
+Load testing script for RPC endpoints with cache performance comparison.
+
+**Usage:**
+
+```bash
+./scripts/load-test-rpc.sh [options]
+```
+
+**Options:**
+
+- `--rpc-url URL` - RPC service URL (default: `http://localhost:8081`)
+- `--cache-url URL` - Cache service URL (default: `http://localhost:3001`)
+- `--duration SECONDS` - Duration of each test phase (default: 60)
+- `--concurrency NUM` - Number of concurrent requests (default: 10,50,100)
+- `--output-dir DIR` - Directory for results (default: LoadTestResults/TIMESTAMP)
+- `--skip-cache-test` - Skip cache-enabled tests
+- `--skip-nocache-test` - Skip cache-disabled tests
+
+**Examples:**
+
+```bash
+./scripts/load-test-rpc.sh                           # Full test with defaults
+./scripts/load-test-rpc.sh --duration 30             # Shorter test
+./scripts/load-test-rpc.sh --concurrency 10,20,50    # Custom concurrency levels
+```
+
+**When to use:**
+
+- Performance testing of RPC services
+- Comparing cache vs non-cache performance
+- Load testing before production deployment
+
+---
+
+### `run-cache-service.sh` - Cache Service Development Server
+
+Runs the Circles Cache Service locally for development.
+
+**Usage:**
+
+```bash
+./scripts/run-cache-service.sh [dotnet-run-args]
+```
+
+**Environment Variables:**
+
+- `BUILD_CONFIGURATION` - Build configuration (default: Debug)
+- `ASPNETCORE_ENVIRONMENT` - ASP.NET Core environment (default: Development)
+- `ASPNETCORE_URLS` - Listen URLs (default: `http://localhost:3001`)
+- `POSTGRES_CONNECTION_STRING` - PostgreSQL connection string
+- `PG_NOTIFY_CHANNEL` - PostgreSQL notification channel (default: circles_index_events)
+- `ROLLBACK_CAPACITY` - Rollback capacity (default: 12)
+- `MAX_CATCHUP_LAG` - Max catchup lag (default: 10)
+- `Logging__LogLevel__Default` - Log level (default: Information)
+
+**Examples:**
+
+```bash
+./scripts/run-cache-service.sh
+```
+
+**Default Configuration:**
+
+- URL: `http://localhost:3001`
+- Database: localhost:5432/postgres (user: postgres, pass: postgres)
+- Environment: Development
+- Build: Debug
+
+**When to use:**
+
+- Developing or testing the cache service locally
+- Running cache service alongside other local services
+
+---
+
+### `run-index.sh` - Index Plugin Development Server
+
+Builds and runs Nethermind with the Circles Index plugin for local development.
+
+**Usage:**
+
+```bash
+./scripts/run-index.sh
+```
+
+**Environment Variables:**
+
+- `NETHERMIND_SOURCE` - Path to Nethermind source code (default: src/nethermind)
+
+**Prerequisites:**
+
+- Nethermind source code cloned to `src/nethermind/` or set `NETHERMIND_SOURCE`
+- PostgreSQL running (via Docker or locally)
+- .NET 9.0 SDK
+
+**When to use:**
+
+- Developing the Circles Index plugin
+- Testing plugin integration with Nethermind
+- When you need fastest iteration on plugin code
+
+---
+
+### `run-postgres.sh` - PostgreSQL Development Server
+
+Starts PostgreSQL database using Docker Compose for different networks.
+
+**Usage:**
+
+```bash
+./scripts/run-postgres.sh [network]
+```
+
+**Networks:**
+
+- `gnosis` - Gnosis mainnet (default)
+- `chiado` - Chiado testnet
+- `spaceneth` - Spaceneth testnet
+
+**Examples:**
+
+```bash
+./scripts/run-postgres.sh              # Start Gnosis PostgreSQL
+./scripts/run-postgres.sh chiado       # Start Chiado PostgreSQL
+```
+
+**When to use:**
+
+- Starting database for local development
+- When running services locally without full Docker Compose stack
+
+---
+
+### `test-cache.sh` - Cache Service Tester
+
+Comprehensive test script for Cache Service endpoints, validation, performance, and reorg handling.
+
+**Usage:**
+
+```bash
+./scripts/test-cache.sh [CACHE_URL] [options]
+```
+
+**Options:**
+
+- `--json` - Output JSON format
+- `--json-dir <dir>` - Directory for JSON output
+- `--skip-warmup` - Skip warmup checks
+- `--performance` - Run performance benchmarks
+
+**Examples:**
+
+```bash
+./scripts/test-cache.sh                                    # Test localhost:3001
+./scripts/test-cache.sh http://localhost:3001              # Test custom URL
+./scripts/test-cache.sh --json                             # JSON output
+./scripts/test-cache.sh --performance                      # Performance benchmarks
+```
+
+**When to use:**
+
+- Testing cache service functionality
+- Validating cache performance and correctness
+- Debugging cache issues
+
+---
+
+### `test-subscriptions.sh` - WebSocket Subscription Tester
+
+Tests the circles_subscribe WebSocket endpoint for real-time event notifications.
+
+**Usage:**
+
+```bash
+./scripts/test-subscriptions.sh [WS_URL] [options]
+```
+
+**Options:**
+
+- `--duration SECONDS` - Max test duration (default: 60)
+- `--min-events N` - Minimum events to receive (default: 3)
+- `--filter ADDRESS` - Filter by address (requires CIRCLES_SEED_PHRASE)
+- `--json` - Output JSON format
+- `--json-file FILE` - Output to JSON file
+
+**Environment Variables:**
+
+- `CIRCLES_SEED_PHRASE` - Required when using --filter: 12/24 word mnemonic for triggering test transactions
+
+**Examples:**
+
+```bash
+./scripts/test-subscriptions.sh                                          # Test localhost:8081
+./scripts/test-subscriptions.sh ws://localhost:8081/subscribe            # Custom URL
+CIRCLES_SEED_PHRASE="..." ./test-subscriptions.sh --filter 0x...         # Filter and auto-trigger
+./scripts/test-subscriptions.sh --json --json-file results.json          # JSON output
+```
+
+**When to use:**
+
+- Testing WebSocket subscriptions
+- Validating real-time event notifications
+- Debugging subscription issues
+
+---
+
+### `trigger-circles-tx.sh` - Transaction Trigger
+
+Triggers Circles protocol transactions for testing purposes.
+
+**Usage:**
+
+```bash
+./scripts/trigger-circles-tx.sh
+```
+
+**Description:**
+
+- Ensures Node.js and ethers.js are installed
+- Runs the TypeScript transaction trigger script
+- Can be used to generate test transactions on testnets
+
+**When to use:**
+
+- Generating test data for development
+- Testing indexer with new transactions
+- Validating subscription endpoints
+
+---
+
 ## Development Workflow
 
 ### Local Development
@@ -454,6 +803,7 @@ When using `--coverage`, results are saved to `TestResults/` directory.
    ```
 
 4. **Run tests** (in another terminal):
+
    ```bash
    ./scripts/test.sh
 
@@ -588,22 +938,33 @@ docker-compose -f docker-compose.gnosis.yml up -d
 ```
 scripts/
 ├── build-all.sh           # Master build orchestrator
+├── bump-index-versions.sh # Version bumper for Index packages
+├── call_rpc.sh            # Interactive RPC method caller
+├── diagnose-data-diff.sh  # Data difference diagnostic
 ├── docker-build.sh        # Docker image builder
 ├── docker-run.sh          # Docker Compose runner
+├── load-test-rpc.sh       # RPC load testing
 ├── nuget-pack.sh          # NuGet package creator
 ├── nuget-push.sh          # NuGet package publisher
-├── run-index.sh           # Nethermind with Index plugin dev server
-├── run-pathfinder.sh      # Pathfinder dev server
-├── run-postgres.sh        # PostgreSQL dev server
-├── run-rpc.sh             # RPC dev server
-├── test.sh                # Test runner
+├── README.md              # This file
+├── rpc-regression.sh      # RPC regression testing
+├── run-cache-service.sh   # Cache service development server
+├── run-index.sh           # Index plugin development server
+├── run-pathfinder.sh      # Pathfinder development server
+├── run-postgres.sh        # PostgreSQL development server
+├── run-rpc.sh             # RPC development server
+├── test-cache.sh          # Cache service tester
 ├── test-rpc.sh            # RPC endpoint tester
-├── rpc-regression.sh      # RPC regression testing (local vs production)
-└── README.md              # This file
+├── test.sh                # Test runner
+├── test-subscriptions.sh  # WebSocket subscription tester
+├── trigger-circles-tx.sh  # Transaction trigger
+└── trigger-circles-tx.ts  # TypeScript transaction trigger
+```
 
-nupkgs/                    # NuGet packages output (created by nuget-pack.sh)
-TestResults/               # Test coverage results (created by test.sh --coverage)
-RegressionTestResults/       # Regression test results (created by rpc-regression.sh)
+nupkgs/ # NuGet packages output (created by nuget-pack.sh)
+TestResults/ # Test coverage results (created by test.sh --coverage)
+RegressionTestResults/ # Regression test results (created by rpc-regression.sh)
+
 ```
 
 ---
@@ -621,3 +982,4 @@ RegressionTestResults/       # Regression test results (created by rpc-regressio
 ## License
 
 See the main project LICENSE file for details.
+```

@@ -8,11 +8,14 @@ set -o pipefail
 # Usage:
 #   ./test-subscriptions.sh [WS_URL] [--duration SECONDS] [--min-events N] [--filter ADDRESS] [--json] [--json-file FILE]
 #
+# Environment Variables (when using --filter):
+#   CIRCLES_SEED_PHRASE    - Required: 12/24 word mnemonic seed phrase for triggering test transactions
+#
 # Examples:
 #   ./test-subscriptions.sh                                          # Test localhost:8081 (exits after 3 events or 60s)
 #   ./test-subscriptions.sh ws://localhost:8081/subscribe            # Test custom URL
 #   ./test-subscriptions.sh --duration 30 --min-events 5             # Custom thresholds
-#   ./test-subscriptions.sh --filter 0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0  # Filter by address
+#   CIRCLES_SEED_PHRASE="..." ./test-subscriptions.sh --filter 0x... # Filter by address and auto-trigger transaction
 #   ./test-subscriptions.sh --json --json-file results.json          # Output to JSON file
 
 # Colors for output
@@ -90,6 +93,12 @@ done
 if [[ -z "$WS_URL" ]]; then
     RPC_PORT="${RPC_PORT:-8081}"
     WS_URL="ws://localhost:${RPC_PORT}/subscribe"
+fi
+
+# Check if seed phrase is required for triggering transactions
+if [[ -n "$FILTER_ADDRESS" && -z "$CIRCLES_SEED_PHRASE" ]]; then
+    echo "Error: CIRCLES_SEED_PHRASE environment variable is required when using --filter (to trigger test transactions)" >&2
+    exit 1
 fi
 
 # Check if curl supports WebSocket (--ws flag)
@@ -199,6 +208,10 @@ cleanup() {
     if [[ -n "$WS_PID" ]]; then
         kill "$WS_PID" 2>/dev/null || true
         wait "$WS_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$TRIGGER_PID" ]]; then
+        kill "$TRIGGER_PID" 2>/dev/null || true
+        wait "$TRIGGER_PID" 2>/dev/null || true
     fi
     # Now safe to remove temp directory
     rm -rf "$TEMP_DIR"
@@ -313,6 +326,13 @@ while IFS= read -r line; do
             log_message "✓ Subscription acknowledged. ID: $SUBSCRIPTION_ID" "success"
             log_message "Listening for events (max ${MAX_DURATION}s, exits after $MIN_EVENTS events)..."
             SUBSCRIPTION_ACK_RECEIVED=true
+            
+            # Trigger a test transaction if seed phrase and filter address are provided
+            if [[ -n "$FILTER_ADDRESS" && -n "$CIRCLES_SEED_PHRASE" ]]; then
+                log_message "Triggering Circles transaction to $FILTER_ADDRESS..."
+                CIRCLES_RECIPIENT="$FILTER_ADDRESS" ./scripts/trigger-circles-tx.sh &
+                TRIGGER_PID=$!
+            fi
             
             # Mark acknowledgment received (for timeout subprocess)
             touch "$ACK_RECEIVED_FILE" 2>/dev/null || true
