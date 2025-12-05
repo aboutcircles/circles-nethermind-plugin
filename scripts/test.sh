@@ -26,6 +26,8 @@ TEST_PROJECTS=(
   "src/Pathfinder/Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj"
   "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
   "src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj"
+  "src/Cache/Circles.Cache.Service.Tests/Circles.Cache.Service.Tests.csproj"
+  "src/Rpc/Circles.Rpc.Host.Tests/Circles.Rpc.Host.Tests.csproj"
 )
 
 # Parse arguments
@@ -51,6 +53,16 @@ for arg in "$@"; do
       SPECIFIC_PROJECT="src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj"
       shift
       ;;
+    cache)
+      RUN_ALL=false
+      SPECIFIC_PROJECT="src/Cache/Circles.Cache.Tests/Circles.Cache.Tests.csproj"
+      shift
+      ;;
+    rpc)
+      RUN_ALL=false
+      SPECIFIC_PROJECT="src/Rpc/Circles.Rpc.Tests/Circles.Rpc.Tests.csproj"
+      shift
+      ;;
     --coverage)
       COLLECT_COVERAGE=true
       shift
@@ -66,6 +78,8 @@ for arg in "$@"; do
       echo "  pathfinder    Run only Pathfinder tests"
       echo "  query         Run only Query tests"
       echo "  common        Run only Common tests"
+      echo "  cache         Run only Cache tests"
+      echo "  rpc           Run only RPC tests"
       echo ""
       echo "Options:"
       echo "  --coverage            Collect code coverage"
@@ -115,13 +129,51 @@ run_test_project() {
 
   echo -e "${GREEN}Running tests for $project_name...${NC}"
 
+  local services_started=false
+  if [[ "$project_name" == "Circles.Pathfinder.Tests" ]]; then
+    echo -e "${YELLOW}Starting required services for Pathfinder tests...${NC}"
+    # Start PostgreSQL if not running
+    if ! docker ps | grep -q circles-postgres; then
+      echo -e "${YELLOW}Starting PostgreSQL...${NC}"
+      docker run -d --name circles-postgres \
+        -e POSTGRES_DB=postgres \
+        -e POSTGRES_USER=postgres \
+        -e POSTGRES_PASSWORD=postgres \
+        -p 5432:5432 \
+        postgres:15
+      sleep 5
+    fi
+    # Start Pathfinder service
+    echo -e "${YELLOW}Starting Pathfinder service...${NC}"
+    ./scripts/run-pathfinder.sh &
+    PATHFINDER_PID=$!
+    sleep 5
+    # Start RPC service
+    echo -e "${YELLOW}Starting RPC service...${NC}"
+    ./scripts/run-rpc.sh &
+    RPC_PID=$!
+    sleep 5
+    services_started=true
+  fi
+
+  local test_result=0
   if dotnet test "$PROJECT_ROOT/$project" "${TEST_ARGS[@]}"; then
     echo -e "${GREEN}✓ $project_name tests passed${NC}\n"
-    return 0
+    test_result=0
   else
     echo -e "${RED}✗ $project_name tests failed${NC}\n"
-    return 1
+    test_result=1
   fi
+
+  if [[ "$services_started" == true ]]; then
+    echo -e "${YELLOW}Stopping services...${NC}"
+    kill $RPC_PID 2>/dev/null || true
+    kill $PATHFINDER_PID 2>/dev/null || true
+    docker stop circles-postgres 2>/dev/null || true
+    docker rm circles-postgres 2>/dev/null || true
+  fi
+
+  return $test_result
 }
 
 # Run tests
