@@ -13,7 +13,7 @@ using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
-
+using Circles.Rpc.Host.Dto;
 
 namespace Circles.Rpc.Host;
 
@@ -3506,5 +3506,279 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         return new QueryResponse(Columns: columnNames, Rows: results);
+    }
+
+    /// <summary>
+    /// Gets a consolidated profile view combining avatar info, profile data, trust stats, and balances.
+    /// Replaces 6-7 separate RPC calls typically needed to display a user profile.
+    /// </summary>
+    public async Task<ProfileViewResponse> GetProfileView(string address)
+    {
+        // Get avatar info
+        var avatarInfo = await GetAvatarInfoBatchInternal(new[] { address });
+        var avatar = avatarInfo.FirstOrDefault();
+
+        // Get profile data (if exists)
+        JsonElement? profile = null;
+        try
+        {
+            profile = await GetProfileByAddress(address);
+        }
+        catch
+        {
+            // Profile optional
+        }
+
+        // Get trust relations
+        var trustRelations = await GetTrustRelations(address);
+
+        // Get balances
+        TotalBalanceResponse? v1Balance = null;
+        TotalBalanceResponse? v2Balance = null;
+
+        if (avatar?.HasV1 == true)
+        {
+            try
+            {
+                v1Balance = await GetTotalBalance(address, 1, true);
+            }
+            catch
+            {
+                // Balance query optional
+            }
+        }
+
+        if (avatar?.Version == 2)
+        {
+            try
+            {
+                v2Balance = await GetTotalBalance(address, 2, true);
+            }
+            catch
+            {
+                // Balance query optional
+            }
+        }
+
+        return new ProfileViewResponse(
+            Address: address,
+            AvatarInfo: avatar,
+            Profile: profile,
+            TrustStats: new TrustStats(
+                TrustsCount: trustRelations.Trusts?.Length ?? 0,
+                TrustedByCount: trustRelations.TrustedBy?.Length ?? 0
+            ),
+            V1Balance: v1Balance?.Balance,
+            V2Balance: v2Balance?.Balance
+        );
+    }
+
+    /// <summary>
+    /// Gets aggregated trust network summary including trust counts, common trusts, and network depth.
+    /// Server-side aggregation reduces client-side processing.
+    /// </summary>
+    public async Task<TrustNetworkSummaryResponse> GetTrustNetworkSummary(string address, int? maxDepth = 2)
+    {
+        var trustRelations = await GetTrustRelations(address);
+
+        // Calculate network size at different depths
+        var depth1Trusts = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
+        var depth1TrustedBy = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
+
+        // Mutual trusts (intersection)
+        var mutualTrusts = depth1Trusts.Intersect(depth1TrustedBy).ToArray();
+
+        return new TrustNetworkSummaryResponse(
+            Address: address,
+            DirectTrustsCount: depth1Trusts.Count,
+            DirectTrustedByCount: depth1TrustedBy.Count,
+            MutualTrustsCount: mutualTrusts.Length,
+            MutualTrusts: mutualTrusts,
+            NetworkReach: depth1Trusts.Count + depth1TrustedBy.Count - mutualTrusts.Length // Union count
+        );
+    }
+
+    /// <summary>
+    /// Gets aggregated trust relations showing mutual, one-way trusts, and trusted-by in a single call.
+    /// Categorizes relationships for easier UI rendering. Enriched with avatar info.
+    /// </summary>
+    public async Task<AggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(string address)
+    {
+        var trustRelations = await GetTrustRelations(address);
+
+        var trustsSet = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
+        var trustedBySet = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
+
+        var mutualAddresses = trustsSet.Intersect(trustedBySet).ToArray();
+        var oneWayTrustsAddresses = trustsSet.Except(trustedBySet).ToArray();
+        var oneWayTrustedByAddresses = trustedBySet.Except(trustsSet).ToArray();
+
+        // Get avatar info for all addresses
+        var allAddresses = mutualAddresses.Concat(oneWayTrustsAddresses).Concat(oneWayTrustedByAddresses).ToArray();
+        var avatars = allAddresses.Length > 0 ? await GetAvatarInfoBatchInternal(allAddresses) : Array.Empty<AvatarInfo?>();
+        var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
+
+        return new AggregatedTrustRelationsResponse(
+            Address: address,
+            Mutual: mutualAddresses.Select(addr => new TrustRelationInfo(
+                Address: addr,
+                AvatarInfo: avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                RelationType: "mutual"
+            )).ToArray(),
+            Trusts: oneWayTrustsAddresses.Select(addr => new TrustRelationInfo(
+                Address: addr,
+                AvatarInfo: avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                RelationType: "trusts"
+            )).ToArray(),
+            TrustedBy: oneWayTrustedByAddresses.Select(addr => new TrustRelationInfo(
+                Address: addr,
+                AvatarInfo: avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
+                RelationType: "trustedBy"
+            )).ToArray()
+        );
+    }
+
+    /// <summary>
+    /// Gets list of valid inviters for an address (addresses that trust them and have sufficient balance).
+    /// Useful for invitation flows and invitation escrow scenarios.
+    /// </summary>
+    public async Task<ValidInvitersResponse> GetValidInviters(string address, string? minimumBalance = null)
+    {
+        var trustRelations = await GetTrustRelations(address);
+        var trustedByAddresses = trustRelations.TrustedBy?.Select(t => t.User).ToArray() ?? Array.Empty<string>();
+
+        if (trustedByAddresses.Length == 0)
+        {
+            return new ValidInvitersResponse(
+                Address: address,
+                ValidInviters: Array.Empty<InviterInfo>()
+            );
+        }
+
+        // Get balances for all trusted-by addresses
+        var validInviters = new List<InviterInfo>();
+
+        foreach (var inviterAddress in trustedByAddresses)
+        {
+            try
+            {
+                // Get avatar info to determine version
+                var avatarInfo = await GetAvatarInfoBatchInternal(new[] { inviterAddress });
+                var avatar = avatarInfo.FirstOrDefault();
+
+                if (avatar == null) continue;
+
+                // Get balance (try both v1 and v2)
+                TotalBalanceResponse? balance = null;
+
+                if (avatar.Version == 2)
+                {
+                    try
+                    {
+                        balance = await GetTotalBalance(inviterAddress, 2, true);
+                    }
+                    catch { }
+                }
+                else if (avatar.HasV1 == true)
+                {
+                    try
+                    {
+                        balance = await GetTotalBalance(inviterAddress, 1, true);
+                    }
+                    catch { }
+                }
+
+                if (balance != null)
+                {
+                    // Check minimum balance if specified
+                    if (string.IsNullOrEmpty(minimumBalance) ||
+                        (decimal.TryParse(balance.Balance, out var balanceValue) &&
+                        decimal.TryParse(minimumBalance, out var minValue) &&
+                        balanceValue >= minValue))
+                    {
+                        validInviters.Add(new InviterInfo(
+                            Address: inviterAddress,
+                            Balance: balance.Balance,
+                            AvatarInfo: avatar
+                        ));
+                    }
+                }
+            }
+            catch
+            {
+                // Skip inviters with errors
+                continue;
+            }
+        }
+
+        return new ValidInvitersResponse(
+            Address: address,
+            ValidInviters: validInviters.ToArray()
+        );
+    }
+
+    /// <summary>
+    /// Gets transaction history with enriched data including demurrage calculations and profile info.
+    /// Reduces need for separate profile lookups and demurrage computations on client side.
+    /// </summary>
+    public async Task<PagedResponse<EnrichedTransaction>> GetTransactionHistoryEnriched(
+        string address,
+        long fromBlock,
+        long? toBlock = null,
+        int? limit = null,
+        string? cursor = null)
+    {
+        // Reuse existing GetTransactionHistory logic but enrich the results
+        var basicHistory = await GetTransactionHistory(address, limit ?? 20, cursor);
+
+        var enrichedResults = new List<EnrichedTransaction>();
+        var addressesToFetch = new HashSet<string>();
+
+        // Collect addresses
+        foreach (var tx in basicHistory.Results)
+        {
+            addressesToFetch.Add(tx.From);
+            addressesToFetch.Add(tx.To);
+        }
+
+        // Batch fetch profiles
+        var profiles = await GetProfileByAddressBatch(addressesToFetch.ToArray());
+        var profileDict = new Dictionary<string, JsonElement?>();
+        int i = 0;
+        foreach (var addr in addressesToFetch)
+        {
+            profileDict[addr] = profiles[i++];
+        }
+
+        foreach (var tx in basicHistory.Results)
+        {
+            enrichedResults.Add(new EnrichedTransaction(
+                BlockNumber: tx.BlockNumber,
+                Timestamp: tx.Timestamp,
+                TransactionIndex: tx.TransactionIndex,
+                LogIndex: tx.LogIndex,
+                TransactionHash: tx.TransactionHash,
+                Version: tx.Version,
+                From: tx.From,
+                To: tx.To,
+                Operator: tx.Operator,
+                Id: tx.Id,
+                Value: tx.Value,
+                Circles: tx.Circles,
+                AttoCircles: tx.AttoCircles,
+                Crc: tx.Crc,
+                AttoCrc: tx.AttoCrc,
+                StaticCircles: tx.StaticCircles,
+                StaticAttoCircles: tx.StaticAttoCircles,
+                FromProfile: profileDict.ContainsKey(tx.From) ? profileDict[tx.From] : null,
+                ToProfile: profileDict.ContainsKey(tx.To) ? profileDict[tx.To] : null
+            ));
+        }
+
+        return new PagedResponse<EnrichedTransaction>(
+            Results: enrichedResults.ToArray(),
+            HasMore: basicHistory.HasMore,
+            NextCursor: basicHistory.NextCursor
+        );
     }
 }
