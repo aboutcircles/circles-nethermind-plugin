@@ -317,6 +317,9 @@ public class NotificationListenerService : BackgroundService
         // Process V2 Transfers (for balance updates)
         await ProcessV2TransfersAsync(conn, fromBlock, toBlock, ct);
 
+        // Process V2 ERC20 Wrapper Transfers (for balance updates)
+        await ProcessV2Erc20WrapperTransfersAsync(conn, fromBlock, toBlock, ct);
+
         // Process V2 UpdateMetadataDigest (for CID maps)
         await ProcessV2UpdateMetadataDigestAsync(conn, fromBlock, toBlock, ct);
 
@@ -698,6 +701,68 @@ public class NotificationListenerService : BackgroundService
         {
             _logger.LogDebug("Processed {SingleCount} TransferSingle + {BatchCount} TransferBatch events",
                 transferCount, batchCount);
+        }
+    }
+
+    private async Task ProcessV2Erc20WrapperTransfersAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V2 ERC20 Wrapper Transfer events incrementally
+        const string sql = @"
+            SELECT ""from"", ""to"", ""tokenAddress"", amount, ""blockNumber""
+            FROM ""CrcV2_Erc20WrapperTransfer""
+            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var transferCount = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var from = reader.GetString(0);
+                var to = reader.GetString(1);
+                var tokenAddress = reader.GetString(2);
+                var amountBig = reader.GetFieldValue<BigInteger>(3);
+                var blockNumber = reader.GetInt64(4);
+
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var valueBig = amountBig / divisor;
+
+                if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+                {
+                    _logger.LogWarning("Skipping ERC20 wrapper transfer with amount {Amount} that would overflow decimal", amountBig);
+                    continue;
+                }
+
+                var amount = (decimal)valueBig;
+                var tokenKey = tokenAddress.ToLowerInvariant();
+
+                // Update sender balance
+                if (from != "0x0000000000000000000000000000000000000000")
+                {
+                    var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
+                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+                }
+
+                // Update receiver balance
+                if (to != "0x0000000000000000000000000000000000000000")
+                {
+                    var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
+                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+                }
+
+                transferCount++;
+            }
+        }
+
+        if (transferCount > 0)
+        {
+            _logger.LogDebug("Processed {Count} ERC20 wrapper transfer events", transferCount);
         }
     }
 
