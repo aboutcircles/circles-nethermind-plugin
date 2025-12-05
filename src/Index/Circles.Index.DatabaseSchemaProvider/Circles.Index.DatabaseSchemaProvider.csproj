@@ -41,6 +41,9 @@
     <ProjectReference
       Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj">
     </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.InvitationsAtScale\Circles.Index.CirclesV2.InvitationsAtScale.csproj">
+    </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj">
     </ProjectReference>
     <ProjectReference

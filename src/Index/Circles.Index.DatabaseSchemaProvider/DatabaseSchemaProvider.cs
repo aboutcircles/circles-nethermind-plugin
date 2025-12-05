@@ -22,6 +22,7 @@ public static class Schemas
         new CirclesV2.BaseGroupDeployer.DatabaseSchema(),
         new CirclesV2.CMGroupDeployer.DatabaseSchema(),
         new CirclesV2.InvitationEscrow.DatabaseSchema(),
+        new CirclesV2.InvitationsAtScale.DatabaseSchema(),
         new CirclesV2.LBP.DatabaseSchema(),
         new CirclesV2.NameRegistry.DatabaseSchema(),
         new CirclesV2.OIC.DatabaseSchema(),
