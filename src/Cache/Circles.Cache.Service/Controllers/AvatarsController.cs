@@ -72,7 +72,7 @@ public class AvatarsController : ControllerBase
                     HasV1: true,
                     V1Token: v1Info.TokenAddress,
                     CidV0: cid,
-                    IsHuman: v1Info.Type.Contains("Signup"),
+                    IsHuman: v1Info.Type.Contains("Human"),
                     LastProcessedBlock: lastBlock,
                     Timestamp: timestamp
                 ));
@@ -143,7 +143,7 @@ public class AvatarsController : ControllerBase
                         HasV1: true,
                         V1Token: v1Info.TokenAddress,
                         CidV0: cid,
-                        IsHuman: v1Info.Type.Contains("Signup"),
+                        IsHuman: v1Info.Type.Contains("Human"),
                         LastProcessedBlock: lastBlock,
                         Timestamp: timestamp
                     ));

@@ -7,13 +7,19 @@ public record TokenBalanceResponse(
     string TokenId,
     string Balance,
     string? TokenOwner = null,
-    int Version = 0
+    int Version = 0,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
 );
 
 /// <summary>
 /// Response for total balance queries
 /// </summary>
-public record TotalBalanceResponse(string Balance);
+public record TotalBalanceResponse(
+    string Balance,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
 
 /// <summary>
 /// Response for avatar info queries
@@ -29,13 +35,20 @@ public record AvatarInfoResponse(
     bool IsHuman = false,
     string? Name = null,
     string? Symbol = null,
-    long? RegisteredAt = null
+    string? ShortName = null,
+    long? RegisteredAt = null,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
 );
 
 /// <summary>
 /// Response for profile CID queries
 /// </summary>
-public record ProfileCidResponse(string? Cid);
+public record ProfileCidResponse(
+    string? Cid,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
 
 /// <summary>
 /// Batch request for avatar info

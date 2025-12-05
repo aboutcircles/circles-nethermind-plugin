@@ -204,19 +204,25 @@ curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912
     "tokenId": "0x42cedde51198d1773590311e2a340dc06b24cb37",
     "balance": "150.25",
     "tokenOwner": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-    "version": 1
+    "version": 1,
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   },
   {
     "tokenId": "0x86533d1aDA8Ffbe7b6F7244F9A1b707f7f3e239b",
     "balance": "75.50",
     "tokenOwner": "0x7cadf434b692ca029d950607a4b3f139c30d4e98",
-    "version": 1
+    "version": 1,
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   },
   {
     "tokenId": "123456789012345678901234567890",
     "balance": "1250.75",
     "tokenOwner": null,
-    "version": 2
+    "version": 2,
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   }
 ]
 ```
@@ -264,7 +270,9 @@ curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912
 
 ```json
 {
-  "balance": "225.75"
+  "balance": "225.75",
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
@@ -296,7 +304,9 @@ curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912
 
 ```json
 {
-  "balance": "1250.75"
+  "balance": "1250.75",
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
@@ -320,7 +330,9 @@ curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912
 
 ```json
 {
-  "balance": "1476.50"
+  "balance": "1476.50",
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
@@ -361,7 +373,10 @@ curl http://localhost:3001/api/avatars/0xde374ece6fa50e781e81aac78e811b33d16912c
   "isHuman": true,
   "name": "Community Pool",
   "symbol": null,
-  "registeredAt": 1704067200
+  "shortName": "zAlice",
+  "registeredAt": 1704067200,
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
@@ -378,8 +393,11 @@ curl http://localhost:3001/api/avatars/0xde374ece6fa50e781e81aac78e811b33d16912c
   "cidV0": null,
   "isHuman": false,
   "name": "Community DAO",
-  "symbol": null,
-  "registeredAt": 1704153600
+  "symbol": "CDAO",
+  "shortName": null,
+  "registeredAt": 1704153600,
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
@@ -395,6 +413,9 @@ null
 - `type` can be: `"Human"`, `"Organization"`, or `"Group"`
 - `registeredAt` is Unix timestamp (V2 only, null for V1-only avatars)
 - `cidV0` is IPFS CID for avatar's profile metadata
+- `shortName` is the V2 registered short name in Base58Btc format (e.g., "zAlice")
+- `lastProcessedBlock` indicates the cache's latest processed block
+- `timestamp` is the Unix timestamp when the response was generated
 
 ---
 
@@ -442,7 +463,10 @@ curl -X POST http://localhost:3001/api/avatars/batch \
     "isHuman": true,
     "name": null,
     "symbol": null,
-    "registeredAt": 1704067200
+    "shortName": "zAlice",
+    "registeredAt": 1704067200,
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   },
   null,
   {
@@ -455,8 +479,11 @@ curl -X POST http://localhost:3001/api/avatars/batch \
     "cidV0": null,
     "isHuman": false,
     "name": "Community DAO",
-    "symbol": null,
-    "registeredAt": 1704153600
+    "symbol": "CDAO",
+    "shortName": null,
+    "registeredAt": 1704153600,
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   }
 ]
 ```
@@ -465,7 +492,7 @@ curl -X POST http://localhost:3001/api/avatars/batch \
 
 - Returns array in same order as input addresses
 - `null` entries for addresses not found
-- No limit on batch size (be reasonable!)
+- Maximum batch size is 100 addresses
 
 ---
 
@@ -489,7 +516,9 @@ curl http://localhost:3001/api/profiles/0xde374ece6fa50e781e81aac78e811b33d16912
 
 ```json
 {
-  "cid": "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE"
+  "cid": "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE",
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
@@ -497,14 +526,16 @@ curl http://localhost:3001/api/profiles/0xde374ece6fa50e781e81aac78e811b33d16912
 
 ```json
 {
-  "cid": null
+  "cid": null,
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
 }
 ```
 
 **Notes**:
 
 - CID can be used to fetch profile JSON from IPFS
-- Returns `null` if avatar has no profile metadata
+- Returns `null` for `cid` if avatar has no profile metadata
 
 ---
 
@@ -541,10 +572,14 @@ curl -X POST http://localhost:3001/api/profiles/cid/batch \
 ```json
 [
   {
-    "cid": "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE"
+    "cid": "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE",
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   },
   {
-    "cid": null
+    "cid": null,
+    "lastProcessedBlock": 36789012,
+    "timestamp": 1704240000
   }
 ]
 ```
@@ -553,6 +588,7 @@ curl -X POST http://localhost:3001/api/profiles/cid/batch \
 
 - Returns array in same order as input addresses
 - `cid` is `null` for avatars without profiles
+- Maximum batch size is 100 addresses
 
 ---
 

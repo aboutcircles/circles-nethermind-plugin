@@ -1,5 +1,6 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Metrics;
+using Circles.Index.Common;
 using Npgsql;
 using System.Numerics;
 
@@ -288,6 +289,12 @@ public class NotificationListenerService : BackgroundService
 
         // Process V1 Transfers (for balance updates)
         await ProcessV1TransfersAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V1 Trust events
+        await ProcessV1TrustAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V1 UpdateMetadataDigest (for CID maps)
+        await ProcessV1UpdateMetadataDigestAsync(conn, fromBlock, toBlock, ct);
     }
 
     private async Task ProcessV2EventsAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
@@ -309,6 +316,12 @@ public class NotificationListenerService : BackgroundService
 
         // Process V2 Transfers (for balance updates)
         await ProcessV2TransfersAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V2 UpdateMetadataDigest (for CID maps)
+        await ProcessV2UpdateMetadataDigestAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V2 RegisterShortName (for short name mappings)
+        await ProcessV2RegisterShortNameAsync(conn, fromBlock, toBlock, ct);
     }
 
     private async Task ProcessV2RegisterHumanAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
@@ -444,8 +457,7 @@ public class NotificationListenerService : BackgroundService
                 var member = reader.GetString(1);
                 var group = reader.GetString(2);
 
-                var expiryTime = reader.GetDecimal(3);
-
+                var expiryTimeBig = reader.GetFieldValue<BigInteger>(3);
 
                 // Check if trustee is a group by looking it up in the Groups cache
                 var groupKey = group.ToLowerInvariant();
@@ -457,14 +469,14 @@ public class NotificationListenerService : BackgroundService
 
                     // If expiryTime is 0, this is an untrust - use Remove to delete the membership
                     // Otherwise, add/update the membership
-                    if (expiryTime == 0)
+                    if (expiryTimeBig == 0)
                     {
                         _caches.GroupMemberships.Remove(key);
                     }
                     else
                     {
                         // Safely cast expiryTime to long, capping at long.MaxValue for overflow
-                        long expiryLong = expiryTime > long.MaxValue ? long.MaxValue : (long)expiryTime;
+                        long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
                         _caches.GroupMemberships.Add(blockNumber, key, (member, expiryLong));
                     }
 
@@ -536,11 +548,17 @@ public class NotificationListenerService : BackgroundService
                 var from = reader.GetString(0);
                 var to = reader.GetString(1);
                 var tokenAddress = reader.GetString(2);
-                var amount = reader.GetDecimal(3);
+                var amountBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
 
                 var tokenKey = tokenAddress.ToLowerInvariant();
-                var value = amount / 1_000_000_000_000_000_000m;
+                // Convert from wei (18 decimals) to token units
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var tokenUnits = amountBig / divisor;
+                // Cap to decimal.MaxValue if needed (extremely rare edge case)
+                decimal value = tokenUnits > (BigInteger)decimal.MaxValue
+                    ? decimal.MaxValue
+                    : (decimal)tokenUnits;
 
                 // Update sender balance
                 if (from != "0x0000000000000000000000000000000000000000")
@@ -680,6 +698,165 @@ public class NotificationListenerService : BackgroundService
         {
             _logger.LogDebug("Processed {SingleCount} TransferSingle + {BatchCount} TransferBatch events",
                 transferCount, batchCount);
+        }
+    }
+
+    private async Task ProcessV1TrustAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V1 Trust events - update V1TrustRelations cache
+        const string sql = @"
+            SELECT t.""blockNumber"", t.""canSendTo"" as truster, t.""user"" as trustee, t.""limit""
+            FROM ""CrcV1_Trust"" t
+            WHERE t.""blockNumber"" >= @fromBlock AND t.""blockNumber"" <= @toBlock
+            ORDER BY t.""blockNumber"", t.""transactionIndex"", t.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var count = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var truster = reader.GetString(1);
+                var trustee = reader.GetString(2);
+                var limitBig = reader.GetFieldValue<BigInteger>(3);
+
+                var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
+
+                // If limit is 0, remove the trust relation; otherwise add/update it
+                if (limitBig == 0)
+                {
+                    _caches.V1TrustRelations.Remove(key);
+                }
+                else
+                {
+                    // V1 trust doesn't have expiry, store 0 as indicator of active trust
+                    _caches.V1TrustRelations.Add(blockNumber, key, 0L);
+                }
+
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogDebug("Processed {Count} V1 trust events", count);
+        }
+    }
+
+    private async Task ProcessV1UpdateMetadataDigestAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V1 UpdateMetadataDigest events - update V1AvatarToCidMap cache
+        const string sql = @"
+            SELECT m.""blockNumber"", m.avatar, m.""metadataDigest""
+            FROM ""CrcV1_UpdateMetadataDigest"" m
+            WHERE m.""blockNumber"" >= @fromBlock AND m.""blockNumber"" <= @toBlock
+            ORDER BY m.""blockNumber"", m.""transactionIndex"", m.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var count = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var avatar = reader.GetString(1);
+                var metadataDigest = (byte[])reader.GetValue(2);
+
+                var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
+                var key = avatar.ToLowerInvariant();
+
+                _caches.V1AvatarToCidMap.Add(blockNumber, key, cid);
+
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogDebug("Processed {Count} V1 metadata digest updates", count);
+        }
+    }
+
+    private async Task ProcessV2UpdateMetadataDigestAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V2 UpdateMetadataDigest events - update V2AvatarToCidMap cache
+        const string sql = @"
+            SELECT m.""blockNumber"", m.avatar, m.""metadataDigest""
+            FROM ""CrcV2_UpdateMetadataDigest"" m
+            WHERE m.""blockNumber"" >= @fromBlock AND m.""blockNumber"" <= @toBlock
+            ORDER BY m.""blockNumber"", m.""transactionIndex"", m.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var count = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var avatar = reader.GetString(1);
+                var metadataDigest = (byte[])reader.GetValue(2);
+
+                var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
+                var key = avatar.ToLowerInvariant();
+
+                _caches.V2AvatarToCidMap.Add(blockNumber, key, cid);
+
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogDebug("Processed {Count} V2 metadata digest updates", count);
+        }
+    }
+
+    private async Task ProcessV2RegisterShortNameAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        // Process V2 RegisterShortName events - update V2AvatarToShortNameMap cache
+        const string sql = @"
+            SELECT s.""blockNumber"", s.avatar, s.""shortName""
+            FROM ""CrcV2_RegisterShortName"" s
+            WHERE s.""blockNumber"" >= @fromBlock AND s.""blockNumber"" <= @toBlock
+            ORDER BY s.""blockNumber"", s.""transactionIndex"", s.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var count = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var avatar = reader.GetString(1);
+                // shortName is stored as numeric (BigInteger) in database
+                var shortNameNumeric = reader.GetFieldValue<BigInteger>(2);
+                // Convert to Base58Btc format (like "zAlice")
+                var shortNameBase58 = shortNameNumeric.ToBase58Btc();
+
+                var key = avatar.ToLowerInvariant();
+
+                _caches.V2AvatarToShortNameMap.Add(blockNumber, key, shortNameBase58);
+
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogDebug("Processed {Count} V2 short name registrations", count);
         }
     }
 }
