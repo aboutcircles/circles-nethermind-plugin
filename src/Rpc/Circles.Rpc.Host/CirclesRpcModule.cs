@@ -1367,7 +1367,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 continue;
             }
 
-            if (_profileByCidCache.TryGetValue(currentCid, out var cached) && cached != null)
+            if (_profileByCidCache.TryGetValue(currentCid, out JsonElement? cached) && cached != null)
             {
                 result[i] = (JsonElement)cached;
             }
@@ -3378,11 +3378,16 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             // Get full profiles for matching addresses
             var addresses = new List<string>();
-            foreach (var row in results.Rows)
+            int avatarIndex = results.Columns.IndexOf("avatar");
+            if (avatarIndex >= 0)
             {
-                if (row.TryGetValue("avatar", out var avatarValue) && avatarValue is string avatarStr)
+                foreach (var row in results.Rows)
                 {
-                    addresses.Add(avatarStr);
+                    var avatarValue = row[avatarIndex];
+                    if (avatarValue is string avatarStr)
+                    {
+                        addresses.Add(avatarStr);
+                    }
                 }
             }
 
