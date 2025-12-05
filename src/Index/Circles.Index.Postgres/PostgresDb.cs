@@ -485,6 +485,60 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         }
     }
 
+    public async Task DeleteFromTablesGreaterOrEqualBlock(long reorgAt, IEnumerable<string> tableNames)
+    {
+        var tableNameSet = new HashSet<string>(tableNames, StringComparer.OrdinalIgnoreCase);
+
+        NpgsqlTransaction? transaction = null;
+        try
+        {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            await connection.OpenAsync();
+
+            transaction = await connection.BeginTransactionAsync();
+            foreach (var table in Schema.Tables.Values)
+            {
+                if (table.Namespace.StartsWith("V_") 
+                    || table.Table == DatabaseSchema.PathfinderRequestLog 
+                    || table.Table == DatabaseSchema.PathfinderResponseLog)
+                {
+                    continue;
+                }
+
+                var fullTableName = $"{table.Namespace}_{table.Table}";
+                if (!tableNameSet.Contains(fullTableName) && !tableNameSet.Contains(table.Table))
+                {
+                    continue;
+                }
+
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    $"DELETE FROM \"{fullTableName}\" WHERE \"blockNumber\" >= @reorgAt;";
+                command.Parameters.AddWithValue("@reorgAt", reorgAt);
+                command.Transaction = transaction;
+
+                var rowsDeleted = await command.ExecuteNonQueryAsync();
+                Console.WriteLine($"[REINDEX] Deleted {rowsDeleted} rows from {fullTableName} (block >= {reorgAt})");
+            }
+
+            await transaction.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[REINDEX] An error occurred: {ex.Message}");
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync();
+            }
+
+            throw;
+        }
+        finally
+        {
+            transaction?.Dispose();
+        }
+    }
+
 
     /// <summary>
     /// Upsert a single (tableName -> blockNumber) mapping.

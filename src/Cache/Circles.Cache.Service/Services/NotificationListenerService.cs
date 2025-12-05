@@ -435,13 +435,12 @@ public class NotificationListenerService : BackgroundService
 
     private async Task ProcessV2TrustAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
-        // Query V_CrcV2_GroupMemberships to get updated trust relationships for group memberships
-        // We only care about trusts where the trustee is a group (creates membership)
+        // Process all V2 Trust events - update both V2TrustRelations cache and GroupMemberships (when trustee is a group)
         const string sql = @"
             SELECT 
                 t.""blockNumber"",
-                t.""truster"" as member,
-                t.""trustee"" as ""group"",
+                t.""truster"",
+                t.""trustee"",
                 t.""expiryTime""
             FROM ""CrcV2_Trust"" t
             WHERE t.""blockNumber"" >= @fromBlock AND t.""blockNumber"" <= @toBlock
@@ -451,46 +450,58 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
-        var count = 0;
+        var trustCount = 0;
+        var membershipCount = 0;
         await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
             {
                 var blockNumber = reader.GetInt64(0);
-                var member = reader.GetString(1);
-                var group = reader.GetString(2);
-
+                var truster = reader.GetString(1);
+                var trustee = reader.GetString(2);
                 var expiryTimeBig = reader.GetFieldValue<BigInteger>(3);
 
-                // Check if trustee is a group by looking it up in the Groups cache
-                var groupKey = group.ToLowerInvariant();
+                var trusterKey = truster.ToLowerInvariant();
+                var trusteeKey = trustee.ToLowerInvariant();
+                var trustKey = $"{trusterKey}:{trusteeKey}";
 
-                if (_caches.Groups.ContainsKey(groupKey))
+                // Safely cast expiryTime to long
+                long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
+
+                // Always update V2TrustRelations cache
+                if (expiryTimeBig == 0)
+                {
+                    _caches.V2TrustRelations.Remove(trustKey);
+                }
+                else
+                {
+                    _caches.V2TrustRelations.Add(blockNumber, trustKey, expiryLong);
+                }
+                trustCount++;
+
+                // Also update GroupMemberships if trustee is a group
+                if (_caches.Groups.ContainsKey(trusteeKey))
                 {
                     // Composite key: group:member
-                    var key = $"{groupKey}:{member.ToLowerInvariant()}";
+                    var membershipKey = $"{trusteeKey}:{trusterKey}";
 
-                    // If expiryTime is 0, this is an untrust - use Remove to delete the membership
-                    // Otherwise, add/update the membership
                     if (expiryTimeBig == 0)
                     {
-                        _caches.GroupMemberships.Remove(key);
+                        _caches.GroupMemberships.Remove(membershipKey);
                     }
                     else
                     {
-                        // Safely cast expiryTime to long, capping at long.MaxValue for overflow
-                        long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
-                        _caches.GroupMemberships.Add(blockNumber, key, (member, expiryLong));
+                        _caches.GroupMemberships.Add(blockNumber, membershipKey, (truster, expiryLong));
                     }
-
-                    count++;
+                    membershipCount++;
                 }
             }
         }
 
-        if (count > 0)
+        if (trustCount > 0)
         {
-            _logger.LogDebug("Processed {Count} V2 trust events for group memberships", count);
+            _logger.LogDebug("Processed {TrustCount} V2 trust events ({MembershipCount} group memberships)", 
+                trustCount, membershipCount);
         }
     }
 

@@ -311,7 +311,17 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.gnosis.yml up -d
 ```
 
-## Testing
+#### Indexing Configuration
+
+The Circles.Index plugin supports re-indexing from specific blocks or re-indexing specific tables. This is useful for fixing indexing issues or adding new event types.
+
+**Environment Variables:**
+
+- `REINDEX_FROM_BLOCK`: If set to a block number > 0, delete all indexed data from this block number onwards and re-sync from there. Set to 0 or unset to disable re-indexing.
+- `REINDEX_TABLES`: Comma-separated list of table names to re-index (delete and re-sync). If set to "all" or not specified when `REINDEX_FROM_BLOCK` is set, all tables will be re-indexed. Example: `"CrcV2_InvitationsAtScale_RegisterHuman,CrcV2_InvitationsAtScale_AccountClaimed"`
+- `TABLE_START_BLOCKS`: Per-table start blocks for catching up specific event tables. Format: `"TableName1:StartBlock1,TableName2:StartBlock2"`. This allows syncing newly added LogParsers from their deployment block while keeping other tables up-to-date. Example: `"CrcV2_InvitationsAtScale_RegisterHuman:37500000,CrcV2_InvitationsAtScale_AccountClaimed:37500000"`
+
+These variables can be set in your `.env.local` file for local development or in `docker/.env` for Docker Compose deployments.
 
 ### Test Projects
 
