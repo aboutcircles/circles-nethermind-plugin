@@ -51,6 +51,7 @@ If you're just looking for a way to query Circles events, you can check out the 
 * [General examples](general-example-requests.md)
 * [Circles v1 examples](v1-example-requests.md)
 * [Circles v2 examples](v2-example-requests.md)
+* [Invitation Escrow examples](invitation-escrow-example-requests.md)
 
 For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
 
@@ -428,6 +429,28 @@ Tables for batch events have an additional `batchIndex` column.
     * `group` (Address)
     * `id` (BigInteger)
     * `value` (BigInteger)
+
+#### CrcV2_InvitationEscrow
+* `InvitationEscrowed`
+    * `emitter` (Address)
+    * `inviter` (Address)
+    * `invitee` (Address)
+    * `amount` (BigInteger)
+* `InvitationRedeemed`
+    * `emitter` (Address)
+    * `inviter` (Address)
+    * `invitee` (Address)
+    * `amount` (BigInteger)
+* `InvitationRevoked`
+    * `emitter` (Address)
+    * `inviter` (Address)
+    * `invitee` (Address)
+    * `amount` (BigInteger)
+* `InvitationRefunded`
+    * `emitter` (Address)
+    * `inviter` (Address)
+    * `invitee` (Address)
+    * `amount` (BigInteger)
 
 #### V_CrcV1 (Circles v1 views)
     * `Avatars` (view combining `Signup` and `OrganizationSignup`)
