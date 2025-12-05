@@ -3499,7 +3499,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         await using var command = new NpgsqlCommand(finalSql, connection);
         command.Parameters.AddRange(parameters.ToArray());
 
-        var results = new List<Dictionary<string, object?>>();
+        var results = new List<object?[]>();
         var columnNames = new List<string>();
 
         await using var reader = await command.ExecuteReaderAsync();
@@ -3511,11 +3511,11 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         while (await reader.ReadAsync())
         {
-            var row = new Dictionary<string, object?>();
+            var row = new object?[columnNames.Count];
             for (int i = 0; i < columnNames.Count; i++)
             {
                 var value = reader.GetValue(i);
-                row[columnNames[i]] = value is DBNull ? null : value;
+                row[i] = value is DBNull ? null : value;
             }
             results.Add(row);
         }

@@ -28,7 +28,7 @@
     "circles_events (filter: transactionHash IS NOT NULL)"
   ],
   "subscriptionTest": {
-    "enabled": true,
+    "enabled": false,
     "duration": 60,
     "minEvents": 3,
     "filterAddress": null

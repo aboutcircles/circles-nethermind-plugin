@@ -512,8 +512,9 @@ public class EventsResponseJsonConverter : JsonConverter<EventsResponse>
 
 /// <summary>
 /// Query response with columns and rows.
+/// Uses arrays for rows to match production format.
 /// </summary>
-public record QueryResponse(List<string> Columns, List<Dictionary<string, object?>> Rows);
+public record QueryResponse(List<string> Columns, List<object?[]> Rows);
 
 /// <summary>
 /// Health check response.
