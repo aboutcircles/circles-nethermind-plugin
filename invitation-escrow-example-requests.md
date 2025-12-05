@@ -18,22 +18,49 @@ Emitted when an inviter locks tokens for a specific invitee.
 - `emitter` (Address) - Contract address that emitted the event
 - `inviter` (Address) - Address that locked tokens
 - `invitee` (Address) - Address designated to receive the tokens
-- `amount` (BigInteger) - Amount of tokens escrowed
+- `amount` (BigInteger) - Amount of tokens escrowed (stored as BigInteger in database, originally UInt256 in contract)
 
 ### InvitationRedeemed
 Emitted when the invitee accepts the invitation and the tokens are used/transferred.
 
-**Columns:** Same as InvitationEscrowed
+**Columns:**
+- `blockNumber` (Int64) - The block number
+- `timestamp` (Int64) - Unix timestamp
+- `transactionIndex` (Int32) - Transaction index in block
+- `logIndex` (Int32) - Log index in transaction
+- `transactionHash` (String) - Transaction hash
+- `emitter` (Address) - Contract address that emitted the event
+- `inviter` (Address) - Address that locked tokens
+- `invitee` (Address) - Address designated to receive the tokens
+- `amount` (BigInteger) - Amount of tokens redeemed (stored as BigInteger in database, originally UInt256 in contract)
 
 ### InvitationRevoked
 Emitted when the inviter cancels the invitation and retrieves their tokens.
 
-**Columns:** Same as InvitationEscrowed
+**Columns:**
+- `blockNumber` (Int64) - The block number
+- `timestamp` (Int64) - Unix timestamp
+- `transactionIndex` (Int32) - Transaction index in block
+- `logIndex` (Int32) - Log index in transaction
+- `transactionHash` (String) - Transaction hash
+- `emitter` (Address) - Contract address that emitted the event
+- `inviter` (Address) - Address that locked tokens
+- `invitee` (Address) - Address designated to receive the tokens
+- `amount` (BigInteger) - Amount of tokens revoked (stored as BigInteger in database, originally UInt256 in contract)
 
 ### InvitationRefunded
 Emitted when tokens are returned to the inviter (e.g., during a sweep or specific refund action).
 
-**Columns:** Same as InvitationEscrowed
+**Columns:**
+- `blockNumber` (Int64) - The block number
+- `timestamp` (Int64) - Unix timestamp
+- `transactionIndex` (Int32) - Transaction index in block
+- `logIndex` (Int32) - Log index in transaction
+- `transactionHash` (String) - Transaction hash
+- `emitter` (Address) - Contract address that emitted the event
+- `inviter` (Address) - Address that locked tokens
+- `invitee` (Address) - Address designated to receive the tokens
+- `amount` (BigInteger) - Amount of tokens refunded (stored as BigInteger in database, originally UInt256 in contract)
 
 ## Example Queries
 
@@ -233,13 +260,13 @@ curl -X POST --data '{
               "Type": "FilterPredicate",
               "FilterType": "Equals",
               "Column": "inviter",
-              "Value": "0xInviterAddress"
+              "Value": "0xYourInviterAddressHere"
             },
             {
               "Type": "FilterPredicate",
               "FilterType": "Equals",
               "Column": "invitee",
-              "Value": "0xInviteeAddress"
+              "Value": "0xYourInviteeAddressHere"
             }
           ]
         }
