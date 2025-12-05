@@ -615,129 +615,90 @@ public class CacheWarmupService : BackgroundService
 
     private async Task BuildV2BalancesFromTransfersAsync(NpgsqlConnection conn, CancellationToken ct)
     {
-        // Process V2 TransferSingle events
-        const string singleSql = @"
-            SELECT
-                ""from"",
-                ""to"",
-                id,
-                value,
-                ""blockNumber""
-            FROM ""CrcV2_TransferSingle""
+        // Process V2 TransferSingle and TransferBatch events together in block order
+        const string sql = @"
+            SELECT * FROM (
+                SELECT
+                    ""from"",
+                    ""to"",
+                    id,
+                    value,
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    'Single' as type
+                FROM ""CrcV2_TransferSingle""
+
+                UNION ALL
+
+                SELECT
+                    ""from"",
+                    ""to"",
+                    id,
+                    value,
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    'Batch' as type
+                FROM ""CrcV2_TransferBatch""
+            ) AS combined
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
         var transferCount = 0;
 
-        await using (var singleCmd = new NpgsqlCommand(singleSql, conn))
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 600; // 10 minutes
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 100000;
+
+        while (await reader.ReadAsync(ct))
         {
-            singleCmd.CommandTimeout = 600;
-            await using var singleReader = await singleCmd.ExecuteReaderAsync(ct);
+            var from = reader.GetString(0);
+            var to = reader.GetString(1);
+            var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
+            var valueBig = reader.GetFieldValue<BigInteger>(3);
+            var blockNumber = reader.GetInt64(4);
 
-            var lastLogTime = DateTime.UtcNow;
-            const int logInterval = 100000;
+            var divisor = BigInteger.Parse("1000000000000000000");
+            var amountBig = valueBig / divisor;
 
-            while (await singleReader.ReadAsync(ct))
+            if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
             {
-                var from = singleReader.GetString(0);
-                var to = singleReader.GetString(1);
-                var tokenId = singleReader.GetFieldValue<BigInteger>(2).ToString();
-                var valueBig = singleReader.GetFieldValue<BigInteger>(3);
-                var blockNumber = singleReader.GetInt64(4);
+                _logger.LogWarning("Skipping V2 transfer with value {Value} that would overflow decimal", valueBig);
+                continue;
+            }
 
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var amountBig = valueBig / divisor;
+            var amount = (decimal)amountBig;
 
-                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
-                {
-                    _logger.LogWarning("Skipping V2 transfer with value {Value} that would overflow decimal", valueBig);
-                    continue;
-                }
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+            }
 
-                var amount = (decimal)amountBig;
+            if (to != "0x0000000000000000000000000000000000000000")
+            {
+                var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
+                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+            }
 
-                if (from != "0x0000000000000000000000000000000000000000")
-                {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
-                }
+            transferCount++;
 
-                if (to != "0x0000000000000000000000000000000000000000")
-                {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
-                }
-
-                transferCount++;
-
-                if (transferCount % logInterval == 0)
-                {
-                    var elapsed = DateTime.UtcNow - lastLogTime;
-                    _logger.LogInformation("V2 TransferSingle progress: {Count} transfers ({Rate:F0} transfers/sec)",
-                        transferCount, logInterval / elapsed.TotalSeconds);
-                    lastLogTime = DateTime.UtcNow;
-                }
+            if (transferCount % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V2 Transfer progress: {Count} transfers ({Rate:F0} transfers/sec)",
+                    transferCount, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
             }
         }
 
-        // Process V2 TransferBatch events
-        const string batchSql = @"
-            SELECT
-                ""from"",
-                ""to"",
-                id,
-                value,
-                ""blockNumber""
-            FROM ""CrcV2_TransferBatch""
-            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
-
-        var batchCount = 0;
-
-        await using (var batchCmd = new NpgsqlCommand(batchSql, conn))
-        {
-            batchCmd.CommandTimeout = 600;
-            await using var batchReader = await batchCmd.ExecuteReaderAsync(ct);
-
-            while (await batchReader.ReadAsync(ct))
-            {
-                var from = batchReader.GetString(0);
-                var to = batchReader.GetString(1);
-                var tokenId = batchReader.GetFieldValue<BigInteger>(2).ToString();
-                var valueBig = batchReader.GetFieldValue<BigInteger>(3);
-                var blockNumber = batchReader.GetInt64(4);
-
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var amountBig = valueBig / divisor;
-
-                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
-                {
-                    _logger.LogWarning("Skipping V2 batch transfer with value {Value} that would overflow decimal", valueBig);
-                    continue;
-                }
-
-                var amount = (decimal)amountBig;
-
-                if (from != "0x0000000000000000000000000000000000000000")
-                {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
-                }
-
-                if (to != "0x0000000000000000000000000000000000000000")
-                {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
-                }
-
-                batchCount++;
-            }
-        }
-
-        _logger.LogInformation("Built V2 balances from {SingleCount} TransferSingle + {BatchCount} TransferBatch. Total balance entries: {BalanceCount}",
-            transferCount, batchCount, _caches.V2BalancesByAccountAndToken.Count);
+        _logger.LogInformation("Built V2 balances from {Count} transfers. Total balance entries: {BalanceCount}",
+            transferCount, _caches.V2BalancesByAccountAndToken.Count);
     }
 
     private async Task LoadGroupMembershipsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
