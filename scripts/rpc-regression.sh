@@ -928,7 +928,7 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
     echo -e "${YELLOW}[BONUS] Running WebSocket subscription test on Staging endpoint...${NC}"
 
     # Convert HTTP URL to WebSocket URL
-    LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/subscribe
+    LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/ws/subscribe
 
     # Build arguments
     FILTER_ARG=""

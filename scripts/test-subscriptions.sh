@@ -187,10 +187,21 @@ jq -n '{
 
 # Cleanup function
 cleanup() {
-    rm -rf "$TEMP_DIR"
+    # Kill background processes first
+    if [[ -n "$TIMEOUT_PID" ]]; then
+        kill "$TIMEOUT_PID" 2>/dev/null || true
+        wait "$TIMEOUT_PID" 2>/dev/null || true
+    fi
+    if [[ -n "$READER_PID" ]]; then
+        kill "$READER_PID" 2>/dev/null || true
+        wait "$READER_PID" 2>/dev/null || true
+    fi
     if [[ -n "$WS_PID" ]]; then
         kill "$WS_PID" 2>/dev/null || true
+        wait "$WS_PID" 2>/dev/null || true
     fi
+    # Now safe to remove temp directory
+    rm -rf "$TEMP_DIR"
 }
 trap cleanup EXIT INT TERM
 
@@ -267,17 +278,20 @@ EVENT_COUNT=0
 ACK_TIMEOUT=10  # Timeout for subscription acknowledgment in seconds
 
 # Start a timeout for subscription acknowledgment
+# Note: We use a simple approach - the timeout just kills processes if needed
+# The parent process will handle cleanup
+ACK_RECEIVED_FILE="$TEMP_DIR/ack_received"
 (
     sleep "$ACK_TIMEOUT"
-    if [[ "$SUBSCRIPTION_ACK_RECEIVED" == "false" ]]; then
-        log_message "✗ Timeout waiting for subscription acknowledgment (${ACK_TIMEOUT}s)" "error"
+    # Check if acknowledgment was received (via file marker)
+    if [[ ! -f "$ACK_RECEIVED_FILE" ]]; then
+        echo "✗ Timeout waiting for subscription acknowledgment (${ACK_TIMEOUT}s)" >&2
         echo "No response received from server. Please verify:" >&2
         echo "  1. RPC service is running at $WS_URL" >&2
         echo "  2. Indexer is running (required for event generation)" >&2
         echo "  3. PostgreSQL NOTIFY is configured correctly" >&2
-        # Kill the reader and WebSocket processes
-        kill "$READER_PID" 2>/dev/null || true
-        kill "$WS_PID" 2>/dev/null || true
+        # Signal timeout by creating a marker file
+        touch "$TEMP_DIR/timeout_reached" 2>/dev/null || true
     fi
 ) &
 TIMEOUT_PID=$!
@@ -299,6 +313,9 @@ while IFS= read -r line; do
             log_message "✓ Subscription acknowledged. ID: $SUBSCRIPTION_ID" "success"
             log_message "Listening for events (max ${MAX_DURATION}s, exits after $MIN_EVENTS events)..."
             SUBSCRIPTION_ACK_RECEIVED=true
+            
+            # Mark acknowledgment received (for timeout subprocess)
+            touch "$ACK_RECEIVED_FILE" 2>/dev/null || true
 
             # Cancel the acknowledgment timeout
             if [[ -n "$TIMEOUT_PID" ]]; then
@@ -389,6 +406,38 @@ fi
 # Stop the WebSocket connection
 kill "$WS_PID" 2>/dev/null || true
 wait "$WS_PID" 2>/dev/null || true
+
+# Check if timeout occurred (from the timeout subprocess)
+if [[ -f "$TEMP_DIR/timeout_reached" ]]; then
+    log_message "✗ Test timed out waiting for subscription acknowledgment" "error"
+    # Generate minimal error report
+    if [[ "$OUTPUT_MODE" == "json" ]]; then
+        REPORT=$(jq -n \
+            --arg url "$WS_URL" \
+            --argjson duration "$MAX_DURATION" \
+            '{
+                websocket_url: $url,
+                max_duration_seconds: $duration,
+                subscription_id: null,
+                total_events_received: 0,
+                error_count: 1,
+                errors: ["Timeout waiting for subscription acknowledgment"],
+                success: false
+            }')
+        if [[ -n "$JSON_FILE" ]]; then
+            echo "$REPORT" > "$JSON_FILE"
+        else
+            echo "$REPORT"
+        fi
+    fi
+    exit 1
+fi
+
+# Verify state file exists before reading
+if [[ ! -f "$STATE_FILE" ]]; then
+    log_message "✗ State file not found - unexpected error" "error"
+    exit 1
+fi
 
 # Generate final report
 SUBSCRIPTION_ID=$(jq -r '.subscription_id // "null"' "$STATE_FILE")
