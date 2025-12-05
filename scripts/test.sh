@@ -131,28 +131,24 @@ run_test_project() {
 
   local services_started=false
   if [[ "$project_name" == "Circles.Pathfinder.Tests" ]]; then
-    echo -e "${YELLOW}Starting required services for Pathfinder tests...${NC}"
-    # Start PostgreSQL if not running
-    if ! docker ps | grep -q circles-postgres; then
-      echo -e "${YELLOW}Starting PostgreSQL...${NC}"
-      docker run -d --name circles-postgres \
-        -e POSTGRES_DB=postgres \
-        -e POSTGRES_USER=postgres \
-        -e POSTGRES_PASSWORD=postgres \
-        -p 5432:5432 \
-        postgres:15
-      sleep 5
-    fi
-    # Start Pathfinder service
-    echo -e "${YELLOW}Starting Pathfinder service...${NC}"
-    ./scripts/run-pathfinder.sh &
-    PATHFINDER_PID=$!
-    sleep 5
-    # Start RPC service
-    echo -e "${YELLOW}Starting RPC service...${NC}"
-    ./scripts/run-rpc.sh &
-    RPC_PID=$!
-    sleep 5
+    echo -e "${YELLOW}Starting required services with docker-compose...${NC}"
+    docker compose -f docker/docker-compose.gnosis.yml up -d postgres-gnosis pathfinder rpc
+
+    # Wait for RPC service to be ready
+    echo -e "${YELLOW}Waiting for RPC service to be ready...${NC}"
+    for i in {1..30}; do
+      if curl -s -f http://localhost:8081/rpc -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"circles_health","params":[]}' > /dev/null 2>&1; then
+        echo -e "${GREEN}RPC service is ready${NC}"
+        break
+      fi
+      sleep 1
+      if [ $i -eq 30 ]; then
+        echo -e "${RED}RPC service failed to start${NC}"
+        docker compose -f docker/docker-compose.gnosis.yml down
+        return 1
+      fi
+    done
+
     services_started=true
   fi
 
@@ -167,10 +163,7 @@ run_test_project() {
 
   if [[ "$services_started" == true ]]; then
     echo -e "${YELLOW}Stopping services...${NC}"
-    kill $RPC_PID 2>/dev/null || true
-    kill $PATHFINDER_PID 2>/dev/null || true
-    docker stop circles-postgres 2>/dev/null || true
-    docker rm circles-postgres 2>/dev/null || true
+    docker compose -f docker/docker-compose.gnosis.yml down
   fi
 
   return $test_result

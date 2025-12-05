@@ -109,7 +109,7 @@ public class NetworkPathfinderTests
     {
         // Set the base URL for your Pathfinder service
         _pathfinderBaseUrl = Environment.GetEnvironmentVariable("PATHFINDER_URL") ?? "http://localhost:8080";
-        _rpcUrl = Environment.GetEnvironmentVariable("RPC_URL") ?? "http://localhost:8545";
+        _rpcUrl = Environment.GetEnvironmentVariable("RPC_URL") ?? "http://localhost:8081";
 
         // Get router address from environment or use default
         _routerAddress = Environment.GetEnvironmentVariable("ROUTER_ADDRESS")
