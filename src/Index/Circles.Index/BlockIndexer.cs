@@ -100,9 +100,6 @@ public class ImportFlow(
                                 long totalMissing = Interlocked.Read(ref _totalBlocksWithMissingReceipts);
                                 long totalChecked = totalWithReceipts + totalMissing;
                                 double percentAvailable = totalWithReceipts * 100.0 / totalChecked;
-                                context.Logger.Info(
-                                    $"Receipt availability check at block {block.Number:N0}: " +
-                                    $"{totalWithReceipts:N0}/{totalChecked:N0} blocks have receipts ({percentAvailable:F1}%)");
                             }
                         }
                         else
