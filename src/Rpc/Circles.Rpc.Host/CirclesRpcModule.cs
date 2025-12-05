@@ -2653,6 +2653,15 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             case FilterType.Equals:
                 // Handle array values as IN clause (for backwards compatibility)
+                // Arrays come in as JsonElement due to ObjectToInferredTypeConverter
+                if (predicate.Value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                {
+                    var arrayValues = jsonElement.EnumerateArray()
+                        .Select(e => e.GetString() ?? string.Empty)
+                        .ToArray();
+                    parameters.Add(new NpgsqlParameter(paramName, arrayValues));
+                    return $"{column} IN (SELECT unnest({paramName}::text[]))";
+                }
                 if (predicate.Value is Array arrEquals)
                 {
                     parameters.Add(new NpgsqlParameter(paramName, arrEquals));
