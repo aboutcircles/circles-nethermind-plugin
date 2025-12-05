@@ -143,15 +143,6 @@ public class Settings
             .ToArray()
         ?? ["0x43c8e7cb2fea3a55b52867bb521ebf8cb072feca"];
 
-    public readonly string[] PaymentGatewayFactoryAddresses =
-        Environment.GetEnvironmentVariable("V2_PAYMENT_GATEWAY_FACTORY_ADDRESS")?.Split(',')
-            .Select(x => x.Trim().ToLowerInvariant())
-            .ToArray()
-        ??
-        [
-            "0x186725d8fe10a573dc73144f7a317fcae5314f19"
-        ];
-
     public readonly string[] CMGroupDeployer =
         Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")?.Split(',')
             .Select(x => x.Trim().ToLowerInvariant())
@@ -191,12 +182,22 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
-    public readonly string BaseGroupDeployer =
+    public readonly string BaseGroupDeployer = 
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
-    public readonly bool EnableGroupMinting =
-        Environment.GetEnvironmentVariable("PATHFINDER_ENABLE_GROUP_MINTING")?.ToLowerInvariant() != "false";
+    // Invitations at Scale contracts
+    public readonly string InvitationModuleAddress =
+        Environment.GetEnvironmentVariable("V2_INVITATION_MODULE_ADDRESS")?.ToLowerInvariant()
+        ?? "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5";
+
+    public readonly string ReferralsModuleAddress =
+        Environment.GetEnvironmentVariable("V2_REFERRALS_MODULE_ADDRESS")?.ToLowerInvariant()
+        ?? "0x12105a9b291af2abb0591001155a75949b062ce5";
+
+    public readonly string InvitationFarmAddress =
+        Environment.GetEnvironmentVariable("V2_INVITATION_FARM_ADDRESS")?.ToLowerInvariant()
+        ?? "0xd28b7c4f148b1f1e190840a1f7a796c5525d8902";
 
     #endregion
 }

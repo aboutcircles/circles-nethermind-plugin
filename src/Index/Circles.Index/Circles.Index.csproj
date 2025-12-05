@@ -59,6 +59,10 @@
       Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
+    <ProjectReference
+      Include="..\Circles.Index.CirclesV2.InvitationsAtScale\Circles.Index.CirclesV2.InvitationsAtScale.csproj">
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj">
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>

@@ -72,7 +72,11 @@ public class Plugin : INethermindPlugin
             new CirclesV2.BaseGroupDeployer.LogParser(new(settings.BaseGroupDeployer)),
             new CirclesV2.AffiliateGroupRegistry.LogParser(new(settings.AffiliateGroupRegistry)),
             new CirclesV2.InvitationEscrow.LogParser(new(settings.InvitationEscrowContract)),
-            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress))
+            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress)),
+            new CirclesV2.InvitationsAtScale.LogParser(
+                new(settings.InvitationModuleAddress),
+                new(settings.ReferralsModuleAddress),
+                new(settings.InvitationFarmAddress))
         };
 
         _indexerContext = new Context(
@@ -198,6 +202,9 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Invitation escrow: " + settings.InvitationEscrowContract);
         pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
+        pluginLogger.Info(" * V2 Invitation Module: " + settings.InvitationModuleAddress);
+        pluginLogger.Info(" * V2 Referrals Module: " + settings.ReferralsModuleAddress);
+        pluginLogger.Info(" * V2 Invitation Farm: " + settings.InvitationFarmAddress);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ", settings.SafeProxyFactoryAddresses));
         pluginLogger.Debug("Start index from: " + settings.StartBlock);
 
