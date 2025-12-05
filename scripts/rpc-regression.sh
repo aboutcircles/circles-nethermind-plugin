@@ -925,7 +925,7 @@ SUBSCRIPTION_OUTPUT="$RUN_DIR/subscription_test.json"
 SUBSCRIPTION_SUCCESS=true
 
 if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
-    echo -e "${YELLOW}[BONUS] Running WebSocket subscription test on local endpoint...${NC}"
+    echo -e "${YELLOW}[BONUS] Running WebSocket subscription test on Staging endpoint...${NC}"
 
     # Convert HTTP URL to WebSocket URL
     LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/subscribe
@@ -936,8 +936,11 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
         FILTER_ARG="--filter $SUBSCRIPTION_FILTER"
     fi
 
-    # Run subscription test with smart termination
-    if "$SCRIPT_DIR/test-subscriptions.sh" "$LOCAL_WS_URL" \
+    # Run subscription test with timeout to prevent hanging
+    # Add 10 seconds buffer to the configured duration
+    TIMEOUT_DURATION=$((SUBSCRIPTION_DURATION + 10))
+    
+    if timeout ${TIMEOUT_DURATION}s "$SCRIPT_DIR/test-subscriptions.sh" "$LOCAL_WS_URL" \
         --duration "$SUBSCRIPTION_DURATION" \
         --min-events "$SUBSCRIPTION_MIN_EVENTS" \
         $FILTER_ARG \
@@ -956,7 +959,12 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
             fi
         fi
     else
-        echo -e "${RED}✗ Subscription test failed${NC}"
+        EXIT_CODE=$?
+        if [[ $EXIT_CODE -eq 124 ]]; then
+            echo -e "${YELLOW}⚠ Subscription test timed out after ${TIMEOUT_DURATION}s${NC}"
+        else
+            echo -e "${RED}✗ Subscription test failed${NC}"
+        fi
         SUBSCRIPTION_SUCCESS=false
     fi
     echo ""
