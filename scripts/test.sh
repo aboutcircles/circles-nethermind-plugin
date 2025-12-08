@@ -32,7 +32,7 @@ TEST_PROJECTS=(
 
 # Parse arguments
 RUN_ALL=true
-SPECIFIC_PROJECT=""
+SPECIFIC_PROJECTS=()
 COLLECT_COVERAGE=false
 FILTER=""
 
@@ -40,27 +40,35 @@ for arg in "$@"; do
   case $arg in
     pathfinder)
       RUN_ALL=false
-      SPECIFIC_PROJECT="src/Pathfinder/Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj"
+      SPECIFIC_PROJECTS=("src/Pathfinder/Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj")
       shift
       ;;
     query)
       RUN_ALL=false
-      SPECIFIC_PROJECT="src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
+      SPECIFIC_PROJECTS=("src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj")
       shift
       ;;
     common)
       RUN_ALL=false
-      SPECIFIC_PROJECT="src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj"
+      SPECIFIC_PROJECTS=("src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj")
+      shift
+      ;;
+    index)
+      RUN_ALL=false
+      SPECIFIC_PROJECTS=(
+        "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
+        "src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj"
+      )
       shift
       ;;
     cache)
       RUN_ALL=false
-      SPECIFIC_PROJECT="src/Cache/Circles.Cache.Tests/Circles.Cache.Tests.csproj"
+      SPECIFIC_PROJECTS=("src/Cache/Circles.Cache.Service.Tests/Circles.Cache.Service.Tests.csproj")
       shift
       ;;
     rpc)
       RUN_ALL=false
-      SPECIFIC_PROJECT="src/Rpc/Circles.Rpc.Tests/Circles.Rpc.Tests.csproj"
+      SPECIFIC_PROJECTS=("src/Rpc/Circles.Rpc.Host.Tests/Circles.Rpc.Host.Tests.csproj")
       shift
       ;;
     --coverage)
@@ -78,6 +86,7 @@ for arg in "$@"; do
       echo "  pathfinder    Run only Pathfinder tests"
       echo "  query         Run only Query tests"
       echo "  common        Run only Common tests"
+      echo "  index         Run only Index tests (query + common)"
       echo "  cache         Run only Cache tests"
       echo "  rpc           Run only RPC tests"
       echo ""
@@ -187,14 +196,16 @@ if [ "$RUN_ALL" = true ]; then
     fi
   done
 else
-  # Run specific project
-  ((TOTAL_PROJECTS++))
-  if run_test_project "$SPECIFIC_PROJECT"; then
-    ((PASSED_PROJECTS++))
-  else
-    ((FAILED_PROJECTS++))
-    FAILED_PROJECT_NAMES+=("$(basename "$(dirname "$SPECIFIC_PROJECT")")")
-  fi
+  # Run specific projects
+  for project in "${SPECIFIC_PROJECTS[@]}"; do
+    ((TOTAL_PROJECTS++))
+    if run_test_project "$project"; then
+      ((PASSED_PROJECTS++))
+    else
+      ((FAILED_PROJECTS++))
+      FAILED_PROJECT_NAMES+=("$(basename "$(dirname "$project")")")
+    fi
+  done
 fi
 
 # Summary
