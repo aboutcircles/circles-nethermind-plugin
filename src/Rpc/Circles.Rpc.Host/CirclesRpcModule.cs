@@ -1683,11 +1683,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var truster = reader.GetString(0);
             var trustee = reader.GetString(1);
-            // Handle potentially large numeric values - convert to long safely
-            var expiryTimeValue = reader.GetValue(2);
-            var expiryTime = Convert.ToInt64(expiryTimeValue);
-            var timestampValue = reader.GetValue(3);
-            var timestamp = Convert.ToInt64(timestampValue);
+            // Handle potentially large numeric values - use BigInteger and cap at long.MaxValue
+            var expiryTimeBig = reader.GetFieldValue<System.Numerics.BigInteger>(2);
+            var expiryTime = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
+            var timestampBig = reader.GetFieldValue<System.Numerics.BigInteger>(3);
+            var timestamp = timestampBig > long.MaxValue ? long.MaxValue : (long)timestampBig;
             var avatarType = reader.IsDBNull(4) ? null : reader.GetString(4);
             
             // Determine counterpart (not the avatar itself)
@@ -1842,8 +1842,9 @@ public class CirclesRpcModule : ICirclesRpcModule
         command.Parameters.AddRange(parameters.ToArray());
         
         var results = new List<GroupRow>();
+        var cursorData = new List<(long blockNumber, int txIndex, int logIndex)>();
         await using var reader = await command.ExecuteReaderAsync();
-        
+
         while (await reader.ReadAsync())
         {
             results.Add(new GroupRow(
@@ -1855,39 +1856,23 @@ public class CirclesRpcModule : ICirclesRpcModule
                 BlockNumber: reader.GetInt64(5),
                 Timestamp: reader.GetInt64(6)
             ));
+            cursorData.Add((reader.GetInt64(5), reader.GetInt32(7), reader.GetInt32(8)));
         }
-        
+
         // Check if there are more results
         var hasMore = results.Count > limit;
         if (hasMore)
         {
-            results.RemoveAt(results.Count - 1); // Remove the extra row
+            results.RemoveAt(results.Count - 1);
+            cursorData.RemoveAt(cursorData.Count - 1);
         }
-        
-        // Generate next cursor
+
+        // Generate next cursor from the data we already have
         string? nextCursor = null;
-        if (hasMore && results.Count > 0)
+        if (hasMore && cursorData.Count > 0)
         {
-            nextCursor = await CursorUtils.GenerateCursorFromLastResult(
-                results,
-                async (groupRow) =>
-                {
-                    await using var cursorCommand = new NpgsqlCommand(@"
-                        SELECT ""transactionIndex"", ""logIndex""
-                        FROM ""CrcV2_RegisterGroup""
-                        WHERE ""group"" = @group AND ""blockNumber"" = @blockNumber
-                    ", connection);
-                    cursorCommand.Parameters.AddWithValue("group", groupRow.Group);
-                    cursorCommand.Parameters.AddWithValue("blockNumber", groupRow.BlockNumber);
-                    
-                    await using var cursorReader = await cursorCommand.ExecuteReaderAsync();
-                    if (await cursorReader.ReadAsync())
-                    {
-                        return (groupRow.BlockNumber, cursorReader.GetInt32(0), cursorReader.GetInt32(1));
-                    }
-                    return null;
-                },
-                connection);
+            var lastCursor = cursorData[^1];
+            nextCursor = CursorUtils.EncodeCursor(lastCursor.blockNumber, lastCursor.txIndex, lastCursor.logIndex);
         }
         
         return new PagedResponse<GroupRow>(
@@ -1966,6 +1951,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         
         while (await reader.ReadAsync())
         {
+            // Handle potentially large numeric values - use BigInteger and cap at long.MaxValue
+            var expiryTimeBig = reader.GetFieldValue<BigInteger>(7);
+            var expiryTime = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
+
             results.Add(new GroupMembershipRow(
                 BlockNumber: reader.GetInt64(0),
                 Timestamp: reader.GetInt64(1),
@@ -1974,7 +1963,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 TransactionHash: reader.GetString(4),
                 Group: reader.GetString(5),
                 Member: reader.GetString(6),
-                ExpiryTime: reader.GetInt64(7)
+                ExpiryTime: expiryTime
             ));
         }
         
@@ -2063,7 +2052,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var operatorAddr = reader.IsDBNull(7) ? null : reader.GetString(7);
             var from = reader.GetString(8);
             var to = reader.GetString(9);
-            var id = reader.IsDBNull(10) ? null : reader.GetFieldValue<System.Numerics.BigInteger>(10).ToString();
+            var id = reader.IsDBNull(10) ? null : reader.GetString(10);
             var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
             
             // Calculate all circle amount formats
@@ -3285,19 +3274,40 @@ public class CirclesRpcModule : ICirclesRpcModule
         var enrichedTransactions = new List<EnrichedTransaction>();
         foreach (var evt in events)
         {
+            // Extract top-level fields from the event
+            var blockNumber = evt.TryGetProperty("blockNumber", out var bn) ? bn.GetInt64() : 0;
+            var transactionHash = evt.TryGetProperty("transactionHash", out var th) ? th.GetString() ?? "" : "";
+            var transactionIndex = evt.TryGetProperty("transactionIndex", out var ti) ? ti.GetInt32() : 0;
+            var logIndex = evt.TryGetProperty("logIndex", out var li) ? li.GetInt32() : 0;
+
             var enriched = new EnrichedTransaction
             {
+                BlockNumber = blockNumber,
+                TransactionHash = transactionHash,
+                TransactionIndex = transactionIndex,
+                LogIndex = logIndex,
                 Event = evt,
                 Participants = new Dictionary<string, ParticipantInfo>()
             };
 
-            // Add participant info for all addresses in this event
-            foreach (var addr in involvedAddresses)
+            // Extract addresses specific to this event
+            var eventAddresses = new HashSet<string>();
+            if (evt.TryGetProperty("from", out var from) && from.ValueKind == JsonValueKind.String)
+                eventAddresses.Add(from.GetString()!);
+            if (evt.TryGetProperty("to", out var to) && to.ValueKind == JsonValueKind.String)
+                eventAddresses.Add(to.GetString()!);
+            if (evt.TryGetProperty("truster", out var truster) && truster.ValueKind == JsonValueKind.String)
+                eventAddresses.Add(truster.GetString()!);
+            if (evt.TryGetProperty("trustee", out var trustee) && trustee.ValueKind == JsonValueKind.String)
+                eventAddresses.Add(trustee.GetString()!);
+
+            // Add participant info only for addresses in this specific event
+            foreach (var addr in eventAddresses)
             {
                 var participantInfo = new ParticipantInfo
                 {
-                    AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
-                    Profile = profileDict.ContainsKey(addr) ? profileDict[addr] : null
+                    AvatarInfo = avatarDict.TryGetValue(addr, out var avatar) ? avatar : null,
+                    Profile = profileDict.TryGetValue(addr, out var profile) ? profile : null
                 };
                 enriched.Participants[addr] = participantInfo;
             }

@@ -750,6 +750,10 @@ public record EnrichedTransactionHistoryResponse
 /// </summary>
 public record EnrichedTransaction
 {
+    public long BlockNumber { get; init; }
+    public string TransactionHash { get; init; } = string.Empty;
+    public int TransactionIndex { get; init; }
+    public int LogIndex { get; init; }
     public JsonElement Event { get; init; }
     public Dictionary<string, ParticipantInfo> Participants { get; init; } = new();
 }
