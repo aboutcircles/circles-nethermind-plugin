@@ -2269,7 +2269,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return new CommonTrustResponse(Address1: address1.ToLower(), Address2: address2.ToLower(), CommonTrusts: commonTrusts.ToArray());
     }
 
-    public async Task<NetworkSnapshotResponse> GetNetworkSnapshot()
+    public async Task<JsonElement> GetNetworkSnapshot()
     {
         if (string.IsNullOrEmpty(_settings.ExternalPathfinderUrl))
         {
@@ -2283,13 +2283,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync();
-        var snapshot = await JsonSerializer.DeserializeAsync<JsonElement>(stream);
 
-        // Extract BlockNumber and Addresses directly to match remote response structure
-        var blockNumber = snapshot.GetProperty("BlockNumber");
-        var addresses = snapshot.GetProperty("Addresses");
-
-        return new NetworkSnapshotResponse(BlockNumber: blockNumber, Addresses: addresses);
+        // Parse to JsonDocument and clone the root element to detach from the document
+        // This matches production behavior - return the raw pathfinder response
+        using var doc = await JsonDocument.ParseAsync(stream);
+        return doc.RootElement.Clone();
     }
 
     public async Task<JsonElement> FindPathV2(FlowRequest flowRequest)
@@ -2916,7 +2914,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         return identifier;
     }
 
-    #region SDK Enablement Endpoints (Phase 3)
+    #region SDK Enablement Endpoints
 
     /// <summary>
     /// Gets a consolidated profile view combining avatar info, profile data, trust stats, and balances.

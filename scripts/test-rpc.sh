@@ -492,11 +492,11 @@ run_test "trust" "circlesV2_findPath (with toTokens restriction)" "curl -s -X PO
 run_test "trust" "circlesV2_findPath (simulated trusts)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_2\",\"targetFlow\":\"1000\",\"simulatedTrusts\":[{\"Truster\":\"$TEST_ADDR_1\",\"Trustee\":\"$TEST_ADDR_2\",\"ExpiryTime\":9999999999}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 ######################################################################
-# SDK Enablement Methods (Phase 3 - Optimized Endpoints)
+# SDK Enablement Methods
 ######################################################################
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then
-    echo -e "${BLUE}--- SDK Enablement: Phase 3 Methods ---${NC}\n"
+    echo -e "${BLUE}--- SDK Enablement Methods ---${NC}\n"
 fi
 
 # Profile View (consolidates 6-7 calls into 1)
