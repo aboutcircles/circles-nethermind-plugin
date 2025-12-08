@@ -11,6 +11,7 @@ COPY src/Index/Circles.Index.CirclesV2.BaseGroupDeployer/Circles.Index.CirclesV2
 COPY src/Index/Circles.Index.CirclesV2.CMGroupDeployer/Circles.Index.CirclesV2.CMGroupDeployer.csproj ./Circles.Index.CirclesV2.CMGroupDeployer/
 COPY src/Index/Circles.Index.CirclesV2.Erc20Lift/Circles.Index.CirclesV2.Erc20Lift.csproj ./Circles.Index.CirclesV2.Erc20Lift/
 COPY src/Index/Circles.Index.CirclesV2.InvitationEscrow/Circles.Index.CirclesV2.InvitationEscrow.csproj ./Circles.Index.CirclesV2.InvitationEscrow/
+COPY src/Index/Circles.Index.CirclesV2.InvitationsAtScale/Circles.Index.CirclesV2.InvitationsAtScale.csproj ./Circles.Index.CirclesV2.InvitationsAtScale/
 COPY src/Index/Circles.Index.CirclesV2.LBP/Circles.Index.CirclesV2.LBP.csproj ./Circles.Index.CirclesV2.LBP/
 COPY src/Index/Circles.Index.CirclesV2.NameRegistry/Circles.Index.CirclesV2.NameRegistry.csproj ./Circles.Index.CirclesV2.NameRegistry/
 COPY src/Index/Circles.Index.CirclesV2.OIC/Circles.Index.CirclesV2.OIC.csproj ./Circles.Index.CirclesV2.OIC/
