@@ -108,7 +108,7 @@ public interface ICirclesRpcModule
     Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null);
 
     // ========================================================================
-    // Phase 3: SDK Enablement Methods
+    // SDK Enablement Methods
     // ========================================================================
 
     /// <summary>
@@ -290,8 +290,9 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets a snapshot of the entire Circles trust network.
     /// This method proxies the request to an external Pathfinder service.
+    /// Returns the raw pathfinder response to match production behavior.
     /// </summary>
-    Task<NetworkSnapshotResponse> GetNetworkSnapshot();
+    Task<JsonElement> GetNetworkSnapshot();
 
     // ========================================================================
     // System Information
@@ -540,11 +541,6 @@ public record TableDefinition(string Table, string Topic, TableColumn[] Columns)
 /// Namespace containing multiple tables.
 /// </summary>
 public record TableNamespace(string Namespace, TableDefinition[] Tables);
-
-/// <summary>
-/// Network snapshot (proxied from pathfinder).
-/// </summary>
-public record NetworkSnapshotResponse(JsonElement BlockNumber, JsonElement Addresses);
 
 /// <summary>
 /// Rich token balance information with multiple value representations.
