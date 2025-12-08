@@ -563,6 +563,9 @@ public class CacheWarmupService : BackgroundService
         var lastLogTime = DateTime.UtcNow;
         const int logInterval = 100000; // Log every 100k transfers
 
+        var currentBalances = new Dictionary<string, decimal>();
+        long currentBlock = -1;
+
         while (await reader.ReadAsync(ct))
         {
             var from = reader.GetString(0);
@@ -583,21 +586,31 @@ public class CacheWarmupService : BackgroundService
             var value = (decimal)valueBig;
             var tokenKey = tokenAddress.ToLowerInvariant();
 
-            // Skip zero address
-            if (from != "0x0000000000000000000000000000000000000000")
+            if (blockNumber != currentBlock)
             {
-                // Subtract from sender
-                var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                var currentBalance = _caches.V1BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                _caches.V1BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - value);
+                if (currentBlock != -1)
+                {
+                    // Add balances for the previous block
+                    foreach (var kvp in currentBalances)
+                    {
+                        _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                    }
+                }
+                currentBlock = blockNumber;
             }
 
+            // Update balances for sender
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
+                currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - value;
+            }
+
+            // Update balances for receiver
             if (to != "0x0000000000000000000000000000000000000000")
             {
-                // Add to receiver
                 var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                var currentBalance = _caches.V1BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                _caches.V1BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + value);
+                currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + value;
             }
 
             transferCount++;
@@ -608,6 +621,15 @@ public class CacheWarmupService : BackgroundService
                 _logger.LogInformation("V1 balance building progress: {Count} transfers processed ({Rate:F0} transfers/sec)",
                     transferCount, logInterval / elapsed.TotalSeconds);
                 lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        // Add balances for the last block
+        if (currentBlock != -1)
+        {
+            foreach (var kvp in currentBalances)
+            {
+                _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
@@ -655,6 +677,9 @@ public class CacheWarmupService : BackgroundService
         var lastLogTime = DateTime.UtcNow;
         const int logInterval = 100000;
 
+        var currentBalances = new Dictionary<string, decimal>();
+        long currentBlock = -1;
+
         while (await reader.ReadAsync(ct))
         {
             var from = reader.GetString(0);
@@ -674,18 +699,29 @@ public class CacheWarmupService : BackgroundService
 
             var amount = (decimal)amountBig;
 
+            if (blockNumber != currentBlock)
+            {
+                if (currentBlock != -1)
+                {
+                    // Add balances for the previous block
+                    foreach (var kvp in currentBalances)
+                    {
+                        _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                    }
+                }
+                currentBlock = blockNumber;
+            }
+
             if (from != "0x0000000000000000000000000000000000000000")
             {
                 var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+                currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - amount;
             }
 
             if (to != "0x0000000000000000000000000000000000000000")
             {
                 var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+                currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + amount;
             }
 
             transferCount++;
@@ -696,6 +732,15 @@ public class CacheWarmupService : BackgroundService
                 _logger.LogInformation("V2 Transfer progress: {Count} transfers ({Rate:F0} transfers/sec)",
                     transferCount, logInterval / elapsed.TotalSeconds);
                 lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        // Add balances for the last block
+        if (currentBlock != -1)
+        {
+            foreach (var kvp in currentBalances)
+            {
+                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
@@ -724,6 +769,9 @@ public class CacheWarmupService : BackgroundService
         var lastLogTime = DateTime.UtcNow;
         const int logInterval = 10000; // Log every 10k transfers (fewer than ERC1155)
 
+        var currentBalances = new Dictionary<string, decimal>();
+        long currentBlock = -1;
+
         while (await reader.ReadAsync(ct))
         {
             var from = reader.GetString(0);
@@ -744,21 +792,31 @@ public class CacheWarmupService : BackgroundService
             var value = (decimal)valueBig;
             var tokenKey = tokenAddress.ToLowerInvariant();
 
-            // Skip zero address
-            if (from != "0x0000000000000000000000000000000000000000")
+            if (blockNumber != currentBlock)
             {
-                // Subtract from sender
-                var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - value);
+                if (currentBlock != -1)
+                {
+                    // Add balances for the previous block
+                    foreach (var kvp in currentBalances)
+                    {
+                        _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                    }
+                }
+                currentBlock = blockNumber;
             }
 
+            // Update balances for sender
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
+                currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - value;
+            }
+
+            // Update balances for receiver
             if (to != "0x0000000000000000000000000000000000000000")
             {
-                // Add to receiver
                 var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + value);
+                currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + value;
             }
 
             transferCount++;
@@ -769,6 +827,15 @@ public class CacheWarmupService : BackgroundService
                 _logger.LogInformation("ERC20 wrapper balance building progress: {Count} transfers processed ({Rate:F0} transfers/sec)",
                     transferCount, logInterval / elapsed.TotalSeconds);
                 lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        // Add balances for the last block
+        if (currentBlock != -1)
+        {
+            foreach (var kvp in currentBalances)
+            {
+                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
