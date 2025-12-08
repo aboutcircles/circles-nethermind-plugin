@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Circles.Index.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -8,7 +9,7 @@ namespace Circles.Index.CirclesV2.InvitationEscrow;
 /// <summary>
 /// Parses logs emitted by the InvitationEscrow contract.
 /// </summary>
-public class LogParser(Address escrowAddress) : ILogParser
+public class LogParser(ImmutableHashSet<Address> escrowAddresses) : ILogParser
 {
     private readonly Hash256 _escrowedTopic = new(DatabaseSchema.InvitationEscrowed.Topic);
     private readonly Hash256 _redeemedTopic = new(DatabaseSchema.InvitationRedeemed.Topic);
@@ -40,7 +41,7 @@ public class LogParser(Address escrowAddress) : ILogParser
         int logIndex)
     {
         bool hasTopics = log.Topics.Length > 0;
-        bool isFromEscrow = log.Address == escrowAddress;
+        bool isFromEscrow = escrowAddresses.Contains(log.Address);
 
         if (!hasTopics || !isFromEscrow)
         {
