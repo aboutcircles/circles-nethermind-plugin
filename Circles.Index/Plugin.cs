@@ -92,8 +92,9 @@ public class Plugin : INethermindPlugin
             new CirclesV1.NameRegistry.LogParser(new(settings.CirclesV1NameRegistry)),
             new CirclesV2.BaseGroupDeployer.LogParser(new(settings.BaseGroupDeployer)),
             new CirclesV2.AffiliateGroupRegistry.LogParser(new(settings.AffiliateGroupRegistry)),
-            new CirclesV2.InvitationEscrow.LogParser(new(settings.InvitationEscrowContract)),
-            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress))
+            new CirclesV2.InvitationEscrow.LogParser(
+                settings.InvitationEscrowContract.Select(a => new Address(a)).ToImmutableHashSet()),
+            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress)),
         };
 
         _indexerContext = new Context(
@@ -216,7 +217,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Erc20 Lift: " + settings.CirclesErc20LiftAddress);
         pluginLogger.Info(" * V2 Affiliate group registry: " + settings.AffiliateGroupRegistry);
         pluginLogger.Info(" * V2 Token offer factory: " + string.Join(", ", settings.CirclesTokenOfferFactoryAddress));
-        pluginLogger.Info(" * V2 Invitation escrow: " + settings.InvitationEscrowContract);
+        pluginLogger.Info(" * V2 Invitation escrow: " + string.Join(", ", settings.InvitationEscrowContract));
         pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ", settings.SafeProxyFactoryAddresses));

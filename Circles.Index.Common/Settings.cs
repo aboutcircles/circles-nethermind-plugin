@@ -107,9 +107,14 @@ public class Settings
             "0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67"
         ];
 
-    public readonly string InvitationEscrowContract =
-        Environment.GetEnvironmentVariable("V2_INVITATION_ESCROW_ADDRESS")?.ToLowerInvariant()
-        ?? "0x0956c08ad2dcc6f4a1e0cc5ffa3a08d2a6d85f29";
+    public readonly string[] InvitationEscrowContract =
+        Environment.GetEnvironmentVariable("V2_INVITATION_ESCROW_ADDRESS")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ?? [
+            "0x0956c08ad2dcc6f4a1e0cc5ffa3a08d2a6d85f29",
+            "0x8F8B74fa13eaaff4176D061a0F98ad5c8E19c903"
+        ];
 
     public readonly string AffiliateGroupRegistry =
         Environment.GetEnvironmentVariable("V2_AFFILIATE_GROUP_REGISTRY_ADDRESS")?.ToLowerInvariant()
@@ -123,7 +128,7 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
-    public readonly string BaseGroupDeployer = 
+    public readonly string BaseGroupDeployer =
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
