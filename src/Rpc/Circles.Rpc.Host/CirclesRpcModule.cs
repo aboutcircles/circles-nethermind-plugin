@@ -1683,8 +1683,11 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var truster = reader.GetString(0);
             var trustee = reader.GetString(1);
-            var expiryTime = reader.GetInt64(2);
-            var timestamp = reader.GetInt64(3);
+            // Handle potentially large numeric values - convert to long safely
+            var expiryTimeValue = reader.GetValue(2);
+            var expiryTime = Convert.ToInt64(expiryTimeValue);
+            var timestampValue = reader.GetValue(3);
+            var timestamp = Convert.ToInt64(timestampValue);
             var avatarType = reader.IsDBNull(4) ? null : reader.GetString(4);
             
             // Determine counterpart (not the avatar itself)
@@ -2137,16 +2140,23 @@ public class CirclesRpcModule : ICirclesRpcModule
         var normalizedToken = tokenAddress.ToLower();
         await using var connection = await CreateConnectionAsync();
         
-        // Build query with cursor pagination
+        // Build query with cursor pagination - UNION both V1 and V2 views
         var sql = @$"
-            SELECT 
+            SELECT
                 account,
-                balance,
+                ""totalBalance"",
                 ""tokenAddress"",
                 version
-            FROM ""V_Crc_BalancesByAccountAndToken""
-            WHERE ""tokenAddress"" = @tokenAddress
-              AND balance > 0
+            FROM (
+                SELECT account, ""totalBalance"", ""tokenAddress"", 1 as version
+                FROM ""V_CrcV1_BalancesByAccountAndToken""
+                WHERE ""tokenAddress"" = @tokenAddress AND ""totalBalance"" > 0
+                UNION ALL
+                SELECT account, ""totalBalance"", ""tokenAddress"", 2 as version
+                FROM ""V_CrcV2_BalancesByAccountAndToken""
+                WHERE ""tokenAddress"" = @tokenAddress AND ""totalBalance"" > 0
+            ) AS combined_balances
+            WHERE 1=1
               {(!string.IsNullOrEmpty(cursor) ? "AND account > @cursor" : "")}
             ORDER BY account ASC
             LIMIT @limit
