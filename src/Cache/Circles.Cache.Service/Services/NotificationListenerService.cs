@@ -555,6 +555,9 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
         var transferCount = 0;
+        var currentBalances = new Dictionary<string, decimal>();
+        long currentBlock = -1;
+
         await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
@@ -574,23 +577,43 @@ public class NotificationListenerService : BackgroundService
                     ? decimal.MaxValue
                     : (decimal)tokenUnits;
 
+                if (blockNumber != currentBlock)
+                {
+                    if (currentBlock != -1)
+                    {
+                        // Add balances for the previous block
+                        foreach (var kvp in currentBalances)
+                        {
+                            _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                        }
+                    }
+                    currentBlock = blockNumber;
+                }
+
                 // Update sender balance
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    var currentBalance = _caches.V1BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                    _caches.V1BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - value);
+                    currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - value;
                 }
 
                 // Update receiver balance
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    var currentBalance = _caches.V1BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                    _caches.V1BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + value);
+                    currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + value;
                 }
 
                 transferCount++;
+            }
+        }
+
+        // Add balances for the last block
+        if (currentBlock != -1)
+        {
+            foreach (var kvp in currentBalances)
+            {
+                _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
@@ -602,19 +625,46 @@ public class NotificationListenerService : BackgroundService
 
     private async Task ProcessV2TransfersAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
-        // Process V2 TransferSingle events incrementally
-        const string singleSql = @"
-            SELECT ""from"", ""to"", id, value, ""blockNumber""
-            FROM ""CrcV2_TransferSingle""
-            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+        // Process V2 TransferSingle and TransferBatch events together in block order
+        const string sql = @"
+            SELECT * FROM (
+                SELECT
+                    ""from"",
+                    ""to"",
+                    id,
+                    value,
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    'Single' as type
+                FROM ""CrcV2_TransferSingle""
+                WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+
+                UNION ALL
+
+                SELECT
+                    ""from"",
+                    ""to"",
+                    id,
+                    value,
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    'Batch' as type
+                FROM ""CrcV2_TransferBatch""
+                WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
+            ) AS combined
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
 
-        await using var singleCmd = new NpgsqlCommand(singleSql, conn);
-        singleCmd.Parameters.AddWithValue("fromBlock", fromBlock);
-        singleCmd.Parameters.AddWithValue("toBlock", toBlock);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
 
         var transferCount = 0;
-        await using (var reader = await singleCmd.ExecuteReaderAsync(ct))
+        var currentBalances = new Dictionary<string, decimal>();
+        long currentBlock = -1;
+
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
             {
@@ -635,83 +685,49 @@ public class NotificationListenerService : BackgroundService
 
                 var amount = (decimal)amountBig;
 
+                if (blockNumber != currentBlock)
+                {
+                    if (currentBlock != -1)
+                    {
+                        // Add balances for the previous block
+                        foreach (var kvp in currentBalances)
+                        {
+                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                        }
+                    }
+                    currentBlock = blockNumber;
+                }
+
                 // Update sender balance
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+                    currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - amount;
                 }
 
                 // Update receiver balance
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+                    currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + amount;
                 }
 
                 transferCount++;
             }
         }
 
-        // Process V2 TransferBatch events
-        const string batchSql = @"
-            SELECT ""from"", ""to"", id, value, ""blockNumber""
-            FROM ""CrcV2_TransferBatch""
-            WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
-            ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
-
-        await using var batchCmd = new NpgsqlCommand(batchSql, conn);
-        batchCmd.Parameters.AddWithValue("fromBlock", fromBlock);
-        batchCmd.Parameters.AddWithValue("toBlock", toBlock);
-
-        var batchCount = 0;
-        await using (var reader = await batchCmd.ExecuteReaderAsync(ct))
+        // Add balances for the last block
+        if (currentBlock != -1)
         {
-            while (await reader.ReadAsync(ct))
+            foreach (var kvp in currentBalances)
             {
-                var from = reader.GetString(0);
-                var to = reader.GetString(1);
-                var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
-                var valueBig = reader.GetFieldValue<BigInteger>(3);
-                var blockNumber = reader.GetInt64(4);
-
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var amountBig = valueBig / divisor;
-
-                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
-                {
-                    _logger.LogWarning("Skipping V2 batch transfer with value {Value} that would overflow decimal", valueBig);
-                    continue;
-                }
-
-                var amount = (decimal)amountBig;
-
-                // Update sender balance
-                if (from != "0x0000000000000000000000000000000000000000")
-                {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
-                }
-
-                // Update receiver balance
-                if (to != "0x0000000000000000000000000000000000000000")
-                {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
-                }
-
-                batchCount++;
+                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
-        if (transferCount > 0 || batchCount > 0)
+        if (transferCount > 0)
         {
-            _logger.LogDebug("Processed {SingleCount} TransferSingle + {BatchCount} TransferBatch events",
-                transferCount, batchCount);
+            _logger.LogDebug("Processed {Count} V2 transfer events", transferCount);
         }
     }
 
@@ -729,6 +745,9 @@ public class NotificationListenerService : BackgroundService
         cmd.Parameters.AddWithValue("toBlock", toBlock);
 
         var transferCount = 0;
+        var currentBalances = new Dictionary<string, decimal>();
+        long currentBlock = -1;
+
         await using (var reader = await cmd.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
@@ -751,23 +770,43 @@ public class NotificationListenerService : BackgroundService
                 var amount = (decimal)valueBig;
                 var tokenKey = tokenAddress.ToLowerInvariant();
 
+                if (blockNumber != currentBlock)
+                {
+                    if (currentBlock != -1)
+                    {
+                        // Add balances for the previous block
+                        foreach (var kvp in currentBalances)
+                        {
+                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                        }
+                    }
+                    currentBlock = blockNumber;
+                }
+
                 // Update sender balance
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, fromKey, currentBalance - amount);
+                    currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - amount;
                 }
 
                 // Update receiver balance
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    var currentBalance = _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var bal) ? bal : 0m;
-                    _caches.V2BalancesByAccountAndToken.Add(blockNumber, toKey, currentBalance + amount);
+                    currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + amount;
                 }
 
                 transferCount++;
+            }
+        }
+
+        // Add balances for the last block
+        if (currentBlock != -1)
+        {
+            foreach (var kvp in currentBalances)
+            {
+                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
