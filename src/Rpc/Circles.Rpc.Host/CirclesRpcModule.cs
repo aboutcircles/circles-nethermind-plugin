@@ -454,54 +454,46 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var lowerAddress = address.ToLower();
 
+        // Use the balance views which correctly aggregate transfers and compute balances > 0
+        // This matches the production behavior which uses in-memory caches seeded from these views
         const string sql = @"
             WITH tokens AS (
-                -- V1 avatar tokens from V1 transfers
-                SELECT t.""tokenAddress""
+                -- V1 token balances from the materialized balance view
+                SELECT v1.""tokenAddress""
                      , 'CrcV1_Signup' as ""type""
                      , s.""user"" as ""tokenOwner""
-                FROM  public.""CrcV1_Transfer"" t
-                join ""CrcV1_Signup"" s on s.token = t.""tokenAddress""
-                WHERE t.""to"" = @address
+                FROM  public.""V_CrcV1_BalancesByAccountAndToken"" v1
+                JOIN  public.""CrcV1_Signup"" s ON s.token = v1.""tokenAddress""
+                WHERE v1.account = @address
+                  AND v1.balance > 0
 
                 UNION ALL
 
-                -- V1 tokens where address is the owner (signup)
-                SELECT token AS ""tokenAddress""
-                     , 'CrcV1_Signup' AS ""type""
-                     , ""user"" AS ""tokenOwner""
-                FROM public.""CrcV1_Signup""
-                WHERE ""user"" = @address
-
-                UNION ALL
-
-                -- V2 avatar tokens from TransferSingle (ERC1155)
-                SELECT DISTINCT ts.""tokenAddress""
-                     , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
-                     , ts.""tokenAddress"" as ""tokenOwner""
-                FROM  public.""CrcV2_TransferSingle"" ts
-                left join ""CrcV2_RegisterHuman"" rh on rh.avatar = ts.""tokenAddress""
-                WHERE ts.""to"" = @address
-
-                UNION ALL
-
-                -- V2 avatar tokens from TransferBatch (ERC1155)
-                SELECT DISTINCT tb.""tokenAddress""
-                     , case when rh.avatar is not null then 'CrcV2_RegisterHuman' else 'CrcV2_RegisterGroup' end as ""type""
-                     , tb.""tokenAddress"" as ""tokenOwner""
-                FROM  public.""CrcV2_TransferBatch"" tb
-                left join ""CrcV2_RegisterHuman"" rh on rh.avatar = tb.""tokenAddress""
-                WHERE tb.""to"" = @address
+                -- V2 ERC1155 token balances (human/group tokens)
+                SELECT v2.""tokenAddress""
+                     , CASE
+                         WHEN rh.avatar IS NOT NULL THEN 'CrcV2_RegisterHuman'
+                         ELSE 'CrcV2_RegisterGroup'
+                       END as ""type""
+                     , v2.""tokenAddress"" as ""tokenOwner""
+                FROM  public.""V_CrcV2_BalancesByAccountAndToken"" v2
+                LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = v2.""tokenAddress""
+                WHERE v2.account = @address
+                  AND v2.""totalBalance"" > 0
 
                 UNION ALL
 
                 -- V2 wrapped ERC20 tokens (both inflationary and demurraged)
                 SELECT DISTINCT wt.""tokenAddress""
-                     , case when wd.""circlesType"" = 0 then 'CrcV2_ERC20WrapperDeployed_Demurraged' else 'CrcV2_ERC20WrapperDeployed_Inflationary' end as type
-                     , wd.avatar as tokenOwner
+                     , CASE
+                         WHEN wd.""circlesType"" = 0 THEN 'CrcV2_ERC20WrapperDeployed_Demurraged'
+                         ELSE 'CrcV2_ERC20WrapperDeployed_Inflationary'
+                       END as ""type""
+                     , wd.avatar as ""tokenOwner""
                 FROM  public.""CrcV2_Erc20WrapperTransfer"" wt
-                join ""CrcV2_ERC20WrapperDeployed"" wd on wd.""erc20Wrapper"" = wt.""tokenAddress""
+                JOIN  public.""CrcV2_ERC20WrapperDeployed"" wd ON wd.""erc20Wrapper"" = wt.""tokenAddress""
                 WHERE wt.""to"" = @address
+                   OR wt.""from"" = @address
             )
             SELECT DISTINCT ""tokenAddress"", ""type"", ""tokenOwner""
             FROM tokens
@@ -2414,9 +2406,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             var whereSql = whereClauses.Count > 0 ? $" WHERE {string.Join(" AND ", whereClauses)}" : "";
 
-            // Wrap each query in a subquery to apply ORDER BY and LIMIT before UNION
-            // This pushes the sorting and limit down to each table scan instead of sorting the entire UNION result
-            var query = $@"(SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t{whereSql} ORDER BY t.""blockNumber"" {sortOrder}, t.""transactionIndex"" {sortOrder}, t.""logIndex"" {sortOrder} LIMIT 1000)";
+            var query = $@"(SELECT t.""blockNumber"", t.""transactionIndex"", t.""transactionHash"", t.""logIndex"", '{table.Key}' as event_name, to_jsonb(t) as event_payload FROM ""{table.Key}"" t{whereSql} ORDER BY t.""blockNumber"" {sortOrder}, t.""transactionIndex"" {sortOrder}, t.""logIndex"" {sortOrder})";
             queries.Add(query);
         }
 
@@ -2425,9 +2415,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             return new EventsResponse(Array.Empty<object>());
         }
 
-        // Combine results from all tables and apply final ORDER BY and LIMIT
+        // Combine results from all tables and apply final ORDER BY
         var finalSql = string.Join(" UNION ALL ", queries);
-        finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder} LIMIT 1000";
+        finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder}";
 
         await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(finalSql, connection);
