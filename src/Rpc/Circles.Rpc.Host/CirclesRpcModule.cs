@@ -231,9 +231,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             try
             {
                 _logger?.LogDebug("Using Cache Service for token balances query (address={Address})", address);
-                
+
                 var cacheBalances = await _cacheServiceClient.GetTokenBalancesAsync(address);
-                var cachedTokens = GetTokenExposureIds(address);
+                var cachedTokens = await GetTokenExposureIdsAsync(address);
                 var cachedHubAddress = _settings.CirclesV2HubAddress;
                 var cachedNow = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 
@@ -311,7 +311,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         
         // Fallback: use traditional database + Nethermind approach
         _logger?.LogDebug("Using database for token balances query (address={Address})", address);
-        var tokens = GetTokenExposureIds(address);
+        var tokens = await GetTokenExposureIdsAsync(address);
 
         if (tokens.Count == 0)
         {
@@ -450,7 +450,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
     }
 
-    private Dictionary<string, TokenExposureInfo> GetTokenExposureIds(string address)
+    private async Task<Dictionary<string, TokenExposureInfo>> GetTokenExposureIdsAsync(string address)
     {
         var lowerAddress = address.ToLower();
 
@@ -507,15 +507,15 @@ public class CirclesRpcModule : ICirclesRpcModule
             FROM tokens
         ";
 
-        using var connection = new NpgsqlConnection(_readOnlyDbConnectionString);
-        connection.Open();
-        using var command = new NpgsqlCommand(sql, connection);
+        await using var connection = new NpgsqlConnection(_readOnlyDbConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", lowerAddress);
 
         var tokenExposureIds = new Dictionary<string, TokenExposureInfo>();
-        using var reader = command.ExecuteReader();
+        await using var reader = await command.ExecuteReaderAsync();
 
-        while (reader.Read())
+        while (await reader.ReadAsync())
         {
             var token = reader.GetString(0);
             var tokenType = reader.GetString(1);
@@ -594,7 +594,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     private async Task<CirclesTokenBalance[]> GetTokenBalancesForAccount(string address)
     {
-        var tokens = GetTokenExposureIds(address);
+        var tokens = await GetTokenExposureIdsAsync(address);
         var hubAddress = _settings.CirclesV2HubAddress;
 
         var erc20Tokens = tokens.Values.Where(o => o.IsErc20).ToArray();
@@ -1597,7 +1597,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<TrustRelationsResponse> GetTrustRelations(string address)
     {
-        using var connection = await CreateConnectionAsync();
+        await using var connection = await CreateConnectionAsync();
         const string sql = @"
             select ""user"",
                    ""canSendTo"",
@@ -1616,11 +1616,11 @@ public class CirclesRpcModule : ICirclesRpcModule
               and (""user"" = @address
                or ""canSendTo"" = @address)
         ";
-        using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
         var trusts = new List<TrustRelation>();
         var trustedBy = new List<TrustRelation>();
-        using var reader = await command.ExecuteReaderAsync();
+        await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
             var user = reader.GetString(0);
@@ -2256,7 +2256,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         await using var connection = await CreateConnectionAsync();
-        using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address1", address1.ToLower());
         command.Parameters.AddWithValue("address2", address2.ToLower());
 
@@ -2756,8 +2756,8 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         try
         {
-            using var connection = await CreateConnectionAsync();
-            using var command = new NpgsqlCommand("SELECT 1", connection);
+            await using var connection = await CreateConnectionAsync();
+            await using var command = new NpgsqlCommand("SELECT 1", connection);
             await command.ExecuteScalarAsync();
             databaseStatus = "connected";
         }
@@ -2779,8 +2779,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             // Get latest block from database
             long? lastPersisted;
-            using var connection = await CreateConnectionAsync();
-            using var command = new NpgsqlCommand("SELECT MAX(\"blockNumber\") as block_number FROM \"System_Block\"", connection);
+            await using var connection = await CreateConnectionAsync();
+            await using var command = new NpgsqlCommand("SELECT MAX(\"blockNumber\") as block_number FROM \"System_Block\"", connection);
             var result = await command.ExecuteScalarAsync();
             lastPersisted = result is long longResult ? longResult : 0;
 

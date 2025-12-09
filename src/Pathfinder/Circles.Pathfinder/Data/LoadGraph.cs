@@ -80,6 +80,7 @@ namespace Circles.Pathfinder.Data
         {
             // We now only have one balance query that includes the isWrapped column
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
+            var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
 
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
@@ -87,8 +88,6 @@ namespace Circles.Pathfinder.Data
             using var command = new NpgsqlCommand(balanceQuery, connection);
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
             using var reader = command.ExecuteReader();
-
-            var now = DateTime.UtcNow;
 
             while (reader.Read())
             {
@@ -116,19 +115,21 @@ namespace Circles.Pathfinder.Data
                     continue;
                 }
 
-                // yield return (balance, account, tokenAddress, isWrapped, type == "static");
-                yield return (balance,
+                results.Add((balance,
                     AddressIdPool.IdOf(account.ToLowerInvariant()),
                     AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
                     isWrapped,
-                    type == "static");
+                    type == "static"));
             }
+
+            return results;
         }
 
         public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
         {
             // We now only have one trust query that includes wrap tokens
             var trustQuery = LoadQueryFromResource("trustQuery.sql");
+            var results = new List<(string Truster, string Trustee, int Limit)>();
 
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
@@ -142,14 +143,17 @@ namespace Circles.Pathfinder.Data
                 var truster = reader.GetString(0);
                 var trustee = reader.GetString(1);
 
-                yield return (truster, trustee, 100); // Assuming a default trust limit of 100 in V2
+                results.Add((truster, trustee, 100)); // Assuming a default trust limit of 100 in V2
             }
+
+            return results;
         }
 
         // Load groups
         public IEnumerable<string> LoadGroups()
         {
             var groupQuery = LoadQueryFromResource("groupQuery.sql");
+            var results = new List<string>();
 
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
@@ -161,14 +165,17 @@ namespace Circles.Pathfinder.Data
             while (reader.Read())
             {
                 var groupAddress = reader.GetString(0);
-                yield return groupAddress;
+                results.Add(groupAddress);
             }
+
+            return results;
         }
 
         // Load group trust relationships
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
         {
             var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
+            var results = new List<(string GroupAddress, string TrustedToken)>();
 
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
@@ -181,8 +188,10 @@ namespace Circles.Pathfinder.Data
             {
                 var groupAddress = reader.GetString(0);
                 var trustedToken = reader.GetString(1);
-                yield return (groupAddress, trustedToken);
+                results.Add((groupAddress, trustedToken));
             }
+
+            return results;
         }
     }
 }
