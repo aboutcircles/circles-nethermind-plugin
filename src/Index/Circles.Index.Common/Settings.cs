@@ -1,6 +1,28 @@
 namespace Circles.Index.Common;
 
 /// <summary>
+/// Specifies how the indexer writes batches to the database.
+/// </summary>
+public enum WriteMode
+{
+    /// <summary>
+    /// Use PostgreSQL COPY for maximum performance. Fails on duplicate keys.
+    /// </summary>
+    Copy,
+
+    /// <summary>
+    /// Use INSERT ... ON CONFLICT DO NOTHING. Handles duplicates gracefully but slower.
+    /// </summary>
+    Upsert,
+
+    /// <summary>
+    /// Use COPY normally, automatically fall back to Upsert on duplicate key errors.
+    /// This is the recommended mode for production as it provides both performance and resilience.
+    /// </summary>
+    Auto
+}
+
+/// <summary>
 /// This config is commonly used by the Circles.Index plugin and the Circles.Pathfinder.Host application.
 /// </summary>
 public class Settings
@@ -37,6 +59,17 @@ public class Settings
         int.TryParse(Environment.GetEnvironmentVariable("EVENT_BUFFER_SIZE"), out var eventBufferSize)
             ? eventBufferSize
             : 100000;
+
+    /// <summary>
+    /// Controls how the indexer writes batches to the database.
+    /// - Copy: Use PostgreSQL COPY for maximum performance (fails on duplicate keys)
+    /// - Upsert: Use INSERT ... ON CONFLICT DO NOTHING (handles duplicates, slower)
+    /// - Auto: Use COPY normally, fall back to Upsert on duplicate key errors (default, recommended)
+    /// </summary>
+    public readonly WriteMode WriteMode =
+        Enum.TryParse<WriteMode>(Environment.GetEnvironmentVariable("INDEXER_WRITE_MODE"), ignoreCase: true, out var writeMode)
+            ? writeMode
+            : WriteMode.Auto;
 
     /// <summary>
     /// If set, delete all indexed data from this block number onwards and re-sync from there.

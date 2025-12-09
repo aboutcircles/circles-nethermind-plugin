@@ -269,14 +269,32 @@ public class StateMachine(
 
     private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
     {
+        // Use safe resume block to handle partial writes from previous crashes
+        // This checks all event tables and finds the minimum max block,
+        // ensuring we re-process any blocks that may have partial data
+        long? safeResumeBlock = context.Database.GetSafeResumeBlock();
         long lastIndexHeight = context.Database.LatestBlock() ?? 0;
-        if (lastIndexHeight == toBlock)
+
+        // Use the lower of the two to be safe
+        long effectiveLastBlock = safeResumeBlock.HasValue
+            ? Math.Min(safeResumeBlock.Value, lastIndexHeight)
+            : lastIndexHeight;
+
+        if (effectiveLastBlock != lastIndexHeight && effectiveLastBlock > 0)
+        {
+            context.Logger.Warn(
+                $"Detected inconsistent index state. System_Block reports {lastIndexHeight}, " +
+                $"but safe resume point is {effectiveLastBlock}. " +
+                $"Will re-index from block {effectiveLastBlock + 1} using upsert mode to recover missing data.");
+        }
+
+        if (effectiveLastBlock == toBlock)
         {
             context.Logger.Info("No blocks to sync.");
             yield break;
         }
 
-        var nextBlock = lastIndexHeight + 1;
+        var nextBlock = effectiveLastBlock + 1;
         if (nextBlock < context.Settings.StartBlock)
         {
             context.Logger.Debug(
@@ -285,7 +303,7 @@ public class StateMachine(
         }
         else
         {
-            context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (LastIndexHeight + 1) to {toBlock}");
+            context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (SafeResumeBlock + 1) to {toBlock}");
         }
 
 

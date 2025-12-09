@@ -274,6 +274,114 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         }
     }
 
+    public async Task WriteBatchWithUpsert(string @namespace, string table, IEnumerable<object> data,
+        ISchemaPropertyMap propertyMap)
+    {
+        var tableSchema = Schema.Tables[(@namespace, table)];
+        var columns = tableSchema.Columns;
+        var columnList = string.Join(", ", columns.Select(c => $"\"{c.Column}\""));
+
+        // Build primary key columns for ON CONFLICT clause
+        var primaryKeyColumns = GetPrimaryKeyColumns(tableSchema);
+        var primaryKeyList = string.Join(", ", primaryKeyColumns.Select(c => $"\"{c}\""));
+
+        // Build parameter placeholders for each column
+        var parameterList = string.Join(", ", columns.Select((_, i) => $"@p{i}"));
+
+        var sql = $@"
+            INSERT INTO ""{tableSchema.Namespace}_{tableSchema.Table}"" ({columnList})
+            VALUES ({parameterList})
+            ON CONFLICT ({primaryKeyList}) DO NOTHING
+        ";
+
+        // Build connection string with extended timeouts
+        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            CommandTimeout = 300,
+            Timeout = 300
+        };
+
+        await using var connection = new NpgsqlConnection(csb.ToString());
+        await connection.OpenAsync();
+
+        // Use a transaction for better performance with multiple inserts
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        try
+        {
+            var dataList = data.ToList();
+            var insertedCount = 0;
+            var skippedCount = 0;
+
+            foreach (var indexEvent in dataList)
+            {
+                await using var command = new NpgsqlCommand(sql, connection, transaction);
+
+                for (int i = 0; i < columns.Count; i++)
+                {
+                    var column = columns[i];
+                    var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
+                    command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
+                }
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                if (rowsAffected > 0)
+                    insertedCount++;
+                else
+                    skippedCount++;
+            }
+
+            await transaction.CommitAsync();
+
+            if (skippedCount > 0)
+            {
+                Console.WriteLine($"[WriteBatchWithUpsert] {tableSchema.Namespace}_{tableSchema.Table}: " +
+                                  $"Inserted {insertedCount}, skipped {skippedCount} duplicates");
+            }
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Console.WriteLine($"Error in WriteBatchWithUpsert for {tableSchema.Namespace}_{tableSchema.Table}: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Gets the primary key columns for a table schema.
+    /// </summary>
+    private List<string> GetPrimaryKeyColumns(EventSchema tableSchema)
+    {
+        // System tables have special primary keys
+        if (tableSchema is { Namespace: Common.DatabaseSchema.SystemNamespace, Table: Common.DatabaseSchema.Block })
+        {
+            return ["blockNumber"];
+        }
+
+        if (tableSchema is { Namespace: Common.DatabaseSchema.SystemNamespace, Table: Common.DatabaseSchema.EventTableHead })
+        {
+            return ["tableName"];
+        }
+
+        if (tableSchema is { Namespace: Common.DatabaseSchema.SystemNamespace, Table: Common.DatabaseSchema.PathfinderRequestLog })
+        {
+            return ["blockNumber", "requestId"];
+        }
+
+        if (tableSchema is { Namespace: Common.DatabaseSchema.SystemNamespace, Table: Common.DatabaseSchema.PathfinderResponseLog })
+        {
+            return ["requestId"];
+        }
+
+        // Default primary key: blockNumber, transactionIndex, logIndex + any columns marked IncludeInPrimaryKey
+        var defaultKeyColumns = new List<string> { "blockNumber", "transactionIndex", "logIndex" };
+        var additionalKeyColumns = tableSchema.Columns
+            .Where(c => c.IncludeInPrimaryKey)
+            .Select(c => c.Column);
+
+        return defaultKeyColumns.Concat(additionalKeyColumns).ToList();
+    }
+
     private string GetDdl(EventSchema @event)
     {
         StringBuilder ddlSql = new StringBuilder();
@@ -656,5 +764,129 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Gets the maximum block number for each event table.
+    /// Excludes System tables and views.
+    /// </summary>
+    public IDictionary<string, long> GetMaxBlockPerTable()
+    {
+        using var connection = new NpgsqlConnection(ConnectionString);
+        connection.Open();
+
+        var result = new Dictionary<string, long>();
+
+        foreach (var table in Schema.Tables.Values)
+        {
+            // Skip views and system tables (except System_Block which we include for comparison)
+            if (table.Namespace.StartsWith("V_"))
+                continue;
+
+            if (table.Namespace == Common.DatabaseSchema.SystemNamespace &&
+                table.Table != Common.DatabaseSchema.Block)
+                continue;
+
+            var tableName = $"{table.Namespace}_{table.Table}";
+
+            try
+            {
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = $@"SELECT MAX(""blockNumber"") FROM ""{tableName}""";
+                var maxBlock = cmd.ExecuteScalar();
+
+                if (maxBlock is long block)
+                {
+                    result[tableName] = block;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GetMaxBlockPerTable] Error querying {tableName}: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Finds the safe resume block by analyzing event table consistency.
+    /// Only considers tables that are significantly behind as potential partial write issues.
+    /// Tables with sparse events (like CrcV2_Stopped) are handled separately.
+    /// </summary>
+    public long? GetSafeResumeBlock()
+    {
+        var maxBlocks = GetMaxBlockPerTable();
+
+        if (maxBlocks.Count == 0)
+            return null;
+
+        // Get the System_Block max for reference
+        maxBlocks.TryGetValue("System_Block", out var systemBlockMax);
+
+        // Get event tables only (exclude System_Block)
+        var eventTableMaxBlocks = maxBlocks
+            .Where(kvp => !kvp.Key.StartsWith("System_"))
+            .ToList();
+
+        if (eventTableMaxBlocks.Count == 0)
+            return systemBlockMax > 0 ? systemBlockMax : null;
+
+        var maxEventBlock = eventTableMaxBlocks.Max(kvp => kvp.Value);
+
+        // Consider a table "behind" only if it's within a reasonable range of the max
+        // Tables that are way behind (>100k blocks) are likely just sparse event tables
+        // We use a threshold of 50,000 blocks (roughly 3 days on Gnosis Chain)
+        const long significantGapThreshold = 50_000;
+
+        var recentTables = eventTableMaxBlocks
+            .Where(kvp => maxEventBlock - kvp.Value < significantGapThreshold)
+            .ToList();
+
+        var sparseTables = eventTableMaxBlocks
+            .Where(kvp => maxEventBlock - kvp.Value >= significantGapThreshold)
+            .ToList();
+
+        if (recentTables.Count == 0)
+        {
+            // All tables are sparse - just use System_Block
+            return systemBlockMax > 0 ? systemBlockMax : null;
+        }
+
+        var minRecentBlock = recentTables.Min(kvp => kvp.Value);
+        var maxRecentBlock = recentTables.Max(kvp => kvp.Value);
+
+        // Log sparse tables for visibility (these are expected to be behind)
+        if (sparseTables.Count > 0)
+        {
+            Console.WriteLine($"[GetSafeResumeBlock] Sparse event tables (expected to be behind):");
+            foreach (var kvp in sparseTables.OrderBy(k => k.Value))
+            {
+                Console.WriteLine($"    {kvp.Key}: {kvp.Value} ({maxEventBlock - kvp.Value:N0} blocks behind)");
+            }
+        }
+
+        // Only report as inconsistency if recent tables have significant gaps
+        // A gap of more than 1 batch size (default 20k blocks) indicates a problem
+        const long batchGapThreshold = 20_000;
+        if (maxRecentBlock - minRecentBlock > batchGapThreshold)
+        {
+            Console.WriteLine($"[GetSafeResumeBlock] INCONSISTENCY DETECTED - possible partial write:");
+            Console.WriteLine($"  System_Block max: {systemBlockMax:N0}");
+            Console.WriteLine($"  Recent tables min: {minRecentBlock:N0}, max: {maxRecentBlock:N0}");
+            Console.WriteLine($"  Gap: {maxRecentBlock - minRecentBlock:N0} blocks");
+
+            foreach (var kvp in recentTables.OrderBy(k => k.Value).Take(10))
+            {
+                Console.WriteLine($"    {kvp.Key}: {kvp.Value:N0}");
+            }
+
+            // Return the min to trigger recovery
+            return minRecentBlock;
+        }
+
+        // No significant gap detected - use the max from recent tables
+        // This allows normal operation even when sparse tables are behind
+        return maxRecentBlock;
     }
 }

@@ -32,7 +32,29 @@ public interface IDatabase : IReadonlyDatabase
     Task DeleteAllGreaterOrEqualBlock(long reorgAt);
     Task DeleteFromTablesGreaterOrEqualBlock(long reorgAt, IEnumerable<string> tableNames);
     Task WriteBatch(string @namespace, string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap);
+
+    /// <summary>
+    /// Writes a batch using INSERT ... ON CONFLICT DO NOTHING.
+    /// Slower than WriteBatch (COPY) but handles duplicate keys gracefully.
+    /// </summary>
+    Task WriteBatchWithUpsert(string @namespace, string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap);
+
     long? LatestBlock();
     long? FirstGap();
     IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count);
+
+    /// <summary>
+    /// Gets the maximum block number across all event tables (excluding System tables).
+    /// Returns a dictionary of table name -> max block number.
+    /// Used to detect inconsistencies after partial writes.
+    /// </summary>
+    IDictionary<string, long> GetMaxBlockPerTable();
+
+    /// <summary>
+    /// Finds the minimum of the maximum blocks across all event tables.
+    /// This represents the safe resume point after a crash - any block above this
+    /// may have partial data and should be re-indexed.
+    /// Returns null if no data exists.
+    /// </summary>
+    long? GetSafeResumeBlock();
 }
