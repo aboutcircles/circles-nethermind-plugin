@@ -46,10 +46,10 @@
     "circles_searchProfileByAddressOrName (by text)"
   ],
   "subscriptionTest": {
-    "enabled": false,
+    "enabled": true,
     "duration": 60,
     "minEvents": 3,
-    "filterAddress": null
+    "filterAddress": "0x4b6f72008e7aca33de36b6565ef30264626b21db"
   },
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
