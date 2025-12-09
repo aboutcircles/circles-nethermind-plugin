@@ -122,8 +122,9 @@ public class IntegrationTests : IAsyncLifetime
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
 
-        // This value is larger than decimal.MaxValue (79,228,162,514,264,337,593,543,950,335)
-        var largeValue = "100000000000000000000000000000"; // 10^29
+        // This value divided by 10^18 must be larger than decimal.MaxValue (≈ 7.9 × 10^28)
+        // So we need value > 7.9 × 10^46. Using 10^47 gives divided = 10^29 > decimal.MaxValue
+        var largeValue = "100000000000000000000000000000000000000000000000"; // 10^47
 
         var insertSql = @"
             INSERT INTO ""CrcV1_Transfer""

@@ -567,13 +567,17 @@ public class NotificationListenerService : BackgroundService
                 var blockNumber = reader.GetInt64(4);
 
                 var tokenKey = tokenAddress.ToLowerInvariant();
-                // Convert from wei (18 decimals) to token units
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var tokenUnits = amountBig / divisor;
-                // Cap to decimal.MaxValue if needed (extremely rare edge case)
-                decimal value = tokenUnits > (BigInteger)decimal.MaxValue
-                    ? decimal.MaxValue
-                    : (decimal)tokenUnits;
+                // Convert from wei (18 decimals) to token units using CirclesConverter for proper precision
+                decimal value;
+                try
+                {
+                    value = CirclesConverter.AttoCirclesToCircles(amountBig);
+                }
+                catch (OverflowException)
+                {
+                    _logger.LogWarning("Skipping V1 transfer with amount {Amount} that would overflow decimal", amountBig);
+                    continue;
+                }
 
                 if (blockNumber != currentBlock)
                 {
@@ -583,6 +587,8 @@ public class NotificationListenerService : BackgroundService
                         foreach (var kvp in currentBalances)
                         {
                             _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                            // Update secondary index for fast lookups
+                            _caches.UpdateBalanceIndex(kvp.Key, isV1: true, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -612,6 +618,8 @@ public class NotificationListenerService : BackgroundService
             foreach (var kvp in currentBalances)
             {
                 _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                // Update secondary index for fast lookups
+                _caches.UpdateBalanceIndex(kvp.Key, isV1: true, kvp.Value);
             }
         }
 
@@ -672,16 +680,17 @@ public class NotificationListenerService : BackgroundService
                 var valueBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
 
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var amountBig = valueBig / divisor;
-
-                if (amountBig > (BigInteger)decimal.MaxValue || amountBig < (BigInteger)decimal.MinValue)
+                // Convert from wei (18 decimals) to token units using CirclesConverter for proper precision
+                decimal amount;
+                try
+                {
+                    amount = CirclesConverter.AttoCirclesToCircles(valueBig);
+                }
+                catch (OverflowException)
                 {
                     _logger.LogWarning("Skipping V2 transfer with value {Value} that would overflow decimal", valueBig);
                     continue;
                 }
-
-                var amount = (decimal)amountBig;
 
                 if (blockNumber != currentBlock)
                 {
@@ -691,6 +700,8 @@ public class NotificationListenerService : BackgroundService
                         foreach (var kvp in currentBalances)
                         {
                             _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                            // Update secondary index for fast lookups
+                            _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -720,6 +731,8 @@ public class NotificationListenerService : BackgroundService
             foreach (var kvp in currentBalances)
             {
                 _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                // Update secondary index for fast lookups
+                _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
             }
         }
 
@@ -756,16 +769,18 @@ public class NotificationListenerService : BackgroundService
                 var amountBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
 
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var valueBig = amountBig / divisor;
-
-                if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+                // Convert from wei (18 decimals) to token units using CirclesConverter for proper precision
+                decimal amount;
+                try
+                {
+                    amount = CirclesConverter.AttoCirclesToCircles(amountBig);
+                }
+                catch (OverflowException)
                 {
                     _logger.LogWarning("Skipping ERC20 wrapper transfer with amount {Amount} that would overflow decimal", amountBig);
                     continue;
                 }
 
-                var amount = (decimal)valueBig;
                 var tokenKey = tokenAddress.ToLowerInvariant();
 
                 if (blockNumber != currentBlock)
@@ -776,6 +791,8 @@ public class NotificationListenerService : BackgroundService
                         foreach (var kvp in currentBalances)
                         {
                             _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                            // Update secondary index for fast lookups
+                            _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -805,6 +822,8 @@ public class NotificationListenerService : BackgroundService
             foreach (var kvp in currentBalances)
             {
                 _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
+                // Update secondary index for fast lookups
+                _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
             }
         }
 

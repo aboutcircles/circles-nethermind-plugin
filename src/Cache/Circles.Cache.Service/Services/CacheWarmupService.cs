@@ -524,17 +524,17 @@ public class CacheWarmupService : BackgroundService
             var tokenAddress = reader.GetString(1).ToLowerInvariant();
             var totalBalanceBig = reader.GetFieldValue<BigInteger>(2);
 
-            // Convert from atto (10^18) to decimal
-            var divisor = BigInteger.Parse("1000000000000000000");
-            var valueBig = totalBalanceBig / divisor;
-
-            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            // Convert from atto (10^18) to decimal using CirclesConverter for proper precision
+            decimal balance;
+            try
+            {
+                balance = CirclesConverter.AttoCirclesToCircles(totalBalanceBig);
+            }
+            catch (OverflowException)
             {
                 _logger.LogWarning("Skipping V1 balance with value {Value} that would overflow decimal", totalBalanceBig);
                 continue;
             }
-
-            var balance = (decimal)valueBig;
             if (balance > 0)
             {
                 var key = $"{account}:{tokenAddress}";
@@ -589,17 +589,17 @@ public class CacheWarmupService : BackgroundService
             var tokenId = reader.GetString(1); // tokenId is already a string in the view
             var totalBalanceBig = reader.GetFieldValue<BigInteger>(2);
 
-            // Convert from atto (10^18) to decimal
-            var divisor = BigInteger.Parse("1000000000000000000");
-            var valueBig = totalBalanceBig / divisor;
-
-            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            // Convert from atto (10^18) to decimal using CirclesConverter for proper precision
+            decimal balance;
+            try
+            {
+                balance = CirclesConverter.AttoCirclesToCircles(totalBalanceBig);
+            }
+            catch (OverflowException)
             {
                 _logger.LogWarning("Skipping V2 balance with value {Value} that would overflow decimal", totalBalanceBig);
                 continue;
             }
-
-            var balance = (decimal)valueBig;
             if (balance > 0)
             {
                 var key = $"{account}:{tokenId}";
@@ -685,16 +685,17 @@ public class CacheWarmupService : BackgroundService
                 var tokenAddress = reader.GetString(1).ToLowerInvariant();
                 var balanceBig = reader.GetFieldValue<BigInteger>(2);
 
-                // Convert from atto (10^18) to decimal
-                var divisor = BigInteger.Parse("1000000000000000000");
-                var valueBig = balanceBig / divisor;
-
-                if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+                // Convert from atto (10^18) to decimal using CirclesConverter for proper precision
+                decimal balance;
+                try
+                {
+                    balance = CirclesConverter.AttoCirclesToCircles(balanceBig);
+                }
+                catch (OverflowException)
                 {
                     continue;
                 }
 
-                var balance = (decimal)valueBig;
                 if (balance > 0)
                 {
                     var key = $"{account}:{tokenAddress}";
@@ -752,7 +753,6 @@ public class CacheWarmupService : BackgroundService
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         var balances = new Dictionary<string, BigInteger>();
-        var divisor = BigInteger.Parse("1000000000000000000");
 
         while (await reader.ReadAsync(ct))
         {
@@ -774,17 +774,20 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        // Convert to decimal dictionary
+        // Convert to decimal dictionary using CirclesConverter for proper precision
         var wrapperBalances = new Dictionary<string, decimal>();
         foreach (var (key, balanceBig) in balances)
         {
             if (balanceBig <= 0) continue;
 
-            var valueBig = balanceBig / divisor;
-            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            try
+            {
+                wrapperBalances[key] = CirclesConverter.AttoCirclesToCircles(balanceBig);
+            }
+            catch (OverflowException)
+            {
                 continue;
-
-            wrapperBalances[key] = (decimal)valueBig;
+            }
         }
 
         // Merge wrapper balances into existing V2 cache
@@ -825,16 +828,17 @@ public class CacheWarmupService : BackgroundService
             var amountBig = reader.GetFieldValue<BigInteger>(3);
             var blockNumber = reader.GetInt64(4);
 
-            var divisor = BigInteger.Parse("1000000000000000000");
-            var valueBig = amountBig / divisor;
-
-            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            // Convert from atto (10^18) to decimal using CirclesConverter for proper precision
+            decimal value;
+            try
+            {
+                value = CirclesConverter.AttoCirclesToCircles(amountBig);
+            }
+            catch (OverflowException)
             {
                 _logger.LogWarning("Skipping V1 transfer with amount {Amount} that would overflow decimal", amountBig);
                 continue;
             }
-
-            var value = (decimal)valueBig;
             var tokenKey = tokenAddress.ToLowerInvariant();
 
             if (blockNumber != currentBlock)
