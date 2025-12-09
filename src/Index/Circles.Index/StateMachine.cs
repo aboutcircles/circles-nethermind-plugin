@@ -39,6 +39,11 @@ public class StateMachine(
 
     private State CurrentState { get; set; } = State.New;
 
+    // Status logging
+    private DateTime _lastStatusLog = DateTime.UtcNow;
+    private long _blocksProcessedSinceLastLog = 0;
+    private long _totalBlocksProcessed = 0;
+
     public async Task HandleEvent(IEvent e)
     {
         try
@@ -144,6 +149,7 @@ public class StateMachine(
                                     $"Cache '{cache.Name}' maintenance: removed {removed}, restored {restored}, count delta {deleted}.");
                             }
 
+                            context.Logger.Info("Reorg cleanup complete. Ready to process new blocks.");
                             await TransitionTo(State.WaitForNewBlock);
                             return;
                     }
@@ -172,6 +178,44 @@ public class StateMachine(
                     {
                         case EnterState<long> enterSyncing:
                             var importedBlockRange = await Sync(enterSyncing.Arg);
+
+                            // Track blocks processed for status logging
+                            if (importedBlockRange.Min.HasValue && importedBlockRange.Max.HasValue)
+                            {
+                                var blocksInRange = importedBlockRange.Max.Value - importedBlockRange.Min.Value + 1;
+                                _blocksProcessedSinceLastLog += blocksInRange;
+                                _totalBlocksProcessed += blocksInRange;
+                            }
+
+                            // Log status periodically:
+                            // - Every 30 seconds during live sync (at chain head)
+                            // - Every 1000 blocks during catch-up
+                            var now = DateTime.UtcNow;
+                            var timeSinceLastLog = now - _lastStatusLog;
+                            if (timeSinceLastLog.TotalSeconds >= 30 || _blocksProcessedSinceLastLog >= 1000)
+                            {
+                                var latestDbBlock = context.Database.LatestBlock() ?? 0;
+                                var blocksPerSecond = _blocksProcessedSinceLastLog / Math.Max(1, timeSinceLastLog.TotalSeconds);
+
+                                // Determine if we're in live sync mode (processing ~1 block per 5 seconds)
+                                var isLiveSync = blocksPerSecond < 1;
+                                if (isLiveSync)
+                                {
+                                    context.Logger.Info(
+                                        $"Live sync: indexed block {latestDbBlock:N0} " +
+                                        $"({_blocksProcessedSinceLastLog} blocks in {timeSinceLastLog.TotalSeconds:F0}s)");
+                                }
+                                else
+                                {
+                                    context.Logger.Info(
+                                        $"Catch-up: indexed to block {latestDbBlock:N0} " +
+                                        $"({_blocksProcessedSinceLastLog:N0} blocks in {timeSinceLastLog.TotalSeconds:F1}s, " +
+                                        $"{blocksPerSecond:F1} blk/s)");
+                                }
+                                _lastStatusLog = now;
+                                _blocksProcessedSinceLastLog = 0;
+                            }
+
                             context.Logger.Debug($"Imported blocks from {importedBlockRange.Min} " +
                                                  $"to {importedBlockRange.Max}");
                             Errors.Clear();
