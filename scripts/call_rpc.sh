@@ -8,6 +8,7 @@ echo "Choose RPC endpoint:"
 echo "1) Remote mainnet (rpc.aboutcircles.com)"
 echo "2) Remote testnet (chiado-rpc.aboutcircles.com)"
 echo "3) Local (localhost:8081)"
+echo "4) Staging (135.181.238.49:8081)"
 printf "Enter choice (1-3): "
 read choice
 case $choice in
@@ -19,6 +20,9 @@ case $choice in
     ;;
   3)
     RPC_URL="http://localhost:8081/"
+    ;;
+  4)
+    RPC_URL="http://135.181.238.49:8081/"
     ;;
   *)
     echo "Invalid choice, using remote mainnet (default)"
