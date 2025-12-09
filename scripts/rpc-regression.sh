@@ -334,9 +334,21 @@ get_response() {
     jq -c --arg test "$test_name" 'select(.test == $test) | .response' "$file" 2>/dev/null | head -n 1
 }
 
+# Maximum response size for detailed normalization (100KB)
+MAX_NORMALIZE_SIZE=102400
+
 # Function to normalize response (remove dynamic fields)
 normalize_response() {
     local response=$1
+    local response_size=${#response}
+
+    # Skip expensive normalization for very large responses (>100KB)
+    # These are typically network snapshots that differ due to state changes
+    if [[ $response_size -gt $MAX_NORMALIZE_SIZE ]]; then
+        echo "$response"
+        return
+    fi
+
     local normalized="$response"
 
     # Remove each normalize field using jq
@@ -426,6 +438,20 @@ compare_responses() {
     local resp1=$1
     local resp2=$2
     local tolerance=$3
+    local resp1_size=${#resp1}
+    local resp2_size=${#resp2}
+
+    # For very large responses (>100KB), skip expensive comparison
+    # These are typically network snapshots or large query results
+    if [[ $resp1_size -gt $MAX_NORMALIZE_SIZE ]] || [[ $resp2_size -gt $MAX_NORMALIZE_SIZE ]]; then
+        # Quick string comparison - if different sizes or content, mark as different
+        if [[ "$resp1" == "$resp2" ]]; then
+            echo "exact"
+        else
+            echo "different"
+        fi
+        return
+    fi
 
     # Normalize both responses
     local norm1=$(normalize_response "$resp1")
@@ -622,24 +648,46 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                     echo "✗ DIFFERENT"
                 fi
                 echo ""
-                echo "Local response:"
-                echo "$local_response" | jq '.' 2>&1 || echo "$local_response"
+
+                # For large responses, truncate output to avoid massive diff files
+                local_size=${#local_response}
+                remote_size=${#remote_response}
+                max_output_size=10000  # 10KB max per response in diff output
+
+                echo "Local response (${local_size} bytes):"
+                if [[ $local_size -gt $max_output_size ]]; then
+                    echo "[Response truncated - showing first ${max_output_size} chars of ${local_size}]"
+                    echo "${local_response:0:$max_output_size}..." | jq '.' 2>&1 || echo "${local_response:0:$max_output_size}..."
+                else
+                    echo "$local_response" | jq '.' 2>&1 || echo "$local_response"
+                fi
                 echo ""
-                echo "Remote response:"
-                echo "$remote_response" | jq '.' 2>&1 || echo "$remote_response"
+                echo "Remote response (${remote_size} bytes):"
+                if [[ $remote_size -gt $max_output_size ]]; then
+                    echo "[Response truncated - showing first ${max_output_size} chars of ${remote_size}]"
+                    echo "${remote_response:0:$max_output_size}..." | jq '.' 2>&1 || echo "${remote_response:0:$max_output_size}..."
+                else
+                    echo "$remote_response" | jq '.' 2>&1 || echo "$remote_response"
+                fi
                 echo ""
-                echo "Normalized comparison:"
-                norm1=$(normalize_response "$local_response")
-                norm2=$(normalize_response "$remote_response")
-                echo "Local (normalized):"
-                echo "$norm1" | jq '.' 2>&1 || echo "$norm1"
-                echo ""
-                echo "Remote (normalized):"
-                echo "$norm2" | jq '.' 2>&1 || echo "$norm2"
-                echo ""
-                echo "Diff:"
-                diff <(echo "$norm1" | jq -S '.' 2>/dev/null || echo "$norm1") \
-                     <(echo "$norm2" | jq -S '.' 2>/dev/null || echo "$norm2") 2>&1 || true
+
+                # Skip detailed normalized comparison for large responses
+                if [[ $local_size -lt $MAX_NORMALIZE_SIZE ]] && [[ $remote_size -lt $MAX_NORMALIZE_SIZE ]]; then
+                    echo "Normalized comparison:"
+                    norm1=$(normalize_response "$local_response")
+                    norm2=$(normalize_response "$remote_response")
+                    echo "Local (normalized):"
+                    echo "$norm1" | jq '.' 2>&1 || echo "$norm1"
+                    echo ""
+                    echo "Remote (normalized):"
+                    echo "$norm2" | jq '.' 2>&1 || echo "$norm2"
+                    echo ""
+                    echo "Diff:"
+                    diff <(echo "$norm1" | jq -S '.' 2>/dev/null || echo "$norm1") \
+                         <(echo "$norm2" | jq -S '.' 2>/dev/null || echo "$norm2") 2>&1 || true
+                else
+                    echo "[Normalized diff skipped for large responses]"
+                fi
                 echo ""
             } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
             ;;
@@ -755,6 +803,24 @@ fi
 TIMING_OUTPUT="$RUN_DIR/timing_comparison.txt"
 echo -e "${YELLOW}Generating timing comparison...${NC}"
 
+# Pre-extract all timing data in a single pass per file to avoid repeated JSON parsing
+LOCAL_TIMING_DATA="$RUN_DIR/local_timing.tsv"
+REMOTE_TIMING_DATA="$RUN_DIR/remote_timing.tsv"
+
+# Extract timing data from all local files in one pass
+: > "$LOCAL_TIMING_DATA"
+for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+    local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    [[ -s "$local_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$local_file" 2>/dev/null >> "$LOCAL_TIMING_DATA"
+done
+
+# Extract timing data from all remote files in one pass
+: > "$REMOTE_TIMING_DATA"
+for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
+    remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    [[ -s "$remote_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$remote_file" 2>/dev/null >> "$REMOTE_TIMING_DATA"
+done
+
 {
     echo "=== Timing Comparison Report ==="
     echo "Timestamp: $(date)"
@@ -765,7 +831,7 @@ echo -e "${YELLOW}Generating timing comparison...${NC}"
     echo "===================="
     echo ""
 
-    # Process timing data for all tests
+    # Process timing data for all tests using pre-extracted data
     local_faster_count=0
     remote_faster_count=0
     total_timing_tests=0
@@ -775,56 +841,51 @@ echo -e "${YELLOW}Generating timing comparison...${NC}"
     printf "%-60s %12s %12s %12s %s\n" "Test Name" "Local (ms)" "Remote (ms)" "Diff (%)" "Winner"
     echo "=========================================================================================================="
 
-    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
-        local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-        remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    # Get all unique test names from both timing files
+    all_tests=$(cat "$LOCAL_TIMING_DATA" "$REMOTE_TIMING_DATA" | cut -f1 | sort -u)
 
-        if [[ ! -s "$local_file" ]] || [[ ! -s "$remote_file" ]]; then
+    while IFS= read -r test_name; do
+        [[ -z "$test_name" ]] && continue
+
+        # Get timing from pre-extracted data (grep + awk is much faster than jq per-test)
+        local_timing=$(grep -F "	" "$LOCAL_TIMING_DATA" | awk -F'\t' -v test="$test_name" '$1 == test {print $2; exit}')
+        remote_timing=$(grep -F "	" "$REMOTE_TIMING_DATA" | awk -F'\t' -v test="$test_name" '$1 == test {print $2; exit}')
+
+        # Skip if timing data missing
+        if [[ -z "$local_timing" ]] || [[ -z "$remote_timing" ]] || [[ "$local_timing" == "null" ]] || [[ "$remote_timing" == "null" ]]; then
             continue
         fi
 
-        # Get all test names from both files
-        local_tests=$(jq -r '.test' "$local_file" 2>/dev/null | sort -u)
-        remote_tests=$(jq -r '.test' "$remote_file" 2>/dev/null | sort -u)
-        all_tests=$(echo -e "$local_tests\n$remote_tests" | sort -u)
+        # Ensure we have integers
+        local_timing=${local_timing%.*}
+        remote_timing=${remote_timing%.*}
+        [[ -z "$local_timing" ]] && local_timing=0
+        [[ -z "$remote_timing" ]] && remote_timing=0
 
-        while IFS= read -r test_name; do
-            [[ -z "$test_name" ]] && continue
+        total_timing_tests=$((total_timing_tests + 1))
+        local_total_time=$((local_total_time + local_timing))
+        remote_total_time=$((remote_total_time + remote_timing))
 
-            # Get timing from both endpoints
-            local_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$local_file" 2>/dev/null | head -1)
-            remote_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$remote_file" 2>/dev/null | head -1)
+        # Calculate difference percentage
+        if [[ $remote_timing -gt 0 ]]; then
+            diff_pct=$(echo "scale=1; (($local_timing - $remote_timing) * 100) / $remote_timing" | bc -l 2>/dev/null || echo "0")
+        else
+            diff_pct="N/A"
+        fi
 
-            # Skip if timing data missing
-            if [[ -z "$local_timing" ]] || [[ -z "$remote_timing" ]] || [[ "$local_timing" == "null" ]] || [[ "$remote_timing" == "null" ]]; then
-                continue
-            fi
+        # Determine winner
+        winner="="
+        if [[ $local_timing -lt $remote_timing ]]; then
+            local_faster_count=$((local_faster_count + 1))
+            winner="LOCAL"
+        elif [[ $local_timing -gt $remote_timing ]]; then
+            remote_faster_count=$((remote_faster_count + 1))
+            winner="REMOTE"
+        fi
 
-            total_timing_tests=$((total_timing_tests + 1))
-            local_total_time=$((local_total_time + local_timing))
-            remote_total_time=$((remote_total_time + remote_timing))
+        printf "%-60s %12d %12d %11s%% %s\n" "$test_name" "$local_timing" "$remote_timing" "$diff_pct" "$winner"
 
-            # Calculate difference percentage
-            if [[ $remote_timing -gt 0 ]]; then
-                diff_pct=$(echo "scale=1; (($local_timing - $remote_timing) * 100) / $remote_timing" | bc -l 2>/dev/null || echo "0")
-            else
-                diff_pct="N/A"
-            fi
-
-            # Determine winner
-            winner="="
-            if [[ $local_timing -lt $remote_timing ]]; then
-                local_faster_count=$((local_faster_count + 1))
-                winner="LOCAL"
-            elif [[ $local_timing -gt $remote_timing ]]; then
-                remote_faster_count=$((remote_faster_count + 1))
-                winner="REMOTE"
-            fi
-
-            printf "%-60s %12d %12d %11s%% %s\n" "$test_name" "$local_timing" "$remote_timing" "$diff_pct" "$winner"
-
-        done <<< "$all_tests"
-    done
+    done <<< "$all_tests"
 
     echo "=========================================================================================================="
     echo ""
@@ -862,50 +923,33 @@ echo -e "${YELLOW}Generating timing comparison...${NC}"
     fi
     echo ""
 
-    # Top 10 slowest endpoints on each
+    # Top 10 slowest endpoints on each (use pre-extracted data)
     echo "Top 10 Slowest Endpoints (Local):"
     echo "-----------------------------------"
-    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
-        local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-        [[ -s "$local_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$local_file" 2>/dev/null
-    done | sort -t$'\t' -k2 -n -r | head -10 | while IFS=$'\t' read -r test time; do
-        printf "  %-60s %12d ms\n" "$test" "$time"
+    sort -t$'\t' -k2 -n -r "$LOCAL_TIMING_DATA" | head -10 | while IFS=$'\t' read -r test time; do
+        printf "  %-60s %12d ms\n" "$test" "${time%.*}"
     done
     echo ""
 
     echo "Top 10 Slowest Endpoints (Remote):"
     echo "------------------------------------"
-    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
-        remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-        [[ -s "$remote_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$remote_file" 2>/dev/null
-    done | sort -t$'\t' -k2 -n -r | head -10 | while IFS=$'\t' read -r test time; do
-        printf "  %-60s %12d ms\n" "$test" "$time"
+    sort -t$'\t' -k2 -n -r "$REMOTE_TIMING_DATA" | head -10 | while IFS=$'\t' read -r test time; do
+        printf "  %-60s %12d ms\n" "$test" "${time%.*}"
     done
     echo ""
 
-    # Biggest performance differences
+    # Biggest performance differences (use pre-extracted data with join)
     echo "Top 10 Biggest Performance Differences:"
     echo "----------------------------------------"
-    for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
-        local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-        remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-
-        if [[ ! -s "$local_file" ]] || [[ ! -s "$remote_file" ]]; then
-            continue
-        fi
-
-        local_tests=$(jq -r '.test' "$local_file" 2>/dev/null | sort -u)
-        while IFS= read -r test_name; do
-            [[ -z "$test_name" ]] && continue
-
-            local_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$local_file" 2>/dev/null | head -1)
-            remote_timing=$(jq -r --arg test "$test_name" 'select(.test == $test) | .timing.total_ms // empty' "$remote_file" 2>/dev/null | head -1)
-
-            if [[ -n "$local_timing" ]] && [[ -n "$remote_timing" ]] && [[ "$local_timing" != "null" ]] && [[ "$remote_timing" != "null" ]]; then
-                abs_diff=$((local_timing > remote_timing ? local_timing - remote_timing : remote_timing - local_timing))
-                echo -e "$test_name\t$local_timing\t$remote_timing\t$abs_diff"
-            fi
-        done <<< "$local_tests"
+    # Join local and remote timing data on test name
+    join -t$'\t' -1 1 -2 1 <(sort -t$'\t' -k1 "$LOCAL_TIMING_DATA") <(sort -t$'\t' -k1 "$REMOTE_TIMING_DATA") 2>/dev/null | \
+    while IFS=$'\t' read -r test_name local_t remote_t; do
+        local_t=${local_t%.*}
+        remote_t=${remote_t%.*}
+        [[ -z "$local_t" ]] && local_t=0
+        [[ -z "$remote_t" ]] && remote_t=0
+        abs_diff=$((local_t > remote_t ? local_t - remote_t : remote_t - local_t))
+        echo -e "$test_name\t$local_t\t$remote_t\t$abs_diff"
     done | sort -t$'\t' -k4 -n -r | head -10 | while IFS=$'\t' read -r test local_t remote_t diff; do
         if [[ $local_t -lt $remote_t ]]; then
             winner="LOCAL"
@@ -916,6 +960,9 @@ echo -e "${YELLOW}Generating timing comparison...${NC}"
     done
 
 } > "$TIMING_OUTPUT"
+
+# Cleanup timing temp files
+rm -f "$LOCAL_TIMING_DATA" "$REMOTE_TIMING_DATA"
 
 echo -e "${GREEN}✓ Timing analysis complete${NC}"
 echo -e "${GREEN}✓ Reports generated${NC}\n"
