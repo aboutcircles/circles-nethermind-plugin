@@ -84,6 +84,14 @@ public class Settings
             .ToArray()
         ?? ["0x43c8e7cb2fea3a55b52867bb521ebf8cb072feca"];
 
+    public readonly string[] PaymentGatewayFactoryAddresses =
+        Environment.GetEnvironmentVariable("V2_PAYMENT_GATEWAY_FACTORY_ADDRESS")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ??        [
+            "0x68533c85486F0d87F9EfbE726f823648547C6e94"
+        ];
+
     public readonly string[] CMGroupDeployer =
         Environment.GetEnvironmentVariable("V2_CMGROUP_DEPLOYER")?.Split(',')
             .Select(x => x.Trim().ToLowerInvariant())
