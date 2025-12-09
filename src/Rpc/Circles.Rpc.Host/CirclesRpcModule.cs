@@ -311,7 +311,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
         }
         
-        // Fallback: use traditional database + Nethermind approach
+        // Fallback: use database query (no RPC calls needed - all balances come from DB)
         _logger?.LogDebug("Using database for token balances query (address={Address})", address);
         var tokens = await GetTokenExposureIdsAsync(address);
 
@@ -320,19 +320,23 @@ public class CirclesRpcModule : ICirclesRpcModule
             return Array.Empty<CirclesTokenBalance>();
         }
 
-        var hubAddress = _settings.CirclesV2HubAddress;
         var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-
-        // Batch fetch balances for efficiency
         var tokenBalances = new List<CirclesTokenBalance>();
 
         foreach (var token in tokens.Values)
         {
-            var rawBalance = await FetchBalance(
-                token.TokenAddress,
-                address,
-                token.IsErc20,
-                hubAddress);
+            // Balance comes directly from the database - no RPC calls needed!
+            // GetTokenExposureIdsAsync returns balance for all token types:
+            // - V1: totalBalance (raw attoCrc)
+            // - V2 ERC1155: demurragedTotalBalance (attoCircles with demurrage applied)
+            // - V2 wrapped inflationary: sum of transfers (staticAttoCircles)
+            // - V2 wrapped demurraged: sum of transfers with demurrage applied (attoCircles)
+            if (!token.Balance.HasValue)
+            {
+                continue; // Skip tokens without balance (shouldn't happen with current SQL)
+            }
+
+            var rawBalance = token.Balance.Value;
 
             BigInteger attoCircles;
             decimal circles;
@@ -343,7 +347,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             if (token.TokenType == "CrcV1_Signup")
             {
-                // OG CRC
+                // V1 tokens: rawBalance is attoCrc (raw ERC20 balance)
                 attoCrc = rawBalance;
                 crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
                 attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);
@@ -352,36 +356,30 @@ public class CirclesRpcModule : ICirclesRpcModule
                 staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
                 staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
             }
+            else if (token.IsInflationary)
+            {
+                // V2 inflationary (wrapped ERC20): rawBalance is staticAttoCircles
+                staticAttoCircles = rawBalance;
+                staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+
+                attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+
+                attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+            }
             else
             {
-                if (token.IsInflationary)
-                {
-                    staticAttoCircles = rawBalance;
-                    staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                // V2 demurraged tokens (ERC1155 or wrapped demurraged ERC20):
+                // rawBalance is already demurraged attoCircles from the DB view
+                attoCircles = rawBalance;
+                circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
 
-                    attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
-                    circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
+                crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
-                    attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
-                    crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
-                }
-                else
-                {
-                    // Demurraged Circles
-                    // It uses the raw balance directly from the blockchain state
-                    // The on-chain balance already reflects the current demurraged value
-                    attoCircles = rawBalance;
-                    circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
-
-                    // NOTE: attoCrc and crc are time-based calculations using current timestamp
-                    // These values will differ slightly between endpoints due to execution timing differences
-                    // This is expected behavior and differences < 0.001% should be tolerated in comparisons
-                    attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, now);
-                    crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
-
-                    staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
-                    staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
-                }
+                staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
             }
 
             var tokenId = token.IsErc1155
@@ -407,10 +405,10 @@ public class CirclesRpcModule : ICirclesRpcModule
                 IsGroup: token.IsGroup
             ));
         }
-        
+
         var orderedResult = tokenBalances
             .Where(o => o.Circles > 0)
-            .OrderByDescending(o => o.Circles)  // Match remote: sort by StaticCircles
+            .OrderByDescending(o => o.Circles)
             .ToArray();
 
         return orderedResult;
@@ -473,8 +471,55 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Use the balance views which correctly aggregate transfers and compute balances > 0
         // This matches the production behavior which uses in-memory caches seeded from these views
         // Also returns the balance directly from the views to avoid separate RPC calls
+        // NOTE: No eth_calls needed - all balances come from DB views or transfer aggregation
         const string sql = @"
-            WITH tokens AS (
+            WITH
+            -- V2 wrapped ERC20 token balances (inflationary/static)
+            -- These are calculated from transfer events, not from on-chain balanceOf()
+            static_wrapped_balances AS (
+                SELECT wt.""tokenAddress""
+                     , 'CrcV2_ERC20WrapperDeployed_Inflationary' as ""type""
+                     , wd.avatar as ""tokenOwner""
+                     , SUM(CASE
+                         WHEN wt.""to"" = @address THEN wt.amount
+                         WHEN wt.""from"" = @address THEN -wt.amount
+                         ELSE 0
+                       END) as balance
+                FROM public.""CrcV2_Erc20WrapperTransfer"" wt
+                JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
+                  ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 1
+                WHERE wt.""to"" = @address OR wt.""from"" = @address
+                GROUP BY wt.""tokenAddress"", wd.avatar
+                HAVING SUM(CASE
+                    WHEN wt.""to"" = @address THEN wt.amount
+                    WHEN wt.""from"" = @address THEN -wt.amount
+                    ELSE 0
+                END) > 0
+            ),
+            -- V2 wrapped ERC20 token balances (demurraged)
+            -- Need to apply demurrage based on last activity timestamp
+            demurraged_wrapped_balances AS (
+                SELECT wt.""tokenAddress""
+                     , 'CrcV2_ERC20WrapperDeployed_Demurraged' as ""type""
+                     , wd.avatar as ""tokenOwner""
+                     , floor(crc_demurrage(1675209600::bigint, MAX(wt.""timestamp""),
+                         SUM(CASE
+                             WHEN wt.""to"" = @address THEN wt.amount
+                             WHEN wt.""from"" = @address THEN -wt.amount
+                             ELSE 0
+                         END))) as balance
+                FROM public.""CrcV2_Erc20WrapperTransfer"" wt
+                JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
+                  ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 0
+                WHERE wt.""to"" = @address OR wt.""from"" = @address
+                GROUP BY wt.""tokenAddress"", wd.avatar
+                HAVING SUM(CASE
+                    WHEN wt.""to"" = @address THEN wt.amount
+                    WHEN wt.""from"" = @address THEN -wt.amount
+                    ELSE 0
+                END) > 0
+            ),
+            tokens AS (
                 -- V1 token balances from the materialized balance view
                 -- For V1: totalBalance is the raw attoCrc (ERC20 balance)
                 SELECT v1.""tokenAddress""
@@ -505,23 +550,17 @@ public class CirclesRpcModule : ICirclesRpcModule
 
                 UNION ALL
 
-                -- V2 wrapped ERC20 tokens (both inflationary and demurraged)
-                -- For wrapped tokens, we still need to check via RPC (marked with NULL balance)
-                -- The balance is stored in the ERC20 wrapper contract, not in the Hub
-                SELECT DISTINCT wt.""tokenAddress""
-                     , CASE
-                         WHEN wd.""circlesType"" = 0 THEN 'CrcV2_ERC20WrapperDeployed_Demurraged'
-                         ELSE 'CrcV2_ERC20WrapperDeployed_Inflationary'
-                       END as ""type""
-                     , wd.avatar as ""tokenOwner""
-                     , NULL::numeric as balance
-                FROM  public.""CrcV2_Erc20WrapperTransfer"" wt
-                JOIN  public.""CrcV2_ERC20WrapperDeployed"" wd ON wd.""erc20Wrapper"" = wt.""tokenAddress""
-                WHERE wt.""to"" = @address
-                   OR wt.""from"" = @address
+                -- V2 wrapped ERC20 inflationary tokens (balance calculated from transfers)
+                SELECT * FROM static_wrapped_balances
+
+                UNION ALL
+
+                -- V2 wrapped ERC20 demurraged tokens (balance calculated with demurrage)
+                SELECT * FROM demurraged_wrapped_balances
             )
             SELECT ""tokenAddress"", ""type"", ""tokenOwner"", balance
             FROM tokens
+            WHERE balance > 0
         ";
 
         await using var connection = new NpgsqlConnection(_readOnlyDbConnectionString);
@@ -538,13 +577,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             var tokenType = reader.GetString(1);
             var tokenOwner = reader.GetString(2);
 
-            // Read balance from column 3 (may be NULL for wrapped tokens)
-            BigInteger? balance = null;
-            if (!reader.IsDBNull(3))
-            {
-                var balanceDecimal = reader.GetDecimal(3);
-                balance = (BigInteger)balanceDecimal;
-            }
+            // Read balance from column 3 (all token types now have balance from DB)
+            var balanceDecimal = reader.GetDecimal(3);
+            BigInteger? balance = (BigInteger)balanceDecimal;
 
             var isWrapped = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary"
                 or "CrcV2_ERC20WrapperDeployed_Demurraged";
