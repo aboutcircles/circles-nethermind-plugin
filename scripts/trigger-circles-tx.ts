@@ -9,7 +9,7 @@
  *   CIRCLES_SEED_PHRASE="your seed phrase here" npx ts-node scripts/trigger-circles-tx.ts
  * 
  * Environment Variables:
- *   CIRCLES_SEED_PHRASE    - Required: 12/24 word mnemonic seed phrase
+ *   CIRCLES_SEED_PHRASE    - Required: 12/24 word circles.garden key phrase (set in .env.local)
  *   CIRCLES_RPC_URL        - Optional: RPC endpoint (default: https://rpc.gnosis.gateway.fm)
  *   CIRCLES_HUB_ADDRESS    - Optional: Circles Hub V2 address
  *   CIRCLES_AMOUNT         - Optional: Amount to transfer in wei (default: 1)
@@ -31,6 +31,19 @@ const HUB_V2_ABI = [
   'function balanceOf(address account, uint256 id) view returns (uint256)',
   'event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)'
 ];
+
+function deriveGardenWallet(phrase: string, provider: ethers.JsonRpcProvider) {
+  try {
+    const mnemonic = ethers.Mnemonic.fromPhrase(phrase.trim());
+    const entropyHex = mnemonic.entropy.startsWith('0x')
+      ? mnemonic.entropy
+      : `0x${mnemonic.entropy}`;
+    const wallet = new ethers.Wallet(entropyHex, provider);
+    return wallet;
+  } catch (error) {
+    throw new Error('Invalid circles.garden key phrase. Please copy it exactly as shown in 5ecret-garden.');
+  }
+}
 
 async function main() {
   // Validate seed phrase
@@ -54,12 +67,13 @@ async function main() {
   console.log('================================');
   console.log(`RPC URL: ${RPC_URL}`);
   console.log(`Hub V2:  ${HUB_V2_ADDRESS}`);
+  console.log('Derivation: circles.garden entropy → private key');
   console.log('');
 
   try {
     // Create provider and wallet
     const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const wallet = ethers.Wallet.fromPhrase(SEED_PHRASE, provider);
+    const wallet = deriveGardenWallet(SEED_PHRASE, provider);
     const address = await wallet.getAddress();
 
     console.log(`Wallet:  ${address}`);

@@ -46,6 +46,12 @@ else
     print_status "ethers is already installed globally."
 fi
 
+# Ensure the seed phrase is available before running the TypeScript script
+if [[ -z "$CIRCLES_SEED_PHRASE" ]]; then
+    print_error "CIRCLES_SEED_PHRASE is not set. Source your .env.local or export the variable before rerunning."
+    exit 1
+fi
+
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

@@ -732,7 +732,7 @@ Tests the circles_subscribe WebSocket endpoint for real-time event notifications
 
 **Environment Variables:**
 
-- `CIRCLES_SEED_PHRASE` - Required when using --filter: 12/24 word mnemonic for triggering test transactions
+- `CIRCLES_SEED_PHRASE` - 12/24-word circles.garden key phrase (store it in `.env.local`). When `--filter` is provided the script automatically calls `trigger-circles-tx.sh`, which derives the first garden account from this phrase and emits a micro transaction to produce subscription events.
 
 **Examples:**
 
@@ -765,7 +765,15 @@ Triggers Circles protocol transactions for testing purposes.
 
 - Ensures Node.js and ethers.js are installed
 - Runs the TypeScript transaction trigger script
+- Uses the same circles.garden entropy → private key derivation that 5ecret-garden employs
 - Can be used to generate test transactions on testnets
+
+**Environment Variables:**
+
+- `CIRCLES_SEED_PHRASE` (required) - Copy your circles.garden key phrase into `.env.local`. The script derives the first garden account from this phrase and signs the helper transfer with it.
+- `CIRCLES_RPC_URL` (optional) - Override the JSON-RPC endpoint (defaults to `https://rpc.gnosis.gateway.fm`).
+- `CIRCLES_HUB_ADDRESS` (optional) - Override the Hub V2 contract address.
+- `CIRCLES_AMOUNT` / `CIRCLES_RECIPIENT` (optional) - Control transfer size and recipient for custom testing flows.
 
 **When to use:**
 
