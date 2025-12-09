@@ -75,20 +75,43 @@ public class StateMachine(
                                     context.Logger.Info("[REINDEX] Re-index data deletion complete. The indexer will now sync from the appropriate block.");
                                 }
 
-                                context.Logger.Info("Initializing: Finding the last persisted block...");
-                                var lastPersistedBlock = context.Database.FirstGap()
-                                                         ?? context.Database.LatestBlock()
-                                                         ?? 0;
+                                // Determine the effective resume point by checking both System_Block and all event tables.
+                                // This is critical: we must use the SAME block for cleanup and sync start to avoid
+                                // cache conflicts (caches track block numbers and require monotonically increasing blocks).
+                                context.Logger.Info("Initializing: Finding the safe resume point...");
+
+                                var latestBlock = context.Database.LatestBlock() ?? 0;
+                                var firstGap = context.Database.FirstGap();
+                                var safeResumeBlock = context.Database.GetSafeResumeBlock();
+
+                                // Use the minimum of all these values to ensure consistency
+                                var effectiveResumeBlock = latestBlock;
+                                if (firstGap.HasValue && firstGap.Value < effectiveResumeBlock)
+                                {
+                                    effectiveResumeBlock = firstGap.Value;
+                                }
+                                if (safeResumeBlock.HasValue && safeResumeBlock.Value < effectiveResumeBlock)
+                                {
+                                    effectiveResumeBlock = safeResumeBlock.Value;
+                                }
 
                                 context.Logger.Info(
-                                    $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
+                                    $"Initializing: LatestBlock={latestBlock}, FirstGap={firstGap?.ToString() ?? "none"}, " +
+                                    $"SafeResumeBlock={safeResumeBlock?.ToString() ?? "none"} => Effective resume block: {effectiveResumeBlock}");
+
+                                if (effectiveResumeBlock < latestBlock)
+                                {
+                                    context.Logger.Warn(
+                                        $"Detected inconsistent index state. Will clean up from block {effectiveResumeBlock} " +
+                                        $"to ensure caches and database are synchronized.");
+                                }
 
                                 context.Logger.Info("Initializing: Warming up all caches...");
-                                await InitializeCaches(lastPersistedBlock);
+                                await InitializeCaches(effectiveResumeBlock);
 
                                 context.Logger.Info(
-                                    "Initializing: Transitioning to 'Reorg' to clean up possible residues...");
-                                await TransitionTo(State.Reorg, lastPersistedBlock);
+                                    $"Initializing: Transitioning to 'Reorg' to clean up from block {effectiveResumeBlock}...");
+                                await TransitionTo(State.Reorg, effectiveResumeBlock);
                                 return;
                             }
                     }
@@ -269,32 +292,18 @@ public class StateMachine(
 
     private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)
     {
-        // Use safe resume block to handle partial writes from previous crashes
-        // This checks all event tables and finds the minimum max block,
-        // ensuring we re-process any blocks that may have partial data
-        long? safeResumeBlock = context.Database.GetSafeResumeBlock();
+        // After the Initial state and Reorg cleanup, the database should be consistent.
+        // LatestBlock() now represents the true safe resume point since we cleaned up
+        // everything above the minimum of (LatestBlock, FirstGap, SafeResumeBlock) during init.
         long lastIndexHeight = context.Database.LatestBlock() ?? 0;
 
-        // Use the lower of the two to be safe
-        long effectiveLastBlock = safeResumeBlock.HasValue
-            ? Math.Min(safeResumeBlock.Value, lastIndexHeight)
-            : lastIndexHeight;
-
-        if (effectiveLastBlock != lastIndexHeight && effectiveLastBlock > 0)
-        {
-            context.Logger.Warn(
-                $"Detected inconsistent index state. System_Block reports {lastIndexHeight}, " +
-                $"but safe resume point is {effectiveLastBlock}. " +
-                $"Will re-index from block {effectiveLastBlock + 1} using upsert mode to recover missing data.");
-        }
-
-        if (effectiveLastBlock == toBlock)
+        if (lastIndexHeight == toBlock)
         {
             context.Logger.Info("No blocks to sync.");
             yield break;
         }
 
-        var nextBlock = effectiveLastBlock + 1;
+        var nextBlock = lastIndexHeight + 1;
         if (nextBlock < context.Settings.StartBlock)
         {
             context.Logger.Debug(
@@ -303,9 +312,8 @@ public class StateMachine(
         }
         else
         {
-            context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (SafeResumeBlock + 1) to {toBlock}");
+            context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (LatestBlock + 1) to {toBlock}");
         }
-
 
         for (long i = nextBlock; i <= toBlock; i++)
         {
