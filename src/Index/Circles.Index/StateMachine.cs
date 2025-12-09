@@ -52,45 +52,45 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState:
-                        {
-                            // Handle re-indexing if REINDEX_FROM_BLOCK is set
-                            if (context.Settings.ReindexFromBlock.HasValue)
                             {
-                                var reindexFrom = context.Settings.ReindexFromBlock.Value;
-                                context.Logger.Info($"[REINDEX] REINDEX_FROM_BLOCK is set to {reindexFrom}");
-
-                                if (context.Settings.ReindexTables.Length > 0)
+                                // Handle re-indexing if REINDEX_FROM_BLOCK is set
+                                if (context.Settings.ReindexFromBlock.HasValue)
                                 {
-                                    // Delete only from specified tables
-                                    context.Logger.Info($"[REINDEX] Deleting data from tables: {string.Join(", ", context.Settings.ReindexTables)} from block {reindexFrom} onwards...");
-                                    await context.Database.DeleteFromTablesGreaterOrEqualBlock(reindexFrom, context.Settings.ReindexTables);
-                                }
-                                else
-                                {
-                                    // Delete from all tables
-                                    context.Logger.Info($"[REINDEX] Deleting ALL data from block {reindexFrom} onwards...");
-                                    await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
+                                    var reindexFrom = context.Settings.ReindexFromBlock.Value;
+                                    context.Logger.Info($"[REINDEX] REINDEX_FROM_BLOCK is set to {reindexFrom}");
+
+                                    if (context.Settings.ReindexTables.Length > 0)
+                                    {
+                                        // Delete only from specified tables
+                                        context.Logger.Info($"[REINDEX] Deleting data from tables: {string.Join(", ", context.Settings.ReindexTables)} from block {reindexFrom} onwards...");
+                                        await context.Database.DeleteFromTablesGreaterOrEqualBlock(reindexFrom, context.Settings.ReindexTables);
+                                    }
+                                    else
+                                    {
+                                        // Delete from all tables
+                                        context.Logger.Info($"[REINDEX] Deleting ALL data from block {reindexFrom} onwards...");
+                                        await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
+                                    }
+
+                                    context.Logger.Info("[REINDEX] Re-index data deletion complete. The indexer will now sync from the appropriate block.");
                                 }
 
-                                context.Logger.Info("[REINDEX] Re-index data deletion complete. The indexer will now sync from the appropriate block.");
+                                context.Logger.Info("Initializing: Finding the last persisted block...");
+                                var lastPersistedBlock = context.Database.FirstGap()
+                                                         ?? context.Database.LatestBlock()
+                                                         ?? 0;
+
+                                context.Logger.Info(
+                                    $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
+
+                                context.Logger.Info("Initializing: Warming up all caches...");
+                                await InitializeCaches(lastPersistedBlock);
+
+                                context.Logger.Info(
+                                    "Initializing: Transitioning to 'Reorg' to clean up possible residues...");
+                                await TransitionTo(State.Reorg, lastPersistedBlock);
+                                return;
                             }
-
-                            context.Logger.Info("Initializing: Finding the last persisted block...");
-                            var lastPersistedBlock = context.Database.FirstGap()
-                                                     ?? context.Database.LatestBlock()
-                                                     ?? 0;
-
-                            context.Logger.Info(
-                                $"Initializing: Last persisted block is {lastPersistedBlock}. Deleting all events from this block onwards...");
-
-                            context.Logger.Info("Initializing: Warming up all caches...");
-                            await InitializeCaches(lastPersistedBlock);
-
-                            context.Logger.Info(
-                                "Initializing: Transitioning to 'Reorg' to clean up possible residues...");
-                            await TransitionTo(State.Reorg, lastPersistedBlock);
-                            return;
-                        }
                     }
 
                     break;
