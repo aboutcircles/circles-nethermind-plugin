@@ -13,7 +13,6 @@ using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
-using Circles.Rpc.Host.Dto;
 
 namespace Circles.Rpc.Host;
 
@@ -175,7 +174,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             try
             {
                 _logger?.LogDebug("Using Cache Service for total balance query (address={Address}, version={Version})", address, version);
-                
+
                 string cacheBalance;
                 if (version == 1)
                 {
@@ -189,7 +188,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 {
                     cacheBalance = await _cacheServiceClient.GetTotalBalanceAsync(address);
                 }
-                
+
                 return new TotalBalanceResponse(cacheBalance);
             }
             catch (Exception ex)
@@ -198,7 +197,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 // Fall through to database query below
             }
         }
-        
+
         // Fallback: use traditional database + Nethermind approach
         _logger?.LogDebug("Using database for total balance query (address={Address}, version={Version})", address, version);
         var balances = await GetTokenBalancesForAccount(address);
@@ -221,7 +220,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             balance = totalBalance.ToString(CultureInfo.InvariantCulture);
         }
-        
+
         return new TotalBalanceResponse(balance);
     }
 
@@ -238,9 +237,9 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var cachedTokens = await GetTokenExposureIdsAsync(address);
                 var cachedHubAddress = _settings.CirclesV2HubAddress;
                 var cachedNow = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                
+
                 var cachedTokenBalances = new List<CirclesTokenBalance>();
-                
+
                 foreach (var cacheBalance in cacheBalances)
                 {
                     // Find token info from exposure
@@ -248,16 +247,16 @@ public class CirclesRpcModule : ICirclesRpcModule
                     {
                         continue;
                     }
-                    
+
                     // Parse cached balance (already in Circles, not attoCircles)
                     var circles = decimal.Parse(cacheBalance.Balance);
                     var attoCircles = CirclesConverter.CirclesToAttoCircles(circles);
-                    
+
                     BigInteger attoCrc;
                     decimal crc;
                     BigInteger staticAttoCircles;
                     decimal staticCircles;
-                    
+
                     if (token.TokenType == "CrcV1_Signup")
                     {
                         // OG CRC - cached value is already time-circles
@@ -274,11 +273,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                         staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
                         staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
                     }
-                    
+
                     var tokenId = token.IsErc1155
                         ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
                         : token.TokenAddress;
-                    
+
                     cachedTokenBalances.Add(new CirclesTokenBalance(
                         TokenAddress: token.TokenAddress,
                         TokenId: tokenId,
@@ -298,7 +297,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                         IsGroup: token.IsGroup
                     ));
                 }
-                
+
                 return cachedTokenBalances
                     .Where(o => o.Circles > 0)
                     .OrderByDescending(o => o.Circles)
@@ -310,7 +309,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 // Fall through to database query below
             }
         }
-        
+
         // Fallback: use database query (no RPC calls needed - all balances come from DB)
         _logger?.LogDebug("Using database for token balances query (address={Address})", address);
         var tokens = await GetTokenExposureIdsAsync(address);
@@ -839,14 +838,14 @@ public class CirclesRpcModule : ICirclesRpcModule
                 {
                     var tokenOwner = reader.GetString(1);
                     var circlesType = reader.GetInt32(2);
-                    
+
                     // Determine token type based on circlesType
                     // circlesType = 0 for demurraged, 1 for inflationary
                     var isInflationary = circlesType == 1;
                     var tokenType = isInflationary
                         ? "CrcV2_ERC20WrapperDeployed_Inflationary"
                         : "CrcV2_ERC20WrapperDeployed_Demurraged";
-                    
+
                     return new TokenInfo(
                         TokenAddress: reader.GetString(0),
                         TokenOwner: tokenOwner,
@@ -925,9 +924,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             try
             {
                 _logger?.LogDebug("Using Cache Service for avatar info batch query ({Count} addresses)", addresses.Length);
-                
+
                 var cacheResults = await _cacheServiceClient.GetAvatarInfoBatchAsync(addresses);
-                
+
                 // Convert cache results to AvatarInfo
                 var cacheResult = new AvatarInfo?[addresses.Length];
                 for (int i = 0; i < cacheResults.Length; i++)
@@ -950,7 +949,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                         );
                     }
                 }
-                
+
                 return cacheResult;
             }
             catch (Exception ex)
@@ -1150,16 +1149,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             try
             {
                 _logger?.LogDebug("Using Cache Service for profile CID batch query ({Count} addresses)", addresses.Length);
-                
+
                 var cacheResults = await _cacheServiceClient.GetProfileCidBatchAsync(addresses);
-                
+
                 // Convert to string?[] array
                 var cacheResult = new string?[addresses.Length];
                 for (int i = 0; i < cacheResults.Length && i < addresses.Length; i++)
                 {
                     cacheResult[i] = cacheResults[i].Cid;
                 }
-                
+
                 return cacheResult;
             }
             catch (Exception ex)
@@ -1714,9 +1713,9 @@ public class CirclesRpcModule : ICirclesRpcModule
     public async Task<AggregatedTrustRelation[]> GetAggregatedTrustRelations(string avatar)
     {
         var normalizedAvatar = avatar.ToLower();
-        
+
         await using var connection = await CreateConnectionAsync();
-        
+
         // Query V2 trust relations for this avatar
         const string sql = @"
             SELECT
@@ -1733,13 +1732,13 @@ public class CirclesRpcModule : ICirclesRpcModule
                 END
             WHERE LOWER(t.truster) = @avatar OR LOWER(t.trustee) = @avatar
             ORDER BY t.timestamp DESC";
-        
+
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("avatar", normalizedAvatar);
-        
+
         // Group by counterpart
         var trustBucket = new Dictionary<string, List<(string truster, string trustee, long expiryTime, long timestamp, string? avatarType)>>();
-        
+
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1751,37 +1750,37 @@ public class CirclesRpcModule : ICirclesRpcModule
             var timestampBig = reader.GetFieldValue<System.Numerics.BigInteger>(3);
             var timestamp = timestampBig > long.MaxValue ? long.MaxValue : (long)timestampBig;
             var avatarType = reader.IsDBNull(4) ? null : reader.GetString(4);
-            
+
             // Determine counterpart (not the avatar itself)
             var counterpart = truster.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase)
                 ? trustee
                 : truster;
-            
+
             if (counterpart.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase))
             {
                 continue; // Skip self-trust
             }
-            
+
             if (!trustBucket.ContainsKey(counterpart))
             {
                 trustBucket[counterpart] = new List<(string, string, long, long, string?)>();
             }
-            
+
             trustBucket[counterpart].Add((truster, trustee, expiryTime, timestamp, avatarType));
         }
-        
+
         // Determine relation type and create aggregated response
         var result = new List<AggregatedTrustRelation>();
-        
+
         foreach (var (counterpart, rows) in trustBucket)
         {
             if (rows.Count == 0) continue;
-            
+
             // Get max timestamp and expiryTime for this counterpart
             var maxTimestamp = rows.Max(r => r.timestamp);
             var maxExpiryTime = rows.Max(r => r.expiryTime);
             var avatarType = rows.FirstOrDefault(r => r.avatarType != null).avatarType;
-            
+
             // Determine relation type based on number of rows and direction
             string relationType;
             if (rows.Count == 2)
@@ -1811,16 +1810,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 throw new InvalidOperationException($"Unexpected number of trust rows for counterpart: {rows.Count}");
             }
-            
+
             // Map avatar type to simple format
             string? objectAvatarType = avatarType switch
             {
                 "Human" => "Human",
-                "Organization" => "Organization", 
+                "Organization" => "Organization",
                 "Group" => "Group",
                 _ => null
             };
-            
+
             result.Add(new AggregatedTrustRelation(
                 SubjectAvatar: normalizedAvatar,
                 Relation: relationType,
@@ -1830,17 +1829,17 @@ public class CirclesRpcModule : ICirclesRpcModule
                 ObjectAvatarType: objectAvatarType
             ));
         }
-        
+
         return result.ToArray();
     }
 
     public async Task<PagedResponse<GroupRow>> FindGroups(int limit = 50, GroupQueryParams? queryParams = null, string? cursor = null)
     {
         await using var connection = await CreateConnectionAsync();
-        
+
         // Decode cursor if provided
         var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
-        
+
         // Build SQL query with filters
         var sql = new System.Text.StringBuilder(@"
             SELECT 
@@ -1856,9 +1855,9 @@ public class CirclesRpcModule : ICirclesRpcModule
             FROM ""CrcV2_RegisterGroup"" r
             WHERE 1=1
         ");
-        
+
         var parameters = new List<NpgsqlParameter>();
-        
+
         // Apply filters
         if (queryParams != null)
         {
@@ -1867,13 +1866,13 @@ public class CirclesRpcModule : ICirclesRpcModule
                 sql.Append(" AND r.name ILIKE @namePrefix");
                 parameters.Add(new NpgsqlParameter("namePrefix", queryParams.NameStartsWith + "%"));
             }
-            
+
             if (!string.IsNullOrEmpty(queryParams.SymbolStartsWith))
             {
                 sql.Append(" AND r.symbol ILIKE @symbolPrefix");
                 parameters.Add(new NpgsqlParameter("symbolPrefix", queryParams.SymbolStartsWith + "%"));
             }
-            
+
             if (queryParams.OwnerIn != null && queryParams.OwnerIn.Length > 0)
             {
                 var normalizedOwners = queryParams.OwnerIn.Select(o => o.ToLower()).ToArray();
@@ -1881,7 +1880,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 parameters.Add(new NpgsqlParameter("owners", normalizedOwners));
             }
         }
-        
+
         // Apply cursor for pagination
         if (cursorBlock.HasValue && cursorTxIndex.HasValue && cursorLogIndex.HasValue)
         {
@@ -1891,18 +1890,18 @@ public class CirclesRpcModule : ICirclesRpcModule
             parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex.Value));
             parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex.Value));
         }
-        
+
         sql.Append(@"
             ORDER BY r.""blockNumber"" DESC, r.""transactionIndex"" DESC, r.""logIndex"" DESC
             LIMIT @limit
         ");
-        
+
         // Fetch one extra to determine if there are more results
         parameters.Add(new NpgsqlParameter("limit", limit + 1));
-        
+
         await using var command = new NpgsqlCommand(sql.ToString(), connection);
         command.Parameters.AddRange(parameters.ToArray());
-        
+
         var results = new List<GroupRow>();
         var cursorData = new List<(long blockNumber, int txIndex, int logIndex)>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -1936,7 +1935,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var lastCursor = cursorData[^1];
             nextCursor = CursorUtils.EncodeCursor(lastCursor.blockNumber, lastCursor.txIndex, lastCursor.logIndex);
         }
-        
+
         return new PagedResponse<GroupRow>(
             Results: results.ToArray(),
             HasMore: hasMore,
@@ -1955,17 +1954,17 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
     private async Task<PagedResponse<GroupMembershipRow>> GetGroupMembershipInternal(
-        string address, 
-        int limit, 
-        string? cursor, 
+        string address,
+        int limit,
+        string? cursor,
         bool filterByGroup)
     {
         var normalizedAddress = address.ToLower();
         await using var connection = await CreateConnectionAsync();
-        
+
         // Decode cursor if provided
         var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
-        
+
         // Build SQL query
         var filterColumn = filterByGroup ? "\"group\"" : "member";
         var sql = $@"
@@ -1981,12 +1980,12 @@ public class CirclesRpcModule : ICirclesRpcModule
             FROM ""V_CrcV2_GroupMemberships""
             WHERE LOWER({filterColumn}) = @address
         ";
-        
+
         var parameters = new List<NpgsqlParameter>
         {
             new("address", normalizedAddress)
         };
-        
+
         // Apply cursor for pagination
         if (cursorBlock.HasValue && cursorTxIndex.HasValue && cursorLogIndex.HasValue)
         {
@@ -1996,21 +1995,21 @@ public class CirclesRpcModule : ICirclesRpcModule
             parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex.Value));
             parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex.Value));
         }
-        
+
         sql += @"
             ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
             LIMIT @limit
         ";
-        
+
         // Fetch one extra to determine if there are more results
         parameters.Add(new NpgsqlParameter("limit", limit + 1));
-        
+
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddRange(parameters.ToArray());
-        
+
         var results = new List<GroupMembershipRow>();
         await using var reader = await command.ExecuteReaderAsync();
-        
+
         while (await reader.ReadAsync())
         {
             // Handle potentially large numeric values - use BigInteger and cap at long.MaxValue
@@ -2028,14 +2027,14 @@ public class CirclesRpcModule : ICirclesRpcModule
                 ExpiryTime: expiryTime
             ));
         }
-        
+
         // Check if there are more results
         var hasMore = results.Count > limit;
         if (hasMore)
         {
             results.RemoveAt(results.Count - 1); // Remove the extra row
         }
-        
+
         // Generate next cursor
         string? nextCursor = null;
         if (hasMore && results.Count > 0)
@@ -2043,7 +2042,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var lastResult = results[^1];
             nextCursor = CursorUtils.EncodeCursor(lastResult.BlockNumber, lastResult.TransactionIndex, lastResult.LogIndex);
         }
-        
+
         return new PagedResponse<GroupMembershipRow>(
             Results: results.ToArray(),
             HasMore: hasMore,
@@ -2055,10 +2054,10 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var normalizedAddress = avatarAddress.ToLower();
         await using var connection = await CreateConnectionAsync();
-        
+
         // Decode cursor if provided
         var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
-        
+
         // Build query with cursor pagination
         var sql = @$"
             SELECT 
@@ -2086,11 +2085,11 @@ public class CirclesRpcModule : ICirclesRpcModule
             ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC
             LIMIT @limit
         ";
-        
+
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("address", normalizedAddress);
         cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra to check for more
-        
+
         if (cursorBlock.HasValue)
         {
             cmd.Parameters.AddWithValue("cursorBlock", cursorBlock.Value);
@@ -2098,10 +2097,10 @@ public class CirclesRpcModule : ICirclesRpcModule
             cmd.Parameters.AddWithValue("cursorLogIndex", cursorLogIndex!.Value);
             cmd.Parameters.AddWithValue("cursorBatchIndex", cursorBatchIndex!.Value);
         }
-        
+
         var results = new List<TransactionHistoryRow>();
         await using var reader = await cmd.ExecuteReaderAsync();
-        
+
         while (await reader.ReadAsync())
         {
             var blockNumber = reader.GetInt64(0);
@@ -2116,32 +2115,32 @@ public class CirclesRpcModule : ICirclesRpcModule
             var to = reader.GetString(9);
             var id = reader.IsDBNull(10) ? null : reader.GetString(10);
             var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
-            
+
             // Calculate all circle amount formats
             // value is demurraged attoCircles from the database
-            
+
             // 1. attoCircles = value (demurraged, unchanged)
             var attoCirclesDemurraged = valueRaw;
-            
+
             // 2. circles = convert demurraged attoCircles to decimal
             var circles = CirclesConverter.AttoCirclesToCircles(attoCirclesDemurraged);
-            
+
             // 3. Calculate day from timestamp for conversions
             var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
             var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000); // INFLATION_DAY_ZERO_UNIX
-            
+
             // 4. staticAttoCircles = convert demurraged to inflationary (static)
             var staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
-            
+
             // 5. staticCircles = convert staticAttoCircles to decimal
             var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
-            
+
             // 6. attoCrc = convert demurraged attoCircles to V1 CRC
             var attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
-            
+
             // 7. crc = convert attoCrc to decimal
             var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
-            
+
             results.Add(new TransactionHistoryRow(
                 BlockNumber: blockNumber,
                 Timestamp: timestamp,
@@ -2162,14 +2161,14 @@ public class CirclesRpcModule : ICirclesRpcModule
                 StaticAttoCircles: staticAttoCircles.ToString()
             ));
         }
-        
+
         // Check if there are more results
         var hasMore = results.Count > limit;
         if (hasMore)
         {
             results.RemoveAt(results.Count - 1); // Remove the extra row
         }
-        
+
         // Generate next cursor
         string? nextCursor = null;
         if (hasMore && results.Count > 0)
@@ -2178,7 +2177,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             // Include batchIndex in cursor for proper pagination of batch transfers
             nextCursor = CursorUtils.EncodeCursorWithBatch(lastResult.BlockNumber, lastResult.TransactionIndex, lastResult.LogIndex, 0);
         }
-        
+
         return new PagedResponse<TransactionHistoryRow>(
             Results: results.ToArray(),
             HasMore: hasMore,
@@ -2190,7 +2189,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var normalizedToken = tokenAddress.ToLower();
         await using var connection = await CreateConnectionAsync();
-        
+
         // Build query with cursor pagination - UNION both V1 and V2 views
         var sql = @$"
             SELECT
@@ -2212,26 +2211,26 @@ public class CirclesRpcModule : ICirclesRpcModule
             ORDER BY account ASC
             LIMIT @limit
         ";
-        
+
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("tokenAddress", normalizedToken);
         cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra to check for more
-        
+
         if (!string.IsNullOrEmpty(cursor))
         {
             cmd.Parameters.AddWithValue("cursor", cursor.ToLower());
         }
-        
+
         var results = new List<TokenHolderRow>();
         await using var reader = await cmd.ExecuteReaderAsync();
-        
+
         while (await reader.ReadAsync())
         {
             var account = reader.GetString(0);
             var balance = reader.GetFieldValue<System.Numerics.BigInteger>(1);
             var tokenAddr = reader.GetString(2);
             var version = reader.GetInt32(3);
-            
+
             results.Add(new TokenHolderRow(
                 Account: account,
                 Balance: balance.ToString(),
@@ -2239,21 +2238,21 @@ public class CirclesRpcModule : ICirclesRpcModule
                 Version: version
             ));
         }
-        
+
         // Check if there are more results
         var hasMore = results.Count > limit;
         if (hasMore)
         {
             results.RemoveAt(results.Count - 1); // Remove the extra row
         }
-        
+
         // Generate next cursor
         string? nextCursor = null;
         if (hasMore && results.Count > 0)
         {
             nextCursor = results[^1].Account;
         }
-        
+
         return new PagedResponse<TokenHolderRow>(
             Results: results.ToArray(),
             HasMore: hasMore,
@@ -3208,10 +3207,10 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var normalizedAddress = address.ToLower();
         await using var connection = await CreateConnectionAsync();
-        
+
         // Decode cursor if provided
         var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
-        
+
         // Use limit or default to 20 if not specified
         var effectiveLimit = limit ?? 20;
 
@@ -3270,12 +3269,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         cmd.Parameters.AddWithValue("address", normalizedAddress);
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
         cmd.Parameters.AddWithValue("limit", effectiveLimit + 1); // Fetch one extra to check for more
-        
+
         if (toBlock.HasValue)
         {
             cmd.Parameters.AddWithValue("toBlock", toBlock.Value);
         }
-        
+
         if (cursorBlock.HasValue)
         {
             cmd.Parameters.AddWithValue("cursorBlock", cursorBlock.Value);
@@ -3285,7 +3284,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var events = new List<JsonElement>();
         await using var reader = await cmd.ExecuteReaderAsync();
-        
+
         while (await reader.ReadAsync())
         {
             var eventPayloadJson = reader.GetString(5);

@@ -162,7 +162,7 @@ public class NotificationListenerService : BackgroundService
             // Track blocks processed
             CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
 
-            _logger.LogInformation("✓ Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
+            _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
                 fromBlock, latestBlock, _state.LastProcessedBlock);
         }
         else
@@ -214,8 +214,6 @@ public class NotificationListenerService : BackgroundService
 
         // Process V2 events in this range
         await ProcessV2EventsAsync(conn, fromBlock, toBlock, ct);
-
-        _logger.LogInformation("Successfully processed blocks {FromBlock} to {ToBlock}", fromBlock, toBlock);
     }
 
     private async Task ProcessV1EventsAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
