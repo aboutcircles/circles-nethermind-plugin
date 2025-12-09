@@ -365,6 +365,10 @@ normalize_response() {
     # Sort arrays in result to handle ordering differences (e.g. namespaces in circles_tables)
     normalized=$(echo "$normalized" | jq 'if .result | type == "array" then .result |= sort_by(.namespace // .column // .) else . end' 2>/dev/null || echo "$normalized")
 
+    # Sort all object keys recursively to handle field ordering differences
+    # This ensures {"a":1,"b":2} and {"b":2,"a":1} compare as equal
+    normalized=$(echo "$normalized" | jq -S '.' 2>/dev/null || echo "$normalized")
+
     echo "$normalized"
 }
 
