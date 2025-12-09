@@ -481,18 +481,18 @@ public class CirclesRpcModule : ICirclesRpcModule
                      , 'CrcV2_ERC20WrapperDeployed_Inflationary' as ""type""
                      , wd.avatar as ""tokenOwner""
                      , SUM(CASE
-                         WHEN wt.""to"" = @address THEN wt.amount
-                         WHEN wt.""from"" = @address THEN -wt.amount
+                         WHEN LOWER(wt.""to"") = @address THEN wt.amount
+                         WHEN LOWER(wt.""from"") = @address THEN -wt.amount
                          ELSE 0
                        END) as balance
                 FROM public.""CrcV2_Erc20WrapperTransfer"" wt
                 JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
                   ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 1
-                WHERE wt.""to"" = @address OR wt.""from"" = @address
+                WHERE LOWER(wt.""to"") = @address OR LOWER(wt.""from"") = @address
                 GROUP BY wt.""tokenAddress"", wd.avatar
                 HAVING SUM(CASE
-                    WHEN wt.""to"" = @address THEN wt.amount
-                    WHEN wt.""from"" = @address THEN -wt.amount
+                    WHEN LOWER(wt.""to"") = @address THEN wt.amount
+                    WHEN LOWER(wt.""from"") = @address THEN -wt.amount
                     ELSE 0
                 END) > 0
             ),
@@ -504,18 +504,18 @@ public class CirclesRpcModule : ICirclesRpcModule
                      , wd.avatar as ""tokenOwner""
                      , floor(crc_demurrage(1675209600::bigint, MAX(wt.""timestamp""),
                          SUM(CASE
-                             WHEN wt.""to"" = @address THEN wt.amount
-                             WHEN wt.""from"" = @address THEN -wt.amount
+                             WHEN LOWER(wt.""to"") = @address THEN wt.amount
+                             WHEN LOWER(wt.""from"") = @address THEN -wt.amount
                              ELSE 0
                          END))) as balance
                 FROM public.""CrcV2_Erc20WrapperTransfer"" wt
                 JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
                   ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 0
-                WHERE wt.""to"" = @address OR wt.""from"" = @address
+                WHERE LOWER(wt.""to"") = @address OR LOWER(wt.""from"") = @address
                 GROUP BY wt.""tokenAddress"", wd.avatar
                 HAVING SUM(CASE
-                    WHEN wt.""to"" = @address THEN wt.amount
-                    WHEN wt.""from"" = @address THEN -wt.amount
+                    WHEN LOWER(wt.""to"") = @address THEN wt.amount
+                    WHEN LOWER(wt.""from"") = @address THEN -wt.amount
                     ELSE 0
                 END) > 0
             ),
@@ -528,7 +528,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                      , v1.""totalBalance"" as balance
                 FROM  public.""V_CrcV1_BalancesByAccountAndToken"" v1
                 JOIN  public.""CrcV1_Signup"" s ON s.token = v1.""tokenAddress""
-                WHERE v1.account = @address
+                WHERE LOWER(v1.account) = @address
                   AND v1.""totalBalance"" > 0
 
                 UNION ALL
@@ -536,6 +536,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 -- V2 ERC1155 token balances (human/group tokens)
                 -- For V2 ERC1155: use demurragedTotalBalance (demurrage already applied)
                 -- This is the equivalent of what production does with LastTokenMovement + Demurrage.ApplyDemurrage()
+                -- NOTE: tokenAddress in the view is already the avatar address (computed from token ID in LogParser)
                 SELECT v2.""tokenAddress""
                      , CASE
                          WHEN rh.avatar IS NOT NULL THEN 'CrcV2_RegisterHuman'
@@ -544,8 +545,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                      , v2.""tokenAddress"" as ""tokenOwner""
                      , v2.""demurragedTotalBalance"" as balance
                 FROM  public.""V_CrcV2_BalancesByAccountAndToken"" v2
-                LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = v2.""tokenAddress""
-                WHERE v2.account = @address
+                LEFT JOIN ""CrcV2_RegisterHuman"" rh ON LOWER(rh.avatar) = LOWER(v2.""tokenAddress"")
+                WHERE LOWER(v2.account) = @address
                   AND v2.""totalBalance"" > 0
 
                 UNION ALL
@@ -779,7 +780,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var lowerTokenAddress = tokenAddress.ToLower();
 
         // 1. Check for V1 token
-        const string v1Sql = @"SELECT token, ""user"" as owner FROM ""CrcV1_Signup"" WHERE token = @tokenAddress LIMIT 1";
+        const string v1Sql = @"SELECT token, ""user"" as owner FROM ""CrcV1_Signup"" WHERE LOWER(token) = @tokenAddress LIMIT 1";
         await using (var cmd = new NpgsqlCommand(v1Sql, connection))
         {
             cmd.Parameters.AddWithValue("tokenAddress", lowerTokenAddress);
@@ -801,7 +802,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         // 2. Check for V2 Avatar/Group token
-        const string v2AvatarSql = @"SELECT avatar, type FROM ""V_CrcV2_Avatars"" WHERE avatar = @tokenAddress LIMIT 1";
+        const string v2AvatarSql = @"SELECT avatar, type FROM ""V_CrcV2_Avatars"" WHERE LOWER(avatar) = @tokenAddress LIMIT 1";
         await using (var cmd = new NpgsqlCommand(v2AvatarSql, connection))
         {
             cmd.Parameters.AddWithValue("tokenAddress", lowerTokenAddress);
@@ -828,7 +829,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         const string v2WrappedSql = @"
             SELECT wd.""erc20Wrapper"", wd.avatar, wd.""circlesType""
             FROM ""CrcV2_ERC20WrapperDeployed"" wd
-            WHERE wd.""erc20Wrapper"" = @tokenAddress LIMIT 1";
+            WHERE LOWER(wd.""erc20Wrapper"") = @tokenAddress LIMIT 1";
         await using (var cmd = new NpgsqlCommand(v2WrappedSql, connection))
         {
             cmd.Parameters.AddWithValue("tokenAddress", lowerTokenAddress);
@@ -1674,8 +1675,8 @@ public class CirclesRpcModule : ICirclesRpcModule
                      from ""CrcV1_Trust""
                  ) t
             where rn = 1
-              and (""user"" = @address
-               or ""canSendTo"" = @address)
+              and (LOWER(""user"") = @address
+               or LOWER(""canSendTo"") = @address)
         ";
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
@@ -1703,7 +1704,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     private async Task<bool> IsV2Human(string address)
     {
         await using var connection = await CreateConnectionAsync();
-        const string sql = @"SELECT 1 FROM ""CrcV2_RegisterHuman"" WHERE avatar = @address";
+        const string sql = @"SELECT 1 FROM ""CrcV2_RegisterHuman"" WHERE LOWER(avatar) = @address";
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", address.ToLower());
         var result = await command.ExecuteScalarAsync();
@@ -1718,19 +1719,19 @@ public class CirclesRpcModule : ICirclesRpcModule
         
         // Query V2 trust relations for this avatar
         const string sql = @"
-            SELECT 
+            SELECT
                 t.truster,
                 t.trustee,
                 t.""expiryTime"",
                 t.timestamp,
                 a.type as avatar_type
             FROM ""V_CrcV2_TrustRelations"" t
-            LEFT JOIN ""V_CrcV2_Avatars"" a 
-                ON a.avatar = CASE 
-                    WHEN t.truster = @avatar THEN t.trustee
-                    ELSE t.truster
+            LEFT JOIN ""V_CrcV2_Avatars"" a
+                ON LOWER(a.avatar) = CASE
+                    WHEN LOWER(t.truster) = @avatar THEN LOWER(t.trustee)
+                    ELSE LOWER(t.truster)
                 END
-            WHERE t.truster = @avatar OR t.trustee = @avatar
+            WHERE LOWER(t.truster) = @avatar OR LOWER(t.trustee) = @avatar
             ORDER BY t.timestamp DESC";
         
         await using var command = new NpgsqlCommand(sql, connection);
@@ -1968,7 +1969,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Build SQL query
         var filterColumn = filterByGroup ? "\"group\"" : "member";
         var sql = $@"
-            SELECT 
+            SELECT
                 ""blockNumber"",
                 timestamp,
                 ""transactionIndex"",
@@ -1978,7 +1979,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 member,
                 ""expiryTime""
             FROM ""V_CrcV2_GroupMemberships""
-            WHERE {filterColumn} = @address
+            WHERE LOWER({filterColumn}) = @address
         ";
         
         var parameters = new List<NpgsqlParameter>
@@ -2075,7 +2076,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 value
             FROM ""V_Crc_Transfers""
             WHERE version = 2
-              AND (""from"" = @address OR ""to"" = @address)
+              AND (LOWER(""from"") = @address OR LOWER(""to"") = @address)
               {(cursorBlock.HasValue ? @"AND (
                 ""blockNumber"" < @cursorBlock OR
                 (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
@@ -2200,14 +2201,14 @@ public class CirclesRpcModule : ICirclesRpcModule
             FROM (
                 SELECT account, ""totalBalance"", ""tokenAddress"", 1 as version
                 FROM ""V_CrcV1_BalancesByAccountAndToken""
-                WHERE ""tokenAddress"" = @tokenAddress AND ""totalBalance"" > 0
+                WHERE LOWER(""tokenAddress"") = @tokenAddress AND ""totalBalance"" > 0
                 UNION ALL
                 SELECT account, ""totalBalance"", ""tokenAddress"", 2 as version
                 FROM ""V_CrcV2_BalancesByAccountAndToken""
-                WHERE ""tokenAddress"" = @tokenAddress AND ""totalBalance"" > 0
+                WHERE LOWER(""tokenAddress"") = @tokenAddress AND ""totalBalance"" > 0
             ) AS combined_balances
             WHERE 1=1
-              {(!string.IsNullOrEmpty(cursor) ? "AND account > @cursor" : "")}
+              {(!string.IsNullOrEmpty(cursor) ? "AND LOWER(account) > @cursor" : "")}
             ORDER BY account ASC
             LIMIT @limit
         ";
@@ -2269,8 +2270,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             from ""V_Crc_TrustRelations"" a
             join ""V_Crc_TrustRelations"" b
               on a.trustee = b.truster
-            where a.truster = @address1
-              and b.trustee = @address2
+            where LOWER(a.truster) = @address1
+              and LOWER(b.trustee) = @address2
               and a.trustee not in (@address1, @address2)
               and a.version = 2
               and b.version = 2
@@ -2281,8 +2282,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             from ""V_Crc_TrustRelations"" a
             join ""V_Crc_TrustRelations"" b
               on a.trustee = b.trustee
-            where a.truster = @address1
-              and b.truster = @address2
+            where LOWER(a.truster) = @address1
+              and LOWER(b.truster) = @address2
               and a.trustee not in (@address1, @address2)
               and a.version = 1
               and b.version = 1
@@ -2293,8 +2294,8 @@ public class CirclesRpcModule : ICirclesRpcModule
             from ""V_Crc_TrustRelations"" a
             join ""V_Crc_TrustRelations"" b
               on a.trustee = b.trustee
-            where a.truster = @address1
-              and b.truster = @address2
+            where LOWER(a.truster) = @address1
+              and LOWER(b.truster) = @address2
               and a.trustee not in (@address1, @address2)
               and a.version = 2
               and b.version = 2
@@ -2453,7 +2454,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             // Basic address filter - only add if address is specified and table has address columns
             if (address != null && table.Value.Any())
             {
-                whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
+                whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"LOWER(t.\"{col}\") = @address"))})");
             }
 
             // Block range filters
@@ -3233,7 +3234,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                     to_jsonb(e) as event_payload
                 FROM ""V_Crc_Transfers"" e
                 WHERE e.version = 2
-                  AND (e.""from"" = @address OR e.""to"" = @address)
+                  AND (LOWER(e.""from"") = @address OR LOWER(e.""to"") = @address)
                   AND e.""blockNumber"" >= @fromBlock
                   {(toBlock.HasValue ? "AND e.\"blockNumber\" <= @toBlock" : "")}
                   {(cursorBlock.HasValue ? @"AND (
@@ -3252,7 +3253,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                     'trust' as event_name,
                     to_jsonb(t) as event_payload
                 FROM ""CrcV2_Trust"" t
-                WHERE (t.truster = @address OR t.trustee = @address)
+                WHERE (LOWER(t.truster) = @address OR LOWER(t.trustee) = @address)
                   AND t.""blockNumber"" >= @fromBlock
                   {(toBlock.HasValue ? "AND t.\"blockNumber\" <= @toBlock" : "")}
                   {(cursorBlock.HasValue ? @"AND (
