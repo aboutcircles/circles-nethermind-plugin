@@ -243,7 +243,9 @@ public class CirclesRpcModule : ICirclesRpcModule
                 foreach (var cacheBalance in cacheBalances)
                 {
                     // Find token info from exposure
-                    if (!cachedTokens.TryGetValue(cacheBalance.TokenId, out var token))
+                    // Cache returns numeric tokenId for V2 ERC1155, but cachedTokens is keyed by hex address
+                    var lookupKey = TokenIdToAddress(cacheBalance.TokenId);
+                    if (!cachedTokens.TryGetValue(lookupKey, out var token))
                     {
                         continue;
                     }
@@ -419,6 +421,23 @@ public class CirclesRpcModule : ICirclesRpcModule
     {
         var hex = address.StartsWith("0x") ? address.Substring(2) : address;
         return BigInteger.Parse("0" + hex, System.Globalization.NumberStyles.HexNumber);
+    }
+
+    /// <summary>
+    /// Converts a numeric ERC1155 token ID to a lowercase hex address.
+    /// This is the inverse of AddressToTokenIdBigInt.
+    /// </summary>
+    private static string TokenIdToAddress(string tokenId)
+    {
+        // If it's already a hex address, just lowercase it
+        if (tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            return tokenId.ToLowerInvariant();
+        }
+
+        // Parse as BigInteger and convert to hex address
+        var bigInt = BigInteger.Parse(tokenId);
+        return "0x" + bigInt.ToString("x").PadLeft(40, '0');
     }
 
     // Helper class to represent token information from database
