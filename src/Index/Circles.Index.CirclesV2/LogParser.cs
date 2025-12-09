@@ -357,7 +357,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         }
 
         // Events from known ERC20Wrapper addresses
-        if (Erc20WrapperAddresses.ContainsKey(log.Address.ToString(true, false)))
+        if (Erc20WrapperAddresses.ContainsKey(log.Address.ToLowerHex()))
         {
             if (topic == _erc20WrapperTransfer)
             {
@@ -406,7 +406,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             avatar,
             erc20Wrapper,
             (long)circlesType
@@ -430,7 +430,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account,
             operatorAddress,
             approved
@@ -460,7 +460,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             operatorAddress,
             fromAddress,
             toAddress,
@@ -501,7 +501,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 receipt.Index,
                 logIndex,
                 receipt.TxHash!.ToString(),
-                log.Address.ToString(true, false),
+                log.Address.ToLowerHex(),
                 i,
                 operatorAddress,
                 fromAddress,
@@ -526,7 +526,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             orgAddress,
             orgName
         );
@@ -553,7 +553,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             groupAddress,
             mintPolicy,
             treasury,
@@ -576,7 +576,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             humanAddress,
             inviterAddress
         );
@@ -603,7 +603,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             toAddress,
             amount,
             startPeriod,
@@ -625,7 +625,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             userAddress,
             canSendToAddress,
             limit
@@ -643,7 +643,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             address
         );
     }
@@ -663,8 +663,8 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
+            log.Address.ToLowerHex(),
             from,
             to,
             amount
@@ -691,7 +691,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account,
             amount,
             demurraged
@@ -718,7 +718,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account,
             amount,
             demurraged
@@ -745,7 +745,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account,
             amount,
             inflation
@@ -772,7 +772,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account,
             amount,
             inflation
@@ -793,7 +793,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account,
             id,
             cost
@@ -834,7 +834,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 logIndex,
                 i,
                 receipt.TxHash!.ToString(),
-                log.Address.ToString(true, false),
+                log.Address.ToLowerHex(),
                 operatorAddress,
                 fromAddress,
                 toAddress,
@@ -878,7 +878,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 logIndex,
                 i,
                 receipt.TxHash!.ToString(),
-                log.Address.ToString(true, false),
+                log.Address.ToLowerHex(),
                 sender,
                 receiver,
                 group,
@@ -904,7 +904,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             flowEdgeId,
             (ushort)streamId
         );
@@ -923,7 +923,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false)
+            log.Address.ToLowerHex()
         );
     }
 }

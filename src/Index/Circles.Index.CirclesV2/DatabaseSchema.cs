@@ -259,7 +259,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("id", e => (BigInteger)e.Id),
                 ("value", e => (BigInteger)e.Value),
-                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToString(true, false))
+                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToLowerHex())
             ]
         );
 
@@ -287,7 +287,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("id", e => (BigInteger)e.Id),
                 ("value", e => (BigInteger)e.Value),
-                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToString(true, false))
+                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToLowerHex())
             ]
         );
 
@@ -376,7 +376,7 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("id", e => (BigInteger)e.Id),
                 ("amount", e => (BigInteger)e.Amount),
-                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToString(true, false))
+                ("tokenAddress", e => AddressConverter.UInt256ToAddress(e.Id).ToLowerHex())
             ]
         );
 

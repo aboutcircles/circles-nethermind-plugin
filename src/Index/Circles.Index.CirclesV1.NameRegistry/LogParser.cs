@@ -93,7 +93,7 @@ public class LogParser(Address v1NameRegistryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             avatar,
             metadataDigest);
     }

@@ -78,7 +78,7 @@ public class LogParser(Address oicContractAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             onBehalf,
             sender,
             recipient,

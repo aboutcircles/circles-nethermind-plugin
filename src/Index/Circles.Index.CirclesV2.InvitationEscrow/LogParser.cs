@@ -93,7 +93,7 @@ public class LogParser(ImmutableHashSet<Address> escrowAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             inviter,
             invitee,
             amount
@@ -113,7 +113,7 @@ public class LogParser(ImmutableHashSet<Address> escrowAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             inviter,
             invitee,
             amount
@@ -133,7 +133,7 @@ public class LogParser(ImmutableHashSet<Address> escrowAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             inviter,
             invitee,
             amount
@@ -152,7 +152,7 @@ public class LogParser(ImmutableHashSet<Address> escrowAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             inviter,
             invitee,
             amount

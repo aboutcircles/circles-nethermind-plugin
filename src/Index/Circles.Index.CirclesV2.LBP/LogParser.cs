@@ -108,7 +108,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             backer,
             circlesBackingInstance
         );
@@ -126,7 +126,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             circlesBackingInstance,
             lbp
         );
@@ -158,7 +158,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             backer,
             circlesBackingInstance,
             backingAsset,
@@ -179,7 +179,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             backer,
             circlesBackingInstance,
             lbp
@@ -198,7 +198,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             backer,
             circlesBackingInstance,
             lbp
