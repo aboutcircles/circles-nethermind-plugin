@@ -820,6 +820,7 @@ Triggers Circles protocol transactions for testing purposes.
    ```
 
 5. **Compare with production** (optional):
+
    ```bash
    # Run regression tests
    ./scripts/rpc-regression.sh
@@ -841,6 +842,7 @@ Triggers Circles protocol transactions for testing purposes.
    ```
 
 3. **Deploy using Docker**:
+
    ```bash
    cd docker
    docker-compose -f docker-compose.gnosis.yml up -d
@@ -943,7 +945,7 @@ docker-compose -f docker-compose.gnosis.yml up -d
 
 ## Project Structure
 
-```
+```text
 scripts/
 ├── build-all.sh           # Master build orchestrator
 ├── bump-index-versions.sh # Version bumper for Index packages
@@ -967,12 +969,9 @@ scripts/
 ├── test-subscriptions.sh  # WebSocket subscription tester
 ├── trigger-circles-tx.sh  # Transaction trigger
 └── trigger-circles-tx.ts  # TypeScript transaction trigger
-```
-
-nupkgs/ # NuGet packages output (created by nuget-pack.sh)
-TestResults/ # Test coverage results (created by test.sh --coverage)
-RegressionTestResults/ # Regression test results (created by rpc-regression.sh)
-
+nupkgs/                    # NuGet packages output (created by nuget-pack.sh)
+TestResults/               # Test coverage results (created by test.sh --coverage)
+RegressionTestResults/     # Regression test results (created by rpc-regression.sh)
 ```
 
 ---
