@@ -46,6 +46,12 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="$PROJECT_ROOT/RegressionTestResults"
+
+# Source .env.local if it exists (for CIRCLES_SEED_PHRASE and other env vars)
+if [[ -f "$PROJECT_ROOT/.env.local" ]]; then
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.env.local"
+fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RUN_DIR="$OUTPUT_DIR/$TIMESTAMP"
 
@@ -445,15 +451,27 @@ compare_responses() {
     local resp1_size=${#resp1}
     local resp2_size=${#resp2}
 
-    # For very large responses (>100KB), skip expensive comparison
+    # For very large responses (>100KB), use efficient comparison
     # These are typically network snapshots or large query results
     if [[ $resp1_size -gt $MAX_NORMALIZE_SIZE ]] || [[ $resp2_size -gt $MAX_NORMALIZE_SIZE ]]; then
-        # Quick string comparison - if different sizes or content, mark as different
+        # Quick string comparison first
         if [[ "$resp1" == "$resp2" ]]; then
             echo "exact"
-        else
-            echo "different"
+            return
         fi
+
+        # If sizes match, the difference might just be key ordering
+        # Use jq -S for semantic comparison (sorts all keys recursively)
+        if [[ $resp1_size -eq $resp2_size ]]; then
+            local sorted1=$(echo "$resp1" | jq -S -c '.' 2>/dev/null)
+            local sorted2=$(echo "$resp2" | jq -S -c '.' 2>/dev/null)
+            if [[ -n "$sorted1" ]] && [[ "$sorted1" == "$sorted2" ]]; then
+                echo "exact"
+                return
+            fi
+        fi
+
+        echo "different"
         return
     fi
 
