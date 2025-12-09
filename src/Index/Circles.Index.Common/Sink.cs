@@ -1,4 +1,3 @@
-using System.Text;
 using Npgsql;
 
 namespace Circles.Index.Common;
@@ -33,125 +32,80 @@ public class Sink(
     {
         var snapshot = _insertBuffer.TakeSnapshot();
 
-        Dictionary<Type, List<object>> eventsByType = new();
+        if (snapshot.IsEmpty)
+            return;
+
+        // Group events by their target table
+        var batchesByTable = new Dictionary<(string Namespace, string Table), List<object>>();
 
         foreach (var indexEvent in snapshot)
         {
-            if (!eventsByType.TryGetValue(indexEvent.GetType(), out var typeEvents))
+            if (!eventDtoTableMap.Map.TryGetValue(indexEvent.GetType(), out var tableId))
             {
-                typeEvents = new List<object>();
-                eventsByType[indexEvent.GetType()] = typeEvents;
+                Console.WriteLine($"Warning: No table mapping for {indexEvent.GetType()}");
+                continue;
             }
 
-            typeEvents.Add(indexEvent);
+            if (!batchesByTable.TryGetValue(tableId, out var tableEvents))
+            {
+                tableEvents = new List<object>();
+                batchesByTable[tableId] = tableEvents;
+            }
+
+            tableEvents.Add(indexEvent);
         }
 
-        IEnumerable<Task> tasks = eventsByType.Select(async o =>
-        {
-            if (!eventDtoTableMap.Map.TryGetValue(o.Key, out var tableId))
-            {
-                Console.WriteLine($"Warning: No table mapping for {o.Key}");
-                return;
-            }
+        if (batchesByTable.Count == 0)
+            return;
 
-            await WriteBatchWithMode(tableId.Namespace, tableId.Table, o.Value);
-        });
-
-        await Task.WhenAll(tasks);
+        // Write all batches atomically within a single transaction
+        await WriteAllBatchesAtomic(batchesByTable);
     }
 
-    private async Task WriteBatchWithMode(string @namespace, string table, List<object> data)
+    /// <summary>
+    /// Writes all batches atomically. On duplicate key error in Auto mode, retries with upsert.
+    /// </summary>
+    private async Task WriteAllBatchesAtomic(Dictionary<(string Namespace, string Table), List<object>> batches)
     {
-        var tableName = $"{@namespace}_{table}";
+        var batchesAsEnumerable = batches.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IEnumerable<object>)kvp.Value);
 
         switch (writeMode)
         {
             case WriteMode.Copy:
-                await WriteBatchCopy(@namespace, table, data, tableName);
+                await Database.WriteBatchesAtomic(batchesAsEnumerable, schemaPropertyMap, useUpsert: false);
                 break;
 
             case WriteMode.Upsert:
-                await WriteBatchUpsert(@namespace, table, data, tableName);
+                await Database.WriteBatchesAtomic(batchesAsEnumerable, schemaPropertyMap, useUpsert: true);
                 break;
 
             case WriteMode.Auto:
             default:
-                await WriteBatchAuto(@namespace, table, data, tableName);
+                try
+                {
+                    // Try fast COPY first
+                    await Database.WriteBatchesAtomic(batchesAsEnumerable, schemaPropertyMap, useUpsert: false);
+                }
+                catch (PostgresException pgEx) when (pgEx.SqlState == UniqueViolationSqlState)
+                {
+                    // Duplicate key error - retry entire batch with upsert mode
+                    Console.WriteLine($"[Sink] Duplicate key detected in atomic batch, retrying with upsert mode...");
+
+                    try
+                    {
+                        await Database.WriteBatchesAtomic(batchesAsEnumerable, schemaPropertyMap, useUpsert: true);
+                        Console.WriteLine($"[Sink] Successfully recovered atomic batch using upsert mode");
+                    }
+                    catch (Exception retryEx)
+                    {
+                        Console.WriteLine($"[Sink] Upsert retry failed: {retryEx.Message}");
+                        throw;
+                    }
+                }
                 break;
         }
     }
 
-    private async Task WriteBatchCopy(string @namespace, string table, List<object> data, string tableName)
-    {
-        try
-        {
-            await Database.WriteBatch(@namespace, table, data, schemaPropertyMap);
-        }
-        catch (Exception ex)
-        {
-            LogWriteError(tableName, data, ex);
-            throw;
-        }
-    }
-
-    private async Task WriteBatchUpsert(string @namespace, string table, List<object> data, string tableName)
-    {
-        try
-        {
-            await Database.WriteBatchWithUpsert(@namespace, table, data, schemaPropertyMap);
-        }
-        catch (Exception ex)
-        {
-            LogWriteError(tableName, data, ex);
-            throw;
-        }
-    }
-
-    private async Task WriteBatchAuto(string @namespace, string table, List<object> data, string tableName)
-    {
-        try
-        {
-            // Try fast COPY first
-            await Database.WriteBatch(@namespace, table, data, schemaPropertyMap);
-        }
-        catch (PostgresException pgEx) when (pgEx.SqlState == UniqueViolationSqlState)
-        {
-            // Duplicate key error - fall back to upsert mode
-            Console.WriteLine($"[Sink] Duplicate key detected in {tableName}, retrying with upsert mode...");
-
-            try
-            {
-                await Database.WriteBatchWithUpsert(@namespace, table, data, schemaPropertyMap);
-                Console.WriteLine($"[Sink] Successfully recovered {tableName} using upsert mode");
-            }
-            catch (Exception retryEx)
-            {
-                Console.WriteLine($"[Sink] Upsert retry failed for {tableName}: {retryEx.Message}");
-                LogWriteError(tableName, data, retryEx);
-                throw;
-            }
-        }
-        catch (Exception ex)
-        {
-            LogWriteError(tableName, data, ex);
-            throw;
-        }
-    }
-
-    private static void LogWriteError(string tableName, List<object> data, Exception ex)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"Error writing batch to {tableName}");
-        sb.AppendLine($"Data: {data.Count} rows:");
-        for (int i = 0; i < Math.Min(data.Count, 10); i++)
-        {
-            sb.AppendLine($"- {i:0000}: {data[i]})");
-        }
-        if (data.Count > 10)
-        {
-            sb.AppendLine($"  ... and {data.Count - 10} more rows");
-        }
-        sb.AppendLine(ex.ToString());
-        Console.WriteLine(sb.ToString());
-    }
 }

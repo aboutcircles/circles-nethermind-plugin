@@ -348,6 +348,136 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     }
 
     /// <summary>
+    /// Writes multiple batches to different tables within a single transaction.
+    /// All writes succeed or all fail together, preventing partial writes.
+    /// </summary>
+    public async Task WriteBatchesAtomic(
+        IDictionary<(string Namespace, string Table), IEnumerable<object>> batches,
+        ISchemaPropertyMap propertyMap,
+        bool useUpsert = false)
+    {
+        if (batches.Count == 0)
+            return;
+
+        // Build connection string with extended timeouts for large batch operations
+        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            CommandTimeout = 600,  // 10 minutes for atomic batch
+            Timeout = 300,
+            WriteBufferSize = 32768,
+            ReadBufferSize = 32768
+        };
+
+        await using var connection = new NpgsqlConnection(csb.ToString());
+        await connection.OpenAsync();
+
+        await using var transaction = await connection.BeginTransactionAsync();
+
+        try
+        {
+            foreach (var batch in batches)
+            {
+                var (@namespace, table) = batch.Key;
+                var data = batch.Value.ToList();
+
+                if (data.Count == 0)
+                    continue;
+
+                if (useUpsert)
+                {
+                    await WriteBatchWithUpsertInternal(connection, transaction, @namespace, table, data, propertyMap);
+                }
+                else
+                {
+                    await WriteBatchCopyInternal(connection, transaction, @namespace, table, data, propertyMap);
+                }
+            }
+
+            await transaction.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WriteBatchesAtomic] Transaction failed, rolling back: {ex.Message}");
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Internal COPY implementation that uses an existing connection and transaction.
+    /// </summary>
+    private async Task WriteBatchCopyInternal(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string @namespace,
+        string table,
+        IList<object> data,
+        ISchemaPropertyMap propertyMap)
+    {
+        var tableSchema = Schema.Tables[(@namespace, table)];
+        var columnTypes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
+        var columnList = string.Join(", ", columnTypes.Select(o => $"\"{o.Key}\""));
+
+        // Note: COPY doesn't support transactions directly, but it runs within the connection's transaction context
+        await using var writer = await connection.BeginBinaryImportAsync(
+            $"COPY \"{tableSchema.Namespace}_{tableSchema.Table}\" ({columnList}) FROM STDIN (FORMAT BINARY)"
+        );
+
+        foreach (var indexEvent in data)
+        {
+            await writer.StartRowAsync();
+            foreach (var column in tableSchema.Columns)
+            {
+                var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
+                await writer.WriteAsync(value, GetNpgsqlDbType(column.Type));
+            }
+        }
+
+        await writer.CompleteAsync();
+    }
+
+    /// <summary>
+    /// Internal upsert implementation that uses an existing connection and transaction.
+    /// </summary>
+    private async Task WriteBatchWithUpsertInternal(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string @namespace,
+        string table,
+        IList<object> data,
+        ISchemaPropertyMap propertyMap)
+    {
+        var tableSchema = Schema.Tables[(@namespace, table)];
+        var columns = tableSchema.Columns;
+        var columnList = string.Join(", ", columns.Select(c => $"\"{c.Column}\""));
+
+        var primaryKeyColumns = GetPrimaryKeyColumns(tableSchema);
+        var primaryKeyList = string.Join(", ", primaryKeyColumns.Select(c => $"\"{c}\""));
+
+        var parameterList = string.Join(", ", columns.Select((_, i) => $"@p{i}"));
+
+        var sql = $@"
+            INSERT INTO ""{tableSchema.Namespace}_{tableSchema.Table}"" ({columnList})
+            VALUES ({parameterList})
+            ON CONFLICT ({primaryKeyList}) DO NOTHING
+        ";
+
+        foreach (var indexEvent in data)
+        {
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
+
+            for (int i = 0; i < columns.Count; i++)
+            {
+                var column = columns[i];
+                var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
+                command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
+            }
+
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    /// <summary>
     /// Gets the primary key columns for a table schema.
     /// </summary>
     private List<string> GetPrimaryKeyColumns(EventSchema tableSchema)
