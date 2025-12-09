@@ -50,7 +50,8 @@ public class Plugin : INethermindPlugin
             database,
             databaseSchema.SchemaPropertyMap,
             databaseSchema.EventDtoTableMap,
-            settings.EventBufferSize);
+            settings.EventBufferSize,
+            settings.WriteMode);
 
         //
         // Create all LogParser instances
@@ -178,6 +179,7 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * host: " + connectionStringBuilder.Host);
         pluginLogger.Info(" * port: " + connectionStringBuilder.Port);
         pluginLogger.Info(" * user: " + connectionStringBuilder.Username);
+        pluginLogger.Info(" * write mode: " + settings.WriteMode);
 
         if (settings.IndexReadonlyDbConnectionString != null)
         {
