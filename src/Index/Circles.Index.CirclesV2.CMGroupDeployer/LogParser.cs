@@ -57,9 +57,9 @@ public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
         string proxy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string owner = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
-        string redemptionHandler = new Address(log.Data.Slice(12, 20)).ToString(true, false);
+        string redemptionHandler = new Address(log.Data.Slice(12, 20)).ToLowerHex();
         string liquidityProvider =
-            log.Data.Length == 64 ? new Address(log.Data.Slice(44, 20)).ToString(true, false) : "";
+            log.Data.Length == 64 ? new Address(log.Data.Slice(44, 20)).ToLowerHex() : "";
 
         return new CMGroupCreated(
             block.Number,
@@ -67,7 +67,7 @@ public class LogParser(ImmutableHashSet<Address> deployerAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             proxy,
             owner,
             mintHandler,

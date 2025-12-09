@@ -116,7 +116,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         for (int i = 0; i < receipt.Logs!.Length; i++)
         {
             var log = receipt.Logs[i];
-            if (!cyclesInTx.Contains(log.Address.ToString(true, false))) continue;
+            if (!cyclesInTx.Contains(log.Address.ToLowerHex())) continue;
             if (log.Topics.Length == 0) continue;
             if (log.Topics[0] == _cycleConfiguration)
             {
@@ -228,7 +228,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         AccountWeightProviders.Add(block.Number, address, null);
 
         return new AccountWeightProviderCreated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), provider, admin);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), provider, admin);
     }
 
     private ERC20TokenOfferCreated ParseErc20TokenOfferCreated(Block block, TxReceipt receipt, LogEntry log,
@@ -239,7 +239,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         string accountWeightProvider = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
 
         var data = log.Data;
-        string offerToken = new Address(data.Slice(12, 20).ToArray()).ToString(true, false);
+        string offerToken = new Address(data.Slice(12, 20).ToArray()).ToLowerHex();
         var tokenPriceInCRC = LogDataParsingHelper.ParseSingleUInt256(data.Slice(32, 32));
         var offerLimitInCRC = LogDataParsingHelper.ParseSingleUInt256(data.Slice(64, 32));
         var offerStart = LogDataParsingHelper.ParseSingleUInt256(data.Slice(96, 32));
@@ -253,7 +253,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         AccountWeightProviders.Add(block.Number, new Address(accountWeightProvider), null);
 
         return new ERC20TokenOfferCreated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), tokenOffer, offerOwner,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), tokenOffer, offerOwner,
             accountWeightProvider,
             offerToken, tokenPriceInCRC, offerLimitInCRC, offerStart,
             offerEnd, orgName, acceptedCRC);
@@ -275,7 +275,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         OfferCycles.Add(block.Number, new Address(offerCycle), null);
 
         return new ERC20TokenOfferCycleCreated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), offerCycle, cycleOwner, offerTokenIdx,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), offerCycle, cycleOwner, offerTokenIdx,
             offersStart, offerDuration, offerName, cycleName);
     }
 
@@ -292,7 +292,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         AccountWeightProviders.Add(block.Number, new Address(accountWeightProvider), null);
 
         return new CycleConfiguration(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), admin, accountWeightProvider, offerToken,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), admin, accountWeightProvider, offerToken,
             offersStart, offerDuration, softLockEnabled);
     }
 
@@ -307,7 +307,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         TokenOffers.Add(block.Number, new Address(nextOffer), null);
 
         return new NextOfferCreated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), nextOffer, tokenPriceInCRC, offerLimitInCRC,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), nextOffer, tokenPriceInCRC, offerLimitInCRC,
             acceptedCRC);
     }
 
@@ -317,7 +317,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         string nextOffer = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var amount = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
         return new NextOfferTokensDeposited(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), nextOffer, amount);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), nextOffer, amount);
     }
 
     private OfferTrustSynced ParseOfferTrustSynced(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -325,7 +325,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         var offerId = LogDataParsingHelper.ParseSingleUInt256(log.Topics[1].Bytes);
         string offer = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         return new OfferTrustSynced(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), offerId, offer);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), offerId, offer);
     }
 
     private OfferClaimedFromCycle ParseOfferClaimedFromCycle(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -335,7 +335,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         var received = LogDataParsingHelper.ParseSingleUInt256(log.Topics[3].Bytes);
         var spent = LogDataParsingHelper.ParseSingleUInt256(log.Data.Slice(0, 32));
         return new OfferClaimedFromCycle(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), offer, account, received, spent);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), offer, account, received, spent);
     }
 
     private UnclaimedTokensWithdrawn ParseUnclaimedTokensWithdrawn(Block block, TxReceipt receipt, LogEntry log,
@@ -344,7 +344,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         string offer = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var amount = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
         return new UnclaimedTokensWithdrawn(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), offer, amount);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), offer, amount);
     }
 
     private OfferClaimed ParseOfferClaimed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -353,14 +353,14 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         var spent = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
         var received = LogDataParsingHelper.ParseSingleUInt256(log.Topics[3].Bytes);
         return new OfferClaimed(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), account, spent, received);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), account, spent, received);
     }
 
     private OfferTokensDeposited ParseOfferTokensDeposited(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         var amount = LogDataParsingHelper.ParseSingleUInt256(log.Topics[1].Bytes);
         return new OfferTokensDeposited(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), amount);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), amount);
     }
 
     private AccountWeightSet ParseAccountWeightSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -369,7 +369,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         var weight = LogDataParsingHelper.ParseSingleUInt256(log.Topics[3].Bytes);
         return new AccountWeightSet(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), offer, account, weight);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), offer, account, weight);
     }
 
     private WeightsFinalized ParseWeightsFinalized(Block block, TxReceipt receipt, LogEntry log, int logIndex)
@@ -378,6 +378,6 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         var accountsCount = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
         var totalWeight = LogDataParsingHelper.ParseSingleUInt256(log.Topics[3].Bytes);
         return new WeightsFinalized(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
-            receipt.TxHash!.ToString(), log.Address.ToString(true, false), offer, accountsCount, totalWeight);
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), offer, accountsCount, totalWeight);
     }
 }

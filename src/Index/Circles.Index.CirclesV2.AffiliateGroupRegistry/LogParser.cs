@@ -69,8 +69,8 @@ public class LogParser(Address registryAddress) : ILogParser
     private AffiliateGroupChanged ParseAffiliateGroupChanged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
         string human    = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-        string oldGroup = new Address(log.Data.Slice(12, 20)).ToString(true, false);
-        string newGroup = new Address(log.Data.Slice(44, 20)).ToString(true, false);
+        string oldGroup = new Address(log.Data.Slice(12, 20)).ToLowerHex();
+        string newGroup = new Address(log.Data.Slice(44, 20)).ToLowerHex();
 
         return new AffiliateGroupChanged(
             block.Number,
@@ -78,7 +78,7 @@ public class LogParser(Address registryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             human,
             oldGroup,
             newGroup
@@ -96,7 +96,7 @@ public class LogParser(Address registryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             group,
             human
         );
@@ -113,7 +113,7 @@ public class LogParser(Address registryAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             group,
             human
         );

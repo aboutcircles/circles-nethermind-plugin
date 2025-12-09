@@ -168,17 +168,17 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         {
             // event ProxyCreation(address proxy);
             // event ProxyCreation(address proxy, address singleton);
-            proxy = new Address(log.Data.Slice(12, 20)).ToString(true, false);
+            proxy = new Address(log.Data.Slice(12, 20)).ToLowerHex();
             if (log.Data.Length > 32)
             {
-                singleton = new Address(log.Data.Slice(44)).ToString(true, false);
+                singleton = new Address(log.Data.Slice(44)).ToLowerHex();
             }
         }
         else if (log.Topics.Length == 2)
         {
             // event ProxyCreation(address indexed proxy, address singleton);
             proxy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-            singleton = new Address(log.Data.Slice(12)).ToString(true, false);
+            singleton = new Address(log.Data.Slice(12)).ToLowerHex();
         }
         else
         {
@@ -191,7 +191,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             proxy,
             singleton
         );
@@ -216,12 +216,12 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         UInt256 threshold = new UInt256(thresholdBytes, true);
 
         var initializerBytes = dataSpan.Slice(64, 32);
-        string initializer = new Address(initializerBytes.Slice(12, 20).ToArray()).ToString(true, false);
+        string initializer = new Address(initializerBytes.Slice(12, 20).ToArray()).ToLowerHex();
 
         var fallbackHandlerBytes = dataSpan.Slice(96, 32);
-        string fallbackHandler = new Address(fallbackHandlerBytes.Slice(12, 20).ToArray()).ToString(true, false);
+        string fallbackHandler = new Address(fallbackHandlerBytes.Slice(12, 20).ToArray()).ToLowerHex();
 
-        string safeAddress = log.Address.ToString(true, false);
+        string safeAddress = log.Address.ToLowerHex();
 
         for (int i = 0; i < owners.Length; i++)
         {
@@ -255,9 +255,9 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         {
             // event AddedOwner(address owner) => no indexed fields => single address is in log.Data
             var ownerBytes = dataSpan.Slice(12, 20);
-            string owner = new Address(ownerBytes.ToArray()).ToString(true, false);
+            string owner = new Address(ownerBytes.ToArray()).ToLowerHex();
 
-            string safeAddr = log.Address.ToString(true, false);
+            string safeAddr = log.Address.ToLowerHex();
 
             return new AddedOwner(
                 block.Number,
@@ -274,7 +274,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         {
             // event AddedOwner(address indexed owner)
             var ownerAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-            string safeAddr = log.Address.ToString(true, false);
+            string safeAddr = log.Address.ToLowerHex();
 
             return new AddedOwner(
                 block.Number,
@@ -301,9 +301,9 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         {
             // event RemovedOwner(address owner) => no indexed fields => single address is in log.Data
             var ownerBytes = dataSpan.Slice(12, 20);
-            string owner = new Address(ownerBytes.ToArray()).ToString(true, false);
+            string owner = new Address(ownerBytes.ToArray()).ToLowerHex();
 
-            string safeAddr = log.Address.ToString(true, false);
+            string safeAddr = log.Address.ToLowerHex();
 
             return new RemovedOwner(
                 block.Number,
@@ -320,7 +320,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         {
             // event RemovedOwner(address indexed owner)
             var ownerAddress = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-            string safeAddr = log.Address.ToString(true, false);
+            string safeAddr = log.Address.ToLowerHex();
 
             return new RemovedOwner(
                 block.Number,

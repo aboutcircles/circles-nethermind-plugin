@@ -387,8 +387,8 @@ public class LogParser(Address v1HubAddress) : ILogParser
                 receipt.Index,
                 logIndex,
                 receipt.TxHash!.ToString(),
-                log.Address.ToString(true, false),
-                log.Address.ToString(true, false),
+                log.Address.ToLowerHex(),
+                log.Address.ToLowerHex(),
                 from,
                 to,
                 value
@@ -416,7 +416,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             org
         );
     }
@@ -436,7 +436,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             user,
             canSendTo,
             limit
@@ -458,7 +458,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             from,
             to,
             amount
@@ -475,7 +475,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
         }
 
         Address tokenAddress = new Address(log.Data.Slice(12));
-        string tokenAddressString = tokenAddress.ToString(true, false);
+        string tokenAddressString = tokenAddress.ToLowerHex();
 
         Address userAddress = new Address(user);
 
@@ -485,7 +485,7 @@ public class LogParser(Address v1HubAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             user,
             tokenAddressString
         );

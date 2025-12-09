@@ -169,7 +169,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             human,
             originInviter,
             proxyInviter
@@ -191,7 +191,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account
         );
     }
@@ -207,7 +207,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             account
         );
     }
@@ -227,7 +227,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             newAdmin
         );
     }
@@ -243,7 +243,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             maintainer
         );
     }
@@ -259,7 +259,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             seeder
         );
     }
@@ -277,7 +277,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             inviter,
             quota
         );
@@ -296,7 +296,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             module,
             genericCallProxy
         );
@@ -313,7 +313,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             createdBot
         );
     }
@@ -330,7 +330,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             inviter,
             count
         );
@@ -349,7 +349,7 @@ public class LogParser(
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             maintainer,
             numberOfBots,
             totalNumberOfBots

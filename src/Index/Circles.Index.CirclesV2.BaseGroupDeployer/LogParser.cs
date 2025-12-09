@@ -63,7 +63,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         for (var index = 0; index < receipt.Logs!.Length; index++)
         {
             var log = receipt.Logs[index];
-            if (!groupsCreatedInTx.ContainsKey(log.Address.ToString(true, false)))
+            if (!groupsCreatedInTx.ContainsKey(log.Address.ToLowerHex()))
             {
                 // Skip for all events that weren't emitted by newly created groups.
                 continue;
@@ -132,7 +132,7 @@ public class LogParser(Address deployerAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             owner);
     }
 
@@ -149,7 +149,7 @@ public class LogParser(Address deployerAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             service);
     }
 
@@ -165,7 +165,7 @@ public class LogParser(Address deployerAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             fees);
     }
 
@@ -175,7 +175,7 @@ public class LogParser(Address deployerAddress) : ILogParser
         string group = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string owner = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string mintHandler = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
-        string treasury = new Address(log.Data.Slice(12, 20)).ToString(true, false);
+        string treasury = new Address(log.Data.Slice(12, 20)).ToLowerHex();
 
         BaseGroupsCreated.Add(block.Number, new Address(group), null);
 
@@ -185,7 +185,7 @@ public class LogParser(Address deployerAddress) : ILogParser
             receipt.Index,
             logIndex,
             receipt.TxHash!.ToString(),
-            log.Address.ToString(true, false),
+            log.Address.ToLowerHex(),
             group,
             owner,
             mintHandler,

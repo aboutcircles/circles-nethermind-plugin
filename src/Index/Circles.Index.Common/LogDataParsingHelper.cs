@@ -145,7 +145,7 @@ public static class LogDataParsingHelper
             // For each element, read 32 bytes => last 20 bytes is the address
             var chunk = data.Slice(arrayStart + i * 32, 32);
             var addressBytes = chunk.Slice(12, 20);
-            result[i] = new Address(addressBytes.ToArray()).ToString(true, false);
+            result[i] = new Address(addressBytes.ToArray()).ToLowerHex();
         }
 
         return result;
