@@ -474,7 +474,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 FROM  public.""V_CrcV1_BalancesByAccountAndToken"" v1
                 JOIN  public.""CrcV1_Signup"" s ON s.token = v1.""tokenAddress""
                 WHERE v1.account = @address
-                  AND v1.balance > 0
+                  AND v1.""totalBalance"" > 0
 
                 UNION ALL
 
