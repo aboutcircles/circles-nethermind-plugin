@@ -1010,8 +1010,17 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     /// <summary>
     /// Finds the safe resume block by analyzing event table consistency.
-    /// Only considers tables that are significantly behind as potential partial write issues.
-    /// Tables with sparse events (like CrcV2_Stopped) are handled separately.
+    ///
+    /// With atomic batch writes (WriteBatchesAtomic), event tables should be consistent with System_Block.
+    /// If an event table has a lower max block than System_Block, it simply means no events occurred
+    /// for that table in the more recent blocks - this is normal for sparse event tables.
+    ///
+    /// A TRUE inconsistency only occurs if:
+    /// 1. An event was written but System_Block wasn't updated (crash during non-atomic write)
+    /// 2. System_Block was written but event tables weren't (crash during non-atomic write)
+    ///
+    /// Since we now use atomic writes, we simply return System_Block max as the safe resume point.
+    /// The caller should compare this with LatestBlock() and FirstGap() to determine actual resume point.
     /// </summary>
     public long? GetSafeResumeBlock()
     {
@@ -1020,8 +1029,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         if (maxBlocks.Count == 0)
             return null;
 
-        // Get the System_Block max for reference
-        maxBlocks.TryGetValue("System_Block", out var systemBlockMax);
+        // Get the System_Block max - this is our primary source of truth
+        if (!maxBlocks.TryGetValue("System_Block", out var systemBlockMax) || systemBlockMax == 0)
+            return null;
 
         // Get event tables only (exclude System_Block)
         var eventTableMaxBlocks = maxBlocks
@@ -1029,63 +1039,44 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             .ToList();
 
         if (eventTableMaxBlocks.Count == 0)
-            return systemBlockMax > 0 ? systemBlockMax : null;
+            return systemBlockMax;
 
-        var maxEventBlock = eventTableMaxBlocks.Max(kvp => kvp.Value);
-
-        // Consider a table "behind" only if it's within a reasonable range of the max
-        // Tables that are way behind (>100k blocks) are likely just sparse event tables
-        // We use a threshold of 50,000 blocks (roughly 3 days on Gnosis Chain)
-        const long significantGapThreshold = 50_000;
-
-        var recentTables = eventTableMaxBlocks
-            .Where(kvp => maxEventBlock - kvp.Value < significantGapThreshold)
+        // Check for partial write scenario: events written but System_Block not updated.
+        // This can happen if a crash occurs between Sink.Flush() and FlushBlocks().
+        // In this case, event tables will be AHEAD of System_Block.
+        var tablesAheadOfSystem = eventTableMaxBlocks
+            .Where(kvp => kvp.Value > systemBlockMax)
             .ToList();
 
-        var sparseTables = eventTableMaxBlocks
-            .Where(kvp => maxEventBlock - kvp.Value >= significantGapThreshold)
-            .ToList();
-
-        if (recentTables.Count == 0)
+        if (tablesAheadOfSystem.Count > 0)
         {
-            // All tables are sparse - just use System_Block
-            return systemBlockMax > 0 ? systemBlockMax : null;
-        }
-
-        var minRecentBlock = recentTables.Min(kvp => kvp.Value);
-        var maxRecentBlock = recentTables.Max(kvp => kvp.Value);
-
-        // Log sparse tables for visibility (these are expected to be behind)
-        if (sparseTables.Count > 0)
-        {
-            Console.WriteLine($"[GetSafeResumeBlock] Sparse event tables (expected to be behind):");
-            foreach (var kvp in sparseTables.OrderBy(k => k.Value))
-            {
-                Console.WriteLine($"    {kvp.Key}: {kvp.Value} ({maxEventBlock - kvp.Value:N0} blocks behind)");
-            }
-        }
-
-        // Only report as inconsistency if recent tables have significant gaps
-        // A gap of more than 1 batch size (default 20k blocks) indicates a problem
-        const long batchGapThreshold = 20_000;
-        if (maxRecentBlock - minRecentBlock > batchGapThreshold)
-        {
-            Console.WriteLine($"[GetSafeResumeBlock] INCONSISTENCY DETECTED - possible partial write:");
+            Console.WriteLine($"[GetSafeResumeBlock] PARTIAL WRITE DETECTED: Event tables ahead of System_Block:");
             Console.WriteLine($"  System_Block max: {systemBlockMax:N0}");
-            Console.WriteLine($"  Recent tables min: {minRecentBlock:N0}, max: {maxRecentBlock:N0}");
-            Console.WriteLine($"  Gap: {maxRecentBlock - minRecentBlock:N0} blocks");
-
-            foreach (var kvp in recentTables.OrderBy(k => k.Value).Take(10))
+            foreach (var kvp in tablesAheadOfSystem)
             {
-                Console.WriteLine($"    {kvp.Key}: {kvp.Value:N0}");
+                Console.WriteLine($"    {kvp.Key}: {kvp.Value:N0} (+{kvp.Value - systemBlockMax:N0})");
             }
-
-            // Return the min to trigger recovery
-            return minRecentBlock;
+            // Return System_Block max - we need to re-index from there.
+            // The events that are ahead will be handled by upsert (ON CONFLICT DO NOTHING).
+            Console.WriteLine($"  Will resume from System_Block max ({systemBlockMax:N0}) - duplicates handled by upsert");
+            return systemBlockMax;
         }
 
-        // No significant gap detected - use the max from recent tables
-        // This allows normal operation even when sparse tables are behind
-        return maxRecentBlock;
+        // Event tables at or below System_Block is normal - they just don't have recent events.
+        // Log some statistics for debugging (only if there's significant variance).
+        var maxEventBlock = eventTableMaxBlocks.Max(kvp => kvp.Value);
+        var minEventBlock = eventTableMaxBlocks.Min(kvp => kvp.Value);
+        var blocksVariance = maxEventBlock - minEventBlock;
+
+        if (blocksVariance > 100_000)  // Only log if >100k block variance
+        {
+            Console.WriteLine($"[GetSafeResumeBlock] Event table statistics:");
+            Console.WriteLine($"  System_Block: {systemBlockMax:N0}");
+            Console.WriteLine($"  Event tables: min={minEventBlock:N0}, max={maxEventBlock:N0}");
+            Console.WriteLine($"  Variance: {blocksVariance:N0} blocks (normal for sparse tables)");
+        }
+
+        // Return System_Block max as the safe resume point
+        return systemBlockMax;
     }
 }
