@@ -623,6 +623,7 @@ public class CacheWarmupService : BackgroundService
     /// <summary>
     /// Loads ERC20 wrapper balances from aggregated transfer data.
     /// Since there's no pre-computed view for wrapper balances, we use an aggregation query.
+    /// Wrapper balances are merged into the existing V2 cache using Seed() to avoid Add() issues.
     /// </summary>
     private async Task LoadErc20WrapperBalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
     {
@@ -673,9 +674,10 @@ public class CacheWarmupService : BackgroundService
         try
         {
             await using var reader = await cmd.ExecuteReaderAsync(ct);
-            var count = 0;
 
-            // These balances go into the V2 cache (wrapper tokens are V2)
+            // Collect wrapper balances into a dictionary first
+            var wrapperBalances = new Dictionary<string, decimal>();
+
             while (await reader.ReadAsync(ct))
             {
                 var account = reader.GetString(0).ToLowerInvariant();
@@ -694,14 +696,14 @@ public class CacheWarmupService : BackgroundService
                 var balance = (decimal)valueBig;
                 if (balance > 0)
                 {
-                    // Add to V2 cache (use blockNo 0 since we're seeding)
                     var key = $"{account}:{tokenAddress}";
-                    _caches.V2BalancesByAccountAndToken.Add(0, key, balance);
-                    count++;
+                    wrapperBalances[key] = balance;
                 }
             }
 
-            _logger.LogInformation("Loaded {Count} ERC20 wrapper balances", count);
+            // Merge wrapper balances into existing V2 cache by re-seeding with combined data
+            MergeWrapperBalancesIntoV2Cache(wrapperBalances);
+            _logger.LogInformation("Loaded {Count} ERC20 wrapper balances", wrapperBalances.Count);
         }
         catch (Exception ex)
         {
@@ -709,6 +711,30 @@ public class CacheWarmupService : BackgroundService
             _logger.LogWarning(ex, "Complex wrapper balance query failed, using simple aggregation");
             await LoadErc20WrapperBalancesSimpleAsync(conn, ct);
         }
+    }
+
+    /// <summary>
+    /// Merges wrapper balances into the V2 cache by getting existing balances and re-seeding.
+    /// This avoids the RollbackCache.Add() issue where Add() fails after Seed() on same block.
+    /// </summary>
+    private void MergeWrapperBalancesIntoV2Cache(Dictionary<string, decimal> wrapperBalances)
+    {
+        // Get existing V2 balances
+        var existingBalances = _caches.V2BalancesByAccountAndToken.ReadOnlyDictionary;
+
+        // Create merged dictionary starting with existing balances
+        var mergedBalances = new Dictionary<string, decimal>(existingBalances);
+
+        // Add/merge wrapper balances
+        foreach (var (key, balance) in wrapperBalances)
+        {
+            // Wrapper balances should not overlap with ERC1155 balances (different token addresses)
+            // but use merge logic just in case
+            mergedBalances[key] = mergedBalances.GetValueOrDefault(key, 0m) + balance;
+        }
+
+        // Re-seed the cache with merged data
+        _caches.V2BalancesByAccountAndToken.Seed(mergedBalances);
     }
 
     /// <summary>
@@ -747,7 +773,8 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        var count = 0;
+        // Convert to decimal dictionary
+        var wrapperBalances = new Dictionary<string, decimal>();
         foreach (var (key, balanceBig) in balances)
         {
             if (balanceBig <= 0) continue;
@@ -756,12 +783,12 @@ public class CacheWarmupService : BackgroundService
             if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
                 continue;
 
-            var balance = (decimal)valueBig;
-            _caches.V2BalancesByAccountAndToken.Add(0, key, balance);
-            count++;
+            wrapperBalances[key] = (decimal)valueBig;
         }
 
-        _logger.LogInformation("Loaded {Count} ERC20 wrapper balances (simple method)", count);
+        // Merge wrapper balances into existing V2 cache
+        MergeWrapperBalancesIntoV2Cache(wrapperBalances);
+        _logger.LogInformation("Loaded {Count} ERC20 wrapper balances (simple method)", wrapperBalances.Count);
     }
 
     private async Task BuildV1BalancesFromTransfersAsync(NpgsqlConnection conn, CancellationToken ct)
