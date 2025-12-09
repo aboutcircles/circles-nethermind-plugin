@@ -355,8 +355,35 @@ public class ImportFlow(
                     _lastFlushLogTime = now;
                 }
             }
-            await context.Sink.Database.WriteBatch("System", "Block", blocks,
-                context.Database.Schema.SchemaPropertyMap);
+
+            // Use the same write mode logic as Sink for consistency
+            // In Auto mode, try COPY first and fall back to upsert on duplicate key errors
+            var writeMode = context.Settings.WriteMode;
+            if (writeMode == WriteMode.Upsert)
+            {
+                await context.Sink.Database.WriteBatchWithUpsert("System", "Block", blocks,
+                    context.Database.Schema.SchemaPropertyMap);
+            }
+            else if (writeMode == WriteMode.Auto)
+            {
+                try
+                {
+                    await context.Sink.Database.WriteBatch("System", "Block", blocks,
+                        context.Database.Schema.SchemaPropertyMap);
+                }
+                catch (Npgsql.PostgresException pgEx) when (pgEx.SqlState == "23505")
+                {
+                    // Duplicate key error - retry with upsert mode
+                    context.Logger.Info("System_Block duplicate key detected, retrying with upsert mode...");
+                    await context.Sink.Database.WriteBatchWithUpsert("System", "Block", blocks,
+                        context.Database.Schema.SchemaPropertyMap);
+                }
+            }
+            else // WriteMode.Copy
+            {
+                await context.Sink.Database.WriteBatch("System", "Block", blocks,
+                    context.Database.Schema.SchemaPropertyMap);
+            }
         }
         catch (Exception e)
         {
