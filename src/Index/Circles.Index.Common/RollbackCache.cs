@@ -83,10 +83,12 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     public int RollbackCapacity { get; }
 
     /// <summary>
-    /// Replaces the current state with <paramref name="seedData"/> and resets history.  
-    /// After seeding, the next call to <see cref="Add"/> must use a block number greater than 0.
+    /// Replaces the current state with <paramref name="seedData"/> and resets history.
+    /// After seeding, the next call to <see cref="Add"/> must use a block number greater than <paramref name="atBlockNo"/>.
     /// </summary>
-    public void Seed(IReadOnlyDictionary<TKey, TValue> seedData)
+    /// <param name="seedData">The data to seed the cache with.</param>
+    /// <param name="atBlockNo">The block number at which this seed data is valid. Defaults to 0.</param>
+    public void Seed(IReadOnlyDictionary<TKey, TValue> seedData, long atBlockNo = 0)
     {
         if (seedData is null) throw new ArgumentNullException(nameof(seedData));
 
@@ -98,7 +100,7 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
 
             _blockDiffs.Clear();
             _blockOrder.Clear();
-            _lastBlockNo = 0;
+            _lastBlockNo = atBlockNo;
         }
         finally
         {

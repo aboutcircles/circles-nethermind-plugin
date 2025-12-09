@@ -335,9 +335,10 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        // Seed caches with bulk data
-        _caches.V1Avatars.Seed(avatars);
-        _caches.V1TokenOwnerByToken.Seed(tokenOwners);
+        // Seed caches with bulk data at the warmup target block
+        var warmupBlock = _state.WarmupTargetBlock;
+        _caches.V1Avatars.Seed(avatars, warmupBlock);
+        _caches.V1TokenOwnerByToken.Seed(tokenOwners, warmupBlock);
 
         _logger.LogInformation("Loaded {HumanCount} V1 human signups and {OrgCount} organization signups",
             humanCount, orgCount);
@@ -404,7 +405,7 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        _caches.V2Avatars.Seed(v2Avatars);
+        _caches.V2Avatars.Seed(v2Avatars, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {HumanCount} V2 humans and {OrgCount} organizations", humanCount, orgCount);
 
         // Load groups separately (they have different data structure)
@@ -439,7 +440,7 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        _caches.Groups.Seed(groups);
+        _caches.Groups.Seed(groups, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {GroupCount} V2 groups", groups.Count);
     }
 
@@ -470,7 +471,7 @@ public class CacheWarmupService : BackgroundService
             wrappers[avatarKey] = erc20Wrapper;
         }
 
-        _caches.Erc20WrapperAddresses.Seed(wrappers);
+        _caches.Erc20WrapperAddresses.Seed(wrappers, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 ERC20 wrapper deployments", wrappers.Count);
     }
 
@@ -550,8 +551,8 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        // Seed the cache with all balances at once
-        _caches.V1BalancesByAccountAndToken.Seed(balances);
+        // Seed the cache with all balances at once at the warmup target block
+        _caches.V1BalancesByAccountAndToken.Seed(balances, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V1 balances from view", balances.Count);
     }
 
@@ -615,8 +616,8 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        // Seed the cache with all balances at once
-        _caches.V2BalancesByAccountAndToken.Seed(balances);
+        // Seed the cache with all balances at once at the warmup target block
+        _caches.V2BalancesByAccountAndToken.Seed(balances, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 ERC1155 balances from view", balances.Count);
     }
 
@@ -733,8 +734,8 @@ public class CacheWarmupService : BackgroundService
             mergedBalances[key] = mergedBalances.GetValueOrDefault(key, 0m) + balance;
         }
 
-        // Re-seed the cache with merged data
-        _caches.V2BalancesByAccountAndToken.Seed(mergedBalances);
+        // Re-seed the cache with merged data at the warmup target block
+        _caches.V2BalancesByAccountAndToken.Seed(mergedBalances, _state.WarmupTargetBlock);
     }
 
     /// <summary>
@@ -1125,7 +1126,7 @@ public class CacheWarmupService : BackgroundService
             memberships[key] = (member, expiryLong);
         }
 
-        _caches.GroupMemberships.Seed(memberships);
+        _caches.GroupMemberships.Seed(memberships, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} group memberships", memberships.Count);
     }
 
@@ -1157,7 +1158,7 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        _caches.V1TrustRelations.Seed(v1TrustData);
+        _caches.V1TrustRelations.Seed(v1TrustData, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V1 trust relations", v1TrustData.Count);
 
         // Load V2 trust relations using Seed() for efficiency
@@ -1185,7 +1186,7 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        _caches.V2TrustRelations.Seed(v2TrustData);
+        _caches.V2TrustRelations.Seed(v2TrustData, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 trust relations", v2TrustData.Count);
     }
 
@@ -1223,7 +1224,7 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        _caches.V1AvatarToCidMap.Seed(v1CidMap);
+        _caches.V1AvatarToCidMap.Seed(v1CidMap, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V1 avatar CIDs", v1CidMap.Count);
 
         // Load V2 avatar CIDs using Seed() for efficiency
@@ -1256,7 +1257,7 @@ public class CacheWarmupService : BackgroundService
             }
         }
 
-        _caches.V2AvatarToCidMap.Seed(v2CidMap);
+        _caches.V2AvatarToCidMap.Seed(v2CidMap, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 avatar CIDs", v2CidMap.Count);
     }
 
@@ -1294,7 +1295,7 @@ public class CacheWarmupService : BackgroundService
             shortNames[key] = shortNameBase58;
         }
 
-        _caches.V2AvatarToShortNameMap.Seed(shortNames);
+        _caches.V2AvatarToShortNameMap.Seed(shortNames, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 short names", shortNames.Count);
     }
 
