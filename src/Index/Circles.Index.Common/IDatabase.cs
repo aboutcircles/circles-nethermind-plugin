@@ -39,6 +39,18 @@ public interface IDatabase : IReadonlyDatabase
     /// </summary>
     Task WriteBatchWithUpsert(string @namespace, string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap);
 
+    /// <summary>
+    /// Writes multiple batches to different tables within a single transaction.
+    /// All writes succeed or all fail together, preventing partial writes.
+    /// </summary>
+    /// <param name="batches">Dictionary of (namespace, table) -> data to write</param>
+    /// <param name="propertyMap">Schema property map for column mapping</param>
+    /// <param name="useUpsert">If true, uses INSERT ON CONFLICT DO NOTHING instead of COPY</param>
+    Task WriteBatchesAtomic(
+        IDictionary<(string Namespace, string Table), IEnumerable<object>> batches,
+        ISchemaPropertyMap propertyMap,
+        bool useUpsert = false);
+
     long? LatestBlock();
     long? FirstGap();
     IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count);
