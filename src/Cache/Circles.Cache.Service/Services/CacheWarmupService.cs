@@ -528,17 +528,292 @@ public class CacheWarmupService : BackgroundService
 
     private async Task LoadBalancesAsync(NpgsqlConnection conn, CancellationToken ct)
     {
-        _logger.LogInformation("Building balances from transfer events...");
+        _logger.LogInformation("Loading balances from pre-computed views (fast path)...");
 
-        // Build V1 balances incrementally from transfers
-        await BuildV1BalancesFromTransfersAsync(conn, ct);
+        // Load V1 balances directly from the balance view
+        await LoadV1BalancesFromViewAsync(conn, ct);
 
-        // Build V2 balances incrementally from transfers
-        await BuildV2BalancesFromTransfersAsync(conn, ct);
+        // Load V2 balances directly from the balance view
+        await LoadV2BalancesFromViewAsync(conn, ct);
 
-        await BuildErc20WrapperBalancesFromTransfersAsync(conn, ct);
+        // Load ERC20 wrapper balances from view (or aggregated query)
+        await LoadErc20WrapperBalancesFromViewAsync(conn, ct);
 
-        _logger.LogInformation("Balance building completed");
+        _logger.LogInformation("Balance loading completed");
+    }
+
+    /// <summary>
+    /// Loads V1 balances directly from the pre-computed V_CrcV1_BalancesByAccountAndToken view.
+    /// This is much faster than replaying all transfers since the view already aggregates them.
+    /// </summary>
+    private async Task LoadV1BalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading V1 balances from view...");
+
+        // The view returns pre-aggregated balances - just load them directly
+        // Note: We use totalBalance (raw attoCrc) divided by 10^18 to get decimal
+        const string sql = @"
+            SELECT
+                account,
+                ""tokenAddress"",
+                ""totalBalance""
+            FROM ""V_CrcV1_BalancesByAccountAndToken""
+            WHERE ""totalBalance"" > 0";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 300; // 5 minutes should be plenty
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        var balances = new Dictionary<string, decimal>();
+        var count = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 50000;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var account = reader.GetString(0).ToLowerInvariant();
+            var tokenAddress = reader.GetString(1).ToLowerInvariant();
+            var totalBalanceBig = reader.GetFieldValue<BigInteger>(2);
+
+            // Convert from atto (10^18) to decimal
+            var divisor = BigInteger.Parse("1000000000000000000");
+            var valueBig = totalBalanceBig / divisor;
+
+            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            {
+                _logger.LogWarning("Skipping V1 balance with value {Value} that would overflow decimal", totalBalanceBig);
+                continue;
+            }
+
+            var balance = (decimal)valueBig;
+            if (balance > 0)
+            {
+                var key = $"{account}:{tokenAddress}";
+                balances[key] = balance;
+            }
+
+            count++;
+            if (count % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V1 balance loading progress: {Count} entries ({Rate:F0} entries/sec)",
+                    count, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        // Seed the cache with all balances at once
+        _caches.V1BalancesByAccountAndToken.Seed(balances);
+        _logger.LogInformation("Loaded {Count} V1 balances from view", balances.Count);
+    }
+
+    /// <summary>
+    /// Loads V2 balances directly from the pre-computed V_CrcV2_BalancesByAccountAndToken view.
+    /// Uses totalBalance (not demurragedTotalBalance) for cache storage since demurrage is time-dependent.
+    /// </summary>
+    private async Task LoadV2BalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading V2 balances from view...");
+
+        // Load ERC1155 balances from the view
+        // Use totalBalance for storage - demurrage will be calculated at query time
+        const string sql = @"
+            SELECT
+                account,
+                ""tokenId"",
+                ""totalBalance""
+            FROM ""V_CrcV2_BalancesByAccountAndToken""
+            WHERE ""totalBalance"" > 0";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 300;
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        var balances = new Dictionary<string, decimal>();
+        var count = 0;
+        var lastLogTime = DateTime.UtcNow;
+        const int logInterval = 50000;
+
+        while (await reader.ReadAsync(ct))
+        {
+            var account = reader.GetString(0).ToLowerInvariant();
+            var tokenId = reader.GetString(1); // tokenId is already a string in the view
+            var totalBalanceBig = reader.GetFieldValue<BigInteger>(2);
+
+            // Convert from atto (10^18) to decimal
+            var divisor = BigInteger.Parse("1000000000000000000");
+            var valueBig = totalBalanceBig / divisor;
+
+            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+            {
+                _logger.LogWarning("Skipping V2 balance with value {Value} that would overflow decimal", totalBalanceBig);
+                continue;
+            }
+
+            var balance = (decimal)valueBig;
+            if (balance > 0)
+            {
+                var key = $"{account}:{tokenId}";
+                balances[key] = balance;
+            }
+
+            count++;
+            if (count % logInterval == 0)
+            {
+                var elapsed = DateTime.UtcNow - lastLogTime;
+                _logger.LogInformation("V2 balance loading progress: {Count} entries ({Rate:F0} entries/sec)",
+                    count, logInterval / elapsed.TotalSeconds);
+                lastLogTime = DateTime.UtcNow;
+            }
+        }
+
+        // Seed the cache with all balances at once
+        _caches.V2BalancesByAccountAndToken.Seed(balances);
+        _logger.LogInformation("Loaded {Count} V2 ERC1155 balances from view", balances.Count);
+    }
+
+    /// <summary>
+    /// Loads ERC20 wrapper balances from aggregated transfer data.
+    /// Since there's no pre-computed view for wrapper balances, we use an aggregation query.
+    /// </summary>
+    private async Task LoadErc20WrapperBalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading ERC20 wrapper balances...");
+
+        // Aggregate wrapper transfers to get current balances
+        // This is faster than replaying transfers one by one because it's a single SQL aggregation
+        const string sql = @"
+            WITH wrapper_balances AS (
+                SELECT
+                    ""tokenAddress"",
+                    SUM(CASE WHEN ""to"" != '0x0000000000000000000000000000000000000000'
+                        THEN amount ELSE 0 END) -
+                    SUM(CASE WHEN ""from"" != '0x0000000000000000000000000000000000000000'
+                        THEN amount ELSE 0 END) as net_amount,
+                    CASE
+                        WHEN ""to"" != '0x0000000000000000000000000000000000000000' THEN ""to""
+                        ELSE ""from""
+                    END as account
+                FROM ""CrcV2_Erc20WrapperTransfer""
+                GROUP BY ""tokenAddress"",
+                    CASE
+                        WHEN ""to"" != '0x0000000000000000000000000000000000000000' THEN ""to""
+                        ELSE ""from""
+                    END
+            ),
+            account_balances AS (
+                SELECT
+                    account,
+                    ""tokenAddress"",
+                    SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
+                    SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) as balance
+                FROM ""CrcV2_Erc20WrapperTransfer"" t
+                CROSS JOIN LATERAL (
+                    SELECT DISTINCT x FROM (VALUES (t.""to""), (t.""from"")) AS v(x)
+                    WHERE x != '0x0000000000000000000000000000000000000000'
+                ) AS accounts(account)
+                GROUP BY account, ""tokenAddress""
+                HAVING SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
+                       SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
+            )
+            SELECT account, ""tokenAddress"", balance
+            FROM account_balances";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 300;
+
+        try
+        {
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            var count = 0;
+
+            // These balances go into the V2 cache (wrapper tokens are V2)
+            while (await reader.ReadAsync(ct))
+            {
+                var account = reader.GetString(0).ToLowerInvariant();
+                var tokenAddress = reader.GetString(1).ToLowerInvariant();
+                var balanceBig = reader.GetFieldValue<BigInteger>(2);
+
+                // Convert from atto (10^18) to decimal
+                var divisor = BigInteger.Parse("1000000000000000000");
+                var valueBig = balanceBig / divisor;
+
+                if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+                {
+                    continue;
+                }
+
+                var balance = (decimal)valueBig;
+                if (balance > 0)
+                {
+                    // Add to V2 cache (use blockNo 0 since we're seeding)
+                    var key = $"{account}:{tokenAddress}";
+                    _caches.V2BalancesByAccountAndToken.Add(0, key, balance);
+                    count++;
+                }
+            }
+
+            _logger.LogInformation("Loaded {Count} ERC20 wrapper balances", count);
+        }
+        catch (Exception ex)
+        {
+            // If the complex query fails, fall back to simpler approach
+            _logger.LogWarning(ex, "Complex wrapper balance query failed, using simple aggregation");
+            await LoadErc20WrapperBalancesSimpleAsync(conn, ct);
+        }
+    }
+
+    /// <summary>
+    /// Simple fallback for loading ERC20 wrapper balances - aggregates in memory.
+    /// </summary>
+    private async Task LoadErc20WrapperBalancesSimpleAsync(NpgsqlConnection conn, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT ""from"", ""to"", ""tokenAddress"", amount
+            FROM ""CrcV2_Erc20WrapperTransfer""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 300;
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        var balances = new Dictionary<string, BigInteger>();
+        var divisor = BigInteger.Parse("1000000000000000000");
+
+        while (await reader.ReadAsync(ct))
+        {
+            var from = reader.GetString(0).ToLowerInvariant();
+            var to = reader.GetString(1).ToLowerInvariant();
+            var tokenAddress = reader.GetString(2).ToLowerInvariant();
+            var amount = reader.GetFieldValue<BigInteger>(3);
+
+            if (from != "0x0000000000000000000000000000000000000000")
+            {
+                var fromKey = $"{from}:{tokenAddress}";
+                balances[fromKey] = balances.GetValueOrDefault(fromKey, BigInteger.Zero) - amount;
+            }
+
+            if (to != "0x0000000000000000000000000000000000000000")
+            {
+                var toKey = $"{to}:{tokenAddress}";
+                balances[toKey] = balances.GetValueOrDefault(toKey, BigInteger.Zero) + amount;
+            }
+        }
+
+        var count = 0;
+        foreach (var (key, balanceBig) in balances)
+        {
+            if (balanceBig <= 0) continue;
+
+            var valueBig = balanceBig / divisor;
+            if (valueBig > (BigInteger)decimal.MaxValue || valueBig < (BigInteger)decimal.MinValue)
+                continue;
+
+            var balance = (decimal)valueBig;
+            _caches.V2BalancesByAccountAndToken.Add(0, key, balance);
+            count++;
+        }
+
+        _logger.LogInformation("Loaded {Count} ERC20 wrapper balances (simple method)", count);
     }
 
     private async Task BuildV1BalancesFromTransfersAsync(NpgsqlConnection conn, CancellationToken ct)
