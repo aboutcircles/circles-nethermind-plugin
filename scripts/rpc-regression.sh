@@ -48,9 +48,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="$PROJECT_ROOT/RegressionTestResults"
 
 # Source .env.local if it exists (for CIRCLES_SEED_PHRASE and other env vars)
+# Use set -a to auto-export all variables, then restore with set +a
 if [[ -f "$PROJECT_ROOT/.env.local" ]]; then
     # shellcheck disable=SC1091
+    set -a
     source "$PROJECT_ROOT/.env.local"
+    set +a
 fi
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RUN_DIR="$OUTPUT_DIR/$TIMESTAMP"
