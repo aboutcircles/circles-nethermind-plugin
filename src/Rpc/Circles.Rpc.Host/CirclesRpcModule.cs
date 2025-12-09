@@ -127,20 +127,22 @@ public class CirclesRpcModule : ICirclesRpcModule
     private readonly Settings _settings;
     private readonly string _readOnlyDbConnectionString;
     private readonly MemoryCache _profileByCidCache;
+    private readonly MemoryCache _tokenExposureCache;
     private static readonly HttpClient HttpClient = new();
     private readonly NethermindRpcClient? _nethermindRpcClient;
     private readonly ILogger<CirclesRpcModule>? _logger;
     private readonly CacheServiceClient.CacheServiceClient? _cacheServiceClient;
 
     public CirclesRpcModule(
-        Settings settings, 
-        IHttpClientFactory? httpClientFactory = null, 
+        Settings settings,
+        IHttpClientFactory? httpClientFactory = null,
         ILogger<CirclesRpcModule>? logger = null,
         CacheServiceClient.CacheServiceClient? cacheServiceClient = null)
     {
         _settings = settings;
         _readOnlyDbConnectionString = settings.IndexReadonlyDbConnectionString;
         _profileByCidCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 10_000 });
+        _tokenExposureCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 50_000 });
         _logger = logger;
         _cacheServiceClient = cacheServiceClient;
 
@@ -453,6 +455,13 @@ public class CirclesRpcModule : ICirclesRpcModule
     private async Task<Dictionary<string, TokenExposureInfo>> GetTokenExposureIdsAsync(string address)
     {
         var lowerAddress = address.ToLower();
+        var cacheKey = $"tokenExposure:{lowerAddress}";
+
+        // Check cache first (5 minute TTL for token exposure data)
+        if (_tokenExposureCache.TryGetValue(cacheKey, out Dictionary<string, TokenExposureInfo>? cached) && cached != null)
+        {
+            return cached;
+        }
 
         // Use the balance views which correctly aggregate transfers and compute balances > 0
         // This matches the production behavior which uses in-memory caches seeded from these views
@@ -537,6 +546,13 @@ public class CirclesRpcModule : ICirclesRpcModule
 
             tokenExposureIds.Add(token, tokenInfo);
         }
+
+        // Cache for 5 minutes - token exposure data doesn't change frequently
+        _tokenExposureCache.Set(cacheKey, tokenExposureIds, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5),
+            Size = 1
+        });
 
         return tokenExposureIds;
     }
