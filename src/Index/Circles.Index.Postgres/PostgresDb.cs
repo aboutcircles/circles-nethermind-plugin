@@ -277,6 +277,10 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     public async Task WriteBatchWithUpsert(string @namespace, string table, IEnumerable<object> data,
         ISchemaPropertyMap propertyMap)
     {
+        var dataList = data.ToList();
+        if (dataList.Count == 0)
+            return;
+
         var tableSchema = Schema.Tables[(@namespace, table)];
         var columns = tableSchema.Columns;
         var columnList = string.Join(", ", columns.Select(c => $"\"{c.Column}\""));
@@ -285,12 +289,37 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         var primaryKeyColumns = GetPrimaryKeyColumns(tableSchema);
         var primaryKeyList = string.Join(", ", primaryKeyColumns.Select(c => $"\"{c}\""));
 
-        // Build parameter placeholders for each column
-        var parameterList = string.Join(", ", columns.Select((_, i) => $"@p{i}"));
+        // Build arrays for each column (UNNEST optimization)
+        var columnArrays = new object?[columns.Count][];
+        for (int i = 0; i < columns.Count; i++)
+        {
+            columnArrays[i] = new object?[dataList.Count];
+        }
+
+        // Populate the arrays with values from each row
+        for (int rowIndex = 0; rowIndex < dataList.Count; rowIndex++)
+        {
+            var indexEvent = dataList[rowIndex];
+            for (int colIndex = 0; colIndex < columns.Count; colIndex++)
+            {
+                var column = columns[colIndex];
+                var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
+                columnArrays[colIndex][rowIndex] = value;
+            }
+        }
+
+        // Build UNNEST SQL with proper type casts
+        var unnestParams = new List<string>();
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var sqlType = GetSqlType(columns[i].Type);
+            unnestParams.Add($"UNNEST(@p{i})::{sqlType}");
+        }
+        var unnestList = string.Join(", ", unnestParams);
 
         var sql = $@"
             INSERT INTO ""{tableSchema.Namespace}_{tableSchema.Table}"" ({columnList})
-            VALUES ({parameterList})
+            SELECT {unnestList}
             ON CONFLICT ({primaryKeyList}) DO NOTHING
         ";
 
@@ -304,44 +333,32 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         await using var connection = new NpgsqlConnection(csb.ToString());
         await connection.OpenAsync();
 
-        // Use a transaction for better performance with multiple inserts
-        await using var transaction = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+
+        // Add array parameters with proper NpgsqlDbType
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var arrayType = GetNpgsqlArrayDbType(columns[i].Type);
+            var param = new NpgsqlParameter($"@p{i}", arrayType)
+            {
+                Value = columnArrays[i]
+            };
+            command.Parameters.Add(param);
+        }
 
         try
         {
-            var dataList = data.ToList();
-            var insertedCount = 0;
-            var skippedCount = 0;
-
-            foreach (var indexEvent in dataList)
-            {
-                await using var command = new NpgsqlCommand(sql, connection, transaction);
-
-                for (int i = 0; i < columns.Count; i++)
-                {
-                    var column = columns[i];
-                    var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
-                    command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
-                }
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                if (rowsAffected > 0)
-                    insertedCount++;
-                else
-                    skippedCount++;
-            }
-
-            await transaction.CommitAsync();
+            var rowsAffected = await command.ExecuteNonQueryAsync();
+            var skippedCount = dataList.Count - rowsAffected;
 
             if (skippedCount > 0)
             {
                 Console.WriteLine($"[WriteBatchWithUpsert] {tableSchema.Namespace}_{tableSchema.Table}: " +
-                                  $"Inserted {insertedCount}, skipped {skippedCount} duplicates");
+                                  $"Inserted {rowsAffected}, skipped {skippedCount} duplicates");
             }
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
             Console.WriteLine($"Error in WriteBatchWithUpsert for {tableSchema.Namespace}_{tableSchema.Table}: {ex.Message}");
             throw;
         }
@@ -438,6 +455,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     /// <summary>
     /// Internal upsert implementation that uses an existing connection and transaction.
+    /// Uses PostgreSQL UNNEST for efficient batch inserts.
     /// </summary>
     private async Task WriteBatchWithUpsertInternal(
         NpgsqlConnection connection,
@@ -447,6 +465,9 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         IList<object> data,
         ISchemaPropertyMap propertyMap)
     {
+        if (data.Count == 0)
+            return;
+
         var tableSchema = Schema.Tables[(@namespace, table)];
         var columns = tableSchema.Columns;
         var columnList = string.Join(", ", columns.Select(c => $"\"{c.Column}\""));
@@ -454,27 +475,75 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         var primaryKeyColumns = GetPrimaryKeyColumns(tableSchema);
         var primaryKeyList = string.Join(", ", primaryKeyColumns.Select(c => $"\"{c}\""));
 
-        var parameterList = string.Join(", ", columns.Select((_, i) => $"@p{i}"));
+        // Build arrays for each column
+        var columnArrays = new object?[columns.Count][];
+        for (int i = 0; i < columns.Count; i++)
+        {
+            columnArrays[i] = new object?[data.Count];
+        }
+
+        // Populate the arrays with values from each row
+        for (int rowIndex = 0; rowIndex < data.Count; rowIndex++)
+        {
+            var indexEvent = data[rowIndex];
+            for (int colIndex = 0; colIndex < columns.Count; colIndex++)
+            {
+                var column = columns[colIndex];
+                var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
+                columnArrays[colIndex][rowIndex] = value;
+            }
+        }
+
+        // Build UNNEST SQL with proper type casts
+        var unnestParams = new List<string>();
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var sqlType = GetSqlType(columns[i].Type);
+            unnestParams.Add($"UNNEST(@p{i})::{sqlType}");
+        }
+        var unnestList = string.Join(", ", unnestParams);
 
         var sql = $@"
             INSERT INTO ""{tableSchema.Namespace}_{tableSchema.Table}"" ({columnList})
-            VALUES ({parameterList})
+            SELECT {unnestList}
             ON CONFLICT ({primaryKeyList}) DO NOTHING
         ";
 
-        foreach (var indexEvent in data)
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+
+        // Add array parameters with proper NpgsqlDbType
+        for (int i = 0; i < columns.Count; i++)
         {
-            await using var command = new NpgsqlCommand(sql, connection, transaction);
-
-            for (int i = 0; i < columns.Count; i++)
+            var arrayType = GetNpgsqlArrayDbType(columns[i].Type);
+            var param = new NpgsqlParameter($"@p{i}", arrayType)
             {
-                var column = columns[i];
-                var value = propertyMap.Map[(@namespace, table)][column.Column](indexEvent);
-                command.Parameters.AddWithValue($"@p{i}", value ?? DBNull.Value);
-            }
-
-            await command.ExecuteNonQueryAsync();
+                Value = columnArrays[i]
+            };
+            command.Parameters.Add(param);
         }
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Gets the NpgsqlDbType for array parameters.
+    /// </summary>
+    private NpgsqlDbType GetNpgsqlArrayDbType(ValueTypes type)
+    {
+        return type switch
+        {
+            ValueTypes.BigInt => NpgsqlDbType.Array | NpgsqlDbType.Numeric,
+            ValueTypes.Int => NpgsqlDbType.Array | NpgsqlDbType.Bigint,
+            ValueTypes.String => NpgsqlDbType.Array | NpgsqlDbType.Text,
+            ValueTypes.Address => NpgsqlDbType.Array | NpgsqlDbType.Text,
+            ValueTypes.Boolean => NpgsqlDbType.Array | NpgsqlDbType.Boolean,
+            ValueTypes.Bytes => NpgsqlDbType.Array | NpgsqlDbType.Bytea,
+            // For array of arrays (AddressArray), we need to handle specially
+            ValueTypes.AddressArray => NpgsqlDbType.Array | NpgsqlDbType.Array | NpgsqlDbType.Text,
+            ValueTypes.Json => NpgsqlDbType.Array | NpgsqlDbType.Json,
+            ValueTypes.Double => NpgsqlDbType.Array | NpgsqlDbType.Double,
+            _ => throw new ArgumentException($"Unsupported type for array: {type}")
+        };
     }
 
     /// <summary>
