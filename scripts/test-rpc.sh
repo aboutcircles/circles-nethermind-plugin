@@ -527,6 +527,13 @@ run_test "sdk" "circles_getValidInviters (addr2, min 96)" "curl -s -X POST --dat
 
 run_test "sdk" "circles_getValidInviters (addr3, min 50)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getValidInviters\",\"params\":[\"$TEST_ADDR_3\",\"50\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
+# Invitation Origin (reconstructs how user was invited)
+run_test "sdk" "circles_getInvitationOrigin (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getInvitationOrigin (addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$TEST_ADDR_2\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getInvitationOrigin (addr3)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$TEST_ADDR_3\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
 # Transaction History Enriched (server-side participant enrichment)
 run_test "sdk" "circles_getTransactionHistoryEnriched (addr1, recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$TEST_ADDR_1\",30282299],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
