@@ -456,7 +456,9 @@ public class CacheWarmupService : BackgroundService
             FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" <= @toBlock";
 
-        var wrappers = new Dictionary<string, (string WrapperAddress, int CirclesType)>();
+        // Key by wrapper address (not avatar) to support avatars with multiple wrappers
+        // An avatar can have both demurraged (circlesType=0) and inflationary (circlesType=1) wrappers
+        var wrappers = new Dictionary<string, (string Avatar, int CirclesType)>();
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -469,8 +471,9 @@ public class CacheWarmupService : BackgroundService
             var erc20Wrapper = reader.GetString(1);
             var circlesType = reader.GetInt32(2);
 
-            var avatarKey = avatar.ToLowerInvariant();
-            wrappers[avatarKey] = (erc20Wrapper, circlesType);
+            // Key by wrapper address for direct lookup
+            var wrapperKey = erc20Wrapper.ToLowerInvariant();
+            wrappers[wrapperKey] = (avatar.ToLowerInvariant(), circlesType);
         }
 
         _caches.Erc20WrapperAddresses.Seed(wrappers, _state.WarmupTargetBlock);
@@ -1562,9 +1565,10 @@ public class CacheWarmupService : BackgroundService
                 var erc20Wrapper = wrapperReader.GetString(2);
                 var circlesType = wrapperReader.GetInt32(3);
 
-                var avatarKey = avatar.ToLowerInvariant();
+                // Key by wrapper address (not avatar) to support avatars with multiple wrappers
+                var wrapperKey = erc20Wrapper.ToLowerInvariant();
 
-                _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, (erc20Wrapper, circlesType));
+                _caches.Erc20WrapperAddresses.Add(blockNumber, wrapperKey, (avatar.ToLowerInvariant(), circlesType));
             }
         }
     }

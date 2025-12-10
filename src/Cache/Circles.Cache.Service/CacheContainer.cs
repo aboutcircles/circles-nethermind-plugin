@@ -29,9 +29,8 @@ public class CacheContainer
     public RollbackCache<string, string> V1TokenOwnerByToken { get; private set; } = null!;
     public RollbackCache<string, string> V1AvatarToCidMap { get; private set; } = null!;
 
-    // V2 Caches (simplified - using string tuples for now)
     public RollbackCache<string, (string Type, long RegisteredAt)> V2Avatars { get; private set; } = null!;
-    public RollbackCache<string, (string WrapperAddress, int CirclesType)> Erc20WrapperAddresses { get; private set; } = null!;
+    public RollbackCache<string, (string Avatar, int CirclesType)> Erc20WrapperAddresses { get; private set; } = null!;
     public RollbackCache<string, (string Name, string Mint, string Symbol)> Groups { get; private set; } = null!;
     public RollbackCache<string, (string Member, long ExpiryTime)> GroupMemberships { get; private set; } = null!;
     public RollbackCache<string, string> V2AvatarToCidMap { get; private set; } = null!;
@@ -95,27 +94,23 @@ public class CacheContainer
         V1Avatars = new RollbackCache<string, (string Type, string? TokenAddress)>("V1Avatars");
         V1TokenOwnerByToken = new RollbackCache<string, string>("V1TokenOwnerByToken");
         V1AvatarToCidMap = new RollbackCache<string, string>("V1AvatarToCidMap");
-
         // V2 Caches
         V2Avatars = new RollbackCache<string, (string Type, long RegisteredAt)>("V2Avatars");
-        Erc20WrapperAddresses = new RollbackCache<string, (string WrapperAddress, int CirclesType)>("Erc20WrapperAddresses");
+        Erc20WrapperAddresses = new RollbackCache<string, (string Avatar, int CirclesType)>("Erc20WrapperAddresses");
         Groups = new RollbackCache<string, (string Name, string Mint, string Symbol)>("Groups");
         GroupMemberships = new RollbackCache<string, (string Member, long ExpiryTime)>("GroupMemberships");
         V2AvatarToCidMap = new RollbackCache<string, string>("V2AvatarToCidMap");
         V2AvatarToShortNameMap = new RollbackCache<string, string>("V2AvatarToShortNameMap");
 
-        // Balance Caches
         V1BalancesByAccountAndToken = new RollbackCache<string, decimal>("V1BalancesByAccountAndToken");
         V2BalancesByAccountAndToken = new RollbackCache<string, decimal>("V2BalancesByAccountAndToken");
 
-        // Trust Relations Caches
+
         V1TrustRelations = new RollbackCache<string, long>("V1TrustRelations");
         V2TrustRelations = new RollbackCache<string, long>("V2TrustRelations");
     }
 
-    /// <summary>
-    /// Rolls back all caches to the specified block number.
-    /// </summary>
+
     public void RollbackAll(long toBlock)
     {
         foreach (var cache in AllCaches)
@@ -309,11 +304,12 @@ public class CacheContainer
                 }
             }
 
-            // Rebuild ERC20 wrapper reverse index
+            // Copy ERC20 wrapper data to secondary index for direct access
+            // Erc20WrapperAddresses is now keyed by wrapper address, so we just copy it
             foreach (var kvp in Erc20WrapperAddresses.ReadOnlyDictionary)
             {
-                var avatar = kvp.Key;
-                var wrapper = kvp.Value.WrapperAddress.ToLowerInvariant();
+                var wrapper = kvp.Key; // Already lowercase
+                var avatar = kvp.Value.Avatar;
                 var circlesType = kvp.Value.CirclesType;
                 _erc20WrapperToAvatar[wrapper] = (avatar, circlesType);
             }
