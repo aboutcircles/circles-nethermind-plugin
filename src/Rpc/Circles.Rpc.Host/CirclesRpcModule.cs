@@ -1825,7 +1825,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var truster = reader.GetString(0);
             var trustee = reader.GetString(1);
-            var expiryTime = reader.GetInt64(2);
+            var expiryTimeBig = reader.GetFieldValue<BigInteger>(2);
+            var expiryTime = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
             var timestamp = reader.GetInt64(3);
             var avatarType = reader.IsDBNull(4) ? null : reader.GetString(4);
 

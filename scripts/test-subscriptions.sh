@@ -194,25 +194,37 @@ jq -n '{
   errors: []
 }' > "$STATE_FILE"
 
+# Track whether we need to generate report in cleanup
+REPORT_GENERATED=false
+
 # Cleanup function
 cleanup() {
-    # Kill background processes first
-    if [[ -n "$TIMEOUT_PID" ]]; then
-        kill "$TIMEOUT_PID" 2>/dev/null || true
-        wait "$TIMEOUT_PID" 2>/dev/null || true
+    local exit_code=$?
+
+    # Kill background processes (don't wait - can block indefinitely with FIFOs)
+    [[ -n "$TIMEOUT_PID" ]] && kill "$TIMEOUT_PID" 2>/dev/null || true
+    [[ -n "$WS_PID" ]] && kill "$WS_PID" 2>/dev/null || true
+    [[ -n "$TRIGGER_PID" ]] && kill "$TRIGGER_PID" 2>/dev/null || true
+
+    # Generate timeout report if we were killed before generating one
+    if [[ "$REPORT_GENERATED" == "false" && "$OUTPUT_MODE" == "json" && -n "$JSON_FILE" ]]; then
+        # Generate minimal error report for timeout case
+        local report
+        report=$(jq -n \
+            --arg url "$WS_URL" \
+            --argjson duration "$MAX_DURATION" \
+            '{
+                websocket_url: $url,
+                max_duration_seconds: $duration,
+                subscription_id: null,
+                total_events_received: 0,
+                error_count: 1,
+                errors: ["Process was terminated (timeout or signal)"],
+                success: false
+            }')
+        echo "$report" > "$JSON_FILE"
     fi
-    if [[ -n "$READER_PID" ]]; then
-        kill "$READER_PID" 2>/dev/null || true
-        wait "$READER_PID" 2>/dev/null || true
-    fi
-    if [[ -n "$WS_PID" ]]; then
-        kill "$WS_PID" 2>/dev/null || true
-        wait "$WS_PID" 2>/dev/null || true
-    fi
-    if [[ -n "$TRIGGER_PID" ]]; then
-        kill "$TRIGGER_PID" 2>/dev/null || true
-        wait "$TRIGGER_PID" 2>/dev/null || true
-    fi
+
     # Now safe to remove temp directory
     rm -rf "$TEMP_DIR"
 }
@@ -284,6 +296,9 @@ fi
 log_message "✓ WebSocket connection established" "success"
 log_message "Sent subscription request"
 
+# Open FIFO as file descriptor for read with timeout support
+exec 3<"$FIFO_OUT"
+
 # Process WebSocket messages
 START_TIME=$(date +%s)
 SUBSCRIPTION_ACK_RECEIVED=false
@@ -309,7 +324,33 @@ ACK_RECEIVED_FILE="$TEMP_DIR/ack_received"
 ) &
 TIMEOUT_PID=$!
 
-while IFS= read -r line; do
+while true; do
+    # Check overall timeout FIRST (before blocking on read)
+    CURRENT_TIME=$(date +%s)
+    ELAPSED=$((CURRENT_TIME - START_TIME))
+    if [[ "$ELAPSED" -ge "$MAX_DURATION" ]]; then
+        log_message "⏱ Maximum duration (${MAX_DURATION}s) reached" "warning"
+        if [[ -n "$TIMEOUT_PID" ]]; then
+            kill "$TIMEOUT_PID" 2>/dev/null || true
+        fi
+        break
+    fi
+
+    # Read with 1-second timeout to allow periodic timeout checks
+    # Use -u 3 to read from the file descriptor (required for timeout to work with FIFOs)
+    # Reset line to detect empty reads
+    line=""
+    if ! IFS= read -r -t 1 -u 3 line; then
+        # read failed - either timeout or EOF
+        # If line is empty, it's likely a timeout; continue to re-check overall timeout
+        # Note: bash 3.2 retains previous line value on timeout, so we reset it above
+        if [[ -z "$line" ]]; then
+            continue
+        fi
+        # If we got some data but read still failed, WebSocket probably closed
+        break
+    fi
+
     # Skip empty lines
     [[ -z "$line" ]] && continue
 
@@ -399,33 +440,24 @@ while IFS= read -r line; do
         fi
     fi
 
-    # Check timeout
-    CURRENT_TIME=$(date +%s)
-    ELAPSED=$((CURRENT_TIME - START_TIME))
-    if [[ "$ELAPSED" -ge "$MAX_DURATION" ]]; then
-        log_message "⏱ Maximum duration (${MAX_DURATION}s) reached" "warning"
-        # Cancel acknowledgment timeout before breaking
-        if [[ -n "$TIMEOUT_PID" ]]; then
-            kill "$TIMEOUT_PID" 2>/dev/null || true
-        fi
-        break
-    fi
+done
+# Reader loop exited (either by break, timeout, or EOF)
 
-done < "$FIFO_OUT" &
-READER_PID=$!
+# Close the file descriptor
+exec 3<&- 2>/dev/null || true
 
-# Wait for reader to finish or timeout
-wait "$READER_PID" 2>/dev/null || true
-
-# Ensure timeout process is cleaned up
+# Ensure timeout process is cleaned up (don't wait, just kill)
 if [[ -n "$TIMEOUT_PID" ]]; then
     kill "$TIMEOUT_PID" 2>/dev/null || true
-    wait "$TIMEOUT_PID" 2>/dev/null || true
 fi
 
-# Stop the WebSocket connection
-kill "$WS_PID" 2>/dev/null || true
-wait "$WS_PID" 2>/dev/null || true
+# Stop the WebSocket connection (don't wait, just kill - wait can block if pipe is open)
+if [[ -n "$WS_PID" ]]; then
+    kill "$WS_PID" 2>/dev/null || true
+fi
+
+# Brief pause to let processes clean up
+sleep 0.2
 
 # Check if timeout occurred (from the timeout subprocess)
 if [[ -f "$TEMP_DIR/timeout_reached" ]]; then
@@ -455,7 +487,23 @@ fi
 
 # Verify state file exists before reading
 if [[ ! -f "$STATE_FILE" ]]; then
-    log_message "✗ State file not found - unexpected error" "error"
+    log_message "✗ State file not found - process may have been interrupted" "error"
+    # Generate minimal error report for JSON mode
+    if [[ "$OUTPUT_MODE" == "json" && -n "$JSON_FILE" ]]; then
+        jq -n \
+            --arg url "$WS_URL" \
+            --argjson duration "$MAX_DURATION" \
+            '{
+                websocket_url: $url,
+                max_duration_seconds: $duration,
+                subscription_id: null,
+                total_events_received: 0,
+                error_count: 1,
+                errors: ["State file not found - process was interrupted"],
+                success: false
+            }' > "$JSON_FILE"
+        REPORT_GENERATED=true
+    fi
     exit 1
 fi
 
@@ -515,6 +563,7 @@ if [[ "$OUTPUT_MODE" == "json" ]]; then
     else
         echo "$REPORT"
     fi
+    REPORT_GENERATED=true
 else
     # Pretty print summary
     echo ""
@@ -556,6 +605,7 @@ else
     else
         echo -e "${RED}✗✗✗ Subscription test FAILED ✗✗✗${NC}"
     fi
+    REPORT_GENERATED=true
 fi
 
 # Exit with appropriate code

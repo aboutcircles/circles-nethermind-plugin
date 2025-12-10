@@ -298,7 +298,7 @@ static async Task<SubscriptionRequest?> ReceiveSubscriptionRequestAsync(WebSocke
 
 static async Task SendSubscriptionAckAsync(WebSocket socket, JsonElement? id, string subscriptionId, CancellationToken cancellationToken)
 {
-    var envelope = BuildSubscriptionResponse(id, new { result = subscriptionId }, null);
+    var envelope = BuildSubscriptionResponse(id, subscriptionId, null);
     await socket.SendAsync(envelope, WebSocketMessageType.Text, true, cancellationToken);
 }
 
