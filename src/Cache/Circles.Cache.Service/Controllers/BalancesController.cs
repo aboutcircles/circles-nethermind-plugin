@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Circles.Index.Common;
 using System.Text.RegularExpressions;
 
 namespace Circles.Cache.Service.Controllers;
@@ -217,6 +218,7 @@ public class BalancesController : ControllerBase
 
     /// <summary>
     /// Get total balance for an address (V1 only)
+    /// Returns the balance in time-circles (with CRC→Circles conversion applied)
     /// </summary>
     [HttpGet("{address}/total/v1")]
     public ActionResult<TotalBalanceResponse> GetTotalBalanceV1(string address)
@@ -234,20 +236,30 @@ public class BalancesController : ControllerBase
             var addressLower = address.ToLowerInvariant();
             var lastBlock = _state.LastProcessedBlock;
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var nowUnix = (ulong)timestamp;
 
             // Use secondary index for O(1) lookup
-            var total = 0m;
+            // V1 balances in cache are stored as raw CRC (personal currency)
+            // We need to convert to time-circles using the inflation factor
+            var totalCircles = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: true))
             {
                 var key = $"{addressLower}:{tokenId}";
-                if (_caches.V1BalancesByAccountAndToken.TryGetValue(key, out var balance))
+                if (_caches.V1BalancesByAccountAndToken.TryGetValue(key, out var crcBalance))
                 {
-                    total += balance;
+                    // Convert from CRC (decimal) to attoCircles using time-based inflation
+                    // 1. Convert decimal CRC back to attoCrc (BigInteger with 18 decimals)
+                    var attoCrc = CirclesConverter.CirclesToAttoCircles(crcBalance);
+                    // 2. Apply CRC→Circles conversion (applies inflation factor based on time)
+                    var attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, nowUnix);
+                    // 3. Convert back to decimal Circles
+                    var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                    totalCircles += circles;
                 }
             }
 
             return Ok(new TotalBalanceResponse(
-                total.ToString(),
+                totalCircles.ToString(),
                 lastBlock,
                 timestamp
             ));
@@ -305,6 +317,7 @@ public class BalancesController : ControllerBase
 
     /// <summary>
     /// Get total balance for an address (all versions)
+    /// Returns balances in time-circles (V1 CRC→Circles conversion applied)
     /// </summary>
     [HttpGet("{address}/total")]
     public ActionResult<TotalBalanceResponse> GetTotalBalance(string address)
@@ -322,19 +335,26 @@ public class BalancesController : ControllerBase
             var addressLower = address.ToLowerInvariant();
             var lastBlock = _state.LastProcessedBlock;
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var nowUnix = (ulong)timestamp;
 
             // Sum V1 balances using secondary index
+            // V1 balances are stored as raw CRC, need to convert to time-circles
             var v1Total = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: true))
             {
                 var key = $"{addressLower}:{tokenId}";
-                if (_caches.V1BalancesByAccountAndToken.TryGetValue(key, out var balance))
+                if (_caches.V1BalancesByAccountAndToken.TryGetValue(key, out var crcBalance))
                 {
-                    v1Total += balance;
+                    // Convert from CRC (decimal) to Circles using time-based inflation
+                    var attoCrc = CirclesConverter.CirclesToAttoCircles(crcBalance);
+                    var attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, nowUnix);
+                    var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                    v1Total += circles;
                 }
             }
 
             // Sum V2 balances using secondary index
+            // V2 balances are already in Circles units (demurraged)
             var v2Total = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: false))
             {
