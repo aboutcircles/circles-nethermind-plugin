@@ -59,6 +59,7 @@ methods=(
 "circles_getGroupMemberships"
 # Invitation Methods
 "circles_getValidInviters"
+"circles_getInvitationOrigin"
 # Transaction Methods
 "circles_getTransactionHistory"
 "circles_getTransactionHistoryEnriched"
@@ -232,6 +233,11 @@ case $method in
     read minBalance
     minBalance=${minBalance:-96}
     json='{"jsonrpc":"2.0","method":"circles_getValidInviters","params":["'$address'","'$minBalance'"],"id":1}'
+    ;;
+  circles_getInvitationOrigin)
+    printf "Enter address: "
+    read address
+    json='{"jsonrpc":"2.0","method":"circles_getInvitationOrigin","params":["'$address'"],"id":1}'
     ;;
 
   # Transaction Methods
