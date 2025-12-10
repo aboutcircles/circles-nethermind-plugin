@@ -343,8 +343,9 @@ get_response() {
     jq -c --arg test "$test_name" 'select(.test == $test) | .response' "$file" 2>/dev/null | head -n 1
 }
 
-# Maximum response size for detailed normalization (100KB)
-MAX_NORMALIZE_SIZE=102400
+# Maximum response size for detailed normalization (500KB)
+# Increased from 100KB to handle large token balance responses
+MAX_NORMALIZE_SIZE=512000
 
 # Function to normalize response (remove dynamic fields)
 normalize_response() {
