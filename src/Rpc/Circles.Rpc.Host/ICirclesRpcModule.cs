@@ -128,17 +128,30 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets trust relations categorized by type (mutual, one-way) with enriched avatar info.
     /// Server-side categorization + batch avatar lookup.
+    /// Returns paginated results with cursor-based navigation.
     /// </summary>
     /// <param name="address">Avatar address to query</param>
-    Task<AggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(string address);
+    /// <param name="limit">Maximum results per page (default: 50, max: 200)</param>
+    /// <param name="cursor">Cursor for pagination (from previous response's nextCursor)</param>
+    Task<PagedAggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(
+        string address,
+        int? limit = null,
+        string? cursor = null);
 
     /// <summary>
     /// Gets addresses that trust the given address AND have sufficient balance to invite.
     /// Useful for invitation flows and sponsor discovery.
+    /// Returns paginated results with cursor-based navigation.
     /// </summary>
     /// <param name="address">Avatar address to query</param>
-    /// <param name="minimumBalance">Minimum balance required (in CRC, optional, defaults to 96)</param>
-    Task<ValidInvitersResponse> GetValidInviters(string address, string? minimumBalance = null);
+    /// <param name="minimumBalance">Minimum balance required (in CRC, optional)</param>
+    /// <param name="limit">Maximum results per page (default: 50, max: 200)</param>
+    /// <param name="cursor">Cursor for pagination (from previous response's nextCursor)</param>
+    Task<PagedValidInvitersResponse> GetValidInviters(
+        string address,
+        string? minimumBalance = null,
+        int? limit = null,
+        string? cursor = null);
 
     /// <summary>
     /// Gets transaction history with enriched participant profiles and metadata.
@@ -159,15 +172,16 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Unified search across profiles by address prefix OR name/description text.
     /// Automatically detects search type (0x prefix = address, otherwise = text).
+    /// Returns paginated results with cursor-based navigation.
     /// </summary>
     /// <param name="query">Search query (address or text)</param>
-    /// <param name="limit">Maximum results (optional, default 10)</param>
-    /// <param name="offset">Skip N results (optional, default 0)</param>
+    /// <param name="limit">Maximum results per page (default: 20, max: 100)</param>
+    /// <param name="cursor">Cursor for pagination (from previous response's nextCursor)</param>
     /// <param name="types">Filter by avatar types (optional)</param>
-    Task<ProfileSearchResponse> SearchProfileByAddressOrName(
+    Task<PagedProfileSearchResponse> SearchProfileByAddressOrName(
         string query,
         int? limit = null,
-        int? offset = null,
+        string? cursor = null,
         string[]? types = null);
 
     // ========================================================================
@@ -252,6 +266,7 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets events from the blockchain, filtered by various criteria.
     /// Supports advanced filtering with FilterPredicateDto and ConjunctionDto for complex queries.
+    /// Returns paginated results with cursor-based navigation.
     /// </summary>
     /// <param name="address">Filter by address (null for all addresses)</param>
     /// <param name="fromBlock">Starting block number (inclusive)</param>
@@ -259,15 +274,17 @@ public interface ICirclesRpcModule
     /// <param name="eventTypes">Filter by event types (null for all events)</param>
     /// <param name="filterPredicates">Advanced filter predicates for complex queries</param>
     /// <param name="sortAscending">Sort order (default: descending by block number)</param>
-    /// <param name="limit">Maximum number of events to return (default: 1000, max: 10000)</param>
-    Task<EventsResponse> GetEvents(
+    /// <param name="limit">Maximum number of events to return (default: 100, max: 1000)</param>
+    /// <param name="cursor">Cursor for pagination (from previous response's nextCursor)</param>
+    Task<PagedEventsResponse> GetEvents(
         string? address,
         long? fromBlock,
         long? toBlock,
         string[]? eventTypes,
         IFilterPredicateDto[]? filterPredicates = null,
         bool? sortAscending = false,
-        int? limit = 1000);
+        int? limit = null,
+        string? cursor = null);
 
     // ========================================================================
     // Generic Database Query
@@ -276,8 +293,11 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Executes a generic database query using a structured DTO.
     /// Allows dynamic querying of indexed data.
+    /// Returns paginated results with cursor-based navigation when querying tables with event columns.
     /// </summary>
-    Task<QueryResponse> Query(SelectDto query);
+    /// <param name="query">The query definition with namespace, table, columns, filter, order, and limit</param>
+    /// <param name="cursor">Cursor for pagination (from previous response's nextCursor)</param>
+    Task<PagedQueryResponse> Query(SelectDto query, string? cursor = null);
 
     // ========================================================================
     // Pathfinder Integration (Proxy)
@@ -439,7 +459,7 @@ public record TransactionHistoryRow(
     [property: JsonPropertyName("operator")] string? Operator,
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("value")] string Value, // Raw demurraged attoCircles as string
-    // Calculated circle amounts (6 formats as per SDK calculateCircleAmounts)
+                                                        // Calculated circle amounts (6 formats as per SDK calculateCircleAmounts)
     [property: JsonPropertyName("circles")] string Circles,
     [property: JsonPropertyName("attoCircles")] string AttoCircles,
     [property: JsonPropertyName("crc")] string Crc,
@@ -518,6 +538,25 @@ public class EventsResponseJsonConverter : JsonConverter<EventsResponse>
 /// Uses arrays for rows to match production format.
 /// </summary>
 public record QueryResponse(List<string> Columns, List<object?[]> Rows);
+
+/// <summary>
+/// Paginated query response with columns, rows, and cursor-based pagination.
+/// </summary>
+public record PagedQueryResponse(
+    [property: JsonPropertyName("columns")] List<string> Columns,
+    [property: JsonPropertyName("rows")] List<object?[]> Rows,
+    [property: JsonPropertyName("hasMore")] bool HasMore,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor
+);
+
+/// <summary>
+/// Paginated events response with cursor-based navigation.
+/// </summary>
+public record PagedEventsResponse(
+    [property: JsonPropertyName("events")] object[] Events,
+    [property: JsonPropertyName("hasMore")] bool HasMore,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor
+);
 
 /// <summary>
 /// Health check response.
@@ -635,7 +674,7 @@ public class ProfileCidResponseJsonConverter : JsonConverter<ProfileCidResponse>
         {
             return new ProfileCidResponse(null);
         }
-        
+
         var cid = reader.GetString();
         return new ProfileCidResponse(cid);
     }
@@ -774,4 +813,82 @@ public record ProfileSearchResponse
     public string SearchType { get; init; } = string.Empty; // "address" or "text"
     public JsonElement[] Results { get; init; } = Array.Empty<JsonElement>();
     public int TotalCount { get; init; }
+}
+
+/// <summary>
+/// Paginated aggregated trust relations response with cursor-based navigation.
+/// </summary>
+public record PagedAggregatedTrustRelationsResponse
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("results")]
+    public TrustRelationInfo[] Results { get; init; } = Array.Empty<TrustRelationInfo>();
+
+    [JsonPropertyName("counts")]
+    public TrustRelationCounts Counts { get; init; } = new();
+
+    [JsonPropertyName("hasMore")]
+    public bool HasMore { get; init; }
+
+    [JsonPropertyName("nextCursor")]
+    public string? NextCursor { get; init; }
+}
+
+/// <summary>
+/// Counts of trust relations by type.
+/// </summary>
+public record TrustRelationCounts
+{
+    [JsonPropertyName("mutual")]
+    public int Mutual { get; init; }
+
+    [JsonPropertyName("trusts")]
+    public int Trusts { get; init; }
+
+    [JsonPropertyName("trustedBy")]
+    public int TrustedBy { get; init; }
+
+    [JsonPropertyName("total")]
+    public int Total { get; init; }
+}
+
+/// <summary>
+/// Paginated valid inviters response with cursor-based navigation.
+/// </summary>
+public record PagedValidInvitersResponse
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("results")]
+    public InviterInfo[] Results { get; init; } = Array.Empty<InviterInfo>();
+
+    [JsonPropertyName("hasMore")]
+    public bool HasMore { get; init; }
+
+    [JsonPropertyName("nextCursor")]
+    public string? NextCursor { get; init; }
+}
+
+/// <summary>
+/// Paginated profile search response with cursor-based navigation.
+/// </summary>
+public record PagedProfileSearchResponse
+{
+    [JsonPropertyName("query")]
+    public string Query { get; init; } = string.Empty;
+
+    [JsonPropertyName("searchType")]
+    public string SearchType { get; init; } = string.Empty; // "address" or "text"
+
+    [JsonPropertyName("results")]
+    public JsonElement[] Results { get; init; } = Array.Empty<JsonElement>();
+
+    [JsonPropertyName("hasMore")]
+    public bool HasMore { get; init; }
+
+    [JsonPropertyName("nextCursor")]
+    public string? NextCursor { get; init; }
 }

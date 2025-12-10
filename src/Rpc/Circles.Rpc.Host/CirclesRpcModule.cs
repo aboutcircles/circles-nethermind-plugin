@@ -2731,34 +2731,30 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
 
-    public async Task<EventsResponse> GetEvents(
+    public async Task<PagedEventsResponse> GetEvents(
         string? address,
         long? fromBlock,
         long? toBlock,
         string[]? eventTypes,
         IFilterPredicateDto[]? filterPredicates = null,
         bool? sortAscending = false,
-        int? limit = 1000)
+        int? limit = null,
+        string? cursor = null)
     {
-        // Validate and enforce limit
-        const int maxLimit = 10000;
-        const int defaultLimit = 1000;
-        var effectiveLimit = limit ?? defaultLimit;
-        if (effectiveLimit <= 0)
-        {
-            throw new ArgumentException("Limit must be greater than 0.");
-        }
-        if (effectiveLimit > maxLimit)
-        {
-            throw new ArgumentException($"Limit cannot exceed {maxLimit}.");
-        }
+        // Apply pagination limits
+        const int defaultLimit = 100;
+        const int maxLimit = 1000;
+        var effectiveLimit = Math.Min(limit ?? defaultLimit, maxLimit);
+
+        // Decode cursor if provided
+        var (cursorBlockNumber, cursorTransactionIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
 
         // Use the schema-aware map to get all event tables and their address columns
         var eventTables = DatabaseSchemaMap.TableAddressColumns;
 
         if (eventTables == null)
         {
-            return new EventsResponse(Array.Empty<object>());
+            return new PagedEventsResponse(Array.Empty<object>(), false, null);
         }
 
         var queries = new List<string>();
@@ -2774,8 +2770,17 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (fromBlock.HasValue) parameters.Add(new NpgsqlParameter("fromBlock", fromBlock.Value));
         if (toBlock.HasValue) parameters.Add(new NpgsqlParameter("toBlock", toBlock.Value));
 
+        // Add cursor parameters if cursor is provided
+        if (cursorBlockNumber.HasValue)
+        {
+            parameters.Add(new NpgsqlParameter("cursorBlockNumber", cursorBlockNumber.Value));
+            parameters.Add(new NpgsqlParameter("cursorTransactionIndex", cursorTransactionIndex!.Value));
+            parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex!.Value));
+        }
+
         // Determine sort order once
         var sortOrder = sortAscending == true ? "ASC" : "DESC";
+        var cursorComparison = sortAscending == true ? ">" : "<";
 
         foreach (var table in relevantTables)
         {
@@ -2819,6 +2824,12 @@ public class CirclesRpcModule : ICirclesRpcModule
             if (fromBlock.HasValue) whereClauses.Add("t.\"blockNumber\" >= @fromBlock");
             if (toBlock.HasValue) whereClauses.Add("t.\"blockNumber\" <= @toBlock");
 
+            // Cursor-based pagination filter
+            if (cursorBlockNumber.HasValue)
+            {
+                whereClauses.Add($"(t.\"blockNumber\", t.\"transactionIndex\", t.\"logIndex\") {cursorComparison} (@cursorBlockNumber, @cursorTransactionIndex, @cursorLogIndex)");
+            }
+
             // Advanced filter predicates
             if (filterPredicates != null && filterPredicates.Length > 0)
             {
@@ -2840,86 +2851,61 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         if (queries.Count == 0)
         {
-            return new EventsResponse(Array.Empty<object>());
+            return new PagedEventsResponse(Array.Empty<object>(), false, null);
         }
 
-        // Execute queries in PARALLEL for better performance
-        // Each table query runs concurrently with its own connection
-        // Use ConcurrentDictionary to match production behavior and ensure no duplicate events
-        var allEvents = new System.Collections.Concurrent.ConcurrentDictionary<(long BlockNo, long TxIndex, long LogIndex), (string EventName, string PayloadJson)>();
+        // Combine results from all tables and apply final ORDER BY with LIMIT
+        // Fetch one extra row to determine if there are more results
+        var finalSql = string.Join(" UNION ALL ", queries);
+        finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder} LIMIT {effectiveLimit + 1}";
 
-        // Build parameter value dictionary for cloning to each connection
-        // Include all parameters: basic filters + predicate filters
-        var paramValues = new Dictionary<string, object?>();
-        if (address != null) paramValues["address"] = address.ToLower();
-        if (fromBlock.HasValue) paramValues["fromBlock"] = fromBlock.Value;
-        if (toBlock.HasValue) paramValues["toBlock"] = toBlock.Value;
+        // Execute the combined query
+        await using var connection = await CreateConnectionAsync();
+        await using var command = new NpgsqlCommand(finalSql, connection);
+        command.CommandTimeout = 30;
+
+        // Add all parameters
+        if (address != null) command.Parameters.AddWithValue("address", address.ToLower());
+        if (fromBlock.HasValue) command.Parameters.AddWithValue("fromBlock", fromBlock.Value);
+        if (toBlock.HasValue) command.Parameters.AddWithValue("toBlock", toBlock.Value);
+
+        // Add cursor parameters
+        if (cursorBlockNumber.HasValue)
+        {
+            command.Parameters.AddWithValue("cursorBlockNumber", cursorBlockNumber.Value);
+            command.Parameters.AddWithValue("cursorTransactionIndex", cursorTransactionIndex!.Value);
+            command.Parameters.AddWithValue("cursorLogIndex", cursorLogIndex!.Value);
+        }
 
         // Add filter predicate parameters
         foreach (var param in parameters)
         {
-            paramValues[param.ParameterName] = param.Value;
-        }
-
-        // Create tasks for parallel execution
-        // Use per-query LIMIT to reduce data transfer (each table returns at most effectiveLimit rows)
-        var tasks = queries.Select(async querySql =>
-        {
-            // Remove parentheses and add LIMIT for individual query execution
-            var limitedQuery = querySql.TrimStart('(').TrimEnd(')') + $" LIMIT {effectiveLimit}";
-
-            await using var connection = await CreateConnectionAsync();
-            await using var command = new NpgsqlCommand(limitedQuery, connection);
-            command.CommandTimeout = 30;
-
-            // Clone parameters for this connection
-            foreach (var p in paramValues)
+            // Skip parameters we've already added
+            if (param.ParameterName == "address" || param.ParameterName == "fromBlock" ||
+                param.ParameterName == "toBlock" || param.ParameterName == "cursorBlockNumber" ||
+                param.ParameterName == "cursorTransactionIndex" || param.ParameterName == "cursorLogIndex")
             {
-                command.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value);
+                continue;
             }
-
-            await using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                var blockNo = reader.GetInt64(0);
-                var txIndex = reader.GetInt64(1);
-                var logIndex = reader.GetInt64(3);
-                var eventName = reader.GetString(4);
-                var payloadJson = reader.GetString(5);
-
-                // TryAdd ensures no duplicate events (matches production behavior)
-                allEvents.TryAdd((blockNo, txIndex, logIndex), (eventName, payloadJson));
-            }
-        }).ToArray();
-
-        // Wait for all parallel queries to complete
-        await Task.WhenAll(tasks);
-
-        // Sort all events in memory and apply final limit
-        IEnumerable<KeyValuePair<(long BlockNo, long TxIndex, long LogIndex), (string EventName, string PayloadJson)>> sortedEvents;
-        if (sortAscending == true)
-        {
-            sortedEvents = allEvents
-                .OrderBy(e => e.Key.BlockNo)
-                .ThenBy(e => e.Key.TxIndex)
-                .ThenBy(e => e.Key.LogIndex)
-                .Take(effectiveLimit);
-        }
-        else
-        {
-            sortedEvents = allEvents
-                .OrderByDescending(e => e.Key.BlockNo)
-                .ThenByDescending(e => e.Key.TxIndex)
-                .ThenByDescending(e => e.Key.LogIndex)
-                .Take(effectiveLimit);
+            command.Parameters.Add(param);
         }
 
-        // Convert to response format
         var events = new List<object>();
-        foreach (var evt in sortedEvents)
+        long lastBlockNumber = 0;
+        int lastTransactionIndex = 0;
+        int lastLogIndex = 0;
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
         {
-            var eventName = evt.Value.EventName;
-            var payloadJson = evt.Value.PayloadJson;
+            // Track cursor values from each row
+            lastBlockNumber = reader.GetInt64(0);
+            lastTransactionIndex = reader.GetInt32(1);
+            lastLogIndex = reader.GetInt32(3);
+            var eventName = reader.GetString(4);
+
+            // Parse the event payload
+            var payloadJson = reader.GetString(5);
             var payloadDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
 
             if (payloadDict != null)
@@ -2987,7 +2973,34 @@ public class CirclesRpcModule : ICirclesRpcModule
                 });
             }
         }
-        return new EventsResponse(events.ToArray());
+
+        // Determine if there are more results
+        var hasMore = events.Count > effectiveLimit;
+        if (hasMore)
+        {
+            // Remove the extra row we fetched
+            events.RemoveAt(events.Count - 1);
+            // Get cursor from the last row we're actually returning
+            var secondLastEvent = events.Count > 0 ? events[^1] : null;
+            if (secondLastEvent != null)
+            {
+                var eventDict = (dynamic)secondLastEvent;
+                var values = (Dictionary<string, object?>)eventDict.values;
+                if (values.TryGetValue("blockNumber", out var bn) &&
+                    values.TryGetValue("transactionIndex", out var ti) &&
+                    values.TryGetValue("logIndex", out var li))
+                {
+                    // Parse hex values back to numbers for the cursor
+                    lastBlockNumber = Convert.ToInt64(bn?.ToString()?.Replace("0x", ""), 16);
+                    lastTransactionIndex = Convert.ToInt32(ti?.ToString()?.Replace("0x", ""), 16);
+                    lastLogIndex = Convert.ToInt32(li?.ToString()?.Replace("0x", ""), 16);
+                }
+            }
+        }
+
+        var nextCursor = hasMore ? CursorUtils.EncodeCursor(lastBlockNumber, lastTransactionIndex, lastLogIndex) : null;
+
+        return new PagedEventsResponse(events.ToArray(), hasMore, nextCursor);
     }
 
     /// <summary>
@@ -3483,43 +3496,95 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// Gets aggregated trust relations showing mutual, one-way trusts, and trusted-by in a single call.
     /// Categorizes relationships for easier UI rendering. Enriched with avatar info.
     /// </summary>
-    public async Task<AggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(string address)
+    public async Task<PagedAggregatedTrustRelationsResponse> GetAggregatedTrustRelationsEnriched(
+        string address,
+        int? limit = null,
+        string? cursor = null)
     {
+        // Apply pagination limits
+        const int defaultLimit = 50;
+        const int maxLimit = 200;
+        var effectiveLimit = Math.Min(limit ?? defaultLimit, maxLimit);
+
         var trustRelations = await GetTrustRelations(address);
 
         var trustsSet = new HashSet<string>(trustRelations.Trusts?.Select(t => t.User) ?? Array.Empty<string>());
         var trustedBySet = new HashSet<string>(trustRelations.TrustedBy?.Select(t => t.User) ?? Array.Empty<string>());
 
-        var mutualAddresses = trustsSet.Intersect(trustedBySet).ToArray();
-        var oneWayTrustsAddresses = trustsSet.Except(trustedBySet).ToArray();
-        var oneWayTrustedByAddresses = trustedBySet.Except(trustsSet).ToArray();
+        var mutualAddresses = trustsSet.Intersect(trustedBySet).OrderBy(a => a).ToList();
+        var oneWayTrustsAddresses = trustsSet.Except(trustedBySet).OrderBy(a => a).ToList();
+        var oneWayTrustedByAddresses = trustedBySet.Except(trustsSet).OrderBy(a => a).ToList();
 
-        // Get avatar info for all addresses
-        var allAddresses = mutualAddresses.Concat(oneWayTrustsAddresses).Concat(oneWayTrustedByAddresses).ToArray();
-        var avatars = allAddresses.Length > 0 ? await GetAvatarInfoBatchInternal(allAddresses) : Array.Empty<AvatarInfo?>();
+        // Build combined sorted list with relation types for stable cursor-based pagination
+        var allRelations = new List<(string Address, string RelationType)>();
+        allRelations.AddRange(mutualAddresses.Select(a => (a, "mutual")));
+        allRelations.AddRange(oneWayTrustsAddresses.Select(a => (a, "trusts")));
+        allRelations.AddRange(oneWayTrustedByAddresses.Select(a => (a, "trustedBy")));
+
+        // Sort by address for consistent ordering
+        allRelations = allRelations.OrderBy(r => r.Address).ToList();
+
+        // Decode cursor (we use address as cursor for simplicity since addresses are unique)
+        string? cursorAddress = null;
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                cursorAddress = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+            }
+            catch
+            {
+                // Invalid cursor, ignore
+            }
+        }
+
+        // Filter by cursor
+        if (cursorAddress != null)
+        {
+            allRelations = allRelations.Where(r => string.Compare(r.Address, cursorAddress, StringComparison.Ordinal) > 0).ToList();
+        }
+
+        // Take limit + 1 to check if there are more
+        var pageRelations = allRelations.Take(effectiveLimit + 1).ToList();
+        var hasMore = pageRelations.Count > effectiveLimit;
+        if (hasMore)
+        {
+            pageRelations.RemoveAt(pageRelations.Count - 1);
+        }
+
+        // Get avatar info for addresses in this page
+        var pageAddresses = pageRelations.Select(r => r.Address).ToArray();
+        var avatars = pageAddresses.Length > 0 ? await GetAvatarInfoBatchInternal(pageAddresses) : Array.Empty<AvatarInfo?>();
         var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
 
-        return new AggregatedTrustRelationsResponse
+        // Build results
+        var results = pageRelations.Select(r => new TrustRelationInfo
+        {
+            Address = r.Address,
+            AvatarInfo = avatarDict.TryGetValue(r.Address, out var avatar) ? avatar : null,
+            RelationType = r.RelationType
+        }).ToArray();
+
+        // Generate next cursor from last address
+        string? nextCursor = null;
+        if (hasMore && results.Length > 0)
+        {
+            nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(results[^1].Address));
+        }
+
+        return new PagedAggregatedTrustRelationsResponse
         {
             Address = address,
-            Mutual = mutualAddresses.Select(addr => new TrustRelationInfo
+            Results = results,
+            Counts = new TrustRelationCounts
             {
-                Address = addr,
-                AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
-                RelationType = "mutual"
-            }).ToArray(),
-            Trusts = oneWayTrustsAddresses.Select(addr => new TrustRelationInfo
-            {
-                Address = addr,
-                AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
-                RelationType = "trusts"
-            }).ToArray(),
-            TrustedBy = oneWayTrustedByAddresses.Select(addr => new TrustRelationInfo
-            {
-                Address = addr,
-                AvatarInfo = avatarDict.ContainsKey(addr) ? avatarDict[addr] : null,
-                RelationType = "trustedBy"
-            }).ToArray()
+                Mutual = mutualAddresses.Count,
+                Trusts = oneWayTrustsAddresses.Count,
+                TrustedBy = oneWayTrustedByAddresses.Count,
+                Total = mutualAddresses.Count + oneWayTrustsAddresses.Count + oneWayTrustedByAddresses.Count
+            },
+            HasMore = hasMore,
+            NextCursor = nextCursor
         };
     }
 
@@ -3527,32 +3592,73 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// Gets list of valid inviters for an address (addresses that trust them and have sufficient balance).
     /// Useful for invitation flows and invitation escrow scenarios.
     /// </summary>
-    public async Task<ValidInvitersResponse> GetValidInviters(string address, string? minimumBalance = null)
+    public async Task<PagedValidInvitersResponse> GetValidInviters(
+        string address,
+        string? minimumBalance = null,
+        int? limit = null,
+        string? cursor = null)
     {
-        var trustRelations = await GetTrustRelations(address);
-        var trustedByAddresses = trustRelations.TrustedBy?.Select(t => t.User).ToArray() ?? Array.Empty<string>();
+        // Apply pagination limits
+        const int defaultLimit = 50;
+        const int maxLimit = 200;
+        var effectiveLimit = Math.Min(limit ?? defaultLimit, maxLimit);
 
-        if (trustedByAddresses.Length == 0)
+        var trustRelations = await GetTrustRelations(address);
+        var trustedByAddresses = trustRelations.TrustedBy?.Select(t => t.User).OrderBy(a => a).ToList() ?? new List<string>();
+
+        if (trustedByAddresses.Count == 0)
         {
-            return new ValidInvitersResponse
+            return new PagedValidInvitersResponse
             {
                 Address = address,
-                ValidInviters = Array.Empty<InviterInfo>()
+                Results = Array.Empty<InviterInfo>(),
+                HasMore = false,
+                NextCursor = null
             };
         }
 
-        // Get balances for all trusted-by addresses
+        // Decode cursor (using address as cursor)
+        string? cursorAddress = null;
+        if (!string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                cursorAddress = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+            }
+            catch
+            {
+                // Invalid cursor, ignore
+            }
+        }
+
+        // Filter by cursor
+        if (cursorAddress != null)
+        {
+            trustedByAddresses = trustedByAddresses.Where(a => string.Compare(a, cursorAddress, StringComparison.Ordinal) > 0).ToList();
+        }
+
+        // Process addresses and collect valid inviters until we have enough
         var validInviters = new List<InviterInfo>();
+        var processedCount = 0;
 
         foreach (var inviterAddress in trustedByAddresses)
         {
+            if (validInviters.Count > effectiveLimit)
+            {
+                break; // We have enough (including the extra one for hasMore check)
+            }
+
             try
             {
                 // Get avatar info to determine version
                 var avatarInfo = await GetAvatarInfoBatchInternal(new[] { inviterAddress });
                 var avatar = avatarInfo.FirstOrDefault();
 
-                if (avatar == null) continue;
+                if (avatar == null)
+                {
+                    processedCount++;
+                    continue;
+                }
 
                 // Get balance (try both v1 and v2)
                 TotalBalanceResponse? balance = null;
@@ -3594,14 +3700,31 @@ public class CirclesRpcModule : ICirclesRpcModule
             catch
             {
                 // Skip inviters with errors
-                continue;
             }
+
+            processedCount++;
         }
 
-        return new ValidInvitersResponse
+        // Determine if there are more results
+        var hasMore = validInviters.Count > effectiveLimit;
+        if (hasMore)
+        {
+            validInviters.RemoveAt(validInviters.Count - 1);
+        }
+
+        // Generate next cursor from last address
+        string? nextCursor = null;
+        if (hasMore && validInviters.Count > 0)
+        {
+            nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(validInviters[^1].Address));
+        }
+
+        return new PagedValidInvitersResponse
         {
             Address = address,
-            ValidInviters = validInviters.ToArray()
+            Results = validInviters.ToArray(),
+            HasMore = hasMore,
+            NextCursor = nextCursor
         };
     }
 
@@ -3822,16 +3945,18 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// <summary>
     /// Unified search across profiles by address prefix or name/description text.
     /// Combines address lookup and full-text search in a single endpoint.
+    /// Returns paginated results with cursor-based navigation.
     /// </summary>
-    public async Task<ProfileSearchResponse> SearchProfileByAddressOrName(
+    public async Task<PagedProfileSearchResponse> SearchProfileByAddressOrName(
         string query,
         int? limit = null,
-        int? offset = null,
+        string? cursor = null,
         string[]? types = null)
     {
-        // Use defaults if not specified
-        var effectiveLimit = limit ?? 10;
-        var effectiveOffset = offset ?? 0;
+        // Apply pagination limits
+        const int defaultLimit = 20;
+        const int maxLimit = 100;
+        var effectiveLimit = Math.Min(limit ?? defaultLimit, maxLimit);
 
         // Check if query looks like an address (starts with 0x and is hex)
         if (query.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
@@ -3839,40 +3964,67 @@ public class CirclesRpcModule : ICirclesRpcModule
             Regex.IsMatch(query, @"^0x[0-9a-fA-F]+$"))
         {
             // Address search - find avatars with matching address prefix
+            // For address search, we use the avatar address as cursor
+
+            // Decode cursor (avatar address)
+            string? cursorAddress = null;
+            if (!string.IsNullOrEmpty(cursor))
+            {
+                try
+                {
+                    cursorAddress = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+                }
+                catch
+                {
+                    // Invalid cursor, ignore
+                }
+            }
+
+            // Build filters
+            var filters = new List<IFilterPredicateDto>
+            {
+                new FilterPredicateDto
+                {
+                    Column = "avatar",
+                    FilterType = FilterType.Like,
+                    Value = $"{query.ToLowerInvariant()}%"
+                }
+            };
+
+            // Add cursor filter for pagination
+            if (cursorAddress != null)
+            {
+                filters.Add(new FilterPredicateDto
+                {
+                    Column = "avatar",
+                    FilterType = FilterType.GreaterThan,
+                    Value = cursorAddress
+                });
+            }
+
+            // Add type filter if specified
+            if (types != null && types.Length > 0)
+            {
+                filters.Add(new FilterPredicateDto
+                {
+                    Column = "type",
+                    FilterType = FilterType.In,
+                    Value = types
+                });
+            }
+
             var selectQuery = new SelectDto
             {
                 Namespace = "V_Crc",
                 Table = "Avatars",
                 Columns = Array.Empty<string>(),
-                Filter = new IFilterPredicateDto[]
-                {
-                    new FilterPredicateDto
-                    {
-                        Column = "avatar",
-                        FilterType = FilterType.Like,
-                        Value = $"{query.ToLowerInvariant()}%"
-                    }
-                },
+                Filter = filters,
                 Order = new[]
                 {
-                    new OrderByDto { Column = "blockNumber", SortOrder = "DESC" }
+                    new OrderByDto { Column = "avatar", SortOrder = "ASC" }
                 },
-                Limit = effectiveLimit
+                Limit = effectiveLimit + 1 // Fetch one extra for hasMore check
             };
-
-            // Add type filter if specified
-            if (types != null && types.Length > 0)
-            {
-                var typeFilter = new FilterPredicateDto
-                {
-                    Column = "type",
-                    FilterType = FilterType.In,
-                    Value = types
-                };
-                var filterList = selectQuery.Filter?.ToList() ?? new List<IFilterPredicateDto>();
-                filterList.Add(typeFilter);
-                selectQuery.Filter = filterList;
-            }
 
             var results = await Query(selectQuery);
 
@@ -3891,36 +4043,270 @@ public class CirclesRpcModule : ICirclesRpcModule
                 }
             }
 
+            // Check if there are more results
+            var hasMore = addresses.Count > effectiveLimit;
+            if (hasMore)
+            {
+                addresses.RemoveAt(addresses.Count - 1);
+            }
+
             var profiles = addresses.Count > 0
                 ? await GetProfileByAddressBatch(addresses.ToArray())
                 : Array.Empty<JsonElement?>();
 
-            return new ProfileSearchResponse
+            var profileResults = profiles.Where(p => p != null).Cast<JsonElement>().ToArray();
+
+            // Generate next cursor from last address
+            string? nextCursor = null;
+            if (hasMore && addresses.Count > 0)
+            {
+                nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(addresses[^1]));
+            }
+
+            return new PagedProfileSearchResponse
             {
                 Query = query,
                 SearchType = "address",
-                Results = profiles.Where(p => p != null).Cast<JsonElement>().ToArray(),
-                TotalCount = results.Rows.Count
+                Results = profileResults,
+                HasMore = hasMore,
+                NextCursor = nextCursor
             };
         }
         else
         {
-            // Text search - use existing full-text search
-            var searchResults = await SearchProfiles(query, effectiveLimit, effectiveOffset, types);
+            // Text search - use cursor-based pagination with rank+avatar composite cursor
+            // Cursor format: "rank:avatar" base64 encoded
 
-            return new ProfileSearchResponse
+            double? cursorRank = null;
+            string? cursorAvatar = null;
+            if (!string.IsNullOrEmpty(cursor))
+            {
+                try
+                {
+                    var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+                    var parts = decoded.Split(':', 2);
+                    if (parts.Length == 2)
+                    {
+                        cursorRank = double.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture);
+                        cursorAvatar = parts[1];
+                    }
+                }
+                catch
+                {
+                    // Invalid cursor, ignore
+                }
+            }
+
+            // Use the SearchProfilesWithCursor helper
+            var searchResults = await SearchProfilesWithCursor(query, effectiveLimit, cursorRank, cursorAvatar, types);
+
+            return new PagedProfileSearchResponse
             {
                 Query = query,
                 SearchType = "text",
                 Results = searchResults.Results.Select(r => r.Profile).Where(p => p != null).Cast<JsonElement>().ToArray(),
-                TotalCount = searchResults.Total
+                HasMore = searchResults.HasMore,
+                NextCursor = searchResults.NextCursor
             };
         }
     }
 
+    /// <summary>
+    /// Internal helper for cursor-based profile search with ranking.
+    /// </summary>
+    private async Task<(ProfileSearchResultItem[] Results, bool HasMore, string? NextCursor)> SearchProfilesWithCursor(
+        string text,
+        int limit,
+        double? cursorRank,
+        string? cursorAvatar,
+        string[]? types = null)
+    {
+        const int hardLimit = 100;
+        if (limit > hardLimit)
+        {
+            limit = hardLimit;
+        }
+
+        string qText = text.Trim();
+        string[] tokens = qText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (!tokens.Any(o => o.Length > 1))
+        {
+            return (Array.Empty<ProfileSearchResultItem>(), false, null);
+        }
+
+        if (tokens.Length > 3)
+        {
+            throw new ArgumentException("Too many search terms. Maximum is 3.");
+        }
+
+        qText = string.Join(' ', tokens);
+
+        string[]? typeFilter = types?
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        bool hasTypeFilter = typeFilter is { Length: > 0 };
+        string typeFilterClause = hasTypeFilter ? " AND a.type = ANY(@types)" : string.Empty;
+
+        // Build cursor filter clause
+        string cursorFilterClause = "";
+        if (cursorRank.HasValue && cursorAvatar != null)
+        {
+            // For descending order, we want items with lower rank OR same rank but higher avatar
+            cursorFilterClause = " AND (COALESCE(r.receive_count, 0), p.rank, p.avatar) < (@cursorReceiveCount, @cursorRank, @cursorAvatar)";
+        }
+
+        string sql = $@"
+        WITH
+            input(txt) AS (VALUES (@search)),
+            q AS (
+                SELECT to_tsquery(
+                         'simple',
+                         (
+                           SELECT string_agg(quote_literal(tok) || ':*', ' & ')
+                           FROM   unnest(string_to_array(txt, ' ')) AS tok
+                         )
+                       ) AS query
+                FROM input
+            ),
+            recv AS (
+                SELECT ""to""::text AS avatar, COUNT(*) AS receive_count
+                FROM   ""CrcV2_TransferSummary""
+                GROUP  BY ""to""
+            ),
+            w_profile AS (
+                SELECT  a.avatar, a.""timestamp"", a.name AS avatar_name, rs.""shortName"" AS short_name,
+                        a.type AS avatar_type, f.cid AS cid, f.metadata_digest, f.payload,
+                        ts_rank_cd(
+                          ARRAY[1.0, 0.4, 0.2, 0.05],
+                          (
+                            setweight(to_tsvector('simple', coalesce(f.payload ->> 'name', '')), 'A') ||
+                            setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B') ||
+                            setweight(to_tsvector('simple', a.avatar), 'C')
+                          ),
+                          q.query
+                        ) AS rank
+                FROM   ""V_CrcV2_Avatars"" a
+                LEFT JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
+                JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
+                CROSS JOIN q
+                WHERE (
+                        setweight(to_tsvector('simple', coalesce(f.payload ->> 'name', '')), 'A') ||
+                        setweight(to_tsvector('simple', coalesce(f.payload ->> 'description', '')), 'B') ||
+                        setweight(to_tsvector('simple', a.avatar), 'C')
+                      ) @@ q.query
+                  {typeFilterClause}
+            ),
+            wo_profile AS (
+                SELECT  a.avatar, a.""timestamp"", a.name AS avatar_name, rs.""shortName"" AS short_name,
+                        a.type AS avatar_type, NULL::text AS cid, NULL::bytea AS metadata_digest, NULL::jsonb AS payload,
+                        ts_rank_cd(
+                          ARRAY[1.0, 0.4, 0.2, 0.05],
+                          (
+                            setweight(to_tsvector('simple', a.name), 'A') ||
+                            setweight(to_tsvector('simple', a.avatar), 'C')
+                          ),
+                          q.query
+                        ) AS rank
+                FROM   ""V_CrcV2_Avatars"" a
+                LEFT JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
+                LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
+                CROSS JOIN q
+                WHERE f.metadata_digest IS NULL
+                  AND (
+                        setweight(to_tsvector('simple', a.name), 'A') ||
+                        setweight(to_tsvector('simple', a.avatar), 'C')
+                      ) @@ q.query
+                  {typeFilterClause}
+            )
+        SELECT  p.avatar, p.avatar_name, p.short_name::text as short_name, p.avatar_type, p.payload, p.cid,
+                COALESCE(r.receive_count, 0) as receive_count, p.rank
+        FROM   (SELECT * FROM w_profile
+                UNION ALL
+                SELECT * FROM wo_profile) p
+        LEFT JOIN recv r USING (avatar)
+        WHERE 1=1 {cursorFilterClause}
+        ORDER BY COALESCE(r.receive_count, 0) DESC, p.rank DESC, p.avatar ASC
+        LIMIT  @limit;";
+
+        await using var conn = await CreateConnectionAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = _settings.ProfileSearchTimeoutSeconds;
+        cmd.Parameters.AddWithValue("search", qText);
+        cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra for hasMore check
+        if (hasTypeFilter)
+        {
+            cmd.Parameters.AddWithValue("types", typeFilter!);
+        }
+        if (cursorRank.HasValue && cursorAvatar != null)
+        {
+            cmd.Parameters.AddWithValue("cursorReceiveCount", 0L); // We'll use rank primarily
+            cmd.Parameters.AddWithValue("cursorRank", cursorRank.Value);
+            cmd.Parameters.AddWithValue("cursorAvatar", cursorAvatar);
+        }
+
+        var results = new List<(ProfileSearchResultItem Item, long ReceiveCount, double Rank)>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var avatar = reader.GetString(0);
+            var avatarName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var shortName = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var avatarType = reader.GetString(3);
+            var payload = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var cid = reader.IsDBNull(5) ? null : reader.GetString(5);
+            var receiveCount = reader.GetInt64(6);
+            var rank = reader.GetDouble(7);
+
+            // Get full avatar info for this result
+            var avatarInfos = await GetAvatarInfoBatchInternal(new[] { avatar });
+            var avatarInfo = avatarInfos[0];
+
+            if (avatarInfo == null)
+            {
+                // Skip if no avatar info available
+                continue;
+            }
+
+            JsonElement? profile = null;
+            if (payload != null)
+            {
+                profile = JsonSerializer.Deserialize<JsonElement>(payload);
+                profile = StripJsonLdFields(profile);
+            }
+
+            results.Add((new ProfileSearchResultItem(
+                Avatar: avatar,
+                AvatarInfo: avatarInfo,
+                Profile: profile
+            ), receiveCount, rank));
+        }
+
+        // Check if there are more results
+        var hasMore = results.Count > limit;
+        if (hasMore)
+        {
+            results.RemoveAt(results.Count - 1);
+        }
+
+        // Generate next cursor from last result
+        string? nextCursor = null;
+        if (hasMore && results.Count > 0)
+        {
+            var last = results[^1];
+            var cursorStr = $"{last.Rank.ToString(System.Globalization.CultureInfo.InvariantCulture)}:{last.Item.Avatar}";
+            nextCursor = Convert.ToBase64String(Encoding.UTF8.GetBytes(cursorStr));
+        }
+
+        return (results.Select(r => r.Item).ToArray(), hasMore, nextCursor);
+    }
+
     #endregion
 
-    public async Task<QueryResponse> Query(SelectDto query)
+    public async Task<PagedQueryResponse> Query(SelectDto query, string? cursor = null)
     {
         if (string.IsNullOrEmpty(query.Table) || string.IsNullOrEmpty(query.Namespace))
         {
@@ -3930,13 +4316,41 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Validate and safely construct table name
         var validatedNamespace = ValidateIdentifier(query.Namespace, "Namespace");
         var validatedTable = ValidateIdentifier(query.Table, "Table");
-        var tableName = $"\"{validatedNamespace}_{validatedTable}\"";
+        var fullTableName = $"{validatedNamespace}_{validatedTable}";
+        var tableName = $"\"{fullTableName}\"";
 
-        // Validate and quote columns
+        // Check if the table has event columns for cursor-based pagination
+        var tableColumns = DatabaseSchemaMap.GetTableColumns(fullTableName);
+        var hasEventColumns = tableColumns != null &&
+            tableColumns.ContainsKey("blockNumber") &&
+            tableColumns.ContainsKey("transactionIndex") &&
+            tableColumns.ContainsKey("logIndex");
+
+        // Decode cursor if provided and table supports cursor-based pagination
+        var (cursorBlockNumber, cursorTransactionIndex, cursorLogIndex) = hasEventColumns
+            ? CursorUtils.DecodeCursor(cursor)
+            : (null, null, null);
+
+        // Validate and quote columns - always include event columns for cursor if table supports it
         var columns = "*";
-        if (query.Columns != null && query.Columns.Any())
+        var requestedColumns = query.Columns?.ToList() ?? new List<string>();
+
+        // Ensure event columns are included if we need them for pagination
+        if (hasEventColumns && requestedColumns.Any() && !requestedColumns.Contains("*"))
         {
-            var validatedColumns = query.Columns.Select(c => ValidateIdentifier(c, "Column")).ToArray();
+            var eventColumns = new[] { "blockNumber", "transactionIndex", "logIndex" };
+            foreach (var eventCol in eventColumns)
+            {
+                if (!requestedColumns.Contains(eventCol))
+                {
+                    requestedColumns.Add(eventCol);
+                }
+            }
+        }
+
+        if (requestedColumns.Any())
+        {
+            var validatedColumns = requestedColumns.Select(c => ValidateIdentifier(c, "Column")).ToArray();
             var quotedColumns = validatedColumns.Select(c => $"\"{c}\"").ToArray();
             columns = string.Join(", ", quotedColumns);
         }
@@ -3953,6 +4367,24 @@ public class CirclesRpcModule : ICirclesRpcModule
                     whereClauses.Add(clause);
                 }
             }
+        }
+
+        // Determine sort order from query.Order for cursor comparison
+        var sortAscending = true; // Default ASC
+        if (query.Order != null && query.Order.Any())
+        {
+            var firstOrder = query.Order.First();
+            sortAscending = firstOrder.SortOrder?.ToUpper() != "DESC";
+        }
+        var cursorComparison = sortAscending ? ">" : "<";
+
+        // Add cursor-based pagination filter if table supports it and cursor is provided
+        if (hasEventColumns && cursorBlockNumber.HasValue)
+        {
+            parameters.Add(new NpgsqlParameter("cursorBlockNumber", cursorBlockNumber.Value));
+            parameters.Add(new NpgsqlParameter("cursorTransactionIndex", cursorTransactionIndex!.Value));
+            parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex!.Value));
+            whereClauses.Add($"(\"blockNumber\", \"transactionIndex\", \"logIndex\") {cursorComparison} (@cursorBlockNumber, @cursorTransactionIndex, @cursorLogIndex)");
         }
 
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
@@ -3974,29 +4406,21 @@ public class CirclesRpcModule : ICirclesRpcModule
             });
             orderBySql = "ORDER BY " + string.Join(", ", orderByClauses);
         }
-
-        // Validate LIMIT and OFFSET parameters
-        const int maxLimit = 10000; // Reasonable safety limit
-        var limitSql = "";
-        if (query.Limit.HasValue)
+        else if (hasEventColumns)
         {
-            if (query.Limit.Value <= 0)
-            {
-                throw new ArgumentException("Limit must be greater than 0.");
-            }
-            if (query.Limit.Value > maxLimit)
-            {
-                throw new ArgumentException($"Limit cannot exceed {maxLimit}.");
-            }
-            limitSql = $"LIMIT {query.Limit.Value}";
+            // Default ordering by event columns if table supports them and no order specified
+            orderBySql = "ORDER BY \"blockNumber\" ASC, \"transactionIndex\" ASC, \"logIndex\" ASC";
         }
 
-        // Note: OFFSET would also need validation if used
-        // const int maxOffset = 1000000;
-        // if (query.Offset.HasValue && query.Offset.Value < 0)
-        // {
-        //     throw new ArgumentException("Offset cannot be negative.");
-        // }
+        // Validate LIMIT parameters
+        const int defaultLimit = 100;
+        const int maxLimit = 10000; // Reasonable safety limit
+        var effectiveLimit = query.Limit.HasValue
+            ? Math.Min(Math.Max(query.Limit.Value, 1), maxLimit)
+            : defaultLimit;
+
+        // Fetch one extra row to determine if there are more results
+        var limitSql = $"LIMIT {effectiveLimit + 1}";
 
         var finalSql = $"SELECT {columns} FROM {tableName} {whereSql} {orderBySql} {limitSql}";
 
@@ -4014,6 +4438,15 @@ public class CirclesRpcModule : ICirclesRpcModule
             columnNames.Add(reader.GetName(i));
         }
 
+        // Find column indices for cursor generation
+        var blockNumberIdx = columnNames.IndexOf("blockNumber");
+        var transactionIndexIdx = columnNames.IndexOf("transactionIndex");
+        var logIndexIdx = columnNames.IndexOf("logIndex");
+
+        long lastBlockNumber = 0;
+        int lastTransactionIndex = 0;
+        int lastLogIndex = 0;
+
         while (await reader.ReadAsync())
         {
             var row = new object?[columnNames.Count];
@@ -4022,9 +4455,53 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var value = reader.GetValue(i);
                 row[i] = value is DBNull ? null : value;
             }
+
+            // Track cursor values if available
+            if (hasEventColumns && blockNumberIdx >= 0)
+            {
+                if (row[blockNumberIdx] is long bn) lastBlockNumber = bn;
+                else if (row[blockNumberIdx] != null) long.TryParse(row[blockNumberIdx]?.ToString(), out lastBlockNumber);
+
+                if (row[transactionIndexIdx] is int ti) lastTransactionIndex = ti;
+                else if (row[transactionIndexIdx] is long tiLong) lastTransactionIndex = (int)tiLong;
+                else if (row[transactionIndexIdx] != null) int.TryParse(row[transactionIndexIdx]?.ToString(), out lastTransactionIndex);
+
+                if (row[logIndexIdx] is int li) lastLogIndex = li;
+                else if (row[logIndexIdx] is long liLong) lastLogIndex = (int)liLong;
+                else if (row[logIndexIdx] != null) int.TryParse(row[logIndexIdx]?.ToString(), out lastLogIndex);
+            }
+
             results.Add(row);
         }
 
-        return new QueryResponse(Columns: columnNames, Rows: results);
+        // Determine if there are more results
+        var hasMore = results.Count > effectiveLimit;
+        string? nextCursor = null;
+
+        if (hasMore)
+        {
+            // Remove the extra row we fetched
+            results.RemoveAt(results.Count - 1);
+
+            // Get cursor from the last row we're actually returning
+            if (hasEventColumns && results.Count > 0 && blockNumberIdx >= 0)
+            {
+                var lastRow = results[^1];
+                if (lastRow[blockNumberIdx] is long bn) lastBlockNumber = bn;
+                else if (lastRow[blockNumberIdx] != null) long.TryParse(lastRow[blockNumberIdx]?.ToString(), out lastBlockNumber);
+
+                if (lastRow[transactionIndexIdx] is int ti) lastTransactionIndex = ti;
+                else if (lastRow[transactionIndexIdx] is long tiLong) lastTransactionIndex = (int)tiLong;
+                else if (lastRow[transactionIndexIdx] != null) int.TryParse(lastRow[transactionIndexIdx]?.ToString(), out lastTransactionIndex);
+
+                if (lastRow[logIndexIdx] is int li) lastLogIndex = li;
+                else if (lastRow[logIndexIdx] is long liLong) lastLogIndex = (int)liLong;
+                else if (lastRow[logIndexIdx] != null) int.TryParse(lastRow[logIndexIdx]?.ToString(), out lastLogIndex);
+
+                nextCursor = CursorUtils.EncodeCursor(lastBlockNumber, lastTransactionIndex, lastLogIndex);
+            }
+        }
+
+        return new PagedQueryResponse(Columns: columnNames, Rows: results, HasMore: hasMore, NextCursor: nextCursor);
     }
 }
