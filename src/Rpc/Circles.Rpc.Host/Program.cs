@@ -1,5 +1,6 @@
 using Circles.Rpc.Host;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.WebSockets;
 using System.Text;
@@ -55,10 +56,14 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     }
 });
 
-app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService subscriptionService) =>
+app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService subscriptionService, ILogger<Program> logger) =>
 {
+    var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    logger.LogInformation("Incoming WebSocket subscription request from {RemoteIp}", remoteIp);
+
     if (!context.WebSockets.IsWebSocketRequest)
     {
+        logger.LogWarning("Rejected non-WebSocket subscription request from {RemoteIp}", remoteIp);
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         await context.Response.WriteAsync("WebSocket request expected.");
         return;
@@ -69,6 +74,7 @@ app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService 
 
     if (request == null)
     {
+        logger.LogWarning("Subscription payload missing or invalid from {RemoteIp}", remoteIp);
         await SendSubscriptionErrorAsync(webSocket, null, "Invalid subscription payload", context.RequestAborted);
         await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Invalid subscription payload", context.RequestAborted);
         return;
@@ -77,12 +83,19 @@ app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService 
     if (!string.Equals(request.Jsonrpc, "2.0", StringComparison.OrdinalIgnoreCase) ||
         !string.Equals(request.Method, "circles_subscribe", StringComparison.OrdinalIgnoreCase))
     {
+        logger.LogWarning("Unsupported subscription method '{Method}' from {RemoteIp}", request.Method, remoteIp);
         await SendSubscriptionErrorAsync(webSocket, request.Id, "Unsupported method", context.RequestAborted);
         await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Unsupported method", context.RequestAborted);
         return;
     }
 
     var subscriptionId = subscriptionService.Subscribe(webSocket, request.Params?.Address);
+    logger.LogInformation(
+        "Subscription {SubscriptionId} established from {RemoteIp} (address filter: {Address})",
+        subscriptionId,
+        remoteIp,
+        request.Params?.Address ?? "*"
+    );
 
     try
     {
@@ -92,12 +105,14 @@ app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService 
     finally
     {
         subscriptionService.Unsubscribe(subscriptionId);
+        logger.LogInformation("Subscription {SubscriptionId} closed for {RemoteIp}", subscriptionId, remoteIp);
     }
 }).DisableAntiforgery();
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 app.MapPost("/", async (
+    HttpContext context,
     JsonRpcRequest request,
     Settings settings,
     ILogger<Program> logger,
@@ -112,6 +127,15 @@ app.MapPost("/", async (
             Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
         });
     }
+
+    var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var methodName = request.Method ?? "<unknown>";
+    var startTimestamp = Stopwatch.GetTimestamp();
+    logger.LogInformation(
+        "RPC request {Method} (id={Id}) received from {RemoteIp}",
+        methodName,
+        request.Id,
+        remoteIp);
 
     try
     {
@@ -160,6 +184,14 @@ app.MapPost("/", async (
             _ => throw new RpcMethodNotFoundException(request.Method)
         };
 
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        logger.LogInformation(
+            "RPC request {Method} (id={Id}) succeeded in {ElapsedMs} ms (remote {RemoteIp})",
+            methodName,
+            request.Id,
+            elapsed.TotalMilliseconds,
+            remoteIp);
+
         return Results.Ok(new JsonRpcResponse
         {
             Id = request.Id,
@@ -168,7 +200,12 @@ app.MapPost("/", async (
     }
     catch (RpcMethodNotFoundException ex)
     {
-        logger.LogWarning("RPC Method not found: {Method}", ex.MethodName);
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        logger.LogWarning(ex,
+            "RPC method not found: {Method} from {RemoteIp} after {ElapsedMs} ms",
+            ex.MethodName,
+            remoteIp,
+            elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
             Id = request.Id,
@@ -177,7 +214,12 @@ app.MapPost("/", async (
     }
     catch (ArgumentException ex)
     {
-        logger.LogWarning(ex, "Invalid params for method: {Method}", request.Method);
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        logger.LogWarning(ex,
+            "Invalid params for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
+            methodName,
+            remoteIp,
+            elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
             Id = request.Id,
@@ -186,7 +228,12 @@ app.MapPost("/", async (
     }
     catch (JsonException ex)
     {
-        logger.LogWarning(ex, "Invalid JSON params for method: {Method}", request.Method);
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        logger.LogWarning(ex,
+            "Invalid JSON params for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
+            methodName,
+            remoteIp,
+            elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
             Id = request.Id,
@@ -195,7 +242,12 @@ app.MapPost("/", async (
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Internal Server Error during RPC execution for method: {Method}", request.Method);
+        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        logger.LogError(ex,
+            "Internal Server Error during RPC execution for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
+            methodName,
+            remoteIp,
+            elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
             Id = request.Id,

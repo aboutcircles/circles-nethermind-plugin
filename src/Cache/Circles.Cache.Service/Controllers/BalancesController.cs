@@ -24,6 +24,8 @@ public class BalancesController : ControllerBase
         _logger = logger;
     }
 
+    private string GetRemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     /// <summary>
     /// Validates that the address is a valid Ethereum address format
     /// </summary>
@@ -71,6 +73,8 @@ public class BalancesController : ControllerBase
         {
             return BadRequest(new { error = "Invalid Ethereum address format. Expected: 0x followed by 40 hex characters" });
         }
+
+        _logger.LogInformation("Token balance lookup requested for {Address} from {RemoteIp}", address, GetRemoteIp());
 
         try
         {
@@ -207,6 +211,8 @@ public class BalancesController : ControllerBase
             return BadRequest(new { error = "Invalid Ethereum address format. Expected: 0x followed by 40 hex characters" });
         }
 
+        _logger.LogInformation("Total V1 balance lookup requested for {Address} from {RemoteIp}", address, GetRemoteIp());
+
         try
         {
             var addressLower = address.ToLowerInvariant();
@@ -249,6 +255,8 @@ public class BalancesController : ControllerBase
             return BadRequest(new { error = "Invalid Ethereum address format. Expected: 0x followed by 40 hex characters" });
         }
 
+        _logger.LogInformation("Total V2 balance lookup requested for {Address} from {RemoteIp}", address, GetRemoteIp());
+
         try
         {
             var addressLower = address.ToLowerInvariant();
@@ -290,6 +298,8 @@ public class BalancesController : ControllerBase
         {
             return BadRequest(new { error = "Invalid Ethereum address format. Expected: 0x followed by 40 hex characters" });
         }
+
+        _logger.LogInformation("Aggregate balance lookup requested for {Address} from {RemoteIp}", address, GetRemoteIp());
 
         try
         {
