@@ -133,14 +133,27 @@ public class BalancesController : ControllerBase
 
                     if (isHexAddress)
                     {
-                        // ERC20 wrapper token - check Erc20WrapperAddresses cache
+                        // ERC20 wrapper token - find the avatar that owns this wrapper
                         isErc20 = true;
                         isWrapped = true;
-                        // Check if it's inflationary or demurraged by looking up the avatar
-                        // For now, assume inflationary (most common case)
                         tokenType = "CrcV2_ERC20WrapperDeployed_Inflationary";
                         isInflationary = true;
-                        tokenOwner = tokenId; // wrapper address is the token itself
+
+                        // Reverse lookup: find avatar address from wrapper address
+                        // Erc20WrapperAddresses stores avatar -> wrapper, so we need to search
+                        var wrapperLower = tokenId.ToLowerInvariant();
+                        var wrapperDict = _caches.Erc20WrapperAddresses.ReadOnlyDictionary;
+                        foreach (var kvp in wrapperDict)
+                        {
+                            if (kvp.Value.Equals(wrapperLower, StringComparison.OrdinalIgnoreCase))
+                            {
+                                tokenOwner = kvp.Key;
+                                break;
+                            }
+                        }
+
+                        // Fallback: if not found in cache, use the wrapper address itself
+                        tokenOwner ??= tokenId.ToLowerInvariant();
                     }
                     else
                     {

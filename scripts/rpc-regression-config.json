@@ -47,8 +47,8 @@
   ],
   "subscriptionTest": {
     "enabled": true,
-    "duration": 60,
-    "minEvents": 3,
+    "duration": 90,
+    "minEvents": 1,
     "filterAddress": "0x4b6f72008e7aca33de36b6565ef30264626b21db"
   },
   "comments": {

@@ -1802,11 +1802,8 @@ public class CirclesRpcModule : ICirclesRpcModule
         {
             var truster = reader.GetString(0);
             var trustee = reader.GetString(1);
-            // Handle potentially large numeric values - use BigInteger and cap at long.MaxValue
-            var expiryTimeBig = reader.GetFieldValue<System.Numerics.BigInteger>(2);
-            var expiryTime = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
-            var timestampBig = reader.GetFieldValue<System.Numerics.BigInteger>(3);
-            var timestamp = timestampBig > long.MaxValue ? long.MaxValue : (long)timestampBig;
+            var expiryTime = reader.GetInt64(2);
+            var timestamp = reader.GetInt64(3);
             var avatarType = reader.IsDBNull(4) ? null : reader.GetString(4);
 
             // Determine counterpart (not the avatar itself)
