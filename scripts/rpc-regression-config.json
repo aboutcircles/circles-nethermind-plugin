@@ -1,5 +1,5 @@
 {
-  "description": "Configuration for RPC regression testing V2",
+  "description": "Configuration for RPC regression testing",
   "defaultTolerance": 0.001,
   "methodTolerances": {
     "circles_getTotalBalance": 5.0,

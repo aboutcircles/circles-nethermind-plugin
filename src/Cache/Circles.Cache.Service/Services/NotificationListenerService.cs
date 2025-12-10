@@ -526,9 +526,10 @@ public class NotificationListenerService : BackgroundService
                     var erc20Wrapper = wrapperReader.GetString(2);
                     var circlesType = wrapperReader.GetInt32(3);
 
-                    var avatarKey = avatar.ToLowerInvariant();
+                    // Key by wrapper address (not avatar) to support avatars with multiple wrappers
+                    var wrapperKey = erc20Wrapper.ToLowerInvariant();
 
-                    _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, (erc20Wrapper, circlesType));
+                    _caches.Erc20WrapperAddresses.Add(blockNumber, wrapperKey, (avatar.ToLowerInvariant(), circlesType));
                     count++;
                 }
             }
