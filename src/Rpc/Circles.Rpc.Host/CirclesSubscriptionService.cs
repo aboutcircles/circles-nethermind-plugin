@@ -1,13 +1,6 @@
-using System;
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Net.WebSockets;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace Circles.Rpc.Host;
