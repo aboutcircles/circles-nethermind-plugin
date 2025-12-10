@@ -1777,6 +1777,10 @@ public class CirclesRpcModule : ICirclesRpcModule
         _logger?.LogDebug("Using database for trust relations query for {Address}", address);
 
         await using var connection = await CreateConnectionAsync();
+        // NOTE: This query intentionally includes limit=0 entries (untrusts) to match production behavior.
+        // Semantically, limit=0 means "untrusted" and arguably shouldn't be returned as a trust relation.
+        // Both this fallback and the cache warmup (CacheWarmupService.LoadTrustRelationsAsync) now include
+        // limit=0 entries for production parity. TODO: Consider filtering limit=0 in both places in future.
         const string sql = @"
             select ""user"",
                    ""canSendTo"",
@@ -3204,22 +3208,15 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var dict = new Dictionary<string, JsonElement>();
 
-        // Only keep fields that production returns: name and previewImageUrl
-        var allowedFields = new HashSet<string> { "name", "previewImageUrl" };
-
         foreach (var prop in profile.Value.EnumerateObject())
         {
-            // Skip JSON-LD semantic fields AND extra metadata fields
+            // Skip JSON-LD semantic fields only
             if (prop.Name == "@type" || prop.Name == "@context")
             {
                 continue;
             }
 
-            // Only include allowed fields (name, previewImageUrl)
-            if (allowedFields.Contains(prop.Name))
-            {
-                dict[prop.Name] = prop.Value;
-            }
+            dict[prop.Name] = prop.Value;
         }
 
         return JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(dict));
