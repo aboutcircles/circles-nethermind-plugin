@@ -527,6 +527,29 @@ if [[ -f "$EVENTS_FILE" && -s "$EVENTS_FILE" ]]; then
     ALL_EVENTS=$(jq -s '.' "$EVENTS_FILE")
 fi
 
+# Validate triggered transaction event if applicable
+# When using --filter with CIRCLES_SEED_PHRASE, we trigger a 1 atto transfer and should receive it
+TRIGGERED_TX_VALIDATED=false
+TRIGGERED_TX_EXPECTED=false
+if [[ -n "$FILTER_ADDRESS" && -n "$CIRCLES_SEED_PHRASE" && "$FINAL_EVENT_COUNT" -gt 0 ]]; then
+    TRIGGERED_TX_EXPECTED=true
+    # Look for CrcV2_TransferSingle with value="1" involving the filter address
+    # The event should have the filter address as from, to, or tokenAddress
+    MATCHING_EVENT=$(echo "$ALL_EVENTS" | jq -r --arg addr "${FILTER_ADDRESS,,}" '
+        .[] | select(
+            (."$type" == "CrcV2_TransferSingle") and
+            (.value == "1" or .value == 1) and
+            ((.from | ascii_downcase) == $addr or (.to | ascii_downcase) == $addr)
+        ) | .transactionHash' 2>/dev/null | head -n 1)
+
+    if [[ -n "$MATCHING_EVENT" && "$MATCHING_EVENT" != "null" ]]; then
+        TRIGGERED_TX_VALIDATED=true
+        log_message "✓ Validated triggered transaction (value=1 atto) in received events" "success"
+    else
+        log_message "⚠ Triggered transaction (value=1 atto) NOT found in received events" "warning"
+    fi
+fi
+
 # Build final report
 if [[ "$OUTPUT_MODE" == "json" ]]; then
     REPORT=$(jq -n \
@@ -542,6 +565,8 @@ if [[ "$OUTPUT_MODE" == "json" ]]; then
         --argjson events "$ALL_EVENTS" \
         --arg ttf "$TIME_TO_FIRST" \
         --argjson error_count "$ERRORS" \
+        --argjson tx_expected "$TRIGGERED_TX_EXPECTED" \
+        --argjson tx_validated "$TRIGGERED_TX_VALIDATED" \
         '{
             websocket_url: $url,
             max_duration_seconds: $duration,
@@ -553,6 +578,8 @@ if [[ "$OUTPUT_MODE" == "json" ]]; then
             last_event_time: ($last_time | if . == "null" then null else . end),
             total_events_received: $event_count,
             time_to_first_event_seconds: ($ttf | if . == "" then null else (. | tonumber) end),
+            triggered_tx_expected: $tx_expected,
+            triggered_tx_validated: $tx_validated,
             events: $events,
             error_count: $error_count,
             success: ($sub_id != "null" and $error_count == 0)
@@ -595,6 +622,16 @@ else
         jq -r '.[]["$type"] // "Unknown"' "$EVENTS_FILE" 2>/dev/null | sort | uniq -c | sort -rn | while read -r count type; do
             echo "  - $type: $count"
         done
+    fi
+
+    # Show transaction validation status if applicable
+    if [[ "$TRIGGERED_TX_EXPECTED" == "true" ]]; then
+        echo ""
+        if [[ "$TRIGGERED_TX_VALIDATED" == "true" ]]; then
+            echo -e "${GREEN}Triggered Tx Validation: ✓ Found 1-atto transfer in events${NC}"
+        else
+            echo -e "${YELLOW}Triggered Tx Validation: ⚠ 1-atto transfer NOT found in events${NC}"
+        fi
     fi
 
     echo "=============================================================="

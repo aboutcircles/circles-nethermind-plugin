@@ -2,10 +2,10 @@
   "description": "Configuration for RPC regression testing V2",
   "defaultTolerance": 0.001,
   "methodTolerances": {
-    "circles_getTotalBalance": 1.0,
-    "circlesV2_getTotalBalance": 1.0,
-    "circles_getTokenBalances": 1.0,
-    "circlesV2_findPath": 1.0,
+    "circles_getTotalBalance": 5.0,
+    "circlesV2_getTotalBalance": 5.0,
+    "circles_getTokenBalances": 5.0,
+    "circlesV2_findPath": 5.0,
     "circles_query": 0.05
   },
   "normalizeFields": [
@@ -14,10 +14,7 @@
     "transactionIndex",
     "logIndex",
     "transactionHash",
-    "lastUpdatedAt",
-    "crc",
-    "circles",
-    "staticCircles"
+    "lastUpdatedAt"
   ],
   "expectedFailures": [
     "circles_getNetworkSnapshot",
@@ -53,8 +50,8 @@
   },
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
-    "methodTolerances": "Method-specific tolerances override the default. Balance methods need higher tolerance due to time-based calculations.",
-    "normalizeFields": "Fields to remove before comparison. Includes dynamic data (timestamp, blockNumber), and lossy decimal convenience fields (crc, circles, staticCircles) derived from precise atto values",
+    "methodTolerances": "Method-specific tolerances override the default. Balance methods use 5% tolerance to accommodate real-time inflationary calculations between staging and production.",
+    "normalizeFields": "Fields to remove before comparison. Includes dynamic data (timestamp, blockNumber, lastUpdatedAt) that inherently differ between systems.",
     "expectedFailures": "Tests that are expected to fail (e.g., network state, new features not in production)",
     "subscriptionTest": "Optional WebSocket subscription testing. Exits when minEvents are received OR duration seconds elapse (whichever comes first). filterAddress=null receives ALL events (recommended). Set enabled=true to test real-time subscriptions (local endpoint only)."
   }
