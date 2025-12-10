@@ -136,24 +136,27 @@ public class BalancesController : ControllerBase
                         // ERC20 wrapper token - find the avatar that owns this wrapper
                         isErc20 = true;
                         isWrapped = true;
-                        tokenType = "CrcV2_ERC20WrapperDeployed_Inflationary";
-                        isInflationary = true;
 
-                        // Reverse lookup: find avatar address from wrapper address
-                        // Erc20WrapperAddresses stores avatar -> wrapper, so we need to search
-                        var wrapperLower = tokenId.ToLowerInvariant();
-                        var wrapperDict = _caches.Erc20WrapperAddresses.ReadOnlyDictionary;
-                        foreach (var kvp in wrapperDict)
+                        // O(1) reverse lookup using the pre-built index (includes circlesType)
+                        var wrapperInfo = _caches.GetWrapperInfo(tokenId);
+
+                        if (wrapperInfo.HasValue)
                         {
-                            if (kvp.Value.Equals(wrapperLower, StringComparison.OrdinalIgnoreCase))
-                            {
-                                tokenOwner = kvp.Key;
-                                break;
-                            }
+                            tokenOwner = wrapperInfo.Value.Avatar;
+                            // circlesType: 0 = demurraged, 1 = inflationary
+                            isInflationary = wrapperInfo.Value.CirclesType == 1;
+                            tokenType = isInflationary
+                                ? "CrcV2_ERC20WrapperDeployed_Inflationary"
+                                : "CrcV2_ERC20WrapperDeployed_Demurraged";
                         }
-
-                        // Fallback: if not found in cache, use the wrapper address itself
-                        tokenOwner ??= tokenId.ToLowerInvariant();
+                        else
+                        {
+                            // Fallback: if not found in cache, use the wrapper address itself
+                            // and default to demurraged (safer assumption for balance calculations)
+                            tokenOwner = tokenId.ToLowerInvariant();
+                            isInflationary = false;
+                            tokenType = "CrcV2_ERC20WrapperDeployed_Demurraged";
+                        }
                     }
                     else
                     {

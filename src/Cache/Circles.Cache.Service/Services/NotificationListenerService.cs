@@ -506,7 +506,7 @@ public class NotificationListenerService : BackgroundService
     private async Task ProcessV2Erc20WrapperDeployedAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
         const string wrapperSql = @"
-            SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper""
+            SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper"", e.""circlesType""
             FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" >= @fromBlock AND e.""blockNumber"" <= @toBlock
             ORDER BY e.""blockNumber"", e.""transactionIndex"", e.""logIndex""";
@@ -524,10 +524,11 @@ public class NotificationListenerService : BackgroundService
                     var blockNumber = wrapperReader.GetInt64(0);
                     var avatar = wrapperReader.GetString(1);
                     var erc20Wrapper = wrapperReader.GetString(2);
+                    var circlesType = wrapperReader.GetInt32(3);
 
                     var avatarKey = avatar.ToLowerInvariant();
 
-                    _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, erc20Wrapper);
+                    _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, (erc20Wrapper, circlesType));
                     count++;
                 }
             }

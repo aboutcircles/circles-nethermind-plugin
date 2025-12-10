@@ -451,11 +451,12 @@ public class CacheWarmupService : BackgroundService
         const string sql = @"
             SELECT
                 e.""avatar"",
-                e.""erc20Wrapper""
+                e.""erc20Wrapper"",
+                e.""circlesType""
             FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" <= @toBlock";
 
-        var wrappers = new Dictionary<string, string>();
+        var wrappers = new Dictionary<string, (string WrapperAddress, int CirclesType)>();
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -466,9 +467,10 @@ public class CacheWarmupService : BackgroundService
         {
             var avatar = reader.GetString(0);
             var erc20Wrapper = reader.GetString(1);
+            var circlesType = reader.GetInt32(2);
 
             var avatarKey = avatar.ToLowerInvariant();
-            wrappers[avatarKey] = erc20Wrapper;
+            wrappers[avatarKey] = (erc20Wrapper, circlesType);
         }
 
         _caches.Erc20WrapperAddresses.Seed(wrappers, _state.WarmupTargetBlock);
@@ -1539,7 +1541,7 @@ public class CacheWarmupService : BackgroundService
 
         // Process V2 ERC20WrapperDeployed
         const string wrapperSql = @"
-            SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper""
+            SELECT e.""blockNumber"", e.""avatar"", e.""erc20Wrapper"", e.""circlesType""
             FROM ""CrcV2_ERC20WrapperDeployed"" e
             WHERE e.""blockNumber"" >= @fromBlock AND e.""blockNumber"" <= @toBlock
             ORDER BY e.""blockNumber"", e.""transactionIndex"", e.""logIndex""";
@@ -1555,10 +1557,11 @@ public class CacheWarmupService : BackgroundService
                 var blockNumber = wrapperReader.GetInt64(0);
                 var avatar = wrapperReader.GetString(1);
                 var erc20Wrapper = wrapperReader.GetString(2);
+                var circlesType = wrapperReader.GetInt32(3);
 
                 var avatarKey = avatar.ToLowerInvariant();
 
-                _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, erc20Wrapper);
+                _caches.Erc20WrapperAddresses.Add(blockNumber, avatarKey, (erc20Wrapper, circlesType));
             }
         }
     }
@@ -1572,14 +1575,13 @@ public class CacheWarmupService : BackgroundService
         _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
         _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
         _caches.V2Avatars.Seed(new Dictionary<string, (string, long)>());
-        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, string>());
+        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>());
         _caches.Groups.Seed(new Dictionary<string, (string, string, string)>());
         _caches.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
         _caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>());
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
         _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
         _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
-        _caches.LastTokenMovement.Seed(new Dictionary<string, long>());
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
     }
