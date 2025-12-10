@@ -53,6 +53,7 @@ The examples in this file are general Circles RPC methods that can be used to qu
 #### Example
 
 ```js
+
 ```
 
 ### circles_events
@@ -85,36 +86,36 @@ curl -X POST --data '{
 
 The response generally contains the following fields:
 
-* `event` - The name of the event.
-    * `CrcV1_...`
-        * `HubTransfer`
-        * `OrganizationSignup`
-        * `Signup`
-        * `Transfer`
-        * `Trust`
-    * `CrcV2_...`
-        * `ApprovalForAll`
-        * `PersonalMint`
-        * `RegisterGroup`
-        * `RegisterHuman`
-        * `RegisterOrganization`
-        * `RegisterShortName`
-        * `Stopped`
-        * `TransferBatch`
-        * `TransferSingle`
-        * `Trust`
-        * `UpdateMetadataDigest`
-        * `URI`
-        * `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
-* `values` - The values of the event.
+- `event` - The name of the event.
+  - `CrcV1_...`
+    - `HubTransfer`
+    - `OrganizationSignup`
+    - `Signup`
+    - `Transfer`
+    - `Trust`
+  - `CrcV2_...`
+    - `ApprovalForAll`
+    - `PersonalMint`
+    - `RegisterGroup`
+    - `RegisterHuman`
+    - `RegisterOrganization`
+    - `RegisterShortName`
+    - `Stopped`
+    - `TransferBatch`
+    - `TransferSingle`
+    - `Trust`
+    - `UpdateMetadataDigest`
+    - `URI`
+    - `CidV0` (predecessor of `URI` and `UpdateMetadataDigest`)
+- `values` - The values of the event.
 
 The values contain at least the following fields:
 
-* `blockNumber` - The block number the event was emitted in.
-* `timestamp` - The unix timestamp of the event.
-* `transactionIndex` - The index of the transaction in the block.
-* `logIndex` - The index of the log in the transaction.
-* `transactionHash` - The hash of the transaction.
+- `blockNumber` - The block number the event was emitted in.
+- `timestamp` - The unix timestamp of the event.
+- `transactionIndex` - The index of the transaction in the block.
+- `logIndex` - The index of the log in the transaction.
+- `transactionHash` - The hash of the transaction.
 
 ### circles_query
 
@@ -196,9 +197,9 @@ This query returns v1 as well as v2 Circles users. The version of the user can b
 
 The following columns are only valid for v2 users:
 
-* `invitedBy` - The address of the user who invited the user.
-* `name` - The name of the group or organization.
-* `cidV0Digest` - The token metadata CID of the avatar.
+- `invitedBy` - The address of the user who invited the user.
+- `name` - The name of the group or organization.
+- `cidV0Digest` - The token metadata CID of the avatar.
 
 ```shell
 curl -X POST --data '{
@@ -306,11 +307,11 @@ This query returns the trust relations between avatars.
 
 The following columns are only valid for v1 trust relations:
 
-* `limit` - The trust limit (0 is no trust, 100 full trust).
+- `limit` - The trust limit (0 is no trust, 100 full trust).
 
 The following columns are only valid for v2 trust relations:
 
-* `expiryTime` - The expiry time of the trust relation.
+- `expiryTime` - The expiry time of the trust relation.
 
 ```shell
 curl -X POST --data '{
@@ -411,7 +412,9 @@ curl -X POST --data '{
 ```
 
 ### circles_events
-Queries all events that involve a specific address between two block numbers. 
+
+Queries all events that involve a specific address between two block numbers.
+
 ```shell
 curl -X POST --data '{
   "jsonrpc": "2.0",
@@ -512,6 +515,7 @@ curl -X POST --data '{
 #### Response (Phase 1):
 
 **V2 Avatar with V1 Compatibility:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -534,6 +538,7 @@ curl -X POST --data '{
 ```
 
 **V1-Only Avatar:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -712,10 +717,12 @@ curl -X POST --data '{
 - **V2 inflationary tokens**: No inflation adjustment applied (actual balance may differ)
 
 **In Phase 1**:
+
 - `attoCircles` = `staticAttoCircles` = `attoCrc` (no conversion)
 - All decimal values are based on the same underlying raw database sum
 
 **In Phase 3** (with blockchain connector):
+
 - These values will differ based on current timestamp and token type
 - Accurate inflation/demurrage calculations will be applied
 - Real-time balance queries via `eth_call` will be available
