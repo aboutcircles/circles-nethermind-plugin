@@ -311,17 +311,66 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.gnosis.yml up -d
 ```
 
-#### Indexing Configuration
+#### Indexing Configuration and Reindexing
 
-The Circles.Index plugin supports re-indexing from specific blocks or re-indexing specific tables. This is useful for fixing indexing issues or adding new event types.
+The Circles.Index plugin supports reindexing through the `TABLE_START_BLOCKS` environment variable.
 
-**Environment Variables:**
+**Environment Variable:**
 
-- `REINDEX_FROM_BLOCK`: If set to a block number > 0, delete all indexed data from this block number onwards and re-sync from there. Set to 0 or unset to disable re-indexing.
-- `REINDEX_TABLES`: Comma-separated list of table names to re-index (delete and re-sync). If set to "all" or not specified when `REINDEX_FROM_BLOCK` is set, all tables will be re-indexed. Example: `"CrcV2_InvitationsAtScale_RegisterHuman,CrcV2_InvitationsAtScale_AccountClaimed"`
-- `TABLE_START_BLOCKS`: Per-table start blocks for catching up specific event tables. Format: `"TableName1:StartBlock1,TableName2:StartBlock2"`. This allows syncing newly added LogParsers from their deployment block while keeping other tables up-to-date. Example: `"CrcV2_InvitationsAtScale_RegisterHuman:37500000,CrcV2_InvitationsAtScale_AccountClaimed:37500000"`
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `TABLE_START_BLOCKS` | Per-table start blocks for targeted reindexing, or `*:block` for all tables | `CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000` |
 
-These variables can be set in your `.env.local` file for local development or in `docker/.env` for Docker Compose deployments.
+##### Use Case 1: Full Reindex from Block
+
+Reindex everything from a specific block (nuclear option):
+```yaml
+environment:
+  - TABLE_START_BLOCKS=*:12000000
+```
+
+##### Use Case 2: Reindex Specific Tables (Including Derived Tables)
+
+Use `TABLE_START_BLOCKS` to reindex specific tables. This will:
+1. Delete data from specified tables from the start block onwards
+2. Delete from `System_Block` to force the indexer to resync those blocks
+3. Regenerate all data (including derived tables like TransferSummary)
+
+```yaml
+environment:
+  # Reindex V1 transfer summaries from block 12M
+  - TABLE_START_BLOCKS=CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000,CrcV1_TransferSummary:12000000
+```
+
+##### Understanding Table Dependencies
+
+Some tables are "derived" from others during `ParseTransaction`. To regenerate derived tables, you must include their source tables:
+
+| Derived Table | Source Tables | Notes |
+|---------------|---------------|-------|
+| `CrcV1_TransferSummary` | `CrcV1_Transfer`, `CrcV1_HubTransfer` | V1 aggregated transfer summaries |
+| `CrcV2_TransferSummary` | `CrcV2_TransferSingle`, `CrcV2_TransferBatch`, `CrcV2_Erc20WrapperTransfer` | V2 aggregated transfers |
+
+**Example: Reindex V1 TransferSummary**
+```yaml
+environment:
+  - TABLE_START_BLOCKS=CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000,CrcV1_TransferSummary:12000000
+```
+
+**Example: Reindex V2 TransferSummary**
+```yaml
+environment:
+  - TABLE_START_BLOCKS=CrcV2_TransferSingle:37500000,CrcV2_TransferBatch:37500000,CrcV2_Erc20WrapperTransfer:37500000,CrcV2_TransferSummary:37500000
+```
+
+##### Important Notes
+
+1. **Remove flag after reindex**: This is a one-time operation. Remove the env var after reindexing completes to avoid re-deleting data on next restart.
+2. **Backup first**: Consider backing up your database before large reindex operations.
+3. **Performance**: Reindexing large block ranges can take hours. The indexer logs progress every 1000 blocks or 30 seconds.
+4. **Verify completion**: After reindexing, check with `SELECT MAX("blockNumber") FROM "TableName"` to verify data was populated.
+
+This variable can be set in your `.env.local` file for local development or in `docker/.env` for Docker Compose deployments.
 
 ### Test Projects
 

@@ -31,6 +31,14 @@ public interface IDatabase : IReadonlyDatabase
     void Migrate();
     Task DeleteAllGreaterOrEqualBlock(long reorgAt);
     Task DeleteFromTablesGreaterOrEqualBlock(long reorgAt, IEnumerable<string> tableNames);
+    
+    /// <summary>
+    /// Deletes from System_Block table from the specified block onwards.
+    /// This forces the indexer to resync those blocks.
+    /// Used by TABLE_START_BLOCKS to enable targeted table reindexing.
+    /// </summary>
+    Task DeleteSystemBlockGreaterOrEqualBlock(long fromBlock);
+    
     Task WriteBatch(string @namespace, string table, IEnumerable<object> data, ISchemaPropertyMap propertyMap);
 
     /// <summary>
