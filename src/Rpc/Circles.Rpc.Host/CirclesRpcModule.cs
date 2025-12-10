@@ -2395,7 +2395,12 @@ public class CirclesRpcModule : ICirclesRpcModule
         );
     }
 
-    public async Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null)
+    public async Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(
+        string avatarAddress, 
+        int limit = 50, 
+        string? cursor = null,
+        int? version = null,
+        bool excludeIntermediary = false)
     {
         var normalizedAddress = avatarAddress.ToLower();
         await using var connection = await CreateConnectionAsync();
@@ -2403,37 +2408,77 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Decode cursor if provided
         var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
 
-        // Build query with cursor pagination
-        var sql = @$"
-            SELECT 
-                ""blockNumber"",
-                timestamp,
-                ""transactionIndex"",
-                ""logIndex"",
-                ""batchIndex"",
-                ""transactionHash"",
-                version,
-                operator,
-                ""from"",
-                ""to"",
-                id,
-                value
-            FROM ""V_Crc_Transfers""
-            WHERE version = 2
-              AND (""from"" = @address OR ""to"" = @address)
-              {(cursorBlock.HasValue ? @"AND (
-                ""blockNumber"" < @cursorBlock OR
-                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
-                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex) OR
-                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" = @cursorLogIndex AND ""batchIndex"" < @cursorBatchIndex)
-              )" : "")}
-            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC
-            LIMIT @limit
-        ";
+        string sql;
+        
+        if (excludeIntermediary)
+        {
+            // Use TransferSummary view which contains only real user-to-user transfers
+            // (intermediary hop transfers are filtered out and stored in the 'events' JSON column)
+            sql = @$"
+                SELECT 
+                    ""blockNumber"",
+                    timestamp,
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    0 as ""batchIndex"",
+                    ""transactionHash"",
+                    version,
+                    NULL::text as operator,
+                    ""from"",
+                    ""to"",
+                    NULL::text as id,
+                    value
+                FROM ""V_Crc_TransferSummary""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                  {(version.HasValue ? "AND version = @version" : "")}
+                  {(cursorBlock.HasValue ? @"AND (
+                    ""blockNumber"" < @cursorBlock OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
+                  )" : "")}
+                ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+                LIMIT @limit
+            ";
+        }
+        else
+        {
+            // Use full Transfers view which includes all transfers (including intermediary hops)
+            sql = @$"
+                SELECT 
+                    ""blockNumber"",
+                    timestamp,
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    ""batchIndex"",
+                    ""transactionHash"",
+                    version,
+                    operator,
+                    ""from"",
+                    ""to"",
+                    id,
+                    value
+                FROM ""V_Crc_Transfers""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                  {(version.HasValue ? "AND version = @version" : "")}
+                  {(cursorBlock.HasValue ? @"AND (
+                    ""blockNumber"" < @cursorBlock OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex) OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" = @cursorLogIndex AND ""batchIndex"" < @cursorBatchIndex)
+                  )" : "")}
+                ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC
+                LIMIT @limit
+            ";
+        }
 
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("address", normalizedAddress);
         cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra to check for more
+
+        if (version.HasValue)
+        {
+            cmd.Parameters.AddWithValue("version", version.Value);
+        }
 
         if (cursorBlock.HasValue)
         {
@@ -2454,7 +2499,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             var logIndex = reader.GetInt32(3);
             var batchIndex = reader.GetInt32(4);
             var transactionHash = reader.GetString(5);
-            var version = reader.GetInt32(6);
+            var ver = reader.GetInt32(6);
             var operatorAddr = reader.IsDBNull(7) ? null : reader.GetString(7);
             var from = reader.GetString(8);
             var to = reader.GetString(9);
@@ -2462,28 +2507,43 @@ public class CirclesRpcModule : ICirclesRpcModule
             var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
 
             // Calculate all circle amount formats
-            // value is demurraged attoCircles from the database
+            // For V2: value is demurraged attoCircles from the database
+            // For V1: value is raw attoCrc (inflationary V1 CRC)
 
-            // 1. attoCircles = value (demurraged, unchanged)
-            var attoCirclesDemurraged = valueRaw;
+            BigInteger attoCirclesDemurraged;
+            BigInteger staticAttoCircles;
+            BigInteger attoCrc;
+            
+            if (ver == 1)
+            {
+                // V1: value is raw attoCrc
+                attoCrc = valueRaw;
+                attoCirclesDemurraged = CirclesConverter.AttoCrcToAttoCircles(attoCrc, (ulong)timestamp);
+                staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCirclesDemurraged);
+            }
+            else
+            {
+                // V2: value is demurraged attoCircles
+                attoCirclesDemurraged = valueRaw;
+                
+                // Calculate day from timestamp for conversions
+                var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+                var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000); // INFLATION_DAY_ZERO_UNIX
 
-            // 2. circles = convert demurraged attoCircles to decimal
+                // staticAttoCircles = convert demurraged to inflationary (static)
+                staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
+                
+                // attoCrc = convert demurraged attoCircles to V1 CRC
+                attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
+            }
+
+            // circles = convert demurraged attoCircles to decimal
             var circles = CirclesConverter.AttoCirclesToCircles(attoCirclesDemurraged);
 
-            // 3. Calculate day from timestamp for conversions
-            var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
-            var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000); // INFLATION_DAY_ZERO_UNIX
-
-            // 4. staticAttoCircles = convert demurraged to inflationary (static)
-            var staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
-
-            // 5. staticCircles = convert staticAttoCircles to decimal
+            // staticCircles = convert staticAttoCircles to decimal
             var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
 
-            // 6. attoCrc = convert demurraged attoCircles to V1 CRC
-            var attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
-
-            // 7. crc = convert attoCrc to decimal
+            // crc = convert attoCrc to decimal
             var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
 
             results.Add(new TransactionHistoryRow(
@@ -2492,7 +2552,7 @@ public class CirclesRpcModule : ICirclesRpcModule
                 TransactionIndex: transactionIndex,
                 LogIndex: logIndex,
                 TransactionHash: transactionHash,
-                Version: version,
+                Version: ver,
                 From: from,
                 To: to,
                 Operator: operatorAddr,
