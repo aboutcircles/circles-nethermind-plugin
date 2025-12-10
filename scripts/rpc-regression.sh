@@ -199,6 +199,36 @@ echo -e "${YELLOW}[1/4] Running tests in parallel...${NC}"
 
 mkdir -p "$LOCAL_OUTPUT_DIR" "$REMOTE_OUTPUT_DIR"
 
+# Start subscription test in background (if enabled) - runs in parallel with RPC tests
+SUBSCRIPTION_OUTPUT="$RUN_DIR/subscription_test.json"
+SUBSCRIPTION_PID=""
+SUBSCRIPTION_SUCCESS=true
+
+if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
+    echo -e "${CYAN}  Starting subscription test in background...${NC}"
+
+    # Convert HTTP URL to WebSocket URL
+    LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/ws/subscribe
+
+    # Build arguments
+    FILTER_ARG=""
+    if [[ -n "$SUBSCRIPTION_FILTER" ]]; then
+        FILTER_ARG="--filter $SUBSCRIPTION_FILTER"
+    fi
+
+    # Run subscription test with timeout to prevent hanging
+    TIMEOUT_DURATION=$((SUBSCRIPTION_DURATION + 10))
+
+    (
+        timeout ${TIMEOUT_DURATION}s "$SCRIPT_DIR/test-subscriptions.sh" "$LOCAL_WS_URL" \
+            --duration "$SUBSCRIPTION_DURATION" \
+            --min-events "$SUBSCRIPTION_MIN_EVENTS" \
+            $FILTER_ARG \
+            --json --json-file "$SUBSCRIPTION_OUTPUT" > "$RUN_DIR/subscription.log" 2>&1
+    ) &
+    SUBSCRIPTION_PID=$!
+fi
+
 # Start both test runs simultaneously
 (
     if ! "$SCRIPT_DIR/test-rpc.sh" "$LOCAL_URL" --json --json-dir "$LOCAL_OUTPUT_DIR" > "$LOCAL_LOG" 2>&1; then
@@ -993,31 +1023,11 @@ rm -f "$LOCAL_TIMING_DATA" "$REMOTE_TIMING_DATA"
 echo -e "${GREEN}✓ Timing analysis complete${NC}"
 echo -e "${GREEN}✓ Reports generated${NC}\n"
 
-# Optional: Run subscription test on local endpoint
-SUBSCRIPTION_OUTPUT="$RUN_DIR/subscription_test.json"
-SUBSCRIPTION_SUCCESS=true
+# Wait for subscription test if it was started in parallel
+if [[ "$SUBSCRIPTION_ENABLED" == "true" && -n "$SUBSCRIPTION_PID" ]]; then
+    echo -e "${YELLOW}[BONUS] Waiting for WebSocket subscription test to complete...${NC}"
 
-if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
-    echo -e "${YELLOW}[BONUS] Running WebSocket subscription test on Staging endpoint...${NC}"
-
-    # Convert HTTP URL to WebSocket URL
-    LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/ws/subscribe
-
-    # Build arguments
-    FILTER_ARG=""
-    if [[ -n "$SUBSCRIPTION_FILTER" ]]; then
-        FILTER_ARG="--filter $SUBSCRIPTION_FILTER"
-    fi
-
-    # Run subscription test with timeout to prevent hanging
-    # Add 10 seconds buffer to the configured duration
-    TIMEOUT_DURATION=$((SUBSCRIPTION_DURATION + 10))
-    
-    if timeout ${TIMEOUT_DURATION}s "$SCRIPT_DIR/test-subscriptions.sh" "$LOCAL_WS_URL" \
-        --duration "$SUBSCRIPTION_DURATION" \
-        --min-events "$SUBSCRIPTION_MIN_EVENTS" \
-        $FILTER_ARG \
-        --json --json-file "$SUBSCRIPTION_OUTPUT"; then
+    if wait $SUBSCRIPTION_PID; then
         echo -e "${GREEN}✓ Subscription test passed${NC}"
 
         # Extract summary
@@ -1027,7 +1037,7 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
             ttf=$(jq -r '.time_to_first_event_seconds // "N/A"' "$SUBSCRIPTION_OUTPUT" 2>/dev/null)
             echo -e "${CYAN}  Subscription ID: $sub_id${NC}"
             echo -e "${CYAN}  Events received: $event_count${NC}"
-            if [[ "$ttf" != "N/A" ]]; then
+            if [[ "$ttf" != "N/A" && "$ttf" != "null" ]]; then
                 echo -e "${CYAN}  Time to first:   ${ttf}s${NC}"
             fi
         fi
@@ -1039,6 +1049,11 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
             echo -e "${RED}✗ Subscription test failed${NC}"
         fi
         SUBSCRIPTION_SUCCESS=false
+
+        # Show log for debugging
+        if [[ -f "$RUN_DIR/subscription.log" ]]; then
+            echo -e "${CYAN}  Log: $RUN_DIR/subscription.log${NC}"
+        fi
     fi
     echo ""
 fi
