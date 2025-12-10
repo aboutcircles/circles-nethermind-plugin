@@ -473,8 +473,9 @@ exit(0 if percent < tol else 1)
 # Function to extract all numeric values from JSON
 extract_numbers() {
     local json=$1
-    # Use jq to recursively extract all numeric values (handles large integers correctly)
-    echo "$json" | jq -r '.. | numbers' 2>/dev/null | head -n 100
+    # Extract both JSON numbers AND strings that look like numbers (e.g., "245654007470882788823")
+    # This is needed because large integers like attoCircles are serialized as strings
+    echo "$json" | jq -r '.. | if type == "number" then . elif type == "string" and test("^[0-9]+\\.?[0-9]*([eE][+-]?[0-9]+)?$") then . else empty end' 2>/dev/null | head -n 200
 }
 
 # Function to compare responses with normalization and tolerance
