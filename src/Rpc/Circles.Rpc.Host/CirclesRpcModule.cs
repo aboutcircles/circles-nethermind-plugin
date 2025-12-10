@@ -238,6 +238,9 @@ public class CirclesRpcModule : ICirclesRpcModule
                 var cachedHubAddress = _settings.CirclesV2HubAddress;
                 var cachedNow = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
+                _logger?.LogDebug("Cache service returned {CacheCount} balances, DB has {DbCount} token exposures (address={Address})",
+                    cacheBalances.Length, cachedTokens.Count, address);
+
                 var cachedTokenBalances = new List<CirclesTokenBalance>();
 
                 foreach (var cacheBalance in cacheBalances)
@@ -245,46 +248,134 @@ public class CirclesRpcModule : ICirclesRpcModule
                     // Find token info from exposure
                     // Cache returns numeric tokenId for V2 ERC1155, but cachedTokens is keyed by hex address
                     var lookupKey = TokenIdToAddress(cacheBalance.TokenId);
-                    if (!cachedTokens.TryGetValue(lookupKey, out var token))
-                    {
-                        continue;
-                    }
 
-                    // Parse cached balance (already in Circles, not attoCircles)
-                    var circles = decimal.Parse(cacheBalance.Balance);
-                    var attoCircles = CirclesConverter.CirclesToAttoCircles(circles);
+                    // Parse cached balance (raw value in Circles/decimal form)
+                    var rawCachedBalance = decimal.Parse(cacheBalance.Balance);
+                    var rawAttoBalance = CirclesConverter.CirclesToAttoCircles(rawCachedBalance);
 
+                    BigInteger attoCircles;
+                    decimal circles;
                     BigInteger attoCrc;
                     decimal crc;
                     BigInteger staticAttoCircles;
                     decimal staticCircles;
 
-                    if (token.TokenType == "CrcV1_Signup")
+                    string tokenAddress;
+                    string tokenId;
+                    string tokenOwner;
+                    string tokenType;
+                    bool isErc20;
+                    bool isErc1155;
+                    bool isWrapped;
+                    bool isInflationary;
+                    bool isGroup;
+
+                    if (cachedTokens.TryGetValue(lookupKey, out var token))
                     {
-                        // OG CRC - cached value is already time-circles
-                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, cachedNow);
-                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
-                        staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
-                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                        // We have full token info from the database
+                        tokenAddress = token.TokenAddress;
+                        tokenOwner = cacheBalance.TokenOwner ?? token.TokenOwner;
+                        tokenType = token.TokenType;
+                        isErc20 = token.IsErc20;
+                        isErc1155 = token.IsErc1155;
+                        isWrapped = token.IsWrapped;
+                        isInflationary = token.IsInflationary;
+                        isGroup = token.IsGroup;
+
+                        tokenId = token.IsErc1155
+                            ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
+                            : token.TokenAddress;
                     }
                     else
                     {
-                        // V2 tokens - cached value is demurraged
+                        // Token not in cached exposure - derive info from cache response
+                        // This can happen when cache service has newer data than the RPC's exposure cache
+                        tokenAddress = lookupKey;
+                        tokenOwner = cacheBalance.TokenOwner ?? lookupKey;
+
+                        if (cacheBalance.Version == 1)
+                        {
+                            // V1 token
+                            tokenType = "CrcV1_Signup";
+                            isErc20 = true;
+                            isErc1155 = false;
+                            isWrapped = false;
+                            isInflationary = true;
+                            isGroup = false;
+                            tokenId = tokenAddress;
+                        }
+                        else
+                        {
+                            // V2 token - assume ERC1155 Human (most common case)
+                            // For wrapped tokens, the tokenId would already be hex (0x...)
+                            bool isLikelyErc1155 = !cacheBalance.TokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+
+                            if (isLikelyErc1155)
+                            {
+                                tokenType = "CrcV2_RegisterHuman"; // Default to Human, could be Group
+                                isErc20 = false;
+                                isErc1155 = true;
+                                isWrapped = false;
+                                isInflationary = false;
+                                isGroup = false;
+                                tokenId = cacheBalance.TokenId;
+                            }
+                            else
+                            {
+                                // Wrapped ERC20 - assume inflationary (most common wrapper type)
+                                tokenType = "CrcV2_ERC20WrapperDeployed_Inflationary";
+                                isErc20 = true;
+                                isErc1155 = false;
+                                isWrapped = true;
+                                isInflationary = true;
+                                isGroup = false;
+                                tokenId = tokenAddress;
+                            }
+                        }
+                    }
+
+                    // Convert balance based on token type
+                    // Cache stores different balance types depending on token:
+                    // - V1: raw CRC balance (convert to time-circles)
+                    // - V2 ERC1155: demurraged balance (totalBalance from view)
+                    // - V2 Inflationary wrapper: static/inflationary balance (raw ERC20)
+                    // - V2 Demurraged wrapper: demurraged balance
+                    if (tokenType == "CrcV1_Signup")
+                    {
+                        // V1 CRC - cached value is raw CRC, need to convert to time-circles
+                        attoCrc = rawAttoBalance;
+                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                        attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, cachedNow);
+                        circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                        staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
+                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                    }
+                    else if (isInflationary)
+                    {
+                        // V2 Inflationary (wrapped ERC20): cached value is static/inflationary
+                        staticAttoCircles = rawAttoBalance;
+                        staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+                        attoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                        circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
+                        attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, cachedNow);
+                        crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+                    }
+                    else
+                    {
+                        // V2 Demurraged (ERC1155 or demurraged wrapper): cached value is demurraged
+                        attoCircles = rawAttoBalance;
+                        circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
                         attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCircles, cachedNow);
                         crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
                         staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCircles);
                         staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
                     }
 
-                    var tokenId = token.IsErc1155
-                        ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
-                        : token.TokenAddress;
-
                     cachedTokenBalances.Add(new CirclesTokenBalance(
-                        TokenAddress: token.TokenAddress,
+                        TokenAddress: tokenAddress,
                         TokenId: tokenId,
-                        TokenOwner: cacheBalance.TokenOwner ?? token.TokenOwner,
-                        TokenType: token.TokenType,
+                        TokenOwner: tokenOwner,
+                        TokenType: tokenType,
                         Version: cacheBalance.Version,
                         AttoCircles: attoCircles.ToString(CultureInfo.InvariantCulture),
                         Circles: circles,
@@ -292,11 +383,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                         StaticCircles: staticCircles,
                         AttoCrc: attoCrc.ToString(CultureInfo.InvariantCulture),
                         Crc: crc,
-                        IsErc20: token.IsErc20,
-                        IsErc1155: token.IsErc1155,
-                        IsWrapped: token.IsWrapped,
-                        IsInflationary: token.IsInflationary,
-                        IsGroup: token.IsGroup
+                        IsErc20: isErc20,
+                        IsErc1155: isErc1155,
+                        IsWrapped: isWrapped,
+                        IsInflationary: isInflationary,
+                        IsGroup: isGroup
                     ));
                 }
 
