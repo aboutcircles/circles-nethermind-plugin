@@ -351,14 +351,39 @@ public class CirclesRpcModule : ICirclesRpcModule
         var now = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var tokenBalances = new List<CirclesTokenBalance>();
 
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // BALANCE REPRESENTATION BY TOKEN TYPE
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // 
+        // Different token types store balances in different representations. This is
+        // intentional and reflects how each token type works on-chain:
+        //
+        // ┌─────────────────────────────┬─────────────────────────┬─────────────────────────────────┐
+        // │ Token Type                  │ Raw Balance From DB     │ Reason                          │
+        // ├─────────────────────────────┼─────────────────────────┼─────────────────────────────────┤
+        // │ V1 CRC (ERC20)              │ attoCrc (inflationary)  │ Matches on-chain balanceOf()    │
+        // │ V2 Inflationary Wrapper     │ staticAttoCircles       │ Matches on-chain balanceOf()    │
+        // │ V2 Demurraged (ERC1155)     │ attoCircles (demurraged)│ No simple balanceOf(); computed │
+        // │ V2 Demurraged Wrapper       │ attoCircles (demurraged)│ crc_demurrage() applied in SQL  │
+        // └─────────────────────────────┴────────────────────────┴─────────────────────────────────┘
+        //
+        // WHY THE INCONSISTENCY?
+        // - V1 and V2 inflationary tokens: The raw balance IS the on-chain canonical value.
+        //   Storing it allows verification against balanceOf() and preserves the original form.
+        // - V2 demurraged tokens: The Hub contract handles demurrage internally. There's no
+        //   simple on-chain value to compare against. The DB view applies crc_demurrage()
+        //   based on lastActivity timestamp to compute the current demurraged balance.
+        //
+        // DEMURRAGE CALCULATION:
+        // - Uses day-level granularity (not seconds): γ^(today - lastActivityDay)
+        // - γ = 0.9998... ≈ (1 - 0.07)^(1/365.25) - daily decay factor for 7% annual demurrage
+        // - All conversions happen at query time using current timestamp for consistency
+        //
+        // ═══════════════════════════════════════════════════════════════════════════════
+
         foreach (var token in tokens.Values)
         {
-            // Balance comes directly from the database - no RPC calls needed!
-            // GetTokenExposureIdsAsync returns balance for all token types:
-            // - V1: totalBalance (raw attoCrc)
-            // - V2 ERC1155: demurragedTotalBalance (attoCircles with demurrage applied)
-            // - V2 wrapped inflationary: sum of transfers (staticAttoCircles)
-            // - V2 wrapped demurraged: sum of transfers with demurrage applied (attoCircles)
+            // Balance from database - representation depends on token type (see table above)
             if (!token.Balance.HasValue)
             {
                 continue; // Skip tokens without balance (shouldn't happen with current SQL)
@@ -764,9 +789,18 @@ public class CirclesRpcModule : ICirclesRpcModule
             BigInteger staticAttoCircles;
             decimal staticCircles;
 
+            // ───────────────────────────────────────────────────────────────────────
+            // CONVERSION FLOW BY TOKEN TYPE
+            // ───────────────────────────────────────────────────────────────────────
+            // V1 CRC:      attoCrc → attoCircles → staticAttoCircles
+            // V2 Inflate:  staticAttoCircles → attoCircles → attoCrc
+            // V2 Demurr:   attoCircles (already demurraged) → attoCrc, staticAttoCircles
+            // ───────────────────────────────────────────────────────────────────────
+
             if (token.TokenType == "CrcV1_Signup")
             {
-                // V1 CRC: rawBalance from DB view is attoCrc (raw ERC20 balance)
+                // V1 CRC: rawBalance is attoCrc (inflationary ERC20 balance)
+                // Convert: attoCrc → attoCircles (apply V1 inflation factor based on period)
                 attoCrc = rawBalance;
                 crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
                 attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, now);

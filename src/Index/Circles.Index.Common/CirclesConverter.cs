@@ -3,7 +3,43 @@ using Nethermind.Int256;
 
 namespace Circles.Index.Common;
 
-/// <summary>Conversions between demurrage and inflationary units in V2.</summary>
+/// <summary>
+/// Conversions between the three Circles value representations.
+/// </summary>
+/// <remarks>
+/// <para><b>VALUE REPRESENTATIONS:</b></para>
+/// <list type="table">
+///   <listheader>
+///     <term>Name</term>
+///     <description>Description</description>
+///   </listheader>
+///   <item>
+///     <term>CRC (attoCrc)</term>
+///     <description>V1 inflationary tokens. Grows ~7% annually on-chain. Used by V1 Hub contracts.</description>
+///   </item>
+///   <item>
+///     <term>Demurraged Circles (attoCircles)</term>
+///     <description>V2 time-adjusted tokens. Decays ~7% annually. Native format for V2 Hub ERC1155.</description>
+///   </item>
+///   <item>
+///     <term>Static Circles (staticAttoCircles)</term>
+///     <description>Time-frozen V2 tokens. No decay. Used by V2 inflationary ERC20 wrappers.</description>
+///   </item>
+/// </list>
+/// 
+/// <para><b>CONVERSION FORMULAS:</b></para>
+/// <list type="bullet">
+///   <item>CRC → Circles: Uses V1 inflation factor based on period (31,556,952 seconds)</item>
+///   <item>Circles ↔ Static: Uses γ^day where γ ≈ 0.9998 (daily decay for 7% annual demurrage)</item>
+/// </list>
+/// 
+/// <para><b>DAY-LEVEL GRANULARITY:</b></para>
+/// <para>
+/// Demurrage calculations use day indices (not seconds). The day index is computed as:
+/// <c>(timestamp - INFLATION_DAY_ZERO) / 86400</c>
+/// This means balances only change at midnight UTC, matching the on-chain Hub behavior.
+/// </para>
+/// </remarks>
 public static class CirclesConverter
 {
     // ───────────────────────────────── constants ─────────────────────────────────
