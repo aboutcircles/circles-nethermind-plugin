@@ -240,7 +240,8 @@ static async Task<SubscriptionRequest?> ReceiveSubscriptionRequestAsync(WebSocke
     }
 
     var payload = Encoding.UTF8.GetString(stream.ToArray());
-    return JsonSerializer.Deserialize<SubscriptionRequest>(payload);
+    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    return JsonSerializer.Deserialize<SubscriptionRequest>(payload, options);
 }
 
 static async Task SendSubscriptionAckAsync(WebSocket socket, JsonElement? id, string subscriptionId, CancellationToken cancellationToken)

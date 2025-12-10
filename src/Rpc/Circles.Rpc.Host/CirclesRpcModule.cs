@@ -579,8 +579,20 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         // Parse as BigInteger and convert to hex address
+        // Note: BigInteger.ToString("x") may add a leading '0' when the MSB nibble >= 8
+        // to avoid interpreting the number as negative. We need exactly 40 hex chars
+        // for a valid Ethereum address, so we take the rightmost 40 characters.
         var bigInt = BigInteger.Parse(tokenId);
-        return "0x" + bigInt.ToString("x").PadLeft(40, '0');
+        var hex = bigInt.ToString("x");
+        if (hex.Length > 40)
+        {
+            hex = hex.Substring(hex.Length - 40);
+        }
+        else
+        {
+            hex = hex.PadLeft(40, '0');
+        }
+        return "0x" + hex;
     }
 
     // Helper class to represent token information from database
