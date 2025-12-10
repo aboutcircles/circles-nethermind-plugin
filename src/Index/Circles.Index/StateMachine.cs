@@ -58,6 +58,9 @@ public class StateMachine(
                     {
                         case EnterState:
                             {
+                                // Track if we already did targeted reindex cleanup
+                                var tableStartBlocksUsed = false;
+                                
                                 // Handle TABLE_START_BLOCKS for reindexing
                                 // Use "*:BlockNumber" to reindex ALL tables, or specific tables with their start blocks
                                 if (context.Settings.ReindexAllTables && context.Settings.ReindexAllFromBlock.HasValue)
@@ -69,6 +72,7 @@ public class StateMachine(
                                     await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
                                     
                                     context.Logger.Info("[TABLE_START_BLOCKS] All data deletion complete. Indexer will resync from the specified block.");
+                                    tableStartBlocksUsed = true;
                                 }
                                 else if (context.Settings.TableStartBlocks.Count > 0)
                                 {
@@ -89,6 +93,7 @@ public class StateMachine(
                                     await context.Database.DeleteSystemBlockGreaterOrEqualBlock(minStartBlock);
                                     
                                     context.Logger.Info("[TABLE_START_BLOCKS] Data deletion complete. Indexer will resync from the minimum start block.");
+                                    tableStartBlocksUsed = true;
                                 }
 
                                 // Determine the effective resume point by checking both System_Block and all event tables.
@@ -115,15 +120,25 @@ public class StateMachine(
                                     $"Initializing: LatestBlock={latestBlock}, FirstGap={firstGap?.ToString() ?? "none"}, " +
                                     $"SafeResumeBlock={safeResumeBlock?.ToString() ?? "none"} => Effective resume block: {effectiveResumeBlock}");
 
+                                context.Logger.Info("Initializing: Warming up all caches...");
+                                await InitializeCaches(effectiveResumeBlock);
+
+                                // If TABLE_START_BLOCKS was used, skip Reorg cleanup since we've already 
+                                // done targeted deletion. The Reorg state would otherwise delete from ALL tables.
+                                if (tableStartBlocksUsed)
+                                {
+                                    context.Logger.Info(
+                                        "[TABLE_START_BLOCKS] Cleanup already complete. Skipping Reorg state, proceeding to WaitForNewBlock.");
+                                    await TransitionTo(State.WaitForNewBlock);
+                                    return;
+                                }
+
                                 if (effectiveResumeBlock < latestBlock)
                                 {
                                     context.Logger.Warn(
                                         $"Detected inconsistent index state. Will clean up from block {effectiveResumeBlock} " +
                                         $"to ensure caches and database are synchronized.");
                                 }
-
-                                context.Logger.Info("Initializing: Warming up all caches...");
-                                await InitializeCaches(effectiveResumeBlock);
 
                                 context.Logger.Info(
                                     $"Initializing: Transitioning to 'Reorg' to clean up from block {effectiveResumeBlock}...");

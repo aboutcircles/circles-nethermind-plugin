@@ -180,6 +180,7 @@ app.MapPost("/", async (
             "circles_getValidInviters" => await ReflectionHandler(request, rpcModule),
             "circles_getTransactionHistoryEnriched" => await ReflectionHandler(request, rpcModule),
             "circles_searchProfileByAddressOrName" => await ReflectionHandler(request, rpcModule),
+            "circles_getInvitationOrigin" => await ReflectionHandler(request, rpcModule),
 
             _ => throw new RpcMethodNotFoundException(request.Method)
         };
