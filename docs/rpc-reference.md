@@ -15,6 +15,7 @@ Complete reference for all Circles JSON-RPC methods.
     - [circles\_getValidInviters](#circles_getvalidinviters)
     - [circles\_getTransactionHistoryEnriched](#circles_gettransactionhistoryenriched)
     - [circles\_searchProfileByAddressOrName](#circles_searchprofilebyaddressorname)
+    - [circles\_getInvitationOrigin](#circles_getinvitationorigin)
   - [Avatar \& Profile Methods](#avatar--profile-methods)
     - [circles\_getAvatarInfo](#circles_getavatarinfo)
     - [circles\_getAvatarInfoBatch](#circles_getavatarinfobatch)
@@ -433,6 +434,118 @@ curl -X POST http://localhost:8081 \
   }
 }
 ```
+
+---
+
+### circles_getInvitationOrigin
+
+Reconstructs how a user was invited to Circles by checking multiple invitation mechanisms.
+
+**Parameters:**
+- `address` (string): Ethereum address to query
+
+**Request:**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_getInvitationOrigin",
+    "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"]
+  }'
+```
+
+**Response (V2 Escrow Invitation):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "invitationType": "v2_escrow",
+    "inviter": "0x1234567890abcdef1234567890abcdef12345678",
+    "proxyInviter": null,
+    "escrowAmount": "100000000000000000000",
+    "blockNumber": 36500000,
+    "timestamp": 1704240000,
+    "transactionHash": "0xabc123...",
+    "version": 2
+  }
+}
+```
+
+**Response (V2 At Scale Invitation):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "invitationType": "v2_at_scale",
+    "inviter": "0xoriginInviter...",
+    "proxyInviter": "0xproxyInviter...",
+    "escrowAmount": null,
+    "blockNumber": 36500000,
+    "timestamp": 1704240000,
+    "transactionHash": "0xabc123...",
+    "version": 2
+  }
+}
+```
+
+**Response (V1 Self-Signup):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "invitationType": "v1_signup",
+    "inviter": null,
+    "proxyInviter": null,
+    "escrowAmount": null,
+    "blockNumber": 25000000,
+    "timestamp": 1624240000,
+    "transactionHash": "0xdef456...",
+    "version": 1
+  }
+}
+```
+
+**Response (Not Registered):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": null
+}
+```
+
+**Invitation Types:**
+
+| Type | Description | Version |
+|------|-------------|---------|
+| `v1_signup` | V1 self-signup (no inviter, legacy) | 1 |
+| `v2_standard` | V2 direct invitation via human trust | 2 |
+| `v2_escrow` | V2 invitation with CRC token escrow | 2 |
+| `v2_at_scale` | V2 scalable invitation system with origin + proxy inviters | 2 |
+
+**Field Descriptions:**
+- `address`: The queried avatar address
+- `invitationType`: Type of invitation mechanism used (see table above)
+- `inviter`: Address of the inviting avatar (null for v1_signup)
+- `proxyInviter`: Proxy inviter address (only set for v2_at_scale)
+- `escrowAmount`: Escrowed CRC amount in atto-circles (only set for v2_escrow)
+- `blockNumber`: Block number when the invitation was recorded
+- `timestamp`: Unix timestamp of the invitation
+- `transactionHash`: Transaction hash of the invitation event
+- `version`: Circles version (1 or 2)
 
 ---
 

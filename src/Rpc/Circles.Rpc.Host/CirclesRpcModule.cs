@@ -4172,6 +4172,206 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
     /// <summary>
+    /// Gets the invitation origin for an address, reconstructing how they were invited to Circles.
+    /// Checks multiple invitation mechanisms in order of specificity:
+    /// 1. InvitationsAtScale.RegisterHuman (most specific - has originInviter + proxyInviter)
+    /// 2. InvitationEscrow.InvitationRedeemed (escrow invitation)
+    /// 3. CrcV2.RegisterHuman (standard V2 invitation)
+    /// 4. CrcV1.Signup (V1 self-signup)
+    /// </summary>
+    public async Task<InvitationOriginResponse?> GetInvitationOrigin(string address)
+    {
+        var normalizedAddress = address.ToLowerInvariant();
+        await using var connection = await CreateConnectionAsync();
+
+        // 1. Check InvitationsAtScale.RegisterHuman (most specific - has originInviter + proxyInviter)
+        var atScaleResult = await QueryInvitationsAtScale(connection, normalizedAddress);
+        if (atScaleResult != null) return atScaleResult;
+
+        // 2. Check InvitationEscrow.InvitationRedeemed (escrow invitation)
+        var escrowResult = await QueryEscrowInvitation(connection, normalizedAddress);
+        if (escrowResult != null) return escrowResult;
+
+        // 3. Check CrcV2.RegisterHuman (standard V2 invitation)
+        var v2Result = await QueryV2RegisterHuman(connection, normalizedAddress);
+        if (v2Result != null) return v2Result;
+
+        // 4. Check CrcV1.Signup (V1 self-signup)
+        var v1Result = await QueryV1Signup(connection, normalizedAddress);
+        if (v1Result != null) return v1Result;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Queries the InvitationsAtScale.RegisterHuman table for registration with origin/proxy inviters.
+    /// </summary>
+    private async Task<InvitationOriginResponse?> QueryInvitationsAtScale(NpgsqlConnection connection, string address)
+    {
+        const string sql = @"
+            SELECT ""blockNumber"", ""timestamp"", ""transactionHash"", ""human"", ""originInviter"", ""proxyInviter""
+            FROM ""CrcV2_InvitationsAtScale_RegisterHuman""
+            WHERE ""human"" = @address
+            LIMIT 1";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", address);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var transactionHash = reader.GetString(2);
+            var human = reader.GetString(3);
+            var originInviter = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var proxyInviter = reader.IsDBNull(5) ? null : reader.GetString(5);
+
+            // Check if originInviter is the zero address (no inviter)
+            var zeroAddress = "0x0000000000000000000000000000000000000000";
+            var effectiveInviter = originInviter == zeroAddress ? null : originInviter;
+            var effectiveProxyInviter = proxyInviter == zeroAddress ? null : proxyInviter;
+
+            return new InvitationOriginResponse(
+                Address: human,
+                InvitationType: "v2_at_scale",
+                Inviter: effectiveInviter,
+                ProxyInviter: effectiveProxyInviter,
+                EscrowAmount: null,
+                BlockNumber: blockNumber,
+                Timestamp: timestamp,
+                TransactionHash: transactionHash,
+                Version: 2
+            );
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Queries the InvitationEscrow.InvitationRedeemed table for escrow-based invitations.
+    /// </summary>
+    private async Task<InvitationOriginResponse?> QueryEscrowInvitation(NpgsqlConnection connection, string address)
+    {
+        const string sql = @"
+            SELECT ""blockNumber"", ""timestamp"", ""transactionHash"", ""inviter"", ""invitee"", ""amount""
+            FROM ""CrcV2_InvitationEscrow_InvitationRedeemed""
+            WHERE ""invitee"" = @address
+            LIMIT 1";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", address);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var transactionHash = reader.GetString(2);
+            var inviter = reader.GetString(3);
+            var invitee = reader.GetString(4);
+            var amount = reader.GetDecimal(5);
+
+            return new InvitationOriginResponse(
+                Address: invitee,
+                InvitationType: "v2_escrow",
+                Inviter: inviter,
+                ProxyInviter: null,
+                EscrowAmount: amount.ToString("F0", System.Globalization.CultureInfo.InvariantCulture),
+                BlockNumber: blockNumber,
+                Timestamp: timestamp,
+                TransactionHash: transactionHash,
+                Version: 2
+            );
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Queries the CrcV2.RegisterHuman table for standard V2 registrations.
+    /// </summary>
+    private async Task<InvitationOriginResponse?> QueryV2RegisterHuman(NpgsqlConnection connection, string address)
+    {
+        const string sql = @"
+            SELECT ""blockNumber"", ""timestamp"", ""transactionHash"", ""avatar"", ""inviter""
+            FROM ""CrcV2_RegisterHuman""
+            WHERE ""avatar"" = @address
+            LIMIT 1";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", address);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var transactionHash = reader.GetString(2);
+            var avatar = reader.GetString(3);
+            var inviter = reader.IsDBNull(4) ? null : reader.GetString(4);
+
+            // Check if inviter is the zero address (no inviter)
+            var zeroAddress = "0x0000000000000000000000000000000000000000";
+            var effectiveInviter = inviter == zeroAddress ? null : inviter;
+
+            return new InvitationOriginResponse(
+                Address: avatar,
+                InvitationType: "v2_standard",
+                Inviter: effectiveInviter,
+                ProxyInviter: null,
+                EscrowAmount: null,
+                BlockNumber: blockNumber,
+                Timestamp: timestamp,
+                TransactionHash: transactionHash,
+                Version: 2
+            );
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Queries the CrcV1.Signup table for V1 self-signup registrations.
+    /// </summary>
+    private async Task<InvitationOriginResponse?> QueryV1Signup(NpgsqlConnection connection, string address)
+    {
+        const string sql = @"
+            SELECT ""blockNumber"", ""timestamp"", ""transactionHash"", ""user"", ""token""
+            FROM ""CrcV1_Signup""
+            WHERE ""user"" = @address
+            LIMIT 1";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", address);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var blockNumber = reader.GetInt64(0);
+            var timestamp = reader.GetInt64(1);
+            var transactionHash = reader.GetString(2);
+            var user = reader.GetString(3);
+            // token at index 4 is available but not used in response
+
+            return new InvitationOriginResponse(
+                Address: user,
+                InvitationType: "v1_signup",
+                Inviter: null,  // V1 signups have no inviter
+                ProxyInviter: null,
+                EscrowAmount: null,
+                BlockNumber: blockNumber,
+                Timestamp: timestamp,
+                TransactionHash: transactionHash,
+                Version: 1
+            );
+        }
+
+        return null;
+    }
+
+
+    /// <summary>
     /// Internal helper for cursor-based profile search with ranking.
     /// </summary>
     private async Task<(ProfileSearchResultItem[] Results, bool HasMore, string? NextCursor)> SearchProfilesWithCursor(
