@@ -24,6 +24,11 @@ Complete reference for all Circles Cache Service HTTP endpoints with request/res
   - [Profile Endpoints](#profile-endpoints)
     - [GET /api/profiles/{address}/cid](#get-apiprofilesaddresscid)
     - [POST /api/profiles/cid/batch](#post-apiprofilescidbatch)
+  - [Trust Relation Endpoints](#trust-relation-endpoints)
+    - [GET /api/trust/{address}](#get-apitrustaddress)
+  - [Group Membership Endpoints](#group-membership-endpoints)
+    - [GET /api/groups/{groupAddress}/members](#get-apigroupsgroupaddressmembers)
+    - [GET /api/groups/memberships/{memberAddress}](#get-apigroupsmembershipsmemberaddress)
   - [Error Responses](#error-responses)
     - [400 Bad Request](#400-bad-request)
     - [404 Not Found](#404-not-found)
@@ -170,8 +175,16 @@ curl http://localhost:3001/cache/stats
   "v2_avatar_short_names": 1000,
   "v1_balances": 350782,
   "v2_balances": 33783,
-  "last_token_movements": 230010,
-  "total_entries": 1136046,
+  "v1_trust_relations": 1082430,
+  "v2_trust_relations": 273507,
+  "v1_trust_by_truster_index": 95000,
+  "v1_trust_by_trustee_index": 95000,
+  "v2_trust_by_truster_index": 12000,
+  "v2_trust_by_trustee_index": 12000,
+  "group_membership_by_group_index": 528,
+  "group_membership_by_member_index": 7500,
+  "erc20_wrapper_reverse_index": 6772,
+  "total_entries": 1936046,
   "lastProcessedBlock": 36789012,
   "warmupComplete": true,
   "listenerConnected": true
@@ -589,6 +602,152 @@ curl -X POST http://localhost:3001/api/profiles/cid/batch \
 - Returns array in same order as input addresses
 - `cid` is `null` for avatars without profiles
 - Maximum batch size is 100 addresses
+
+---
+
+## Trust Relation Endpoints
+
+### GET /api/trust/{address}
+
+**Description**: Get all trust relations for an address (both who they trust and who trusts them).
+
+**Parameters**:
+
+- `address` (path, required): Ethereum address
+- `version` (query, optional): Filter by Circles version (1 or 2). Omit for both.
+
+**Request**:
+
+```bash
+curl http://localhost:3001/api/trust/0xde374ece6fa50e781e81aac78e811b33d16912c7
+```
+
+**Request with version filter**:
+
+```bash
+curl "http://localhost:3001/api/trust/0xde374ece6fa50e781e81aac78e811b33d16912c7?version=2"
+```
+
+**Response** (200 OK):
+
+```json
+{
+  "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "trusts": [
+    {
+      "truster": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "trustee": "0x1234567890abcdef1234567890abcdef12345678",
+      "expiryTime": 1735689600,
+      "version": 2,
+      "lastProcessedBlock": 36789012,
+      "timestamp": 1704240000
+    }
+  ],
+  "trustedBy": [
+    {
+      "truster": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "trustee": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "expiryTime": 100,
+      "version": 1,
+      "lastProcessedBlock": 36789012,
+      "timestamp": 1704240000
+    }
+  ],
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
+}
+```
+
+**Notes**:
+
+- V1 trust uses `expiryTime` to store the trust limit (0-100 percentage)
+- V2 trust uses `expiryTime` as actual Unix timestamp expiry
+- `trusts` = addresses this user trusts (outgoing)
+- `trustedBy` = addresses that trust this user (incoming)
+
+---
+
+## Group Membership Endpoints
+
+### GET /api/groups/{groupAddress}/members
+
+**Description**: Get all members of a specific group.
+
+**Parameters**:
+
+- `groupAddress` (path, required): Group contract address
+
+**Request**:
+
+```bash
+curl http://localhost:3001/api/groups/0x1234567890abcdef1234567890abcdef12345678/members
+```
+
+**Response** (200 OK):
+
+```json
+{
+  "group": "0x1234567890abcdef1234567890abcdef12345678",
+  "members": [
+    {
+      "group": "0x1234567890abcdef1234567890abcdef12345678",
+      "member": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "expiryTime": 1735689600,
+      "lastProcessedBlock": 36789012,
+      "timestamp": 1704240000
+    },
+    {
+      "group": "0x1234567890abcdef1234567890abcdef12345678",
+      "member": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "expiryTime": 1735689600,
+      "lastProcessedBlock": 36789012,
+      "timestamp": 1704240000
+    }
+  ],
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
+}
+```
+
+---
+
+### GET /api/groups/memberships/{memberAddress}
+
+**Description**: Get all groups that a member belongs to.
+
+**Parameters**:
+
+- `memberAddress` (path, required): Member's Ethereum address
+
+**Request**:
+
+```bash
+curl http://localhost:3001/api/groups/memberships/0xde374ece6fa50e781e81aac78e811b33d16912c7
+```
+
+**Response** (200 OK):
+
+```json
+{
+  "member": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "groups": [
+    {
+      "group": "0x1234567890abcdef1234567890abcdef12345678",
+      "member": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "expiryTime": 1735689600,
+      "lastProcessedBlock": 36789012,
+      "timestamp": 1704240000
+    }
+  ],
+  "lastProcessedBlock": 36789012,
+  "timestamp": 1704240000
+}
+```
+
+**Notes**:
+
+- Returns empty `groups` array if member has no group memberships
+- `expiryTime` is the membership expiration Unix timestamp
 
 ---
 

@@ -31,7 +31,6 @@ public class CacheContainerTests
         _cache.V2AvatarToShortNameMap.Should().NotBeNull();
         _cache.V1BalancesByAccountAndToken.Should().NotBeNull();
         _cache.V2BalancesByAccountAndToken.Should().NotBeNull();
-        _cache.LastTokenMovement.Should().NotBeNull();
         _cache.V1TrustRelations.Should().NotBeNull();
         _cache.V2TrustRelations.Should().NotBeNull();
     }

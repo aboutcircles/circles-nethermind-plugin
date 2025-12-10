@@ -14,7 +14,9 @@ Complete documentation for all newly implemented RPC methods with examples.
     - [circles\_getAggregatedTrustRelationsEnriched](#circles_getaggregatedtrustrelationsenriched)
     - [circles\_getValidInviters](#circles_getvalidinviters)
     - [circles\_getTransactionHistoryEnriched](#circles_gettransactionhistoryenriched)
+    - [circles\_searchProfileByAddressOrName](#circles_searchprofilebyaddressorname)
   - [Paginated Query Methods](#paginated-query-methods)
+    - [circles\_findGroups](#circles_findgroups)
     - [circles\_getGroupMembers](#circles_getgroupmembers)
     - [circles\_getGroupMemberships](#circles_getgroupmemberships)
     - [circles\_getTransactionHistory](#circles_gettransactionhistory)
@@ -35,11 +37,36 @@ Complete documentation for all newly implemented RPC methods with examples.
 
 ---
 
+## Cache Service Integration
+
+Several RPC methods can leverage the Cache Service for faster responses. Enable with:
+
+```bash
+export USE_CACHE_SERVICE=true
+export CACHE_SERVICE_URL=http://localhost:3001
+```
+
+**Methods with Cache Support:**
+
+| Method | Cache Used For | Fallback |
+|--------|---------------|----------|
+| `circles_getTrustRelations` | Trust relation lookup | Database |
+| `circles_getGroupMembers` | First page of results | Database for pagination |
+| `circles_getGroupMemberships` | First page of results | Database for pagination |
+| `circles_getValidInviters` | Trust relation lookup | Database |
+| `circles_getTotalBalance` | Balance lookup | Database |
+| `circles_getAvatarInfo` | Avatar info lookup | Database |
+| `circles_getProfileCid` | CID lookup | Database |
+
+All cache-enabled methods gracefully fall back to database queries if the cache service is unavailable.
+
+---
+
 ## SDK Enablement Methods
 
 ### circles_getProfileView
 
-**Description**: Get complete profile view consolidating avatar info, profile data, trust stats, and balances in a single call. Replaces 6-7 separate RPC calls.
+**Description**: Get complete profile view consolidating avatar info, profile data, trust stats, and balances in a single call. Replaces 6-7 separate RPC calls. Profile metadata is normalized to the fields that are available on production (`name` and `previewImageUrl`).
 
 **Parameters**:
 
@@ -67,30 +94,28 @@ curl -X POST http://localhost:8081 \
   "result": {
     "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
     "avatarInfo": {
-      "avatar": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
       "version": 2,
-      "type": "Human",
-      "tokenId": "123456789012345678901234567890",
+      "type": "CrcV2_RegisterHuman",
+      "avatar": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "tokenId": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
       "hasV1": true,
       "v1Token": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+      "cidV0Digest": "0x9b...",
       "cidV0": "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE",
       "isHuman": true,
-      "registeredAt": 1704067200
+      "name": "Alice",
+      "symbol": "ALICE"
     },
     "profile": {
       "name": "Alice",
-      "description": "Community organizer",
-      "avatarUrl": "ipfs://Qm...",
       "previewImageUrl": "ipfs://Qm..."
     },
     "trustStats": {
       "trustsCount": 42,
-      "trustedByCount": 38,
-      "mutualTrustsCount": 35
+      "trustedByCount": 38
     },
     "v1Balance": "150.25",
-    "v2Balance": "1250.75",
-    "totalBalance": "1401.00"
+    "v2Balance": "1250.75"
   }
 }
 ```
@@ -101,7 +126,7 @@ curl -X POST http://localhost:8081 \
 
 ### circles_getTrustNetworkSummary
 
-**Description**: Get aggregated trust network metrics with configurable depth traversal. Server-side graph analysis.
+**Description**: Get aggregated trust network metrics for the direct (depth‑1) neighborhood. The optional `maxDepth` parameter is reserved for future graph exploration but is currently limited to depth 1.
 
 **Parameters**:
 
@@ -136,12 +161,7 @@ curl -X POST http://localhost:8081 \
       "0x1234567890abcdef1234567890abcdef12345678",
       "0xabcdef1234567890abcdef1234567890abcdef12"
     ],
-    "networkReach": 156,
-    "maxDepth": 2,
-    "trustDistribution": {
-      "depth1": 42,
-      "depth2": 114
-    }
+    "networkReach": 45
   }
 }
 ```
@@ -152,7 +172,7 @@ curl -X POST http://localhost:8081 \
 
 ### circles_getAggregatedTrustRelationsEnriched
 
-**Description**: Get categorized trust relations (mutual/trusts/trustedBy) with full avatar info pre-loaded. Enhanced version of `circles_getAggregatedTrustRelations`.
+**Description**: Get categorized trust relations (mutual/trusts/trustedBy) with avatar metadata pre-loaded. Use `circles_getAggregatedTrustRelations` if you also need timestamps/expiry fields.
 
 **Parameters**:
 
@@ -182,32 +202,32 @@ curl -X POST http://localhost:8081 \
       {
         "address": "0x1234567890abcdef1234567890abcdef12345678",
         "avatarInfo": {
+          "version": 2,
+          "type": "CrcV2_RegisterHuman",
           "avatar": "0x1234567890abcdef1234567890abcdef12345678",
-          "type": "Human",
-          "cidV0": "QmABC..."
-        },
-        "profile": {
+          "tokenId": "0x1234567890abcdef1234567890abcdef12345678",
+          "hasV1": false,
+          "cidV0Digest": "0xab...",
+          "cidV0": "QmABC...",
+          "isHuman": true,
           "name": "Bob",
-          "avatarUrl": "ipfs://..."
+          "symbol": "BOB"
         },
-        "timestamp": 1704067200,
-        "expiryTime": 1735689600
+        "relationType": "mutual"
       }
     ],
     "trusts": [
       {
         "address": "0xabcdef1234567890abcdef1234567890abcdef12",
-        "avatarInfo": {...},
-        "profile": {...},
-        "timestamp": 1704153600
+        "avatarInfo": null,
+        "relationType": "trusts"
       }
     ],
     "trustedBy": [
       {
         "address": "0x9876543210fedcba9876543210fedcba98765432",
-        "avatarInfo": {...},
-        "profile": {...},
-        "timestamp": 1704240000
+        "avatarInfo": null,
+        "relationType": "trustedBy"
       }
     ]
   }
@@ -222,10 +242,12 @@ curl -X POST http://localhost:8081 \
 
 **Description**: Find addresses that trust you AND have sufficient balance to send an invitation. Balance-filtered inviter discovery.
 
+**Cache Integration**: When cache service is enabled (`USE_CACHE_SERVICE=true`), trust relations are fetched from cache for faster response.
+
 **Parameters**:
 
 - `address` (string): Ethereum address to find inviters for
-- `minimumBalance` (string, optional): Minimum CRC balance required (default: "1.0")
+- `minimumBalance` (string, optional): Minimum CRC balance required (stringified decimal). When omitted, all inviters are returned.
 
 **Request**:
 
@@ -247,31 +269,25 @@ curl -X POST http://localhost:8081 \
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
+    "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
     "validInviters": [
       {
         "address": "0x1234567890abcdef1234567890abcdef12345678",
-        "totalBalance": "150.25",
-        "v1Balance": "50.25",
-        "v2Balance": "100.00",
+        "balance": "150.25",
         "avatarInfo": {
-          "type": "Human",
-          "cidV0": "QmABC..."
-        },
-        "profile": {
-          "name": "Bob"
+          "version": 2,
+          "type": "CrcV2_RegisterHuman",
+          "avatar": "0x1234567890abcdef1234567890abcdef12345678",
+          "tokenId": "0x1234567890abcdef1234567890abcdef12345678",
+          "hasV1": false,
+          "cidV0Digest": "0xab...",
+          "cidV0": "QmABC...",
+          "isHuman": true,
+          "name": "Bob",
+          "symbol": "BOB"
         }
-      },
-      {
-        "address": "0xabcdef1234567890abcdef1234567890abcdef12",
-        "totalBalance": "75.50",
-        "v1Balance": "75.50",
-        "v2Balance": "0.00",
-        "avatarInfo": {...},
-        "profile": {...}
       }
-    ],
-    "count": 2,
-    "minimumBalance": "10.0"
+    ]
   }
 }
 ```
@@ -287,9 +303,10 @@ curl -X POST http://localhost:8081 \
 **Parameters**:
 
 - `address` (string): Ethereum address
-- `fromBlock` (number, optional): Starting block number
+- `fromBlock` (number): Starting block number (inclusive)
 - `toBlock` (number, optional): Ending block number (default: latest)
-- `limit` (number, optional): Maximum results (default: 50)
+- `limit` (number, optional): Maximum results (default: 20)
+- `cursor` (string, optional): Base64 encoded `"blockNumber:transactionIndex:logIndex"` pointer for pagination
 
 **Request**:
 
@@ -300,7 +317,13 @@ curl -X POST http://localhost:8081 \
     "jsonrpc": "2.0",
     "id": 1,
     "method": "circles_getTransactionHistoryEnriched",
-    "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", 36000000, null, 10]
+    "params": [
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      36000000,
+      null,
+      10,
+      null
+    ]
   }'
 ```
 
@@ -311,33 +334,63 @@ curl -X POST http://localhost:8081 \
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
-    "transactions": [
+    "results": [
       {
         "blockNumber": 36500000,
-        "timestamp": 1704240000,
         "transactionHash": "0xabc123...",
-        "from": "0x1234567890abcdef1234567890abcdef12345678",
-        "to": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "value": "50.0",
-        "tokenId": "123456789012345678901234567890",
-        "fromProfile": {
-          "address": "0x1234567890abcdef1234567890abcdef12345678",
-          "name": "Bob",
-          "avatarUrl": "ipfs://...",
-          "type": "Human"
+        "transactionIndex": 10,
+        "logIndex": 3,
+        "event": {
+          "from": "0x1234567890abcdef1234567890abcdef12345678",
+          "to": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+          "value": "50000000000000000000",
+          "id": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+          "blockNumber": 36500000,
+          "timestamp": 1704240000
         },
-        "toProfile": {
-          "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-          "name": "Alice",
-          "avatarUrl": "ipfs://...",
-          "type": "Human"
-        },
-        "direction": "incoming"
+        "participants": {
+          "0x1234567890abcdef1234567890abcdef12345678": {
+            "avatarInfo": {
+              "version": 2,
+              "type": "CrcV2_RegisterHuman",
+              "avatar": "0x1234567890abcdef1234567890abcdef12345678",
+              "tokenId": "0x1234567890abcdef1234567890abcdef12345678",
+              "hasV1": false,
+              "cidV0Digest": "0xab...",
+              "cidV0": "QmABC...",
+              "isHuman": true,
+              "name": "Bob",
+              "symbol": "BOB"
+            },
+            "profile": {
+              "name": "Bob",
+              "previewImageUrl": "ipfs://Qm..."
+            }
+          },
+          "0xde374ece6fa50e781e81aac78e811b33d16912c7": {
+            "avatarInfo": {
+              "version": 2,
+              "type": "CrcV2_RegisterHuman",
+              "avatar": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+              "tokenId": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+              "hasV1": true,
+              "v1Token": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+              "cidV0Digest": "0x9b...",
+              "cidV0": "QmYxivS5D...",
+              "isHuman": true,
+              "name": "Alice",
+              "symbol": "ALICE"
+            },
+            "profile": {
+              "name": "Alice",
+              "previewImageUrl": "ipfs://Qm..."
+            }
+          }
+        }
       }
     ],
     "hasMore": true,
-    "fromBlock": 36000000,
-    "toBlock": 36789012
+    "nextCursor": "MzY1MDAwMDA6MTA6Mw=="
   }
 }
 ```
@@ -346,17 +399,127 @@ curl -X POST http://localhost:8081 \
 
 ---
 
+### circles_searchProfileByAddressOrName
+
+**Description**: Unified search endpoint. If the query starts with `0x`, the server performs an address-prefix lookup (including partial matches). Otherwise it falls back to the full-text profile index used by `circles_searchProfiles`.
+
+**Parameters**:
+
+- `query` (string): Address prefix or free-form text
+- `limit` (number, optional): Maximum number of profiles (default: 10)
+- `offset` (number, optional): Offset for text search (default: 0)
+- `types` (string[], optional): Restrict to avatar types such as `CrcV2_RegisterHuman`
+
+**Request**:
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_searchProfileByAddressOrName",
+    "params": ["alice", 10, 0, ["CrcV2_RegisterHuman"]]
+  }'
+```
+
+**Response**:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "query": "alice",
+    "searchType": "text",
+    "results": [
+      {
+        "name": "Alice",
+        "previewImageUrl": "ipfs://Qm..."
+      },
+      {
+        "name": "Alice Bakery",
+        "previewImageUrl": "ipfs://Qn..."
+      }
+    ],
+    "totalCount": 12
+  }
+}
+```
+
+**Use Case**: Autosuggest for address inputs and global profile search bars
+
+---
+
 ## Paginated Query Methods
+
+### circles_findGroups
+
+**Description**: Discover registered Circles groups with optional filters and cursor-based pagination.
+
+**Parameters**:
+
+- `limit` (number, optional): Results per page (default: 50)
+- `queryParams` (object, optional): Filters
+  - `nameStartsWith` (string, optional)
+  - `symbolStartsWith` (string, optional)
+  - `ownerIn` (string[], optional): Match by `mint` address
+- `cursor` (string, optional): Base64 encoded `"blockNumber:transactionIndex:logIndex"`
+
+**Request**:
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_findGroups",
+    "params": [
+      25,
+      {"nameStartsWith": "Com"},
+      null
+    ]
+  }'
+```
+
+**Response**:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "results": [
+      {
+        "group": "0x1234567890abcdef1234567890abcdef12345678",
+        "name": "Community DAO",
+        "symbol": "CDAO",
+        "mint": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "treasury": "0xabcd...",
+        "blockNumber": 36000000,
+        "timestamp": 1704067200
+      }
+    ],
+    "hasMore": true,
+    "nextCursor": "MzYwMDAwMDA6MDow"
+  }
+}
+```
+
+**Use Case**: Group discovery lists and admin dashboards
 
 ### circles_getGroupMembers
 
 **Description**: Get paginated list of group members with cursor-based navigation.
 
+**Cache Integration**: When cache service is enabled and no cursor is provided (first page), results are fetched from cache for faster response. Subsequent pages fall back to database.
+
 **Parameters**:
 
 - `groupAddress` (string): Group contract address
 - `limit` (number, optional): Results per page (default: 100, max: 1000)
-- `cursor` (string, optional): Pagination cursor from previous response
+- `cursor` (string, optional): Base64 encoded `"blockNumber:transactionIndex:logIndex"` cursor returned by this method
 
 **Request**:
 
@@ -380,29 +543,23 @@ curl -X POST http://localhost:8081 \
   "result": {
     "results": [
       {
+        "blockNumber": 36000000,
+        "timestamp": 1704067200,
+        "transactionIndex": 0,
+        "logIndex": 1,
+        "transactionHash": "0xabc123...",
         "group": "0x1234567890abcdef1234567890abcdef12345678",
         "member": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "memberType": "Human",
-        "expiryTime": 1735689600,
-        "timestamp": 1704067200,
-        "blockNumber": 36000000
-      },
-      {
-        "group": "0x1234567890abcdef1234567890abcdef12345678",
-        "member": "0xabcdef1234567890abcdef1234567890abcdef12",
-        "memberType": "Human",
-        "expiryTime": 1735689600,
-        "timestamp": 1704153600,
-        "blockNumber": 36050000
+        "expiryTime": 1735689600
       }
     ],
     "hasMore": true,
-    "nextCursor": "eyJibG9ja051bWJlciI6MzYwNTAwMDAsInR4SW5kZXgiOjUsImxvZ0luZGV4IjoxfQ=="
+    "nextCursor": "MzYwNTAwMDA6NTox"
   }
 }
 ```
 
-**Cursor Format**: Base64-encoded JSON: `{"blockNumber":36050000,"txIndex":5,"logIndex":1}`
+**Cursor Format**: Base64 encoded string of `blockNumber:transactionIndex:logIndex` (e.g., `MzYwNTAwMDA6NTox` represents `36050000:5:1`).
 
 **Use Case**: Group member lists, pagination
 
@@ -412,11 +569,13 @@ curl -X POST http://localhost:8081 \
 
 **Description**: Get paginated list of groups a member belongs to (inverse of getGroupMembers).
 
+**Cache Integration**: When cache service is enabled and no cursor is provided (first page), results are fetched from cache for faster response. Subsequent pages fall back to database.
+
 **Parameters**:
 
 - `memberAddress` (string): Member's Ethereum address
 - `limit` (number, optional): Results per page (default: 50, max: 1000)
-- `cursor` (string, optional): Pagination cursor
+- `cursor` (string, optional): Base64 encoded `"blockNumber:transactionIndex:logIndex"`
 
 **Request**:
 
@@ -440,14 +599,14 @@ curl -X POST http://localhost:8081 \
   "result": {
     "results": [
       {
+        "blockNumber": 36050000,
+        "timestamp": 1704153600,
+        "transactionIndex": 5,
+        "logIndex": 1,
+        "transactionHash": "0xdef456...",
         "group": "0x1234567890abcdef1234567890abcdef12345678",
         "member": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "expiryTime": 1735689600,
-        "timestamp": 1704067200,
-        "groupInfo": {
-          "name": "Community DAO",
-          "symbol": "CDAO"
-        }
+        "expiryTime": 1735689600
       }
     ],
     "hasMore": false,
@@ -468,7 +627,7 @@ curl -X POST http://localhost:8081 \
 
 - `avatarAddress` (string): Ethereum address
 - `limit` (number, optional): Results per page (default: 50, max: 1000)
-- `cursor` (string, optional): Pagination cursor
+- `cursor` (string, optional): Base64 encoded `"blockNumber:transactionIndex:logIndex:batchIndex"`
 
 **Request**:
 
@@ -494,23 +653,30 @@ curl -X POST http://localhost:8081 \
       {
         "blockNumber": 36500000,
         "timestamp": 1704240000,
+        "transactionIndex": 10,
+        "logIndex": 3,
         "transactionHash": "0xabc123...",
+        "version": 2,
         "from": "0x1234567890abcdef1234567890abcdef12345678",
         "to": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "operator": null,
+        "id": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
         "value": "50000000000000000000",
-        "circles": 50.0,
+        "circles": "50",
         "attoCircles": "50000000000000000000",
-        "crc": 50.0,
+        "crc": "50",
         "attoCrc": "50000000000000000000",
-        "staticCircles": 60.0,
+        "staticCircles": "60",
         "staticAttoCircles": "60000000000000000000"
       }
     ],
     "hasMore": true,
-    "nextCursor": "eyJibG9ja051bWJlciI6MzY1MDAwMDAsInR4SW5kZXgiOjEwLCJsb2dJbmRleCI6M30="
+    "nextCursor": "MzY1MDAwMDA6MTA6Mzow"
   }
 }
 ```
+
+**Cursor Format**: Base64 encoded string representing `blockNumber:transactionIndex:logIndex:batchIndex` (e.g., `MzY1MDAwMDA6MTA6Mzow`).
 
 **Use Case**: Transaction lists, infinite scroll
 
@@ -524,7 +690,7 @@ curl -X POST http://localhost:8081 \
 
 - `tokenAddress` (string): Token contract address or token ID
 - `limit` (number, optional): Results per page (default: 100, max: 1000)
-- `cursor` (string, optional): Pagination cursor
+- `cursor` (string, optional): Last account address returned (opaque string, not base64)
 
 **Request**:
 
@@ -550,7 +716,7 @@ curl -X POST http://localhost:8081 \
       {
         "account": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
         "tokenId": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "balance": "150.25",
+        "balance": "150000000000000000000",
         "version": 1
       },
       {
@@ -561,10 +727,12 @@ curl -X POST http://localhost:8081 \
       }
     ],
     "hasMore": true,
-    "nextCursor": "eyJhY2NvdW50IjoiMHgxMjM0NTY3ODkwYWJjZGVmIn0="
+    "nextCursor": "0x1234567890abcdef1234567890abcdef12345678"
   }
 }
 ```
+
+**Cursor Format**: `nextCursor` returns the last `account` string. Pass it back verbatim to continue scanning in ascending order.
 
 **Use Case**: Token holder analytics, distribution charts
 
@@ -802,5 +970,5 @@ import {
 ## Support
 
 - **Documentation**: `/docs/`
-- **Issues**: https://github.com/aboutcircles/circles-nethermind-plugin/issues
+- **Issues**: [github.com/aboutcircles/circles-nethermind-plugin/issues](https://github.com/aboutcircles/circles-nethermind-plugin/issues)
 - **SDK Repo**: `sdk-v2/`
