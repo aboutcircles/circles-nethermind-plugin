@@ -33,6 +33,34 @@ public class BalancesController : ControllerBase
     }
 
     /// <summary>
+    /// Converts a numeric ERC1155 token ID to a lowercase hex address.
+    /// </summary>
+    private static string TokenIdToAddress(string tokenId)
+    {
+        // If it's already a hex address, just lowercase it
+        if (tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            return tokenId.ToLowerInvariant();
+        }
+
+        // Parse as BigInteger and convert to hex address
+        // Note: BigInteger.ToString("x") may add a leading '0' when the MSB nibble >= 8
+        // to avoid interpreting the number as negative. We need exactly 40 hex chars
+        // for a valid Ethereum address, so we take the rightmost 40 characters.
+        var bigInt = System.Numerics.BigInteger.Parse(tokenId);
+        var hex = bigInt.ToString("x");
+        if (hex.Length > 40)
+        {
+            hex = hex.Substring(hex.Length - 40);
+        }
+        else
+        {
+            hex = hex.PadLeft(40, '0');
+        }
+        return "0x" + hex;
+    }
+
+    /// <summary>
     /// Get all token balances for an address
     /// </summary>
     [HttpGet("{address}")]
@@ -67,6 +95,12 @@ public class BalancesController : ControllerBase
                         Balance: balance.ToString(),
                         TokenOwner: tokenOwner,
                         Version: 1,
+                        TokenType: "CrcV1_Signup",
+                        IsGroup: false,
+                        IsErc20: true,
+                        IsErc1155: false,
+                        IsWrapped: false,
+                        IsInflationary: true,
                         LastProcessedBlock: lastBlock,
                         Timestamp: timestamp
                     ));
@@ -79,11 +113,73 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
+                    // Determine token type from cached metadata
+                    // V2 tokenId can be:
+                    // 1. A numeric ID (ERC1155 - human or group token)
+                    // 2. A hex address (ERC20 wrapper)
+                    var isHexAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+
+                    string? tokenType = null;
+                    string? tokenOwner = null;
+                    bool isGroup = false;
+                    bool isErc20 = false;
+                    bool isErc1155 = false;
+                    bool isWrapped = false;
+                    bool isInflationary = false;
+
+                    if (isHexAddress)
+                    {
+                        // ERC20 wrapper token - check Erc20WrapperAddresses cache
+                        isErc20 = true;
+                        isWrapped = true;
+                        // Check if it's inflationary or demurraged by looking up the avatar
+                        // For now, assume inflationary (most common case)
+                        tokenType = "CrcV2_ERC20WrapperDeployed_Inflationary";
+                        isInflationary = true;
+                        tokenOwner = tokenId; // wrapper address is the token itself
+                    }
+                    else
+                    {
+                        // ERC1155 token - numeric tokenId represents avatar address
+                        // Convert tokenId to address and check if it's a human or group
+                        isErc1155 = true;
+
+                        // Convert numeric tokenId to address for lookup
+                        var tokenAddress = TokenIdToAddress(tokenId);
+
+                        // Check V2Avatars cache for Human
+                        if (_caches.V2Avatars.TryGetValue(tokenAddress, out var avatarInfo))
+                        {
+                            isGroup = avatarInfo.Type != "Human";
+                            tokenType = isGroup ? "CrcV2_RegisterGroup" : "CrcV2_RegisterHuman";
+                        }
+                        else if (_caches.Groups.TryGetValue(tokenAddress, out _))
+                        {
+                            // It's a group
+                            isGroup = true;
+                            tokenType = "CrcV2_RegisterGroup";
+                        }
+                        else
+                        {
+                            // Default to group if not found (safer assumption)
+                            isGroup = true;
+                            tokenType = "CrcV2_RegisterGroup";
+                        }
+
+                        tokenOwner = tokenAddress;
+                    }
+
                     balances.Add(new TokenBalanceResponse(
                         TokenId: tokenId,
                         Balance: balance.ToString(),
-                        TokenOwner: null,
+                        TokenOwner: tokenOwner,
                         Version: 2,
+                        TokenType: tokenType,
+                        IsGroup: isGroup,
+                        IsErc20: isErc20,
+                        IsErc1155: isErc1155,
+                        IsWrapped: isWrapped,
+                        IsInflationary: isInflationary,
                         LastProcessedBlock: lastBlock,
                         Timestamp: timestamp
                     ));

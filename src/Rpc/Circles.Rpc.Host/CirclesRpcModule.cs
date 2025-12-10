@@ -9,7 +9,6 @@ using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Index.Common.Dto;
-using Circles.Rpc.CacheServiceClient.Models;
 using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
@@ -227,7 +226,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
     {
-        // If cache service is enabled, try using it first
+        // If cache service is enabled, use it (no DB fallback needed)
         if (_settings.UseCacheService && _cacheServiceClient != null)
         {
             try
@@ -235,58 +234,15 @@ public class CirclesRpcModule : ICirclesRpcModule
                 _logger?.LogDebug("Using Cache Service for token balances query (address={Address})", address);
 
                 var cacheBalances = await _cacheServiceClient.GetTokenBalancesAsync(address);
-                var cachedTokens = await GetTokenExposureIdsAsync(address);
-                var cachedHubAddress = _settings.CirclesV2HubAddress;
                 var cachedNow = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-                _logger?.LogDebug("Cache service returned {CacheCount} balances, DB has {DbCount} token exposures (address={Address})",
-                    cacheBalances.Length, cachedTokens.Count, address);
-
-                // First pass: collect token addresses that need avatar info lookup
-                // (V2 ERC1155 tokens not in cached exposure cache)
-                var tokensNeedingLookup = new List<string>();
-                foreach (var cacheBalance in cacheBalances)
-                {
-                    if (cacheBalance.Version != 1)
-                    {
-                        var lookupKey = TokenIdToAddress(cacheBalance.TokenId);
-                        if (!cachedTokens.ContainsKey(lookupKey))
-                        {
-                            // V2 token not in exposure cache - check if it's ERC1155 (needs Human/Group lookup)
-                            bool isLikelyErc1155 = !cacheBalance.TokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-                            if (isLikelyErc1155)
-                            {
-                                tokensNeedingLookup.Add(lookupKey);
-                            }
-                        }
-                    }
-                }
-
-                // Batch lookup avatar info for tokens not in exposure cache
-                var avatarInfoMap = new Dictionary<string, AvatarInfoResponse?>(StringComparer.OrdinalIgnoreCase);
-                if (tokensNeedingLookup.Count > 0)
-                {
-                    try
-                    {
-                        var avatarInfos = await _cacheServiceClient.GetAvatarInfoBatchAsync(tokensNeedingLookup.ToArray());
-                        for (int i = 0; i < tokensNeedingLookup.Count && i < avatarInfos.Length; i++)
-                        {
-                            avatarInfoMap[tokensNeedingLookup[i]] = avatarInfos[i];
-                        }
-                        _logger?.LogDebug("Fetched avatar info for {Count} tokens from cache service", avatarInfoMap.Count);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogWarning(ex, "Failed to fetch avatar info batch, will use defaults");
-                    }
-                }
+                _logger?.LogDebug("Cache service returned {CacheCount} balances (address={Address})",
+                    cacheBalances.Length, address);
 
                 var cachedTokenBalances = new List<CirclesTokenBalance>();
 
                 foreach (var cacheBalance in cacheBalances)
                 {
-                    // Find token info from exposure
-                    // Cache returns numeric tokenId for V2 ERC1155, but cachedTokens is keyed by hex address
                     var lookupKey = TokenIdToAddress(cacheBalance.TokenId);
 
                     // Parse cached balance (raw value in Circles/decimal form)
@@ -300,91 +256,19 @@ public class CirclesRpcModule : ICirclesRpcModule
                     BigInteger staticAttoCircles;
                     decimal staticCircles;
 
-                    string tokenAddress;
-                    string tokenId;
-                    string tokenOwner;
-                    string tokenType;
-                    bool isErc20;
-                    bool isErc1155;
-                    bool isWrapped;
-                    bool isInflationary;
-                    bool isGroup;
+                    // Use token metadata directly from cache
+                    var tokenAddress = lookupKey;
+                    var tokenOwner = cacheBalance.TokenOwner ?? lookupKey;
+                    var tokenType = cacheBalance.TokenType ?? "Unknown";
+                    var isErc20 = cacheBalance.IsErc20 ?? false;
+                    var isErc1155 = cacheBalance.IsErc1155 ?? false;
+                    var isWrapped = cacheBalance.IsWrapped ?? false;
+                    var isInflationary = cacheBalance.IsInflationary ?? false;
+                    var isGroup = cacheBalance.IsGroup ?? false;
 
-                    if (cachedTokens.TryGetValue(lookupKey, out var token))
-                    {
-                        // We have full token info from the database
-                        tokenAddress = token.TokenAddress;
-                        tokenOwner = cacheBalance.TokenOwner ?? token.TokenOwner;
-                        tokenType = token.TokenType;
-                        isErc20 = token.IsErc20;
-                        isErc1155 = token.IsErc1155;
-                        isWrapped = token.IsWrapped;
-                        isInflationary = token.IsInflationary;
-                        isGroup = token.IsGroup;
-
-                        tokenId = token.IsErc1155
-                            ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
-                            : token.TokenAddress;
-                    }
-                    else
-                    {
-                        // Token not in cached exposure - derive info from cache response
-                        // This can happen when cache service has newer data than the RPC's exposure cache
-                        tokenAddress = lookupKey;
-                        tokenOwner = cacheBalance.TokenOwner ?? lookupKey;
-
-                        if (cacheBalance.Version == 1)
-                        {
-                            // V1 token
-                            tokenType = "CrcV1_Signup";
-                            isErc20 = true;
-                            isErc1155 = false;
-                            isWrapped = false;
-                            isInflationary = true;
-                            isGroup = false;
-                            tokenId = tokenAddress;
-                        }
-                        else
-                        {
-                            // V2 token - assume ERC1155 Human (most common case)
-                            // For wrapped tokens, the tokenId would already be hex (0x...)
-                            bool isLikelyErc1155 = !cacheBalance.TokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-
-                            if (isLikelyErc1155)
-                            {
-                                // Check avatar info from cache service to determine Human vs Group
-                                if (avatarInfoMap.TryGetValue(lookupKey, out var avatarInfo) && avatarInfo != null)
-                                {
-                                    isGroup = !avatarInfo.IsHuman;
-                                    tokenType = isGroup ? "CrcV2_RegisterGroup" : "CrcV2_RegisterHuman";
-                                }
-                                else
-                                {
-                                    // Default to Group if avatar info not available
-                                    // This matches production DB logic: LEFT JOIN on RegisterHuman,
-                                    // if not found there -> it's a Group
-                                    tokenType = "CrcV2_RegisterGroup";
-                                    isGroup = true;
-                                }
-                                isErc20 = false;
-                                isErc1155 = true;
-                                isWrapped = false;
-                                isInflationary = false;
-                                tokenId = cacheBalance.TokenId;
-                            }
-                            else
-                            {
-                                // Wrapped ERC20 - assume inflationary (most common wrapper type)
-                                tokenType = "CrcV2_ERC20WrapperDeployed_Inflationary";
-                                isErc20 = true;
-                                isErc1155 = false;
-                                isWrapped = true;
-                                isInflationary = true;
-                                isGroup = false;
-                                tokenId = tokenAddress;
-                            }
-                        }
-                    }
+                    var tokenId = isErc1155
+                        ? cacheBalance.TokenId
+                        : tokenAddress;
 
                     // Convert balance based on token type
                     // Cache stores different balance types depending on token:
@@ -2566,8 +2450,22 @@ public class CirclesRpcModule : ICirclesRpcModule
         long? toBlock,
         string[]? eventTypes,
         IFilterPredicateDto[]? filterPredicates = null,
-        bool? sortAscending = false)
+        bool? sortAscending = false,
+        int? limit = 1000)
     {
+        // Validate and enforce limit
+        const int maxLimit = 10000;
+        const int defaultLimit = 1000;
+        var effectiveLimit = limit ?? defaultLimit;
+        if (effectiveLimit <= 0)
+        {
+            throw new ArgumentException("Limit must be greater than 0.");
+        }
+        if (effectiveLimit > maxLimit)
+        {
+            throw new ArgumentException($"Limit cannot exceed {maxLimit}.");
+        }
+
         // Use the schema-aware map to get all event tables and their address columns
         var eventTables = DatabaseSchemaMap.TableAddressColumns;
 
@@ -2658,27 +2556,88 @@ public class CirclesRpcModule : ICirclesRpcModule
             return new EventsResponse(Array.Empty<object>());
         }
 
-        // Combine results from all tables and apply final ORDER BY
-        var finalSql = string.Join(" UNION ALL ", queries);
-        finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder}";
+        // Execute queries in PARALLEL for better performance
+        // Each table query runs concurrently with its own connection
+        // Use ConcurrentDictionary to match production behavior and ensure no duplicate events
+        var allEvents = new System.Collections.Concurrent.ConcurrentDictionary<(long BlockNo, long TxIndex, long LogIndex), (string EventName, string PayloadJson)>();
 
-        await using var connection = await CreateConnectionAsync();
-        await using var command = new NpgsqlCommand(finalSql, connection);
-        command.CommandTimeout = 30; // 30 second timeout to prevent hanging
-        command.Parameters.AddRange(parameters.ToArray());
+        // Build parameter value dictionary for cloning to each connection
+        // Include all parameters: basic filters + predicate filters
+        var paramValues = new Dictionary<string, object?>();
+        if (address != null) paramValues["address"] = address.ToLower();
+        if (fromBlock.HasValue) paramValues["fromBlock"] = fromBlock.Value;
+        if (toBlock.HasValue) paramValues["toBlock"] = toBlock.Value;
 
-        var events = new List<object>();
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        // Add filter predicate parameters
+        foreach (var param in parameters)
         {
-            // Parse the event payload
-            var payloadJson = reader.GetString(5);
+            paramValues[param.ParameterName] = param.Value;
+        }
+
+        // Create tasks for parallel execution
+        // Use per-query LIMIT to reduce data transfer (each table returns at most effectiveLimit rows)
+        var tasks = queries.Select(async querySql =>
+        {
+            // Remove parentheses and add LIMIT for individual query execution
+            var limitedQuery = querySql.TrimStart('(').TrimEnd(')') + $" LIMIT {effectiveLimit}";
+
+            await using var connection = await CreateConnectionAsync();
+            await using var command = new NpgsqlCommand(limitedQuery, connection);
+            command.CommandTimeout = 30;
+
+            // Clone parameters for this connection
+            foreach (var p in paramValues)
+            {
+                command.Parameters.AddWithValue(p.Key, p.Value ?? DBNull.Value);
+            }
+
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var blockNo = reader.GetInt64(0);
+                var txIndex = reader.GetInt64(1);
+                var logIndex = reader.GetInt64(3);
+                var eventName = reader.GetString(4);
+                var payloadJson = reader.GetString(5);
+
+                // TryAdd ensures no duplicate events (matches production behavior)
+                allEvents.TryAdd((blockNo, txIndex, logIndex), (eventName, payloadJson));
+            }
+        }).ToArray();
+
+        // Wait for all parallel queries to complete
+        await Task.WhenAll(tasks);
+
+        // Sort all events in memory and apply final limit
+        IEnumerable<KeyValuePair<(long BlockNo, long TxIndex, long LogIndex), (string EventName, string PayloadJson)>> sortedEvents;
+        if (sortAscending == true)
+        {
+            sortedEvents = allEvents
+                .OrderBy(e => e.Key.BlockNo)
+                .ThenBy(e => e.Key.TxIndex)
+                .ThenBy(e => e.Key.LogIndex)
+                .Take(effectiveLimit);
+        }
+        else
+        {
+            sortedEvents = allEvents
+                .OrderByDescending(e => e.Key.BlockNo)
+                .ThenByDescending(e => e.Key.TxIndex)
+                .ThenByDescending(e => e.Key.LogIndex)
+                .Take(effectiveLimit);
+        }
+
+        // Convert to response format
+        var events = new List<object>();
+        foreach (var evt in sortedEvents)
+        {
+            var eventName = evt.Value.EventName;
+            var payloadJson = evt.Value.PayloadJson;
             var payloadDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(payloadJson);
 
             if (payloadDict != null)
             {
                 // Convert numeric fields to hex format and create ordered dictionary
-                // Order: blockNumber, timestamp, transactionIndex, logIndex, transactionHash, then other fields
                 var orderedValues = new Dictionary<string, object?>();
 
                 // Add standard fields in remote server order
@@ -2688,7 +2647,6 @@ public class CirclesRpcModule : ICirclesRpcModule
                 {
                     if (payloadDict.TryGetValue(fieldName, out var value))
                     {
-                        // Convert numeric types to hex strings
                         if (fieldName == "blockNumber" || fieldName == "timestamp" || fieldName == "transactionIndex" || fieldName == "logIndex")
                         {
                             if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long numValue))
@@ -2714,12 +2672,12 @@ public class CirclesRpcModule : ICirclesRpcModule
                 // Add remaining fields in alphabetical order but with "limit" last to match remote
                 var remainingFields = payloadDict
                     .Where(kvp => !orderedValues.ContainsKey(kvp.Key))
-                    .OrderBy(x => x.Key == "limit" ? "zzz" : x.Key); // Sort limit last
+                    .OrderBy(x => x.Key == "limit" ? "zzz" : x.Key);
 
-                foreach (var kvp in remainingFields)
+                foreach (var field in remainingFields)
                 {
-                    var key = kvp.Key;
-                    var value = kvp.Value;
+                    var key = field.Key;
+                    var value = field.Value;
 
                     if (value.ValueKind == JsonValueKind.String)
                     {
@@ -2727,7 +2685,6 @@ public class CirclesRpcModule : ICirclesRpcModule
                     }
                     else if (value.ValueKind == JsonValueKind.Number)
                     {
-                        // Keep other numbers as strings
                         orderedValues[key] = value.ToString();
                     }
                     else
@@ -2738,7 +2695,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
                 events.Add(new
                 {
-                    @event = reader.GetString(4),
+                    @event = eventName,
                     values = orderedValues
                 });
             }

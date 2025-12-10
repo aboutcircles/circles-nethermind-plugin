@@ -259,13 +259,15 @@ public interface ICirclesRpcModule
     /// <param name="eventTypes">Filter by event types (null for all events)</param>
     /// <param name="filterPredicates">Advanced filter predicates for complex queries</param>
     /// <param name="sortAscending">Sort order (default: descending by block number)</param>
+    /// <param name="limit">Maximum number of events to return (default: 1000, max: 10000)</param>
     Task<EventsResponse> GetEvents(
         string? address,
         long? fromBlock,
         long? toBlock,
         string[]? eventTypes,
         IFilterPredicateDto[]? filterPredicates = null,
-        bool? sortAscending = false);
+        bool? sortAscending = false,
+        int? limit = 1000);
 
     // ========================================================================
     // Generic Database Query
