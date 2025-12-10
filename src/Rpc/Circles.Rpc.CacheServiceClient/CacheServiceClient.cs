@@ -213,4 +213,59 @@ public class CacheServiceClient
             throw;
         }
     }
+
+    /// <summary>
+    /// Get trust relations for an address (both trusts and trustedBy)
+    /// </summary>
+    public async Task<TrustRelationsResponse?> GetTrustRelationsAsync(string address, int? version = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/trust/{address}";
+            if (version.HasValue)
+            {
+                url += $"?version={version.Value}";
+            }
+            return await _httpClient.GetFromJsonAsync<TrustRelationsResponse>(url, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting trust relations from cache service for {Address}", address);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get all members of a group
+    /// </summary>
+    public async Task<GroupMembersResponse?> GetGroupMembersAsync(string groupAddress, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/groups/{groupAddress}/members";
+            return await _httpClient.GetFromJsonAsync<GroupMembersResponse>(url, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting group members from cache service for {GroupAddress}", groupAddress);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get all groups that a member belongs to
+    /// </summary>
+    public async Task<MemberGroupsResponse?> GetMemberGroupsAsync(string memberAddress, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/groups/memberships/{memberAddress}";
+            return await _httpClient.GetFromJsonAsync<MemberGroupsResponse>(url, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting member groups from cache service for {MemberAddress}", memberAddress);
+            throw;
+        }
+    }
 }

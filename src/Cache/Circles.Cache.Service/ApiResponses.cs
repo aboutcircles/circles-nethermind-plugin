@@ -65,3 +65,57 @@ public record AvatarInfoBatchRequest(string[] Addresses);
 /// Batch request for profile CIDs
 /// </summary>
 public record ProfileCidBatchRequest(string[] Addresses);
+
+/// <summary>
+/// Response for trust relation queries
+/// </summary>
+public record TrustRelationResponse(
+    string Truster,
+    string Trustee,
+    long ExpiryTime,
+    int Version,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
+
+/// <summary>
+/// Response for trust relations by address
+/// </summary>
+public record TrustRelationsResponse(
+    string Address,
+    TrustRelationResponse[] Trusts,
+    TrustRelationResponse[] TrustedBy,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
+
+/// <summary>
+/// Response for group membership queries
+/// </summary>
+public record GroupMembershipResponse(
+    string Group,
+    string Member,
+    long ExpiryTime,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
+
+/// <summary>
+/// Response for group members query
+/// </summary>
+public record GroupMembersResponse(
+    string Group,
+    GroupMembershipResponse[] Members,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
+
+/// <summary>
+/// Response for member's group memberships query
+/// </summary>
+public record MemberGroupsResponse(
+    string Member,
+    GroupMembershipResponse[] Groups,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);

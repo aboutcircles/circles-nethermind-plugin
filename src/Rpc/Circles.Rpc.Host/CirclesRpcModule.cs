@@ -1739,6 +1739,43 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<TrustRelationsResponse> GetTrustRelations(string address)
     {
+        // If cache service is enabled, try using it first (V1 only for backward compatibility)
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for trust relations query for {Address}", address);
+
+                var cacheResult = await _cacheServiceClient.GetTrustRelationsAsync(address, version: 1);
+
+                if (cacheResult != null)
+                {
+                    // Convert cache response to RPC response format
+                    // V1 trust uses "limit" field (0-100 percentage), stored in ExpiryTime for simplicity
+                    var cacheTrusts = cacheResult.Trusts
+                        .Select(t => new TrustRelation(User: t.Trustee, Limit: (int)t.ExpiryTime))
+                        .ToArray();
+                    var cacheTrustedBy = cacheResult.TrustedBy
+                        .Select(t => new TrustRelation(User: t.Truster, Limit: (int)t.ExpiryTime))
+                        .ToArray();
+
+                    return new TrustRelationsResponse(
+                        User: address.ToLower(),
+                        Trusts: cacheTrusts,
+                        TrustedBy: cacheTrustedBy
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service trust relations query failed, falling back to database");
+                // Fall through to database query below
+            }
+        }
+
+        // Fallback: use traditional database approach
+        _logger?.LogDebug("Using database for trust relations query for {Address}", address);
+
         await using var connection = await CreateConnectionAsync();
         const string sql = @"
             select ""user"",
@@ -2024,11 +2061,97 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<PagedResponse<GroupMembershipRow>> GetGroupMembers(string groupAddress, int limit = 100, string? cursor = null)
     {
+        // If cache service is enabled and no cursor (first page), try cache first
+        if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for group members query for {GroupAddress}", groupAddress);
+
+                var cacheResult = await _cacheServiceClient.GetGroupMembersAsync(groupAddress);
+
+                if (cacheResult != null)
+                {
+                    // Convert cache response to RPC response format
+                    // Note: Cache doesn't have block/tx info, so we use 0 for those fields
+                    var allMembers = cacheResult.Members
+                        .Select(m => new GroupMembershipRow(
+                            BlockNumber: 0,
+                            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            TransactionIndex: 0,
+                            LogIndex: 0,
+                            TransactionHash: "",
+                            Group: m.Group,
+                            Member: m.Member,
+                            ExpiryTime: m.ExpiryTime
+                        ))
+                        .ToList();
+
+                    var hasMore = allMembers.Count > limit;
+                    var results = allMembers.Take(limit).ToArray();
+
+                    // Cache-based results don't support pagination via cursor
+                    return new PagedResponse<GroupMembershipRow>(
+                        Results: results,
+                        HasMore: hasMore,
+                        NextCursor: null // Cache doesn't support cursor pagination
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service group members query failed, falling back to database");
+                // Fall through to database query below
+            }
+        }
+
         return await GetGroupMembershipInternal(groupAddress, limit, cursor, filterByGroup: true);
     }
 
     public async Task<PagedResponse<GroupMembershipRow>> GetGroupMemberships(string memberAddress, int limit = 50, string? cursor = null)
     {
+        // If cache service is enabled and no cursor (first page), try cache first
+        if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for member groups query for {MemberAddress}", memberAddress);
+
+                var cacheResult = await _cacheServiceClient.GetMemberGroupsAsync(memberAddress);
+
+                if (cacheResult != null)
+                {
+                    // Convert cache response to RPC response format
+                    var allGroups = cacheResult.Groups
+                        .Select(g => new GroupMembershipRow(
+                            BlockNumber: 0,
+                            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                            TransactionIndex: 0,
+                            LogIndex: 0,
+                            TransactionHash: "",
+                            Group: g.Group,
+                            Member: g.Member,
+                            ExpiryTime: g.ExpiryTime
+                        ))
+                        .ToList();
+
+                    var hasMore = allGroups.Count > limit;
+                    var results = allGroups.Take(limit).ToArray();
+
+                    return new PagedResponse<GroupMembershipRow>(
+                        Results: results,
+                        HasMore: hasMore,
+                        NextCursor: null // Cache doesn't support cursor pagination
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service member groups query failed, falling back to database");
+                // Fall through to database query below
+            }
+        }
+
         return await GetGroupMembershipInternal(memberAddress, limit, cursor, filterByGroup: false);
     }
 
