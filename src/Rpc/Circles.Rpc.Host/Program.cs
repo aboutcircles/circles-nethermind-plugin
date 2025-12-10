@@ -678,10 +678,11 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
     string[]? eventTypes = null;
     bool? sortAscending = false;
     int? limit = null;
+    string? cursor = null;
 
     if (parameters == null || parameters.Length == 0)
     {
-        return await rpcModule.GetEvents(null, null, null, null, null, false, null);
+        return await rpcModule.GetEvents(null, null, null, null, null, false, null, null);
     }
 
     if (parameters.Length > 0 && parameters[0].ValueKind != JsonValueKind.Null)
@@ -718,12 +719,18 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
         sortAscending = parameters[5].GetBoolean();
     }
 
+    // New pagination parameters
     if (parameters.Length > 6 && parameters[6].ValueKind != JsonValueKind.Null)
     {
         limit = parameters[6].GetInt32();
     }
 
-    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit);
+    if (parameters.Length > 7 && parameters[7].ValueKind != JsonValueKind.Null)
+    {
+        cursor = parameters[7].GetString();
+    }
+
+    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit, cursor);
 }
 
 static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcModule rpcModule)
@@ -737,24 +744,24 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
 
     var methodName = request.Method.Replace("circles_", "").Replace("circlesV2_", "");
     methodName = char.ToUpper(methodName[0]) + methodName.Substring(1);
-    
+
     var method = typeof(CirclesRpcModule).GetMethod(methodName);
     if (method == null)
     {
         throw new RpcMethodNotFoundException(request.Method);
     }
-    
+
     var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
     var methodParams = method.GetParameters();
     var args = new object?[methodParams.Length];
-    
+
     for (int i = 0; i < methodParams.Length; i++)
     {
         if (parameters != null && i < parameters.Length && parameters[i].ValueKind != JsonValueKind.Null)
         {
             var paramType = methodParams[i].ParameterType;
             var underlyingType = Nullable.GetUnderlyingType(paramType) ?? paramType;
-            
+
             if (underlyingType == typeof(string))
             {
                 args[i] = parameters[i].GetString();
@@ -781,7 +788,7 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
             args[i] = null;
         }
     }
-    
+
     var result = method.Invoke(rpcModule, args);
     if (result is Task task)
     {
@@ -789,7 +796,7 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
         var resultProperty = task.GetType().GetProperty("Result");
         return resultProperty?.GetValue(task) ?? new object();
     }
-    
+
     return result ?? new object();
 }
 
@@ -817,7 +824,15 @@ static async Task<object> HandleQuery(JsonRpcRequest request, CirclesRpcModule r
     {
         throw new ArgumentException("Invalid SelectDto parameter");
     }
-    return await rpcModule.Query(query);
+
+    // Optional cursor parameter for pagination
+    string? cursor = null;
+    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
+    {
+        cursor = parameters[1].GetString();
+    }
+
+    return await rpcModule.Query(query, cursor);
 }
 
 public static class JsonElementExtensions
