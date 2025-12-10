@@ -23,12 +23,15 @@ public class ProfilesController : ControllerBase
         _logger = logger;
     }
 
+    private string GetRemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     /// <summary>
     /// Get profile CID for a single address
     /// </summary>
     [HttpGet("{address}/cid")]
     public ActionResult<ProfileCidResponse> GetProfileCid(string address)
     {
+        _logger.LogInformation("Profile CID lookup requested for {Address} from {RemoteIp}", address, GetRemoteIp());
         try
         {
             var addressLower = address.ToLowerInvariant();
@@ -67,6 +70,11 @@ public class ProfilesController : ControllerBase
         {
             return BadRequest(new { error = $"Batch size exceeds limit of {MaxBatchSize} addresses" });
         }
+
+        _logger.LogInformation(
+            "Profile CID batch lookup requested for {Count} addresses from {RemoteIp}",
+            request.Addresses.Length,
+            GetRemoteIp());
 
         try
         {

@@ -23,12 +23,15 @@ public class AvatarsController : ControllerBase
         _logger = logger;
     }
 
+    private string GetRemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     /// <summary>
     /// Get avatar info for a single address
     /// </summary>
     [HttpGet("{address}")]
     public ActionResult<AvatarInfoResponse> GetAvatarInfo(string address)
     {
+        _logger.LogInformation("Avatar lookup requested for {Address} from {RemoteIp}", address, GetRemoteIp());
         try
         {
             var addressLower = address.ToLowerInvariant();
@@ -118,6 +121,11 @@ public class AvatarsController : ControllerBase
         {
             return BadRequest(new { error = $"Batch size exceeds limit of {MaxBatchSize} addresses" });
         }
+
+        _logger.LogInformation(
+            "Avatar batch lookup requested for {Count} addresses from {RemoteIp}",
+            request.Addresses.Length,
+            GetRemoteIp());
 
         try
         {
