@@ -1142,8 +1142,9 @@ public class CacheWarmupService : BackgroundService
 
         // Load V1 trust relations using Seed() for efficiency
         // Uses the pre-existing view logic for deduplication
+        // V1 trust has a "limit" field (0-100 percentage) that we store as the value
         const string v1Sql = @"
-            SELECT ""user"" as truster, ""canSendTo"" as trustee
+            SELECT ""user"" as truster, ""canSendTo"" as trustee, ""limit""
             FROM ""V_CrcV1_TrustRelations""";
 
         var v1TrustData = new Dictionary<string, long>();
@@ -1157,10 +1158,12 @@ public class CacheWarmupService : BackgroundService
             {
                 var truster = v1Reader.GetString(0).ToLowerInvariant();
                 var trustee = v1Reader.GetString(1).ToLowerInvariant();
+                var limitBig = v1Reader.GetFieldValue<BigInteger>(2);
 
-                // For V1, store 0 as the value (no expiry time)
+                // Store the trust limit (0-100) as the value
+                long limitLong = limitBig > long.MaxValue ? long.MaxValue : (long)limitBig;
                 var key = $"{truster}:{trustee}";
-                v1TrustData[key] = 0L;
+                v1TrustData[key] = limitLong;
             }
         }
 
