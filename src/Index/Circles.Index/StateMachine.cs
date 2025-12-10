@@ -58,26 +58,37 @@ public class StateMachine(
                     {
                         case EnterState:
                             {
-                                // Handle re-indexing if REINDEX_FROM_BLOCK is set
-                                if (context.Settings.ReindexFromBlock.HasValue)
+                                // Handle TABLE_START_BLOCKS for reindexing
+                                // Use "*:BlockNumber" to reindex ALL tables, or specific tables with their start blocks
+                                if (context.Settings.ReindexAllTables && context.Settings.ReindexAllFromBlock.HasValue)
                                 {
-                                    var reindexFrom = context.Settings.ReindexFromBlock.Value;
-                                    context.Logger.Info($"[REINDEX] REINDEX_FROM_BLOCK is set to {reindexFrom}");
-
-                                    if (context.Settings.ReindexTables.Length > 0)
+                                    var reindexFrom = context.Settings.ReindexAllFromBlock.Value;
+                                    context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing ALL tables from block {reindexFrom}");
+                                    
+                                    // Delete from all tables
+                                    await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
+                                    
+                                    context.Logger.Info("[TABLE_START_BLOCKS] All data deletion complete. Indexer will resync from the specified block.");
+                                }
+                                else if (context.Settings.TableStartBlocks.Count > 0)
+                                {
+                                    var minStartBlock = context.Settings.TableStartBlocks.Values.Min();
+                                    var tablesToReindex = context.Settings.TableStartBlocks.Keys.ToArray();
+                                    
+                                    context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing {tablesToReindex.Length} tables from block {minStartBlock}:");
+                                    foreach (var (table, startBlock) in context.Settings.TableStartBlocks)
                                     {
-                                        // Delete only from specified tables
-                                        context.Logger.Info($"[REINDEX] Deleting data from tables: {string.Join(", ", context.Settings.ReindexTables)} from block {reindexFrom} onwards...");
-                                        await context.Database.DeleteFromTablesGreaterOrEqualBlock(reindexFrom, context.Settings.ReindexTables);
+                                        context.Logger.Info($"  - {table}: from block {startBlock}");
                                     }
-                                    else
-                                    {
-                                        // Delete from all tables
-                                        context.Logger.Info($"[REINDEX] Deleting ALL data from block {reindexFrom} onwards...");
-                                        await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
-                                    }
-
-                                    context.Logger.Info("[REINDEX] Re-index data deletion complete. The indexer will now sync from the appropriate block.");
+                                    
+                                    // Delete from specified tables
+                                    await context.Database.DeleteFromTablesGreaterOrEqualBlock(minStartBlock, tablesToReindex);
+                                    
+                                    // Also delete from System_Block to force re-sync from the minimum start block
+                                    context.Logger.Info($"[TABLE_START_BLOCKS] Deleting System_Block from block {minStartBlock} to force resync...");
+                                    await context.Database.DeleteSystemBlockGreaterOrEqualBlock(minStartBlock);
+                                    
+                                    context.Logger.Info("[TABLE_START_BLOCKS] Data deletion complete. Indexer will resync from the minimum start block.");
                                 }
 
                                 // Determine the effective resume point by checking both System_Block and all event tables.

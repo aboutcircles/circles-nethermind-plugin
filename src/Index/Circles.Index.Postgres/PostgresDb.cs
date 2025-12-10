@@ -846,6 +846,24 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         }
     }
 
+    /// <summary>
+    /// Deletes from System_Block table from the specified block onwards.
+    /// This forces the indexer to resync those blocks.
+    /// Used by TABLE_START_BLOCKS to enable targeted table reindexing.
+    /// </summary>
+    public async Task DeleteSystemBlockGreaterOrEqualBlock(long fromBlock)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"DELETE FROM ""System_Block"" WHERE ""blockNumber"" >= @fromBlock;";
+        command.Parameters.AddWithValue("@fromBlock", fromBlock);
+
+        var rowsDeleted = await command.ExecuteNonQueryAsync();
+        Console.WriteLine($"[TABLE_START_BLOCKS] Deleted {rowsDeleted} rows from System_Block (block >= {fromBlock})");
+    }
+
 
     /// <summary>
     /// Upsert a single (tableName -> blockNumber) mapping.
