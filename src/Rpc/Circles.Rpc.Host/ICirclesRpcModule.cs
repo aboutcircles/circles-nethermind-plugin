@@ -233,12 +233,14 @@ public interface ICirclesRpcModule
     /// <summary>
     /// Gets transaction history for an avatar with cursor-based pagination.
     /// SDK-compatible method with all circle amount formats calculated.
-    /// Queries V2 transfers where avatar is either sender or receiver.
+    /// Queries transfers where avatar is either sender or receiver.
     /// </summary>
     /// <param name="avatarAddress">Avatar address to query transaction history for</param>
     /// <param name="limit">Maximum number of transactions to return (default: 50)</param>
     /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
-    Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null);
+    /// <param name="version">Filter by version (null = both V1+V2, 1 = V1 only, 2 = V2 only)</param>
+    /// <param name="excludeIntermediary">If true, uses TransferSummary view which excludes intermediary hop transfers (default: false)</param>
+    Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null, int? version = null, bool excludeIntermediary = false);
 
     /// <summary>
     /// Gets all holders of a specific token with cursor-based pagination.

@@ -770,6 +770,14 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
             {
                 args[i] = parameters[i].GetInt32();
             }
+            else if (underlyingType == typeof(long))
+            {
+                args[i] = parameters[i].GetInt64();
+            }
+            else if (underlyingType == typeof(bool))
+            {
+                args[i] = parameters[i].GetBoolean();
+            }
             else if (paramType == typeof(string[]))
             {
                 args[i] = parameters[i].Deserialize<string[]>();
