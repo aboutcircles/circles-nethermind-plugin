@@ -1230,17 +1230,20 @@ curl -X POST http://localhost:8081 \
 
 ### circles_events
 
-Query all events that involve a specific address.
+Query all events that involve a specific address. Returns paginated results with cursor-based navigation.
 
-**Signature:** `circles_events(address, fromBlock, toBlock?, eventTypes?, filterPredicates?, sortAscending?)`
+**Signature:** `circles_events(address, fromBlock, toBlock?, eventTypes?, filterPredicates?, sortAscending?, limit?, cursor?)`
 
 **Parameters:**
-1. `address` (string, optional): Filter by address
-2. `fromBlock` (number): Starting block number (inclusive)
+
+1. `address` (string, optional): Filter by address (null for all addresses)
+2. `fromBlock` (number, optional): Starting block number (inclusive)
 3. `toBlock` (number, optional): Ending block number (null for latest)
 4. `eventTypes` (string[], optional): Filter by event types
 5. `filterPredicates` (FilterPredicate[], optional): Advanced filters
-6. `sortAscending` (boolean, optional): Sort order (default: false)
+6. `sortAscending` (boolean, optional): Sort order (default: false = descending)
+7. `limit` (number, optional): Maximum events to return (default: 100, max: 1000)
+8. `cursor` (string, optional): Base64 encoded pagination cursor from previous response
 
 **Request (Basic):**
 
@@ -1279,6 +1282,50 @@ curl -X POST http://localhost:8081 \
   }'
 ```
 
+**Request (With Pagination):**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_events",
+    "params": [
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      30282299,
+      null,
+      null,
+      null,
+      false,
+      50,
+      null
+    ]
+  }'
+```
+
+**Request (Next Page):**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_events",
+    "params": [
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      30282299,
+      null,
+      null,
+      null,
+      false,
+      50,
+      "MzAyODIyOTk6MDoy"
+    ]
+  }'
+```
+
 **Request (With Filter Predicates):**
 
 ```bash
@@ -1300,7 +1347,9 @@ curl -X POST http://localhost:8081 \
           "value": "1000000000000000000"
         }
       ],
-      false
+      false,
+      100,
+      null
     ]
   }'
 ```
@@ -1321,21 +1370,34 @@ curl -X POST http://localhost:8081 \
 ```json
 {
   "jsonrpc": "2.0",
-  "result": [
-    {
-      "event": "CrcV1_Trust",
-      "values": {
-        "blockNumber": 30282299,
-        "timestamp": 1715978910,
-        "transactionIndex": 0,
-        "logIndex": 2,
-        "transactionHash": "0x9d5e2ac..."
+  "result": {
+    "events": [
+      {
+        "event": "CrcV1_Trust",
+        "values": {
+          "blockNumber": 30282299,
+          "timestamp": 1715978910,
+          "transactionIndex": 0,
+          "logIndex": 2,
+          "transactionHash": "0x9d5e2ac..."
+        }
       }
-    }
-  ],
+    ],
+    "hasMore": true,
+    "nextCursor": "MzAyODIyOTk6MDoy"
+  },
   "id": 1
 }
 ```
+
+**Response Fields:**
+
+- `events`: Array of event objects
+- `hasMore`: Boolean indicating if more results are available
+- `nextCursor`: Base64 encoded cursor for fetching the next page (null if no more results)
+
+**Cursor Format:**
+The cursor is a Base64 encoded string of `blockNumber:transactionIndex:logIndex`. Treat it as opaque and pass it unchanged to fetch subsequent pages.
 
 ---
 
@@ -1576,7 +1638,9 @@ curl -X POST ... -d '{"params": ["0x...", 50, "MzY1MDAwMDA6MTA6Mw=="]}'
 ```
 
 **Cursor Formats:**
+
 - Most methods: Base64 encoded `blockNumber:transactionIndex:logIndex`
+- `circles_events`: Base64 encoded `blockNumber:transactionIndex:logIndex`
 - `circles_getTransactionHistory`: Base64 encoded `blockNumber:transactionIndex:logIndex:batchIndex`
 - `circles_getTokenHolders`: Raw account address string
 

@@ -2,10 +2,10 @@
   "description": "Configuration for RPC regression testing",
   "defaultTolerance": 0.001,
   "methodTolerances": {
-    "circles_getTotalBalance": 5.0,
-    "circlesV2_getTotalBalance": 5.0,
-    "circles_getTokenBalances": 5.0,
-    "circlesV2_findPath": 5.0,
+    "circles_getTotalBalance": 0.1,
+    "circlesV2_getTotalBalance": 0.1,
+    "circles_getTokenBalances": 0.1,
+    "circlesV2_findPath": 0.1,
     "circles_query": 0.05
   },
   "normalizeFields": [
