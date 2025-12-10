@@ -9,6 +9,7 @@ using Circles.Index.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Index.Common.Dto;
+using Circles.Rpc.CacheServiceClient.Models;
 using Nethermind.Int256;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
@@ -241,6 +242,45 @@ public class CirclesRpcModule : ICirclesRpcModule
                 _logger?.LogDebug("Cache service returned {CacheCount} balances, DB has {DbCount} token exposures (address={Address})",
                     cacheBalances.Length, cachedTokens.Count, address);
 
+                // First pass: collect token addresses that need avatar info lookup
+                // (V2 ERC1155 tokens not in cached exposure cache)
+                var tokensNeedingLookup = new List<string>();
+                foreach (var cacheBalance in cacheBalances)
+                {
+                    if (cacheBalance.Version != 1)
+                    {
+                        var lookupKey = TokenIdToAddress(cacheBalance.TokenId);
+                        if (!cachedTokens.ContainsKey(lookupKey))
+                        {
+                            // V2 token not in exposure cache - check if it's ERC1155 (needs Human/Group lookup)
+                            bool isLikelyErc1155 = !cacheBalance.TokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+                            if (isLikelyErc1155)
+                            {
+                                tokensNeedingLookup.Add(lookupKey);
+                            }
+                        }
+                    }
+                }
+
+                // Batch lookup avatar info for tokens not in exposure cache
+                var avatarInfoMap = new Dictionary<string, AvatarInfoResponse?>(StringComparer.OrdinalIgnoreCase);
+                if (tokensNeedingLookup.Count > 0)
+                {
+                    try
+                    {
+                        var avatarInfos = await _cacheServiceClient.GetAvatarInfoBatchAsync(tokensNeedingLookup.ToArray());
+                        for (int i = 0; i < tokensNeedingLookup.Count && i < avatarInfos.Length; i++)
+                        {
+                            avatarInfoMap[tokensNeedingLookup[i]] = avatarInfos[i];
+                        }
+                        _logger?.LogDebug("Fetched avatar info for {Count} tokens from cache service", avatarInfoMap.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Failed to fetch avatar info batch, will use defaults");
+                    }
+                }
+
                 var cachedTokenBalances = new List<CirclesTokenBalance>();
 
                 foreach (var cacheBalance in cacheBalances)
@@ -312,12 +352,24 @@ public class CirclesRpcModule : ICirclesRpcModule
 
                             if (isLikelyErc1155)
                             {
-                                tokenType = "CrcV2_RegisterHuman"; // Default to Human, could be Group
+                                // Check avatar info from cache service to determine Human vs Group
+                                if (avatarInfoMap.TryGetValue(lookupKey, out var avatarInfo) && avatarInfo != null)
+                                {
+                                    isGroup = !avatarInfo.IsHuman;
+                                    tokenType = isGroup ? "CrcV2_RegisterGroup" : "CrcV2_RegisterHuman";
+                                }
+                                else
+                                {
+                                    // Default to Group if avatar info not available
+                                    // This matches production DB logic: LEFT JOIN on RegisterHuman,
+                                    // if not found there -> it's a Group
+                                    tokenType = "CrcV2_RegisterGroup";
+                                    isGroup = true;
+                                }
                                 isErc20 = false;
                                 isErc1155 = true;
                                 isWrapped = false;
                                 isInflationary = false;
-                                isGroup = false;
                                 tokenId = cacheBalance.TokenId;
                             }
                             else

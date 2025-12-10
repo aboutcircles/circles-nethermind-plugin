@@ -78,6 +78,26 @@ public class AvatarsController : ControllerBase
                 ));
             }
 
+            // Check if it's a Group (Groups are stored separately, not in V2Avatars)
+            if (_caches.Groups.TryGetValue(addressLower, out var groupOnlyInfo))
+            {
+                var cid = _caches.V2AvatarToCidMap.TryGetValue(addressLower, out var c) ? c : null;
+                var shortName = _caches.V2AvatarToShortNameMap.TryGetValue(addressLower, out var sn) ? sn : null;
+
+                return Ok(new AvatarInfoResponse(
+                    Avatar: address,
+                    Version: 2,
+                    Type: "Group",
+                    CidV0: cid,
+                    IsHuman: false,
+                    Name: groupOnlyInfo.Name,
+                    Symbol: groupOnlyInfo.Symbol,
+                    ShortName: shortName,
+                    LastProcessedBlock: lastBlock,
+                    Timestamp: timestamp
+                ));
+            }
+
             return NotFound(new { error = $"No avatar found for address {address}" });
         }
         catch (Exception ex)
@@ -144,6 +164,25 @@ public class AvatarsController : ControllerBase
                         V1Token: v1Info.TokenAddress,
                         CidV0: cid,
                         IsHuman: v1Info.Type.Contains("Human"),
+                        LastProcessedBlock: lastBlock,
+                        Timestamp: timestamp
+                    ));
+                }
+                // Check if it's a Group (Groups are stored separately, not in V2Avatars)
+                else if (_caches.Groups.TryGetValue(addressLower, out var groupOnlyInfo))
+                {
+                    var cid = _caches.V2AvatarToCidMap.TryGetValue(addressLower, out var c) ? c : null;
+                    var shortName = _caches.V2AvatarToShortNameMap.TryGetValue(addressLower, out var sn) ? sn : null;
+
+                    results.Add(new AvatarInfoResponse(
+                        Avatar: address,
+                        Version: 2,
+                        Type: "Group",
+                        CidV0: cid,
+                        IsHuman: false,
+                        Name: groupOnlyInfo.Name,
+                        Symbol: groupOnlyInfo.Symbol,
+                        ShortName: shortName,
                         LastProcessedBlock: lastBlock,
                         Timestamp: timestamp
                     ));
