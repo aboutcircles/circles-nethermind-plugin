@@ -1,11 +1,13 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Controllers;
 using Circles.Cache.Service.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 using FluentAssertions;
+using System.Net;
 
 namespace Circles.Cache.Service.Tests;
 
@@ -26,14 +28,56 @@ public class ControllerTests
         _state.ListenerConnected = true;
     }
 
+    /// <summary>
+    /// Creates a mock HttpContext with a remote IP address for controller tests.
+    /// </summary>
+    private static DefaultHttpContext CreateHttpContext()
+    {
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
+        return context;
+    }
+
+    /// <summary>
+    /// Creates a BalancesController with mocked HttpContext.
+    /// </summary>
+    private BalancesController CreateBalancesController()
+    {
+        var logger = new Mock<ILogger<BalancesController>>();
+        var controller = new BalancesController(_cache, _state, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
+    /// <summary>
+    /// Creates an AvatarsController with mocked HttpContext.
+    /// </summary>
+    private AvatarsController CreateAvatarsController()
+    {
+        var logger = new Mock<ILogger<AvatarsController>>();
+        var controller = new AvatarsController(_cache, _state, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
+    /// <summary>
+    /// Creates a TrustRelationsController with mocked HttpContext.
+    /// </summary>
+    private TrustRelationsController CreateTrustRelationsController()
+    {
+        var logger = new Mock<ILogger<TrustRelationsController>>();
+        var controller = new TrustRelationsController(_cache, _state, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
     #region BalancesController Tests
 
     [Fact]
     public void GetTokenBalances_ShouldReturnEmpty_WhenNoBalances()
     {
         // Arrange
-        var logger = new Mock<ILogger<BalancesController>>();
-        var controller = new BalancesController(_cache, _state, logger.Object);
+        var controller = CreateBalancesController();
 
         // Act
         var result = controller.GetTokenBalances("0xde374ece6fa50e781e81aac78e811b33d16912c7");
@@ -58,8 +102,7 @@ public class ControllerTests
         _cache.V1TokenOwnerByToken.Add(1000, tokenId, address);
         _cache.RebuildSecondaryIndexes();
 
-        var logger = new Mock<ILogger<BalancesController>>();
-        var controller = new BalancesController(_cache, _state, logger.Object);
+        var controller = CreateBalancesController();
 
         // Act
         var result = controller.GetTokenBalances(address);
@@ -87,8 +130,7 @@ public class ControllerTests
         _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{tokenId}", balance);
         _cache.RebuildSecondaryIndexes();
 
-        var logger = new Mock<ILogger<BalancesController>>();
-        var controller = new BalancesController(_cache, _state, logger.Object);
+        var controller = CreateBalancesController();
 
         // Act
         var result = controller.GetTokenBalances(address);
@@ -102,15 +144,15 @@ public class ControllerTests
         balances[0].TokenId.Should().Be(tokenId);
         balances[0].Balance.Should().Be("1250.75");
         balances[0].Version.Should().Be(2);
-        balances[0].TokenOwner.Should().BeNull(); // V2 doesn't have token owners
+        // V2 token owner is derived from tokenId (converted to address)
+        balances[0].TokenOwner.Should().NotBeNull();
     }
 
     [Fact]
     public void GetTokenBalances_ShouldReject_InvalidAddress()
     {
         // Arrange
-        var logger = new Mock<ILogger<BalancesController>>();
-        var controller = new BalancesController(_cache, _state, logger.Object);
+        var controller = CreateBalancesController();
 
         // Act
         var result = controller.GetTokenBalances("invalid-address");
@@ -124,12 +166,11 @@ public class ControllerTests
     {
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken1", 100m);
-        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:12345", 200m);
+        _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken1", 100m); // V1 CRC (will be converted)
+        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:12345", 200m);    // V2 already in Circles
         _cache.RebuildSecondaryIndexes();
 
-        var logger = new Mock<ILogger<BalancesController>>();
-        var controller = new BalancesController(_cache, _state, logger.Object);
+        var controller = CreateBalancesController();
 
         // Act
         var result = controller.GetTotalBalance(address);
@@ -139,21 +180,25 @@ public class ControllerTests
         okResult.Should().NotBeNull();
         var response = okResult!.Value as TotalBalanceResponse;
         response.Should().NotBeNull();
-        response!.Balance.Should().Be("300");
+        // V1 balance is converted from CRC to Circles (approx 2.1x inflation factor)
+        // V2 balance remains 200, V1 100 CRC becomes ~211 Circles
+        // Total should be > 300 (would be 300 if no conversion applied)
+        var balance = decimal.Parse(response!.Balance);
+        balance.Should().BeGreaterThan(300m, "V1 CRC should be converted to time-circles with inflation factor > 1");
+        balance.Should().BeLessThan(450m, "Converted balance should be within reasonable range (200 V2 + ~211-250 V1)");
     }
 
     [Fact]
-    public void GetTotalBalanceV1_ShouldOnlySumV1()
+    public void GetTotalBalanceV1_ShouldOnlySumV1WithCrcConversion()
     {
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken1", 100m);
-        _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken2", 50m);
-        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:12345", 200m);
+        _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken1", 100m); // V1 CRC (will be converted)
+        _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken2", 50m);  // V1 CRC (will be converted)
+        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:12345", 200m);    // Should NOT be included
         _cache.RebuildSecondaryIndexes();
 
-        var logger = new Mock<ILogger<BalancesController>>();
-        var controller = new BalancesController(_cache, _state, logger.Object);
+        var controller = CreateBalancesController();
 
         // Act
         var result = controller.GetTotalBalanceV1(address);
@@ -163,7 +208,11 @@ public class ControllerTests
         okResult.Should().NotBeNull();
         var response = okResult!.Value as TotalBalanceResponse;
         response.Should().NotBeNull();
-        response!.Balance.Should().Be("150");
+        // Raw CRC sum is 150, but CRC→Circles conversion applies ~2.1x inflation factor
+        // V2 balance (200) should NOT be included
+        var balance = decimal.Parse(response!.Balance);
+        balance.Should().BeGreaterThan(150m, "V1 CRC should be converted to time-circles with inflation factor > 1");
+        balance.Should().BeLessThan(350m, "Converted balance should be within reasonable range (~316 for 150 CRC)");
     }
 
     #endregion
@@ -178,8 +227,7 @@ public class ControllerTests
         _cache.V2Avatars.Add(2000, address, ("Human", 1704067200L));
         _cache.V2AvatarToCidMap.Add(2000, address, "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE");
 
-        var logger = new Mock<ILogger<AvatarsController>>();
-        var controller = new AvatarsController(_cache, _state, logger.Object);
+        var controller = CreateAvatarsController();
 
         // Act
         var result = controller.GetAvatarInfo(address);
@@ -204,8 +252,7 @@ public class ControllerTests
         var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
         _cache.V1Avatars.Add(1000, address, ("Human", token));
 
-        var logger = new Mock<ILogger<AvatarsController>>();
-        var controller = new AvatarsController(_cache, _state, logger.Object);
+        var controller = CreateAvatarsController();
 
         // Act
         var result = controller.GetAvatarInfo(address);
@@ -226,8 +273,7 @@ public class ControllerTests
     public void GetAvatarInfo_ShouldReturn404_WhenNotFound()
     {
         // Arrange
-        var logger = new Mock<ILogger<AvatarsController>>();
-        var controller = new AvatarsController(_cache, _state, logger.Object);
+        var controller = CreateAvatarsController();
 
         // Act
         var result = controller.GetAvatarInfo("0xde374ece6fa50e781e81aac78e811b33d16912c7");
@@ -244,8 +290,7 @@ public class ControllerTests
         _cache.V2Avatars.Add(2000, address, ("Group", 1704067200L));
         _cache.Groups.Add(2000, address, ("Community DAO", "0xmint", "CDAO"));
 
-        var logger = new Mock<ILogger<AvatarsController>>();
-        var controller = new AvatarsController(_cache, _state, logger.Object);
+        var controller = CreateAvatarsController();
 
         // Act
         var result = controller.GetAvatarInfo(address);
@@ -272,8 +317,7 @@ public class ControllerTests
         _cache.V2Avatars.Add(2000, addr1, ("Human", 1704067200L));
         _cache.V1Avatars.Add(1000, addr2, ("Organization", null));
 
-        var logger = new Mock<ILogger<AvatarsController>>();
-        var controller = new AvatarsController(_cache, _state, logger.Object);
+        var controller = CreateAvatarsController();
 
         // Act
         var request = new AvatarInfoBatchRequest(new[] { addr1, addr2, addr3 });
@@ -296,8 +340,7 @@ public class ControllerTests
     public void GetAvatarInfoBatch_ShouldReject_TooManyAddresses()
     {
         // Arrange
-        var logger = new Mock<ILogger<AvatarsController>>();
-        var controller = new AvatarsController(_cache, _state, logger.Object);
+        var controller = CreateAvatarsController();
         var addresses = Enumerable.Range(0, 101).Select(i => $"0x{i:X40}").ToArray();
 
         // Act
