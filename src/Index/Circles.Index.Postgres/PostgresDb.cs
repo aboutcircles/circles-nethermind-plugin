@@ -853,12 +853,20 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public async Task DeleteSystemBlockGreaterOrEqualBlock(long fromBlock)
     {
-        await using var connection = new NpgsqlConnection(ConnectionString);
+        // Use extended timeout for potentially large deletions (millions of rows)
+        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            CommandTimeout = 600,  // 10 minutes
+            Timeout = 300
+        };
+        
+        await using var connection = new NpgsqlConnection(csb.ToString());
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
         command.CommandText = @"DELETE FROM ""System_Block"" WHERE ""blockNumber"" >= @fromBlock;";
         command.Parameters.AddWithValue("@fromBlock", fromBlock);
+        command.CommandTimeout = 600;  // 10 minutes
 
         var rowsDeleted = await command.ExecuteNonQueryAsync();
         Console.WriteLine($"[TABLE_START_BLOCKS] Deleted {rowsDeleted} rows from System_Block (block >= {fromBlock})");
