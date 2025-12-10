@@ -8,6 +8,12 @@ public record TokenBalanceResponse(
     string Balance,
     string? TokenOwner = null,
     int Version = 0,
+    string? TokenType = null,
+    bool? IsGroup = null,
+    bool? IsErc20 = null,
+    bool? IsErc1155 = null,
+    bool? IsWrapped = null,
+    bool? IsInflationary = null,
     long LastProcessedBlock = -1,
     long Timestamp = 0
 );

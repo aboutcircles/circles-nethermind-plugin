@@ -625,10 +625,11 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
     long? toBlock = null;
     string[]? eventTypes = null;
     bool? sortAscending = false;
+    int? limit = null;
 
     if (parameters == null || parameters.Length == 0)
     {
-        return await rpcModule.GetEvents(null, null, null, null, null, false);
+        return await rpcModule.GetEvents(null, null, null, null, null, false, null);
     }
 
     if (parameters.Length > 0 && parameters[0].ValueKind != JsonValueKind.Null)
@@ -665,7 +666,12 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
         sortAscending = parameters[5].GetBoolean();
     }
 
-    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending);
+    if (parameters.Length > 6 && parameters[6].ValueKind != JsonValueKind.Null)
+    {
+        limit = parameters[6].GetInt32();
+    }
+
+    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit);
 }
 
 static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcModule rpcModule)
