@@ -997,7 +997,14 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public IDictionary<string, long> GetMaxBlockPerTable()
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
+        // Use extended timeout for potentially slow queries after large deletions
+        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            CommandTimeout = 120,  // 2 minutes
+            Timeout = 60
+        };
+        
+        using var connection = new NpgsqlConnection(csb.ToString());
         connection.Open();
 
         var result = new Dictionary<string, long>();
@@ -1018,6 +1025,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             {
                 using var cmd = connection.CreateCommand();
                 cmd.CommandText = $@"SELECT MAX(""blockNumber"") FROM ""{tableName}""";
+                cmd.CommandTimeout = 60;  // 1 minute per table
                 var maxBlock = cmd.ExecuteScalar();
 
                 if (maxBlock is long block)
