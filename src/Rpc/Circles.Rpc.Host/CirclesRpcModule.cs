@@ -1344,6 +1344,145 @@ public class CirclesRpcModule : ICirclesRpcModule
         var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new JsonElement?[addresses.Length];
 
+        // Try cache service path first - gets CIDs, short names, and avatar types in one call
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                return await GetProfileByAddressBatchViaCacheService(lowerAddresses);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service profile batch failed, falling back to database");
+                // Fall through to database path
+            }
+        }
+
+        // Fallback: Database path
+        return await GetProfileByAddressBatchViaDatabase(lowerAddresses);
+    }
+
+    /// <summary>
+    /// Optimized profile fetch using cache service.
+    /// Gets avatar info (including CID, shortName, type) in a single batch call,
+    /// avoiding 3 separate DB queries.
+    /// </summary>
+    private async Task<JsonElement?[]> GetProfileByAddressBatchViaCacheService(string[] lowerAddresses)
+    {
+        var result = new JsonElement?[lowerAddresses.Length];
+
+        // Get avatar info batch directly from cache service - includes CID, shortName, and type
+        // We call the cache service client directly to get the full AvatarInfoResponse with ShortName
+        var cacheAvatarInfos = await _cacheServiceClient!.GetAvatarInfoBatchAsync(lowerAddresses);
+
+        // Build maps from cache response
+        var cidMap = new Dictionary<string, string>();
+        var shortNameMap = new Dictionary<string, string>();
+        var avatarTypeMap = new Dictionary<string, string>();
+
+        for (int i = 0; i < lowerAddresses.Length; i++)
+        {
+            var addr = lowerAddresses[i];
+            var info = cacheAvatarInfos[i];
+            if (info != null)
+            {
+                if (!string.IsNullOrEmpty(info.CidV0))
+                    cidMap[addr] = info.CidV0;
+                if (!string.IsNullOrEmpty(info.ShortName))
+                    shortNameMap[addr] = info.ShortName;
+                if (!string.IsNullOrEmpty(info.Type))
+                    avatarTypeMap[addr] = info.Type;
+            }
+        }
+
+        // Fetch IPFS profiles by CID
+        var validCids = cidMap.Values.Distinct().ToArray();
+        var profileByCidMap = new Dictionary<string, JsonElement?>();
+
+        if (validCids.Length > 0)
+        {
+            var profiles = await GetProfileByCidBatchInternal(validCids);
+            for (int i = 0; i < validCids.Length; i++)
+            {
+                profileByCidMap[validCids[i]] = profiles[i];
+            }
+        }
+
+        // Assemble enriched profiles
+        for (int i = 0; i < lowerAddresses.Length; i++)
+        {
+            var addr = lowerAddresses[i];
+            var hasCid = cidMap.TryGetValue(addr, out var cid);
+
+            JsonElement? baseProfile = null;
+            if (hasCid && cid != null && profileByCidMap.TryGetValue(cid, out var profile))
+            {
+                baseProfile = profile;
+            }
+
+            var hasShortName = shortNameMap.TryGetValue(addr, out var shortName);
+            var hasAvatarType = avatarTypeMap.TryGetValue(addr, out var avatarType);
+
+            if (baseProfile != null)
+            {
+                var profileDict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(baseProfile.Value.GetRawText());
+
+                if (profileDict != null)
+                {
+                    var enrichedProfile = new Dictionary<string, JsonElement>
+                    {
+                        ["address"] = JsonSerializer.SerializeToElement(addr)
+                    };
+
+                    foreach (var kvp in profileDict)
+                    {
+                        if (kvp.Key != "namespaces" && kvp.Key != "signingKeys")
+                        {
+                            enrichedProfile[kvp.Key] = kvp.Value;
+                        }
+                    }
+
+                    if (hasShortName)
+                        enrichedProfile["shortName"] = JsonSerializer.SerializeToElement(shortName);
+                    if (hasAvatarType)
+                        enrichedProfile["avatarType"] = JsonSerializer.SerializeToElement(avatarType);
+
+                    result[i] = JsonSerializer.SerializeToElement(enrichedProfile);
+                }
+                else
+                {
+                    result[i] = baseProfile;
+                }
+            }
+            else if (hasAvatarType || hasShortName)
+            {
+                var minimalProfile = new Dictionary<string, object?>
+                {
+                    ["address"] = addr,
+                    ["shortName"] = hasShortName ? shortName : null,
+                    ["name"] = null,
+                    ["description"] = null,
+                    ["avatarType"] = hasAvatarType ? avatarType : null
+                };
+                result[i] = JsonSerializer.SerializeToElement(minimalProfile);
+            }
+            else
+            {
+                result[i] = null;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Database fallback for profile fetch.
+    /// Makes separate queries for CIDs, short names, and avatar types.
+    /// </summary>
+    private async Task<JsonElement?[]> GetProfileByAddressBatchViaDatabase(string[] lowerAddresses)
+    {
+        var result = new JsonElement?[lowerAddresses.Length];
+
         // Get CIDs for all addresses
         var cids = await GetProfileCidBatchInternal(lowerAddresses);
 
