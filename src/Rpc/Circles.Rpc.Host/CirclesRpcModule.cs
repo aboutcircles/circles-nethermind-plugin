@@ -1022,112 +1022,14 @@ public class CirclesRpcModule : ICirclesRpcModule
         var lowerAddresses = addresses.Where(a => a != null).Select(a => a.ToLower()).ToArray();
         var result = new AvatarInfo?[addresses.Length];
 
-        await using var connection = await CreateConnectionAsync();
+        // Run V1 and V2 queries in parallel using separate connections
+        var v2Task = FetchV2AvatarsAsync(lowerAddresses);
+        var v1Task = FetchV1AvatarsAsync(lowerAddresses);
 
-        // First, check for V2 avatars
-        var v2AvatarMap = new Dictionary<string, AvatarInfo>();
-        const string v2Sql = @"
-            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.""metadataDigest"", rsn.""shortName"", a.""cidV0Digest""
-            FROM ""V_CrcV2_Avatars"" a
-            LEFT JOIN ""CrcV2_UpdateMetadataDigest"" rn ON rn.avatar = a.avatar
-            LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
-            WHERE a.avatar = ANY(@addresses)";
+        await Task.WhenAll(v2Task, v1Task);
 
-        await using (var cmd = new NpgsqlCommand(v2Sql, connection))
-        {
-            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                var avatar = reader.GetString(0);
-                var avatarType = reader.GetString(3);
-                var isHuman = avatarType == "CrcV2_RegisterHuman";
-
-                // Convert metadataDigest bytes to proper IPFS CIDv0
-                string? cid = null;
-                if (!reader.IsDBNull(4))
-                {
-                    var metadataDigest = (byte[])reader.GetValue(4);
-                    cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
-                }
-
-                // cidV0Digest should be empty string per remote implementation
-                var cidV0Digest = "";
-
-                v2AvatarMap[avatar] = new AvatarInfo(
-                    Version: 2,
-                    Type: avatarType,
-                    Avatar: avatar,
-                    TokenId: avatar,  // For V2, tokenId is the avatar address (for ERC1155)
-                    HasV1: false,
-                    V1Token: null,
-                    CidV0Digest: cidV0Digest,
-                    CidV0: cid,
-                    IsHuman: isHuman,
-                    Name: reader.IsDBNull(2) ? null : reader.GetString(2),
-                    Symbol: reader.IsDBNull(5) ? "" : reader.GetString(5)
-                );
-            }
-        }
-
-        // Then, check for V1 avatars (those not found in V2)
-        var v1AvatarMap = new Dictionary<string, AvatarInfo>();
-        const string v1Sql = @"
-            SELECT s.""user"", s.token
-            FROM ""CrcV1_Signup"" s
-            WHERE s.""user"" = ANY(@addresses)";
-
-        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
-        {
-            cmd.Parameters.AddWithValue("addresses", lowerAddresses);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                var userAddress = reader.GetString(0);
-                var tokenAddress = reader.GetString(1);
-
-                v1AvatarMap[userAddress] = new AvatarInfo(
-                    Version: 1,
-                    Type: "CrcV1_Signup",
-                    Avatar: userAddress,
-                    TokenId: tokenAddress,
-                    HasV1: true,
-                    V1Token: tokenAddress,
-                    CidV0Digest: "",
-                    CidV0: null,
-                    IsHuman: true,  // V1 signups are always human
-                    Name: null,
-                    Symbol: ""
-                );
-            }
-        }
-
-        // Get V1 CIDs for V1 avatars
-        var v1CidSql = @"
-            SELECT avatar, ""metadataDigest""
-            FROM ""CrcV1_UpdateMetadataDigest""
-            WHERE avatar = ANY(@addresses)";
-
-        var v1CidMap = new Dictionary<string, string>();
-        try
-        {
-            await using (var cmd = new NpgsqlCommand(v1CidSql, connection))
-            {
-                cmd.Parameters.AddWithValue("addresses", lowerAddresses);
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
-                {
-                    var avatar = reader.GetString(0);
-                    var metadataDigest = (byte[])reader.GetValue(1);
-                    var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
-                    v1CidMap[avatar] = cid;
-                }
-            }
-        }
-        catch (PostgresException ex) when (ex.SqlState == "42P01")
-        {
-            // Table does not exist, skip V1
-        }
+        var v2AvatarMap = await v2Task;
+        var (v1AvatarMap, v1CidMap) = await v1Task;
 
         // Populate results
         for (int i = 0; i < lowerAddresses.Length; i++)
@@ -1167,6 +1069,127 @@ public class CirclesRpcModule : ICirclesRpcModule
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Fetches V2 avatar information from the database.
+    /// </summary>
+    private async Task<Dictionary<string, AvatarInfo>> FetchV2AvatarsAsync(string[] addresses)
+    {
+        var v2AvatarMap = new Dictionary<string, AvatarInfo>();
+        const string v2Sql = @"
+            SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.""metadataDigest"", rsn.""shortName"", a.""cidV0Digest""
+            FROM ""V_CrcV2_Avatars"" a
+            LEFT JOIN ""CrcV2_UpdateMetadataDigest"" rn ON rn.avatar = a.avatar
+            LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
+            WHERE a.avatar = ANY(@addresses)";
+
+        await using var connection = await CreateConnectionAsync();
+        await using var cmd = new NpgsqlCommand(v2Sql, connection);
+        cmd.Parameters.AddWithValue("addresses", addresses);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var avatar = reader.GetString(0);
+            var avatarType = reader.GetString(3);
+            var isHuman = avatarType == "CrcV2_RegisterHuman";
+
+            // Convert metadataDigest bytes to proper IPFS CIDv0
+            string? cid = null;
+            if (!reader.IsDBNull(4))
+            {
+                var metadataDigest = (byte[])reader.GetValue(4);
+                cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
+            }
+
+            // cidV0Digest should be empty string per remote implementation
+            var cidV0Digest = "";
+
+            v2AvatarMap[avatar] = new AvatarInfo(
+                Version: 2,
+                Type: avatarType,
+                Avatar: avatar,
+                TokenId: avatar,  // For V2, tokenId is the avatar address (for ERC1155)
+                HasV1: false,
+                V1Token: null,
+                CidV0Digest: cidV0Digest,
+                CidV0: cid,
+                IsHuman: isHuman,
+                Name: reader.IsDBNull(2) ? null : reader.GetString(2),
+                Symbol: reader.IsDBNull(5) ? "" : reader.GetString(5)
+            );
+        }
+
+        return v2AvatarMap;
+    }
+
+    /// <summary>
+    /// Fetches V1 avatar information and CIDs from the database.
+    /// </summary>
+    private async Task<(Dictionary<string, AvatarInfo> avatars, Dictionary<string, string> cids)> FetchV1AvatarsAsync(string[] addresses)
+    {
+        var v1AvatarMap = new Dictionary<string, AvatarInfo>();
+        var v1CidMap = new Dictionary<string, string>();
+
+        await using var connection = await CreateConnectionAsync();
+
+        // Fetch V1 avatars
+        const string v1Sql = @"
+            SELECT s.""user"", s.token
+            FROM ""CrcV1_Signup"" s
+            WHERE s.""user"" = ANY(@addresses)";
+
+        await using (var cmd = new NpgsqlCommand(v1Sql, connection))
+        {
+            cmd.Parameters.AddWithValue("addresses", addresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var userAddress = reader.GetString(0);
+                var tokenAddress = reader.GetString(1);
+
+                v1AvatarMap[userAddress] = new AvatarInfo(
+                    Version: 1,
+                    Type: "CrcV1_Signup",
+                    Avatar: userAddress,
+                    TokenId: tokenAddress,
+                    HasV1: true,
+                    V1Token: tokenAddress,
+                    CidV0Digest: "",
+                    CidV0: null,
+                    IsHuman: true,  // V1 signups are always human
+                    Name: null,
+                    Symbol: ""
+                );
+            }
+        }
+
+        // Fetch V1 CIDs
+        const string v1CidSql = @"
+            SELECT avatar, ""metadataDigest""
+            FROM ""CrcV1_UpdateMetadataDigest""
+            WHERE avatar = ANY(@addresses)";
+
+        try
+        {
+            await using var cmd = new NpgsqlCommand(v1CidSql, connection);
+            cmd.Parameters.AddWithValue("addresses", addresses);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var avatar = reader.GetString(0);
+                var metadataDigest = (byte[])reader.GetValue(1);
+                var cid = CidHelper.MetadataDigestToCidV0(metadataDigest);
+                v1CidMap[avatar] = cid;
+            }
+        }
+        catch (PostgresException ex) when (ex.SqlState == "42P01")
+        {
+            // Table does not exist, skip V1 CIDs
+        }
+
+        return (v1AvatarMap, v1CidMap);
     }
 
     public async Task<ProfileCidResponse> GetProfileCid(string address)
@@ -3442,15 +3465,27 @@ public class CirclesRpcModule : ICirclesRpcModule
                 involvedAddresses.Add(trustee.GetString()!);
         }
 
-        // Batch fetch avatar info and profiles for all involved addresses
-        var avatars = involvedAddresses.Count > 0
-            ? await GetAvatarInfoBatchInternal(involvedAddresses.ToArray())
-            : Array.Empty<AvatarInfo?>();
-        var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
+        // Batch fetch avatar info and profiles for all involved addresses (in parallel)
+        var addressArray = involvedAddresses.ToArray();
+        AvatarInfo?[] avatars;
+        JsonElement?[] profiles;
 
-        var profiles = involvedAddresses.Count > 0
-            ? await GetProfileByAddressBatch(involvedAddresses.ToArray())
-            : Array.Empty<JsonElement?>();
+        if (addressArray.Length > 0)
+        {
+            // Run both fetches in parallel - they are independent operations
+            var avatarTask = GetAvatarInfoBatchInternal(addressArray);
+            var profileTask = GetProfileByAddressBatch(addressArray);
+            await Task.WhenAll(avatarTask, profileTask);
+            avatars = await avatarTask;
+            profiles = await profileTask;
+        }
+        else
+        {
+            avatars = Array.Empty<AvatarInfo?>();
+            profiles = Array.Empty<JsonElement?>();
+        }
+
+        var avatarDict = avatars.Where(a => a != null).ToDictionary(a => a!.Avatar, a => a);
         var profileDict = involvedAddresses.Zip(profiles, (addr, prof) => new { addr, prof })
             .Where(x => x.prof != null)
             .ToDictionary(x => x.addr, x => x.prof);
