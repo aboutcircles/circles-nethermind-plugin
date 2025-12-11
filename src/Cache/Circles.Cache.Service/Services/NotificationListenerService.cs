@@ -511,7 +511,7 @@ public class NotificationListenerService : BackgroundService
 
         if (trustCount > 0)
         {
-            _logger.LogDebug("Processed {TrustCount} V2 trust events ({MembershipCount} group memberships)", 
+            _logger.LogDebug("Processed {TrustCount} V2 trust events ({MembershipCount} group memberships)",
                 trustCount, membershipCount);
         }
     }

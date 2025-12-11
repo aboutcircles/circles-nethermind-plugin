@@ -15,7 +15,7 @@ public class Settings : Circles.Index.Common.Settings
 
     public readonly string? CacheServiceUrl =
         Environment.GetEnvironmentVariable("CACHE_SERVICE_URL");
-    
+
     /// <summary>
     /// Feature flag to enable/disable Cache Service usage (default: false)
     /// Set to "true" to use Cache Service for balance/avatar queries

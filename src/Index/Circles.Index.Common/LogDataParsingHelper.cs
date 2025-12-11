@@ -114,7 +114,7 @@ public static class LogDataParsingHelper
 
         return "0x" + BitConverter.ToString(addrSlice.ToArray()).Replace("-", "").ToLowerInvariant();
     }
-    
+
     /// <summary>
     /// Reads a dynamic array of addresses from <paramref name="data"/> at <paramref name="offset"/>.
     /// The first 32 bytes is the array length (as a UInt256). Then each entry is a 32-byte word,

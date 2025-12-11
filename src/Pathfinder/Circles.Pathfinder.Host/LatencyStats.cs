@@ -18,8 +18,8 @@ internal static class LatencyStats
 
         Array.Sort(snap);
         var count = snap.Length;
-        var avg   = snap.Average();
-        var p95   = snap[(int)Math.Floor(0.95 * (count - 1))];
+        var avg = snap.Average();
+        var p95 = snap[(int)Math.Floor(0.95 * (count - 1))];
 
         return (count, avg, p95);
     }

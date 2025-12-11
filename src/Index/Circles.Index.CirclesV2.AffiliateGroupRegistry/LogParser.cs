@@ -11,9 +11,9 @@ namespace Circles.Index.CirclesV2.AffiliateGroupRegistry;
 /// </summary>
 public class LogParser(Address registryAddress) : ILogParser
 {
-    private readonly Hash256 _affiliateGroupChangedTopic   = new(DatabaseSchema.AffiliateGroupChanged.Topic);
-    private readonly Hash256 _notificationFailedTopic      = new(DatabaseSchema.NotificationFailed.Topic);
-    private readonly Hash256 _notificationSuccessfulTopic  = new(DatabaseSchema.NotificationSuccessful.Topic);
+    private readonly Hash256 _affiliateGroupChangedTopic = new(DatabaseSchema.AffiliateGroupChanged.Topic);
+    private readonly Hash256 _notificationFailedTopic = new(DatabaseSchema.NotificationFailed.Topic);
+    private readonly Hash256 _notificationSuccessfulTopic = new(DatabaseSchema.NotificationSuccessful.Topic);
 
     public IRollbackCache[] Caches { get; } = [];
 
@@ -39,18 +39,18 @@ public class LogParser(Address registryAddress) : ILogParser
         LogEntry log,
         int logIndex)
     {
-        bool hasTopics       = log.Topics.Length > 0;
-        bool isFromRegistry  = log.Address == registryAddress;
+        bool hasTopics = log.Topics.Length > 0;
+        bool isFromRegistry = log.Address == registryAddress;
 
         if (!hasTopics || !isFromRegistry)
         {
             yield break;
         }
 
-        var topic                 = log.Topics[0];
-        bool isChangedTopic       = topic == _affiliateGroupChangedTopic;
-        bool isFailedTopic        = topic == _notificationFailedTopic;
-        bool isSuccessfulTopic    = topic == _notificationSuccessfulTopic;
+        var topic = log.Topics[0];
+        bool isChangedTopic = topic == _affiliateGroupChangedTopic;
+        bool isFailedTopic = topic == _notificationFailedTopic;
+        bool isSuccessfulTopic = topic == _notificationSuccessfulTopic;
 
         if (isChangedTopic)
         {
@@ -68,7 +68,7 @@ public class LogParser(Address registryAddress) : ILogParser
 
     private AffiliateGroupChanged ParseAffiliateGroupChanged(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        string human    = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string human = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string oldGroup = new Address(log.Data.Slice(12, 20)).ToLowerHex();
         string newGroup = new Address(log.Data.Slice(44, 20)).ToLowerHex();
 

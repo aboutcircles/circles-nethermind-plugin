@@ -10,7 +10,7 @@ internal class FindPathMetrics
             "circles_findpath_inflight_requests",
             "Number of concurrent /findPath requests currently being processed."
         );
-    
+
     // A counter for the number of times we reject /findPath requests due to concurrency.
     public static readonly Counter RejectedRequestsCounter =
         Metrics.CreateCounter(

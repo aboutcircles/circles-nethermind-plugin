@@ -18,7 +18,7 @@ public class BlockRingBuffer
     {
         if (capacity < 1)
             throw new ArgumentException("Capacity must be at least 1", nameof(capacity));
-        
+
         _capacity = capacity;
     }
 
@@ -192,7 +192,7 @@ public class BlockRingBuffer
             {
                 // Rollback our buffer to the reorg point
                 Rollback(reorgPoint.Value);
-                
+
                 // Now add all blocks from reorg point onwards
                 foreach (var (blockNumber, blockHash) in blockList.Where(b => b.BlockNumber >= reorgPoint.Value).OrderBy(b => b.BlockNumber))
                 {

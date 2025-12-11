@@ -6,10 +6,10 @@ namespace Circles.Index.CirclesV2.InvitationEscrow;
 public static class Events
 {
     public record InvitationEscrowed(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Inviter,
@@ -18,10 +18,10 @@ public static class Events
     ) : IIndexEvent;
 
     public record InvitationRedeemed(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Inviter,
@@ -30,10 +30,10 @@ public static class Events
     ) : IIndexEvent;
 
     public record InvitationRefunded(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Inviter,
@@ -42,10 +42,10 @@ public static class Events
     ) : IIndexEvent;
 
     public record InvitationRevoked(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Inviter,

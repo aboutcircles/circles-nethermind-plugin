@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Circles.Pathfinder.Data; 
+using Circles.Pathfinder.Data;
 using Circles.Index.Common.Dto;
 
 namespace Circles.Pathfinder.Graphs;

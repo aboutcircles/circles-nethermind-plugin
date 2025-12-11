@@ -15,10 +15,10 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Track special avatar types
     public HashSet<int> GroupNodes { get; } = new HashSet<int>();
     public int? RouterNode { get; set; }
-    
+
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
-    
+
     public void AddTokenNode(int tokenId, int? poolNodeId = null)
     {
         // Note: We deliberately create token pool ids via BalanceNodeIdOf(...) so they’re marked “balance‑ish”.
@@ -31,7 +31,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
             Nodes.TryAdd(id, tn);
         }
     }
-    
+
     public void AddAvatar(int avatarAddress)
     {
         if (!AvatarNodes.ContainsKey(avatarAddress))
@@ -44,7 +44,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Add a group
     public void AddGroup(int groupAddress)
     {
-        AddAvatar(groupAddress); 
+        AddAvatar(groupAddress);
         GroupNodes.Add(groupAddress);
     }
 

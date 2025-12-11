@@ -9,7 +9,7 @@ namespace Circles.Index.CirclesViews;
 public static class LazySqlLoader
 {
     private static readonly ConcurrentDictionary<string, string> SqlCache = new();
-    
+
     /// <summary>
     /// Loads an SQL query from an embedded resource and caches it
     /// </summary>
@@ -17,11 +17,11 @@ public static class LazySqlLoader
     /// <returns>The SQL query as a string</returns>
     public static string LoadSql(string fileName)
     {
-        return SqlCache.GetOrAdd(fileName, key => 
+        return SqlCache.GetOrAdd(fileName, key =>
         {
             var assembly = Assembly.GetExecutingAssembly();
             var resourceName = $"Circles.Index.CirclesViews.queries.{key}";
-            
+
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null)
             {

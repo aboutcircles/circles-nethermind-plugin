@@ -327,7 +327,7 @@ public static class IpfsDownloader
                         UPDATE ipfs_queue
                            SET status     = 'COMPLETED',
                                updated_at = NOW()
-                         WHERE cid = ANY(@cids);"; 
+                         WHERE cid = ANY(@cids);";
                     await conn.ExecuteAsync(markDone,
                         new { cids = completed.Select(j => j.Cid).ToArray() }, tx);
                 }

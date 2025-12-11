@@ -18,10 +18,10 @@ public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<Reques
         await next(ctx);
         sw.Stop();
 
-        var elapsedMs  = sw.Elapsed.TotalMilliseconds;
+        var elapsedMs = sw.Elapsed.TotalMilliseconds;
         var statusCode = ctx.Response.StatusCode;
-        var method     = ctx.Request.Method;
-        var path       = ctx.Request.Path;
+        var method = ctx.Request.Method;
+        var path = ctx.Request.Path;
 
         var traceId = Activity.Current?.TraceId.ToString() ?? ctx.TraceIdentifier;
 

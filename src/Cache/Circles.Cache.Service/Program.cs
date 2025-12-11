@@ -83,7 +83,7 @@ app.MapGet("/ready", async (CacheServiceState state, CacheServiceSettings settin
 {
     // Query actual DB head from database
     long dbHead = state.LastProcessedBlock; // Default to current if query fails
-    
+
     try
     {
         await using var conn = new Npgsql.NpgsqlConnection(settings.PostgresReadonlyConnectionString);

@@ -7,7 +7,7 @@ public interface IDatabaseSchema
     public IEventDtoTableMap EventDtoTableMap { get; }
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
-    
+
     /// <summary>
     /// A list of indexes that should be created in the database.
     /// Must be written in an idempotent way, so that the same index can be created multiple times without error.

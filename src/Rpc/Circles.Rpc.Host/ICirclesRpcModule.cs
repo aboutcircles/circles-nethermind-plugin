@@ -911,30 +911,30 @@ public record PagedProfileSearchResponse
 public record InvitationOriginResponse(
     /// <summary>The avatar address that was queried</summary>
     [property: JsonPropertyName("address")] string Address,
-    
+
     /// <summary>
     /// The type of invitation: "v1_signup", "v2_standard", "v2_escrow", or "v2_at_scale"
     /// </summary>
     [property: JsonPropertyName("invitationType")] string InvitationType,
-    
+
     /// <summary>The address of the inviter (null for v1_signup)</summary>
     [property: JsonPropertyName("inviter")] string? Inviter,
-    
+
     /// <summary>The proxy inviter address (only set for v2_at_scale)</summary>
     [property: JsonPropertyName("proxyInviter")] string? ProxyInviter,
-    
+
     /// <summary>The escrowed CRC amount in atto-circles (only set for v2_escrow)</summary>
     [property: JsonPropertyName("escrowAmount")] string? EscrowAmount,
-    
+
     /// <summary>Block number when the invitation was recorded</summary>
     [property: JsonPropertyName("blockNumber")] long BlockNumber,
-    
+
     /// <summary>Unix timestamp of the invitation</summary>
     [property: JsonPropertyName("timestamp")] long Timestamp,
-    
+
     /// <summary>Transaction hash of the invitation event</summary>
     [property: JsonPropertyName("transactionHash")] string TransactionHash,
-    
+
     /// <summary>Circles version: 1 for V1, 2 for V2</summary>
     [property: JsonPropertyName("version")] int Version
 );
