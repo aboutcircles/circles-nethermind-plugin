@@ -93,11 +93,21 @@ Container managing all cache instances:
 - **Secondary Indexes:** Address-to-token mappings for efficient balance queries
 - **Statistics:** Provides cache size and usage metrics
 
-#### 5. REST API Controllers
+#### 6. IpfsContentCache (`IpfsContentCache.cs`)
+
+LRU cache for IPFS profile content (JSON payloads from `ipfs_files` table):
+
+- **Immutable Content:** IPFS content is content-addressed, so no invalidation needed
+- **LRU Eviction:** Automatically evicts least-recently-used entries when full
+- **Configurable Size:** Default 50,000 entries (`IPFS_CACHE_MAX_ENTRIES`)
+- **Cache Statistics:** Tracks hits, misses, and entry count
+- **JSON-LD Cleanup:** Automatically strips `@context`, `namespaces`, `signingKeys` fields
+
+#### 7. REST API Controllers
 
 - **BalancesController** - Token balance queries (individual and aggregate)
 - **AvatarsController** - Avatar information and metadata
-- **ProfilesController** - Profile IPFS CID lookups
+- **ProfilesController** - Profile IPFS CID lookups and content retrieval
 
 ## Quick Start
 
@@ -140,6 +150,9 @@ export MAX_CATCHUP_LAG=10
 
 # Optional - HTTP port (default: 5002)
 export PORT=5002
+
+# Optional - max IPFS profile content cache entries (default: 50000)
+export IPFS_CACHE_MAX_ENTRIES=50000
 ```
 
 ## REST API
@@ -299,6 +312,48 @@ Content-Type: application/json
 
 **Limits:** Max 100 addresses per request
 
+#### Get Profile Content
+
+Get IPFS profile content (JSON payload) by CID. The content is cached in an LRU cache (default 50k entries) for fast repeated lookups.
+
+```bash
+GET /api/profiles/content/{cid}
+
+# Example
+curl http://localhost:5002/api/profiles/content/QmX...
+```
+
+**Response:**
+
+```json
+{
+  "cid": "QmX...",
+  "content": "{\"name\": \"Alice\", \"description\": \"...\"}",
+  "lastProcessedBlock": 31234567,
+  "timestamp": 1638360000
+}
+```
+
+**Notes:**
+- Content is returned as a JSON string (the raw IPFS payload)
+- JSON-LD fields (`@context`, `namespaces`, `signingKeys`) are automatically stripped
+- Returns `null` content if CID is not found in the `ipfs_files` table
+
+#### Get Profile Content Batch
+
+Get profile content for multiple CIDs.
+
+```bash
+POST /api/profiles/content/batch
+Content-Type: application/json
+
+{
+  "cids": ["QmX...", "QmY..."]
+}
+```
+
+**Limits:** Max 100 CIDs per request
+
 ### System Endpoints
 
 #### Health Check
@@ -372,7 +427,10 @@ curl http://localhost:5002/cache/stats
   "v2_indexed_addresses": 15678,
   "lastProcessedBlock": 31234567,
   "warmupComplete": true,
-  "listenerConnected": true
+  "listenerConnected": true,
+  "ipfs_cache_entries": 25000,
+  "ipfs_cache_hits": 150000,
+  "ipfs_cache_misses": 5000
 }
 ```
 
@@ -948,3 +1006,5 @@ curl -X POST http://localhost:8080/flow -d '{
 | `/api/avatars/batch`               | POST   | Get avatar info (batch)          |
 | `/api/profiles/{address}/cid`      | GET    | Get profile CID                  |
 | `/api/profiles/cid/batch`          | POST   | Get profile CIDs (batch)         |
+| `/api/profiles/content/{cid}`      | GET    | Get profile content by CID       |
+| `/api/profiles/content/batch`      | POST   | Get profile content (batch)      |
