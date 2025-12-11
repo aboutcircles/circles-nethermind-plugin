@@ -90,7 +90,7 @@ public class Settings
             .ToArray()
         ??
         [
-            "0x186725D8fe10a573DC73144F7a317fCae5314F19"
+            "0x186725d8fe10a573dc73144f7a317fcae5314f19"
         ];
 
     public readonly string[] CMGroupDeployer =
