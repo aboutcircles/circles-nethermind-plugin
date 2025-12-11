@@ -147,6 +147,16 @@ public class LogParser(Address v1HubAddress) : ILogParser
 
         var result = TransferSummaryAggregatorV1.Aggregate(events);
 
+        // Log warning if DFS limits were hit - edge association may be incomplete
+        if (result.LimitHit)
+        {
+            Console.WriteLine(
+                $"[CirclesV1] WARNING: DFS limit hit in block {block.Number}, tx {receipt.TxHash}. " +
+                $"Iterations: {result.TotalIterations:N0}, Events: {events.Count}, " +
+                $"HubTransfers: {result.HubTransferSummaries.Count}, Transfers: {result.AllTransferEvents.Count}. " +
+                $"Edge association may be incomplete for this transaction.");
+        }
+
         // Calculate synthetic log index starting from negative values
         int totalSummaries = result.HubTransferSummaries.Count + result.StandaloneTransfers.Count;
         int syntheticLogIndex = -totalSummaries;

@@ -183,7 +183,10 @@ public class ImportFlow(
         TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
             blockWithReceipts =>
             {
-                context.Logger.Info($"Pipeline: Parsing block {blockWithReceipts.Block.Number:N0}...");
+                var blockNum = blockWithReceipts.Block.Number;
+                var receiptCount = blockWithReceipts.Receipts.Length;
+                var txCount = blockWithReceipts.Block.Transactions.Length;
+                context.Logger.Info($"Pipeline: Parsing block {blockNum:N0} ({txCount} txs, {receiptCount} receipts)...");
                 Dictionary<Hash256, Transaction> transactionsByHash = new();
                 Dictionary<Hash256, int> transactionIndexByHash = new();
 
@@ -201,13 +204,17 @@ public class ImportFlow(
                 List<IIndexEvent> allEvents = new();
 
                 // Go through every receipt (which belongs to a transaction).
+                int receiptIdx = 0;
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
+                    receiptIdx++;
                     var txHash = receipt.TxHash;
                     if (txHash == null || !transactionsByHash.TryGetValue(txHash, out var transaction))
                         continue;
 
                     var transactionIndex = transactionIndexByHash[txHash];
+                    var logCount = receipt.Logs?.Length ?? 0;
+                    context.Logger.Info($"Pipeline: Block {blockNum:N0} processing receipt {receiptIdx}/{receiptCount} (tx={transactionIndex}, logs={logCount})");
 
                     // A dictionary mapping each parser -> the events it produced from logs
                     var parserToEvents = new Dictionary<ILogParser, List<IIndexEvent>>(context.LogParsers.Length);
@@ -226,6 +233,7 @@ public class ImportFlow(
                             {
                                 try
                                 {
+                                    context.Logger.Info($"Pipeline: Block {blockNum:N0} calling parser {parser.GetType().Name} for log {logIndex}");
                                     var parsedLogEvents = parser.ParseLog(
                                         blockWithReceipts.Block,
                                         transaction,
@@ -234,6 +242,7 @@ public class ImportFlow(
                                         logIndex);
 
                                     parserToEvents[parser].AddRange(parsedLogEvents);
+                                    context.Logger.Info($"Pipeline: Block {blockNum:N0} parser {parser.GetType().Name} returned {parsedLogEvents.Count()} events");
                                 }
                                 catch (Exception e)
                                 {
@@ -248,10 +257,12 @@ public class ImportFlow(
                     }
 
                     // 2) For each parser, call ParseTransaction with the events from that parser only
+                    context.Logger.Info($"Pipeline: Block {blockNum:N0} receipt {receiptIdx} calling ParseTransaction for {context.LogParsers.Length} parsers");
                     foreach (var parser in context.LogParsers)
                     {
                         try
                         {
+                            context.Logger.Info($"Pipeline: Block {blockNum:N0} calling {parser.GetType().Name}.ParseTransaction");
                             var txEvents = parser.ParseTransaction(
                                 blockWithReceipts.Block,
                                 transactionIndex,
@@ -261,6 +272,7 @@ public class ImportFlow(
 
                             // Add these newly derived events to that parser's list
                             parserToEvents[parser].AddRange(txEvents);
+                            context.Logger.Info($"Pipeline: Block {blockNum:N0} {parser.GetType().Name}.ParseTransaction returned {txEvents.Count()} events");
                         }
                         catch (Exception e)
                         {
