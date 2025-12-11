@@ -78,9 +78,11 @@ public class ImportFlow(
 
     private async Task Sink((BlockWithReceipts, IEnumerable<IIndexEvent>) data)
     {
+        var blockNumber = data.Item1.Block.Number;
+        context.Logger.Info($"Pipeline: Sink processing block {blockNumber:N0}...");
+
         Dictionary<string, int> eventCounts = new();
         var allEvents = data.Item2.ToList();
-        var blockNumber = data.Item1.Block.Number;
 
         // Log when we find Circles events in a block
         if (allEvents.Count > 0)
@@ -101,6 +103,7 @@ public class ImportFlow(
             new SimpleBlock(block.Number, block.Timestamp, block.Hash?.ToString()),
             eventCounts));
         Metrics.LogBlockWithReceipts(data.Item1);
+        context.Logger.Info($"Pipeline: Sink completed block {blockNumber:N0}");
     }
 
     private (TransformBlock<long, Block> Source, ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> Sink)
@@ -124,7 +127,9 @@ public class ImportFlow(
         TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
             new(block =>
                 {
+                    context.Logger.Info($"Pipeline: Getting receipts for block {block.Number:N0}...");
                     var receipts = receiptFinder.Get(block);
+                    context.Logger.Info($"Pipeline: Receipts for block {block.Number:N0}: {receipts?.Length ?? 0} receipts");
 
                     // Track receipt availability statistics
                     bool hasTransactions = block.Transactions.Length > 0;
@@ -178,6 +183,7 @@ public class ImportFlow(
         TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
             blockWithReceipts =>
             {
+                context.Logger.Info($"Pipeline: Parsing block {blockWithReceipts.Block.Number:N0}...");
                 Dictionary<Hash256, Transaction> transactionsByHash = new();
                 Dictionary<Hash256, int> transactionIndexByHash = new();
 
@@ -274,6 +280,7 @@ public class ImportFlow(
                 }
 
                 // Finally, return (block, allEvents)
+                context.Logger.Info($"Pipeline: Parsed block {blockWithReceipts.Block.Number:N0}, found {allEvents.Count} events");
                 return (blockWithReceipts, allEvents);
             },
             CreateOptions(cancellationToken, 1, 1));
@@ -315,11 +322,23 @@ public class ImportFlow(
                     context.Logger.Info($"ImportFlow.Run: First block to send: {blockNo:N0}");
                 }
 
+                // Log periodically when we're about to send (to detect if SendAsync blocks)
+                if (count % 10000 == 0)
+                {
+                    context.Logger.Info($"ImportFlow.Run: About to SendAsync block {blockNo:N0} (count={count:N0})");
+                }
+
                 await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
 
                 if (count == 0)
                 {
                     context.Logger.Info($"ImportFlow.Run: First block {blockNo:N0} sent to pipeline successfully");
+                }
+
+                // Log periodically after successful send
+                if (count % 10000 == 0)
+                {
+                    context.Logger.Info($"ImportFlow.Run: SendAsync completed for block {blockNo:N0}");
                 }
 
                 min = Math.Min(min, blockNo);
