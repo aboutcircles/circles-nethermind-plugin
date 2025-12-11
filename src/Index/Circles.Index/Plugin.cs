@@ -227,8 +227,6 @@ public class Plugin : INethermindPlugin
     /// <param name="blockNo">The new chain head</param>
     private void HandleNewHead(long blockNo)
     {
-        _indexerContext!.Logger.Info($"HandleNewHead called with block {blockNo:N0}");
-
         // Signal that new items have arrived
         Interlocked.Exchange(ref _newItemsArrived, 1);
 
@@ -238,13 +236,8 @@ public class Plugin : INethermindPlugin
         // Start the processing task if it's not already running
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
-            _indexerContext!.Logger.Info($"Starting ProcessBlocksAsync for block {blockNo:N0}");
             // TODO: Await all ProcessBlocksAsync tasks without blocking the event handler. It's important that we always get all exceptions (e.g. as aggregate exception) of all tasks.
             _ = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
-        }
-        else
-        {
-            _indexerContext!.Logger.Info($"ProcessBlocksAsync already running, queuing block {blockNo:N0}");
         }
     }
 
@@ -254,7 +247,6 @@ public class Plugin : INethermindPlugin
     /// </summary>
     private async Task ProcessBlocksAsync()
     {
-        _indexerContext!.Logger.Info("ProcessBlocksAsync started");
         try
         {
             do
@@ -264,13 +256,10 @@ public class Plugin : INethermindPlugin
                 long toIndex = Interlocked.Exchange(ref _latestHeadToIndex, -1);
                 if (toIndex == -1)
                 {
-                    _indexerContext!.Logger.Info("ProcessBlocksAsync: toIndex is -1, continuing loop");
                     continue;
                 }
 
-                _indexerContext!.Logger.Info($"ProcessBlocksAsync: Sending NewHead({toIndex:N0}) to state machine");
                 await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
-                _indexerContext!.Logger.Info($"ProcessBlocksAsync: State machine finished handling NewHead({toIndex:N0})");
 
                 // After completing a sync batch, check if we're still behind the current chain head.
                 // This handles the case where NewHeadBlock events were filtered during catch-up sync
