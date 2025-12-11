@@ -76,6 +76,10 @@ public class BalanceNodeJson
 [TestFixture]
 public class NetworkPathfinderTests
 {
+    private static readonly bool NetworkTestsEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("RUN_PATHFINDER_NETWORK_TESTS"), "true",
+            StringComparison.OrdinalIgnoreCase);
+
     private readonly string _pathfinderBaseUrl;
     private readonly string _rpcUrl;
     private HttpClient? _httpClient;
@@ -125,6 +129,11 @@ public class NetworkPathfinderTests
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
+        if (!NetworkTestsEnabled)
+        {
+            Assert.Ignore("Skipping NetworkPathfinderTests because RUN_PATHFINDER_NETWORK_TESTS is not set to 'true'.");
+        }
+
         _httpClient = new HttpClient();
         _httpClient.Timeout = TimeSpan.FromSeconds(30); // Set reasonable timeout
         Console.WriteLine(
