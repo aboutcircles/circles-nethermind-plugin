@@ -157,8 +157,9 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_PAYMENT_GATEWAY_FACTORY_ADDRESS")?.Split(',')
             .Select(x => x.Trim().ToLowerInvariant())
             .ToArray()
-        ??        [
-            "0x68533c85486F0d87F9EfbE726f823648547C6e94"
+        ??
+        [
+            "0x186725D8fe10a573DC73144F7a317fCae5314F19"
         ];
 
     public readonly string[] CMGroupDeployer =
