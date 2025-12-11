@@ -147,3 +147,75 @@ public class DatabaseConnectionHealthCheck : IHealthCheck
         }
     }
 }
+
+/// <summary>
+/// Health check for Circles indexer sync status.
+/// Compares the latest indexed block in the database with the chain head from Nethermind.
+/// </summary>
+public class IndexerSyncHealthCheck : IHealthCheck
+{
+    private readonly Settings _settings;
+    private readonly NethermindRpcClient _rpcClient;
+
+    public IndexerSyncHealthCheck(Settings settings, NethermindRpcClient rpcClient)
+    {
+        _settings = settings;
+        _rpcClient = rpcClient;
+    }
+
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Get latest indexed block from database
+            long? latestIndexedBlock;
+            await using (var connection = new NpgsqlConnection(_settings.IndexReadonlyDbConnectionString))
+            {
+                await connection.OpenAsync(cancellationToken);
+                await using var command = new NpgsqlCommand("SELECT MAX(\"blockNumber\") FROM \"System_Block\"", connection);
+                var result = await command.ExecuteScalarAsync(cancellationToken);
+                latestIndexedBlock = result == DBNull.Value ? null : (long?)result;
+            }
+
+            // Get chain head from Nethermind
+            var chainHead = await _rpcClient.GetLatestBlockNumber();
+
+            // If no blocks indexed yet, we're definitely not ready
+            if (latestIndexedBlock == null)
+            {
+                return HealthCheckResult.Unhealthy("Indexer has not indexed any blocks yet",
+                    data: new Dictionary<string, object>
+                    {
+                        ["chainHead"] = chainHead,
+                        ["indexedBlock"] = "none"
+                    });
+            }
+
+            var lag = chainHead - latestIndexedBlock.Value;
+            var maxLag = _settings.IndexerMaxLagBlocks;
+
+            var data = new Dictionary<string, object>
+            {
+                ["chainHead"] = chainHead,
+                ["indexedBlock"] = latestIndexedBlock.Value,
+                ["lag"] = lag,
+                ["maxLag"] = maxLag
+            };
+
+            if (lag > maxLag)
+            {
+                return HealthCheckResult.Unhealthy(
+                    $"Indexer is {lag} blocks behind chain head (max allowed: {maxLag})",
+                    data: data);
+            }
+
+            return HealthCheckResult.Healthy(
+                $"Indexer is synced (lag: {lag} blocks)",
+                data: data);
+        }
+        catch (Exception ex)
+        {
+            return HealthCheckResult.Unhealthy("Failed to check indexer sync status", ex);
+        }
+    }
+}
