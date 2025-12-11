@@ -311,66 +311,37 @@ cp docker/.env.example docker/.env
 docker compose -f docker/docker-compose.gnosis.yml up -d
 ```
 
-#### Indexing Configuration and Reindexing
+#### Reindexing
 
-The Circles.Index plugin supports reindexing through the `TABLE_START_BLOCKS` environment variable.
+The Circles.Index plugin supports reindexing through the `REINDEX_FROM_BLOCK` environment variable.
 
 **Environment Variable:**
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `TABLE_START_BLOCKS` | Per-table start blocks for targeted reindexing, or `*:block` for all tables | `CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000` |
+| `REINDEX_FROM_BLOCK` | Reindex ALL tables from specified block number | `12000000` |
 
-##### Use Case 1: Full Reindex from Block
+##### Usage
 
-Reindex everything from a specific block (nuclear option):
+Reindex everything from a specific block:
 ```yaml
 environment:
-  - TABLE_START_BLOCKS=*:12000000
+  - REINDEX_FROM_BLOCK=12000000
 ```
 
-##### Use Case 2: Reindex Specific Tables (Including Derived Tables)
+This will:
 
-Use `TABLE_START_BLOCKS` to reindex specific tables. This will:
-1. Delete data from specified tables from the start block onwards
-2. Delete from `System_Block` to force the indexer to resync those blocks
-3. Regenerate all data (including derived tables like TransferSummary)
-
-```yaml
-environment:
-  # Reindex V1 transfer summaries from block 12M
-  - TABLE_START_BLOCKS=CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000,CrcV1_TransferSummary:12000000
-```
-
-##### Understanding Table Dependencies
-
-Some tables are "derived" from others during `ParseTransaction`. To regenerate derived tables, you must include their source tables:
-
-| Derived Table | Source Tables | Notes |
-|---------------|---------------|-------|
-| `CrcV1_TransferSummary` | `CrcV1_Transfer`, `CrcV1_HubTransfer` | V1 aggregated transfer summaries |
-| `CrcV2_TransferSummary` | `CrcV2_TransferSingle`, `CrcV2_TransferBatch`, `CrcV2_Erc20WrapperTransfer` | V2 aggregated transfers |
-
-**Example: Reindex V1 TransferSummary**
-```yaml
-environment:
-  - TABLE_START_BLOCKS=CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000,CrcV1_TransferSummary:12000000
-```
-
-**Example: Reindex V2 TransferSummary**
-```yaml
-environment:
-  - TABLE_START_BLOCKS=CrcV2_TransferSingle:37500000,CrcV2_TransferBatch:37500000,CrcV2_Erc20WrapperTransfer:37500000,CrcV2_TransferSummary:37500000
-```
+1. Delete data from ALL tables from block 12,000,000 onwards
+2. Reinitialize caches from the remaining data
+3. Resync all blocks from 12,000,000 to current head
 
 ##### Important Notes
 
-1. **Remove flag after reindex**: This is a one-time operation. Remove the env var after reindexing completes to avoid re-deleting data on next restart.
-2. **Backup first**: Consider backing up your database before large reindex operations.
-3. **Performance**: Reindexing large block ranges can take hours. The indexer logs progress every 1000 blocks or 30 seconds.
-4. **Verify completion**: After reindexing, check with `SELECT MAX("blockNumber") FROM "TableName"` to verify data was populated.
-
-This variable can be set in your `.env.local` file for local development or in `docker/.env` for Docker Compose deployments.
+1. **Remove after reindex**: This is a one-time operation. Remove the env var after reindexing completes to avoid re-deleting data on next restart.
+2. **Full reindex only**: Partial table reindexing is not supported because it creates data inconsistency between tables and caches. All tables must be at the same block height.
+3. **Backup first**: Consider backing up your database before large reindex operations.
+4. **Time estimate**: A full reindex from genesis takes approximately 4-5 hours.
+5. **Verify completion**: After reindexing, check with `SELECT MAX("blockNumber") FROM "System_Block"` to verify sync progress.
 
 ### Test Projects
 
