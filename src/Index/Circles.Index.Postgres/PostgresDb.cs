@@ -744,51 +744,40 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public async Task DeleteAllGreaterOrEqualBlock(long reorgAt)
     {
-        NpgsqlTransaction? transaction = null;
-        try
+        // Delete from each table in separate transactions to avoid long-running transactions
+        // that can timeout. This is safer for large deletions spanning millions of blocks.
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        foreach (var table in Schema.Tables.Values)
         {
-            await using var connection = new NpgsqlConnection(ConnectionString);
-            await connection.OpenAsync();
-
-            transaction = await connection.BeginTransactionAsync();
-            foreach (var table in Schema.Tables.Values)
+            if (table.Namespace.StartsWith("V_")
+                || table.Table == DatabaseSchema.PathfinderRequestLog
+                || table.Table == DatabaseSchema.PathfinderResponseLog)
             {
-                if (table.Namespace.StartsWith("V_") 
-                    || table.Table == DatabaseSchema.PathfinderRequestLog 
-                    || table.Table == DatabaseSchema.PathfinderResponseLog)
-                {
-                    // Dirty way to skip views
-                    continue;
-                }
+                // Dirty way to skip views
+                continue;
+            }
 
+            var tableName = $"{table.Namespace}_{table.Table}";
+            try
+            {
                 await using var command = connection.CreateCommand();
-                command.CommandText =
-                    $"DELETE FROM \"{table.Namespace}_{table.Table}\" WHERE \"blockNumber\" >= @reorgAt;";
+                command.CommandText = $"DELETE FROM \"{tableName}\" WHERE \"blockNumber\" >= @reorgAt;";
                 command.Parameters.AddWithValue("@reorgAt", reorgAt);
-                command.Transaction = transaction;
+                command.CommandTimeout = 600; // 10 minutes per table
 
                 var rowsDeleted = await command.ExecuteNonQueryAsync();
                 if (rowsDeleted > 0)
                 {
-                    Console.WriteLine($"Deleted {rowsDeleted} rows from {table.Namespace}_{table.Table}");
+                    Console.WriteLine($"Deleted {rowsDeleted} rows from {tableName}");
                 }
             }
-
-            await transaction.CommitAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"An error occurred: {ex.Message}");
-            if (transaction != null)
+            catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                Console.WriteLine($"Error deleting from {tableName}: {ex.Message}");
+                throw;
             }
-
-            throw;
-        }
-        finally
-        {
-            transaction?.Dispose();
         }
     }
 
@@ -796,53 +785,40 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     {
         var tableNameSet = new HashSet<string>(tableNames, StringComparer.OrdinalIgnoreCase);
 
-        NpgsqlTransaction? transaction = null;
-        try
+        // Delete from each table separately to avoid long-running transactions that can timeout
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+
+        foreach (var table in Schema.Tables.Values)
         {
-            await using var connection = new NpgsqlConnection(ConnectionString);
-            await connection.OpenAsync();
-
-            transaction = await connection.BeginTransactionAsync();
-            foreach (var table in Schema.Tables.Values)
+            if (table.Namespace.StartsWith("V_")
+                || table.Table == DatabaseSchema.PathfinderRequestLog
+                || table.Table == DatabaseSchema.PathfinderResponseLog)
             {
-                if (table.Namespace.StartsWith("V_") 
-                    || table.Table == DatabaseSchema.PathfinderRequestLog 
-                    || table.Table == DatabaseSchema.PathfinderResponseLog)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                var fullTableName = $"{table.Namespace}_{table.Table}";
-                if (!tableNameSet.Contains(fullTableName) && !tableNameSet.Contains(table.Table))
-                {
-                    continue;
-                }
+            var fullTableName = $"{table.Namespace}_{table.Table}";
+            if (!tableNameSet.Contains(fullTableName) && !tableNameSet.Contains(table.Table))
+            {
+                continue;
+            }
 
+            try
+            {
                 await using var command = connection.CreateCommand();
-                command.CommandText =
-                    $"DELETE FROM \"{fullTableName}\" WHERE \"blockNumber\" >= @reorgAt;";
+                command.CommandText = $"DELETE FROM \"{fullTableName}\" WHERE \"blockNumber\" >= @reorgAt;";
                 command.Parameters.AddWithValue("@reorgAt", reorgAt);
-                command.Transaction = transaction;
+                command.CommandTimeout = 600; // 10 minutes per table
 
                 var rowsDeleted = await command.ExecuteNonQueryAsync();
                 Console.WriteLine($"[REINDEX] Deleted {rowsDeleted} rows from {fullTableName} (block >= {reorgAt})");
             }
-
-            await transaction.CommitAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[REINDEX] An error occurred: {ex.Message}");
-            if (transaction != null)
+            catch (Exception ex)
             {
-                await transaction.RollbackAsync();
+                Console.WriteLine($"[REINDEX] Error deleting from {fullTableName}: {ex.Message}");
+                throw;
             }
-
-            throw;
-        }
-        finally
-        {
-            transaction?.Dispose();
         }
     }
 
