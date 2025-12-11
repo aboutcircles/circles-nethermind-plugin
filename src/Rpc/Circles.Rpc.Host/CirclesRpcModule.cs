@@ -867,8 +867,45 @@ public class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<TokenInfo?> GetTokenInfo(string tokenAddress)
     {
-        await using var connection = await CreateConnectionAsync();
         var lowerTokenAddress = tokenAddress.ToLower();
+
+        // If cache service is enabled, try using it first
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for token info query ({TokenAddress})", tokenAddress);
+
+                var cacheResult = await _cacheServiceClient.GetTokenInfoAsync(lowerTokenAddress);
+                if (cacheResult != null)
+                {
+                    return new TokenInfo(
+                        TokenAddress: cacheResult.TokenAddress,
+                        TokenOwner: cacheResult.TokenOwner,
+                        TokenType: cacheResult.TokenType,
+                        Version: cacheResult.Version,
+                        IsErc20: cacheResult.IsErc20,
+                        IsErc1155: cacheResult.IsErc1155,
+                        IsWrapped: cacheResult.IsWrapped,
+                        IsInflationary: cacheResult.IsInflationary,
+                        IsGroup: cacheResult.IsGroup
+                    );
+                }
+
+                // Cache returned null = token not found
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service query failed, falling back to database for token info ({TokenAddress})", tokenAddress);
+                // Fall through to database query below
+            }
+        }
+
+        // Fallback: use traditional database approach
+        _logger?.LogDebug("Using database for token info query ({TokenAddress})", tokenAddress);
+
+        await using var connection = await CreateConnectionAsync();
 
         // 1. Check for V1 token
         const string v1Sql = @"SELECT token, ""user"" as owner FROM ""CrcV1_Signup"" WHERE token = @tokenAddress LIMIT 1";
@@ -964,7 +1001,47 @@ public class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
         }
 
-        // Execute all lookups in parallel
+        // If cache service is enabled, try batch API for efficiency
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for token info batch query ({Count} addresses)", tokenAddresses.Length);
+
+                var lowerAddresses = tokenAddresses.Select(a => a.ToLowerInvariant()).ToArray();
+                var cacheResults = await _cacheServiceClient.GetTokenInfoBatchAsync(lowerAddresses);
+
+                var results = new TokenInfo?[tokenAddresses.Length];
+                for (int i = 0; i < cacheResults.Length && i < tokenAddresses.Length; i++)
+                {
+                    var cacheResult = cacheResults[i];
+                    if (cacheResult != null)
+                    {
+                        results[i] = new TokenInfo(
+                            TokenAddress: cacheResult.TokenAddress,
+                            TokenOwner: cacheResult.TokenOwner,
+                            TokenType: cacheResult.TokenType,
+                            Version: cacheResult.Version,
+                            IsErc20: cacheResult.IsErc20,
+                            IsErc1155: cacheResult.IsErc1155,
+                            IsWrapped: cacheResult.IsWrapped,
+                            IsInflationary: cacheResult.IsInflationary,
+                            IsGroup: cacheResult.IsGroup
+                        );
+                    }
+                }
+
+                return results;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service batch query failed, falling back to individual lookups");
+                // Fall through to individual lookups below
+            }
+        }
+
+        // Fallback: Execute all lookups in parallel using database
+        _logger?.LogDebug("Using database for token info batch query ({Count} addresses)", tokenAddresses.Length);
         var getTokenInfoTasks = tokenAddresses.Select(async tokenAddress =>
         {
             try
@@ -978,10 +1055,10 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
         }).ToArray();
 
-        var results = await Task.WhenAll(getTokenInfoTasks);
+        var dbResults = await Task.WhenAll(getTokenInfoTasks);
 
         // Return array with same length as input, preserving positions
-        return results;
+        return dbResults;
     }
 
     public async Task<AvatarInfo> GetAvatarInfo(string address)
