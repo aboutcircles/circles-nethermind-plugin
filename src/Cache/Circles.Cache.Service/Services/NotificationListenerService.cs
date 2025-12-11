@@ -18,6 +18,10 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
 
+    protected CacheServiceSettings Settings => _settings;
+    protected CacheServiceState State => _state;
+    protected CacheContainer Caches => _caches;
+
     public NotificationListenerService(
         ILogger<NotificationListenerService> logger,
         CacheServiceSettings settings,
@@ -99,18 +103,18 @@ public class NotificationListenerService : BackgroundService
         }
     }
 
-    private async Task HandleNotificationAsync(string payload, CancellationToken ct)
+    protected internal virtual async Task HandleNotificationAsync(string payload, CancellationToken ct)
     {
         _logger.LogDebug("Received notification ping");
 
         // Treat the notification as a ping - don't trust the payload content
         // Instead, query the database for the actual latest blocks
+        List<(long BlockNumber, string BlockHash)> recentBlocks = new();
 
-        await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-        await conn.OpenAsync(ct);
-
-        // Query the last N blocks from System_Block (where N = rollback capacity)
-        var recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, ct);
+        await WithReadonlyConnectionAsync(async (conn, token) =>
+        {
+            recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, token);
+        }, ct);
 
         if (recentBlocks.Count == 0)
         {
@@ -172,10 +176,19 @@ public class NotificationListenerService : BackgroundService
         }
     }
 
+    protected virtual async Task WithReadonlyConnectionAsync(
+        Func<NpgsqlConnection, CancellationToken, Task> action,
+        CancellationToken ct)
+    {
+        await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
+        await conn.OpenAsync(ct);
+        await action(conn, ct);
+    }
+
     /// <summary>
     /// Queries the most recent N blocks from the System_Block table.
     /// </summary>
-    private async Task<List<(long BlockNumber, string BlockHash)>> GetRecentBlocksAsync(
+    protected virtual async Task<List<(long BlockNumber, string BlockHash)>> GetRecentBlocksAsync(
         NpgsqlConnection conn, int count, CancellationToken ct)
     {
         const string sql = @"
@@ -204,7 +217,7 @@ public class NotificationListenerService : BackgroundService
         return blocks;
     }
 
-    private async Task ProcessBlockRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
+    protected virtual async Task ProcessBlockRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
     {
         await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
         await conn.OpenAsync(ct);

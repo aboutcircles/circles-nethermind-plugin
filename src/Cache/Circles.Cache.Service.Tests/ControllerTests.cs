@@ -71,6 +71,28 @@ public class ControllerTests
         return controller;
     }
 
+    /// <summary>
+    /// Creates a ProfilesController with mocked HttpContext.
+    /// </summary>
+    private ProfilesController CreateProfilesController()
+    {
+        var logger = new Mock<ILogger<ProfilesController>>();
+        var controller = new ProfilesController(_cache, _state, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
+    /// <summary>
+    /// Creates a GroupMembershipsController with mocked HttpContext.
+    /// </summary>
+    private GroupMembershipsController CreateGroupMembershipsController()
+    {
+        var logger = new Mock<ILogger<GroupMembershipsController>>();
+        var controller = new GroupMembershipsController(_cache, _state, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
     #region BalancesController Tests
 
     [Fact]
@@ -349,6 +371,191 @@ public class ControllerTests
 
         // Assert
         result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    #endregion
+
+    #region ProfilesController Tests
+
+    [Fact]
+    public void GetProfileCid_ShouldPreferV2OverV1()
+    {
+        // Arrange
+        var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V1AvatarToCidMap.Add(1000, address, "cid-v1");
+        _cache.V2AvatarToCidMap.Add(2000, address, "cid-v2");
+        var controller = CreateProfilesController();
+
+        // Act
+        var result = controller.GetProfileCid(address);
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var response = Assert.IsType<ProfileCidResponse>(okResult!.Value);
+        response.Cid.Should().Be("cid-v2");
+    }
+
+    [Fact]
+    public void GetProfileCid_ShouldReturnNullWhenMissing()
+    {
+        // Arrange
+        var controller = CreateProfilesController();
+
+        // Act
+        var result = controller.GetProfileCid("0xde374ece6fa50e781e81aac78e811b33d16912c7");
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var response = Assert.IsType<ProfileCidResponse>(okResult!.Value);
+        response.Cid.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetProfileCidBatch_ShouldReturnMixedResults()
+    {
+        // Arrange
+        var addr1 = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var addr2 = "0x1234567890abcdef1234567890abcdef12345678";
+        var addr3 = "0xfedcba9876543210fedcba9876543210fedcba98";
+        _cache.V2AvatarToCidMap.Add(2000, addr1, "cid-v2");
+        _cache.V1AvatarToCidMap.Add(1500, addr2, "cid-v1");
+        var controller = CreateProfilesController();
+
+        // Act
+        var request = new ProfileCidBatchRequest(new[] { addr1, addr2, addr3 });
+        var result = controller.GetProfileCidBatch(request);
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var responses = Assert.IsType<ProfileCidResponse[]>(okResult!.Value);
+        responses.Should().HaveCount(3);
+        responses[0].Cid.Should().Be("cid-v2");
+        responses[1].Cid.Should().Be("cid-v1");
+        responses[2].Cid.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetProfileCidBatch_ShouldReject_TooManyAddresses()
+    {
+        // Arrange
+        var controller = CreateProfilesController();
+        var addresses = Enumerable.Range(0, 150).Select(i => $"0x{i:X40}").ToArray();
+
+        // Act
+        var request = new ProfileCidBatchRequest(addresses);
+        var result = controller.GetProfileCidBatch(request);
+
+        // Assert
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    #endregion
+
+    #region GroupMembershipsController Tests
+
+    [Fact]
+    public void GetGroupMembers_ShouldReturnMemberships()
+    {
+        // Arrange
+        var group = "0xgroup000000000000000000000000000000000000";
+        var member = "0xmember0000000000000000000000000000000000";
+        var key = $"{group}:{member}";
+        _cache.GroupMemberships.Add(1200, key, (member, 1735689600L));
+        _cache.RebuildSecondaryIndexes();
+        var controller = CreateGroupMembershipsController();
+
+        // Act
+        var result = controller.GetGroupMembers(group);
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var response = Assert.IsType<GroupMembersResponse>(okResult!.Value);
+        response.Members.Should().HaveCount(1);
+        response.Members[0].Member.Should().Be(member);
+        response.Members[0].ExpiryTime.Should().Be(1735689600L);
+    }
+
+    [Fact]
+    public void GetMemberGroups_ShouldReturnMemberships()
+    {
+        // Arrange
+        var group = "0xgroup000000000000000000000000000000000000";
+        var member = "0xmember0000000000000000000000000000000000";
+        var key = $"{group}:{member}";
+        _cache.GroupMemberships.Add(1200, key, (member, 1735689600L));
+        _cache.RebuildSecondaryIndexes();
+        var controller = CreateGroupMembershipsController();
+
+        // Act
+        var result = controller.GetMemberGroups(member);
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var response = Assert.IsType<MemberGroupsResponse>(okResult!.Value);
+        response.Groups.Should().HaveCount(1);
+        response.Groups[0].Group.Should().Be(group.ToLowerInvariant());
+        response.Groups[0].Member.Should().Be(member.ToLowerInvariant());
+    }
+
+    #endregion
+
+    #region TrustRelationsController Tests
+
+    [Fact]
+    public void GetTrustRelations_ShouldReturnBothDirections()
+    {
+        // Arrange
+        var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var v1Trustee = "0xtrustee0000000000000000000000000000000000";
+        var v2Trustee = "0xtrustee2000000000000000000000000000000000";
+        _cache.V1TrustRelations.Add(1000, $"{address}:{v1Trustee}", 42L);
+        _cache.V2TrustRelations.Add(2000, $"{address}:{v2Trustee}", 1735689600L);
+        _cache.V1TrustRelations.Add(1100, $"0xanother:{address}", 15L);
+        _cache.RebuildSecondaryIndexes();
+        var controller = CreateTrustRelationsController();
+
+        // Act
+        var result = controller.GetTrustRelations(address);
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var response = okResult!.Value as TrustRelationsResponse;
+        response.Should().NotBeNull();
+        response!.Trusts.Should().HaveCount(2);
+        response.TrustedBy.Should().HaveCount(1);
+        response.Trusts.Should().ContainSingle(t => t.Version == 1 && t.Trustee == v1Trustee);
+        response.Trusts.Should().ContainSingle(t => t.Version == 2 && t.Trustee == v2Trustee);
+        response.TrustedBy[0].Truster.Should().Be("0xanother");
+        response.TrustedBy[0].Version.Should().Be(1);
+    }
+
+    [Fact]
+    public void GetTrustRelations_ShouldFilterByVersion()
+    {
+        // Arrange
+        var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V1TrustRelations.Add(1000, $"{address}:0xv1trust", 42L);
+        _cache.V2TrustRelations.Add(2000, $"{address}:0xv2trust", 1000L);
+        _cache.RebuildSecondaryIndexes();
+        var controller = CreateTrustRelationsController();
+
+        // Act
+        var result = controller.GetTrustRelations(address, version: 1);
+
+        // Assert
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var response = okResult!.Value as TrustRelationsResponse;
+        response.Should().NotBeNull();
+        response!.Trusts.Should().HaveCount(1);
+        response.Trusts[0].Version.Should().Be(1);
+        response.Trusts[0].Trustee.Should().Be("0xv1trust");
     }
 
     #endregion

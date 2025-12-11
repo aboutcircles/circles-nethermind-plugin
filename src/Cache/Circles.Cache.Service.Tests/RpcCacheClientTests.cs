@@ -42,7 +42,7 @@ public class RpcCacheClientTests
         // Arrange
         var response = new[]
         {
-            new { TokenId = "0xtoken1", Balance = "150.25", TokenOwner = "0xowner1", Version = 1 },
+            new { TokenId = "0xtoken1", Balance = "150.25", TokenOwner = (string?)"0xowner1", Version = 1 },
             new { TokenId = "12345", Balance = "200.50", TokenOwner = (string?)null, Version = 2 }
         };
 
