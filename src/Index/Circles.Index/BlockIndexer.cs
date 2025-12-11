@@ -72,16 +72,18 @@ public class ImportFlow(
         Metrics.LogBlockWithReceipts(data.Item1);
     }
 
-    private (TransformBlock<long, Block?> Source, ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> Sink)
+    private (TransformBlock<long, Block> Source, ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> Sink)
         BuildPipeline(CancellationToken cancellationToken)
     {
-        TransformBlock<long, Block?> sourceBlock = new(
+        TransformBlock<long, Block> sourceBlock = new(
             blockNo =>
             {
                 var block = blockTree.FindBlock(blockNo);
                 if (block == null)
                 {
-                    context.Logger.Warn($"Block {blockNo:N0} not found in block tree! Skipping.");
+                    throw new InvalidOperationException(
+                        $"Block {blockNo:N0} not found in block tree. " +
+                        $"Nethermind may still be syncing. The indexer will retry after backoff.");
                 }
                 return block;
             },
@@ -144,13 +146,7 @@ public class ImportFlow(
                 }
                 , CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
 
-        sourceBlock.LinkTo(receiptsSourceBlock!, new DataflowLinkOptions { PropagateCompletion = true },
-            o => o != null);
-
-        // Link null blocks to a NullTarget to prevent the pipeline from blocking.
-        // Without this, null blocks would accumulate in sourceBlock's buffer until BoundedCapacity
-        // is reached, causing SendAsync to block indefinitely.
-        sourceBlock.LinkTo(DataflowBlock.NullTarget<Block?>());
+        sourceBlock.LinkTo(receiptsSourceBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
         TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
             blockWithReceipts =>
