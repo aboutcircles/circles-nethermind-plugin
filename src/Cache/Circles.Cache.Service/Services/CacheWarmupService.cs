@@ -198,10 +198,9 @@ public class CacheWarmupService : BackgroundService
 
         _logger.LogInformation("Subscribed to NOTIFY channel. Waiting for first event...");
 
-        // Wait for first notification or cancellation
-        using var ctRegistration = ct.Register(() => notificationReceived.TrySetCanceled(ct));
+        // Create a cancellation source that we can use to cancel the WaitAsync when needed
+        using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-        var lastWaitLogTime = DateTime.UtcNow;
         const int waitLogIntervalSeconds = 300;
 
         try
@@ -209,38 +208,45 @@ public class CacheWarmupService : BackgroundService
             while (!ct.IsCancellationRequested)
             {
                 // Wait for notification with periodic logging
-                var waitTask = conn.WaitAsync(ct);
-                var delayTask = Task.Delay(TimeSpan.FromSeconds(waitLogIntervalSeconds), ct);
-                var completedTask = await Task.WhenAny(notificationReceived.Task, waitTask, delayTask);
+                // Use a fresh cancellation token for each wait iteration
+                using var iterationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                iterationCts.CancelAfter(TimeSpan.FromSeconds(waitLogIntervalSeconds));
 
-                if (completedTask == notificationReceived.Task)
+                try
                 {
-                    // Notification received, sync is complete
-                    _logger.LogInformation("Initial sync confirmed complete via NOTIFY event");
+                    // WaitAsync will return when a notification is received or when cancelled
+                    await conn.WaitAsync(iterationCts.Token);
 
-                    // Wait for the WaitAsync to complete if it hasn't already, to exit the waiting state
-                    if (!waitTask.IsCompleted)
+                    // If we get here without cancellation, check if notification was received
+                    if (notificationReceived.Task.IsCompleted)
                     {
-                        await waitTask;
+                        _logger.LogInformation("Initial sync confirmed complete via NOTIFY event");
+
+                        // Unlisten to free the connection for subsequent operations
+                        await using var unlistenCmd = new NpgsqlCommand($"UNLISTEN {_settings.PgNotifyChannel}", conn);
+                        await unlistenCmd.ExecuteNonQueryAsync(ct);
+
+                        return;
                     }
-
-                    // Unlisten to free the connection for subsequent operations
-                    await using var unlistenCmd = new NpgsqlCommand($"UNLISTEN {_settings.PgNotifyChannel}", conn);
-                    await unlistenCmd.ExecuteNonQueryAsync(ct);
-
-                    return;
                 }
-                else if (completedTask == delayTask)
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
-                    // Periodic log to show we're still waiting
+                    // This is expected - periodic timeout for logging
+                    // The iteration CTS timed out, but the main CT is still valid
                     _logger.LogInformation("Still waiting for first NOTIFY event on channel '{Channel}'...",
                         _settings.PgNotifyChannel);
                 }
-                // If waitTask completed, it means there's data but not our notification, continue loop
             }
         }
         finally
         {
+            // Cancel any in-progress WaitAsync before trying to UNLISTEN
+            // This is important because UNLISTEN cannot execute while connection is in 'Waiting' state
+            await waitCts.CancelAsync();
+
+            // Give a small delay for the connection to exit the waiting state
+            await Task.Delay(100, CancellationToken.None);
+
             // Ensure we always unlisten, even if cancelled or exception occurs
             try
             {
