@@ -44,4 +44,18 @@ public class Settings : Circles.Index.Common.Settings
             : 30;
 
     #endregion
+
+    #region Health check configuration
+
+    /// <summary>
+    /// Maximum allowed lag in blocks for the indexer sync health check (default: 100).
+    /// If the indexer is more than this many blocks behind the chain head, the /ready endpoint will return 503.
+    /// Set to a higher value during initial sync, or 0 to disable the check.
+    /// </summary>
+    public readonly long IndexerMaxLagBlocks =
+        long.TryParse(Environment.GetEnvironmentVariable("INDEXER_MAX_LAG_BLOCKS"), out var maxLag)
+            ? maxLag
+            : 100;
+
+    #endregion
 }

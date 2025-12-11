@@ -109,7 +109,9 @@ public static class BuilderSetup
             // pathfinder connectivity (optional dependency - degrades gracefully)
             .AddCheck<PathfinderConnectionHealthCheck>("pathfinder-connection", tags: new[] { "pathfinder-connection" })
             // database connectivity
-            .AddCheck<DatabaseConnectionHealthCheck>("database-connection", tags: new[] { "database-connection" });
+            .AddCheck<DatabaseConnectionHealthCheck>("database-connection", tags: new[] { "database-connection" })
+            // indexer sync status (checks if indexer is caught up with chain head)
+            .AddCheck<IndexerSyncHealthCheck>("indexer-sync", tags: new[] { "indexer-sync" });
 
         // ─── Misc DI ────────────────────────────────────────────────────────────────
         builder.Services.ConfigureHttpJsonOptions(options =>
