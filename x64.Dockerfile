@@ -16,6 +16,7 @@ COPY Circles.Index.CirclesV2.NameRegistry/Circles.Index.CirclesV2.NameRegistry.c
 COPY Circles.Index.CirclesV2.OIC/Circles.Index.CirclesV2.OIC.csproj ./Circles.Index.CirclesV2.OIC/
 COPY Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.StandardTreasury.csproj ./Circles.Index.CirclesV2.StandardTreasury/
 COPY Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Circles.Index.CirclesV2.TokenOffers/
+COPY Circles.Index.CirclesV2.PaymentGateway/Circles.Index.CirclesV2.PaymentGateway.csproj ./Circles.Index.CirclesV2.PaymentGateway/
 COPY Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Circles.Index.CirclesViews/
 COPY Circles.Index.Common/Circles.Index.Common.csproj ./Circles.Index.Common/
 COPY Circles.Index.Postgres/Circles.Index.Postgres.csproj ./Circles.Index.Postgres/
@@ -49,6 +50,7 @@ COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.BaseGroupDe
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.AffiliateGroupRegistry.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.InvitationEscrow.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.TokenOffers.dll /nethermind/plugins
+COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.PaymentGateway.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesV2.OIC.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.CirclesViews.dll /nethermind/plugins
 COPY --from=build /circles-nethermind-plugin/Circles.Index.Safe.dll /nethermind/plugins

@@ -55,6 +55,7 @@ public class Plugin : INethermindPlugin
             new CirclesV2.TokenOffers.DatabaseSchema(),
             new CirclesV2.AffiliateGroupRegistry.DatabaseSchema(),
             new CirclesV2.InvitationEscrow.DatabaseSchema(),
+            new CirclesV2.PaymentGateway.DatabaseSchema(),
             new CirclesV2.OIC.DatabaseSchema(),
             new Circles.Index.Safe.DatabaseSchema(),
             new CirclesViews.DatabaseSchema()
@@ -93,6 +94,8 @@ public class Plugin : INethermindPlugin
             new CirclesV2.BaseGroupDeployer.LogParser(new(settings.BaseGroupDeployer)),
             new CirclesV2.AffiliateGroupRegistry.LogParser(new(settings.AffiliateGroupRegistry)),
             new CirclesV2.InvitationEscrow.LogParser(new(settings.InvitationEscrowContract)),
+            new CirclesV2.PaymentGateway.LogParser(settings.PaymentGatewayFactoryAddresses.Select(o => new Address(o))
+                .ToImmutableHashSet()),
             new CirclesV2.OIC.LogParser(new(settings.OICContractAddress))
         };
 

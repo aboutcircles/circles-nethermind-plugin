@@ -8,8 +8,8 @@
         <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
         <Copyright>Gnosis Service GmbH</Copyright>
         <Product>Circles</Product>
-        <AssemblyVersion>1.25.0</AssemblyVersion>
-        <FileVersion>1.25.0</FileVersion>
+        <AssemblyVersion>1.25.1</AssemblyVersion>
+        <FileVersion>1.25.1</FileVersion>
     </PropertyGroup>
 
 
@@ -39,6 +39,7 @@
       <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj" />
       <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
