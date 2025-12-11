@@ -306,6 +306,10 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState:
+                            // Check if the last error was a transient "not available yet" error
+                            var lastError = Errors.LastOrDefault();
+                            bool isTransientError = IsTransientSyncError(lastError);
+
                             // Exponential backoff based on the number of errors
                             var delay = Errors.Count * Errors.Count * 1000;
 
@@ -323,9 +327,21 @@ public class StateMachine(
                             context.Logger.Info($"Waiting {delay} ms before retrying after an error...");
                             await Task.Delay(delay, cancellationToken);
 
-                            // Retry
-                            context.Logger.Info("Transitioning to 'Initial' state after an error...");
-                            await TransitionTo(State.Initial);
+                            if (isTransientError)
+                            {
+                                // For transient errors (block/receipts not yet available), just go back to
+                                // WaitForNewBlock - no need to reinitialize caches or clean up the database.
+                                context.Logger.Info(
+                                    "Transient error (block/receipts not available). " +
+                                    "Transitioning to 'WaitForNewBlock' to retry...");
+                                await TransitionTo(State.WaitForNewBlock);
+                            }
+                            else
+                            {
+                                // For other errors, do full reinitialization
+                                context.Logger.Info("Transitioning to 'Initial' state after an error...");
+                                await TransitionTo(State.Initial);
+                            }
                             return;
                         case LeaveState:
                             return;
@@ -462,5 +478,34 @@ public class StateMachine(
         {
             context.Logger.Error($"Failed to send {context.Settings.PgNotifyChannel} notification for blocks {range.Min}-{range.Max}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Checks if an exception represents a transient sync error (block or receipts not yet available).
+    /// These errors should be retried without full reinitialization.
+    /// </summary>
+    private static bool IsTransientSyncError(Exception? ex)
+    {
+        if (ex == null) return false;
+
+        // Direct match
+        if (ex is BlockNotAvailableException || ex is ReceiptsNotAvailableException)
+            return true;
+
+        // Check inner exception
+        if (ex.InnerException is BlockNotAvailableException || ex.InnerException is ReceiptsNotAvailableException)
+            return true;
+
+        // Check AggregateException (from dataflow pipeline)
+        if (ex is AggregateException ae)
+        {
+            foreach (var inner in ae.Flatten().InnerExceptions)
+            {
+                if (inner is BlockNotAvailableException || inner is ReceiptsNotAvailableException)
+                    return true;
+            }
+        }
+
+        return false;
     }
 }
