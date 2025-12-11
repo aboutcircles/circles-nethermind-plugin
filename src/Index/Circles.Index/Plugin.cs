@@ -344,6 +344,30 @@ public class Plugin : INethermindPlugin
             };
 
             _indexerContext.Logger.Debug("NewHeadBlock event subscription complete.");
+
+            // Trigger initial catch-up: the chain head may already be ahead of our index.
+            // This handles scenarios where:
+            // 1. TABLE_START_BLOCKS was used to reindex specific tables
+            // 2. The indexer was stopped for a while and restarted
+            // 3. Nethermind synced faster than the indexer during startup
+            // Without this, the indexer would wait forever for a NewHeadBlock event that already fired.
+            var currentHead = _indexerContext.NethermindApi.BlockTree!.Head?.Number;
+            if (currentHead.HasValue)
+            {
+                var latestIndexed = _indexerContext.Database.LatestBlock() ?? 0;
+                if (currentHead.Value > latestIndexed)
+                {
+                    _indexerContext.Logger.Info(
+                        $"Triggering catch-up sync: chain head is {currentHead.Value:N0}, index is at {latestIndexed:N0} " +
+                        $"({currentHead.Value - latestIndexed:N0} blocks behind)");
+                    HandleNewHead(currentHead.Value);
+                }
+                else
+                {
+                    _indexerContext.Logger.Info(
+                        $"Index is up to date at block {latestIndexed:N0}, waiting for new blocks...");
+                }
+            }
         }, _cancellationTokenSource.Token);
 
         return Task.CompletedTask;
