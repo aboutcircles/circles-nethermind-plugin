@@ -2,7 +2,7 @@
 # Usage: docker compose -f docker-compose.caddy.yml up -d
 #
 # Services included:
-# - caddy: Reverse proxy with auto-TLS (temporary domain)
+# - caddy: Reverse proxy (HTTP-only, no TLS)
 # - nethermind-gnosis: Execution client with Circles indexer
 # - rpc: Circles RPC host
 # - profile-service: Profile pinning service
@@ -25,14 +25,10 @@ services:
       - circles-gnosis
     ports:
       - "80:80"
-      - "443:443"
-      - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../.state/caddy/data:/data
       - ../.state/caddy/config:/config
-    environment:
-      - DOMAIN=${DOMAIN:-localhost}
     depends_on:
       - nethermind-gnosis
       - rpc

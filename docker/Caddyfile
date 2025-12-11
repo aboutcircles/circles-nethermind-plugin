@@ -1,9 +1,7 @@
-{
-  email tobias.leinss@gnosis.io
-}
-# Temporary domain - replace with production domain when ready
+# HTTP-only mode (no TLS) - Hetzner PTR hostnames don't have A records
+# For production, use a real domain with TLS
 
-{$DOMAIN:localhost} {
+:80 {
     encode zstd gzip
 
     # WebSocket subscription endpoint (root level)
