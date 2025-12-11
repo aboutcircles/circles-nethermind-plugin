@@ -263,12 +263,32 @@ public class ImportFlow(
                         try
                         {
                             context.Logger.Info($"Pipeline: Block {blockNum:N0} calling {parser.GetType().Name}.ParseTransaction");
+
+                            // Watchdog: log warning if ParseTransaction takes too long
+                            var parserName = parser.GetType().Name;
+                            var eventCount = parserToEvents[parser].Count;
+                            var sw = System.Diagnostics.Stopwatch.StartNew();
+                            using var watchdog = new Timer(_ =>
+                            {
+                                context.Logger.Warn(
+                                    $"SLOW: {parserName}.ParseTransaction running for {sw.Elapsed.TotalSeconds:F1}s " +
+                                    $"on block {blockNum:N0}, tx {receipt.TxHash}, {eventCount} events");
+                            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
+
                             var txEvents = parser.ParseTransaction(
                                 blockWithReceipts.Block,
                                 transactionIndex,
                                 transaction,
                                 receipt,
                                 parserToEvents[parser]);
+
+                            sw.Stop();
+                            if (sw.Elapsed.TotalSeconds > 1)
+                            {
+                                context.Logger.Warn(
+                                    $"{parserName}.ParseTransaction took {sw.Elapsed.TotalSeconds:F2}s " +
+                                    $"on block {blockNum:N0}, tx {receipt.TxHash}, {eventCount} events");
+                            }
 
                             // Add these newly derived events to that parser's list
                             parserToEvents[parser].AddRange(txEvents);
