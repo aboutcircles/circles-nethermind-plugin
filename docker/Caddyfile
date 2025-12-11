@@ -12,23 +12,27 @@
         }
     }
 
-    # Nethermind JSON-RPC
-    handle /chain-rpc/* {
-        uri strip_prefix /chain-rpc
+    # Nethermind JSON-RPC (with dashboard)
+    # Matcher for dashboard static assets (relative paths in HTML)
+    @nethermind_assets path /css/* /js/* /favicon.webp /nethermind.svg
+    handle @nethermind_assets {
         reverse_proxy nethermind-gnosis:8545
     }
 
-    handle /chain-rpc {
+    handle_path /chain-rpc/* {
+        reverse_proxy nethermind-gnosis:8545
+    }
+
+    handle_path /chain-rpc {
         reverse_proxy nethermind-gnosis:8545
     }
 
     # Pathfinder
-    handle /pathfinder/* {
-        uri strip_prefix /pathfinder
+    handle_path /pathfinder/* {
         reverse_proxy pathfinder:8080
     }
 
-    handle /pathfinder {
+    handle_path /pathfinder {
         reverse_proxy pathfinder:8080
     }
 
