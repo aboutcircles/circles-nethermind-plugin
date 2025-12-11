@@ -44,6 +44,9 @@ public class StateMachine(
     private long _blocksProcessedSinceLastLog = 0;
     private long _totalBlocksProcessed = 0;
 
+    // Track if TABLE_START_BLOCKS cleanup was already performed (to avoid re-running on retries)
+    private bool _tableStartBlocksCleanupDone = false;
+
     public async Task HandleEvent(IEvent e)
     {
         try
@@ -58,42 +61,47 @@ public class StateMachine(
                     {
                         case EnterState:
                             {
-                                // Track if we already did targeted reindex cleanup
+                                // Track if we did targeted reindex cleanup in THIS run
                                 var tableStartBlocksUsed = false;
-                                
-                                // Handle TABLE_START_BLOCKS for reindexing
+
+                                // Handle TABLE_START_BLOCKS for reindexing (only once per process lifetime)
                                 // Use "*:BlockNumber" to reindex ALL tables, or specific tables with their start blocks
-                                if (context.Settings.ReindexAllTables && context.Settings.ReindexAllFromBlock.HasValue)
+                                if (!_tableStartBlocksCleanupDone)
                                 {
-                                    var reindexFrom = context.Settings.ReindexAllFromBlock.Value;
-                                    context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing ALL tables from block {reindexFrom}");
-                                    
-                                    // Delete from all tables
-                                    await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
-                                    
-                                    context.Logger.Info("[TABLE_START_BLOCKS] All data deletion complete. Indexer will resync from the specified block.");
-                                    tableStartBlocksUsed = true;
-                                }
-                                else if (context.Settings.TableStartBlocks.Count > 0)
-                                {
-                                    var minStartBlock = context.Settings.TableStartBlocks.Values.Min();
-                                    var tablesToReindex = context.Settings.TableStartBlocks.Keys.ToArray();
-                                    
-                                    context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing {tablesToReindex.Length} tables from block {minStartBlock}:");
-                                    foreach (var (table, startBlock) in context.Settings.TableStartBlocks)
+                                    if (context.Settings.ReindexAllTables && context.Settings.ReindexAllFromBlock.HasValue)
                                     {
-                                        context.Logger.Info($"  - {table}: from block {startBlock}");
+                                        var reindexFrom = context.Settings.ReindexAllFromBlock.Value;
+                                        context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing ALL tables from block {reindexFrom}");
+
+                                        // Delete from all tables
+                                        await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
+
+                                        context.Logger.Info("[TABLE_START_BLOCKS] All data deletion complete. Indexer will resync from the specified block.");
+                                        tableStartBlocksUsed = true;
+                                        _tableStartBlocksCleanupDone = true;
                                     }
-                                    
-                                    // Delete from specified tables
-                                    await context.Database.DeleteFromTablesGreaterOrEqualBlock(minStartBlock, tablesToReindex);
-                                    
-                                    // Also delete from System_Block to force re-sync from the minimum start block
-                                    context.Logger.Info($"[TABLE_START_BLOCKS] Deleting System_Block from block {minStartBlock} to force resync...");
-                                    await context.Database.DeleteSystemBlockGreaterOrEqualBlock(minStartBlock);
-                                    
-                                    context.Logger.Info("[TABLE_START_BLOCKS] Data deletion complete. Indexer will resync from the minimum start block.");
-                                    tableStartBlocksUsed = true;
+                                    else if (context.Settings.TableStartBlocks.Count > 0)
+                                    {
+                                        var minStartBlock = context.Settings.TableStartBlocks.Values.Min();
+                                        var tablesToReindex = context.Settings.TableStartBlocks.Keys.ToArray();
+
+                                        context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing {tablesToReindex.Length} tables from block {minStartBlock}:");
+                                        foreach (var (table, startBlock) in context.Settings.TableStartBlocks)
+                                        {
+                                            context.Logger.Info($"  - {table}: from block {startBlock}");
+                                        }
+
+                                        // Delete from specified tables
+                                        await context.Database.DeleteFromTablesGreaterOrEqualBlock(minStartBlock, tablesToReindex);
+
+                                        // Also delete from System_Block to force re-sync from the minimum start block
+                                        context.Logger.Info($"[TABLE_START_BLOCKS] Deleting System_Block from block {minStartBlock} to force resync...");
+                                        await context.Database.DeleteSystemBlockGreaterOrEqualBlock(minStartBlock);
+
+                                        context.Logger.Info("[TABLE_START_BLOCKS] Data deletion complete. Indexer will resync from the minimum start block.");
+                                        tableStartBlocksUsed = true;
+                                        _tableStartBlocksCleanupDone = true;
+                                    }
                                 }
 
                                 // Determine the effective resume point by checking both System_Block and all event tables.
@@ -123,12 +131,22 @@ public class StateMachine(
                                 context.Logger.Info("Initializing: Warming up all caches...");
                                 await InitializeCaches(effectiveResumeBlock);
 
-                                // If TABLE_START_BLOCKS was used, skip Reorg cleanup since we've already 
+                                // If TABLE_START_BLOCKS was used, skip Reorg cleanup since we've already
                                 // done targeted deletion. The Reorg state would otherwise delete from ALL tables.
                                 if (tableStartBlocksUsed)
                                 {
                                     context.Logger.Info(
                                         "[TABLE_START_BLOCKS] Cleanup already complete. Skipping Reorg state, proceeding to WaitForNewBlock.");
+                                    await TransitionTo(State.WaitForNewBlock);
+                                    return;
+                                }
+
+                                // If starting from block 0, skip Reorg - there's nothing to clean up.
+                                // This prevents accidental full database wipes when System_Block is empty.
+                                if (effectiveResumeBlock == 0)
+                                {
+                                    context.Logger.Info(
+                                        "Initializing: Starting fresh from block 0, skipping Reorg cleanup.");
                                     await TransitionTo(State.WaitForNewBlock);
                                     return;
                                 }
