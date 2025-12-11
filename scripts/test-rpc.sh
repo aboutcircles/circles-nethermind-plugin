@@ -31,6 +31,42 @@ TOKEN_ADDR_1="0x6D5e20F62C177765f73aee343a307D949c08B9DC"
 TOKEN_ADDR_2="0xa0f8904eC48a2775B8a88b40e9c171F05F7d7673"
 TOKEN_ADDR_3="0x448eabde0dc9ad70a9b68a8a03aa91da872f95bd"
 
+# Diverse test addresses for comprehensive coverage
+# Group addresses (RegisterGroup events)
+GROUP_ADDR_1="0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c"  # Active group with GroupMint activity
+GROUP_ADDR_2="0xfbb2caa8750be8d2e3057a9fc76af57bd641db8e"  # test-e2e-group
+GROUP_ADDR_3="0xa646fc7956376a641d30448a0473348bcc5638e5"  # Frutero Club
+
+# Organization addresses (RegisterOrganization events)
+ORG_ADDR_1="0xa28c43f92f6498afae4266b29a668624ba031913"   # CirclesArbbotV2
+ORG_ADDR_2="0xee310371e110ca0a6862e99a2d03d8e07f501ab4"   # Cow Swaper
+
+# High-activity addresses (many transfers)
+HIGH_ACTIVITY_ADDR_1="0x0afd8899bca011bb95611409f09c8efbf6b169cf"
+HIGH_ACTIVITY_ADDR_2="0x97fd8f7829a019946329f6d2e763a72741047518"
+
+# V1 addresses (CrcV1 Signup)
+V1_USER_1="0x9393f1dc71b7a13d67453c6d7a8d4f0b112e5866"
+V1_USER_2="0xaa01b45ff3e0a7aa27c3ca8d38d8b97ec39416f0"
+V1_TOKEN_1="0xa553e1591e725765dc0f419f2b2c41e4819095fa"
+
+# Addresses with ERC20 wrapper
+WRAPPER_ADDR_1="0x3356876481f164bf6b4a82a64a8ce5ed28f753ed"
+ERC20_WRAPPER_1="0x726f084f94e28821655ccae52c889130054f55ff"
+
+# Stopped avatar (revoked)
+STOPPED_AVATAR="0xeb94174e82d6a070dcb0135b09270de4a3a3bce0"
+
+# Safe proxy addresses
+SAFE_PROXY_1="0xccfe783b4dce0869beb7d4c9db4d4bd61e3aee31"
+
+# Addresses with GroupMint activity
+GROUPMINT_USER="0xf9117e9931e6ab91f025e1afa4e70cafa5e0aa1e"
+
+# CrcV1 HubTransfer addresses
+V1_TRANSFER_FROM="0xa9f4ef92c814f01f16b92d472595a6820f48e36a"
+V1_TRANSFER_TO="0x16c6aea3d4069994c0fe7dc26884a4cc1d3dc255"
+
 CATEGORY_KEYS=(
     "system"
     "balance"
@@ -623,6 +659,168 @@ run_test "events" "circles_events (filter: blockNumber >= 38000000)" "curl -s -X
 run_test "events" "circles_events (filter: combined with test addr3 and block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$TEST_ADDR_3\",38000000,39000000,[\"CrcV1_Trust\",\"CrcV2_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"IsNotNull\",\"Column\":\"transactionHash\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (CrcV2_Trust with expiry)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38500000,38501000,[\"CrcV2_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"expiryTime\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (CrcV2_TransferSingle with amount filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38500000,38501000,[\"CrcV2_TransferSingle\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"value\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# Diverse Event Type Tests - CrcV1
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- CrcV1 Event Tests ---${NC}\n"
+fi
+
+# CrcV1 Signup events
+run_test "events" "circles_events (CrcV1_Signup recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43340000,43345000,[\"CrcV1_Signup\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_Signup for user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43430000,43435000,[\"CrcV1_Signup\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"user\",\"Value\":\"$V1_USER_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV1 Trust events
+run_test "events" "circles_events (CrcV1_Trust recent block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43000000,43001000,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_Trust for user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$V1_USER_2\",null,null,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_Trust limit filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,39000000,[\"CrcV1_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"limit\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV1 HubTransfer events
+run_test "events" "circles_events (CrcV1_HubTransfer recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43525000,43530000,[\"CrcV1_HubTransfer\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_HubTransfer from)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43525000,43530000,[\"CrcV1_HubTransfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"from\",\"Value\":\"$V1_TRANSFER_FROM\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_HubTransfer large amount)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43000000,43600000,[\"CrcV1_HubTransfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"amount\",\"Value\":\"100000000000000000\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV1 Transfer events
+run_test "events" "circles_events (CrcV1_Transfer for token)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43430000,43435000,[\"CrcV1_Transfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"tokenAddress\",\"Value\":\"$V1_TOKEN_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# Diverse Event Type Tests - CrcV2
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- CrcV2 Event Tests ---${NC}\n"
+fi
+
+# CrcV2 RegisterHuman events
+run_test "events" "circles_events (CrcV2_RegisterHuman recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_RegisterHuman\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_RegisterHuman for avatar)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43585000,[\"CrcV2_RegisterHuman\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"avatar\",\"Value\":\"0xb3393dd1d89dfec04ac3d5938525baf5c128c937\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 RegisterGroup events
+run_test "events" "circles_events (CrcV2_RegisterGroup recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43400000,43470000,[\"CrcV2_RegisterGroup\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_RegisterGroup for group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43400000,43470000,[\"CrcV2_RegisterGroup\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"group\",\"Value\":\"$GROUP_ADDR_2\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 RegisterOrganization events
+run_test "events" "circles_events (CrcV2_RegisterOrganization recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43540000,43590000,[\"CrcV2_RegisterOrganization\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_RegisterOrganization for org)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_RegisterOrganization\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"organization\",\"Value\":\"$ORG_ADDR_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 Trust events
+run_test "events" "circles_events (CrcV2_Trust for high-activity user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$GROUPMINT_USER\",null,null,[\"CrcV2_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_Trust truster filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43190000,43200000,[\"CrcV2_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"truster\",\"Value\":\"$GROUPMINT_USER\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 TransferSingle events
+run_test "events" "circles_events (CrcV2_TransferSingle for high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",43500000,43510000,[\"CrcV2_TransferSingle\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_TransferSingle from filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_TransferSingle\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"from\",\"Value\":\"$GROUPMINT_USER\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_TransferSingle to filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_TransferSingle\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"to\",\"Value\":\"$GROUPMINT_USER\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 TransferBatch events
+run_test "events" "circles_events (CrcV2_TransferBatch recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_TransferBatch\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 GroupMint events
+run_test "events" "circles_events (CrcV2_GroupMint recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_GroupMint\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_GroupMint for group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_GroupMint\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"group\",\"Value\":\"$GROUP_ADDR_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_GroupMint for sender)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_GroupMint\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"sender\",\"Value\":\"$GROUPMINT_USER\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 PersonalMint events
+run_test "events" "circles_events (CrcV2_PersonalMint recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_PersonalMint\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_PersonalMint for human)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_PersonalMint\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"human\",\"Value\":\"$GROUPMINT_USER\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 Stopped events
+run_test "events" "circles_events (CrcV2_Stopped all)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,null,null,[\"CrcV2_Stopped\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_Stopped for avatar)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$STOPPED_AVATAR\",null,null,[\"CrcV2_Stopped\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 ERC20WrapperDeployed events
+run_test "events" "circles_events (CrcV2_ERC20WrapperDeployed recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_ERC20WrapperDeployed\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV2_ERC20WrapperDeployed for avatar)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43585000,43590000,[\"CrcV2_ERC20WrapperDeployed\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"avatar\",\"Value\":\"$WRAPPER_ADDR_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 Erc20WrapperTransfer events
+run_test "events" "circles_events (CrcV2_Erc20WrapperTransfer recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_Erc20WrapperTransfer\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 DiscountCost events
+run_test "events" "circles_events (CrcV2_DiscountCost recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_DiscountCost\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 StreamCompleted events
+run_test "events" "circles_events (CrcV2_StreamCompleted recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43500000,43590000,[\"CrcV2_StreamCompleted\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# CrcV2 ApprovalForAll events
+run_test "events" "circles_events (CrcV2_ApprovalForAll recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_ApprovalForAll\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# Safe Event Tests
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- Safe Event Tests ---${NC}\n"
+fi
+
+run_test "events" "circles_events (Safe_ProxyCreation recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"Safe_ProxyCreation\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (Safe_ProxyCreation for proxy)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43589000,43590000,[\"Safe_ProxyCreation\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"proxy\",\"Value\":\"$SAFE_PROXY_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (Safe_SafeSetup recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"Safe_SafeSetup\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (Safe_AddedOwner recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43500000,43590000,[\"Safe_AddedOwner\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (Safe_RemovedOwner recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43500000,43590000,[\"Safe_RemovedOwner\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# Query Tests - Views
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- View Query Tests ---${NC}\n"
+fi
+
+# V_CrcV2_TrustRelations
+run_test "query" "circles_query (V_CrcV2_TrustRelations for groupmint user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"TrustRelations\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"truster\",\"Value\":[\"$GROUPMINT_USER\"]}],\"Limit\":10,\"Order\":[{\"Column\":\"blockNumber\",\"SortOrder\":\"DESC\"}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_CrcV2_Avatars
+run_test "query" "circles_query (V_CrcV2_Avatars for group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"Avatars\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"avatar\",\"Value\":[\"$GROUP_ADDR_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_query (V_CrcV2_Avatars for organization)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"Avatars\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"avatar\",\"Value\":[\"$ORG_ADDR_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_CrcV2_BalancesByAccountAndToken
+run_test "query" "circles_query (V_CrcV2_BalancesByAccountAndToken for user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"BalancesByAccountAndToken\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"account\",\"Value\":[\"$GROUPMINT_USER\"]}],\"Limit\":20}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_CrcV2_GroupMemberships
+run_test "query" "circles_query (V_CrcV2_GroupMemberships for group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"GroupMemberships\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"group\",\"Value\":[\"$GROUP_ADDR_1\"]}],\"Limit\":20}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_CrcV2_Groups
+run_test "query" "circles_query (V_CrcV2_Groups all)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"Groups\",\"Columns\":[],\"Limit\":10,\"Order\":[{\"Column\":\"blockNumber\",\"SortOrder\":\"DESC\"}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_CrcV1_Avatars
+run_test "query" "circles_query (V_CrcV1_Avatars for v1 user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV1\",\"Table\":\"Avatars\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"avatar\",\"Value\":[\"$V1_USER_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_Crc_Avatars (combined view)
+run_test "query" "circles_query (V_Crc_Avatars combined for multiple)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Crc\",\"Table\":\"Avatars\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"In\",\"Column\":\"avatar\",\"Value\":[\"$TEST_ADDR_1\",\"$TEST_ADDR_2\",\"$GROUP_ADDR_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_Safe_Owners
+run_test "query" "circles_query (V_Safe_Owners for safe)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Safe\",\"Table\":\"Owners\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"safe\",\"Value\":[\"$SAFE_PROXY_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# V_Crc_Transfers
+run_test "query" "circles_query (V_Crc_Transfers for user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Crc\",\"Table\":\"Transfers\",\"Columns\":[],\"Filter\":[{\"Type\":\"Conjunction\",\"ConjunctionType\":\"Or\",\"Predicates\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"from\",\"Value\":[\"$TEST_ADDR_1\"]},{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"to\",\"Value\":[\"$TEST_ADDR_1\"]}]}],\"Limit\":20,\"Order\":[{\"Column\":\"blockNumber\",\"SortOrder\":\"DESC\"}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# Edge Case Tests
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- Edge Case Tests ---${NC}\n"
+fi
+
+# Empty results tests
+run_test "events" "circles_events (empty result - nonexistent address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"0x0000000000000000000000000000000000000001\",null,null,[\"CrcV2_RegisterHuman\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (empty result - future block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,99999999,100000000,[\"CrcV2_TransferSingle\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_query (empty result - nonexistent avatar)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"Avatars\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"avatar\",\"Value\":[\"0x0000000000000000000000000000000000000001\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Large number tests (attocircles - 18 decimals)
+run_test "query" "circles_query (large numbers - balances with totalBalance filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"BalancesByAccountAndToken\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"totalBalance\",\"Value\":\"1000000000000000000\"}],\"Limit\":5}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Multiple event types in single request
+run_test "events" "circles_events (multiple event types)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_RegisterHuman\",\"CrcV2_RegisterGroup\",\"CrcV2_RegisterOrganization\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (all v1 events)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38001000,[\"CrcV1_Signup\",\"CrcV1_Trust\",\"CrcV1_HubTransfer\",\"CrcV1_Transfer\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Complex nested filter
+run_test "events" "circles_events (complex nested filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43500000,43590000,[\"CrcV2_TransferSingle\"],[{\"Type\":\"Conjunction\",\"ConjunctionType\":\"And\",\"Predicates\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"blockNumber\",\"Value\":43580000},{\"Type\":\"Conjunction\",\"ConjunctionType\":\"Or\",\"Predicates\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"from\",\"Value\":\"$GROUPMINT_USER\"},{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"to\",\"Value\":\"$GROUPMINT_USER\"}]}]}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Pagination test with cursor
+run_test "events" "circles_events (pagination - with limit)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43590000,[\"CrcV2_TransferSingle\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then
     echo -e "${BLUE}All tests completed.${NC}\n"

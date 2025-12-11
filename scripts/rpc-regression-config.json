@@ -45,6 +45,35 @@
     "circles_events (filter: nested AND/OR with test addr3)",
     "circles_events (filter: transactionHash IS NOT NULL)"
   ],
+  "expectedFailureReasons": {
+    "circles_getNetworkSnapshot": "Dynamic network state - changes between calls",
+    "circles_getAggregatedTrustRelationsEnriched (addr1)": "New SDK method - not in production yet",
+    "circles_getAggregatedTrustRelationsEnriched (addr2)": "New SDK method - not in production yet",
+    "circles_getAggregatedTrustRelationsEnriched (addr3)": "New SDK method - not in production yet",
+    "circles_getProfileView (addr1)": "New SDK method - not in production yet",
+    "circles_getProfileView (addr2)": "New SDK method - not in production yet",
+    "circles_getProfileView (addr3)": "New SDK method - not in production yet",
+    "circles_getTransactionHistoryEnriched (addr1, recent)": "New SDK method - not in production yet",
+    "circles_getTransactionHistoryEnriched (addr2, with limit)": "New SDK method - not in production yet",
+    "circles_getTransactionHistoryEnriched (addr3, block range)": "New SDK method - not in production yet",
+    "circles_getTrustNetworkSummary (addr1)": "New SDK method - not in production yet",
+    "circles_getTrustNetworkSummary (addr2)": "New SDK method - not in production yet",
+    "circles_getTrustNetworkSummary (addr3, with maxDepth)": "New SDK method - not in production yet",
+    "circles_getValidInviters (addr1, default min)": "New SDK method - not in production yet",
+    "circles_getValidInviters (addr2, min 96)": "New SDK method - not in production yet",
+    "circles_getValidInviters (addr3, min 50)": "New SDK method - not in production yet",
+    "circles_getInvitationOrigin (addr1)": "New SDK method - not in production yet",
+    "circles_getInvitationOrigin (addr2)": "New SDK method - not in production yet",
+    "circles_getInvitationOrigin (addr3)": "New SDK method - not in production yet",
+    "circles_searchProfileByAddressOrName (by address prefix)": "New SDK method - not in production yet",
+    "circles_searchProfileByAddressOrName (by address)": "New SDK method - not in production yet",
+    "circles_searchProfileByAddressOrName (by text)": "New SDK method - not in production yet",
+    "circles_events (filter: blockNumber < 100 OR blockNumber > 40000000)": "Pagination difference - staging uses new pagination",
+    "circles_events (filter: blockNumber > 38000000 AND blockNumber < 38001000)": "Pagination difference - staging uses new pagination",
+    "circles_events (filter: combined with test addr3 and block range)": "Pagination difference - staging uses new pagination",
+    "circles_events (filter: nested AND/OR with test addr3)": "Pagination difference - staging uses new pagination",
+    "circles_events (filter: transactionHash IS NOT NULL)": "Pagination difference - staging uses new pagination"
+  },
   "subscriptionTest": {
     "enabled": true,
     "duration": 90,
@@ -53,9 +82,10 @@
   },
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
-    "methodTolerances": "Method-specific tolerances override the default. Balance methods use 5% tolerance to accommodate real-time inflationary calculations between staging and production.",
+    "methodTolerances": "Method-specific tolerances override the default. Balance methods use 0.1% tolerance to accommodate real-time inflationary calculations between staging and production.",
     "normalizeFields": "Fields to remove before comparison. Includes dynamic data (timestamp, blockNumber, lastUpdatedAt) that inherently differ between systems.",
-    "expectedFailures": "Tests that are expected to fail (e.g., network state, new features not in production)",
+    "expectedFailures": "Tests that are expected to fail. These won't count as regression failures.",
+    "expectedFailureReasons": "Reasons why each test is expected to fail - helps understand which failures are acceptable",
     "subscriptionTest": "Optional WebSocket subscription testing. Exits when minEvents are received OR duration seconds elapse (whichever comes first). filterAddress=null receives ALL events (recommended). Set enabled=true to test real-time subscriptions (local endpoint only)."
   }
 }
