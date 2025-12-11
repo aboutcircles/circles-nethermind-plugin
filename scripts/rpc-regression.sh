@@ -144,6 +144,20 @@ is_expected_failure() {
     return 1
 }
 
+# Function to get the reason why a test is expected to fail
+get_expected_failure_reason() {
+    local test_name=$1
+    if [[ -f "$EXPECTED_FAILURE_REASONS_FILE" ]]; then
+        local reason
+        reason=$(jq -r --arg test "$test_name" '.[$test] // empty' "$EXPECTED_FAILURE_REASONS_FILE" 2>/dev/null)
+        if [[ -n "$reason" ]]; then
+            echo "$reason"
+            return
+        fi
+    fi
+    echo "No reason specified"
+}
+
 # Subscription test configuration
 SUBSCRIPTION_ENABLED=false
 SUBSCRIPTION_DURATION=60
@@ -168,6 +182,11 @@ if [[ -n "$CONFIG_FILE" ]] && [[ -f "$CONFIG_FILE" ]]; then
 
         # Update expected failures
         EXPECTED_FAILURES=$(jq -r '.expectedFailures[]? // empty' "$CONFIG_FILE" 2>/dev/null | tr '\n' '\n')
+
+        # Store expected failure reasons in a temp file for lookup
+        EXPECTED_FAILURE_REASONS_FILE="$RUN_DIR/expected_failure_reasons.json"
+        mkdir -p "$RUN_DIR"
+        jq '.expectedFailureReasons // {}' "$CONFIG_FILE" 2>/dev/null > "$EXPECTED_FAILURE_REASONS_FILE"
 
         # Update subscription test settings
         sub_enabled=$(jq -r '.subscriptionTest.enabled // false' "$CONFIG_FILE" 2>/dev/null)
@@ -478,13 +497,94 @@ extract_numbers() {
     echo "$json" | jq -r '.. | if type == "number" then . elif type == "string" and test("^[0-9]+\\.?[0-9]*([eE][+-]?[0-9]+)?$") then . else empty end' 2>/dev/null | head -n 200
 }
 
+# Function to detect empty results
+is_empty_result() {
+    local json=$1
+    local result
+    result=$(echo "$json" | jq -r '.result' 2>/dev/null)
+
+    # Check various forms of empty
+    if [[ "$result" == "null" ]] || [[ "$result" == "[]" ]] || [[ "$result" == "{}" ]] || [[ -z "$result" ]]; then
+        return 0
+    fi
+
+    # Check if array is empty
+    local arr_len
+    arr_len=$(echo "$json" | jq '.result | if type == "array" then length else -1 end' 2>/dev/null)
+    if [[ "$arr_len" == "0" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Function to get result type and structure info
+get_result_structure() {
+    local json=$1
+    echo "$json" | jq -r '
+        .result |
+        if type == "null" then "null"
+        elif type == "array" then
+            if length == 0 then "array(0)"
+            else "array(" + (length|tostring) + "):" + (.[0] | type)
+            end
+        elif type == "object" then
+            "object:" + (keys | join(","))
+        else type
+        end
+    ' 2>/dev/null || echo "invalid"
+}
+
+# Function to check if structures are compatible
+structures_compatible() {
+    local struct1=$1
+    local struct2=$2
+
+    # Extract base type (before the colon or parenthesis)
+    local type1=$(echo "$struct1" | cut -d'(' -f1 | cut -d':' -f1)
+    local type2=$(echo "$struct2" | cut -d'(' -f1 | cut -d':' -f1)
+
+    [[ "$type1" == "$type2" ]]
+}
+
 # Function to compare responses with normalization and tolerance
+# Returns: exact|tolerance|empty_both|empty_local|empty_remote|structure_mismatch|different
 compare_responses() {
     local resp1=$1
     local resp2=$2
     local tolerance=$3
     local resp1_size=${#resp1}
     local resp2_size=${#resp2}
+
+    # Check for empty results first - this is important diagnostic info
+    local local_empty=false
+    local remote_empty=false
+    if is_empty_result "$resp1"; then
+        local_empty=true
+    fi
+    if is_empty_result "$resp2"; then
+        remote_empty=true
+    fi
+
+    # Report empty status
+    if $local_empty && $remote_empty; then
+        echo "empty_both"
+        return
+    elif $local_empty; then
+        echo "empty_local"
+        return
+    elif $remote_empty; then
+        echo "empty_remote"
+        return
+    fi
+
+    # Check structure compatibility
+    local struct1=$(get_result_structure "$resp1")
+    local struct2=$(get_result_structure "$resp2")
+    if ! structures_compatible "$struct1" "$struct2"; then
+        echo "structure_mismatch:$struct1|$struct2"
+        return
+    fi
 
     # For very large responses (>100KB), use efficient comparison
     # These are typically network snapshots or large query results
@@ -506,7 +606,7 @@ compare_responses() {
             fi
         fi
 
-        echo "different"
+        echo "different:large_response"
         return
     fi
 
@@ -525,8 +625,16 @@ compare_responses() {
     fi
 
     # Check if responses contain error
-    if echo "$resp1" | jq -e '.error' >/dev/null 2>&1 || echo "$resp2" | jq -e '.error' >/dev/null 2>&1; then
-        echo "different"
+    local local_error=$(echo "$resp1" | jq -r '.error.message // empty' 2>/dev/null)
+    local remote_error=$(echo "$resp2" | jq -r '.error.message // empty' 2>/dev/null)
+    if [[ -n "$local_error" ]] || [[ -n "$remote_error" ]]; then
+        if [[ -n "$local_error" ]] && [[ -z "$remote_error" ]]; then
+            echo "error_local:$local_error"
+        elif [[ -z "$local_error" ]] && [[ -n "$remote_error" ]]; then
+            echo "error_remote:$remote_error"
+        else
+            echo "error_both:$local_error|$remote_error"
+        fi
         return
     fi
 
@@ -534,8 +642,24 @@ compare_responses() {
     local nums1=$(extract_numbers "$norm1")
     local nums2=$(extract_numbers "$norm2")
 
+    # Count numeric values
+    local count1=0
+    local count2=0
+    if [[ -n "$nums1" ]]; then
+        count1=$(echo "$nums1" | wc -l | tr -d ' ')
+    fi
+    if [[ -n "$nums2" ]]; then
+        count2=$(echo "$nums2" | wc -l | tr -d ' ')
+    fi
+
+    if [[ -z "$nums1" ]] && [[ -z "$nums2" ]]; then
+        # No numeric values in either - compare as strings
+        echo "different:no_numerics"
+        return
+    fi
+
     if [[ -z "$nums1" ]] || [[ -z "$nums2" ]]; then
-        echo "different"
+        echo "different:numeric_count_mismatch(${count1}vs${count2})"
         return
     fi
 
@@ -556,15 +680,21 @@ compare_responses() {
 
     # Check if same number of numeric values
     if [[ ${#arr1[@]} -ne ${#arr2[@]} ]]; then
-        echo "different"
+        echo "different:numeric_count_mismatch(${#arr1[@]}vs${#arr2[@]})"
         return
     fi
 
     # Compare all numeric values with tolerance
     local all_match=true
+    local first_mismatch_idx=-1
+    local first_mismatch_val1=""
+    local first_mismatch_val2=""
     for ((i=0; i<${#arr1[@]}; i++)); do
         if ! numeric_compare "${arr1[$i]}" "${arr2[$i]}" "$tolerance"; then
             all_match=false
+            first_mismatch_idx=$i
+            first_mismatch_val1="${arr1[$i]}"
+            first_mismatch_val2="${arr2[$i]}"
             break
         fi
     done
@@ -572,7 +702,12 @@ compare_responses() {
     if $all_match && [[ ${#arr1[@]} -gt 0 ]]; then
         echo "tolerance"
     else
-        echo "different"
+        # Include info about first mismatching value
+        if [[ $first_mismatch_idx -ge 0 ]]; then
+            echo "different:value_mismatch@${first_mismatch_idx}(${first_mismatch_val1}vs${first_mismatch_val2})"
+        else
+            echo "different"
+        fi
     fi
 }
 
@@ -660,6 +795,7 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 echo "Tolerance: ${tolerance}%"
                 if is_expected_failure "$test_name"; then
                     echo "⚠ EXPECTED FAILURE - ERROR MISMATCH"
+                echo "Reason: $(get_expected_failure_reason "$test_name")"
                 else
                     echo "✗ ERROR MISMATCH"
                 fi
@@ -676,8 +812,11 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
 
     # Compare responses
     comparison=$(compare_responses "$local_response" "$remote_response" "$tolerance")
+    comparison_type="${comparison%%:*}"  # Get base type (before colon)
+    comparison_detail="${comparison#*:}" # Get detail (after colon)
+    [[ "$comparison_type" == "$comparison" ]] && comparison_detail=""
 
-    case "$comparison" in
+    case "$comparison_type" in
         exact)
             echo "$test_name" >> "$TESTS_MATCH_FILE"
             MATCHING_TESTS=$((MATCHING_TESTS + 1))
@@ -687,7 +826,120 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
             NUMERIC_TOLERANCE_MATCHES=$((NUMERIC_TOLERANCE_MATCHES + 1))
             MATCHING_TESTS=$((MATCHING_TESTS + 1))
             ;;
-        different)
+        empty_both)
+            # Both empty is a match
+            echo "$test_name" >> "$TESTS_MATCH_FILE"
+            MATCHING_TESTS=$((MATCHING_TESTS + 1))
+            ;;
+        empty_local)
+            # Local is empty but remote has data - this is a problem!
+            if is_expected_failure "$test_name"; then
+                echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
+                EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
+            else
+                echo "$test_name" >> "$TESTS_WITH_DIFFERENCES_FILE"
+                DIFFERENT_TESTS=$((DIFFERENT_TESTS + 1))
+            fi
+            {
+                echo "--- Test: $test_name ---"
+                echo "Tolerance: ${tolerance}%"
+                if is_expected_failure "$test_name"; then
+                    echo "⚠ EXPECTED FAILURE - EMPTY LOCAL RESULT"
+                    echo "Reason: $(get_expected_failure_reason "$test_name")"
+                else
+                    echo "✗ EMPTY LOCAL RESULT (remote has data)"
+                fi
+                echo ""
+                echo "Local structure: $(get_result_structure "$local_response")"
+                echo "Remote structure: $(get_result_structure "$remote_response")"
+                echo ""
+                echo "Remote response preview:"
+                echo "$remote_response" | jq '.result | if type == "array" then .[0:3] else . end' 2>&1 | head -20
+                echo ""
+            } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
+            continue
+            ;;
+        empty_remote)
+            # Remote is empty but local has data - staging has new data
+            if is_expected_failure "$test_name"; then
+                echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
+                EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
+            else
+                echo "$test_name" >> "$TESTS_WITH_DIFFERENCES_FILE"
+                DIFFERENT_TESTS=$((DIFFERENT_TESTS + 1))
+            fi
+            {
+                echo "--- Test: $test_name ---"
+                echo "Tolerance: ${tolerance}%"
+                if is_expected_failure "$test_name"; then
+                    echo "⚠ EXPECTED FAILURE - EMPTY REMOTE RESULT"
+                    echo "Reason: $(get_expected_failure_reason "$test_name")"
+                else
+                    echo "✗ EMPTY REMOTE RESULT (local has data)"
+                fi
+                echo ""
+                echo "Local structure: $(get_result_structure "$local_response")"
+                echo "Remote structure: $(get_result_structure "$remote_response")"
+                echo ""
+                echo "Local response preview:"
+                echo "$local_response" | jq '.result | if type == "array" then .[0:3] else . end' 2>&1 | head -20
+                echo ""
+            } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
+            continue
+            ;;
+        structure_mismatch)
+            # Structure is completely different - this is a significant issue
+            if is_expected_failure "$test_name"; then
+                echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
+                EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
+            else
+                echo "$test_name" >> "$TESTS_WITH_DIFFERENCES_FILE"
+                DIFFERENT_TESTS=$((DIFFERENT_TESTS + 1))
+            fi
+            {
+                echo "--- Test: $test_name ---"
+                echo "Tolerance: ${tolerance}%"
+                if is_expected_failure "$test_name"; then
+                    echo "⚠ EXPECTED FAILURE - STRUCTURE MISMATCH"
+                    echo "Reason: $(get_expected_failure_reason "$test_name")"
+                else
+                    echo "✗ STRUCTURE MISMATCH"
+                fi
+                echo ""
+                echo "Structure comparison: $comparison_detail"
+                local_struct="${comparison_detail%%|*}"
+                remote_struct="${comparison_detail#*|}"
+                echo "  Local:  $local_struct"
+                echo "  Remote: $remote_struct"
+                echo ""
+                echo "This indicates a fundamental API response change!"
+                echo ""
+            } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
+            continue
+            ;;
+        error_local|error_remote|error_both)
+            if is_expected_failure "$test_name"; then
+                echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
+                EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
+            else
+                echo "$test_name" >> "$TESTS_WITH_DIFFERENCES_FILE"
+                DIFFERENT_TESTS=$((DIFFERENT_TESTS + 1))
+            fi
+            {
+                echo "--- Test: $test_name ---"
+                echo "Tolerance: ${tolerance}%"
+                if is_expected_failure "$test_name"; then
+                    echo "⚠ EXPECTED FAILURE - ERROR: $comparison_type"
+                    echo "Reason: $(get_expected_failure_reason "$test_name")"
+                else
+                    echo "✗ ERROR: $comparison_type"
+                fi
+                echo "Detail: $comparison_detail"
+                echo ""
+            } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
+            continue
+            ;;
+        different|*)
             if is_expected_failure "$test_name"; then
                 echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
                 EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
@@ -701,8 +953,14 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 echo "Tolerance: ${tolerance}%"
                 if is_expected_failure "$test_name"; then
                     echo "⚠ EXPECTED FAILURE"
+                    echo "Why expected: $(get_expected_failure_reason "$test_name")"
                 else
                     echo "✗ DIFFERENT"
+                fi
+
+                # Show the reason for difference if available
+                if [[ -n "$comparison_detail" ]]; then
+                    echo "Diff reason: $comparison_detail"
                 fi
                 echo ""
 
@@ -710,6 +968,12 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 local_size=${#local_response}
                 remote_size=${#remote_response}
                 max_output_size=10000  # 10KB max per response in diff output
+
+                # Show structure info
+                echo "Structure comparison:"
+                echo "  Local:  $(get_result_structure "$local_response")"
+                echo "  Remote: $(get_result_structure "$remote_response")"
+                echo ""
 
                 echo "Local response (${local_size} bytes):"
                 if [[ $local_size -gt $max_output_size ]]; then
