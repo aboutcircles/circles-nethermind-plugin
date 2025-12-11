@@ -44,8 +44,8 @@ public class StateMachine(
     private long _blocksProcessedSinceLastLog = 0;
     private long _totalBlocksProcessed = 0;
 
-    // Track if TABLE_START_BLOCKS cleanup was already performed (to avoid re-running on retries)
-    private bool _tableStartBlocksCleanupDone = false;
+    // Track if REINDEX_FROM_BLOCK cleanup was already performed (to avoid re-running on retries)
+    private bool _reindexCleanupDone;
 
     public async Task HandleEvent(IEvent e)
     {
@@ -61,47 +61,24 @@ public class StateMachine(
                     {
                         case EnterState:
                             {
-                                // Track if we did targeted reindex cleanup in THIS run
-                                var tableStartBlocksUsed = false;
+                                // Handle REINDEX_FROM_BLOCK for full reindexing (only once per process lifetime)
+                                //
+                                // IMPORTANT: Partial table reindexing is NOT supported because it creates data
+                                // inconsistency between tables and caches. All tables must be at the same block height.
+                                //
+                                // Use REINDEX_FROM_BLOCK=12000000 to reindex ALL tables from that block.
+                                // Remove the env var after reindexing completes to avoid re-deleting data on restart.
 
-                                // Handle TABLE_START_BLOCKS for reindexing (only once per process lifetime)
-                                // Use "*:BlockNumber" to reindex ALL tables, or specific tables with their start blocks
-                                if (!_tableStartBlocksCleanupDone)
+                                if (!_reindexCleanupDone && context.Settings.ReindexFromBlock.HasValue)
                                 {
-                                    if (context.Settings.ReindexAllTables && context.Settings.ReindexAllFromBlock.HasValue)
-                                    {
-                                        var reindexFrom = context.Settings.ReindexAllFromBlock.Value;
-                                        context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing ALL tables from block {reindexFrom}");
+                                    var reindexFromBlock = context.Settings.ReindexFromBlock.Value;
+                                    context.Logger.Info($"[REINDEX] Reindexing ALL tables from block {reindexFromBlock:N0}");
 
-                                        // Delete from all tables
-                                        await context.Database.DeleteAllGreaterOrEqualBlock(reindexFrom);
+                                    // Delete from all tables
+                                    await context.Database.DeleteAllGreaterOrEqualBlock(reindexFromBlock);
 
-                                        context.Logger.Info("[TABLE_START_BLOCKS] All data deletion complete. Indexer will resync from the specified block.");
-                                        tableStartBlocksUsed = true;
-                                        _tableStartBlocksCleanupDone = true;
-                                    }
-                                    else if (context.Settings.TableStartBlocks.Count > 0)
-                                    {
-                                        var minStartBlock = context.Settings.TableStartBlocks.Values.Min();
-                                        var tablesToReindex = context.Settings.TableStartBlocks.Keys.ToArray();
-
-                                        context.Logger.Info($"[TABLE_START_BLOCKS] Reindexing {tablesToReindex.Length} tables from block {minStartBlock}:");
-                                        foreach (var (table, startBlock) in context.Settings.TableStartBlocks)
-                                        {
-                                            context.Logger.Info($"  - {table}: from block {startBlock}");
-                                        }
-
-                                        // Delete from specified tables
-                                        await context.Database.DeleteFromTablesGreaterOrEqualBlock(minStartBlock, tablesToReindex);
-
-                                        // Also delete from System_Block to force re-sync from the minimum start block
-                                        context.Logger.Info($"[TABLE_START_BLOCKS] Deleting System_Block from block {minStartBlock} to force resync...");
-                                        await context.Database.DeleteSystemBlockGreaterOrEqualBlock(minStartBlock);
-
-                                        context.Logger.Info("[TABLE_START_BLOCKS] Data deletion complete. Indexer will resync from the minimum start block.");
-                                        tableStartBlocksUsed = true;
-                                        _tableStartBlocksCleanupDone = true;
-                                    }
+                                    context.Logger.Info("[REINDEX] Data deletion complete. Will resync from specified block.");
+                                    _reindexCleanupDone = true;
                                 }
 
                                 // Determine the effective resume point by checking both System_Block and all event tables.
@@ -130,16 +107,6 @@ public class StateMachine(
 
                                 context.Logger.Info("Initializing: Warming up all caches...");
                                 await InitializeCaches(effectiveResumeBlock);
-
-                                // If TABLE_START_BLOCKS was used, skip Reorg cleanup since we've already
-                                // done targeted deletion. The Reorg state would otherwise delete from ALL tables.
-                                if (tableStartBlocksUsed)
-                                {
-                                    context.Logger.Info(
-                                        "[TABLE_START_BLOCKS] Cleanup already complete. Skipping Reorg state, proceeding to WaitForNewBlock.");
-                                    await TransitionTo(State.WaitForNewBlock);
-                                    return;
-                                }
 
                                 // If starting from block 0, skip Reorg - there's nothing to clean up.
                                 // This prevents accidental full database wipes when System_Block is empty.
@@ -180,21 +147,32 @@ public class StateMachine(
                             context.Logger.Info(
                                 $"Reorg at {enterState.Arg}. Removing objects from caches...");
 
-
-                            var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
-                            foreach (var cache in allCaches)
+                            try
                             {
-                                var countBefore = cache.Count;
-                                var stats = cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
-                                var removed = stats.Removed;
-                                var restored = stats.Restored;
-                                var deleted = countBefore - cache.Count;
-                                context.Logger.Info(
-                                    $"Cache '{cache.Name}' maintenance: removed {removed}, restored {restored}, count delta {deleted}.");
-                            }
+                                var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
+                                foreach (var cache in allCaches)
+                                {
+                                    var countBefore = cache.Count;
+                                    var stats = cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
+                                    var removed = stats.Removed;
+                                    var restored = stats.Restored;
+                                    var deleted = countBefore - cache.Count;
+                                    context.Logger.Info(
+                                        $"Cache '{cache.Name}' maintenance: removed {removed}, restored {restored}, count delta {deleted}.");
+                                }
 
-                            context.Logger.Info("Reorg cleanup complete. Ready to process new blocks.");
-                            await TransitionTo(State.WaitForNewBlock);
+                                context.Logger.Info("Reorg cleanup complete. Ready to process new blocks.");
+                                await TransitionTo(State.WaitForNewBlock);
+                            }
+                            catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot roll back beyond stored history"))
+                            {
+                                // Cache rollback capacity exceeded - we can't roll back this far.
+                                // Need to reinitialize caches from database.
+                                context.Logger.Warn(
+                                    $"Cache rollback capacity exceeded at block {enterState.Arg}. " +
+                                    $"Reinitializing caches from database...");
+                                await TransitionTo(State.Initial);
+                            }
                             return;
                     }
 
@@ -329,12 +307,21 @@ public class StateMachine(
 
                             if (isTransientError)
                             {
-                                // For transient errors (block/receipts not yet available), just go back to
-                                // WaitForNewBlock - no need to reinitialize caches or clean up the database.
+                                // For transient errors (block/receipts not yet available), we still need to
+                                // clean up caches because the dataflow pipeline may have processed blocks
+                                // that weren't flushed to DB yet.
+                                //
+                                // We use Reorg starting from (LatestBlock + 1) to:
+                                // 1. Clean up any partially-processed blocks from caches
+                                // 2. Skip the expensive cache re-initialization from Initial state
+                                // 3. Avoid deleting data from DB (LatestBlock+1 means nothing gets deleted)
+                                var latestFlushed = context.Database.LatestBlock() ?? 0;
+                                var cleanupFrom = latestFlushed + 1;
+
                                 context.Logger.Info(
-                                    "Transient error (block/receipts not available). " +
-                                    "Transitioning to 'WaitForNewBlock' to retry...");
-                                await TransitionTo(State.WaitForNewBlock);
+                                    $"Transient error (block/receipts not available). " +
+                                    $"Cleaning up caches from block {cleanupFrom:N0} via Reorg, then retrying...");
+                                await TransitionTo(State.Reorg, cleanupFrom);
                             }
                             else
                             {

@@ -72,55 +72,27 @@ public class Settings
             : WriteMode.Auto;
 
     /// <summary>
-    /// Per-table start blocks for reindexing specific tables.
-    /// Format: "TableName1:StartBlock1,TableName2:StartBlock2"
-    /// 
-    /// Use "*:BlockNumber" to reindex ALL tables from a specific block.
-    /// 
-    /// This deletes data from specified tables AND System_Block, forcing the indexer to resync.
-    /// 
-    /// Examples:
-    /// - Reindex specific tables: "CrcV1_Transfer:12000000,CrcV1_HubTransfer:12000000,CrcV1_TransferSummary:12000000"
-    /// - Reindex ALL tables: "*:12000000"
-    /// 
+    /// The block number to reindex ALL tables from.
+    /// Set via REINDEX_FROM_BLOCK environment variable.
+    ///
+    /// Example: REINDEX_FROM_BLOCK=12000000
+    ///
+    /// This deletes data from ALL tables from the specified block onwards,
+    /// reinitializes caches, and resyncs from that block.
+    ///
     /// IMPORTANT: Remove this env var after reindexing completes to avoid re-deleting data on restart.
+    ///
+    /// Note: Partial table reindexing is NOT supported. All tables must be at the same block height
+    /// for data consistency. The old TABLE_START_BLOCKS env var is deprecated.
     /// </summary>
-    public readonly Dictionary<string, long> TableStartBlocks;
-    
-    /// <summary>
-    /// If TABLE_START_BLOCKS contains "*", this indicates all tables should be reindexed.
-    /// </summary>
-    public readonly bool ReindexAllTables;
-    
-    /// <summary>
-    /// The block number to reindex all tables from (only set if "*" is used in TABLE_START_BLOCKS).
-    /// </summary>
-    public readonly long? ReindexAllFromBlock;
+    public readonly long? ReindexFromBlock;
 
     public Settings()
     {
-        var envValue = Environment.GetEnvironmentVariable("TABLE_START_BLOCKS");
-        TableStartBlocks = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        
-        if (!string.IsNullOrWhiteSpace(envValue))
+        var reindexFromBlock = Environment.GetEnvironmentVariable("REINDEX_FROM_BLOCK");
+        if (!string.IsNullOrWhiteSpace(reindexFromBlock) && long.TryParse(reindexFromBlock.Trim(), out var reindexBlock))
         {
-            foreach (var pair in envValue.Split(','))
-            {
-                var parts = pair.Split(':');
-                if (parts.Length == 2 && long.TryParse(parts[1].Trim(), out var block))
-                {
-                    var tableName = parts[0].Trim();
-                    if (tableName == "*")
-                    {
-                        ReindexAllTables = true;
-                        ReindexAllFromBlock = block;
-                    }
-                    else
-                    {
-                        TableStartBlocks[tableName] = block;
-                    }
-                }
-            }
+            ReindexFromBlock = reindexBlock;
         }
     }
 

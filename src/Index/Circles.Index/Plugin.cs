@@ -361,7 +361,7 @@ public class Plugin : INethermindPlugin
 
             // Trigger initial catch-up: the chain head may already be ahead of our index.
             // This handles scenarios where:
-            // 1. TABLE_START_BLOCKS was used to reindex specific tables
+            // 1. REINDEX_FROM_BLOCK was used to reindex from a specific block
             // 2. The indexer was stopped for a while and restarted
             // 3. Nethermind synced faster than the indexer during startup
             // Without this, the indexer would wait forever for a NewHeadBlock event that already fired.
