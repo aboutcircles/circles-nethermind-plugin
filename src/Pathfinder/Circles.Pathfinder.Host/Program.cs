@@ -44,6 +44,7 @@ builder.Services.AddSingleton<Circles.Index.Common.Settings>(provider => provide
 builder.Services.AddSingleton<Circles.Pathfinder.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>());
 builder.Services.AddSingleton(semaphore);
 builder.Services.AddSingleton<NetworkState>();
+builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<LoadGraph>(provider => new LoadGraph(settings));
 builder.Services.AddSingleton<CapacityGraphPool>(provider =>
     new CapacityGraphPool(
@@ -380,40 +381,32 @@ app.MapPost("/findPath", async (
     }
 });
 
-app.MapGet("/snapshot", (NetworkState state) =>
+app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpContext httpContext) =>
 {
-    var graphsReady = state.BalanceGraph is not null &&
-                      state.AccountTrusts.Count > 0;
+    // Check If-None-Match header for conditional request
+    var ifNoneMatch = httpContext.Request.Headers.IfNoneMatch.FirstOrDefault();
+    var currentETag = snapshotCache.CurrentETag;
 
-    if (!graphsReady)
+    // If client has current version, return 304 Not Modified
+    if (!string.IsNullOrEmpty(ifNoneMatch) && ifNoneMatch == currentETag)
+    {
+        return Results.StatusCode(StatusCodes.Status304NotModified);
+    }
+
+    // Get or build the cached snapshot
+    var (json, etag) = snapshotCache.GetOrBuildSnapshot(state);
+
+    if (json == null)
     {
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
-    var balancesByHolder = new Dictionary<int, List<BalanceNode>>(state.BalanceGraph!.BalanceNodes.Count);
-    foreach (var node in state.BalanceGraph.BalanceNodes.Values)
-    {
-        if (!balancesByHolder.TryGetValue(node.Holder, out var list))
-        {
-            list = new List<BalanceNode>();
-            balancesByHolder.Add(node.Holder, list);
-        }
+    // Set cache headers
+    httpContext.Response.Headers.ETag = etag;
+    httpContext.Response.Headers.CacheControl = "public, max-age=5"; // 5 seconds - allows clients to cache briefly
 
-        list.Add(node);
-    }
-
-    var snapshot = new NetworkSnapshot
-    {
-        BlockNumber = state.LastKnownBlockNumber,
-        Addresses = AddressIdPool.GetAvatarSnapshot(),
-        Trust = state.AccountTrusts.ToDictionary(kvp => kvp.Key, kvp => new HashSet<int>(kvp.Value)),
-        Balance = balancesByHolder
-    };
-
-    // Let ASP.NET Core handle JSON + transport compression
-    return Results.Json(
-        snapshot,
-        new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+    // Return pre-serialized JSON bytes directly
+    return Results.Bytes(json, "application/json");
 });
 
 app.Run();
