@@ -13,12 +13,12 @@
     }
 
     # Nethermind JSON-RPC
-    handle /nethermind/* {
-        uri strip_prefix /nethermind
+    handle /chain-rpc/* {
+        uri strip_prefix /chain-rpc
         reverse_proxy nethermind-gnosis:8545
     }
 
-    handle /nethermind {
+    handle /chain-rpc {
         reverse_proxy nethermind-gnosis:8545
     }
 
