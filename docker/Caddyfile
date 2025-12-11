@@ -13,8 +13,8 @@
     }
 
     # Nethermind JSON-RPC (with dashboard)
-    # Matcher for dashboard static assets (relative paths in HTML)
-    @nethermind_assets path /css/* /js/* /favicon.webp /nethermind.svg
+    # Static assets for dashboard (relative paths in HTML)
+    @nethermind_assets path /css/* /js/* /logos/* /favicon.webp /nethermind.svg
     handle @nethermind_assets {
         reverse_proxy nethermind-gnosis:8545
     }
