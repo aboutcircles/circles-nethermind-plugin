@@ -20,10 +20,14 @@ public record TransferTotal(TransferKey Key, BigInteger Value, ImmutableHashSet<
 /// <param name="HubTransferSummaries">Net transfers derived from HubTransfer events with their associated Transfer edges</param>
 /// <param name="StandaloneTransfers">Transfer events not associated with any HubTransfer</param>
 /// <param name="AllTransferEvents">All original Transfer events for reference</param>
+/// <param name="LimitHit">True if the DFS iteration/depth limit was hit, meaning edge association may be incomplete</param>
+/// <param name="TotalIterations">Total DFS iterations performed</param>
 public record AggregationResultV1(
     List<(HubTransfer Hub, HashSet<Transfer> Edges)> HubTransferSummaries,
     List<Transfer> StandaloneTransfers,
-    List<Transfer> AllTransferEvents
+    List<Transfer> AllTransferEvents,
+    bool LimitHit = false,
+    int TotalIterations = 0
 );
 
 /// <summary>
@@ -84,6 +88,13 @@ public static class TransferSummaryAggregatorV1
         var usedEdgesGlobal = new HashSet<Transfer>();
         var hubSummaries = new List<(HubTransfer Hub, HashSet<Transfer> Edges)>();
 
+        // Safety limits to prevent exponential blowup on pathological inputs
+        const int MaxRecursionDepth = 50; // Max path length to explore
+        const int MaxTotalIterations = 100_000; // Total DFS calls across all hub transfers
+
+        int totalIterations = 0;
+        bool globalLimitHit = false;
+
         // For each hub transfer, find all paths and collect edges
         foreach (var hubTransfer in hubTransfers)
         {
@@ -92,9 +103,25 @@ public static class TransferSummaryAggregatorV1
 
             var usedEdges = new HashSet<Transfer>();
             var pathStack = new List<Transfer>();
+            bool hitLimit = false;
 
-            void Dfs(string current, HashSet<string> visited)
+            void Dfs(string current, HashSet<string> visited, int depth)
             {
+                // Safety check - abort if we've hit the global iteration limit
+                if (totalIterations >= MaxTotalIterations || hitLimit)
+                {
+                    hitLimit = true;
+                    return;
+                }
+
+                totalIterations++;
+
+                // Depth limit to prevent extremely long paths
+                if (depth >= MaxRecursionDepth)
+                {
+                    return;
+                }
+
                 if (string.Equals(current, hubTo, StringComparison.OrdinalIgnoreCase))
                 {
                     // Found a path - add all edges in the current path
@@ -112,6 +139,8 @@ public static class TransferSummaryAggregatorV1
 
                 foreach (var edge in edges)
                 {
+                    if (hitLimit) return;
+
                     var next = edge.To.ToLowerInvariant();
                     if (visited.Contains(next))
                     {
@@ -121,7 +150,7 @@ public static class TransferSummaryAggregatorV1
                     pathStack.Add(edge);
                     visited.Add(next);
 
-                    Dfs(next, visited);
+                    Dfs(next, visited, depth + 1);
 
                     visited.Remove(next);
                     pathStack.RemoveAt(pathStack.Count - 1);
@@ -130,7 +159,12 @@ public static class TransferSummaryAggregatorV1
 
             // DFS from hub.From
             var visitedSet = new HashSet<string> { hubFrom };
-            Dfs(hubFrom, visitedSet);
+            Dfs(hubFrom, visitedSet, 0);
+
+            if (hitLimit)
+            {
+                globalLimitHit = true;
+            }
 
             // Mark edges as used globally
             foreach (var edge in usedEdges)
@@ -146,6 +180,11 @@ public static class TransferSummaryAggregatorV1
             .Where(t => !usedEdgesGlobal.Contains(t))
             .ToList();
 
-        return new AggregationResultV1(hubSummaries, standaloneTransfers, allTransfers);
+        return new AggregationResultV1(
+            hubSummaries,
+            standaloneTransfers,
+            allTransfers,
+            globalLimitHit,
+            totalIterations);
     }
 }
