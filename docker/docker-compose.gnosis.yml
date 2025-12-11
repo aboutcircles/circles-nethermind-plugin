@@ -16,8 +16,10 @@ services:
       - 30303:30303/tcp # p2p
       - 30303:30303/udp # p2p
       - 8545:8545
+      - 6060:6060 # metrics
     expose:
       - 8551 # engine api
+      - 6060 # metrics
     volumes:
       - ../.state/nethermind-gnosis:/data
       - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
@@ -45,6 +47,8 @@ services:
       --Network.MaxActivePeers=100
       --HealthChecks.Enabled=true
       --HealthChecks.UIEnabled=true
+      --Metrics.Enabled=true
+      --Metrics.ExposePort=6060
     env_file:
       - .env
     environment:
@@ -54,6 +58,12 @@ services:
       - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
       - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
       - IPFS_MAX_PARALLELISM=192
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8545'"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
 
   consensus-gnosis:
     container_name: consensus-gnosis
@@ -90,6 +100,12 @@ services:
       --execution-endpoint=http://nethermind-gnosis:8551
       --execution-jwt=/jwt.hex
       --checkpoint-sync-url=https://checkpoint.gnosischain.com
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/4000'"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
 
   cache-service:
     container_name: cache-service
@@ -112,7 +128,7 @@ services:
       - ROLLBACK_CAPACITY=12
       - MAX_CATCHUP_LAG=100
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:3001/live || exit 1" ]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/3001'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -124,7 +140,8 @@ services:
       context: ..
       dockerfile: docker/pathfinder-host.Dockerfile
     depends_on:
-      - nethermind-gnosis
+      nethermind-gnosis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - circles-gnosis
@@ -134,6 +151,12 @@ services:
       - NETHERMIND_RPC_URL=http://nethermind-gnosis:8545
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   rpc:
     container_name: rpc
@@ -141,8 +164,10 @@ services:
       context: ..
       dockerfile: docker/rpc-host.Dockerfile
     depends_on:
-      - nethermind-gnosis
-      - pathfinder
+      nethermind-gnosis:
+        condition: service_healthy
+      pathfinder:
+        condition: service_healthy
       # Optional: uncomment to wait for cache service
       # cache-service:
       #   condition: service_healthy
@@ -161,12 +186,19 @@ services:
       # Uncomment to enable cache service usage:
       - CACHE_SERVICE_URL=http://cache-service:3001
       - USE_CACHE_SERVICE=true
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   profile-service:
     container_name: profile-service
     image: jaensen/circles-profile-pinning-service:0.5.0-rc1
     depends_on:
-      - nethermind-gnosis
+      nethermind-gnosis:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - circles-gnosis
@@ -176,6 +208,12 @@ services:
       - ../.state/profile-service:/data
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   postgres-gnosis:
     container_name: postgres-gnosis
@@ -194,7 +232,7 @@ services:
     volumes:
       - ../.state/postgres-gnosis:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -230,7 +268,7 @@ services:
         fi
         exec tail -f /dev/null
     healthcheck:
-      test: [ "CMD-SHELL", "test -s /jwt/jwt.hex" ]
+      test: ["CMD-SHELL", "test -s /jwt/jwt.hex"]
       interval: 2s
       timeout: 2s
       retries: 30
