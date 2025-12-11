@@ -250,7 +250,7 @@ public class Plugin : INethermindPlugin
 
     /// <summary>
     /// Handles the latest head block (according to the value in _latestHeadToIndex) by passing it to the _indexerMachine.
-    /// If a new event arrived during processing, it will keep processing until no new events arrived and the value of _latestHeadToIndex is -1. 
+    /// If a new event arrived during processing, it will keep processing until no new events arrived and the value of _latestHeadToIndex is -1.
     /// </summary>
     private async Task ProcessBlocksAsync()
     {
@@ -269,6 +269,20 @@ public class Plugin : INethermindPlugin
                 _indexerContext!.Logger.Debug($"Processing block {toIndex} via state machine");
                 await _indexerMachine!.HandleEvent(new StateMachine.NewHead(toIndex));
                 _indexerContext!.Logger.Debug($"Finished processing block {toIndex}");
+
+                // After completing a sync batch, check if we're still behind the current chain head.
+                // This handles the case where NewHeadBlock events were filtered during catch-up sync
+                // (due to sync mode filtering) and we need to continue syncing to the live head.
+                var currentHead = _indexerContext.NethermindApi.BlockTree?.Head?.Number;
+                var latestIndexed = _indexerContext.Database.LatestBlock() ?? 0;
+                if (currentHead.HasValue && currentHead.Value > latestIndexed)
+                {
+                    _indexerContext.Logger.Debug(
+                        $"Still behind after sync batch: chain head is {currentHead.Value:N0}, " +
+                        $"index is at {latestIndexed:N0}. Continuing catch-up...");
+                    Interlocked.Exchange(ref _latestHeadToIndex, currentHead.Value);
+                    Interlocked.Exchange(ref _newItemsArrived, 1);
+                }
 
                 // As long as new items arrive, keep processing
             } while (Interlocked.CompareExchange(ref _newItemsArrived, 0, 1) == 1);
