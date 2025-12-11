@@ -12,11 +12,20 @@ namespace Circles.Cache.Service.Tests;
 /// </summary>
 public class IntegrationTests : IAsyncLifetime
 {
+    internal static readonly bool DockerTestsEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("RUN_CACHE_INTEGRATION_TESTS"), "true",
+            StringComparison.OrdinalIgnoreCase);
+
     private PostgreSqlContainer? _postgres;
     private string? _connectionString;
 
     public async Task InitializeAsync()
     {
+        if (!DockerTestsEnabled)
+        {
+            return;
+        }
+
         _postgres = new PostgreSqlBuilder()
             .WithImage("postgres:15-alpine")
             .WithDatabase("circles_test")
@@ -33,6 +42,11 @@ public class IntegrationTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        if (!DockerTestsEnabled)
+        {
+            return;
+        }
+
         if (_postgres != null)
         {
             await _postgres.DisposeAsync();
@@ -115,7 +129,7 @@ public class IntegrationTests : IAsyncLifetime
         await cmd.ExecuteNonQueryAsync();
     }
 
-    [Fact]
+    [RequiresDockerFact]
     public async Task PostgresNumeric_ShouldReadAsBigInteger()
     {
         // Arrange - Insert a very large NUMERIC value (larger than decimal.MaxValue)
@@ -154,7 +168,7 @@ public class IntegrationTests : IAsyncLifetime
         (divided > (BigInteger)decimal.MaxValue).Should().BeTrue();
     }
 
-    [Fact]
+    [RequiresDockerFact]
     public async Task PostgresNumeric_GetDecimal_ShouldThrow_ForLargeValues()
     {
         // Arrange - Insert a very large NUMERIC value
@@ -186,7 +200,7 @@ public class IntegrationTests : IAsyncLifetime
         act.Should().Throw<OverflowException>();
     }
 
-    [Fact]
+    [RequiresDockerFact]
     public async Task PostgresBigint_ShouldReadAsInt64()
     {
         // Arrange
@@ -217,7 +231,7 @@ public class IntegrationTests : IAsyncLifetime
         timestamp.Should().Be(1735689600L);
     }
 
-    [Fact]
+    [RequiresDockerFact]
     public async Task PostgresText_ShouldReadAsString()
     {
         // Arrange
@@ -252,7 +266,7 @@ public class IntegrationTests : IAsyncLifetime
         tokenResult.Should().Be(token);
     }
 
-    [Fact]
+    [RequiresDockerFact]
     public async Task V2TransferSingle_ShouldHandleLargeTokenId()
     {
         // Arrange - V2 token IDs are uint256 (very large numbers)
@@ -292,7 +306,7 @@ public class IntegrationTests : IAsyncLifetime
         idResult.ToString().Should().Be("1390849295786071768276380950238675083608645509734");
     }
 
-    [Fact]
+    [RequiresDockerFact]
     public async Task V2Trust_ExpiryTime_ShouldHandleLargeValues()
     {
         // Arrange - expiryTime can be max uint256 for "infinite" trust
@@ -327,5 +341,16 @@ public class IntegrationTests : IAsyncLifetime
         // Should cap to long.MaxValue when converting
         long safeLong = expiryResult > long.MaxValue ? long.MaxValue : (long)expiryResult;
         safeLong.Should().Be(long.MaxValue);
+    }
+}
+
+internal sealed class RequiresDockerFactAttribute : FactAttribute
+{
+    public RequiresDockerFactAttribute()
+    {
+        if (!IntegrationTests.DockerTestsEnabled)
+        {
+            Skip = "Set RUN_CACHE_INTEGRATION_TESTS=true to run cache integration tests";
+        }
     }
 }
