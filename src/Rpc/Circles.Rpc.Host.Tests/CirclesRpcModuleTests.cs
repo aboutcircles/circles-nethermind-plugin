@@ -1,40 +1,135 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Numerics;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Json;
 using Circles.Index.Common;
+using Circles.Index.Postgres;
 using Circles.Index.Query.Dto;
 using Circles.Rpc.Host;
+using Npgsql;
+using Testcontainers.PostgreSql;
+using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
 
 namespace Circles.Rpc.Host.Tests;
 
 /// <summary>
-/// Integration tests for CirclesRpcModule.
-/// Note: These tests require a PostgreSQL database connection.
-/// Set the environment variable CIRCLES_TEST_DB_CONNECTION to run these tests.
-/// Example: "Host=localhost;Database=circles_test;Username=postgres;Password=password"
+/// Integration tests for <see cref="CirclesRpcModule"/> backed by a disposable PostgreSQL instance.
+/// A Testcontainers-managed Postgres is started automatically so no manual setup is required.
 /// </summary>
 [TestFixture]
 public class CirclesRpcModuleTests
 {
+    private static readonly string[] NethermindProbingPaths = BuildNethermindProbingPaths();
+
+    static CirclesRpcModuleTests()
+    {
+        AssemblyLoadContext.Default.Resolving += ResolveNethermindAssemblies;
+    }
+
     private CirclesRpcModule? _module;
+    private PostgreSqlContainer? _postgres;
+    private string? _connectionString;
 
     [OneTimeSetUp]
-    public void OneTimeSetUp()
+    public async Task OneTimeSetUp()
     {
-        // For Settings to work, we need to set environment variables
-        var dbConnection = Environment.GetEnvironmentVariable("CIRCLES_TEST_DB_CONNECTION");
+        _postgres = new PostgreSqlBuilder()
+            .WithImage("postgres:15-alpine")
+            .WithDatabase("circles_test")
+            .WithUsername("test")
+            .WithPassword("test")
+            .Build();
 
-        if (string.IsNullOrWhiteSpace(dbConnection))
-        {
-            Assert.Ignore("Skipping integration tests. Set CIRCLES_TEST_DB_CONNECTION environment variable to run.");
-            return;
-        }
+        await _postgres.StartAsync();
+        _connectionString = _postgres.GetConnectionString();
 
-        // Set required environment variables for Settings constructor
-        Environment.SetEnvironmentVariable("POSTGRES_CONNECTION_STRING", dbConnection);
+        await InitializeDatabaseAsync(_connectionString);
+
+        Environment.SetEnvironmentVariable("POSTGRES_CONNECTION_STRING", _connectionString);
+        Environment.SetEnvironmentVariable("POSTGRES_READONLY_CONNECTION_STRING", _connectionString);
         Environment.SetEnvironmentVariable("EXTERNAL_PATHFINDER_URL", "http://localhost:8080");
+        Environment.SetEnvironmentVariable("BALANCE_MODE", "database");
 
         var settings = new Settings();
         _module = new CirclesRpcModule(settings);
+    }
+
+    [OneTimeTearDown]
+    public async Task OneTimeTearDown()
+    {
+        if (_postgres != null)
+        {
+            await _postgres.DisposeAsync();
+        }
+    }
+
+    private static async Task InitializeDatabaseAsync(string connectionString)
+    {
+        var schema = new CompositeDatabaseSchema(SchemaProvider.AllSchemas.ToArray());
+        var db = new PostgresDb(connectionString, schema);
+        db.Migrate();
+
+        await SeedTestDataAsync(connectionString);
+    }
+
+    private static async Task SeedTestDataAsync(string connectionString)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+
+        const string seedSql = @"
+            INSERT INTO ""System_Block"" (""blockNumber"", ""timestamp"", ""blockHash"", ""eventCounts"")
+            VALUES (1, 1735689600, '0xblock', '{}')
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO ""CrcV1_Signup"" (""blockNumber"", ""timestamp"", ""transactionIndex"", ""logIndex"", ""transactionHash"", ""user"", ""token"")
+            VALUES (1, 1735689600, 0, 0, '0xsignup', '0x0000000000000000000000000000000000000001', '0x0000000000000000000000000000000000000001')
+            ON CONFLICT DO NOTHING;
+
+            INSERT INTO ""CrcV1_Trust"" (""blockNumber"", ""timestamp"", ""transactionIndex"", ""logIndex"", ""transactionHash"", ""canSendTo"", ""user"", ""limit"")
+            VALUES (1, 1735689600, 0, 1, '0xtrust', '0x0000000000000000000000000000000000000002', '0x0000000000000000000000000000000000000001', 100)
+            ON CONFLICT DO NOTHING;
+        ";
+
+        await using var cmd = new NpgsqlCommand(seedSql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static Assembly? ResolveNethermindAssemblies(AssemblyLoadContext context, AssemblyName name)
+    {
+        if (name.Name is null || !name.Name.StartsWith("Nethermind", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        foreach (var basePath in NethermindProbingPaths)
+        {
+            var candidate = Path.Combine(basePath, $"{name.Name}.dll");
+            if (File.Exists(candidate))
+            {
+                return context.LoadFromAssemblyPath(candidate);
+            }
+        }
+
+        return null;
+    }
+
+    private static string[] BuildNethermindProbingPaths()
+    {
+        var paths = new List<string>();
+        var baseDir = AppContext.BaseDirectory;
+        paths.Add(baseDir);
+
+        var repoRuntime = Path.GetFullPath(Path.Combine(baseDir, "../../../../..", "nethermind-dev", "nethermind"));
+        if (Directory.Exists(repoRuntime))
+        {
+            paths.Add(repoRuntime);
+        }
+
+        return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     #region Helper Methods
@@ -68,15 +163,16 @@ public class CirclesRpcModuleTests
     #region GetAvatarInfo Tests
 
     [Test]
-    public async Task GetAvatarInfo_WithNonExistentAddress_ReturnsError()
+    public void GetAvatarInfo_WithNonExistentAddress_Throws()
     {
         RequireModule();
 
         var nonExistentAddress = "0x0000000000000000000000000000000000000000";
-        var result = await _module!.GetAvatarInfo(nonExistentAddress);
-        var json = JsonSerializer.Serialize(result);
 
-        Assert.That(json, Does.Contain("error"));
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await _module!.GetAvatarInfo(nonExistentAddress));
+
+        Assert.That(ex?.Message, Does.Contain("No avatar"));
     }
 
     [Test]
@@ -85,10 +181,7 @@ public class CirclesRpcModuleTests
         RequireModule();
 
         var result = await _module!.GetAvatarInfoBatch(Array.Empty<string>());
-        var array = result as object[];
-
-        Assert.That(array, Is.Not.Null);
-        Assert.That(array!.Length, Is.EqualTo(0));
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -250,15 +343,14 @@ public class CirclesRpcModuleTests
     #region GetProfileCid Tests
 
     [Test]
-    public async Task GetProfileCid_WithNonExistentAddress_ReturnsError()
+    public async Task GetProfileCid_WithNonExistentAddress_ReturnsNullCid()
     {
         RequireModule();
 
         var nonExistentAddress = "0x0000000000000000000000000000000000000000";
         var result = await _module!.GetProfileCid(nonExistentAddress);
-        var json = JsonSerializer.Serialize(result);
 
-        Assert.That(json, Does.Contain("error"));
+        Assert.That(result.Cid, Is.Null);
     }
 
     [Test]
@@ -342,14 +434,12 @@ public class CirclesRpcModuleTests
     }
 
     [Test]
-    public async Task SearchProfiles_WithTooHighLimit_ReturnsError()
+    public void SearchProfiles_WithTooHighLimit_Throws()
     {
         RequireModule();
 
-        var result = await _module!.SearchProfiles("test", limit: 200);
-        var json = JsonSerializer.Serialize(result);
-
-        Assert.That(json, Does.Contain("error"));
+        Assert.That(async () => await _module!.SearchProfiles("test", limit: 200),
+            Throws.InstanceOf<ArgumentException>());
     }
 
     #endregion
