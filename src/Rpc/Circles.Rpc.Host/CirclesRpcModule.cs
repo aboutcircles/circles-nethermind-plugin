@@ -132,6 +132,11 @@ public class CirclesRpcModule : ICirclesRpcModule
     private readonly ILogger<CirclesRpcModule>? _logger;
     private readonly CacheServiceClient.CacheServiceClient? _cacheServiceClient;
 
+    // Snapshot cache - stores last known ETag and cached response
+    private string? _snapshotETag;
+    private JsonElement? _cachedSnapshot;
+    private readonly object _snapshotLock = new();
+
     public CirclesRpcModule(
         Settings settings,
         IHttpClientFactory? httpClientFactory = null,
@@ -2888,15 +2893,52 @@ public class CirclesRpcModule : ICirclesRpcModule
         var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/snapshot";
 
-        using var response = await HttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        // Build request with conditional ETag header if we have a cached version
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        string? cachedETag;
+        JsonElement? cached;
+        lock (_snapshotLock)
+        {
+            cachedETag = _snapshotETag;
+            cached = _cachedSnapshot;
+        }
+
+        if (!string.IsNullOrEmpty(cachedETag))
+        {
+            request.Headers.IfNoneMatch.ParseAdd(cachedETag);
+        }
+
+        using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+
+        // If 304 Not Modified, return cached version
+        if (response.StatusCode == System.Net.HttpStatusCode.NotModified && cached.HasValue)
+        {
+            _logger?.LogDebug("Network snapshot returned from cache (ETag: {ETag})", cachedETag);
+            return cached.Value;
+        }
+
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync();
 
         // Parse to JsonDocument and clone the root element to detach from the document
-        // This matches production behavior - return the raw pathfinder response
         using var doc = await JsonDocument.ParseAsync(stream);
-        return doc.RootElement.Clone();
+        var snapshot = doc.RootElement.Clone();
+
+        // Cache the response with its ETag
+        var newETag = response.Headers.ETag?.Tag;
+        if (!string.IsNullOrEmpty(newETag))
+        {
+            lock (_snapshotLock)
+            {
+                _snapshotETag = newETag;
+                _cachedSnapshot = snapshot;
+            }
+            _logger?.LogDebug("Network snapshot cached (ETag: {ETag})", newETag);
+        }
+
+        return snapshot;
     }
 
     public async Task<JsonElement> FindPathV2(FlowRequest flowRequest)
