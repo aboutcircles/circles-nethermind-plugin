@@ -264,8 +264,8 @@ public class Plugin : INethermindPlugin
                 // After completing a sync batch, check if we're still behind the current chain head.
                 // This handles the case where NewHeadBlock events were filtered during catch-up sync
                 // (due to sync mode filtering) and we need to continue syncing to the live head.
-                var currentHead = _indexerContext.NethermindApi.BlockTree?.Head?.Number;
-                var latestIndexed = _indexerContext.Database.LatestBlock() ?? 0;
+                var currentHead = _indexerContext!.NethermindApi.BlockTree?.Head?.Number;
+                var latestIndexed = _indexerContext!.Database.LatestBlock() ?? 0;
                 if (currentHead.HasValue && currentHead.Value > latestIndexed)
                 {
                     _indexerContext.Logger.Debug(
