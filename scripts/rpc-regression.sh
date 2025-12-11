@@ -421,6 +421,17 @@ normalize_response() {
     # since both are semantically acceptable for bigint database columns
     normalized=$(echo "$normalized" | jq 'walk(if type == "object" and has("type") and .type == "Int" then .type = "BigInt" else . end)' 2>/dev/null || echo "$normalized")
 
+    # Normalize circles_events response structure
+    # Staging uses {events: [], hasMore: bool}, production uses [] directly
+    # Extract just the events array for comparison
+    normalized=$(echo "$normalized" | jq 'if .result | type == "object" and has("events") then .result = .result.events else . end' 2>/dev/null || echo "$normalized")
+
+    # Normalize circles_getProfileByCid response structure
+    # Staging returns more fields than production - only compare common fields
+    # Production returns: {name, previewImageUrl}
+    # Keep only fields that exist in production for fair comparison
+    normalized=$(echo "$normalized" | jq 'if .result | type == "object" and has("name") and has("previewImageUrl") and has("id") then .result = {name: .result.name, previewImageUrl: .result.previewImageUrl} else . end' 2>/dev/null || echo "$normalized")
+
     # Sort arrays in result to handle ordering differences (e.g. namespaces in circles_tables)
     normalized=$(echo "$normalized" | jq 'if .result | type == "array" then .result |= sort_by(.namespace // .column // .) else . end' 2>/dev/null || echo "$normalized")
 
@@ -544,7 +555,27 @@ structures_compatible() {
     local type1=$(echo "$struct1" | cut -d'(' -f1 | cut -d':' -f1)
     local type2=$(echo "$struct2" | cut -d'(' -f1 | cut -d':' -f1)
 
-    [[ "$type1" == "$type2" ]]
+    # Direct match
+    if [[ "$type1" == "$type2" ]]; then
+        return 0
+    fi
+
+    # Special case: circles_events pagination difference
+    # Staging returns object with {events, hasMore}, production returns array
+    # These are compatible because we normalize them during comparison
+    if [[ "$type1" == "object" && "$type2" == "array" ]]; then
+        # Check if the object has events key (pagination format)
+        if [[ "$struct1" == *"events"* ]]; then
+            return 0
+        fi
+    fi
+    if [[ "$type1" == "array" && "$type2" == "object" ]]; then
+        if [[ "$struct2" == *"events"* ]]; then
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 # Function to compare responses with normalization and tolerance
