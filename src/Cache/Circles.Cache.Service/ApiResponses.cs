@@ -119,3 +119,25 @@ public record MemberGroupsResponse(
     long LastProcessedBlock = -1,
     long Timestamp = 0
 );
+
+/// <summary>
+/// Response for token info queries
+/// </summary>
+public record TokenInfoResponse(
+    string TokenAddress,
+    string TokenOwner,
+    string TokenType,
+    int Version,
+    bool IsErc20,
+    bool IsErc1155,
+    bool IsWrapped,
+    bool IsInflationary,
+    bool IsGroup,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
+
+/// <summary>
+/// Batch request for token info
+/// </summary>
+public record TokenInfoBatchRequest(string[] TokenAddresses);

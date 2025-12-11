@@ -268,4 +268,51 @@ public class CacheServiceClient
             throw;
         }
     }
+
+    /// <summary>
+    /// Get token info for a single token address
+    /// </summary>
+    public async Task<TokenInfoResponse?> GetTokenInfoAsync(string tokenAddress, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/tokens/{tokenAddress}";
+            var response = await _httpClient.GetAsync(url, cancellationToken);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound ||
+                response.StatusCode == System.Net.HttpStatusCode.NoContent)
+            {
+                return null;
+            }
+
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<TokenInfoResponse>(cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting token info from cache service for {TokenAddress}", tokenAddress);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get token info for multiple token addresses in batch
+    /// </summary>
+    public async Task<TokenInfoResponse?[]> GetTokenInfoBatchAsync(string[] tokenAddresses, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/tokens/batch";
+            var request = new TokenInfoBatchRequest(tokenAddresses);
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<TokenInfoResponse?[]>(cancellationToken: cancellationToken)
+                ?? Array.Empty<TokenInfoResponse?>();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting batch token info from cache service");
+            throw;
+        }
+    }
 }
