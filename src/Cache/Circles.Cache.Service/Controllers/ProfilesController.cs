@@ -12,13 +12,19 @@ namespace Circles.Cache.Service.Controllers;
 public class ProfilesController : ControllerBase
 {
     private readonly CacheContainer _caches;
+    private readonly IpfsContentCache _ipfsCache;
     private readonly CacheServiceState _state;
     private readonly ILogger<ProfilesController> _logger;
     private const int MaxBatchSize = 100;
 
-    public ProfilesController(CacheContainer caches, CacheServiceState state, ILogger<ProfilesController> logger)
+    public ProfilesController(
+        CacheContainer caches,
+        IpfsContentCache ipfsCache,
+        CacheServiceState state,
+        ILogger<ProfilesController> logger)
     {
         _caches = caches;
+        _ipfsCache = ipfsCache;
         _state = state;
         _logger = logger;
     }
@@ -107,6 +113,69 @@ public class ProfilesController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting batch profile CIDs");
+            return StatusCode(500, new { error = "Internal server error" });
+        }
+    }
+
+    /// <summary>
+    /// Get profile content (IPFS payload) for a single CID
+    /// </summary>
+    [HttpGet("content/{cid}")]
+    public async Task<ActionResult<ProfileContentResponse>> GetProfileContent(string cid)
+    {
+        try
+        {
+            var lastBlock = _state.LastProcessedBlock;
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            var content = await _ipfsCache.GetAsync(cid);
+            var cleanedContent = IpfsContentCache.StripJsonLdFields(content);
+
+            return Ok(new ProfileContentResponse(cid, cleanedContent, lastBlock, timestamp));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting profile content for CID {Cid}", cid);
+            return StatusCode(500, new { error = "Internal server error" });
+        }
+    }
+
+    /// <summary>
+    /// Get profile content (IPFS payloads) for multiple CIDs in batch
+    /// </summary>
+    [HttpPost("content/batch")]
+    public async Task<ActionResult<ProfileContentResponse[]>> GetProfileContentBatch([FromBody] ProfileContentBatchRequest request)
+    {
+        // Validate batch size
+        if (request.Cids.Length > MaxBatchSize)
+        {
+            return BadRequest(new { error = $"Batch size exceeds limit of {MaxBatchSize} CIDs" });
+        }
+
+        _logger.LogDebug(
+            "Profile content batch lookup requested for {Count} CIDs from {RemoteIp}",
+            request.Cids.Length,
+            GetRemoteIp());
+
+        try
+        {
+            var lastBlock = _state.LastProcessedBlock;
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+            var contents = await _ipfsCache.GetBatchAsync(request.Cids);
+            var results = new ProfileContentResponse[request.Cids.Length];
+
+            for (int i = 0; i < request.Cids.Length; i++)
+            {
+                var cleanedContent = IpfsContentCache.StripJsonLdFields(contents[i]);
+                results[i] = new ProfileContentResponse(request.Cids[i], cleanedContent, lastBlock, timestamp);
+            }
+
+            return Ok(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting batch profile content");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }

@@ -141,3 +141,18 @@ public record TokenInfoResponse(
 /// Batch request for token info
 /// </summary>
 public record TokenInfoBatchRequest(string[] TokenAddresses);
+
+/// <summary>
+/// Response for profile content queries (IPFS payload)
+/// </summary>
+public record ProfileContentResponse(
+    string Cid,
+    string? Content,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
+);
+
+/// <summary>
+/// Batch request for profile content
+/// </summary>
+public record ProfileContentBatchRequest(string[] Cids);

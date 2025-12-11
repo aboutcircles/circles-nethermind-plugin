@@ -1749,7 +1749,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var missingCidIndexes = new List<int>();
         var missingCids = new List<string>();
 
-        // Check cache first
+        // Check local cache first
         for (int i = 0; i < cids.Length; i++)
         {
             var currentCid = cids[i];
@@ -1775,7 +1775,39 @@ public class CirclesRpcModule : ICirclesRpcModule
             return result;
         }
 
-        // Fetch missing profiles from database
+        // Try cache service first, then fall back to database
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                var cacheResults = await _cacheServiceClient.GetProfileContentBatchAsync(missingCids.ToArray());
+                for (int i = 0; i < missingCids.Count; i++)
+                {
+                    int targetIndex = missingCidIndexes[i];
+                    string targetCid = missingCids[i];
+                    var content = cacheResults[i]?.Content;
+
+                    if (!string.IsNullOrEmpty(content))
+                    {
+                        var profile = JsonSerializer.Deserialize<JsonElement>(content);
+                        result[targetIndex] = profile;
+                        _profileByCidCache.Set(targetCid, profile, new MemoryCacheEntryOptions { Size = 1 });
+                    }
+                    else
+                    {
+                        result[targetIndex] = null;
+                    }
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache service profile content fetch failed, falling back to database");
+                // Fall through to database
+            }
+        }
+
+        // Fallback: Fetch missing profiles from database
         const string query = @"
             SELECT f.payload
             FROM unnest(@cids) WITH ORDINALITY as u(_cid, _index)

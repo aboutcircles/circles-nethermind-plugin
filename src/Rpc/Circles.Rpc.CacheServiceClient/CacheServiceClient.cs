@@ -315,4 +315,42 @@ public class CacheServiceClient
             throw;
         }
     }
+
+    /// <summary>
+    /// Get profile content (IPFS payload) for a single CID
+    /// </summary>
+    public async Task<ProfileContentResponse?> GetProfileContentAsync(string cid, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/profiles/content/{cid}";
+            return await _httpClient.GetFromJsonAsync<ProfileContentResponse>(url, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting profile content from cache service for CID {Cid}", cid);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Get profile content (IPFS payloads) for multiple CIDs in batch
+    /// </summary>
+    public async Task<ProfileContentResponse[]> GetProfileContentBatchAsync(string[] cids, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = $"{_baseUrl}/api/profiles/content/batch";
+            var request = new ProfileContentBatchRequest(cids);
+            var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<ProfileContentResponse[]>(cancellationToken: cancellationToken)
+                ?? Array.Empty<ProfileContentResponse>();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error getting batch profile content from cache service");
+            throw;
+        }
+    }
 }
