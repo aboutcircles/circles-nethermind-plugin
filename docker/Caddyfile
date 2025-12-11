@@ -2,35 +2,38 @@
   email tobias.leinss@gnosis.io
 }
 
-# Circles RPC Service (JSON-RPC + WebSocket)
-{$CIRCLES_RPC_DOMAIN:localhost} {
+{$DOMAIN:localhost} {
     encode zstd gzip
 
     # WebSocket subscription endpoint
     handle /ws/subscribe {
-        reverse_proxy rpc:8080
+        reverse_proxy rpc:8080 {
+            rewrite /ws/subscribe
+        }
     }
 
-    # All RPC requests
-    handle {
-        reverse_proxy rpc:8080
-    }
-}
-
-# Chain RPC (Nethermind JSON-RPC)
-{$CHAIN_RPC_DOMAIN:localhost} {
-    encode zstd gzip
-
-    handle {
+    # Nethermind JSON-RPC
+    handle /nethermind/* {
+        uri strip_prefix /nethermind
         reverse_proxy nethermind-gnosis:8545
     }
-}
 
-# Pathfinder Service
-{$PATHFINDER_DOMAIN:localhost} {
-    encode zstd gzip
+    handle /nethermind {
+        reverse_proxy nethermind-gnosis:8545
+    }
 
-    handle {
+    # Pathfinder
+    handle /pathfinder/* {
+        uri strip_prefix /pathfinder
         reverse_proxy pathfinder:8080
+    }
+
+    handle /pathfinder {
+        reverse_proxy pathfinder:8080
+    }
+
+    # Default: RPC service
+    handle {
+        reverse_proxy rpc:8080
     }
 }
