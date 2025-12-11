@@ -109,11 +109,14 @@ public class ImportFlow(
         TransformBlock<long, Block> sourceBlock = new(
             blockNo =>
             {
+                context.Logger.Info($"Pipeline: Fetching block {blockNo:N0}...");
                 var block = blockTree.FindBlock(blockNo);
                 if (block == null)
                 {
+                    context.Logger.Warn($"Pipeline: Block {blockNo:N0} NOT FOUND in block tree!");
                     throw new BlockNotAvailableException(blockNo);
                 }
+                context.Logger.Info($"Pipeline: Block {blockNo:N0} fetched OK");
                 return block;
             },
             CreateOptions(cancellationToken, 3, 3));
@@ -297,6 +300,7 @@ public class ImportFlow(
 
         try
         {
+            context.Logger.Info("ImportFlow.Run: Starting block enumeration loop");
             await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
             {
                 // Check if the pipeline has faulted before sending more blocks
@@ -306,7 +310,17 @@ public class ImportFlow(
                     break;
                 }
 
+                if (count == 0)
+                {
+                    context.Logger.Info($"ImportFlow.Run: First block to send: {blockNo:N0}");
+                }
+
                 await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
+
+                if (count == 0)
+                {
+                    context.Logger.Info($"ImportFlow.Run: First block {blockNo:N0} sent to pipeline successfully");
+                }
 
                 min = Math.Min(min, blockNo);
                 max = Math.Max(max, blockNo);
