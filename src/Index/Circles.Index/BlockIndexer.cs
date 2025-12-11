@@ -76,7 +76,15 @@ public class ImportFlow(
         BuildPipeline(CancellationToken cancellationToken)
     {
         TransformBlock<long, Block?> sourceBlock = new(
-            blockTree.FindBlock,
+            blockNo =>
+            {
+                var block = blockTree.FindBlock(blockNo);
+                if (block == null)
+                {
+                    context.Logger.Warn($"Block {blockNo:N0} not found in block tree! Skipping.");
+                }
+                return block;
+            },
             CreateOptions(cancellationToken, 3, 3));
 
         TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
@@ -138,6 +146,11 @@ public class ImportFlow(
 
         sourceBlock.LinkTo(receiptsSourceBlock!, new DataflowLinkOptions { PropagateCompletion = true },
             o => o != null);
+
+        // Link null blocks to a NullTarget to prevent the pipeline from blocking.
+        // Without this, null blocks would accumulate in sourceBlock's buffer until BoundedCapacity
+        // is reached, causing SendAsync to block indefinitely.
+        sourceBlock.LinkTo(DataflowBlock.NullTarget<Block?>());
 
         TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
             blockWithReceipts =>
