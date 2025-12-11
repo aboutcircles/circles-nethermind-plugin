@@ -182,13 +182,16 @@ public class StateMachine(
                     switch (e)
                     {
                         case NewHead newHead:
-                            context.Logger.Debug($"New head received: {newHead.Head}");
-                            if (newHead.Head <= context.Database.LatestBlock())
+                            var latestBlock = context.Database.LatestBlock();
+                            context.Logger.Info($"WaitForNewBlock: NewHead({newHead.Head:N0}) received, LatestBlock={latestBlock?.ToString("N0") ?? "null"}");
+                            if (newHead.Head <= latestBlock)
                             {
+                                context.Logger.Info($"WaitForNewBlock: NewHead <= LatestBlock, transitioning to Reorg");
                                 await TransitionTo(State.Reorg, newHead.Head);
                                 return;
                             }
 
+                            context.Logger.Info($"WaitForNewBlock: NewHead > LatestBlock, transitioning to Syncing");
                             await TransitionTo(State.Syncing, newHead.Head);
                             return;
                     }
@@ -199,7 +202,9 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState<long> enterSyncing:
+                            context.Logger.Info($"Syncing: Starting sync to block {enterSyncing.Arg:N0}");
                             var importedBlockRange = await Sync(enterSyncing.Arg);
+                            context.Logger.Info($"Syncing: Sync completed. Range: {importedBlockRange.Min?.ToString("N0") ?? "null"} - {importedBlockRange.Max?.ToString("N0") ?? "null"}");
 
                             // Track blocks processed for status logging
                             if (importedBlockRange.Min.HasValue && importedBlockRange.Max.HasValue)
@@ -387,40 +392,47 @@ public class StateMachine(
         // LatestBlock() now represents the true safe resume point since we cleaned up
         // everything above the minimum of (LatestBlock, FirstGap, SafeResumeBlock) during init.
         long lastIndexHeight = context.Database.LatestBlock() ?? 0;
+        context.Logger.Info($"GetBlocksToSync: lastIndexHeight={lastIndexHeight:N0}, toBlock={toBlock:N0}");
 
         if (lastIndexHeight == toBlock)
         {
-            context.Logger.Info("No blocks to sync.");
+            context.Logger.Info("GetBlocksToSync: No blocks to sync (already at target).");
             yield break;
         }
 
         var nextBlock = lastIndexHeight + 1;
         if (nextBlock < context.Settings.StartBlock)
         {
-            context.Logger.Debug(
-                $"Enumerating blocks to sync from {context.Settings.StartBlock} (StartBlock) to {toBlock}");
+            context.Logger.Info(
+                $"GetBlocksToSync: Enumerating blocks from {context.Settings.StartBlock:N0} (StartBlock) to {toBlock:N0}");
             nextBlock = context.Settings.StartBlock;
         }
         else
         {
-            context.Logger.Debug($"Enumerating blocks to sync from {nextBlock} (LatestBlock + 1) to {toBlock}");
+            context.Logger.Info($"GetBlocksToSync: Enumerating blocks from {nextBlock:N0} (LatestBlock + 1) to {toBlock:N0}");
         }
 
+        context.Logger.Info($"GetBlocksToSync: Will enumerate {toBlock - nextBlock + 1:N0} blocks");
         for (long i = nextBlock; i <= toBlock; i++)
         {
             yield return i;
             await Task.Yield();
         }
+        context.Logger.Info($"GetBlocksToSync: Enumeration complete");
     }
 
     private async Task<Range<long>> Sync(long toBlock)
     {
+        context.Logger.Info($"Sync: Starting sync to block {toBlock:N0}");
         Range<long> importedBlockRange = new();
         try
         {
             ImportFlow flow = new(blockTree, receiptFinder, context);
+            context.Logger.Info($"Sync: Getting blocks to sync (toBlock={toBlock:N0})");
             IAsyncEnumerable<long> blocksToSync = GetBlocksToSync(toBlock);
+            context.Logger.Info($"Sync: Starting ImportFlow.Run");
             importedBlockRange = await flow.Run(blocksToSync, cancellationToken);
+            context.Logger.Info($"Sync: ImportFlow.Run completed");
 
             await context.Sink.Flush();
             await flow.FlushBlocks();
