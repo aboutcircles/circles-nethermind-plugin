@@ -170,9 +170,6 @@ public class ImportFlow(
             blockWithReceipts =>
             {
                 var blockNum = blockWithReceipts.Block.Number;
-                var receiptCount = blockWithReceipts.Receipts.Length;
-                var txCount = blockWithReceipts.Block.Transactions.Length;
-                context.Logger.Info($"Pipeline: Parsing block {blockNum:N0} ({txCount} txs, {receiptCount} receipts)...");
                 Dictionary<Hash256, Transaction> transactionsByHash = new();
                 Dictionary<Hash256, int> transactionIndexByHash = new();
 
@@ -190,17 +187,13 @@ public class ImportFlow(
                 List<IIndexEvent> allEvents = new();
 
                 // Go through every receipt (which belongs to a transaction).
-                int receiptIdx = 0;
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
-                    receiptIdx++;
                     var txHash = receipt.TxHash;
                     if (txHash == null || !transactionsByHash.TryGetValue(txHash, out var transaction))
                         continue;
 
                     var transactionIndex = transactionIndexByHash[txHash];
-                    var logCount = receipt.Logs?.Length ?? 0;
-                    context.Logger.Info($"Pipeline: Block {blockNum:N0} processing receipt {receiptIdx}/{receiptCount} (tx={transactionIndex}, logs={logCount})");
 
                     // A dictionary mapping each parser -> the events it produced from logs
                     var parserToEvents = new Dictionary<ILogParser, List<IIndexEvent>>(context.LogParsers.Length);
@@ -219,7 +212,6 @@ public class ImportFlow(
                             {
                                 try
                                 {
-                                    context.Logger.Info($"Pipeline: Block {blockNum:N0} calling parser {parser.GetType().Name} for log {logIndex}");
                                     var parsedLogEvents = parser.ParseLog(
                                         blockWithReceipts.Block,
                                         transaction,
@@ -228,14 +220,10 @@ public class ImportFlow(
                                         logIndex);
 
                                     parserToEvents[parser].AddRange(parsedLogEvents);
-                                    context.Logger.Info($"Pipeline: Block {blockNum:N0} parser {parser.GetType().Name} returned {parsedLogEvents.Count()} events");
                                 }
                                 catch (Exception e)
                                 {
-                                    context.Logger.Error($"Error parsing log {logEntry} with parser {parser}");
-                                    context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
-                                    context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
-                                    context.Logger.Error("Exception:", e);
+                                    context.Logger.Error($"Error parsing log at block {blockNum:N0}, tx {receipt.TxHash}, log {logIndex}: {e.Message}");
                                     throw;
                                 }
                             }
@@ -243,13 +231,10 @@ public class ImportFlow(
                     }
 
                     // 2) For each parser, call ParseTransaction with the events from that parser only
-                    context.Logger.Info($"Pipeline: Block {blockNum:N0} receipt {receiptIdx} calling ParseTransaction for {context.LogParsers.Length} parsers");
                     foreach (var parser in context.LogParsers)
                     {
                         try
                         {
-                            context.Logger.Info($"Pipeline: Block {blockNum:N0} calling {parser.GetType().Name}.ParseTransaction");
-
                             // Watchdog: log warning if ParseTransaction takes too long
                             var parserName = parser.GetType().Name;
                             var eventCount = parserToEvents[parser].Count;
@@ -278,14 +263,10 @@ public class ImportFlow(
 
                             // Add these newly derived events to that parser's list
                             parserToEvents[parser].AddRange(txEvents);
-                            context.Logger.Info($"Pipeline: Block {blockNum:N0} {parser.GetType().Name}.ParseTransaction returned {txEvents.Count()} events");
                         }
                         catch (Exception e)
                         {
-                            context.Logger.Error($"Error parsing transaction {transaction} with parser {parser}");
-                            context.Logger.Error($"Block: {blockWithReceipts.Block.Number}");
-                            context.Logger.Error($"Receipt.TxHash: {receipt.TxHash}");
-                            context.Logger.Error("Exception: ", e);
+                            context.Logger.Error($"Error in {parser.GetType().Name}.ParseTransaction at block {blockNum:N0}, tx {receipt.TxHash}: {e.Message}");
                             throw;
                         }
                     }
@@ -297,8 +278,6 @@ public class ImportFlow(
                     }
                 }
 
-                // Finally, return (block, allEvents)
-                context.Logger.Info($"Pipeline: Parsed block {blockWithReceipts.Block.Number:N0}, found {allEvents.Count} events");
                 return (blockWithReceipts, allEvents);
             },
             CreateOptions(cancellationToken, 1, 1));
@@ -325,7 +304,6 @@ public class ImportFlow(
 
         try
         {
-            context.Logger.Info("ImportFlow.Run: Starting block enumeration loop");
             await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
             {
                 // Check if the pipeline has faulted before sending more blocks
@@ -335,29 +313,7 @@ public class ImportFlow(
                     break;
                 }
 
-                if (count == 0)
-                {
-                    context.Logger.Info($"ImportFlow.Run: First block to send: {blockNo:N0}");
-                }
-
-                // Log periodically when we're about to send (to detect if SendAsync blocks)
-                if (count % 10000 == 0)
-                {
-                    context.Logger.Info($"ImportFlow.Run: About to SendAsync block {blockNo:N0} (count={count:N0})");
-                }
-
                 await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
-
-                if (count == 0)
-                {
-                    context.Logger.Info($"ImportFlow.Run: First block {blockNo:N0} sent to pipeline successfully");
-                }
-
-                // Log periodically after successful send
-                if (count % 10000 == 0)
-                {
-                    context.Logger.Info($"ImportFlow.Run: SendAsync completed for block {blockNo:N0}");
-                }
 
                 min = Math.Min(min, blockNo);
                 max = Math.Max(max, blockNo);
