@@ -41,11 +41,11 @@ namespace Circles.Pathfinder.Data
             {
                 return connString;
             }
-            
+
             // If environment variable is not set, try to get from settings object properties
             // This handles both host settings (which inherit from base Settings) and library settings
             var settingsType = settings.GetType();
-            
+
             // Look for IndexReadonlyDbConnectionString property
             var connectionStringProperty = settingsType.GetProperty("IndexReadonlyDbConnectionString");
             if (connectionStringProperty != null)
@@ -56,7 +56,7 @@ namespace Circles.Pathfinder.Data
                     return value;
                 }
             }
-            
+
             throw new ArgumentException("POSTGRES_READONLY_CONNECTION_STRING environment variable is not set or connection string not found in settings.");
         }
 

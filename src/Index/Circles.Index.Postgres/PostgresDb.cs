@@ -167,28 +167,28 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\");");
                 }
                 else if (table.Value is
-                         {
-                             Namespace: Common.DatabaseSchema.SystemNamespace,
-                             Table: Common.DatabaseSchema.EventTableHead
-                         })
+                {
+                    Namespace: Common.DatabaseSchema.SystemNamespace,
+                    Table: Common.DatabaseSchema.EventTableHead
+                })
                 {
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"tableName\");");
                 }
                 else if (table.Value is
-                         {
-                             Namespace: Common.DatabaseSchema.SystemNamespace,
-                             Table: Common.DatabaseSchema.PathfinderRequestLog
-                         })
+                {
+                    Namespace: Common.DatabaseSchema.SystemNamespace,
+                    Table: Common.DatabaseSchema.PathfinderRequestLog
+                })
                 {
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"blockNumber\", \"requestId\");");
                 }
                 else if (table.Value is
-                         {
-                             Namespace: Common.DatabaseSchema.SystemNamespace,
-                             Table: Common.DatabaseSchema.PathfinderResponseLog
-                         })
+                {
+                    Namespace: Common.DatabaseSchema.SystemNamespace,
+                    Table: Common.DatabaseSchema.PathfinderResponseLog
+                })
                 {
                     primaryKeyDdl.AppendLine(
                         $"ALTER TABLE \"{table.Value.Namespace}_{table.Value.Table}\" ADD PRIMARY KEY (\"requestId\");");
@@ -911,7 +911,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             CommandTimeout = 120,  // 2 minutes
             Timeout = 60
         };
-        
+
         using var connection = new NpgsqlConnection(csb.ToString());
         connection.Open();
 

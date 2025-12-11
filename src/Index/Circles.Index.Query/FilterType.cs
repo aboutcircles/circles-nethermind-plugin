@@ -36,10 +36,10 @@ public enum FilterType
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     NotIn,
-    
+
     [JsonConverter(typeof(JsonStringEnumConverter))]
     IsNotNull,
-    
+
     [JsonConverter(typeof(JsonStringEnumConverter))]
     IsNull
 }

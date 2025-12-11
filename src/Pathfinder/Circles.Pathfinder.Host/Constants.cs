@@ -8,7 +8,7 @@ public static class Constants
 {
     // Request-level
     public const int SlowRequestThresholdMs = 2_000;
-    public const int FindPathSlaMs          = 1_500;
+    public const int FindPathSlaMs = 1_500;
 
     // Aggregation
     public static readonly TimeSpan StatsInterval = TimeSpan.FromMinutes(1);

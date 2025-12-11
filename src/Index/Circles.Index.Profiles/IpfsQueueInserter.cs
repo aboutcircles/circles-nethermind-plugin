@@ -38,7 +38,7 @@ public static class IpfsQueueInserter
             ON CONFLICT DO NOTHING;";
 
         await using NpgsqlConnection conn = await DataSource.OpenConnectionAsync(ct);
-        
+
         // Dapper maps string[] → text[] automatically.
         await conn.ExecuteAsync(sql, new { cids = cidArray });
     }

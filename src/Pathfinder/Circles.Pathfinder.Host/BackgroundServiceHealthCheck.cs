@@ -33,14 +33,14 @@ public sealed class BackgroundServiceHealthCheck : IHealthCheck
         }
 
         var timeSinceLastUpdate = currentTime - lastUpdateTime;
-        
+
         if (timeSinceLastUpdate > MaxStaleDuration)
         {
             var errorMessage = $"NetworkStateUpdaterService data is stale (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:hh\\:mm\\:ss}). " +
                               "Background service may have failed or network connectivity issues.";
-            
+
             _log.LogWarning("Health check failed: {ErrorMessage}", errorMessage);
-            
+
             return Task.FromResult(HealthCheckResult.Degraded(
                 errorMessage,
                 data: new Dictionary<string, object>
@@ -52,7 +52,7 @@ public sealed class BackgroundServiceHealthCheck : IHealthCheck
         }
 
         var successMessage = $"Background services are healthy (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:hh\\:mm\\:ss})";
-        
+
         return Task.FromResult(HealthCheckResult.Healthy(
             successMessage,
             data: new Dictionary<string, object>

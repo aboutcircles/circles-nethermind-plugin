@@ -2544,8 +2544,8 @@ public class CirclesRpcModule : ICirclesRpcModule
     }
 
     public async Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(
-        string avatarAddress, 
-        int limit = 50, 
+        string avatarAddress,
+        int limit = 50,
         string? cursor = null,
         int? version = null,
         bool excludeIntermediary = false)
@@ -2557,7 +2557,7 @@ public class CirclesRpcModule : ICirclesRpcModule
         var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
 
         string sql;
-        
+
         if (excludeIntermediary)
         {
             // Use TransferSummary view which contains only real user-to-user transfers
@@ -2661,7 +2661,7 @@ public class CirclesRpcModule : ICirclesRpcModule
             BigInteger attoCirclesDemurraged;
             BigInteger staticAttoCircles;
             BigInteger attoCrc;
-            
+
             if (ver == 1)
             {
                 // V1: value is raw attoCrc
@@ -2673,14 +2673,14 @@ public class CirclesRpcModule : ICirclesRpcModule
             {
                 // V2: value is demurraged attoCircles
                 attoCirclesDemurraged = valueRaw;
-                
+
                 // Calculate day from timestamp for conversions
                 var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
                 var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000); // INFLATION_DAY_ZERO_UNIX
 
                 // staticAttoCircles = convert demurraged to inflationary (static)
                 staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
-                
+
                 // attoCrc = convert demurraged attoCircles to V1 CRC
                 attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
             }
