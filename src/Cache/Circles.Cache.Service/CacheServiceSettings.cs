@@ -48,6 +48,13 @@ public class CacheServiceSettings
     public int Port { get; init; } = 5002;
 
     /// <summary>
+    /// Maximum number of IPFS profile content entries to cache.
+    /// Environment variable: IPFS_CACHE_MAX_ENTRIES
+    /// Default: 50000
+    /// </summary>
+    public int IpfsCacheMaxEntries { get; init; } = 50000;
+
+    /// <summary>
     /// Gets the effective readonly connection string (falls back to main connection if not set).
     /// </summary>
     public string EffectiveReadonlyConnectionString =>
@@ -101,7 +108,8 @@ public class CacheServiceSettings
                 int.TryParse(Environment.GetEnvironmentVariable("MAX_CATCHUP_LAG"), out var lag)
                     ? lag
                     : 10,
-            Port = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out var port) ? port : 5002
+            Port = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out var port) ? port : 5002,
+            IpfsCacheMaxEntries = int.TryParse(Environment.GetEnvironmentVariable("IPFS_CACHE_MAX_ENTRIES"), out var ipfsMax) ? ipfsMax : 50000
         };
 
         settings.Validate();

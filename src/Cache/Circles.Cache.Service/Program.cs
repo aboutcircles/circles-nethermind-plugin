@@ -18,6 +18,11 @@ builder.Services.AddSingleton(settings);
 // Register cache infrastructure
 builder.Services.AddSingleton(sp => new CacheServiceState(settings.RollbackCapacity));
 builder.Services.AddSingleton(sp => new CacheContainer(settings.RollbackCapacity));
+builder.Services.AddSingleton(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<IpfsContentCache>>();
+    return new IpfsContentCache(settings.EffectiveReadonlyConnectionString, settings.IpfsCacheMaxEntries, logger);
+});
 
 // Register background services
 builder.Services.AddHostedService<CacheWarmupService>();
@@ -119,12 +124,15 @@ app.MapGet("/ready", async (CacheServiceState state, CacheServiceSettings settin
 });
 
 // Cache statistics endpoint
-app.MapGet("/cache/stats", (CacheContainer caches, CacheServiceState state) =>
+app.MapGet("/cache/stats", (CacheContainer caches, IpfsContentCache ipfsCache, CacheServiceState state) =>
 {
     var stats = caches.GetStatistics();
     stats["lastProcessedBlock"] = state.LastProcessedBlock;
     stats["warmupComplete"] = state.WarmupComplete;
     stats["listenerConnected"] = state.ListenerConnected;
+    stats["ipfs_cache_entries"] = ipfsCache.Count;
+    stats["ipfs_cache_hits"] = ipfsCache.Hits;
+    stats["ipfs_cache_misses"] = ipfsCache.Misses;
 
     return Results.Ok(stats);
 });
@@ -150,7 +158,9 @@ app.MapGet("/", () => new
             avatarInfo = "/api/avatars/{address}",
             avatarInfoBatch = "/api/avatars/batch",
             profileCid = "/api/profiles/{address}/cid",
-            profileCidBatch = "/api/profiles/cid/batch"
+            profileCidBatch = "/api/profiles/cid/batch",
+            profileContent = "/api/profiles/content/{cid}",
+            profileContentBatch = "/api/profiles/content/batch"
         }
     }
 });
