@@ -10,6 +10,8 @@ Documentation for transitive transfer path calculation methods.
   - [Token Swap (Circular Path)](#token-swap-circular-path)
 - [Response Format](#response-format)
 - [Simulated Balances](#simulated-balances)
+- [Network Snapshot](#network-snapshot)
+  - [Caching with ETags](#caching-with-etags)
 
 ---
 
@@ -202,3 +204,82 @@ hub.operateFlowMatrix(
 ```
 
 See the [Circles SDK](https://github.com/aboutcircles/circles-sdk) for helper functions that convert pathfinder output to contract call parameters.
+
+---
+
+## Network Snapshot
+
+The Pathfinder service provides a `/snapshot` endpoint that returns the complete trust graph and balance data. This is useful for clients that want to cache the network state locally.
+
+### GET /snapshot
+
+Returns the complete network snapshot including addresses, trust relations, and balances.
+
+**Request:**
+
+```bash
+curl http://localhost:8080/snapshot
+```
+
+**Response (abbreviated):**
+
+```json
+{
+  "blockNumber": 31234567,
+  "addresses": {
+    "0xabc...": 1,
+    "0xdef...": 2
+  },
+  "trust": {
+    "1": [2, 3, 4],
+    "2": [1, 3]
+  },
+  "balance": {
+    "1": [
+      {"holder": 1, "token": 1, "balance": "1000000000000000000"}
+    ]
+  }
+}
+```
+
+### Caching with ETags
+
+The snapshot endpoint supports HTTP conditional requests for efficient caching:
+
+**Headers:**
+- `ETag`: Block number as a quoted string (e.g., `"31234567"`)
+- `Cache-Control`: `public, max-age=5`
+
+**Conditional Request:**
+
+```bash
+# First request - get snapshot and ETag
+curl -i http://localhost:8080/snapshot
+# Response includes: ETag: "31234567"
+
+# Subsequent request - use If-None-Match
+curl -i http://localhost:8080/snapshot -H 'If-None-Match: "31234567"'
+# Returns 304 Not Modified if unchanged
+```
+
+**Benefits:**
+- Reduces bandwidth for unchanged data
+- The snapshot is cached in memory and only re-serialized when the block number changes
+- Clients can poll frequently with minimal overhead
+
+### RPC Access
+
+The snapshot is also accessible via the RPC host:
+
+```bash
+curl -X POST http://localhost:5000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "circles_getNetworkSnapshot",
+    "params": []
+  }'
+```
+
+The RPC host caches the snapshot locally and uses ETag conditional requests to the Pathfinder service for efficient updates.
