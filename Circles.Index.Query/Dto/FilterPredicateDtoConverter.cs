@@ -5,12 +5,20 @@ namespace Circles.Index.Query.Dto;
 
 public class FilterPredicateDtoConverter : JsonConverter<IFilterPredicateDto>
 {
+    private const string TypePropertyName = "type";
+
     public override IFilterPredicateDto? Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
         using JsonDocument document = JsonDocument.ParseValue(ref reader);
         JsonElement root = document.RootElement;
-        string? type = root.GetProperty("Type").GetString();
+
+        string? type = GetDiscriminator(root);
+
+        if (type is null)
+        {
+            throw new JsonException("Missing 'type' discriminator on filter predicate.");
+        }
 
         IFilterPredicateDto? result = type switch
         {
@@ -26,10 +34,29 @@ public class FilterPredicateDtoConverter : JsonConverter<IFilterPredicateDto>
     {
         JsonSerializer.Serialize(writer, value, value.GetType(), options);
     }
+
+    private static string? GetDiscriminator(JsonElement root)
+    {
+        foreach (JsonProperty property in root.EnumerateObject())
+        {
+            bool isTypeProperty = string.Equals(property.Name, TypePropertyName, StringComparison.OrdinalIgnoreCase);
+
+            if (!isTypeProperty)
+            {
+                continue;
+            }
+
+            return property.Value.GetString();
+        }
+
+        return null;
+    }
 }
 
 public class FilterPredicateArrayConverter : JsonConverter<IFilterPredicateDto[]>
 {
+    private const string TypePropertyName = "type";
+
     public override IFilterPredicateDto[] Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
@@ -40,9 +67,14 @@ public class FilterPredicateArrayConverter : JsonConverter<IFilterPredicateDto[]
         var predicates = new IFilterPredicateDto[root.GetArrayLength()];
         int i = 0;
 
-        foreach (var element in elements)
+        foreach (JsonElement element in elements)
         {
-            string? type = element.GetProperty("Type").GetString();
+            string? type = GetDiscriminator(element);
+
+            if (type is null)
+            {
+                throw new JsonException("Missing 'type' discriminator on filter predicate array element.");
+            }
 
             IFilterPredicateDto? result = type switch
             {
@@ -61,12 +93,29 @@ public class FilterPredicateArrayConverter : JsonConverter<IFilterPredicateDto[]
     {
         writer.WriteStartArray();
 
-        foreach (var predicate in value)
+        foreach (IFilterPredicateDto predicate in value)
         {
             JsonSerializer.Serialize(writer, predicate, predicate.GetType(), options);
         }
 
         writer.WriteEndArray();
+    }
+
+    private static string? GetDiscriminator(JsonElement element)
+    {
+        foreach (JsonProperty property in element.EnumerateObject())
+        {
+            bool isTypeProperty = string.Equals(property.Name, TypePropertyName, StringComparison.OrdinalIgnoreCase);
+
+            if (!isTypeProperty)
+            {
+                continue;
+            }
+
+            return property.Value.GetString();
+        }
+
+        return null;
     }
 }
 

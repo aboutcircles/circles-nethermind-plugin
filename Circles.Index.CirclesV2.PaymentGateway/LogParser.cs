@@ -28,7 +28,7 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         var seeds = new Dictionary<Address, object?>();
 
         // Seed from previously indexed GatewayCreated events
-        var select = new Circles.Index.Query.Select(DatabaseSchema.Namespace, nameof(Events.GatewayCreated),
+        var select = new Query.Select(DatabaseSchema.Namespace, nameof(Events.GatewayCreated),
             ["gateway"], [], [], int.MaxValue, false, int.MaxValue);
         foreach (var row in database.Select(select.ToSql(database)).Rows)
         {
@@ -60,32 +60,31 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
         var topic = log.Topics[0];
 
-        // Factory: GatewayCreated
-        if (factoryAddresses.Contains(log.Address) && topic == _gatewayCreated)
+        // Factory-originated events
+        if (factoryAddresses.Contains(log.Address))
         {
-            var evt = ParseGatewayCreated(block, receipt, log, logIndex);
-            // remember gateway address
-            Gateways.Add(block.Number, new Address(evt.Gateway), null);
-            yield return evt;
-            yield break;
-        }
+            // GatewayCreated
+            if (topic == _gatewayCreated)
+            {
+                var evt = ParseGatewayCreated(block, receipt, log, logIndex);
+                // remember gateway address
+                Gateways.Add(block.Number, new Address(evt.Gateway), null);
+                yield return evt;
+                yield break;
+            }
 
-        // Gateway events: we only care if we know this is a gateway
-        if (!Gateways.TryGetValue(log.Address, out _))
-        {
-            yield break;
-        }
+            // PaymentReceived
+            if (topic == _paymentReceived)
+            {
+                yield return ParsePaymentReceived(block, receipt, log, logIndex);
+                yield break;
+            }
 
-        if (topic == _paymentReceived)
-        {
-            yield return ParsePaymentReceived(block, receipt, log, logIndex);
-            yield break;
-        }
-
-        if (topic == _trustUpdated)
-        {
-            yield return ParseTrustUpdated(block, receipt, log, logIndex);
-            yield break;
+            // TrustUpdated
+            if (topic == _trustUpdated)
+            {
+                yield return ParseTrustUpdated(block, receipt, log, logIndex);
+            }
         }
     }
 
@@ -115,9 +114,23 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
         string payee = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
         string gateway = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
 
-        UInt256 tokenId = new UInt256(log.Data.Slice(0, 32), true);
-        UInt256 amount = new UInt256(log.Data.Slice(32, 32), true);
-        byte[] dataBytes = log.Data.Length > 64 ? log.Data.Slice(64).ToArray() : [];
+        // Non-indexed data is ABI-encoded (head/tail)
+        ReadOnlySpan<byte> data = log.Data;
+        UInt256 tokenId = new UInt256(data.Slice(0, 32), true);
+        UInt256 amount = new UInt256(data.Slice(32, 32), true);
+        // third word in head is the offset to dynamic bytes
+        int bytesOffset;
+        byte[] dataBytes;
+        try
+        {
+            bytesOffset = LogDataParsingHelper.ParseOffset(data, 64);
+            dataBytes = LogDataParsingHelper.ParseBytes(data, bytesOffset);
+        }
+        catch
+        {
+            // Be defensive: if decoding fails, store empty bytes instead of crashing the indexer
+            dataBytes = Array.Empty<byte>();
+        }
 
         return new Events.PaymentReceived(
             block.Number,

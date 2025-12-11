@@ -88,8 +88,9 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_PAYMENT_GATEWAY_FACTORY_ADDRESS")?.Split(',')
             .Select(x => x.Trim().ToLowerInvariant())
             .ToArray()
-        ??        [
-            "0x68533c85486F0d87F9EfbE726f823648547C6e94"
+        ??
+        [
+            "0x186725D8fe10a573DC73144F7a317fCae5314F19"
         ];
 
     public readonly string[] CMGroupDeployer =
@@ -131,7 +132,7 @@ public class Settings
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
-    public readonly string BaseGroupDeployer = 
+    public readonly string BaseGroupDeployer =
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
