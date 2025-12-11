@@ -1,7 +1,11 @@
-# Circles RPC Caddy Configuration
+{
+  email tobias.leinss@gnosis.io
+}
 # Temporary domain - replace with production domain when ready
 
 {$DOMAIN:localhost} {
+    encode zstd gzip
+
     # WebSocket subscription endpoint (root level)
     # Caddy automatically handles WebSocket upgrade headers
     handle /ws/subscribe {
