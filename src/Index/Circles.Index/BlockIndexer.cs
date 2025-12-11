@@ -7,6 +7,37 @@ using Nethermind.Core.Crypto;
 
 namespace Circles.Index;
 
+/// <summary>
+/// Thrown when a block is not yet available in Nethermind's block tree.
+/// This is a transient error that should be retried without full reinitialization.
+/// </summary>
+public class BlockNotAvailableException : Exception
+{
+    public long BlockNumber { get; }
+
+    public BlockNotAvailableException(long blockNumber)
+        : base($"Block {blockNumber:N0} not found in block tree. Nethermind may still be syncing.")
+    {
+        BlockNumber = blockNumber;
+    }
+}
+
+/// <summary>
+/// Thrown when receipts are not available for a block that has transactions.
+/// This is a transient error that should be retried without full reinitialization.
+/// </summary>
+public class ReceiptsNotAvailableException : Exception
+{
+    public long BlockNumber { get; }
+
+    public ReceiptsNotAvailableException(long blockNumber, int transactionCount, long startBlock)
+        : base($"Block {blockNumber:N0} has {transactionCount} transaction(s) but no receipts. " +
+               $"Nethermind may still be syncing receipts. START_BLOCK is {startBlock}.")
+    {
+        BlockNumber = blockNumber;
+    }
+}
+
 public record BlockWithReceipts(Block Block, TxReceipt[] Receipts);
 
 
@@ -81,9 +112,7 @@ public class ImportFlow(
                 var block = blockTree.FindBlock(blockNo);
                 if (block == null)
                 {
-                    throw new InvalidOperationException(
-                        $"Block {blockNo:N0} not found in block tree. " +
-                        $"Nethermind may still be syncing. The indexer will retry after backoff.");
+                    throw new BlockNotAvailableException(blockNo);
                 }
                 return block;
             },
@@ -133,13 +162,8 @@ public class ImportFlow(
                     // (e.g., blocks before AncientReceiptsBarrier in fast/snap sync mode)
                     if (hasTransactions && !hasReceipts)
                     {
-                        throw new InvalidOperationException(
-                            $"Block {block.Number} has {block.Transactions.Length} transaction(s) but no receipts are available. " +
-                            $"This likely means Nethermind hasn't synced receipts for this block yet. " +
-                            $"Check the Sync.AncientReceiptsBarrier setting in your Nethermind config. " +
-                            $"The barrier should be <= your START_BLOCK ({context.Settings.StartBlock}). " +
-                            $"If you just changed the config, wait for Nethermind to download the ancient receipts, " +
-                            $"or consider setting START_BLOCK to a higher value where receipts are already available.");
+                        throw new ReceiptsNotAvailableException(
+                            block.Number, block.Transactions.Length, context.Settings.StartBlock);
                     }
 
                     return new BlockWithReceipts(block, receipts ?? []);
@@ -268,39 +292,77 @@ public class ImportFlow(
         long min = long.MaxValue;
         long max = long.MinValue;
         long count = 0;
+        long lastSuccessfulBlock = -1;
         DateTime lastLogTime = DateTime.UtcNow;
 
-        await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
+        try
         {
-            await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
-
-            min = Math.Min(min, blockNo);
-            max = Math.Max(max, blockNo);
-            count++;
-
-            // Log progress every 1000 blocks or every 5 minutes
-            var now = DateTime.UtcNow;
-            var timeSinceLastLog = now - lastLogTime;
-
-            bool isTimeLog = timeSinceLastLog.TotalMinutes >= 5;
-            bool isCountLog = count % 1000 == 0;
-
-            // Suppress count log if it's too frequent (e.g. during fast sync)
-            if (isCountLog && timeSinceLastLog.TotalSeconds < 30)
+            await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
             {
-                isCountLog = false;
-            }
+                // Check if the pipeline has faulted before sending more blocks
+                if (sourceBlock.Completion.IsFaulted)
+                {
+                    context.Logger.Warn($"Pipeline faulted at block {blockNo:N0}, stopping enumeration.");
+                    break;
+                }
 
-            if (isTimeLog || isCountLog)
-            {
-                context.Logger.Info($"Indexing progress: block {blockNo:N0} ({count:N0} blocks processed)");
-                lastLogTime = now;
+                await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
+
+                min = Math.Min(min, blockNo);
+                max = Math.Max(max, blockNo);
+                count++;
+                lastSuccessfulBlock = blockNo;
+
+                // Log progress every 1000 blocks or every 5 minutes
+                var now = DateTime.UtcNow;
+                var timeSinceLastLog = now - lastLogTime;
+
+                bool isTimeLog = timeSinceLastLog.TotalMinutes >= 5;
+                bool isCountLog = count % 1000 == 0;
+
+                // Suppress count log if it's too frequent (e.g. during fast sync)
+                if (isCountLog && timeSinceLastLog.TotalSeconds < 30)
+                {
+                    isCountLog = false;
+                }
+
+                if (isTimeLog || isCountLog)
+                {
+                    context.Logger.Info($"Indexing progress: block {blockNo:N0} ({count:N0} blocks processed)");
+                    lastLogTime = now;
+                }
             }
         }
+        finally
+        {
+            sourceBlock.Complete();
+        }
 
-        sourceBlock.Complete();
+        // Wait for the entire pipeline to complete and check for faults
+        try
+        {
+            await sinkBlock.Completion;
+        }
+        catch (AggregateException ae)
+        {
+            // Log and rethrow - the actual exception from the pipeline
+            foreach (var ex in ae.Flatten().InnerExceptions)
+            {
+                context.Logger.Error($"Pipeline error: {ex.Message}");
+            }
+            throw;
+        }
 
-        await sinkBlock.Completion;
+        // Also check if source block faulted (might not propagate to sink)
+        if (sourceBlock.Completion.IsFaulted)
+        {
+            var sourceEx = sourceBlock.Completion.Exception;
+            if (sourceEx != null)
+            {
+                context.Logger.Error($"Source block faulted: {sourceEx.Flatten().Message}");
+                throw sourceEx.Flatten();
+            }
+        }
 
         if (count % 10_000 == 0)
         {
@@ -309,8 +371,8 @@ public class ImportFlow(
 
         return new Range<long>
         {
-            Min = min,
-            Max = max
+            Min = min == long.MaxValue ? null : min,
+            Max = max == long.MinValue ? null : max
         };
     }
 
