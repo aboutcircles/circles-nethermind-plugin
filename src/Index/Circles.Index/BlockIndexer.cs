@@ -78,17 +78,8 @@ public class ImportFlow(
 
     private async Task Sink((BlockWithReceipts, IEnumerable<IIndexEvent>) data)
     {
-        var blockNumber = data.Item1.Block.Number;
-        context.Logger.Info($"Pipeline: Sink processing block {blockNumber:N0}...");
-
         Dictionary<string, int> eventCounts = new();
         var allEvents = data.Item2.ToList();
-
-        // Log when we find Circles events in a block
-        if (allEvents.Count > 0)
-        {
-            context.Logger.Debug($"Block {blockNumber:N0}: Found {allEvents.Count} Circles event(s)");
-        }
 
         foreach (var indexEvent in allEvents)
         {
@@ -103,7 +94,6 @@ public class ImportFlow(
             new SimpleBlock(block.Number, block.Timestamp, block.Hash?.ToString()),
             eventCounts));
         Metrics.LogBlockWithReceipts(data.Item1);
-        context.Logger.Info($"Pipeline: Sink completed block {blockNumber:N0}");
     }
 
     private (TransformBlock<long, Block> Source, ActionBlock<(BlockWithReceipts, IEnumerable<IIndexEvent>)> Sink)
@@ -112,14 +102,12 @@ public class ImportFlow(
         TransformBlock<long, Block> sourceBlock = new(
             blockNo =>
             {
-                context.Logger.Info($"Pipeline: Fetching block {blockNo:N0}...");
                 var block = blockTree.FindBlock(blockNo);
                 if (block == null)
                 {
-                    context.Logger.Warn($"Pipeline: Block {blockNo:N0} NOT FOUND in block tree!");
+                    context.Logger.Warn($"Block {blockNo:N0} NOT FOUND in block tree!");
                     throw new BlockNotAvailableException(blockNo);
                 }
-                context.Logger.Info($"Pipeline: Block {blockNo:N0} fetched OK");
                 return block;
             },
             CreateOptions(cancellationToken, 3, 3));
@@ -127,9 +115,7 @@ public class ImportFlow(
         TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
             new(block =>
                 {
-                    context.Logger.Info($"Pipeline: Getting receipts for block {block.Number:N0}...");
                     var receipts = receiptFinder.Get(block);
-                    context.Logger.Info($"Pipeline: Receipts for block {block.Number:N0}: {receipts?.Length ?? 0} receipts");
 
                     // Track receipt availability statistics
                     bool hasTransactions = block.Transactions.Length > 0;
