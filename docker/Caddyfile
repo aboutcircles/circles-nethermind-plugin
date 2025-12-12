@@ -2,6 +2,12 @@
   email tobias.leinss@gnosis.io
 }
 
+# Nethermind dashboard on IP (HTTP only)
+{$SERVER_IP:localhost}:80 {
+    reverse_proxy nethermind-gnosis:8545
+}
+
+# Main domain (HTTPS)
 {$DOMAIN:localhost} {
     encode zstd gzip
 
@@ -12,13 +18,14 @@
         }
     }
 
-    # Nethermind JSON-RPC (with dashboard)
-    # Static assets for dashboard (relative paths in HTML)
-    @nethermind_assets path /css/* /js/* /logos/* /favicon.webp /nethermind.svg
-    handle @nethermind_assets {
+    # Nethermind dashboard assets and API (root level for JS compatibility)
+    # These are requested by the dashboard JS at root level
+    @nethermind_root path /data/events /css/* /js/* /logos/* /*.woff2 /favicon.webp /nethermind.svg
+    handle @nethermind_root {
         reverse_proxy nethermind-gnosis:8545
     }
 
+    # Dashboard HTML and JSON-RPC API under /chain-rpc
     handle_path /chain-rpc/* {
         reverse_proxy nethermind-gnosis:8545
     }
