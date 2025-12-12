@@ -3271,6 +3271,16 @@ public class CirclesRpcModule : ICirclesRpcModule
         var column = $"t.\"{validatedColumn}\"";
         var paramName = $"@pred_{tablePrefix}_{parameters.Count}";
 
+        // Helper to convert string values to numeric when needed for comparison operators
+        object? ConvertValueForNumericComparison(object? value)
+        {
+            if (value is string strValue && decimal.TryParse(strValue, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numericValue))
+            {
+                return numericValue;
+            }
+            return value;
+        }
+
         switch (predicate.FilterType)
         {
             case FilterType.Equals:
@@ -3282,19 +3292,19 @@ public class CirclesRpcModule : ICirclesRpcModule
                 return $"{column} != {paramName}";
 
             case FilterType.GreaterThan:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
                 return $"{column} > {paramName}";
 
             case FilterType.GreaterThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
                 return $"{column} >= {paramName}";
 
             case FilterType.LessThan:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
                 return $"{column} < {paramName}";
 
             case FilterType.LessThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
+                parameters.Add(new NpgsqlParameter(paramName, ConvertValueForNumericComparison(predicate.Value) ?? DBNull.Value));
                 return $"{column} <= {paramName}";
 
             case FilterType.Like:

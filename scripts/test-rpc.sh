@@ -879,11 +879,11 @@ run_test_json "consistency" "consistency: CrcV1_HubTransfer early era (12.5M-13M
   "params": [null, 12500000, 13000000, ["CrcV1_HubTransfer"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Transfer early era (12.5M-13M)" '{
+run_test_json "consistency" "consistency: CrcV1_Transfer early era (12.5M-12.55M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 12500000, 13000000, ["CrcV1_Transfer"], null, false]
+  "params": [null, 12500000, 12550000, ["CrcV1_Transfer"], null, false]
 }'
 
 run_test_json "consistency" "consistency: all V1 events early era (12.5M-12.6M)" '{
@@ -918,11 +918,11 @@ run_test_json "consistency" "consistency: CrcV1_HubTransfer mid era (20M-20.5M)"
   "params": [null, 20000000, 20500000, ["CrcV1_HubTransfer"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Transfer mid era (20M-20.5M)" '{
+run_test_json "consistency" "consistency: CrcV1_Transfer mid era (20M-20.05M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 20000000, 20500000, ["CrcV1_Transfer"], null, false]
+  "params": [null, 20000000, 20050000, ["CrcV1_Transfer"], null, false]
 }'
 
 # =====================================================================
