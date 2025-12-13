@@ -43,6 +43,10 @@
         reverse_proxy pathfinder:8080
     }
 
+    handle_path /profiles {
+        reverse_proxy profile-service:3000
+    }
+
     # Default: RPC service
     handle {
         reverse_proxy rpc:8080
