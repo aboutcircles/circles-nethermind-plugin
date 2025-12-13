@@ -2,7 +2,7 @@
 # Usage: docker compose -f docker-compose.caddy.yml up -d
 #
 # Services included:
-# - caddy: Reverse proxy (HTTP-only, no TLS)
+# - caddy: Reverse proxy with automatic HTTPS (TLS via Let's Encrypt)
 # - nethermind-gnosis: Execution client with Circles indexer
 # - rpc: Circles RPC host
 # - profile-service: Profile pinning service
@@ -25,6 +25,8 @@ services:
       - circles-gnosis
     ports:
       - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3 (QUIC)
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../.state/caddy/data:/data
