@@ -9,7 +9,7 @@ set -e
 #   ./scripts/diagnose-data-diff.sh <staging_url> <production_url> [address]
 #
 # Example:
-#   ./scripts/diagnose-data-diff.sh http://135.181.238.49:8081 https://rpc.aboutcircles.com
+#   ./scripts/diagnose-data-diff.sh https://staging.circlesubi.network https://rpc.aboutcircles.com
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -18,7 +18,7 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-STAGING_URL="${1:-http://135.181.238.49:8081}"
+STAGING_URL="${1:-https://staging.circlesubi.network}"
 PROD_URL="${2:-https://rpc.aboutcircles.com}"
 TEST_ADDRESS="${3:-0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0}"
 
