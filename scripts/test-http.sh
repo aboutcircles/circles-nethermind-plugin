@@ -170,7 +170,8 @@ run_test "Profile search by addresses" \
     "{\"addresses\":[\"$TEST_ADDR_1\",\"$TEST_ADDR_2\"]}"
 
 # Test with a valid CID (from a known profile)
-# Note: This may return 500 if IPFS gateway is unavailable - that's a service issue, not test failure
+# Note: This may return 500 if IPFS gateway is unavailable on staging - that's a service issue
+# The profile-service needs IPFS_GATEWAY env var configured to fetch profile data
 VALID_CID="QmaVs3ThCpa69JySWUxQcv86XfLRo6TndukDmi2BpnV79p"
 run_test "Profile get by CID (valid)" \
     "GET" "/profiles/get?cid=$VALID_CID" 200
