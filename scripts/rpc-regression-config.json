@@ -43,7 +43,10 @@
     "circles_events (filter: blockNumber > 38000000 AND blockNumber < 38001000)",
     "circles_events (filter: combined with test addr3 and block range)",
     "circles_events (filter: nested AND/OR with test addr3)",
-    "circles_events (filter: transactionHash IS NOT NULL)"
+    "circles_events (filter: transactionHash IS NOT NULL)",
+    "circles_events (filter: blockNumber IN array)",
+    "circles_events (filter: blockNumber NOT IN array)",
+    "circles_events (filter: avatar != address)"
   ],
   "expectedFailureReasons": {
     "circles_getNetworkSnapshot": "Dynamic network state - changes between calls",
@@ -68,11 +71,14 @@
     "circles_searchProfileByAddressOrName (by address prefix)": "New SDK method - not in production yet",
     "circles_searchProfileByAddressOrName (by address)": "New SDK method - not in production yet",
     "circles_searchProfileByAddressOrName (by text)": "New SDK method - not in production yet",
-    "circles_events (filter: blockNumber < 100 OR blockNumber > 40000000)": "Pagination difference - staging uses new pagination",
-    "circles_events (filter: blockNumber > 38000000 AND blockNumber < 38001000)": "Pagination difference - staging uses new pagination",
-    "circles_events (filter: combined with test addr3 and block range)": "Pagination difference - staging uses new pagination",
-    "circles_events (filter: nested AND/OR with test addr3)": "Pagination difference - staging uses new pagination",
-    "circles_events (filter: transactionHash IS NOT NULL)": "Pagination difference - staging uses new pagination"
+    "circles_events (filter: blockNumber < 100 OR blockNumber > 40000000)": "Complex filter (OR) - not supported in production",
+    "circles_events (filter: blockNumber > 38000000 AND blockNumber < 38001000)": "Complex filter (AND) - not supported in production",
+    "circles_events (filter: combined with test addr3 and block range)": "Complex filter (AND) - not supported in production",
+    "circles_events (filter: nested AND/OR with test addr3)": "Complex filter (nested AND/OR) - not supported in production",
+    "circles_events (filter: transactionHash IS NOT NULL)": "Complex filter (IS NOT NULL) - not supported in production",
+    "circles_events (filter: blockNumber IN array)": "Complex filter (IN) - not supported in production",
+    "circles_events (filter: blockNumber NOT IN array)": "Complex filter (NOT IN) - not supported in production",
+    "circles_events (filter: avatar != address)": "Complex filter (!=) - not supported in production"
   },
   "subscriptionTest": {
     "enabled": true,
