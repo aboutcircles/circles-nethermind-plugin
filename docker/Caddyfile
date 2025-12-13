@@ -34,13 +34,18 @@
         reverse_proxy nethermind-gnosis:8545
     }
 
-    # Pathfinder
+    # Pathfinder - forwards /pathfinder/X to pathfinder:8080/X
     handle_path /pathfinder/* {
         reverse_proxy pathfinder:8080
     }
 
     handle_path /pathfinder {
         reverse_proxy pathfinder:8080
+    }
+
+    # Profile Service - forwards /profiles/X to profile-service:3000/X
+    handle_path /profiles/* {
+        reverse_proxy profile-service:3000
     }
 
     handle_path /profiles {
