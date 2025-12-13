@@ -331,14 +331,32 @@ run_test() {
 
     RUN_TEST_LAST_RESPONSE="$response_min"
 
+    # Extract the JSON payload from curl command for regression testing pagination support
+    local request_payload=""
+    if [[ "$curl_cmd" =~ --data[[:space:]]+\'([^\']+)\' ]]; then
+        request_payload="${BASH_REMATCH[1]}"
+    fi
+    local request_escaped=""
+    if [[ -n "$request_payload" ]]; then
+        request_escaped=$(echo "$request_payload" | jq -c '.' 2>/dev/null || echo "")
+    fi
+
     if [[ "$OUTPUT_MODE" == "json" ]]; then
         if [[ -n "$JSON_DIR" ]]; then
             local category_file_path
             category_file_path=$(get_category_file_path "$category")
-            # Include timing in JSON output
-            echo "{\"test\":\"$test_name\",\"response\":$response_min,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}" >> "$category_file_path"
+            # Include timing and request in JSON output for regression testing
+            if [[ -n "$request_escaped" ]]; then
+                echo "{\"test\":\"$test_name\",\"response\":$response_min,\"request\":$request_escaped,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}" >> "$category_file_path"
+            else
+                echo "{\"test\":\"$test_name\",\"response\":$response_min,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}" >> "$category_file_path"
+            fi
         else
-            echo "{\"test\":\"$test_name\",\"response\":$response_min,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}"
+            if [[ -n "$request_escaped" ]]; then
+                echo "{\"test\":\"$test_name\",\"response\":$response_min,\"request\":$request_escaped,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}"
+            else
+                echo "{\"test\":\"$test_name\",\"response\":$response_min,\"timing\":{\"total_ms\":$time_total_ms,\"dns_ms\":$time_dns_ms,\"connect_ms\":$time_connect_ms,\"ttfb_ms\":$time_ttfb_ms}}"
+            fi
         fi
     else
         echo -e "${YELLOW}Testing: $test_name${NC} ${BLUE}[${time_total_ms}ms]${NC}"
