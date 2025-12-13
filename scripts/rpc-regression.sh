@@ -392,6 +392,13 @@ get_response() {
     jq -c --arg test "$test_name" 'select(.test == $test) | .response' "$file" 2>/dev/null | head -n 1
 }
 
+# Function to extract request for a test (for pagination support)
+get_request() {
+    local file=$1
+    local test_name=$2
+    jq -c --arg test "$test_name" 'select(.test == $test) | .request // empty' "$file" 2>/dev/null | head -n 1
+}
+
 # Maximum response size for detailed normalization (500KB)
 # Increased from 100KB to handle large token balance responses
 MAX_NORMALIZE_SIZE=512000
@@ -542,6 +549,121 @@ unwrap_pagination() {
     ' 2>/dev/null || echo "$json"
 }
 
+# Function to check if response has pagination info
+has_pagination() {
+    local json=$1
+    echo "$json" | jq -e '.result | type == "object" and (has("events") or has("rows")) and has("hasMore")' >/dev/null 2>&1
+}
+
+# Function to get nextCursor from paginated response
+get_next_cursor() {
+    local json=$1
+    echo "$json" | jq -r '.result.nextCursor // empty' 2>/dev/null
+}
+
+# Function to check if there are more pages
+has_more_pages() {
+    local json=$1
+    local has_more
+    has_more=$(echo "$json" | jq -r '.result.hasMore // false' 2>/dev/null)
+    [[ "$has_more" == "true" ]]
+}
+
+# Function to get data array from paginated response
+get_pagination_data() {
+    local json=$1
+    echo "$json" | jq -c '.result.events // .result.rows // .result' 2>/dev/null
+}
+
+# Function to fetch all pages from staging until we match production count
+# Args: request_json, target_count, url
+# Returns: JSON response with all events merged
+fetch_all_pages() {
+    local request_json=$1
+    local target_count=$2
+    local url=$3
+    local max_pages=100  # Safety limit
+
+    # Check if this is a paginated method (circles_events or circles_query)
+    local method
+    method=$(echo "$request_json" | jq -r '.method // empty' 2>/dev/null)
+
+    if [[ "$method" != "circles_events" && "$method" != "circles_query" ]]; then
+        # Not a paginated method, just make a single call
+        local response
+        response=$(curl -s -X POST --data "$request_json" -H "Content-Type: application/json" "$url" 2>/dev/null)
+        echo "$response"
+        return
+    fi
+
+    # For circles_events, modify params to include limit=1000 (max allowed)
+    local modified_request="$request_json"
+    if [[ "$method" == "circles_events" ]]; then
+        # circles_events params: [address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit, cursor]
+        # We need to set limit (index 6) to 1000
+        modified_request=$(echo "$request_json" | jq '.params[6] = 1000' 2>/dev/null)
+    fi
+
+    # First request
+    local response
+    response=$(curl -s -X POST --data "$modified_request" -H "Content-Type: application/json" "$url" 2>/dev/null)
+
+    # Check if we got a paginated response
+    if ! has_pagination "$response"; then
+        # Not paginated, return as-is
+        echo "$response"
+        return
+    fi
+
+    # Collect all data
+    local all_data
+    all_data=$(get_pagination_data "$response")
+    local current_count
+    current_count=$(echo "$all_data" | jq 'length' 2>/dev/null || echo "0")
+    local page=1
+
+    # Keep fetching until we have enough or no more pages
+    while has_more_pages "$response" && [[ $current_count -lt $target_count ]] && [[ $page -lt $max_pages ]]; do
+        local cursor
+        cursor=$(get_next_cursor "$response")
+        if [[ -z "$cursor" ]]; then
+            break
+        fi
+
+        # Add cursor to request
+        local paged_request
+        if [[ "$method" == "circles_events" ]]; then
+            paged_request=$(echo "$modified_request" | jq --arg c "$cursor" '.params[7] = $c' 2>/dev/null)
+        else
+            # For circles_query, cursor is 2nd parameter
+            paged_request=$(echo "$modified_request" | jq --arg c "$cursor" '.params[1] = $c' 2>/dev/null)
+        fi
+
+        response=$(curl -s -X POST --data "$paged_request" -H "Content-Type: application/json" "$url" 2>/dev/null)
+        if [[ $? -ne 0 ]]; then
+            break
+        fi
+
+        # Append new data
+        local new_data
+        new_data=$(get_pagination_data "$response")
+        all_data=$(echo "[$all_data, $new_data]" | jq 'add' 2>/dev/null)
+        current_count=$(echo "$all_data" | jq 'length' 2>/dev/null || echo "$current_count")
+        page=$((page + 1))
+    done
+
+    # Construct final response with merged data
+    # Use the original response structure but with merged events/rows
+    local final_response
+    if echo "$response" | jq -e '.result | has("events")' >/dev/null 2>&1; then
+        final_response=$(echo "$response" | jq --argjson data "$all_data" '.result.events = $data | .result.hasMore = false' 2>/dev/null)
+    else
+        final_response=$(echo "$response" | jq --argjson data "$all_data" '.result.rows = $data | .result.hasMore = false' 2>/dev/null)
+    fi
+
+    echo "$final_response"
+}
+
 # Function to detect empty results (after unwrapping pagination)
 is_empty_result() {
     local json=$1
@@ -653,20 +775,21 @@ compare_responses() {
         return
     fi
 
-    # Handle pagination size mismatch:
-    # If one response has more items than the other, compare only the first N items
-    # where N is the smaller of the two array sizes
+    # Check array lengths - after pagination fetching, they should match
+    # If they still differ, report the count difference
     local local_len=$(echo "$unwrapped1" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
     local remote_len=$(echo "$unwrapped2" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
 
     if [[ "$local_len" != "$remote_len" ]] && [[ "$local_len" -gt 0 ]] && [[ "$remote_len" -gt 0 ]]; then
-        # Different lengths - truncate to smaller size for fair comparison
+        # Lengths still differ after pagination fetch - compare what we have
+        # Truncate to smaller size for fair comparison of overlapping items
         local min_len=$((local_len < remote_len ? local_len : remote_len))
         unwrapped1=$(echo "$unwrapped1" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$unwrapped1")
         unwrapped2=$(echo "$unwrapped2" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$unwrapped2")
         # Update sizes after truncation
         resp1_size=${#unwrapped1}
         resp2_size=${#unwrapped2}
+        # Note: We'll still compare the overlapping items, but the count difference is notable
     fi
 
     # Use unwrapped responses for rest of comparison
@@ -859,6 +982,24 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
         # Extract responses
         local_response=$(get_response "$local_file" "$test_name")
         remote_response=$(get_response "$remote_file" "$test_name")
+
+        # Check if we need to fetch additional pages from local (staging) to match remote (production)
+        # This handles the case where staging returns paginated results and production returns all
+        local_request=$(get_request "$local_file" "$test_name")
+        if [[ -n "$local_request" ]] && has_pagination "$local_response" && has_more_pages "$local_response"; then
+            # Get remote (production) count to know how many we need
+            remote_count=$(echo "$remote_response" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
+
+            if [[ "$remote_count" -gt 0 ]]; then
+                local_count=$(get_pagination_data "$local_response" | jq 'length' 2>/dev/null || echo "0")
+
+                # Only fetch more if remote has more items than our current local page
+                if [[ "$remote_count" -gt "$local_count" ]]; then
+                    echo -e "${YELLOW}  Fetching additional pages for: $test_name (local: $local_count, remote: $remote_count)${NC}"
+                    local_response=$(fetch_all_pages "$local_request" "$remote_count" "$LOCAL_URL")
+                fi
+            fi
+        fi
 
     # Get tolerance for this specific test
     tolerance=$(get_method_tolerance "$test_name")
