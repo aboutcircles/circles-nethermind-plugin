@@ -421,10 +421,23 @@ normalize_response() {
     # since both are semantically acceptable for bigint database columns
     normalized=$(echo "$normalized" | jq 'walk(if type == "object" and has("type") and .type == "Int" then .type = "BigInt" else . end)' 2>/dev/null || echo "$normalized")
 
-    # Normalize circles_events response structure
-    # Staging uses {events: [], hasMore: bool}, production uses [] directly
-    # Extract just the events array for comparison
-    normalized=$(echo "$normalized" | jq 'if .result | type == "object" and has("events") then .result = .result.events else . end' 2>/dev/null || echo "$normalized")
+    # Normalize pagination wrapper response structure
+    # Staging uses {events: [], hasMore: bool} or {rows: [], hasMore: bool}
+    # Production uses [] directly
+    # Extract just the data array for comparison
+    normalized=$(echo "$normalized" | jq '
+        if .result | type == "object" then
+            if .result | has("events") then
+                .result = .result.events
+            elif .result | has("rows") then
+                .result = .result.rows
+            else
+                .
+            end
+        else
+            .
+        end
+    ' 2>/dev/null || echo "$normalized")
 
     # Normalize circles_getProfileByCid response structure
     # Staging returns more fields than production - only compare common fields
@@ -508,11 +521,37 @@ extract_numbers() {
     echo "$json" | jq -r '.. | if type == "number" then . elif type == "string" and test("^[0-9]+\\.?[0-9]*([eE][+-]?[0-9]+)?$") then . else empty end' 2>/dev/null | head -n 200
 }
 
-# Function to detect empty results
+# Function to unwrap pagination wrapper from result
+# Staging uses {events: [...], hasMore: bool} or {rows: [...], hasMore: bool}
+# Production uses [...] directly
+# This function extracts the inner array for proper comparison
+unwrap_pagination() {
+    local json=$1
+    echo "$json" | jq '
+        if .result | type == "object" then
+            if .result | has("events") then
+                .result = .result.events
+            elif .result | has("rows") then
+                .result = .result.rows
+            else
+                .
+            end
+        else
+            .
+        end
+    ' 2>/dev/null || echo "$json"
+}
+
+# Function to detect empty results (after unwrapping pagination)
 is_empty_result() {
     local json=$1
+
+    # First unwrap pagination wrapper if present
+    local unwrapped
+    unwrapped=$(unwrap_pagination "$json")
+
     local result
-    result=$(echo "$json" | jq -r '.result' 2>/dev/null)
+    result=$(echo "$unwrapped" | jq -r '.result' 2>/dev/null)
 
     # Check various forms of empty
     if [[ "$result" == "null" ]] || [[ "$result" == "[]" ]] || [[ "$result" == "{}" ]] || [[ -z "$result" ]]; then
@@ -521,7 +560,7 @@ is_empty_result() {
 
     # Check if array is empty
     local arr_len
-    arr_len=$(echo "$json" | jq '.result | if type == "array" then length else -1 end' 2>/dev/null)
+    arr_len=$(echo "$unwrapped" | jq '.result | if type == "array" then length else -1 end' 2>/dev/null)
     if [[ "$arr_len" == "0" ]]; then
         return 0
     fi
@@ -529,10 +568,15 @@ is_empty_result() {
     return 1
 }
 
-# Function to get result type and structure info
+# Function to get result type and structure info (after unwrapping pagination)
 get_result_structure() {
     local json=$1
-    echo "$json" | jq -r '
+
+    # First unwrap pagination wrapper if present
+    local unwrapped
+    unwrapped=$(unwrap_pagination "$json")
+
+    echo "$unwrapped" | jq -r '
         .result |
         if type == "null" then "null"
         elif type == "array" then
@@ -547,6 +591,7 @@ get_result_structure() {
 }
 
 # Function to check if structures are compatible
+# Note: This is called AFTER unwrapping pagination, so structures should match directly
 structures_compatible() {
     local struct1=$1
     local struct2=$2
@@ -560,21 +605,6 @@ structures_compatible() {
         return 0
     fi
 
-    # Special case: circles_events pagination difference
-    # Staging returns object with {events, hasMore}, production returns array
-    # These are compatible because we normalize them during comparison
-    if [[ "$type1" == "object" && "$type2" == "array" ]]; then
-        # Check if the object has events key (pagination format)
-        if [[ "$struct1" == *"events"* ]]; then
-            return 0
-        fi
-    fi
-    if [[ "$type1" == "array" && "$type2" == "object" ]]; then
-        if [[ "$struct2" == *"events"* ]]; then
-            return 0
-        fi
-    fi
-
     return 1
 }
 
@@ -584,16 +614,22 @@ compare_responses() {
     local resp1=$1
     local resp2=$2
     local tolerance=$3
-    local resp1_size=${#resp1}
-    local resp2_size=${#resp2}
+
+    # First, unwrap pagination wrappers from both responses
+    # This ensures we compare the actual data arrays
+    local unwrapped1=$(unwrap_pagination "$resp1")
+    local unwrapped2=$(unwrap_pagination "$resp2")
+
+    local resp1_size=${#unwrapped1}
+    local resp2_size=${#unwrapped2}
 
     # Check for empty results first - this is important diagnostic info
     local local_empty=false
     local remote_empty=false
-    if is_empty_result "$resp1"; then
+    if is_empty_result "$unwrapped1"; then
         local_empty=true
     fi
-    if is_empty_result "$resp2"; then
+    if is_empty_result "$unwrapped2"; then
         remote_empty=true
     fi
 
@@ -609,13 +645,33 @@ compare_responses() {
         return
     fi
 
-    # Check structure compatibility
-    local struct1=$(get_result_structure "$resp1")
-    local struct2=$(get_result_structure "$resp2")
+    # Check structure compatibility (using unwrapped responses)
+    local struct1=$(get_result_structure "$unwrapped1")
+    local struct2=$(get_result_structure "$unwrapped2")
     if ! structures_compatible "$struct1" "$struct2"; then
         echo "structure_mismatch:$struct1|$struct2"
         return
     fi
+
+    # Handle pagination size mismatch:
+    # If one response has more items than the other, compare only the first N items
+    # where N is the smaller of the two array sizes
+    local local_len=$(echo "$unwrapped1" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
+    local remote_len=$(echo "$unwrapped2" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
+
+    if [[ "$local_len" != "$remote_len" ]] && [[ "$local_len" -gt 0 ]] && [[ "$remote_len" -gt 0 ]]; then
+        # Different lengths - truncate to smaller size for fair comparison
+        local min_len=$((local_len < remote_len ? local_len : remote_len))
+        unwrapped1=$(echo "$unwrapped1" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$unwrapped1")
+        unwrapped2=$(echo "$unwrapped2" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$unwrapped2")
+        # Update sizes after truncation
+        resp1_size=${#unwrapped1}
+        resp2_size=${#unwrapped2}
+    fi
+
+    # Use unwrapped responses for rest of comparison
+    resp1="$unwrapped1"
+    resp2="$unwrapped2"
 
     # For very large responses (>100KB), use efficient comparison
     # These are typically network snapshots or large query results
