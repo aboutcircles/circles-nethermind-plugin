@@ -1,10 +1,10 @@
 {
   email tobias.leinss@gnosis.io
-}
-
-# Nethermind dashboard on IP (HTTP only)
-{$SERVER_IP:localhost}:80 {
-    reverse_proxy nethermind-gnosis:8545
+  log {
+    format json {
+      time_format iso8601
+    }
+  }
 }
 
 # Main domain (HTTPS)
