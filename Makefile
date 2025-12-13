@@ -1,4 +1,4 @@
-.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression test-subscriptions docker-up docker-down docker-logs call-rpc all release
+.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release
 
 # Default target
 help:
@@ -37,6 +37,7 @@ help:
 	@echo "  make run-rpc           Run RPC service"
 	@echo "  make run-postgres      Run PostgreSQL database (Gnosis)"
 	@echo "  make call-rpc          Call RPC interactively"
+	@echo "  make call-http         Call HTTP endpoints interactively (profiles, pathfinder)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-rpc                              Run RPC tests (default: localhost:8081)"
@@ -48,6 +49,9 @@ help:
 	@echo "  make test-cache                            Test cache service endpoints"
 	@echo "  make test-cache URL=<url>                  Test cache service against custom URL"
 	@echo "  make test-cache ARGS='--performance'       Run cache tests with performance benchmarks"
+	@echo "  make test-http                             Test HTTP endpoints (profiles, pathfinder)"
+	@echo "  make test-http URL=<url>                   Test HTTP endpoints against custom URL"
+	@echo "  make test-http ARGS='-v'                   Test HTTP endpoints with verbose output"
 	@echo "  make test-subscriptions                    Test WebSocket subscriptions (default: localhost:8081)"
 	@echo "  make test-subscriptions URL=<ws_url>       Test subscriptions against custom WebSocket URL"
 	@echo "  make test-subscriptions ARGS='--duration 60 --filter 0x...' Test with custom options"
@@ -160,6 +164,9 @@ run-postgres:
 call-rpc:
 	./scripts/call_rpc.sh $(ARGS)
 
+call-http:
+	./scripts/call_http.sh $(ARGS)
+
 test-rpc:
 	@if [ -n "$(URL)" ]; then \
 		./scripts/test-rpc.sh "$(URL)" $(ARGS); \
@@ -185,6 +192,13 @@ test-cache:
 		./scripts/test-cache.sh "$(URL)" $(ARGS); \
 	else \
 		./scripts/test-cache.sh $(ARGS); \
+	fi
+
+test-http:
+	@if [ -n "$(URL)" ]; then \
+		./scripts/test-http.sh "$(URL)" $(ARGS); \
+	else \
+		./scripts/test-http.sh $(ARGS); \
 	fi
 
 # Complete workflows
