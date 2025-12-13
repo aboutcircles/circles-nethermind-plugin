@@ -1,5 +1,10 @@
 # Circles Docker Compose with Caddy Reverse Proxy
-# Usage: docker compose -f docker-compose.caddy.yml up -d
+#
+# DEPLOYMENT: This stack is deployed via Ansible, which sets environment
+# variables (DOMAIN, SERVER_IP, etc.) instead of using .env files.
+# See: https://github.com/circlesland/infrastructure
+#
+# For local development: docker compose -f docker-compose.caddy.yml up -d
 #
 # Services included:
 # - caddy: Reverse proxy with automatic HTTPS (TLS via Let's Encrypt)
@@ -15,6 +20,10 @@
 # - postgres (use external or add separately)
 # - cache-service
 # - jwt-secret generator
+#
+# Required environment variables (set by Ansible or export manually):
+# - DOMAIN: Public domain for TLS cert (e.g., staging.circlesubi.network)
+# - SERVER_IP: Server IP for HTTP-only dashboard access (optional)
 
 services:
   caddy:
