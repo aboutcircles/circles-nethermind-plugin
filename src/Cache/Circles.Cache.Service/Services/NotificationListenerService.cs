@@ -613,14 +613,26 @@ public class NotificationListenerService : BackgroundService
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - value;
+                    // Initialize from cache if we haven't seen this key yet in this block range
+                    if (!currentBalances.ContainsKey(fromKey))
+                    {
+                        _caches.V1BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
+                        currentBalances[fromKey] = existingBalance;
+                    }
+                    currentBalances[fromKey] -= value;
                 }
 
                 // Update receiver balance
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + value;
+                    // Initialize from cache if we haven't seen this key yet in this block range
+                    if (!currentBalances.ContainsKey(toKey))
+                    {
+                        _caches.V1BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
+                        currentBalances[toKey] = existingBalance;
+                    }
+                    currentBalances[toKey] += value;
                 }
 
                 transferCount++;
@@ -726,14 +738,26 @@ public class NotificationListenerService : BackgroundService
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
-                    currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - amount;
+                    // Initialize from cache if we haven't seen this key yet in this block range
+                    if (!currentBalances.ContainsKey(fromKey))
+                    {
+                        _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
+                        currentBalances[fromKey] = existingBalance;
+                    }
+                    currentBalances[fromKey] -= amount;
                 }
 
                 // Update receiver balance
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
-                    currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + amount;
+                    // Initialize from cache if we haven't seen this key yet in this block range
+                    if (!currentBalances.ContainsKey(toKey))
+                    {
+                        _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
+                        currentBalances[toKey] = existingBalance;
+                    }
+                    currentBalances[toKey] += amount;
                 }
 
                 transferCount++;
@@ -817,14 +841,26 @@ public class NotificationListenerService : BackgroundService
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - amount;
+                    // Initialize from cache if we haven't seen this key yet in this block range
+                    if (!currentBalances.ContainsKey(fromKey))
+                    {
+                        _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
+                        currentBalances[fromKey] = existingBalance;
+                    }
+                    currentBalances[fromKey] -= amount;
                 }
 
                 // Update receiver balance
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + amount;
+                    // Initialize from cache if we haven't seen this key yet in this block range
+                    if (!currentBalances.ContainsKey(toKey))
+                    {
+                        _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
+                        currentBalances[toKey] = existingBalance;
+                    }
+                    currentBalances[toKey] += amount;
                 }
 
                 transferCount++;
