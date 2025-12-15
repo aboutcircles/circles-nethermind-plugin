@@ -4653,12 +4653,12 @@ public class CirclesRpcModule : ICirclesRpcModule
     public async Task<AllInvitationsResponse> GetAllInvitations(string address, string? minimumBalance = null)
     {
         var normalizedAddress = address.ToLowerInvariant();
-        await using var connection = await CreateConnectionAsync();
 
         // Run all queries in parallel for efficiency
+        // Note: Each query must use its own connection because Npgsql doesn't support concurrent operations on one connection
         var trustTask = GetTrustInvitationsAsync(normalizedAddress, minimumBalance);
-        var escrowTask = GetEscrowInvitationsAsync(connection, normalizedAddress);
-        var atScaleTask = GetAtScaleInvitationsAsync(connection, normalizedAddress);
+        var escrowTask = GetEscrowInvitationsAsync(normalizedAddress);
+        var atScaleTask = GetAtScaleInvitationsAsync(normalizedAddress);
 
         await Task.WhenAll(trustTask, escrowTask, atScaleTask);
 
@@ -4692,7 +4692,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// Gets escrow-based invitations using optimized SQL with JOINs.
     /// Filters out redeemed, revoked, and refunded escrows in a single query.
     /// </summary>
-    private async Task<EscrowInvitation[]> GetEscrowInvitationsAsync(NpgsqlConnection connection, string address)
+    private async Task<EscrowInvitation[]> GetEscrowInvitationsAsync(string address)
     {
         const string sql = @"
             SELECT e.""inviter"", e.""amount"", e.""blockNumber"", e.""timestamp""
@@ -4715,6 +4715,7 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         var escrows = new List<(string inviter, decimal amount, long blockNumber, long timestamp)>();
 
+        await using var connection = await CreateConnectionAsync();
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("address", address);
 
@@ -4762,7 +4763,7 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// <summary>
     /// Gets at-scale invitations (pre-created accounts that haven't been claimed).
     /// </summary>
-    private async Task<AtScaleInvitation[]> GetAtScaleInvitationsAsync(NpgsqlConnection connection, string address)
+    private async Task<AtScaleInvitation[]> GetAtScaleInvitationsAsync(string address)
     {
         // Check if account was pre-created but not claimed
         const string sql = @"
@@ -4775,6 +4776,7 @@ public class CirclesRpcModule : ICirclesRpcModule
               )
             LIMIT 1";
 
+        await using var connection = await CreateConnectionAsync();
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("address", address);
 
