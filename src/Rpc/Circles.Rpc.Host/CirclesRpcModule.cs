@@ -3394,20 +3394,31 @@ public class CirclesRpcModule : ICirclesRpcModule
         switch (predicate.FilterType)
         {
             case FilterType.Equals:
-                // Handle array values as IN clause (for backwards compatibility)
+                // Handle array values - use index-friendly patterns
                 // Arrays come in as JsonElement due to ObjectToInferredTypeConverter
                 if (predicate.Value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
                 {
                     var arrayValues = jsonElement.EnumerateArray()
                         .Select(e => e.GetString() ?? string.Empty)
                         .ToArray();
+                    if (arrayValues.Length == 1)
+                    {
+                        parameters.Add(new NpgsqlParameter(paramName, arrayValues[0]));
+                        return $"{column} = {paramName}::text";
+                    }
                     parameters.Add(new NpgsqlParameter(paramName, arrayValues));
-                    return $"{column} IN (SELECT unnest({paramName}::text[]))";
+                    return $"{column} = ANY({paramName}::text[])";
                 }
                 if (predicate.Value is Array arrEquals)
                 {
-                    parameters.Add(new NpgsqlParameter(paramName, arrEquals));
-                    return $"{column} IN (SELECT unnest({paramName}::text[]))";
+                    var arrEq = arrEquals.Cast<object>().ToArray();
+                    if (arrEq.Length == 1)
+                    {
+                        parameters.Add(new NpgsqlParameter(paramName, arrEq[0]?.ToString() ?? string.Empty));
+                        return $"{column} = {paramName}::text";
+                    }
+                    parameters.Add(new NpgsqlParameter(paramName, arrEq.Select(x => x?.ToString() ?? string.Empty).ToArray()));
+                    return $"{column} = ANY({paramName}::text[])";
                 }
                 parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
                 return $"{column} = {paramName}::text";
@@ -3447,16 +3458,16 @@ public class CirclesRpcModule : ICirclesRpcModule
             case FilterType.In:
                 if (predicate.Value is Array arr)
                 {
-                    parameters.Add(new NpgsqlParameter(paramName, arr));
-                    return $"{column} IN (SELECT unnest({paramName}::text[]))";
+                    parameters.Add(new NpgsqlParameter(paramName, arr.Cast<object>().Select(x => x?.ToString() ?? string.Empty).ToArray()));
+                    return $"{column} = ANY({paramName}::text[])";
                 }
                 return "";
 
             case FilterType.NotIn:
                 if (predicate.Value is Array arr2)
                 {
-                    parameters.Add(new NpgsqlParameter(paramName, arr2));
-                    return $"{column} NOT IN (SELECT unnest({paramName}::text[]))";
+                    parameters.Add(new NpgsqlParameter(paramName, arr2.Cast<object>().Select(x => x?.ToString() ?? string.Empty).ToArray()));
+                    return $"{column} <> ALL({paramName}::text[])";
                 }
                 return "";
 
