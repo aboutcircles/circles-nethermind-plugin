@@ -766,7 +766,10 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
 
             if (underlyingType == typeof(string))
             {
-                args[i] = parameters[i].GetString();
+                // Handle both string values and numbers passed as strings
+                args[i] = parameters[i].ValueKind == JsonValueKind.String
+                    ? parameters[i].GetString()
+                    : parameters[i].ToString();
             }
             else if (underlyingType == typeof(int))
             {
