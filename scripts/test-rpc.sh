@@ -67,6 +67,13 @@ GROUPMINT_USER="0xf9117e9931e6ab91f025e1afa4e70cafa5e0aa1e"
 V1_TRANSFER_FROM="0xa9f4ef92c814f01f16b92d472595a6820f48e36a"
 V1_TRANSFER_TO="0x16c6aea3d4069994c0fe7dc26884a4cc1d3dc255"
 
+# Invitation test addresses (staging only - will fail regression against prod)
+INVITE_ESCROW_USER="0x6366dd088e7979a4d16f4ab892b78d41051f45a6"      # Registered via escrow (InvitationRedeemed)
+INVITE_ATSCALE_USER="0x4e7cee95f04a44f3b67f0f329212f14a18b65b16"     # Registered via at-scale
+INVITE_STANDARD_USER="0xd40133ea712e7012a95fdd3c008ab58f7918b446"    # Registered via standard V2
+INVITE_PENDING_ESCROW="0x0031e792b8703b66c086b2ab5af1e792f4c3be40"   # Has active escrow invitation
+INVITE_PENDING_ATSCALE="0x360925b571db7d8029959a702896afd12919da8e"  # Has unclaimed at-scale account
+
 CATEGORY_KEYS=(
     "system"
     "balance"
@@ -599,6 +606,20 @@ run_test "sdk" "circles_getInvitationOrigin (addr1)" "curl -s -X POST --data '{\
 run_test "sdk" "circles_getInvitationOrigin (addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$TEST_ADDR_2\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
 run_test "sdk" "circles_getInvitationOrigin (addr3)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$TEST_ADDR_3\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Invitation Origin - specific invitation types (staging only - InvitationsAtScale tables)
+run_test "sdk" "circles_getInvitationOrigin (v2_escrow)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$INVITE_ESCROW_USER\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getInvitationOrigin (v2_at_scale)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$INVITE_ATSCALE_USER\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getInvitationOrigin (v2_standard)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$INVITE_STANDARD_USER\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# All Invitations - get pending invitations by type (staging only - InvitationsAtScale tables)
+run_test "sdk" "circles_getAllInvitations (pending escrow)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAllInvitations\",\"params\":[\"$INVITE_PENDING_ESCROW\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getAllInvitations (pending at-scale)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAllInvitations\",\"params\":[\"$INVITE_PENDING_ATSCALE\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getAllInvitations (with min balance)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAllInvitations\",\"params\":[\"$TEST_ADDR_1\",\"96\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
 # Transaction History Enriched (server-side participant enrichment)
 run_test "sdk" "circles_getTransactionHistoryEnriched (addr1, recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$TEST_ADDR_1\",30282299],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
