@@ -74,6 +74,8 @@ public class Plugin : INethermindPlugin
             new CirclesV2.AffiliateGroupRegistry.LogParser(new(settings.AffiliateGroupRegistry)),
             new CirclesV2.InvitationEscrow.LogParser(
                 settings.InvitationEscrowContract.Select(a => new Address(a)).ToImmutableHashSet()),
+            new CirclesV2.PaymentGateway.LogParser(settings.PaymentGatewayFactoryAddresses.Select(o => new Address(o))
+                .ToImmutableHashSet()),
             new CirclesV2.OIC.LogParser(new(settings.OICContractAddress)),
             new CirclesV2.InvitationsAtScale.LogParser(
                 new(settings.InvitationModuleAddress),
