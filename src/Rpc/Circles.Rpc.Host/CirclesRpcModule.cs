@@ -2674,97 +2674,213 @@ public class CirclesRpcModule : ICirclesRpcModule
         );
     }
 
-    public async Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(
-        string avatarAddress,
-        int limit = 50,
-        string? cursor = null,
-        int? version = null,
-        bool excludeIntermediary = false)
+    #region GetTransactionHistory - Version-specific query builders
+
+    /// <summary>
+    /// Builds SQL query for V1 TransferSummary table (excludeIntermediary=true).
+    /// </summary>
+    private static string BuildV1TransferSummaryQuery(bool hasCursor)
     {
-        var normalizedAddress = avatarAddress.ToLower();
-        await using var connection = await CreateConnectionAsync();
+        return $@"
+            SELECT
+                ""blockNumber"",
+                timestamp,
+                ""transactionIndex"",
+                ""logIndex"",
+                0 as ""batchIndex"",
+                ""transactionHash"",
+                1 as version,
+                NULL::text as operator,
+                ""from"",
+                ""to"",
+                NULL::text as id,
+                amount as value
+            FROM ""CrcV1_TransferSummary""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              {(hasCursor ? @"AND (
+                ""blockNumber"" < @cursorBlock OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
+              )" : "")}
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+            LIMIT @limit
+        ";
+    }
 
-        // Decode cursor if provided
-        var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
-
-        string sql;
-
-        if (excludeIntermediary)
-        {
-            // Use TransferSummary view which contains only real user-to-user transfers
-            // (intermediary hop transfers are filtered out and stored in the 'events' JSON column)
-            sql = @$"
-                SELECT 
+    /// <summary>
+    /// Builds SQL query for V1 Transfer + HubTransfer tables (excludeIntermediary=false).
+    /// </summary>
+    private static string BuildV1TransfersQuery(bool hasCursor)
+    {
+        // V1 transfers come from both Transfer (ERC20) and HubTransfer (direct hub transfers)
+        // We need to UNION them and present a unified format
+        return $@"
+            SELECT * FROM (
+                SELECT
                     ""blockNumber"",
                     timestamp,
                     ""transactionIndex"",
                     ""logIndex"",
                     0 as ""batchIndex"",
                     ""transactionHash"",
-                    version,
+                    1 as version,
+                    NULL::text as operator,
+                    ""from"",
+                    ""to"",
+                    ""tokenAddress"" as id,
+                    amount as value
+                FROM ""CrcV1_Transfer""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                UNION ALL
+                SELECT
+                    ""blockNumber"",
+                    timestamp,
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    0 as ""batchIndex"",
+                    ""transactionHash"",
+                    1 as version,
                     NULL::text as operator,
                     ""from"",
                     ""to"",
                     NULL::text as id,
-                    value
-                FROM ""V_Crc_TransferSummary""
+                    amount as value
+                FROM ""CrcV1_HubTransfer""
                 WHERE (""from"" = @address OR ""to"" = @address)
-                  {(version.HasValue ? "AND version = @version" : "")}
-                  {(cursorBlock.HasValue ? @"AND (
-                    ""blockNumber"" < @cursorBlock OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
-                  )" : "")}
-                ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
-                LIMIT @limit
-            ";
-        }
-        else
-        {
-            // Use full Transfers view which includes all transfers (including intermediary hops)
-            sql = @$"
-                SELECT 
+            ) AS v1_transfers
+            WHERE true
+              {(hasCursor ? @"AND (
+                ""blockNumber"" < @cursorBlock OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
+              )" : "")}
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+            LIMIT @limit
+        ";
+    }
+
+    /// <summary>
+    /// Builds SQL query for V2 TransferSummary table (excludeIntermediary=true).
+    /// </summary>
+    private static string BuildV2TransferSummaryQuery(bool hasCursor)
+    {
+        return $@"
+            SELECT
+                ""blockNumber"",
+                timestamp,
+                ""transactionIndex"",
+                ""logIndex"",
+                0 as ""batchIndex"",
+                ""transactionHash"",
+                2 as version,
+                NULL::text as operator,
+                ""from"",
+                ""to"",
+                NULL::text as id,
+                amount as value
+            FROM ""CrcV2_TransferSummary""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              {(hasCursor ? @"AND (
+                ""blockNumber"" < @cursorBlock OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
+              )" : "")}
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+            LIMIT @limit
+        ";
+    }
+
+    /// <summary>
+    /// Builds SQL query for V2 transfer tables (excludeIntermediary=false).
+    /// Queries TransferSingle, TransferBatch, and Erc20WrapperTransfer directly.
+    /// </summary>
+    private static string BuildV2TransfersQuery(bool hasCursor)
+    {
+        return $@"
+            SELECT * FROM (
+                SELECT
+                    ""blockNumber"",
+                    timestamp,
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    0 as ""batchIndex"",
+                    ""transactionHash"",
+                    2 as version,
+                    operator,
+                    ""from"",
+                    ""to"",
+                    id::text,
+                    value
+                FROM ""CrcV2_TransferSingle""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                UNION ALL
+                SELECT
                     ""blockNumber"",
                     timestamp,
                     ""transactionIndex"",
                     ""logIndex"",
                     ""batchIndex"",
                     ""transactionHash"",
-                    version,
+                    2 as version,
                     operator,
                     ""from"",
                     ""to"",
-                    id,
+                    id::text,
                     value
-                FROM ""V_Crc_Transfers""
+                FROM ""CrcV2_TransferBatch""
                 WHERE (""from"" = @address OR ""to"" = @address)
-                  {(version.HasValue ? "AND version = @version" : "")}
-                  {(cursorBlock.HasValue ? @"AND (
-                    ""blockNumber"" < @cursorBlock OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex) OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" = @cursorLogIndex AND ""batchIndex"" < @cursorBatchIndex)
-                  )" : "")}
-                ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC
-                LIMIT @limit
-            ";
-        }
+                UNION ALL
+                SELECT
+                    ""blockNumber"",
+                    timestamp,
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    0 as ""batchIndex"",
+                    ""transactionHash"",
+                    2 as version,
+                    NULL::text as operator,
+                    ""from"",
+                    ""to"",
+                    ""tokenAddress"" as id,
+                    amount as value
+                FROM ""CrcV2_Erc20WrapperTransfer""
+                WHERE (""from"" = @address OR ""to"" = @address)
+            ) AS v2_transfers
+            WHERE true
+              {(hasCursor ? @"AND (
+                ""blockNumber"" < @cursorBlock OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex) OR
+                (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" = @cursorLogIndex AND ""batchIndex"" < @cursorBatchIndex)
+              )" : "")}
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC, ""batchIndex"" DESC
+            LIMIT @limit
+        ";
+    }
 
+    /// <summary>
+    /// Executes a transaction history query and returns results.
+    /// </summary>
+    private async Task<List<TransactionHistoryRow>> ExecuteTransactionHistoryQuery(
+        NpgsqlConnection connection,
+        string sql,
+        string normalizedAddress,
+        int limit,
+        long? cursorBlock,
+        int? cursorTxIndex,
+        int? cursorLogIndex,
+        int? cursorBatchIndex)
+    {
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("address", normalizedAddress);
-        cmd.Parameters.AddWithValue("limit", limit + 1); // Fetch one extra to check for more
-
-        if (version.HasValue)
-        {
-            cmd.Parameters.AddWithValue("version", version.Value);
-        }
+        cmd.Parameters.AddWithValue("limit", limit + 1);
 
         if (cursorBlock.HasValue)
         {
             cmd.Parameters.AddWithValue("cursorBlock", cursorBlock.Value);
             cmd.Parameters.AddWithValue("cursorTxIndex", cursorTxIndex!.Value);
             cmd.Parameters.AddWithValue("cursorLogIndex", cursorLogIndex!.Value);
-            cmd.Parameters.AddWithValue("cursorBatchIndex", cursorBatchIndex!.Value);
+            cmd.Parameters.AddWithValue("cursorBatchIndex", cursorBatchIndex ?? 0);
         }
 
         var results = new List<TransactionHistoryRow>();
@@ -2772,85 +2888,146 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         while (await reader.ReadAsync())
         {
-            var blockNumber = reader.GetInt64(0);
-            var timestamp = reader.GetInt64(1);
-            var transactionIndex = reader.GetInt32(2);
-            var logIndex = reader.GetInt32(3);
-            var batchIndex = reader.GetInt32(4);
-            var transactionHash = reader.GetString(5);
-            var ver = reader.GetInt32(6);
-            var operatorAddr = reader.IsDBNull(7) ? null : reader.GetString(7);
-            var from = reader.GetString(8);
-            var to = reader.GetString(9);
-            var id = reader.IsDBNull(10) ? null : reader.GetString(10);
-            var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
+            var row = ReadTransactionHistoryRow(reader);
+            results.Add(row);
+        }
 
-            // Calculate all circle amount formats
-            // For V2: value is demurraged attoCircles from the database
-            // For V1: value is raw attoCrc (inflationary V1 CRC)
+        return results;
+    }
 
-            BigInteger attoCirclesDemurraged;
-            BigInteger staticAttoCircles;
-            BigInteger attoCrc;
+    /// <summary>
+    /// Reads a single TransactionHistoryRow from a data reader.
+    /// </summary>
+    private static TransactionHistoryRow ReadTransactionHistoryRow(NpgsqlDataReader reader)
+    {
+        var blockNumber = reader.GetInt64(0);
+        var timestamp = reader.GetInt64(1);
+        var transactionIndex = reader.GetInt32(2);
+        var logIndex = reader.GetInt32(3);
+        var batchIndex = reader.GetInt32(4);
+        var transactionHash = reader.GetString(5);
+        var ver = reader.GetInt32(6);
+        var operatorAddr = reader.IsDBNull(7) ? null : reader.GetString(7);
+        var from = reader.GetString(8);
+        var to = reader.GetString(9);
+        var id = reader.IsDBNull(10) ? null : reader.GetString(10);
+        var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
 
-            if (ver == 1)
+        // Calculate all circle amount formats
+        BigInteger attoCirclesDemurraged;
+        BigInteger staticAttoCircles;
+        BigInteger attoCrc;
+
+        if (ver == 1)
+        {
+            // V1: value is raw attoCrc
+            attoCrc = valueRaw;
+            attoCirclesDemurraged = CirclesConverter.AttoCrcToAttoCircles(attoCrc, (ulong)timestamp);
+            staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCirclesDemurraged);
+        }
+        else
+        {
+            // V2: value is demurraged attoCircles
+            attoCirclesDemurraged = valueRaw;
+            var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000);
+            staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
+            attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
+        }
+
+        var circles = CirclesConverter.AttoCirclesToCircles(attoCirclesDemurraged);
+        var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
+        var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
+
+        return new TransactionHistoryRow(
+            BlockNumber: blockNumber,
+            Timestamp: timestamp,
+            TransactionIndex: transactionIndex,
+            LogIndex: logIndex,
+            TransactionHash: transactionHash,
+            Version: ver,
+            From: from,
+            To: to,
+            Operator: operatorAddr,
+            Id: id,
+            Value: valueRaw.ToString(),
+            Circles: circles.ToString(),
+            AttoCircles: attoCirclesDemurraged.ToString(),
+            Crc: crc.ToString(),
+            AttoCrc: attoCrc.ToString(),
+            StaticCircles: staticCircles.ToString(),
+            StaticAttoCircles: staticAttoCircles.ToString()
+        );
+    }
+
+    #endregion
+
+    public async Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(
+        string avatarAddress,
+        int limit = 50,
+        string? cursor = null,
+        int? version = null,
+        bool excludeIntermediary = true)
+    {
+        var normalizedAddress = avatarAddress.ToLower();
+        await using var connection = await CreateConnectionAsync();
+
+        var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
+        var hasCursor = cursorBlock.HasValue;
+
+        List<TransactionHistoryRow> results;
+
+        if (version.HasValue)
+        {
+            // Query specific version directly - no UNION needed
+            string sql = (version.Value, excludeIntermediary) switch
             {
-                // V1: value is raw attoCrc
-                attoCrc = valueRaw;
-                attoCirclesDemurraged = CirclesConverter.AttoCrcToAttoCircles(attoCrc, (ulong)timestamp);
-                staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCirclesDemurraged);
-            }
-            else
-            {
-                // V2: value is demurraged attoCircles
-                attoCirclesDemurraged = valueRaw;
+                (1, true) => BuildV1TransferSummaryQuery(hasCursor),
+                (1, false) => BuildV1TransfersQuery(hasCursor),
+                (2, true) => BuildV2TransferSummaryQuery(hasCursor),
+                (2, false) => BuildV2TransfersQuery(hasCursor),
+                _ => throw new ArgumentException($"Invalid version: {version.Value}. Must be 1 or 2.")
+            };
 
-                // Calculate day from timestamp for conversions
-                var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
-                var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000); // INFLATION_DAY_ZERO_UNIX
+            results = await ExecuteTransactionHistoryQuery(
+                connection, sql, normalizedAddress, limit,
+                cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex);
+        }
+        else
+        {
+            // Query both versions separately and merge results in application code
+            // This avoids SQL UNION across V1+V2 which causes performance issues
+            var v1Sql = excludeIntermediary
+                ? BuildV1TransferSummaryQuery(hasCursor)
+                : BuildV1TransfersQuery(hasCursor);
+            var v2Sql = excludeIntermediary
+                ? BuildV2TransferSummaryQuery(hasCursor)
+                : BuildV2TransfersQuery(hasCursor);
 
-                // staticAttoCircles = convert demurraged to inflationary (static)
-                staticAttoCircles = CirclesConverter.DemurrageToInflationary(attoCirclesDemurraged, day);
+            // Execute both queries
+            var v1Results = await ExecuteTransactionHistoryQuery(
+                connection, v1Sql, normalizedAddress, limit,
+                cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex);
 
-                // attoCrc = convert demurraged attoCircles to V1 CRC
-                attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
-            }
+            var v2Results = await ExecuteTransactionHistoryQuery(
+                connection, v2Sql, normalizedAddress, limit,
+                cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex);
 
-            // circles = convert demurraged attoCircles to decimal
-            var circles = CirclesConverter.AttoCirclesToCircles(attoCirclesDemurraged);
-
-            // staticCircles = convert staticAttoCircles to decimal
-            var staticCircles = CirclesConverter.AttoCirclesToCircles(staticAttoCircles);
-
-            // crc = convert attoCrc to decimal
-            var crc = CirclesConverter.AttoCirclesToCircles(attoCrc);
-
-            results.Add(new TransactionHistoryRow(
-                BlockNumber: blockNumber,
-                Timestamp: timestamp,
-                TransactionIndex: transactionIndex,
-                LogIndex: logIndex,
-                TransactionHash: transactionHash,
-                Version: ver,
-                From: from,
-                To: to,
-                Operator: operatorAddr,
-                Id: id,
-                Value: valueRaw.ToString(),
-                Circles: circles.ToString(),
-                AttoCircles: attoCirclesDemurraged.ToString(),
-                Crc: crc.ToString(),
-                AttoCrc: attoCrc.ToString(),
-                StaticCircles: staticCircles.ToString(),
-                StaticAttoCircles: staticAttoCircles.ToString()
-            ));
+            // Merge and sort by block/tx/log descending, take limit+1
+            results = v1Results
+                .Concat(v2Results)
+                .OrderByDescending(r => r.BlockNumber)
+                .ThenByDescending(r => r.TransactionIndex)
+                .ThenByDescending(r => r.LogIndex)
+                .Take(limit + 1)
+                .ToList();
         }
 
         // Check if there are more results
         var hasMore = results.Count > limit;
         if (hasMore)
         {
-            results.RemoveAt(results.Count - 1); // Remove the extra row
+            results.RemoveAt(results.Count - 1);
         }
 
         // Generate next cursor
@@ -2858,7 +3035,6 @@ public class CirclesRpcModule : ICirclesRpcModule
         if (hasMore && results.Count > 0)
         {
             var lastResult = results[^1];
-            // Include batchIndex in cursor for proper pagination of batch transfers
             nextCursor = CursorUtils.EncodeCursorWithBatch(lastResult.BlockNumber, lastResult.TransactionIndex, lastResult.LogIndex, 0);
         }
 
@@ -4129,33 +4305,305 @@ public class CirclesRpcModule : ICirclesRpcModule
     /// Gets transaction history with enriched data including demurrage calculations and profile info.
     /// Reduces need for separate profile lookups and demurrage computations on client side.
     /// </summary>
-    public async Task<PagedResponse<EnrichedTransaction>> GetTransactionHistoryEnriched(
-        string address,
-        long fromBlock,
-        long? toBlock = null,
-        int? limit = null,
-        string? cursor = null)
+    #region GetTransactionHistoryEnriched - Version-specific query builders
+
+    /// <summary>
+    /// Builds SQL query for V1 enriched TransferSummary (excludeIntermediary=true).
+    /// </summary>
+    private static string BuildV1EnrichedTransferSummaryQuery(string cursorCondition, string toBlockCondition)
     {
-        var normalizedAddress = address.ToLower();
-        await using var connection = await CreateConnectionAsync();
+        return $@"
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'from', ""from"",
+                    'to', ""to"",
+                    'value', amount::text,
+                    'version', 1,
+                    'type', 'CrcV1_TransferSummary'
+                ) as event_payload
+            FROM ""CrcV1_TransferSummary""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+        ";
+    }
 
-        // Decode cursor if provided
-        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
+    /// <summary>
+    /// Builds SQL query for V1 enriched transfers (excludeIntermediary=false).
+    /// </summary>
+    private static string BuildV1EnrichedTransfersQuery(string cursorCondition, string toBlockCondition)
+    {
+        return $@"
+            -- CrcV1_Transfer: ERC20 token transfers
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'from', ""from"",
+                    'to', ""to"",
+                    'id', ""tokenAddress"",
+                    'value', amount::text,
+                    'version', 1,
+                    'type', 'CrcV1_Transfer'
+                ) as event_payload
+            FROM ""CrcV1_Transfer""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
 
-        // Use limit or default to 20 if not specified
-        var effectiveLimit = limit ?? 20;
+            UNION ALL
 
-        // Build cursor condition (reused across all subqueries)
-        var cursorCondition = cursorBlock.HasValue ? @"AND (
-                    ""blockNumber"" < @cursorBlock OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
-                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
-                  )" : "";
-        var toBlockCondition = toBlock.HasValue ? "AND \"blockNumber\" <= @toBlock" : "";
+            -- CrcV1_HubTransfer: direct hub transfers
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'from', ""from"",
+                    'to', ""to"",
+                    'value', amount::text,
+                    'version', 1,
+                    'type', 'CrcV1_HubTransfer'
+                ) as event_payload
+            FROM ""CrcV1_HubTransfer""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+        ";
+    }
 
-        // Query V2 tables directly instead of V_Crc_Transfers view for better performance
-        // This avoids the expensive view materialization and allows index usage on from/to columns
-        var sql = @$"
+    /// <summary>
+    /// Builds SQL query for V1 enriched trust events.
+    /// </summary>
+    private static string BuildV1EnrichedTrustQuery(string cursorCondition, string toBlockCondition)
+    {
+        return $@"
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'trust' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'canSendTo', ""canSendTo"",
+                    'user', ""user"",
+                    'limit', ""limit""::text,
+                    'version', 1,
+                    'type', 'CrcV1_Trust'
+                ) as event_payload
+            FROM ""CrcV1_Trust""
+            WHERE (""canSendTo"" = @address OR ""user"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+        ";
+    }
+
+    /// <summary>
+    /// Builds SQL query for V2 enriched TransferSummary (excludeIntermediary=true).
+    /// </summary>
+    private static string BuildV2EnrichedTransferSummaryQuery(string cursorCondition, string toBlockCondition)
+    {
+        return $@"
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'from', ""from"",
+                    'to', ""to"",
+                    'value', amount::text,
+                    'version', 2,
+                    'type', 'CrcV2_TransferSummary'
+                ) as event_payload
+            FROM ""CrcV2_TransferSummary""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+        ";
+    }
+
+    /// <summary>
+    /// Builds SQL query for V2 enriched transfers (excludeIntermediary=false).
+    /// </summary>
+    private static string BuildV2EnrichedTransfersQuery(string cursorCondition, string toBlockCondition)
+    {
+        return $@"
+            -- CrcV2_TransferSingle: most common V2 transfers
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'operator', operator,
+                    'from', ""from"",
+                    'to', ""to"",
+                    'id', id::text,
+                    'value', value::text,
+                    'version', 2,
+                    'type', 'CrcV2_TransferSingle'
+                ) as event_payload
+            FROM ""CrcV2_TransferSingle""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+
+            UNION ALL
+
+            -- CrcV2_TransferBatch: batch transfers
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'batchIndex', ""batchIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'operator', operator,
+                    'from', ""from"",
+                    'to', ""to"",
+                    'id', id::text,
+                    'value', value::text,
+                    'version', 2,
+                    'type', 'CrcV2_TransferBatch'
+                ) as event_payload
+            FROM ""CrcV2_TransferBatch""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+
+            UNION ALL
+
+            -- CrcV2_Erc20WrapperTransfer: ERC20 wrapper transfers
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'transfer' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'from', ""from"",
+                    'to', ""to"",
+                    'id', ""tokenAddress"",
+                    'value', amount::text,
+                    'version', 2,
+                    'type', 'CrcV2_Erc20WrapperTransfer'
+                ) as event_payload
+            FROM ""CrcV2_Erc20WrapperTransfer""
+            WHERE (""from"" = @address OR ""to"" = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+        ";
+    }
+
+    /// <summary>
+    /// Builds SQL query for V2 enriched trust events.
+    /// </summary>
+    private static string BuildV2EnrichedTrustQuery(string cursorCondition, string toBlockCondition)
+    {
+        return $@"
+            SELECT
+                ""blockNumber"",
+                ""transactionIndex"",
+                ""logIndex"",
+                ""transactionHash"",
+                'trust' as event_name,
+                jsonb_build_object(
+                    'blockNumber', ""blockNumber"",
+                    'timestamp', timestamp,
+                    'transactionIndex', ""transactionIndex"",
+                    'logIndex', ""logIndex"",
+                    'transactionHash', ""transactionHash"",
+                    'truster', truster,
+                    'trustee', trustee,
+                    'expiryTime', ""expiryTime""::text,
+                    'version', 2,
+                    'type', 'CrcV2_Trust'
+                ) as event_payload
+            FROM ""CrcV2_Trust""
+            WHERE (truster = @address OR trustee = @address)
+              AND ""blockNumber"" >= @fromBlock
+              {toBlockCondition}
+              {cursorCondition}
+        ";
+    }
+
+    /// <summary>
+    /// Executes an enriched transaction history query and returns raw events.
+    /// </summary>
+    private async Task<List<JsonElement>> ExecuteEnrichedTransactionQuery(
+        NpgsqlConnection connection,
+        string sql,
+        string normalizedAddress,
+        long fromBlock,
+        long? toBlock,
+        int limit,
+        long? cursorBlock,
+        int? cursorTxIndex,
+        int? cursorLogIndex)
+    {
+        var wrappedSql = $@"
             SELECT
                 ""blockNumber"",
                 ""transactionIndex"",
@@ -4163,113 +4611,15 @@ public class CirclesRpcModule : ICirclesRpcModule
                 ""transactionHash"",
                 event_name,
                 event_payload
-            FROM (
-                -- CrcV2_TransferSingle: most common V2 transfers
-                SELECT
-                    ""blockNumber"",
-                    ""transactionIndex"",
-                    ""logIndex"",
-                    ""transactionHash"",
-                    'transfer' as event_name,
-                    jsonb_build_object(
-                        'blockNumber', ""blockNumber"",
-                        'timestamp', ""timestamp"",
-                        'transactionIndex', ""transactionIndex"",
-                        'logIndex', ""logIndex"",
-                        'transactionHash', ""transactionHash"",
-                        'operator', operator,
-                        'from', ""from"",
-                        'to', ""to"",
-                        'id', id::text,
-                        'value', value::text,
-                        'type', 'CrcV2_TransferSingle'
-                    ) as event_payload
-                FROM ""CrcV2_TransferSingle""
-                WHERE (""from"" = @address OR ""to"" = @address)
-                  AND ""blockNumber"" >= @fromBlock
-                  {toBlockCondition}
-                  {cursorCondition}
-
-                UNION ALL
-
-                -- CrcV2_TransferBatch: batch transfers
-                SELECT
-                    ""blockNumber"",
-                    ""transactionIndex"",
-                    ""logIndex"",
-                    ""transactionHash"",
-                    'transfer' as event_name,
-                    jsonb_build_object(
-                        'blockNumber', ""blockNumber"",
-                        'timestamp', ""timestamp"",
-                        'transactionIndex', ""transactionIndex"",
-                        'logIndex', ""logIndex"",
-                        'batchIndex', ""batchIndex"",
-                        'transactionHash', ""transactionHash"",
-                        'operator', operator,
-                        'from', ""from"",
-                        'to', ""to"",
-                        'id', id::text,
-                        'value', value::text,
-                        'type', 'CrcV2_TransferBatch'
-                    ) as event_payload
-                FROM ""CrcV2_TransferBatch""
-                WHERE (""from"" = @address OR ""to"" = @address)
-                  AND ""blockNumber"" >= @fromBlock
-                  {toBlockCondition}
-                  {cursorCondition}
-
-                UNION ALL
-
-                -- CrcV2_Erc20WrapperTransfer: ERC20 wrapper transfers
-                SELECT
-                    ""blockNumber"",
-                    ""transactionIndex"",
-                    ""logIndex"",
-                    ""transactionHash"",
-                    'transfer' as event_name,
-                    jsonb_build_object(
-                        'blockNumber', ""blockNumber"",
-                        'timestamp', ""timestamp"",
-                        'transactionIndex', ""transactionIndex"",
-                        'logIndex', ""logIndex"",
-                        'transactionHash', ""transactionHash"",
-                        'from', ""from"",
-                        'to', ""to"",
-                        'id', ""tokenAddress"",
-                        'value', amount::text,
-                        'type', 'CrcV2_Erc20WrapperTransfer'
-                    ) as event_payload
-                FROM ""CrcV2_Erc20WrapperTransfer""
-                WHERE (""from"" = @address OR ""to"" = @address)
-                  AND ""blockNumber"" >= @fromBlock
-                  {toBlockCondition}
-                  {cursorCondition}
-
-                UNION ALL
-
-                -- CrcV2_Trust: trust events
-                SELECT
-                    ""blockNumber"",
-                    ""transactionIndex"",
-                    ""logIndex"",
-                    ""transactionHash"",
-                    'trust' as event_name,
-                    to_jsonb(t) as event_payload
-                FROM ""CrcV2_Trust"" t
-                WHERE (t.truster = @address OR t.trustee = @address)
-                  AND t.""blockNumber"" >= @fromBlock
-                  {toBlockCondition}
-                  {cursorCondition}
-            ) combined
+            FROM ({sql}) combined
             ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
             LIMIT @limit
         ";
 
-        await using var cmd = new NpgsqlCommand(sql, connection);
+        await using var cmd = new NpgsqlCommand(wrappedSql, connection);
         cmd.Parameters.AddWithValue("address", normalizedAddress);
         cmd.Parameters.AddWithValue("fromBlock", fromBlock);
-        cmd.Parameters.AddWithValue("limit", effectiveLimit + 1); // Fetch one extra to check for more
+        cmd.Parameters.AddWithValue("limit", limit + 1);
 
         if (toBlock.HasValue)
         {
@@ -4293,18 +4643,77 @@ public class CirclesRpcModule : ICirclesRpcModule
             events.Add(eventPayload);
         }
 
+        return events;
+    }
+
+    #endregion
+
+    public async Task<PagedResponse<EnrichedTransaction>> GetTransactionHistoryEnriched(
+        string address,
+        long fromBlock,
+        long? toBlock = null,
+        int? limit = null,
+        string? cursor = null,
+        int? version = null,
+        bool excludeIntermediary = true)
+    {
+        var normalizedAddress = address.ToLower();
+        await using var connection = await CreateConnectionAsync();
+
+        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
+        var effectiveLimit = limit ?? 20;
+
+        var cursorCondition = cursorBlock.HasValue ? @"AND (
+                    ""blockNumber"" < @cursorBlock OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
+                  )" : "";
+        var toBlockCondition = toBlock.HasValue ? "AND \"blockNumber\" <= @toBlock" : "";
+
+        List<JsonElement> events;
+
+        // Determine which version to query
+        // Default: version=null means V2 only (backward compatibility with existing behavior)
+        var effectiveVersion = version ?? 2;
+
+        if (effectiveVersion == 1)
+        {
+            // V1 queries
+            var transferSql = excludeIntermediary
+                ? BuildV1EnrichedTransferSummaryQuery(cursorCondition, toBlockCondition)
+                : BuildV1EnrichedTransfersQuery(cursorCondition, toBlockCondition);
+            var trustSql = BuildV1EnrichedTrustQuery(cursorCondition, toBlockCondition);
+            var combinedSql = $"{transferSql} UNION ALL {trustSql}";
+
+            events = await ExecuteEnrichedTransactionQuery(
+                connection, combinedSql, normalizedAddress, fromBlock, toBlock, effectiveLimit,
+                cursorBlock, cursorTxIndex, cursorLogIndex);
+        }
+        else
+        {
+            // V2 queries (default)
+            var transferSql = excludeIntermediary
+                ? BuildV2EnrichedTransferSummaryQuery(cursorCondition, toBlockCondition)
+                : BuildV2EnrichedTransfersQuery(cursorCondition, toBlockCondition);
+            var trustSql = BuildV2EnrichedTrustQuery(cursorCondition, toBlockCondition);
+            var combinedSql = $"{transferSql} UNION ALL {trustSql}";
+
+            events = await ExecuteEnrichedTransactionQuery(
+                connection, combinedSql, normalizedAddress, fromBlock, toBlock, effectiveLimit,
+                cursorBlock, cursorTxIndex, cursorLogIndex);
+        }
+
         // Check if there are more results
         var hasMore = events.Count > effectiveLimit;
         if (hasMore)
         {
-            events.RemoveAt(events.Count - 1); // Remove the extra row
+            events.RemoveAt(events.Count - 1);
         }
 
         // Extract all involved addresses from events
         var involvedAddresses = new HashSet<string>();
         foreach (var evt in events)
         {
-            // Extract addresses from different event types
             if (evt.TryGetProperty("from", out var from) && from.ValueKind == JsonValueKind.String)
                 involvedAddresses.Add(from.GetString()!);
             if (evt.TryGetProperty("to", out var to) && to.ValueKind == JsonValueKind.String)
@@ -4313,6 +4722,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                 involvedAddresses.Add(truster.GetString()!);
             if (evt.TryGetProperty("trustee", out var trustee) && trustee.ValueKind == JsonValueKind.String)
                 involvedAddresses.Add(trustee.GetString()!);
+            // V1 Trust uses canSendTo and user
+            if (evt.TryGetProperty("canSendTo", out var canSendTo) && canSendTo.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(canSendTo.GetString()!);
+            if (evt.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.String)
+                involvedAddresses.Add(user.GetString()!);
         }
 
         // Batch fetch avatar info and profiles for all involved addresses (in parallel)
@@ -4322,7 +4736,6 @@ public class CirclesRpcModule : ICirclesRpcModule
 
         if (addressArray.Length > 0)
         {
-            // Run both fetches in parallel - they are independent operations
             var avatarTask = GetAvatarInfoBatchInternal(addressArray);
             var profileTask = GetProfileByAddressBatch(addressArray);
             await Task.WhenAll(avatarTask, profileTask);
@@ -4344,7 +4757,6 @@ public class CirclesRpcModule : ICirclesRpcModule
         var enrichedTransactions = new List<EnrichedTransaction>();
         foreach (var evt in events)
         {
-            // Extract top-level fields from the event
             var blockNumber = evt.TryGetProperty("blockNumber", out var bn) ? bn.GetInt64() : 0;
             var transactionHash = evt.TryGetProperty("transactionHash", out var th) ? th.GetString() ?? "" : "";
             var transactionIndex = evt.TryGetProperty("transactionIndex", out var ti) ? ti.GetInt32() : 0;
@@ -4360,7 +4772,6 @@ public class CirclesRpcModule : ICirclesRpcModule
                 Participants = new Dictionary<string, ParticipantInfo>()
             };
 
-            // Extract addresses specific to this event
             var eventAddresses = new HashSet<string>();
             if (evt.TryGetProperty("from", out var from) && from.ValueKind == JsonValueKind.String)
                 eventAddresses.Add(from.GetString()!);
@@ -4370,8 +4781,11 @@ public class CirclesRpcModule : ICirclesRpcModule
                 eventAddresses.Add(truster.GetString()!);
             if (evt.TryGetProperty("trustee", out var trustee) && trustee.ValueKind == JsonValueKind.String)
                 eventAddresses.Add(trustee.GetString()!);
+            if (evt.TryGetProperty("canSendTo", out var canSendTo) && canSendTo.ValueKind == JsonValueKind.String)
+                eventAddresses.Add(canSendTo.GetString()!);
+            if (evt.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.String)
+                eventAddresses.Add(user.GetString()!);
 
-            // Add participant info only for addresses in this specific event
             foreach (var addr in eventAddresses)
             {
                 var participantInfo = new ParticipantInfo
@@ -4389,7 +4803,6 @@ public class CirclesRpcModule : ICirclesRpcModule
         string? nextCursor = null;
         if (hasMore && enrichedTransactions.Count > 0)
         {
-            // Extract cursor from the last event
             var lastEvent = enrichedTransactions[^1].Event;
             if (lastEvent.TryGetProperty("blockNumber", out var blockNum) &&
                 lastEvent.TryGetProperty("transactionIndex", out var txIdx) &&

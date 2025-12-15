@@ -162,12 +162,16 @@ public interface ICirclesRpcModule
     /// <param name="toBlock">Ending block number (optional)</param>
     /// <param name="limit">Maximum transactions to return (optional, default 20)</param>
     /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    /// <param name="version">Filter by version (null = V2 only for backward compat, 1 = V1 only, 2 = V2 only)</param>
+    /// <param name="excludeIntermediary">If true, uses TransferSummary which excludes intermediary hop transfers (default: true)</param>
     Task<PagedResponse<EnrichedTransaction>> GetTransactionHistoryEnriched(
         string address,
         long fromBlock,
         long? toBlock = null,
         int? limit = null,
-        string? cursor = null);
+        string? cursor = null,
+        int? version = null,
+        bool excludeIntermediary = true);
 
     /// <summary>
     /// Unified search across profiles by address prefix OR name/description text.
@@ -257,8 +261,8 @@ public interface ICirclesRpcModule
     /// <param name="limit">Maximum number of transactions to return (default: 50)</param>
     /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
     /// <param name="version">Filter by version (null = both V1+V2, 1 = V1 only, 2 = V2 only)</param>
-    /// <param name="excludeIntermediary">If true, uses TransferSummary view which excludes intermediary hop transfers (default: false)</param>
-    Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null, int? version = null, bool excludeIntermediary = false);
+    /// <param name="excludeIntermediary">If true, uses TransferSummary which excludes intermediary hop transfers (default: true)</param>
+    Task<PagedResponse<TransactionHistoryRow>> GetTransactionHistory(string avatarAddress, int limit = 50, string? cursor = null, int? version = null, bool excludeIntermediary = true);
 
     /// <summary>
     /// Gets all holders of a specific token with cursor-based pagination.
