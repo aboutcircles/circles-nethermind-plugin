@@ -8,16 +8,46 @@ using NpgsqlTypes;
 
 namespace Circles.Index.Postgres;
 
-public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema) : IReadonlyDatabase
+public class ReadonlyPostgresDb : IReadonlyDatabase, IDisposable
 {
-    public IDatabaseSchema Schema { get; } = schema;
+    public IDatabaseSchema Schema { get; }
 
-    protected string ConnectionString { get; } = connectionString;
+    protected string ConnectionString { get; }
+
+    /// <summary>
+    /// Connection pool data source. Using NpgsqlDataSource provides efficient connection pooling
+    /// with configurable min/max pool sizes, reducing connection overhead during high-throughput indexing.
+    /// </summary>
+    protected NpgsqlDataSource DataSource { get; }
+
+    public ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
+    {
+        Schema = schema;
+        ConnectionString = connectionString;
+
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        // Connection pool settings
+        dataSourceBuilder.ConnectionStringBuilder.MinPoolSize = 2;
+        dataSourceBuilder.ConnectionStringBuilder.MaxPoolSize = 20;
+        dataSourceBuilder.ConnectionStringBuilder.ConnectionIdleLifetime = 300; // 5 minutes
+        // Default timeouts - individual commands can override with CommandTimeout
+        dataSourceBuilder.ConnectionStringBuilder.CommandTimeout = 120; // 2 minutes default
+        dataSourceBuilder.ConnectionStringBuilder.Timeout = 30; // 30 seconds connection timeout
+        // Buffer sizes for better performance on large batch operations
+        dataSourceBuilder.ConnectionStringBuilder.WriteBufferSize = 32768; // 32KB
+        dataSourceBuilder.ConnectionStringBuilder.ReadBufferSize = 32768;  // 32KB
+        DataSource = dataSourceBuilder.Build();
+    }
+
+    public void Dispose()
+    {
+        DataSource.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     public DatabaseQueryResult Select(ParameterizedSql select)
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         using var command = connection.CreateCommand();
         command.CommandText = select.Sql;
@@ -87,9 +117,13 @@ public class ReadonlyPostgresDb(string connectionString, IDatabaseSchema schema)
     }
 }
 
-public class PostgresDb(string connectionString, IDatabaseSchema schema)
-    : ReadonlyPostgresDb(connectionString, schema), IDatabase
+public class PostgresDb : ReadonlyPostgresDb, IDatabase
 {
+    public PostgresDb(string connectionString, IDatabaseSchema schema)
+        : base(connectionString, schema)
+    {
+    }
+
     private bool HasPrimaryKey(NpgsqlConnection connection, EventSchema table)
     {
         var checkPkSql = $@"
@@ -105,8 +139,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public void Migrate()
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         using var transaction = connection.BeginTransaction();
         try
@@ -227,17 +260,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         var columnTypes = tableSchema.Columns.ToDictionary(o => o.Column, o => o.Type);
         var columnList = string.Join(", ", columnTypes.Select(o => $"\"{o.Key}\""));
 
-        // Build connection string with extended timeouts for large batch operations
-        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
-        {
-            CommandTimeout = 300,  // 5 minutes command timeout
-            Timeout = 300,         // 5 minutes connection timeout
-            WriteBufferSize = 32768,  // Increase write buffer size to 32KB (default is 8KB)
-            ReadBufferSize = 32768    // Also increase read buffer for consistency
-        };
-
-        await using var connection = new NpgsqlConnection(csb.ToString());
-        connection.Open();
+        await using var connection = await DataSource.OpenConnectionAsync();
 
         await using var writer = await connection.BeginBinaryImportAsync(
             $"COPY \"{tableSchema.Namespace}_{tableSchema.Table}\" ({columnList}) FROM STDIN (FORMAT BINARY)"
@@ -321,17 +344,10 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
             ON CONFLICT ({primaryKeyList}) DO NOTHING
         ";
 
-        // Build connection string with extended timeouts
-        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
-        {
-            CommandTimeout = 300,
-            Timeout = 300
-        };
-
-        await using var connection = new NpgsqlConnection(csb.ToString());
-        await connection.OpenAsync();
+        await using var connection = await DataSource.OpenConnectionAsync();
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.CommandTimeout = 300; // 5 minutes for batch upsert operations
 
         // Add array parameters with proper NpgsqlDbType
         for (int i = 0; i < columns.Count; i++)
@@ -374,17 +390,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         if (batches.Count == 0)
             return;
 
-        // Build connection string with extended timeouts for large batch operations
-        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
-        {
-            CommandTimeout = 600,  // 10 minutes for atomic batch
-            Timeout = 300,
-            WriteBufferSize = 32768,
-            ReadBufferSize = 32768
-        };
-
-        await using var connection = new NpgsqlConnection(csb.ToString());
-        await connection.OpenAsync();
+        await using var connection = await DataSource.OpenConnectionAsync();
 
         await using var transaction = await connection.BeginTransactionAsync();
 
@@ -508,6 +514,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
         ";
 
         await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.CommandTimeout = 600; // 10 minutes for atomic batch operations
 
         // Add array parameters with proper NpgsqlDbType
         for (int i = 0; i < columns.Count; i++)
@@ -675,8 +682,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public long? LatestBlock()
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
@@ -694,8 +700,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public long? FirstGap()
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
@@ -722,8 +727,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public IEnumerable<(long BlockNumber, Hash256 BlockHash)> LastPersistedBlocks(int count = 100)
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         NpgsqlCommand cmd = connection.CreateCommand();
         cmd.CommandText = $@"
@@ -744,8 +748,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     {
         // Delete from each table in separate transactions to avoid long-running transactions
         // that can timeout. This is safer for large deletions spanning millions of blocks.
-        await using var connection = new NpgsqlConnection(ConnectionString);
-        await connection.OpenAsync();
+        await using var connection = await DataSource.OpenConnectionAsync();
 
         foreach (var table in Schema.Tables.Values)
         {
@@ -784,8 +787,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public void SetEventTableHead(string tableName, long blockNumber)
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         const string sql = @"
             INSERT INTO ""System_EventTableHead"" (""tableName"", ""blockNumber"")
@@ -807,8 +809,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public long? GetEventTableHead(string tableName)
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         const string sql = @"
             SELECT ""blockNumber""
@@ -829,8 +830,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public void SetEventTableHeads(IDictionary<string, long> mappings)
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         using var transaction = connection.BeginTransaction();
         try
@@ -876,8 +876,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public IDictionary<string, long> GetEventTableHeads()
     {
-        using var connection = new NpgsqlConnection(ConnectionString);
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         const string sql = @"
             SELECT ""tableName"", ""blockNumber""
@@ -903,15 +902,7 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
     /// </summary>
     public IDictionary<string, long> GetMaxBlockPerTable()
     {
-        // Use extended timeout for potentially slow queries after large deletions
-        var csb = new NpgsqlConnectionStringBuilder(ConnectionString)
-        {
-            CommandTimeout = 120,  // 2 minutes
-            Timeout = 60
-        };
-
-        using var connection = new NpgsqlConnection(csb.ToString());
-        connection.Open();
+        using var connection = DataSource.OpenConnection();
 
         var result = new Dictionary<string, long>();
 

@@ -39,6 +39,12 @@ public class StateMachine(
 
     private State CurrentState { get; set; } = State.New;
 
+    /// <summary>
+    /// Returns true if the state machine is in a state that can accept new block processing.
+    /// Used to prevent starting ProcessBlocksAsync when in Error state (which handles its own recovery).
+    /// </summary>
+    public bool CanProcessNewBlocks => CurrentState is State.WaitForNewBlock or State.Syncing or State.NotifySubscribers;
+
     // Status logging
     private DateTime _lastStatusLog = DateTime.UtcNow;
     private long _blocksProcessedSinceLastLog = 0;
@@ -288,13 +294,33 @@ public class StateMachine(
                             var lastError = Errors.LastOrDefault();
                             bool isTransientError = IsTransientSyncError(lastError);
 
+                            // Max retry limit to prevent infinite loops
+                            const int maxConsecutiveErrors = 10;
+                            if (Errors.Count >= maxConsecutiveErrors)
+                            {
+                                context.Logger.Error(
+                                    $"CRITICAL: Reached maximum consecutive error limit ({maxConsecutiveErrors}). " +
+                                    $"The indexer will stop retrying. Manual intervention required. " +
+                                    $"Last error: {lastError?.Message ?? "unknown"}");
+
+                                // Log all errors for debugging
+                                for (int i = 0; i < Errors.Count; i++)
+                                {
+                                    context.Logger.Error($"  Error {i + 1}: {Errors[i].Message}");
+                                }
+
+                                // Stay in Error state but don't retry - requires manual restart
+                                // The state machine will remain in Error state, blocking new processing
+                                return;
+                            }
+
                             // Exponential backoff based on the number of errors
                             var delay = Errors.Count * Errors.Count * 1000;
 
-                            // If the delay is larger than 60 sec, clear the oldest errors
+                            // Cap the delay at 60 seconds
                             if (delay > 60000)
                             {
-                                Errors.RemoveAt(0);
+                                delay = 60000;
                             }
 
                             // Add some jitter to the delay
@@ -302,7 +328,7 @@ public class StateMachine(
                             delay += jitter;
 
                             // Wait 'delay' ms
-                            context.Logger.Info($"Waiting {delay} ms before retrying after an error...");
+                            context.Logger.Info($"Waiting {delay} ms before retrying after error {Errors.Count}/{maxConsecutiveErrors}...");
                             await Task.Delay(delay, cancellationToken);
 
                             if (isTransientError)
