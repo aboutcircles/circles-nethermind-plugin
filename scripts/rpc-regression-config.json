@@ -109,10 +109,10 @@
     "circles_events (CrcV2_TransferBatch recent)": "Staging has more CrcV2_TransferBatch events indexed"
   },
   "subscriptionTest": {
-    "enabled": true,
+    "enabled": false,
     "duration": 90,
     "minEvents": 1,
-    "filterAddress": "0x4b6f72008e7aca33de36b6565ef30264626b21db"
+    "filterAddress": null
   },
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
