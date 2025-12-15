@@ -4014,9 +4014,18 @@ public class CirclesRpcModule : ICirclesRpcModule
         // Use limit or default to 20 if not specified
         var effectiveLimit = limit ?? 20;
 
-        // Build query to get events with cursor pagination
+        // Build cursor condition (reused across all subqueries)
+        var cursorCondition = cursorBlock.HasValue ? @"AND (
+                    ""blockNumber"" < @cursorBlock OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" < @cursorTxIndex) OR
+                    (""blockNumber"" = @cursorBlock AND ""transactionIndex"" = @cursorTxIndex AND ""logIndex"" < @cursorLogIndex)
+                  )" : "";
+        var toBlockCondition = toBlock.HasValue ? "AND \"blockNumber\" <= @toBlock" : "";
+
+        // Query V2 tables directly instead of V_Crc_Transfers view for better performance
+        // This avoids the expensive view materialization and allows index usage on from/to columns
         var sql = @$"
-            SELECT 
+            SELECT
                 ""blockNumber"",
                 ""transactionIndex"",
                 ""logIndex"",
@@ -4024,42 +4033,103 @@ public class CirclesRpcModule : ICirclesRpcModule
                 event_name,
                 event_payload
             FROM (
-                SELECT 
-                    e.""blockNumber"",
-                    e.""transactionIndex"",
-                    e.""logIndex"",
-                    e.""transactionHash"",
+                -- CrcV2_TransferSingle: most common V2 transfers
+                SELECT
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    ""transactionHash"",
                     'transfer' as event_name,
-                    to_jsonb(e) as event_payload
-                FROM ""V_Crc_Transfers"" e
-                WHERE e.version = 2
-                  AND (e.""from"" = @address OR e.""to"" = @address)
-                  AND e.""blockNumber"" >= @fromBlock
-                  {(toBlock.HasValue ? "AND e.\"blockNumber\" <= @toBlock" : "")}
-                  {(cursorBlock.HasValue ? @"AND (
-                    e.""blockNumber"" < @cursorBlock OR
-                    (e.""blockNumber"" = @cursorBlock AND e.""transactionIndex"" < @cursorTxIndex) OR
-                    (e.""blockNumber"" = @cursorBlock AND e.""transactionIndex"" = @cursorTxIndex AND e.""logIndex"" < @cursorLogIndex)
-                  )" : "")}
-                
+                    jsonb_build_object(
+                        'blockNumber', ""blockNumber"",
+                        'timestamp', ""timestamp"",
+                        'transactionIndex', ""transactionIndex"",
+                        'logIndex', ""logIndex"",
+                        'transactionHash', ""transactionHash"",
+                        'operator', operator,
+                        'from', ""from"",
+                        'to', ""to"",
+                        'id', id::text,
+                        'value', value::text,
+                        'type', 'CrcV2_TransferSingle'
+                    ) as event_payload
+                FROM ""CrcV2_TransferSingle""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                  AND ""blockNumber"" >= @fromBlock
+                  {toBlockCondition}
+                  {cursorCondition}
+
                 UNION ALL
-                
-                SELECT 
-                    t.""blockNumber"",
-                    t.""transactionIndex"",
-                    t.""logIndex"",
-                    t.""transactionHash"",
+
+                -- CrcV2_TransferBatch: batch transfers
+                SELECT
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    ""transactionHash"",
+                    'transfer' as event_name,
+                    jsonb_build_object(
+                        'blockNumber', ""blockNumber"",
+                        'timestamp', ""timestamp"",
+                        'transactionIndex', ""transactionIndex"",
+                        'logIndex', ""logIndex"",
+                        'batchIndex', ""batchIndex"",
+                        'transactionHash', ""transactionHash"",
+                        'operator', operator,
+                        'from', ""from"",
+                        'to', ""to"",
+                        'id', id::text,
+                        'value', value::text,
+                        'type', 'CrcV2_TransferBatch'
+                    ) as event_payload
+                FROM ""CrcV2_TransferBatch""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                  AND ""blockNumber"" >= @fromBlock
+                  {toBlockCondition}
+                  {cursorCondition}
+
+                UNION ALL
+
+                -- CrcV2_Erc20WrapperTransfer: ERC20 wrapper transfers
+                SELECT
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    ""transactionHash"",
+                    'transfer' as event_name,
+                    jsonb_build_object(
+                        'blockNumber', ""blockNumber"",
+                        'timestamp', ""timestamp"",
+                        'transactionIndex', ""transactionIndex"",
+                        'logIndex', ""logIndex"",
+                        'transactionHash', ""transactionHash"",
+                        'from', ""from"",
+                        'to', ""to"",
+                        'id', ""tokenAddress"",
+                        'value', amount::text,
+                        'type', 'CrcV2_Erc20WrapperTransfer'
+                    ) as event_payload
+                FROM ""CrcV2_Erc20WrapperTransfer""
+                WHERE (""from"" = @address OR ""to"" = @address)
+                  AND ""blockNumber"" >= @fromBlock
+                  {toBlockCondition}
+                  {cursorCondition}
+
+                UNION ALL
+
+                -- CrcV2_Trust: trust events
+                SELECT
+                    ""blockNumber"",
+                    ""transactionIndex"",
+                    ""logIndex"",
+                    ""transactionHash"",
                     'trust' as event_name,
                     to_jsonb(t) as event_payload
                 FROM ""CrcV2_Trust"" t
                 WHERE (t.truster = @address OR t.trustee = @address)
                   AND t.""blockNumber"" >= @fromBlock
-                  {(toBlock.HasValue ? "AND t.\"blockNumber\" <= @toBlock" : "")}
-                  {(cursorBlock.HasValue ? @"AND (
-                    t.""blockNumber"" < @cursorBlock OR
-                    (t.""blockNumber"" = @cursorBlock AND t.""transactionIndex"" < @cursorTxIndex) OR
-                    (t.""blockNumber"" = @cursorBlock AND t.""transactionIndex"" = @cursorTxIndex AND t.""logIndex"" < @cursorLogIndex)
-                  )" : "")}
+                  {toBlockCondition}
+                  {cursorCondition}
             ) combined
             ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
             LIMIT @limit
