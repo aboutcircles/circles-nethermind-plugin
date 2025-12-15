@@ -235,6 +235,13 @@ public class Plugin : INethermindPlugin
         // Signal which block is the new head
         Interlocked.Exchange(ref _latestHeadToIndex, blockNo);
 
+        // Don't start new processing if state machine is in Error state (it handles its own recovery)
+        // or other states that shouldn't process new blocks yet (Initial, Reorg)
+        if (_indexerMachine != null && !_indexerMachine.CanProcessNewBlocks)
+        {
+            return;
+        }
+
         // Start the processing task if it's not already running
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
