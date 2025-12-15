@@ -749,7 +749,7 @@ run_test "events" "circles_events (filter: nested AND/OR with test addr3)" "curl
 run_test "events" "circles_events (filter: transactionHash LIKE pattern)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38001000,null,[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Like\",\"Column\":\"transactionHash\",\"Value\":\"0x%\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (filter: blockNumber NOT IN array)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38001000,null,[{\"Type\":\"FilterPredicate\",\"FilterType\":\"NotIn\",\"Column\":\"blockNumber\",\"Value\":[1,2,3,4,5]}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (filter: blockNumber >= 38000000)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38001000,null,[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThanOrEquals\",\"Column\":\"blockNumber\",\"Value\":38000000}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
-run_test "events" "circles_events (filter: combined with test addr3 and block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$TEST_ADDR_3\",38000000,39000000,[\"CrcV1_Trust\",\"CrcV2_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"IsNotNull\",\"Column\":\"transactionHash\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (filter: combined with test addr3 and block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$TEST_ADDR_3\",38000000,38100000,[\"CrcV1_Trust\",\"CrcV2_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"IsNotNull\",\"Column\":\"transactionHash\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (CrcV2_Trust with expiry)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38500000,38501000,[\"CrcV2_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"expiryTime\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (CrcV2_TransferSingle with amount filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38500000,38501000,[\"CrcV2_TransferSingle\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"value\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 
@@ -768,12 +768,12 @@ run_test "events" "circles_events (CrcV1_Signup for user)" "curl -s -X POST --da
 # CrcV1 Trust events
 run_test "events" "circles_events (CrcV1_Trust recent block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43000000,43001000,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (CrcV1_Trust for user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[\"$V1_USER_2\",null,null,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
-run_test "events" "circles_events (CrcV1_Trust limit filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,39000000,[\"CrcV1_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"limit\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_Trust limit filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38050000,[\"CrcV1_Trust\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"limit\",\"Value\":0}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 # CrcV1 HubTransfer events
 run_test "events" "circles_events (CrcV1_HubTransfer recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43525000,43530000,[\"CrcV1_HubTransfer\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (CrcV1_HubTransfer from)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43525000,43530000,[\"CrcV1_HubTransfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"from\",\"Value\":\"$V1_TRANSFER_FROM\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
-run_test "events" "circles_events (CrcV1_HubTransfer large amount)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43000000,43600000,[\"CrcV1_HubTransfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"amount\",\"Value\":\"100000000000000000\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events (CrcV1_HubTransfer large amount)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43500000,43550000,[\"CrcV1_HubTransfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"amount\",\"Value\":\"100000000000000000\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 # CrcV1 Transfer events
 run_test "events" "circles_events (CrcV1_Transfer for token)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43430000,43435000,[\"CrcV1_Transfer\"],[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"tokenAddress\",\"Value\":\"$V1_TOKEN_1\"}],false]}' -H \"Content-Type: application/json\" $RPC_URL"
@@ -895,190 +895,195 @@ fi
 
 # =====================================================================
 # EARLY V1 ERA (~12.5M - 13M blocks) - First Circles events
+# Reduced block ranges to keep results under ~500 events
 # =====================================================================
 
-run_test_json "consistency" "consistency: CrcV1_Signup early era (12.5M-12.6M)" '{
+run_test_json "consistency" "consistency: CrcV1_Signup early era (12.5M-12.51M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 12500000, 12600000, ["CrcV1_Signup"], null, false]
+  "params": [null, 12500000, 12510000, ["CrcV1_Signup"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Trust early era (12.5M-12.6M)" '{
+run_test_json "consistency" "consistency: CrcV1_Trust early era (12.5M-12.505M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 12500000, 12600000, ["CrcV1_Trust"], null, false]
+  "params": [null, 12500000, 12505000, ["CrcV1_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_HubTransfer early era (12.5M-13M)" '{
+run_test_json "consistency" "consistency: CrcV1_HubTransfer early era (12.5M-12.55M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 12500000, 13000000, ["CrcV1_HubTransfer"], null, false]
+  "params": [null, 12500000, 12550000, ["CrcV1_HubTransfer"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Transfer early era (12.5M-12.55M)" '{
+run_test_json "consistency" "consistency: CrcV1_Transfer early era (12.5M-12.502M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 12500000, 12550000, ["CrcV1_Transfer"], null, false]
+  "params": [null, 12500000, 12502000, ["CrcV1_Transfer"], null, false]
 }'
 
-run_test_json "consistency" "consistency: all V1 events early era (12.5M-12.6M)" '{
+run_test_json "consistency" "consistency: all V1 events early era (12.5M-12.502M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 12500000, 12600000, ["CrcV1_Signup", "CrcV1_Trust", "CrcV1_HubTransfer", "CrcV1_Transfer"], null, false]
+  "params": [null, 12500000, 12502000, ["CrcV1_Signup", "CrcV1_Trust", "CrcV1_HubTransfer", "CrcV1_Transfer"], null, false]
 }'
 
 # =====================================================================
 # MID V1 ERA (~20M - 21M blocks) - Established V1 activity
+# Reduced block ranges to keep results under ~500 events
 # =====================================================================
 
-run_test_json "consistency" "consistency: CrcV1_Signup mid era (20M-20.1M)" '{
+run_test_json "consistency" "consistency: CrcV1_Signup mid era (20M-20.05M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 20000000, 20100000, ["CrcV1_Signup"], null, false]
+  "params": [null, 20000000, 20050000, ["CrcV1_Signup"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Trust mid era (20M-20.1M)" '{
+run_test_json "consistency" "consistency: CrcV1_Trust mid era (20M-20.02M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 20000000, 20100000, ["CrcV1_Trust"], null, false]
+  "params": [null, 20000000, 20020000, ["CrcV1_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_HubTransfer mid era (20M-20.5M)" '{
+run_test_json "consistency" "consistency: CrcV1_HubTransfer mid era (20M-20.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 20000000, 20500000, ["CrcV1_HubTransfer"], null, false]
+  "params": [null, 20000000, 20100000, ["CrcV1_HubTransfer"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Transfer mid era (20M-20.05M)" '{
+run_test_json "consistency" "consistency: CrcV1_Transfer mid era (20M-20.005M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 20000000, 20050000, ["CrcV1_Transfer"], null, false]
+  "params": [null, 20000000, 20005000, ["CrcV1_Transfer"], null, false]
 }'
 
 # =====================================================================
 # V2 LAUNCH ERA (~35M - 36M blocks) - Critical V2 start period
+# Reduced block ranges to keep results under ~500 events
 # =====================================================================
 
-run_test_json "consistency" "consistency: CrcV2_RegisterHuman v2 launch (35M-35.5M)" '{
+run_test_json "consistency" "consistency: CrcV2_RegisterHuman v2 launch (35M-35.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 35500000, ["CrcV2_RegisterHuman"], null, false]
+  "params": [null, 35000000, 35100000, ["CrcV2_RegisterHuman"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_RegisterGroup v2 launch (35M-36M)" '{
+run_test_json "consistency" "consistency: CrcV2_RegisterGroup v2 launch (35M-35.5M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 36000000, ["CrcV2_RegisterGroup"], null, false]
+  "params": [null, 35000000, 35500000, ["CrcV2_RegisterGroup"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_Trust v2 launch (35M-35.5M)" '{
+run_test_json "consistency" "consistency: CrcV2_Trust v2 launch (35M-35.05M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 35500000, ["CrcV2_Trust"], null, false]
+  "params": [null, 35000000, 35050000, ["CrcV2_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_TransferSingle v2 launch (35M-35.5M)" '{
+run_test_json "consistency" "consistency: CrcV2_TransferSingle v2 launch (35M-35.02M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 35500000, ["CrcV2_TransferSingle"], null, false]
+  "params": [null, 35000000, 35020000, ["CrcV2_TransferSingle"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_PersonalMint v2 launch (35M-35.5M)" '{
+run_test_json "consistency" "consistency: CrcV2_PersonalMint v2 launch (35M-35.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 35500000, ["CrcV2_PersonalMint"], null, false]
+  "params": [null, 35000000, 35100000, ["CrcV2_PersonalMint"], null, false]
 }'
 
-run_test_json "consistency" "consistency: all V2 registration events v2 launch (35M-36M)" '{
+run_test_json "consistency" "consistency: all V2 registration events v2 launch (35M-35.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 36000000, ["CrcV2_RegisterHuman", "CrcV2_RegisterGroup", "CrcV2_RegisterOrganization"], null, false]
+  "params": [null, 35000000, 35100000, ["CrcV2_RegisterHuman", "CrcV2_RegisterGroup", "CrcV2_RegisterOrganization"], null, false]
 }'
 
-run_test_json "consistency" "consistency: Safe events v2 launch (35M-36M)" '{
+run_test_json "consistency" "consistency: Safe events v2 launch (35M-35.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 35000000, 36000000, ["Safe_ProxyCreation", "Safe_SafeSetup"], null, false]
+  "params": [null, 35000000, 35100000, ["Safe_ProxyCreation", "Safe_SafeSetup"], null, false]
 }'
 
 # =====================================================================
 # POST-V2 GROWTH ERA (~38M - 39M blocks) - V2 adoption period
+# Reduced block ranges to keep results under ~500 events
 # =====================================================================
 
-run_test_json "consistency" "consistency: CrcV2_RegisterHuman growth era (38M-38.5M)" '{
+run_test_json "consistency" "consistency: CrcV2_RegisterHuman growth era (38M-38.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 38000000, 38500000, ["CrcV2_RegisterHuman"], null, false]
+  "params": [null, 38000000, 38100000, ["CrcV2_RegisterHuman"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_Trust growth era (38M-38.5M)" '{
+run_test_json "consistency" "consistency: CrcV2_Trust growth era (38M-38.05M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 38000000, 38500000, ["CrcV2_Trust"], null, false]
+  "params": [null, 38000000, 38050000, ["CrcV2_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_TransferSingle growth era (38M-38.2M)" '{
+run_test_json "consistency" "consistency: CrcV2_TransferSingle growth era (38M-38.02M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 38000000, 38200000, ["CrcV2_TransferSingle"], null, false]
+  "params": [null, 38000000, 38020000, ["CrcV2_TransferSingle"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_GroupMint growth era (38M-39M)" '{
+run_test_json "consistency" "consistency: CrcV2_GroupMint growth era (38M-38.5M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 38000000, 39000000, ["CrcV2_GroupMint"], null, false]
+  "params": [null, 38000000, 38500000, ["CrcV2_GroupMint"], null, false]
 }'
 
-run_test_json "consistency" "consistency: V1 ongoing activity during V2 (38M-38.5M)" '{
+run_test_json "consistency" "consistency: V1 ongoing activity during V2 (38M-38.1M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 38000000, 38500000, ["CrcV1_Trust", "CrcV1_HubTransfer"], null, false]
+  "params": [null, 38000000, 38100000, ["CrcV1_Trust", "CrcV1_HubTransfer"], null, false]
 }'
 
 # =====================================================================
 # RECENT ERA (~43M+ blocks) - Current activity
+# Reduced block ranges to keep results under ~500 events
 # =====================================================================
 
-run_test_json "consistency" "consistency: CrcV2_RegisterHuman recent (43.5M-43.6M)" '{
+run_test_json "consistency" "consistency: CrcV2_RegisterHuman recent (43.5M-43.55M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43600000, ["CrcV2_RegisterHuman"], null, false]
+  "params": [null, 43500000, 43550000, ["CrcV2_RegisterHuman"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_Trust recent (43.5M-43.6M)" '{
+run_test_json "consistency" "consistency: CrcV2_Trust recent (43.5M-43.52M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43600000, ["CrcV2_Trust"], null, false]
+  "params": [null, 43500000, 43520000, ["CrcV2_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_TransferSingle recent (43.5M-43.55M)" '{
+run_test_json "consistency" "consistency: CrcV2_TransferSingle recent (43.5M-43.51M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43550000, ["CrcV2_TransferSingle"], null, false]
+  "params": [null, 43500000, 43510000, ["CrcV2_TransferSingle"], null, false]
 }'
 
 run_test_json "consistency" "consistency: CrcV2_TransferBatch recent (43.5M-43.6M)" '{
@@ -1088,11 +1093,11 @@ run_test_json "consistency" "consistency: CrcV2_TransferBatch recent (43.5M-43.6
   "params": [null, 43500000, 43600000, ["CrcV2_TransferBatch"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV2_PersonalMint recent (43.5M-43.6M)" '{
+run_test_json "consistency" "consistency: CrcV2_PersonalMint recent (43.5M-43.55M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43600000, ["CrcV2_PersonalMint"], null, false]
+  "params": [null, 43500000, 43550000, ["CrcV2_PersonalMint"], null, false]
 }'
 
 run_test_json "consistency" "consistency: CrcV2_GroupMint recent (43.5M-43.6M)" '{
@@ -1123,15 +1128,16 @@ run_test_json "consistency" "consistency: CrcV2_Erc20WrapperTransfer recent (43.
   "params": [null, 43500000, 43600000, ["CrcV2_Erc20WrapperTransfer"], null, false]
 }'
 
-run_test_json "consistency" "consistency: Safe_ProxyCreation recent (43.5M-43.6M)" '{
+run_test_json "consistency" "consistency: Safe_ProxyCreation recent (43.5M-43.55M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43600000, ["Safe_ProxyCreation"], null, false]
+  "params": [null, 43500000, 43550000, ["Safe_ProxyCreation"], null, false]
 }'
 
 # =====================================================================
 # QUERY-BASED CONSISTENCY TESTS - Views and aggregated data
+# Reduced block ranges to keep results under ~500 rows
 # =====================================================================
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then
@@ -1139,7 +1145,7 @@ if [[ "$OUTPUT_MODE" != "json" ]]; then
 fi
 
 # V_CrcV2_Avatars count in block ranges
-run_test_json "consistency" "consistency: V_CrcV2_Avatars registered 35M-36M" '{
+run_test_json "consistency" "consistency: V_CrcV2_Avatars registered 35M-35.2M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1152,15 +1158,15 @@ run_test_json "consistency" "consistency: V_CrcV2_Avatars registered 35M-36M" '{
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 35000000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 36000000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 35200000}
       ]
     }],
-    "Limit": 1000,
+    "Limit": 500,
     "Order": [{"Column": "blockNumber", "SortOrder": "ASC"}]
   }]
 }'
 
-run_test_json "consistency" "consistency: V_CrcV2_Avatars registered 38M-39M" '{
+run_test_json "consistency" "consistency: V_CrcV2_Avatars registered 38M-38.2M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1173,16 +1179,16 @@ run_test_json "consistency" "consistency: V_CrcV2_Avatars registered 38M-39M" '{
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 38000000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 39000000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 38200000}
       ]
     }],
-    "Limit": 1000,
+    "Limit": 500,
     "Order": [{"Column": "blockNumber", "SortOrder": "ASC"}]
   }]
 }'
 
 # V_CrcV1_Avatars early
-run_test_json "consistency" "consistency: V_CrcV1_Avatars registered 12.5M-13M" '{
+run_test_json "consistency" "consistency: V_CrcV1_Avatars registered 12.5M-12.6M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1195,16 +1201,16 @@ run_test_json "consistency" "consistency: V_CrcV1_Avatars registered 12.5M-13M" 
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 12500000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 13000000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 12600000}
       ]
     }],
-    "Limit": 1000,
+    "Limit": 500,
     "Order": [{"Column": "blockNumber", "SortOrder": "ASC"}]
   }]
 }'
 
 # V_CrcV2_TrustRelations in block range
-run_test_json "consistency" "consistency: V_CrcV2_TrustRelations 35M-36M" '{
+run_test_json "consistency" "consistency: V_CrcV2_TrustRelations 35M-35.1M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1217,16 +1223,16 @@ run_test_json "consistency" "consistency: V_CrcV2_TrustRelations 35M-36M" '{
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 35000000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 36000000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 35100000}
       ]
     }],
-    "Limit": 1000,
+    "Limit": 500,
     "Order": [{"Column": "blockNumber", "SortOrder": "ASC"}]
   }]
 }'
 
 # V_CrcV2_Groups in block range
-run_test_json "consistency" "consistency: V_CrcV2_Groups registered 35M-40M" '{
+run_test_json "consistency" "consistency: V_CrcV2_Groups registered 35M-38M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1239,7 +1245,7 @@ run_test_json "consistency" "consistency: V_CrcV2_Groups registered 35M-40M" '{
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 35000000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 40000000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 38000000}
       ]
     }],
     "Limit": 500,
@@ -1248,7 +1254,7 @@ run_test_json "consistency" "consistency: V_CrcV2_Groups registered 35M-40M" '{
 }'
 
 # V_Crc_Transfers in block range (combined V1+V2)
-run_test_json "consistency" "consistency: V_Crc_Transfers 38M-38.1M" '{
+run_test_json "consistency" "consistency: V_Crc_Transfers 38M-38.02M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1261,7 +1267,7 @@ run_test_json "consistency" "consistency: V_Crc_Transfers 38M-38.1M" '{
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 38000000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 38100000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 38020000}
       ]
     }],
     "Limit": 500,
@@ -1270,7 +1276,7 @@ run_test_json "consistency" "consistency: V_Crc_Transfers 38M-38.1M" '{
 }'
 
 # V_Safe_Owners in block range
-run_test_json "consistency" "consistency: V_Safe_Owners created 35M-36M" '{
+run_test_json "consistency" "consistency: V_Safe_Owners created 35M-35.2M" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
@@ -1283,7 +1289,7 @@ run_test_json "consistency" "consistency: V_Safe_Owners created 35M-36M" '{
       "ConjunctionType": "And",
       "Predicates": [
         {"Type": "FilterPredicate", "FilterType": "GreaterThanOrEquals", "Column": "blockNumber", "Value": 35000000},
-        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 36000000}
+        {"Type": "FilterPredicate", "FilterType": "LessThan", "Column": "blockNumber", "Value": 35200000}
       ]
     }],
     "Limit": 500,
@@ -1300,47 +1306,47 @@ if [[ "$OUTPUT_MODE" != "json" ]]; then
 fi
 
 # CrcV1_Trust across multiple eras (should have consistent schema)
-run_test_json "consistency" "consistency: CrcV1_Trust schema check era1 (13M-13.1M)" '{
+run_test_json "consistency" "consistency: CrcV1_Trust schema check era1 (13M-13.02M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 13000000, 13100000, ["CrcV1_Trust"], null, false]
+  "params": [null, 13000000, 13020000, ["CrcV1_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Trust schema check era2 (25M-25.1M)" '{
+run_test_json "consistency" "consistency: CrcV1_Trust schema check era2 (25M-25.02M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 25000000, 25100000, ["CrcV1_Trust"], null, false]
+  "params": [null, 25000000, 25020000, ["CrcV1_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: CrcV1_Trust schema check era3 (40M-40.1M)" '{
+run_test_json "consistency" "consistency: CrcV1_Trust schema check era3 (40M-40.02M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 40000000, 40100000, ["CrcV1_Trust"], null, false]
+  "params": [null, 40000000, 40020000, ["CrcV1_Trust"], null, false]
 }'
 
 # Combined V1+V2 events in recent blocks
-run_test_json "consistency" "consistency: all registration events recent (43.5M-43.55M)" '{
+run_test_json "consistency" "consistency: all registration events recent (43.5M-43.52M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43550000, ["CrcV1_Signup", "CrcV2_RegisterHuman", "CrcV2_RegisterGroup", "CrcV2_RegisterOrganization"], null, false]
+  "params": [null, 43500000, 43520000, ["CrcV1_Signup", "CrcV2_RegisterHuman", "CrcV2_RegisterGroup", "CrcV2_RegisterOrganization"], null, false]
 }'
 
-run_test_json "consistency" "consistency: all trust events recent (43.5M-43.55M)" '{
+run_test_json "consistency" "consistency: all trust events recent (43.5M-43.52M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43550000, ["CrcV1_Trust", "CrcV2_Trust"], null, false]
+  "params": [null, 43500000, 43520000, ["CrcV1_Trust", "CrcV2_Trust"], null, false]
 }'
 
-run_test_json "consistency" "consistency: all transfer events recent (43.5M-43.52M)" '{
+run_test_json "consistency" "consistency: all transfer events recent (43.5M-43.51M)" '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_events",
-  "params": [null, 43500000, 43520000, ["CrcV1_HubTransfer", "CrcV1_Transfer", "CrcV2_TransferSingle", "CrcV2_TransferBatch", "CrcV2_Erc20WrapperTransfer"], null, false]
+  "params": [null, 43500000, 43510000, ["CrcV1_HubTransfer", "CrcV1_Transfer", "CrcV2_TransferSingle", "CrcV2_TransferBatch", "CrcV2_Erc20WrapperTransfer"], null, false]
 }'
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then

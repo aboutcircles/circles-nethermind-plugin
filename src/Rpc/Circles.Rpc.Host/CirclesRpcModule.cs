@@ -728,7 +728,15 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     }
                     else if (value.ValueKind == JsonValueKind.Number)
                     {
-                        orderedValues[key] = value.ToString();
+                        // Convert numeric fields to hex format to match production
+                        if (value.TryGetInt64(out long numValue))
+                        {
+                            orderedValues[key] = "0x" + numValue.ToString("x");
+                        }
+                        else
+                        {
+                            orderedValues[key] = value.ToString();
+                        }
                     }
                     else
                     {
