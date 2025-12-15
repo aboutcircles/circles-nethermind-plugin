@@ -236,11 +236,26 @@ public class CirclesRpcModule : ICirclesRpcModule
         string sql;
         if (version == 1)
         {
-            // V1: Sum raw attoCrc balances (totalBalance is the on-chain ERC20 balance)
+            // V1: Sum raw attoCrc balances directly from CrcV1_Transfer table
+            // FIX-010: Bypass V_CrcV1_BalancesByAccountAndToken view which uses CTE that prevents index usage
+            // Direct query uses indexes on "from" and "to" columns for O(log n) lookup instead of full table scan
             sql = @"
-                SELECT COALESCE(SUM(""totalBalance""), 0)::text
-                FROM ""V_CrcV1_BalancesByAccountAndToken""
-                WHERE account = @address
+                WITH account_transfers AS (
+                    SELECT ""tokenAddress"", -amount AS delta
+                    FROM ""CrcV1_Transfer""
+                    WHERE ""from"" = @address
+                    UNION ALL
+                    SELECT ""tokenAddress"", amount AS delta
+                    FROM ""CrcV1_Transfer""
+                    WHERE ""to"" = @address
+                ),
+                token_balances AS (
+                    SELECT ""tokenAddress"", SUM(delta) as balance
+                    FROM account_transfers
+                    GROUP BY ""tokenAddress""
+                    HAVING SUM(delta) > 0
+                )
+                SELECT COALESCE(SUM(balance), 0)::text FROM token_balances
             ";
         }
         else if (version == 2)
