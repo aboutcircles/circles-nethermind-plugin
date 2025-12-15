@@ -238,6 +238,25 @@ services:
       retries: 10
       start_period: 10s
 
+  postgres-backup:
+    container_name: postgres-backup
+    image: prodrigestivill/postgres-backup-local:16
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    environment:
+      - POSTGRES_HOST=postgres-gnosis
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - BACKUP_DIR=/backups
+      - SCHEDULE=0 3 * * *
+      - KEEP_DAYS=7
+    depends_on:
+      - postgres-gnosis
+    volumes:
+      - ../.state/backups:/backups
+
   jwt-gnosis-secret:
     container_name: jwt-gnosis-secret
     image: alpine:3.20
