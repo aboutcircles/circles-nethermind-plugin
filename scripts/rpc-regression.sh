@@ -473,17 +473,23 @@ numeric_compare() {
         return 1
     fi
 
-    # For very large integers (>15 digits), use awk instead of bc to avoid precision issues
+    # For very large integers (>15 digits) OR scientific notation, use python
+    # bc doesn't handle scientific notation (1.4357E-14 is interpreted as 1.4357*E-14)
     local val1_len=${#val1}
     local val2_len=${#val2}
-    local use_awk=0
+    local use_python=0
 
     if [[ $val1_len -gt 15 ]] || [[ $val2_len -gt 15 ]]; then
-        use_awk=1
+        use_python=1
     fi
 
-    # Use python for large numbers (handles arbitrary precision)
-    if [[ $use_awk -eq 1 ]] || ! command -v bc &> /dev/null; then
+    # Always use python for scientific notation (contains e or E)
+    if [[ "$val1" =~ [eE] ]] || [[ "$val2" =~ [eE] ]]; then
+        use_python=1
+    fi
+
+    # Use python for large numbers and scientific notation (handles arbitrary precision)
+    if [[ $use_python -eq 1 ]] || ! command -v bc &> /dev/null; then
         python3 -c "
 from decimal import Decimal
 v1 = Decimal('$val1')
