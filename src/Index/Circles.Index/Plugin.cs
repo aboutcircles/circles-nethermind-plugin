@@ -238,7 +238,6 @@ public class Plugin : INethermindPlugin
         // Start the processing task if it's not already running
         if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 0)
         {
-            // TODO: Await all ProcessBlocksAsync tasks without blocking the event handler. It's important that we always get all exceptions (e.g. as aggregate exception) of all tasks.
             _ = Task.Run(ProcessBlocksAsync, _cancellationTokenSource.Token);
         }
     }
@@ -287,7 +286,8 @@ public class Plugin : INethermindPlugin
         catch (Exception e)
         {
             _indexerContext!.Logger.Error("Error processing blocks", e);
-            throw;
+            // Don't re-throw - exception is logged and task is fire-and-forget.
+            // Re-throwing would create an unobserved task exception.
         }
         finally
         {
