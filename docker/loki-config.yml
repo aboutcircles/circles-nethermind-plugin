@@ -25,8 +25,9 @@ limits_config:
   max_cache_freshness_per_query: 10m
   reject_old_samples: true
   reject_old_samples_max_age: 168h
-chunk_store_config:
-  max_look_back_period: 168h
-table_manager:
-  retention_deletes_enabled: true
   retention_period: 168h
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  retention_delete_delay: 2h
+  delete_request_store: filesystem

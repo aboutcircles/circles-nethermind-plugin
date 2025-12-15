@@ -3,6 +3,7 @@ services:
     container_name: prometheus
     image: prom/prometheus:v2.54.0
     restart: unless-stopped
+    user: root
     networks:
       - circles-gnosis
     ports:
@@ -12,6 +13,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
       - --web.enable-lifecycle
 
@@ -35,6 +37,7 @@ services:
     container_name: loki
     image: grafana/loki:3.0.0
     restart: unless-stopped
+    user: root
     networks:
       - circles-gnosis
     ports:
