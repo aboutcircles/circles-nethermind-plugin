@@ -51,7 +51,7 @@ services:
     networks:
       - circles-gnosis
     volumes:
-      - ../.state/promtail:/var/log/promtail
+      - ../.state/promtail:/tmp/promtail
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
