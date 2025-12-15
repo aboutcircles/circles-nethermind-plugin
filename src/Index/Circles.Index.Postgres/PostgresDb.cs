@@ -105,8 +105,6 @@ public class PostgresDb(string connectionString, IDatabaseSchema schema)
 
     public void Migrate()
     {
-        // TODO: Make sure that all tables are created first, then the views follow.
-
         using var connection = new NpgsqlConnection(ConnectionString);
         connection.Open();
 
