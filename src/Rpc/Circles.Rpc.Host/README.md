@@ -557,12 +557,22 @@ export BALANCE_MODE="database"
 
 ### Components
 
-1. **CirclesRpcModule** (`CirclesRpcModule.cs`) - Core business logic for all RPC methods
-2. **Program.cs** - ASP.NET Core app, routes requests to handlers
-3. **Settings** - Environment-based configuration
-4. **DatabaseSchemaMap** - Maps database schemas for query operations
-5. **NethermindRpcClient** - Live balance queries via eth_call
-6. **AbiEncoder** - Ethereum ABI encoding for contract calls
+1. **CirclesRpcModule** - Core business logic for all RPC methods, split into partial classes:
+   - `CirclesRpcModule.cs` - Transaction history, Events, Pathfinder, SDK endpoints, Query
+   - `RpcModule/CirclesRpcModule.Core.cs` - Constructor, fields, connection management
+   - `RpcModule/CirclesRpcModule.Balances.cs` - Token balance queries
+   - `RpcModule/CirclesRpcModule.Tokens.cs` - Token info and holders
+   - `RpcModule/CirclesRpcModule.Avatars.cs` - Avatar information
+   - `RpcModule/CirclesRpcModule.Profiles.cs` - Profile CID and content operations
+   - `RpcModule/CirclesRpcModule.Trust.cs` - Trust relations
+   - `RpcModule/CirclesRpcModule.Groups.cs` - Group operations
+   - `RpcModule/CirclesRpcModule.Helpers.cs` - Health and table utilities
+2. **CursorUtils.cs** - Cursor-based pagination utilities
+3. **Program.cs** - ASP.NET Core app, routes requests to handlers
+4. **Settings** - Environment-based configuration
+5. **DatabaseSchemaMap** - Maps database schemas for query operations
+6. **NethermindRpcClient** - Live balance queries via eth_call
+7. **AbiEncoder** - Ethereum ABI encoding for contract calls
 
 ### Dependencies
 
@@ -617,7 +627,14 @@ curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
 ### Adding New RPC Methods
 
 1. Add method signature to `ICirclesRpcModule.cs`
-2. Implement method in `CirclesRpcModule.cs`
+2. Implement method in the appropriate partial class file:
+   - Balance/Token queries → `RpcModule/CirclesRpcModule.Balances.cs` or `Tokens.cs`
+   - Avatar queries → `RpcModule/CirclesRpcModule.Avatars.cs`
+   - Profile queries → `RpcModule/CirclesRpcModule.Profiles.cs`
+   - Trust queries → `RpcModule/CirclesRpcModule.Trust.cs`
+   - Group queries → `RpcModule/CirclesRpcModule.Groups.cs`
+   - System/health → `RpcModule/CirclesRpcModule.Helpers.cs`
+   - Transaction/Event/SDK → `CirclesRpcModule.cs` (main file)
 3. Add handler function in `Program.cs`
 4. Add route mapping in the method switch statement
 5. Update this README with method documentation

@@ -15,6 +15,7 @@ COPY src/Index/Circles.Index.CirclesV2.InvitationsAtScale/Circles.Index.CirclesV
 COPY src/Index/Circles.Index.CirclesV2.LBP/Circles.Index.CirclesV2.LBP.csproj ./Circles.Index.CirclesV2.LBP/
 COPY src/Index/Circles.Index.CirclesV2.NameRegistry/Circles.Index.CirclesV2.NameRegistry.csproj ./Circles.Index.CirclesV2.NameRegistry/
 COPY src/Index/Circles.Index.CirclesV2.OIC/Circles.Index.CirclesV2.OIC.csproj ./Circles.Index.CirclesV2.OIC/
+COPY src/Index/Circles.Index.CirclesV2.PaymentGateway/Circles.Index.CirclesV2.PaymentGateway.csproj ./Circles.Index.CirclesV2.PaymentGateway/
 COPY src/Index/Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.StandardTreasury.csproj ./Circles.Index.CirclesV2.StandardTreasury/
 COPY src/Index/Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Circles.Index.CirclesV2.TokenOffers/
 COPY src/Index/Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Circles.Index.CirclesViews/

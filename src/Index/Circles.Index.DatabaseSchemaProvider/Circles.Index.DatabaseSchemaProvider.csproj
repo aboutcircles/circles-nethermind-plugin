@@ -57,6 +57,8 @@
     </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj">
     </ProjectReference>
+    <ProjectReference Include="..\Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj">
+    </ProjectReference>
     <ProjectReference Include="..\Circles.Index.CirclesViews\Circles.Index.CirclesViews.csproj">
     </ProjectReference>
     <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj">
