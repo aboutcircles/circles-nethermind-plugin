@@ -52,7 +52,15 @@
     "circles_events (filter: combined with test addr3 and block range)",
     "circles_events (filter: nested AND/OR with test addr3)",
     "circles_events (filter: transactionHash IS NOT NULL)",
-    "circles_events (filter: avatar != address)"
+    "circles_events (filter: avatar != address)",
+    "circles_events (CrcV2_Stopped all)",
+    "circles_events (CrcV2_Stopped for avatar)",
+    "circles_events (CrcV2_StreamCompleted recent)",
+    "circles_events (CrcV2_DiscountCost recent)",
+    "circles_events (CrcV2_GroupMint for group)",
+    "circles_events (CrcV2_GroupMint for sender)",
+    "circles_events (CrcV2_GroupMint recent)",
+    "circles_events (CrcV2_TransferBatch recent)"
   ],
   "expectedFailureReasons": {
     "circles_getNetworkSnapshot": "Dynamic network state - changes between calls",
@@ -90,7 +98,15 @@
     "circles_events (filter: combined with test addr3 and block range)": "Complex filter (AND) - not supported in production",
     "circles_events (filter: nested AND/OR with test addr3)": "Complex filter (nested AND/OR) - not supported in production",
     "circles_events (filter: transactionHash IS NOT NULL)": "Complex filter (IS NOT NULL) - not supported in production",
-    "circles_events (filter: avatar != address)": "Complex filter (!=) - not supported in production"
+    "circles_events (filter: avatar != address)": "Complex filter (!=) - not supported in production",
+    "circles_events (CrcV2_Stopped all)": "Staging indexes CrcV2_Stopped events - production does not",
+    "circles_events (CrcV2_Stopped for avatar)": "Staging indexes CrcV2_Stopped events - production does not",
+    "circles_events (CrcV2_StreamCompleted recent)": "Staging indexes CrcV2_StreamCompleted events - production does not",
+    "circles_events (CrcV2_DiscountCost recent)": "Staging indexes CrcV2_DiscountCost events - production does not",
+    "circles_events (CrcV2_GroupMint for group)": "Staging has more CrcV2_GroupMint events indexed",
+    "circles_events (CrcV2_GroupMint for sender)": "Staging has more CrcV2_GroupMint events indexed",
+    "circles_events (CrcV2_GroupMint recent)": "Staging has more CrcV2_GroupMint events indexed",
+    "circles_events (CrcV2_TransferBatch recent)": "Staging has more CrcV2_TransferBatch events indexed"
   },
   "subscriptionTest": {
     "enabled": true,
