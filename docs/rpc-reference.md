@@ -332,8 +332,10 @@ Transaction history with participant profiles pre-loaded. Replaces `circles_even
 - `toBlock` (number, optional): Ending block number (default: latest)
 - `limit` (number, optional): Maximum results (default: 20)
 - `cursor` (string, optional): Base64 encoded pagination cursor
+- `version` (number, optional): Filter by version (null = V2 only, 1 = V1 only, 2 = V2 only)
+- `excludeIntermediary` (boolean, optional): If true, uses TransferSummary which excludes intermediary hop transfers (default: true)
 
-**Request:**
+**Request (V2 with summary - default):**
 
 ```bash
 curl -X POST http://localhost:8081 \
@@ -348,6 +350,27 @@ curl -X POST http://localhost:8081 \
       null,
       10,
       null
+    ]
+  }'
+```
+
+**Request (V1 transactions):**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_getTransactionHistoryEnriched",
+    "params": [
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      20000000,
+      null,
+      10,
+      null,
+      1,
+      true
     ]
   }'
 ```
@@ -371,7 +394,9 @@ curl -X POST http://localhost:8081 \
           "value": "50000000000000000000",
           "id": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
           "blockNumber": 36500000,
-          "timestamp": 1704240000
+          "timestamp": 1704240000,
+          "version": 2,
+          "type": "CrcV2_TransferSummary"
         },
         "participants": {
           "0x1234567890abcdef1234567890abcdef12345678": {
@@ -1741,14 +1766,16 @@ curl -X POST http://localhost:8081 \
 
 ### circles_getTransactionHistory
 
-Get paginated transaction history with cursor-based navigation.
+Get paginated transaction history with cursor-based navigation. Queries tables directly for optimal performance.
 
 **Parameters:**
 - `avatarAddress` (string): Ethereum address
 - `limit` (number, optional): Results per page (default: 50, max: 1000)
 - `cursor` (string, optional): Base64 encoded cursor
+- `version` (number, optional): Filter by version (null = both V1+V2, 1 = V1 only, 2 = V2 only)
+- `excludeIntermediary` (boolean, optional): If true, uses TransferSummary which excludes intermediary hop transfers (default: true)
 
-**Request:**
+**Request (default - both versions, summary only):**
 
 ```bash
 curl -X POST http://localhost:8081 \
@@ -1758,6 +1785,32 @@ curl -X POST http://localhost:8081 \
     "id": 1,
     "method": "circles_getTransactionHistory",
     "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", 50, null]
+  }'
+```
+
+**Request (V2 only, include all transfers):**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_getTransactionHistory",
+    "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", 50, null, 2, false]
+  }'
+```
+
+**Request (V1 only):**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_getTransactionHistory",
+    "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", 50, null, 1, true]
   }'
 ```
 
@@ -1794,6 +1847,16 @@ curl -X POST http://localhost:8081 \
   }
 }
 ```
+
+**Tables Queried:**
+
+| version | excludeIntermediary | Tables |
+|---------|---------------------|--------|
+| `null` | any | V1 + V2 separately, merged in app |
+| `1` | `true` | `CrcV1_TransferSummary` |
+| `1` | `false` | `CrcV1_Transfer` + `CrcV1_HubTransfer` |
+| `2` | `true` | `CrcV2_TransferSummary` |
+| `2` | `false` | `CrcV2_TransferSingle` + `CrcV2_TransferBatch` + `CrcV2_Erc20WrapperTransfer` |
 
 ---
 
