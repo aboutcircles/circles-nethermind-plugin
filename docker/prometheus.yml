@@ -28,3 +28,8 @@ scrape_configs:
   - job_name: 'consensus'
     static_configs:
       - targets: ['consensus-gnosis:5054']
+
+  - job_name: 'cache-service'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['cache-service:3001']

@@ -30,7 +30,11 @@ scrape_configs:
             log: log
             stream: stream
             time: time
+      - regex:
+          source: filename
+          expression: '/var/lib/docker/containers/(?P<container_id>[^/]+)/.*'
       - labels:
           stream:
+          container_id:
       - output:
           source: log
