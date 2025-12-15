@@ -203,30 +203,146 @@ public class CirclesRpcModule : ICirclesRpcModule
             }
         }
 
-        // Fallback: use traditional database + Nethermind approach
+        // For raw balance (asTimeCircles=false), use optimized direct SQL query
+        // This avoids the expensive GetTokenBalancesForAccount which fetches all token details
+        if (asTimeCircles == false)
+        {
+            _logger?.LogDebug("Using optimized SQL for raw total balance (address={Address}, version={Version})", address, version);
+            var rawBalance = await GetRawTotalBalanceAsync(address, version);
+            return new TotalBalanceResponse(rawBalance);
+        }
+
+        // Fallback for demurraged balance: use traditional database approach
         _logger?.LogDebug("Using database for total balance query (address={Address}, version={Version})", address, version);
         var balances = await GetTokenBalancesForAccount(address);
         var relevantBalances = balances.Where(o => o.Version == version);
 
-        string balance;
-        if (asTimeCircles == null || asTimeCircles == true)
-        {
-            var totalBalance = relevantBalances
-                .Select(o => o.Circles)
-                .Sum();
+        var totalBalance = relevantBalances
+            .Select(o => o.Circles)
+            .Sum();
 
-            balance = totalBalance.ToString(CultureInfo.InvariantCulture);
+        return new TotalBalanceResponse(totalBalance.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Optimized query for raw (static) total balance.
+    /// Uses direct SQL aggregation instead of fetching all token details.
+    /// </summary>
+    private async Task<string> GetRawTotalBalanceAsync(string address, int version)
+    {
+        var lowerAddress = address.ToLower();
+        await using var connection = await CreateConnectionAsync();
+
+        string sql;
+        if (version == 1)
+        {
+            // V1: Sum raw attoCrc balances (totalBalance is the on-chain ERC20 balance)
+            sql = @"
+                SELECT COALESCE(SUM(""totalBalance""), 0)::text
+                FROM ""V_CrcV1_BalancesByAccountAndToken""
+                WHERE account = @address
+            ";
+        }
+        else if (version == 2)
+        {
+            // V2: Sum raw static balances from ERC1155 tokens
+            // Note: totalBalance in V2 view is the raw (non-demurraged) balance
+            // Also include wrapped ERC20 token balances
+            sql = @"
+                WITH v2_erc1155 AS (
+                    SELECT COALESCE(SUM(""totalBalance""), 0) as balance
+                    FROM ""V_CrcV2_BalancesByAccountAndToken""
+                    WHERE account = @address
+                ),
+                v2_wrapped_static AS (
+                    -- Inflationary (static) wrapped tokens
+                    SELECT COALESCE(SUM(
+                        CASE
+                            WHEN wt.""to"" = @address THEN wt.amount
+                            WHEN wt.""from"" = @address THEN -wt.amount
+                            ELSE 0
+                        END
+                    ), 0) as balance
+                    FROM ""CrcV2_Erc20WrapperTransfer"" wt
+                    JOIN ""CrcV2_ERC20WrapperDeployed"" wd
+                        ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 1
+                    WHERE wt.""to"" = @address OR wt.""from"" = @address
+                ),
+                v2_wrapped_demurraged AS (
+                    -- Demurraged wrapped tokens (need to sum raw, not apply demurrage for static)
+                    SELECT COALESCE(SUM(
+                        CASE
+                            WHEN wt.""to"" = @address THEN wt.amount
+                            WHEN wt.""from"" = @address THEN -wt.amount
+                            ELSE 0
+                        END
+                    ), 0) as balance
+                    FROM ""CrcV2_Erc20WrapperTransfer"" wt
+                    JOIN ""CrcV2_ERC20WrapperDeployed"" wd
+                        ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 0
+                    WHERE wt.""to"" = @address OR wt.""from"" = @address
+                )
+                SELECT (
+                    (SELECT balance FROM v2_erc1155) +
+                    (SELECT balance FROM v2_wrapped_static) +
+                    (SELECT balance FROM v2_wrapped_demurraged)
+                )::text
+            ";
         }
         else
         {
-            var totalBalance = relevantBalances
-                .Select(o => UInt256.Parse(o.StaticAttoCircles))
-                .Aggregate((UInt256)0, (acc, val) => acc + val);
-
-            balance = totalBalance.ToString(CultureInfo.InvariantCulture);
+            // Combined V1 + V2
+            sql = @"
+                WITH v1_total AS (
+                    SELECT COALESCE(SUM(""totalBalance""), 0) as balance
+                    FROM ""V_CrcV1_BalancesByAccountAndToken""
+                    WHERE account = @address
+                ),
+                v2_erc1155 AS (
+                    SELECT COALESCE(SUM(""totalBalance""), 0) as balance
+                    FROM ""V_CrcV2_BalancesByAccountAndToken""
+                    WHERE account = @address
+                ),
+                v2_wrapped_static AS (
+                    SELECT COALESCE(SUM(
+                        CASE
+                            WHEN wt.""to"" = @address THEN wt.amount
+                            WHEN wt.""from"" = @address THEN -wt.amount
+                            ELSE 0
+                        END
+                    ), 0) as balance
+                    FROM ""CrcV2_Erc20WrapperTransfer"" wt
+                    JOIN ""CrcV2_ERC20WrapperDeployed"" wd
+                        ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 1
+                    WHERE wt.""to"" = @address OR wt.""from"" = @address
+                ),
+                v2_wrapped_demurraged AS (
+                    SELECT COALESCE(SUM(
+                        CASE
+                            WHEN wt.""to"" = @address THEN wt.amount
+                            WHEN wt.""from"" = @address THEN -wt.amount
+                            ELSE 0
+                        END
+                    ), 0) as balance
+                    FROM ""CrcV2_Erc20WrapperTransfer"" wt
+                    JOIN ""CrcV2_ERC20WrapperDeployed"" wd
+                        ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 0
+                    WHERE wt.""to"" = @address OR wt.""from"" = @address
+                )
+                SELECT (
+                    (SELECT balance FROM v1_total) +
+                    (SELECT balance FROM v2_erc1155) +
+                    (SELECT balance FROM v2_wrapped_static) +
+                    (SELECT balance FROM v2_wrapped_demurraged)
+                )::text
+            ";
         }
 
-        return new TotalBalanceResponse(balance);
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", lowerAddress);
+
+        var result = await cmd.ExecuteScalarAsync();
+        return result?.ToString() ?? "0";
     }
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
