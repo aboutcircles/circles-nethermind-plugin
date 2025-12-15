@@ -549,6 +549,112 @@ curl -X POST http://localhost:8081 \
 
 ---
 
+### circles_getAllInvitations
+
+Gets all available invitations for an address from all sources (trust-based, escrow-based, and at-scale). This is the recommended method for displaying available invitations to users, as it combines multiple queries into a single optimized call.
+
+**Parameters:**
+
+- `address` (string): Ethereum address to query for available invitations
+- `minimumBalance` (string, optional): Minimum balance required for trust-based invitations (in CRC)
+
+**Request:**
+
+```bash
+curl -X POST http://localhost:8081 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "circles_getAllInvitations",
+    "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", "96"]
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "trustInvitations": [
+      {
+        "address": "0x1234567890abcdef1234567890abcdef12345678",
+        "source": "trust",
+        "balance": "150.5",
+        "avatarInfo": {
+          "version": 2,
+          "type": "Human",
+          "avatar": "0x1234567890abcdef1234567890abcdef12345678",
+          "hasV1": false
+        }
+      }
+    ],
+    "escrowInvitations": [
+      {
+        "address": "0xabcdef1234567890abcdef1234567890abcdef12",
+        "source": "escrow",
+        "escrowedAmount": "100000000000000000000",
+        "escrowDays": 7,
+        "blockNumber": 43645581,
+        "timestamp": 1765725505,
+        "avatarInfo": {
+          "version": 2,
+          "type": "Human",
+          "avatar": "0xabcdef1234567890abcdef1234567890abcdef12"
+        }
+      }
+    ],
+    "atScaleInvitations": [
+      {
+        "address": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "source": "atScale",
+        "blockNumber": 43260668,
+        "timestamp": 1763742205,
+        "originInviter": null
+      }
+    ]
+  }
+}
+```
+
+**Invitation Sources:**
+
+| Source | Description |
+|--------|-------------|
+| `trust` | Avatars that trust this address and have sufficient CRC balance to invite |
+| `escrow` | CRC tokens escrowed for this address in the InvitationEscrow contract |
+| `atScale` | Pre-created accounts via the at-scale referral system that haven't been claimed |
+
+**Field Descriptions:**
+
+*Trust Invitations:*
+
+- `address`: Inviter's avatar address
+- `source`: Always `"trust"`
+- `balance`: Inviter's CRC balance
+- `avatarInfo`: Inviter's avatar information
+
+*Escrow Invitations:*
+
+- `address`: Inviter's avatar address
+- `source`: Always `"escrow"`
+- `escrowedAmount`: CRC amount escrowed in atto-circles
+- `escrowDays`: Days since the escrow was created
+- `blockNumber`, `timestamp`: When the escrow was created
+- `avatarInfo`: Inviter's avatar information
+
+*At-Scale Invitations:*
+
+- `address`: The pre-created account address
+- `source`: Always `"atScale"`
+- `blockNumber`, `timestamp`: When the account was created
+- `originInviter`: Origin inviter address (null if not yet used for registration)
+
+---
+
 ## Avatar & Profile Methods
 
 ### circles_getAvatarInfo

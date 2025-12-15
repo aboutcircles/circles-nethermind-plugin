@@ -193,6 +193,15 @@ public interface ICirclesRpcModule
     /// <returns>Invitation origin details or null if address is not registered</returns>
     Task<InvitationOriginResponse?> GetInvitationOrigin(string address);
 
+    /// <summary>
+    /// Gets all available invitations for an address from all sources (trust, escrow, at-scale).
+    /// Combines multiple invitation mechanisms into a single response for efficient client-side rendering.
+    /// </summary>
+    /// <param name="address">Avatar address to query for available invitations</param>
+    /// <param name="minimumBalance">Minimum balance required for trust-based invitations (in CRC, optional)</param>
+    /// <returns>All available invitations grouped by source type</returns>
+    Task<AllInvitationsResponse> GetAllInvitations(string address, string? minimumBalance = null);
+
     // ========================================================================
     // Trust Relations
     // ========================================================================
@@ -938,3 +947,87 @@ public record InvitationOriginResponse(
     /// <summary>Circles version: 1 for V1, 2 for V2</summary>
     [property: JsonPropertyName("version")] int Version
 );
+
+/// <summary>
+/// Trust-based invitation information (someone who trusts the address and has sufficient balance).
+/// </summary>
+public record TrustInvitation
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("source")]
+    public string Source { get; init; } = "trust";
+
+    [JsonPropertyName("balance")]
+    public string Balance { get; init; } = string.Empty;
+
+    [JsonPropertyName("avatarInfo")]
+    public AvatarInfo? AvatarInfo { get; init; }
+}
+
+/// <summary>
+/// Escrow-based invitation information (CRC escrowed for the address).
+/// </summary>
+public record EscrowInvitation
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("source")]
+    public string Source { get; init; } = "escrow";
+
+    [JsonPropertyName("escrowedAmount")]
+    public string EscrowedAmount { get; init; } = string.Empty;
+
+    [JsonPropertyName("escrowDays")]
+    public int EscrowDays { get; init; }
+
+    [JsonPropertyName("blockNumber")]
+    public long BlockNumber { get; init; }
+
+    [JsonPropertyName("timestamp")]
+    public long Timestamp { get; init; }
+
+    [JsonPropertyName("avatarInfo")]
+    public AvatarInfo? AvatarInfo { get; init; }
+}
+
+/// <summary>
+/// At-scale invitation information (pre-created account for the address).
+/// </summary>
+public record AtScaleInvitation
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("source")]
+    public string Source { get; init; } = "atScale";
+
+    [JsonPropertyName("blockNumber")]
+    public long BlockNumber { get; init; }
+
+    [JsonPropertyName("timestamp")]
+    public long Timestamp { get; init; }
+
+    [JsonPropertyName("originInviter")]
+    public string? OriginInviter { get; init; }
+}
+
+/// <summary>
+/// Response containing all available invitations for an address from all sources.
+/// </summary>
+public record AllInvitationsResponse
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("trustInvitations")]
+    public TrustInvitation[] TrustInvitations { get; init; } = Array.Empty<TrustInvitation>();
+
+    [JsonPropertyName("escrowInvitations")]
+    public EscrowInvitation[] EscrowInvitations { get; init; } = Array.Empty<EscrowInvitation>();
+
+    [JsonPropertyName("atScaleInvitations")]
+    public AtScaleInvitation[] AtScaleInvitations { get; init; } = Array.Empty<AtScaleInvitation>();
+}

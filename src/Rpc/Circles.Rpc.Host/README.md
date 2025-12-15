@@ -706,7 +706,7 @@ All 15 core methods are implemented and accessible via RPC:
 
 ### SDK Enablement Methods (✅ Now Fully Implemented & Exposed)
 
-✅ **Complete**: All 7 methods are now implemented in the backend AND exposed via RPC routing in `Program.cs`.
+✅ **Complete**: All 8 methods are now implemented in the backend AND exposed via RPC routing in `Program.cs`.
 
 | Method                                        | Purpose                                                      | Replaces  | Status     |
 | --------------------------------------------- | ------------------------------------------------------------ | --------- | ---------- |
@@ -717,8 +717,9 @@ All 15 core methods are implemented and accessible via RPC:
 | `circles_getTransactionHistoryEnriched`       | Transactions with participant profiles                       | 2-3 calls | ✅ WORKING |
 | `circles_searchProfileByAddressOrName`        | Unified search (address or text)                             | 2 calls   | ✅ WORKING |
 | `circles_getInvitationOrigin`                 | Reconstructs how user was invited (V1/V2/Escrow/AtScale)     | 4+ calls  | ✅ WORKING |
+| `circles_getAllInvitations`                   | All available invitations (trust, escrow, at-scale)          | 6-8 calls | ✅ WORKING |
 
-**Count**: 7/7 Phase 3 methods ✅ (22/22 total methods)
+**Count**: 8/8 Phase 3 methods ✅ (23/23 total methods)
 
 #### Performance Impact
 

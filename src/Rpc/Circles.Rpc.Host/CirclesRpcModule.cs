@@ -4576,6 +4576,161 @@ public class CirclesRpcModule : ICirclesRpcModule
         return null;
     }
 
+    /// <summary>
+    /// Gets all available invitations for an address from all sources (trust, escrow, at-scale).
+    /// Combines multiple invitation mechanisms into a single optimized response.
+    /// </summary>
+    public async Task<AllInvitationsResponse> GetAllInvitations(string address, string? minimumBalance = null)
+    {
+        var normalizedAddress = address.ToLowerInvariant();
+        await using var connection = await CreateConnectionAsync();
+
+        // Run all queries in parallel for efficiency
+        var trustTask = GetTrustInvitationsAsync(normalizedAddress, minimumBalance);
+        var escrowTask = GetEscrowInvitationsAsync(connection, normalizedAddress);
+        var atScaleTask = GetAtScaleInvitationsAsync(connection, normalizedAddress);
+
+        await Task.WhenAll(trustTask, escrowTask, atScaleTask);
+
+        return new AllInvitationsResponse
+        {
+            Address = address,
+            TrustInvitations = await trustTask,
+            EscrowInvitations = await escrowTask,
+            AtScaleInvitations = await atScaleTask
+        };
+    }
+
+    /// <summary>
+    /// Gets trust-based invitations (addresses that trust the invitee and have sufficient balance).
+    /// </summary>
+    private async Task<TrustInvitation[]> GetTrustInvitationsAsync(string address, string? minimumBalance)
+    {
+        // Reuse existing GetValidInviters logic but transform to TrustInvitation format
+        var validInviters = await GetValidInviters(address, minimumBalance, 100, null);
+
+        return validInviters.Results.Select(inviter => new TrustInvitation
+        {
+            Address = inviter.Address,
+            Source = "trust",
+            Balance = inviter.Balance,
+            AvatarInfo = inviter.AvatarInfo
+        }).ToArray();
+    }
+
+    /// <summary>
+    /// Gets escrow-based invitations using optimized SQL with JOINs.
+    /// Filters out redeemed, revoked, and refunded escrows in a single query.
+    /// </summary>
+    private async Task<EscrowInvitation[]> GetEscrowInvitationsAsync(NpgsqlConnection connection, string address)
+    {
+        const string sql = @"
+            SELECT e.""inviter"", e.""amount"", e.""blockNumber"", e.""timestamp""
+            FROM ""CrcV2_InvitationEscrow_InvitationEscrowed"" e
+            WHERE e.""invitee"" = @address
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_InvitationEscrow_InvitationRedeemed"" r
+                  WHERE r.""inviter"" = e.""inviter"" AND r.""invitee"" = e.""invitee""
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_InvitationEscrow_InvitationRevoked"" v
+                  WHERE v.""inviter"" = e.""inviter"" AND v.""invitee"" = e.""invitee""
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_InvitationEscrow_InvitationRefunded"" f
+                  WHERE f.""inviter"" = e.""inviter"" AND f.""invitee"" = e.""invitee""
+              )
+            ORDER BY e.""blockNumber"" DESC
+            LIMIT 100";
+
+        var escrows = new List<(string inviter, decimal amount, long blockNumber, long timestamp)>();
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", address);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            escrows.Add((
+                reader.GetString(0),
+                reader.GetDecimal(1),
+                reader.GetInt64(2),
+                reader.GetInt64(3)
+            ));
+        }
+
+        if (escrows.Count == 0)
+        {
+            return Array.Empty<EscrowInvitation>();
+        }
+
+        // Get avatar info for all inviters
+        var inviterAddresses = escrows.Select(e => e.inviter).ToArray();
+        var avatarInfos = await GetAvatarInfoBatchInternal(inviterAddresses);
+        var avatarInfoDict = avatarInfos.ToDictionary(a => a?.Avatar?.ToLowerInvariant() ?? "", a => a);
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        return escrows.Select(e =>
+        {
+            var daysSinceEscrow = (int)((now - e.timestamp) / 86400);
+            avatarInfoDict.TryGetValue(e.inviter.ToLowerInvariant(), out var avatarInfo);
+
+            return new EscrowInvitation
+            {
+                Address = e.inviter,
+                Source = "escrow",
+                EscrowedAmount = e.amount.ToString("F0", System.Globalization.CultureInfo.InvariantCulture),
+                EscrowDays = daysSinceEscrow,
+                BlockNumber = e.blockNumber,
+                Timestamp = e.timestamp,
+                AvatarInfo = avatarInfo
+            };
+        }).ToArray();
+    }
+
+    /// <summary>
+    /// Gets at-scale invitations (pre-created accounts that haven't been claimed).
+    /// </summary>
+    private async Task<AtScaleInvitation[]> GetAtScaleInvitationsAsync(NpgsqlConnection connection, string address)
+    {
+        // Check if account was pre-created but not claimed
+        const string sql = @"
+            SELECT c.""account"", c.""blockNumber"", c.""timestamp""
+            FROM ""CrcV2_InvitationsAtScale_AccountCreated"" c
+            WHERE c.""account"" = @address
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_InvitationsAtScale_AccountClaimed"" cl
+                  WHERE cl.""account"" = c.""account""
+              )
+            LIMIT 1";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("address", address);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var account = reader.GetString(0);
+            var blockNumber = reader.GetInt64(1);
+            var timestamp = reader.GetInt64(2);
+
+            return new[]
+            {
+                new AtScaleInvitation
+                {
+                    Address = account,
+                    Source = "atScale",
+                    BlockNumber = blockNumber,
+                    Timestamp = timestamp,
+                    OriginInviter = null // Will be set when account is used for registration
+                }
+            };
+        }
+
+        return Array.Empty<AtScaleInvitation>();
+    }
+
 
     /// <summary>
     /// Internal helper for cursor-based profile search with ranking.

@@ -60,6 +60,7 @@ methods=(
 # Invitation Methods
 "circles_getValidInviters"
 "circles_getInvitationOrigin"
+"circles_getAllInvitations"
 # Transaction Methods
 "circles_getTransactionHistory"
 "circles_getTransactionHistoryEnriched"
@@ -238,6 +239,17 @@ case $method in
     printf "Enter address: "
     read address
     json='{"jsonrpc":"2.0","method":"circles_getInvitationOrigin","params":["'$address'"],"id":1}'
+    ;;
+  circles_getAllInvitations)
+    printf "Enter address: "
+    read address
+    printf "Enter minimum balance (default 96, or press enter to skip): "
+    read minBalance
+    if [ -n "$minBalance" ]; then
+      json='{"jsonrpc":"2.0","method":"circles_getAllInvitations","params":["'$address'","'$minBalance'"],"id":1}'
+    else
+      json='{"jsonrpc":"2.0","method":"circles_getAllInvitations","params":["'$address'"],"id":1}'
+    fi
     ;;
 
   # Transaction Methods
