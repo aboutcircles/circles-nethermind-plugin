@@ -30,9 +30,9 @@
       "id": 1,
       "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (container) (count_over_time({container=~\".+\"}[$__interval]))", "legendFormat": "{{container}}", "refId": "A" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (job) (count_over_time({job=~\".+\"}[$__interval]))", "legendFormat": "{{job}}", "refId": "A" }
       ],
-      "title": "Log Volume by Container",
+      "title": "Log Volume by Job",
       "type": "timeseries"
     },
     {
@@ -45,67 +45,18 @@
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 8 },
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 8 },
       "id": 10,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=~\"$container\"} |~ \"$search\"", "refId": "A" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{job=\"docker\"} |~ \"$search\"", "refId": "A" }
       ],
-      "title": "Logs",
+      "title": "Docker Container Logs",
       "type": "logs"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
-      "id": 102,
-      "panels": [],
-      "title": "Nethermind Logs",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 21 },
-      "id": 20,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"nethermind-gnosis\"} |~ \"$search\"", "refId": "A" }
-      ],
-      "title": "Nethermind",
-      "type": "logs"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
-      "id": 103,
-      "panels": [],
-      "title": "Circles Services Logs",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 32 },
-      "id": 30,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"pathfinder\"} |~ \"$search\"", "refId": "A" }
-      ],
-      "title": "Pathfinder",
-      "type": "logs"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 32 },
-      "id": 31,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"rpc\"} |~ \"$search\"", "refId": "A" }
-      ],
-      "title": "RPC Host",
-      "type": "logs"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
       "id": 104,
       "panels": [],
       "title": "Errors & Warnings",
@@ -122,27 +73,27 @@
           "unit": "short"
         },
         "overrides": [
-          { "matcher": { "id": "byRegexp", "options": ".*error.*|.*Error.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": ".*warn.*|.*Warn.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+          { "matcher": { "id": "byRegexp", "options": ".*error.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*warn.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 43 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 25 },
       "id": 40,
       "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (container) (count_over_time({container=~\".+\"} |~ \"(?i)(error|exception|fail|panic)\"[$__interval]))", "legendFormat": "{{container}} errors", "refId": "A" },
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (container) (count_over_time({container=~\".+\"} |~ \"(?i)(warn)\"[$__interval]))", "legendFormat": "{{container}} warnings", "refId": "B" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (stream) (count_over_time({job=\"docker\"} |~ \"(?i)(error|exception|fail|panic)\"[$__interval]))", "legendFormat": "errors {{stream}}", "refId": "A" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (stream) (count_over_time({job=\"docker\"} |~ \"(?i)(warn)\"[$__interval]))", "legendFormat": "warnings {{stream}}", "refId": "B" }
       ],
-      "title": "Errors & Warnings by Container",
+      "title": "Errors & Warnings",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 49 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 31 },
       "id": 41,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=~\".+\"} |~ \"(?i)(error|exception|fail|panic|warn)\"", "refId": "A" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{job=\"docker\"} |~ \"(?i)(error|exception|fail|panic|warn)\"", "refId": "A" }
       ],
       "title": "Error & Warning Logs",
       "type": "logs"
@@ -153,23 +104,6 @@
   "tags": ["logs", "loki"],
   "templating": {
     "list": [
-      {
-        "current": { "selected": true, "text": ".+", "value": ".+" },
-        "datasource": { "type": "loki", "uid": "loki" },
-        "definition": "label_values(container)",
-        "hide": 0,
-        "includeAll": true,
-        "label": "Container",
-        "multi": true,
-        "name": "container",
-        "options": [],
-        "query": "label_values(container)",
-        "refresh": 2,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
-      },
       {
         "current": { "selected": false, "text": "", "value": "" },
         "hide": 0,
