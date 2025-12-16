@@ -32,18 +32,19 @@ receivers:
           {{ end }}
         color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
 
-  - name: 'telegram-critical'
-    telegram_configs:
-      - bot_token: '${TELEGRAM_BOT_TOKEN}'
-        chat_id: ${TELEGRAM_CHAT_ID}
-        parse_mode: 'HTML'
-        message: |
-          {{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} <b>[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}</b>
-          {{ range .Alerts }}
-          <b>Alert:</b> {{ .Annotations.summary }}
-          <b>Severity:</b> {{ .Labels.severity }}
-          <b>Description:</b> {{ .Annotations.description }}
-          {{ end }}
+  # Uncomment to enable Telegram notifications (requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+  # - name: 'telegram-critical'
+  #   telegram_configs:
+  #     - bot_token: '${TELEGRAM_BOT_TOKEN}'
+  #       chat_id: ${TELEGRAM_CHAT_ID}
+  #       parse_mode: 'HTML'
+  #       message: |
+  #         {{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} <b>[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}</b>
+  #         {{ range .Alerts }}
+  #         <b>Alert:</b> {{ .Annotations.summary }}
+  #         <b>Severity:</b> {{ .Labels.severity }}
+  #         <b>Description:</b> {{ .Annotations.description }}
+  #         {{ end }}
 
 inhibit_rules:
   # Don't send warning alerts if a critical alert is already firing for the same service
