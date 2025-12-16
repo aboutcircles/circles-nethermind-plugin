@@ -564,6 +564,19 @@ run_test "trust" "circlesV2_findPath (with fromTokens restriction)" "curl -s -X 
 run_test "trust" "circlesV2_findPath (with toTokens restriction)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"1000\",\"toTokens\":[\"$TOKEN_ADDR_3\"]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "trust" "circlesV2_findPath (simulated trusts)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_2\",\"targetFlow\":\"1000\",\"simulatedTrusts\":[{\"Truster\":\"$TEST_ADDR_1\",\"Trustee\":\"$TEST_ADDR_2\",\"ExpiryTime\":9999999999}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
+# Consented Flow Tests
+# When simulatedConsentedAvatars includes the source, transfers through untrusted intermediaries should be blocked
+# Test 1: Without consented flow - should find path normally
+run_test "trust" "circlesV2_findPath (no consented flow)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"1000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"1000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 2: With consented flow on source - if source doesn't trust intermediate, flow should be reduced
+# Source has consented flow, intermediate doesn't have consented flow -> transfers blocked from source
+run_test "trust" "circlesV2_findPath (simulated consented flow on source)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"1000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"1000000000000000000\",\"IsWrapped\":false}],\"simulatedConsentedAvatars\":[\"$TEST_ADDR_1\"]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 3: Both source and sink have consented flow, and source trusts sink (via simulatedTrusts)
+# This should allow transfer if source->sink direct edge exists
+run_test "trust" "circlesV2_findPath (consented flow with mutual trust)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_2\",\"targetFlow\":\"1000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"1000000000000000000\",\"IsWrapped\":false}],\"simulatedConsentedAvatars\":[\"$TEST_ADDR_1\",\"$TEST_ADDR_2\"],\"simulatedTrusts\":[{\"Truster\":\"$TEST_ADDR_1\",\"Trustee\":\"$TEST_ADDR_2\"}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
 ######################################################################
 # SDK Enablement Methods
 ######################################################################

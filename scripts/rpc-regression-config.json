@@ -60,7 +60,10 @@
     "circles_events (CrcV2_GroupMint for group)",
     "circles_events (CrcV2_GroupMint for sender)",
     "circles_events (CrcV2_GroupMint recent)",
-    "circles_events (CrcV2_TransferBatch recent)"
+    "circles_events (CrcV2_TransferBatch recent)",
+    "circlesV2_findPath (no consented flow)",
+    "circlesV2_findPath (simulated consented flow on source)",
+    "circlesV2_findPath (consented flow with mutual trust)"
   ],
   "expectedFailureReasons": {
     "circles_getNetworkSnapshot": "Dynamic network state - changes between calls",
@@ -106,7 +109,10 @@
     "circles_events (CrcV2_GroupMint for group)": "Staging has more CrcV2_GroupMint events indexed",
     "circles_events (CrcV2_GroupMint for sender)": "Staging has more CrcV2_GroupMint events indexed",
     "circles_events (CrcV2_GroupMint recent)": "Staging has more CrcV2_GroupMint events indexed",
-    "circles_events (CrcV2_TransferBatch recent)": "Staging has more CrcV2_TransferBatch events indexed"
+    "circles_events (CrcV2_TransferBatch recent)": "Staging has more CrcV2_TransferBatch events indexed",
+    "circlesV2_findPath (no consented flow)": "New simulatedConsentedAvatars parameter - not in production pathfinder yet",
+    "circlesV2_findPath (simulated consented flow on source)": "New simulatedConsentedAvatars parameter - not in production pathfinder yet",
+    "circlesV2_findPath (consented flow with mutual trust)": "New simulatedConsentedAvatars parameter - not in production pathfinder yet"
   },
   "subscriptionTest": {
     "enabled": false,
