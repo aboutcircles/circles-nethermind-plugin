@@ -532,6 +532,36 @@ TELEGRAM_BOT_TOKEN=your-bot-token  # Optional
 TELEGRAM_CHAT_ID=your-chat-id      # Optional
 ```
 
+**Testing Slack Alerts**:
+
+To verify Slack integration is working, send a test alert:
+
+```bash
+# From the server running the observability stack
+docker compose -f docker/docker-compose.observability.yml exec alertmanager \
+  wget -q -O- \
+  '--post-data=[{"labels":{"alertname":"TestAlert","severity":"warning"},"annotations":{"summary":"Test alert from CLI","description":"This is a test to verify Slack integration works."}}]' \
+  '--header=Content-Type: application/json' \
+  http://localhost:9093/api/v2/alerts
+```
+
+If you don't see the alert in Slack:
+
+1. Check alertmanager logs: `docker compose -f docker/docker-compose.observability.yml logs alertmanager --tail=20`
+2. Verify `SLACK_WEBHOOK_URL` is set in `docker/.env`
+3. Ensure the Slack channel exists and the webhook has access
+4. Restart alertmanager after changing env vars: `docker compose -f docker/docker-compose.observability.yml restart alertmanager`
+
+#### Alternative: Trigger a Real Alert
+
+Stop a service briefly to trigger a real alert:
+```bash
+# Stop RPC for ~2 minutes to trigger ServiceNotAlive
+docker compose -f docker/docker-compose.gnosis.yml stop rpc
+# Wait 1-2 minutes for alert to fire, then restart
+docker compose -f docker/docker-compose.gnosis.yml start rpc
+```
+
 ---
 
 ## Data Persistence
