@@ -34,6 +34,9 @@ public class FlowRequest
     [JsonPropertyName("simulatedTrusts")]
     public List<SimulatedTrust>? SimulatedTrusts { get; set; }
 
+    [JsonPropertyName("simulatedConsentedAvatars")]
+    public List<string>? SimulatedConsentedAvatars { get; set; }
+
     [JsonPropertyName("maxTransfers")]
     public int? MaxTransfers { get; set; }
     public bool? EnableGroupMinting { get; set; }
