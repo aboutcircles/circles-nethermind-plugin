@@ -30,6 +30,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(circles_rpc_requests_total[5m]))", "refId": "A" }],
       "title": "Request Rate",
+      "description": "Total RPC requests per second across all methods. Formula: sum(rate(circles_rpc_requests_total[5m])). Measures overall API load.",
       "type": "stat"
     },
     {
@@ -48,6 +49,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum(rate(circles_rpc_request_duration_seconds_bucket[5m])) by (le))", "refId": "A" }],
       "title": "P95 Latency",
+      "description": "95th percentile request latency across all RPC methods. Formula: histogram_quantile(0.95, request_duration_bucket). 95% of requests complete faster than this value. Green <100ms, Yellow <1s, Red >=1s.",
       "type": "stat"
     },
     {
@@ -66,6 +68,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(circles_rpc_errors_total[1h]))", "refId": "A" }],
       "title": "Errors (1h)",
+      "description": "Total RPC errors in the last hour across all methods and error types. Formula: sum(increase(circles_rpc_errors_total[1h])). Includes validation errors, internal errors, and timeouts. Green =0, Yellow <5, Red >=5.",
       "type": "stat"
     },
     {
@@ -84,6 +87,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_rpc_active_subscriptions", "refId": "A" }],
       "title": "Active Subscriptions",
+      "description": "Number of active WebSocket subscriptions (e.g., circles_events subscriptions). Clients subscribe to receive real-time event notifications. Indicates active real-time API usage.",
       "type": "stat"
     },
     {
@@ -111,6 +115,7 @@
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(circles_rpc_requests_total[5m])) by (method)", "legendFormat": "{{ method }}", "refId": "A" }],
       "title": "Request Rate by Method",
+      "description": "Requests per second broken down by RPC method name. Formula: rate(circles_rpc_requests_total[5m]) by method. Shows which API endpoints are most heavily used. Common methods: circles_events, circles_query, circles_getTotalBalance.",
       "type": "timeseries"
     },
     {
@@ -142,6 +147,7 @@
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum(rate(circles_rpc_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99", "refId": "C" }
       ],
       "title": "Latency Percentiles",
+      "description": "Response time distribution across all RPC requests. P50 = median (50% faster), P95 = 95th percentile, P99 = 99th percentile. Formula: histogram_quantile(percentile, request_duration_bucket). P95 and P99 reveal tail latency for slow requests.",
       "type": "timeseries"
     },
     {
@@ -161,6 +167,7 @@
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum(rate(circles_rpc_request_duration_seconds_bucket[5m])) by (le, method))", "legendFormat": "{{ method }}", "refId": "A" }],
       "title": "P95 Latency by Method",
+      "description": "95th percentile latency broken down by RPC method. Formula: histogram_quantile(0.95, request_duration_bucket) by method. Identifies which specific methods are slow. Complex queries (circles_events with filters) typically have higher latency.",
       "type": "timeseries"
     },
     {
@@ -188,6 +195,7 @@
       "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(circles_rpc_errors_total[5m])) by (error_type)", "legendFormat": "{{ error_type }}", "refId": "A" }],
       "title": "Errors by Type",
+      "description": "Error count by category over time. Formula: increase(circles_rpc_errors_total[5m]) by error_type. Types: validation (bad input), internal (server errors), timeout, parse_error. Stacked bars show error composition.",
       "type": "timeseries"
     },
     {
@@ -207,6 +215,7 @@
       "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(circles_rpc_errors_total[5m])) by (method)", "legendFormat": "{{ method }}", "refId": "A" }],
       "title": "Errors by Method",
+      "description": "Error count by RPC method over time. Formula: increase(circles_rpc_errors_total[5m]) by method. Identifies which API endpoints are failing most. Useful for debugging method-specific issues.",
       "type": "timeseries"
     },
     {
@@ -233,6 +242,7 @@
       "options": { "displayMode": "gradient", "maxVizHeight": 300, "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true, "sizing": "auto", "valueMode": "color" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(10, sum(increase(circles_rpc_requests_total[1h])) by (method))", "legendFormat": "{{ method }}", "refId": "A" }],
       "title": "Top 10 Methods by Volume (1h)",
+      "description": "Most called RPC methods in the last hour. Formula: topk(10, sum(increase(requests_total[1h])) by method). Shows which API endpoints drive the most traffic. Useful for capacity planning and optimization priorities.",
       "type": "bargauge"
     },
     {
@@ -251,6 +261,7 @@
       "options": { "displayMode": "gradient", "maxVizHeight": 300, "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showUnfilled": true, "sizing": "auto", "valueMode": "color" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(10, histogram_quantile(0.95, sum(rate(circles_rpc_request_duration_seconds_bucket[1h])) by (le, method)))", "legendFormat": "{{ method }}", "refId": "A" }],
       "title": "Slowest Methods (P95, 1h)",
+      "description": "Top 10 slowest RPC methods by P95 latency over the last hour. Formula: topk(10, histogram_quantile(0.95, duration_bucket) by method). Identifies performance bottlenecks. Green <500ms, Yellow <1s, Red >=1s.",
       "type": "bargauge"
     }
   ],
