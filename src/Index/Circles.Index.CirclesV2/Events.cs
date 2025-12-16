@@ -260,3 +260,13 @@ public record TransferSummary(
     UInt256 Amount,
     string Events
 ) : IIndexEvent;
+
+public record SetAdvancedUsageFlag(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,
+    string TransactionHash,
+    string Emitter,
+    string Avatar,
+    byte[] Flag) : IIndexedEventV2;

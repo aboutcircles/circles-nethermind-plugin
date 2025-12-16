@@ -19,6 +19,12 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
 
+    // Track avatars that have enabled consented flow
+    public HashSet<int> ConsentedAvatars { get; set; } = new HashSet<int>();
+
+    // Trust lookup for consented flow validation (truster -> set of trustees)
+    public IReadOnlyDictionary<int, HashSet<int>>? TrustLookup { get; set; }
+
     public void AddTokenNode(int tokenId, int? poolNodeId = null)
     {
         // Note: We deliberately create token pool ids via BalanceNodeIdOf(...) so they’re marked “balance‑ish”.

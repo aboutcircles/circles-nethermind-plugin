@@ -134,6 +134,10 @@ public class DatabaseSchema : BaseDatabaseSchema
         EventSchema.FromSolidity("CrcV2",
             "event FlowEdgesScopeSingleStarted(uint256 indexed flowEdgeId, uint16 streamId)");
 
+    public static readonly EventSchema SetAdvancedUsageFlag =
+        EventSchema.FromSolidity("CrcV2",
+            "event SetAdvancedUsageFlag(address indexed avatar, bytes32 flag)");
+
     public static readonly EventSchema FlowEdgesScopeLastEnded = new(
         "CrcV2",
         "FlowEdgesScopeLastEnded",
@@ -423,6 +427,17 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("to", e => e.To),
                 ("amount", e => (BigInteger)e.Amount),
                 ("events", e => e.Events)
+            ]
+        );
+
+        AddMappings<SetAdvancedUsageFlag>(
+            ns: "CrcV2",
+            table: "SetAdvancedUsageFlag",
+            eventSchema: SetAdvancedUsageFlag,
+            databaseFieldMap:
+            [
+                ("avatar", e => e.Avatar),
+                ("flag", e => e.Flag)
             ]
         );
     }
