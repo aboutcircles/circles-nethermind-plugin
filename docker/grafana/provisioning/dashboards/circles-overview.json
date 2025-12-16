@@ -1,7 +1,5 @@
 {
-  "annotations": {
-    "list": []
-  },
+  "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -26,13 +24,11 @@
           ],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
           "unit": "none"
-        },
-        "overrides": []
+        }
       },
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "pluginVersion": "11.3.0",
       "targets": [{ "expr": "up{job=\"nethermind\"}", "refId": "A" }],
       "title": "Nethermind",
       "type": "stat"
@@ -48,23 +44,6 @@
         }
       },
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
-      "id": 2,
-      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "up{job=\"consensus\"}", "refId": "A" }],
-      "title": "Consensus (Lighthouse)",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            { "options": { "0": { "color": "red", "index": 0, "text": "DOWN" }, "1": { "color": "green", "index": 1, "text": "UP" } }, "type": "value" }
-          ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
-        }
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "up{job=\"pathfinder\"}", "refId": "A" }],
@@ -81,7 +60,7 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "up{job=\"rpc\"}", "refId": "A" }],
@@ -98,10 +77,10 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "circles_cache_listener_connected", "refId": "A" }],
+      "targets": [{ "expr": "up{job=\"cache-service\"}", "refId": "A" }],
       "title": "Cache Service",
       "type": "stat"
     },
@@ -115,11 +94,28 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "circles_cache_warmup_complete", "refId": "A" }],
       "title": "Cache Warmup",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "index": 0, "text": "DISCONNECTED" }, "1": { "color": "green", "index": 1, "text": "CONNECTED" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 7,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "circles_cache_listener_connected", "refId": "A" }],
+      "title": "DB Listener",
       "type": "stat"
     },
     {
@@ -284,7 +280,7 @@
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 },
       "id": 103,
       "panels": [],
-      "title": "Pathfinder",
+      "title": "HTTP Requests",
       "type": "row"
     },
     {
@@ -300,9 +296,12 @@
       },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
       "id": 30,
-      "options": { "legend": { "calcs": ["last", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
-      "targets": [{ "expr": "circles_findpath_inflight_requests", "legendFormat": "In-Flight Requests", "refId": "A" }],
-      "title": "FindPath In-Flight Requests",
+      "options": { "legend": { "calcs": ["last", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "http_requests_in_progress{job=\"pathfinder\"}", "legendFormat": "Pathfinder", "refId": "A" },
+        { "expr": "http_requests_in_progress{job=\"rpc\"}", "legendFormat": "RPC", "refId": "B" }
+      ],
+      "title": "In-Flight Requests",
       "type": "timeseries"
     },
     {
@@ -318,9 +317,12 @@
       },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
       "id": 31,
-      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
-      "targets": [{ "expr": "rate(circles_findpath_rejected_requests_total[5m])", "legendFormat": "Rejected/sec", "refId": "A" }],
-      "title": "FindPath Rejected Requests Rate",
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "expr": "sum by (job) (rate(http_requests_received_total{job=\"pathfinder\"}[5m]))", "legendFormat": "Pathfinder", "refId": "A" },
+        { "expr": "sum by (job) (rate(http_requests_received_total{job=\"rpc\"}[5m]))", "legendFormat": "RPC", "refId": "B" }
+      ],
+      "title": "Request Rate",
       "type": "timeseries"
     },
     {
@@ -336,13 +338,14 @@
       },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
       "id": 32,
-      "options": { "legend": { "calcs": ["mean", "max", "p99"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "single", "sort": "none" } },
+      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "expr": "histogram_quantile(0.50, rate(circles_http_request_duration_seconds_bucket{job=\"pathfinder\"}[5m]))", "legendFormat": "p50", "refId": "A" },
-        { "expr": "histogram_quantile(0.95, rate(circles_http_request_duration_seconds_bucket{job=\"pathfinder\"}[5m]))", "legendFormat": "p95", "refId": "B" },
-        { "expr": "histogram_quantile(0.99, rate(circles_http_request_duration_seconds_bucket{job=\"pathfinder\"}[5m]))", "legendFormat": "p99", "refId": "C" }
+        { "expr": "histogram_quantile(0.50, sum by (le, job) (rate(http_request_duration_seconds_bucket{job=\"pathfinder\"}[5m])))", "legendFormat": "Pathfinder p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le, job) (rate(http_request_duration_seconds_bucket{job=\"pathfinder\"}[5m])))", "legendFormat": "Pathfinder p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.50, sum by (le, job) (rate(http_request_duration_seconds_bucket{job=\"rpc\"}[5m])))", "legendFormat": "RPC p50", "refId": "C" },
+        { "expr": "histogram_quantile(0.95, sum by (le, job) (rate(http_request_duration_seconds_bucket{job=\"rpc\"}[5m])))", "legendFormat": "RPC p95", "refId": "D" }
       ],
-      "title": "Pathfinder Request Latency",
+      "title": "Request Latency",
       "type": "timeseries"
     },
     {
@@ -364,7 +367,7 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 29 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
       "id": 40,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
@@ -378,65 +381,13 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "reqps"
-        }
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
-      "id": 41,
-      "options": { "legend": { "calcs": ["mean", "sum"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [
-        { "expr": "rate(circles_cache_balance_queries_total[5m])", "legendFormat": "Balance Queries {{version}}", "refId": "A" },
-        { "expr": "rate(circles_cache_avatar_queries_total[5m])", "legendFormat": "Avatar Queries {{batch}}", "refId": "B" },
-        { "expr": "rate(circles_cache_profile_queries_total[5m])", "legendFormat": "Profile Queries {{batch}}", "refId": "C" }
-      ],
-      "title": "Cache Query Rates",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "s"
-        }
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 29 },
-      "id": 42,
-      "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [
-        { "expr": "histogram_quantile(0.50, rate(circles_cache_balance_query_duration_seconds_bucket[5m]))", "legendFormat": "p50 {{version}}", "refId": "A" },
-        { "expr": "histogram_quantile(0.95, rate(circles_cache_balance_query_duration_seconds_bucket[5m]))", "legendFormat": "p95 {{version}}", "refId": "B" },
-        { "expr": "histogram_quantile(0.99, rate(circles_cache_balance_query_duration_seconds_bucket[5m]))", "legendFormat": "p99 {{version}}", "refId": "C" }
-      ],
-      "title": "Cache Balance Query Latency",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 37 },
-      "id": 105,
-      "panels": [],
-      "title": "Reorgs & Errors",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 38 },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 29 },
       "id": 50,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "expr": "circles_cache_reorgs_detected_total", "refId": "A" }],
@@ -449,15 +400,32 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 38 },
+      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 29 },
       "id": 51,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "expr": "circles_findpath_rejected_requests_total", "refId": "A" }],
-      "title": "Total Rejected FindPath",
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "circles_cache_indexed_addresses_v1_total", "refId": "A" }],
+      "title": "V1 Indexed Addresses",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 29 },
+      "id": 52,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "circles_cache_indexed_addresses_v2_total", "refId": "A" }],
+      "title": "V2 Indexed Addresses",
       "type": "stat"
     }
   ],
