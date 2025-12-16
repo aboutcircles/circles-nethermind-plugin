@@ -101,6 +101,9 @@ services:
       --execution-endpoint=http://nethermind-gnosis:8551
       --execution-jwt=/jwt.hex
       --checkpoint-sync-url=https://checkpoint.gnosischain.com
+      --metrics
+      --metrics-address=0.0.0.0
+      --metrics-port=5054
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/4000'"]
       interval: 60s
@@ -241,7 +244,7 @@ services:
 
   postgres-backup:
     container_name: postgres-backup
-    image: prodrigestivill/postgres-backup-local:16
+    image: prodrigestivill/postgres-backup-local:17
     restart: unless-stopped
     networks:
       - circles-gnosis
