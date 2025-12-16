@@ -103,3 +103,7 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
+
+networks:
+  circles-gnosis:
+    external: true

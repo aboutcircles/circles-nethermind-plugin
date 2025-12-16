@@ -30,9 +30,9 @@
       "id": 1,
       "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (job) (count_over_time({job=~\".+\"}[$__interval]))", "legendFormat": "{{job}}", "refId": "A" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (container) (count_over_time({job=\"docker\"}[$__interval]))", "legendFormat": "{{container}}", "refId": "A" }
       ],
-      "title": "Log Volume by Job",
+      "title": "Log Volume by Container",
       "type": "timeseries"
     },
     {
@@ -81,10 +81,10 @@
       "id": 40,
       "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (stream) (count_over_time({job=\"docker\"} |~ \"(?i)(error|exception|fail|panic)\"[$__interval]))", "legendFormat": "errors {{stream}}", "refId": "A" },
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (stream) (count_over_time({job=\"docker\"} |~ \"(?i)(warn)\"[$__interval]))", "legendFormat": "warnings {{stream}}", "refId": "B" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (container) (count_over_time({job=\"docker\"} |~ \"(?i)(error|exception|fail|panic)\"[$__interval]))", "legendFormat": "errors {{container}}", "refId": "A" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (container) (count_over_time({job=\"docker\"} |~ \"(?i)(warn)\"[$__interval]))", "legendFormat": "warnings {{container}}", "refId": "B" }
       ],
-      "title": "Errors & Warnings",
+      "title": "Errors & Warnings by Container",
       "type": "timeseries"
     },
     {

@@ -7,12 +7,13 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  routes:
-    # Critical alerts go to both Slack and Telegram
-    - match:
-        severity: critical
-      receiver: 'telegram-critical'
-      continue: true  # Also send to default Slack receiver
+  # Uncomment the routes below to enable Telegram escalation for critical alerts
+  # Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables
+  # routes:
+  #   - match:
+  #       severity: critical
+  #     receiver: 'telegram-critical'
+  #     continue: true
 
 receivers:
   - name: 'slack-notifications'

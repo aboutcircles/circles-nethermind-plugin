@@ -26,7 +26,7 @@
           "unit": "none"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "up{job=\"nethermind\"}", "refId": "A" }],
@@ -40,10 +40,28 @@
           "mappings": [
             { "options": { "0": { "color": "red", "index": 0, "text": "DOWN" }, "1": { "color": "green", "index": 1, "text": "UP" } }, "type": "value" }
           ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+          "unit": "none"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "up{job=\"consensus\"}", "refId": "A" }],
+      "title": "Lighthouse",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "index": 0, "text": "DOWN" }, "1": { "color": "green", "index": 1, "text": "UP" } }, "type": "value" }
+          ],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "up{job=\"pathfinder\"}", "refId": "A" }],
@@ -60,7 +78,7 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "up{job=\"rpc\"}", "refId": "A" }],
@@ -77,7 +95,7 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "up{job=\"cache-service\"}", "refId": "A" }],
@@ -94,7 +112,7 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "circles_cache_warmup_complete", "refId": "A" }],
@@ -111,11 +129,28 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 1 },
       "id": 7,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
       "targets": [{ "expr": "circles_cache_listener_connected", "refId": "A" }],
       "title": "DB Listener",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "orange", "index": 0, "text": "SYNCING" }, "1": { "color": "green", "index": 1, "text": "SYNCED" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 1 },
+      "id": 8,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
+      "targets": [{ "expr": "sync_eth2_synced{job=\"consensus\"}", "refId": "A" }],
+      "title": "Beacon Sync",
       "type": "stat"
     },
     {
@@ -142,9 +177,10 @@
       "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
         { "expr": "nethermind_blocks", "legendFormat": "Nethermind Head", "refId": "A" },
-        { "expr": "circles_cache_last_processed_block", "legendFormat": "Cache Block", "refId": "B" }
+        { "expr": "circles_cache_last_processed_block", "legendFormat": "Cache Block", "refId": "B" },
+        { "expr": "beacon_head_state_slot{job=\"consensus\"}", "legendFormat": "Beacon Slot", "refId": "C" }
       ],
-      "title": "Block Heights",
+      "title": "Block/Slot Heights",
       "type": "timeseries"
     },
     {
