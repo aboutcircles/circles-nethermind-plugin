@@ -105,12 +105,13 @@ services:
       - /bin/sh
       - -c
       - |
-        # Install envsubst (part of gettext)
-        apk add --no-cache gettext
-        # Substitute environment variables in config template
-        envsubst < /etc/alertmanager/alertmanager.yml.tmpl > /etc/alertmanager/alertmanager.yml
+        # Substitute environment variables using sed (busybox compatible)
+        sed -e "s|\$${SLACK_WEBHOOK_URL}|$SLACK_WEBHOOK_URL|g" \
+            -e "s|\$${TELEGRAM_BOT_TOKEN}|$TELEGRAM_BOT_TOKEN|g" \
+            -e "s|\$${TELEGRAM_CHAT_ID}|$TELEGRAM_CHAT_ID|g" \
+            /etc/alertmanager/alertmanager.yml.tmpl > /alertmanager/alertmanager.yml
         # Start alertmanager
-        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager
+        exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml --storage.path=/alertmanager
 
 networks:
   circles-gnosis:
