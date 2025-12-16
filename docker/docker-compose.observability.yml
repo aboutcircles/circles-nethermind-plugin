@@ -3,7 +3,7 @@ services:
     container_name: prometheus
     image: prom/prometheus:v2.54.0
     restart: unless-stopped
-    user: root
+    user: "${MY_UID:-65534}:${MY_GID:-65534}"
     networks:
       - circles-gnosis
     expose:
@@ -39,7 +39,7 @@ services:
     container_name: loki
     image: grafana/loki:3.0.0
     restart: unless-stopped
-    user: root
+    user: "${MY_UID:-10001}:${MY_GID:-10001}"
     networks:
       - circles-gnosis
     expose:
@@ -89,7 +89,7 @@ services:
     container_name: alertmanager
     image: prom/alertmanager:v0.27.0
     restart: unless-stopped
-    user: root
+    user: "${MY_UID:-65534}:${MY_GID:-65534}"
     networks:
       - circles-gnosis
     expose:
