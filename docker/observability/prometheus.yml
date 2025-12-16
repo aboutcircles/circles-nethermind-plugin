@@ -119,6 +119,53 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
+  # Blackbox exporter - probe Caddy reverse proxy (internal)
+  - job_name: 'blackbox-caddy'
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://caddy:80
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: service
+        replacement: caddy
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Blackbox exporter - probe external HTTPS endpoints (public domain)
+  # Also monitors SSL certificate expiry via probe_ssl_earliest_cert_expiry
+  - job_name: 'blackbox-external'
+    scrape_interval: 60s
+    metrics_path: /probe
+    params:
+      module: [https_2xx]
+    static_configs:
+      - targets:
+        # Main RPC endpoint (default route)
+        - https://staging.circlesubi.network
+        # Pathfinder service
+        - https://staging.circlesubi.network/pathfinder
+        # Profiles service
+        - https://staging.circlesubi.network/profiles
+        # Chain RPC (Nethermind)
+        - https://staging.circlesubi.network/chain-rpc
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        regex: https://([^/]+).*
+        target_label: domain
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
   # Blackbox exporter - probe Lighthouse (consensus) health endpoint
   # Lighthouse returns 200 when synced, 206 when syncing - both are healthy
   - job_name: 'blackbox-consensus'
