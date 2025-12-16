@@ -6,8 +6,8 @@ services:
     user: root
     networks:
       - circles-gnosis
-    ports:
-      - 9090:9090
+    expose:
+      - 9090
     volumes:
       - ../.state/prometheus:/prometheus
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -42,8 +42,8 @@ services:
     user: root
     networks:
       - circles-gnosis
-    ports:
-      - 3100:3100
+    expose:
+      - 3100
     volumes:
       - ../.state/loki:/loki
       - ./loki-config.yml:/etc/loki/local-config.yaml:ro
@@ -73,8 +73,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 9100:9100
+    expose:
+      - 9100
     environment:
       - ConnectionStrings__CirclesDb=${V_POSTGRES_CONNECTION_STRING}
       - Metrics__CollectionIntervalSeconds=60
@@ -91,8 +91,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 9093:9093
+    expose:
+      - 9093
     volumes:
       - ../.state/alertmanager:/alertmanager
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
