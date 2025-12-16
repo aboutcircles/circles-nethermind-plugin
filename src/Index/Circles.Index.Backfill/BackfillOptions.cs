@@ -38,4 +38,9 @@ public class BackfillOptions
     /// If true, parse blocks but don't write to database
     /// </summary>
     public bool DryRun { get; init; } = false;
+
+    /// <summary>
+    /// V2 Hub contract address (default: Gnosis mainnet)
+    /// </summary>
+    public string? V2HubAddress { get; init; }
 }
