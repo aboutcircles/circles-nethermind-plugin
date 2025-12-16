@@ -52,6 +52,15 @@
         reverse_proxy profile-service:3000
     }
 
+    # Grafana dashboard - forwards /grafana/X to grafana:3000/X
+    handle_path /grafana/* {
+        reverse_proxy grafana:3000
+    }
+
+    handle_path /grafana {
+        reverse_proxy grafana:3000
+    }
+
     # Default: RPC service
     handle {
         reverse_proxy rpc:8080
