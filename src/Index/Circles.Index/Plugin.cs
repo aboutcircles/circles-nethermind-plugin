@@ -47,7 +47,11 @@ public class Plugin : INethermindPlugin
 
         if (!Enabled)
         {
-            pluginLogger.Info("Plugin disabled via CIRCLES_PLUGIN_DISABLED=true. Skipping initialization.");
+            pluginLogger.Warn("========================================");
+            pluginLogger.Warn("CIRCLES PLUGIN DISABLED");
+            pluginLogger.Warn("CIRCLES_PLUGIN_DISABLED=true detected.");
+            pluginLogger.Warn("Indexing is OFF. RPC-only mode active.");
+            pluginLogger.Warn("========================================");
             return Task.CompletedTask;
         }
 
