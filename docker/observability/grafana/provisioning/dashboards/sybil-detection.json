@@ -83,7 +83,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 4,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_without_profile", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_profile", "refId": "A" }],
       "title": "No Profile",
       "type": "stat"
     },
@@ -101,7 +101,7 @@
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 5,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_without_incoming_trust", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_trust_received", "refId": "A" }],
       "title": "No Incoming Trust",
       "type": "stat"
     },
@@ -264,8 +264,8 @@
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_isolated_accounts", "legendFormat": "Isolated", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_without_profile", "legendFormat": "No Profile", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_without_incoming_trust", "legendFormat": "No Incoming Trust", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_profile", "legendFormat": "No Profile", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_trust_received", "legendFormat": "No Incoming Trust", "refId": "C" }
       ],
       "title": "Account Quality Indicators Over Time",
       "type": "timeseries"
@@ -312,8 +312,8 @@
       "id": 23,
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] }, "pieType": "pie", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(circles_total_humans) - circles_accounts_without_profile", "legendFormat": "Has Profile", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_without_profile", "legendFormat": "No Profile", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(circles_total_humans) - circles_accounts_no_profile", "legendFormat": "Has Profile", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_profile", "legendFormat": "No Profile", "refId": "B" }
       ],
       "title": "Profile Adoption",
       "type": "piechart"
@@ -336,8 +336,8 @@
       "id": 24,
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] }, "pieType": "pie", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(circles_total_humans) - circles_accounts_without_incoming_trust", "legendFormat": "Trusted", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_without_incoming_trust", "legendFormat": "Not Trusted", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(circles_total_humans) - circles_accounts_no_trust_received", "legendFormat": "Trusted", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_trust_received", "legendFormat": "Not Trusted", "refId": "B" }
       ],
       "title": "Trust Reception",
       "type": "piechart"
