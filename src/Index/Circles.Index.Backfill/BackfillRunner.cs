@@ -49,6 +49,21 @@ public class BackfillRunner
         Console.WriteLine("=== Circles Index Backfill Tool ===");
         Console.WriteLine();
 
+        // Safety check: Verify indexer is not running
+        if (_options.Force)
+        {
+            Console.WriteLine("⚠ Safety check BYPASSED (--force flag used)");
+            Console.WriteLine();
+        }
+        else
+        {
+            var safetyCheck = await VerifyIndexerNotRunningAsync(cancellationToken);
+            if (!safetyCheck)
+            {
+                return 1;
+            }
+        }
+
         // Validate tables
         var unsupportedTables = _options.Tables.Where(t => !SupportedTables.Contains(t)).ToList();
         if (unsupportedTables.Count > 0)
@@ -154,6 +169,104 @@ public class BackfillRunner
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Verifies that the Circles indexer is not running to prevent conflicts.
+    /// Checks:
+    /// 1. CIRCLES_PLUGIN_DISABLED environment variable (recommended)
+    /// 2. System_Block is not advancing (practical check)
+    /// </summary>
+    private async Task<bool> VerifyIndexerNotRunningAsync(CancellationToken cancellationToken)
+    {
+        Console.WriteLine("Safety check: Verifying indexer is not running...");
+
+        // Check 1: Environment variable
+        var pluginDisabled = string.Equals(
+            Environment.GetEnvironmentVariable("CIRCLES_PLUGIN_DISABLED"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (pluginDisabled)
+        {
+            Console.WriteLine("  ✓ CIRCLES_PLUGIN_DISABLED=true detected");
+        }
+        else
+        {
+            Console.WriteLine("  ⚠ CIRCLES_PLUGIN_DISABLED is not set to 'true'");
+        }
+
+        // Check 2: System_Block not advancing
+        Console.WriteLine("  Checking if System_Block is stable...");
+
+        try
+        {
+            await using var connection = new NpgsqlConnection(_options.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            // Get current max block
+            await using var cmd1 = new NpgsqlCommand(
+                @"SELECT MAX(""blockNumber"") FROM ""System_Block""", connection);
+            var block1 = await cmd1.ExecuteScalarAsync(cancellationToken);
+            var maxBlock1 = block1 is long l1 ? l1 : 0;
+
+            if (maxBlock1 == 0)
+            {
+                Console.Error.WriteLine("  ✗ Error: No System_Block data found. Database may be empty.");
+                return false;
+            }
+
+            // Wait 3 seconds and check again
+            Console.WriteLine($"    Block at start: {maxBlock1:N0}");
+            Console.WriteLine("    Waiting 3 seconds to verify block is stable...");
+            await Task.Delay(3000, cancellationToken);
+
+            await using var cmd2 = new NpgsqlCommand(
+                @"SELECT MAX(""blockNumber"") FROM ""System_Block""", connection);
+            var block2 = await cmd2.ExecuteScalarAsync(cancellationToken);
+            var maxBlock2 = block2 is long l2 ? l2 : 0;
+
+            Console.WriteLine($"    Block after 3s: {maxBlock2:N0}");
+
+            if (maxBlock2 > maxBlock1)
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("  ✗ ERROR: System_Block is advancing!");
+                Console.Error.WriteLine($"    Block advanced from {maxBlock1:N0} to {maxBlock2:N0}");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("  The Circles indexer appears to be running.");
+                Console.Error.WriteLine("  Running backfill while the indexer is active can cause data inconsistencies.");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("  To fix this:");
+                Console.Error.WriteLine("    1. Stop the indexer or set CIRCLES_PLUGIN_DISABLED=true");
+                Console.Error.WriteLine("    2. Restart Nethermind in RPC-only mode");
+                Console.Error.WriteLine("    3. Run this backfill tool again");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("  If you're certain the indexer is stopped, use --force to bypass this check.");
+                return false;
+            }
+
+            Console.WriteLine("  ✓ System_Block is stable (not advancing)");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"  ✗ Error checking database: {ex.Message}");
+            return false;
+        }
+
+        // Final decision
+        if (!pluginDisabled)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  ⚠ Warning: CIRCLES_PLUGIN_DISABLED is not set.");
+            Console.WriteLine("    System_Block appears stable, but this could be due to sync issues.");
+            Console.WriteLine("    For safety, it's recommended to set CIRCLES_PLUGIN_DISABLED=true.");
+            Console.WriteLine();
+            Console.WriteLine("    Proceeding anyway since System_Block is not advancing...");
+        }
+
+        Console.WriteLine();
+        return true;
     }
 
     private async Task<List<ParsedEvent>> FetchAndParseLogsAsync(
