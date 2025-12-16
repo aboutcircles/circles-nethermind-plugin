@@ -20,3 +20,7 @@ services:
     depends_on:
       - prometheus
       - loki
+
+networks:
+  circles-gnosis:
+    external: true
