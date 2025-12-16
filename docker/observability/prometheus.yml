@@ -94,3 +94,41 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  # Blackbox exporter - probe Nethermind health endpoint
+  - job_name: 'blackbox-nethermind'
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://nethermind-gnosis:8545/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: service
+        replacement: nethermind
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Blackbox exporter - probe Lighthouse (consensus) health endpoint
+  - job_name: 'blackbox-consensus'
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://consensus-gnosis:5052/eth/v1/node/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: service
+        replacement: consensus
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

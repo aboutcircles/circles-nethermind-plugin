@@ -151,6 +151,21 @@ public static class BusinessKpiMetrics
             "CRC minted in time window",
             new GaugeConfiguration { LabelNames = new[] { "window" } });
 
+    public static readonly Gauge TransferCount = Prometheus.Metrics
+        .CreateGauge("circles_transfer_count",
+            "Number of transfers in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge AverageTransferAmount = Prometheus.Metrics
+        .CreateGauge("circles_average_transfer_amount_crc",
+            "Average CRC amount per transfer in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge MedianTransferAmount = Prometheus.Metrics
+        .CreateGauge("circles_median_transfer_amount_crc",
+            "Median CRC amount per transfer in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
     // ===========================================
     // Sybil Detection Metrics
     // ===========================================

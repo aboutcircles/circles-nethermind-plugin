@@ -443,6 +443,57 @@ public class KpiCollectorService : BackgroundService
             _logger.LogWarning(ex, "Failed to collect mint volume metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("mint_volume").Inc();
         }
+
+        // Transfer count by window
+        try
+        {
+            var count24h = await _repository.GetTransferCountAsync(Window24H, ct);
+            var count7d = await _repository.GetTransferCountAsync(Window7D, ct);
+            var count30d = await _repository.GetTransferCountAsync(Window30D, ct);
+
+            BusinessKpiMetrics.TransferCount.WithLabels("24h").Set(count24h);
+            BusinessKpiMetrics.TransferCount.WithLabels("7d").Set(count7d);
+            BusinessKpiMetrics.TransferCount.WithLabels("30d").Set(count30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect transfer count metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("transfer_count").Inc();
+        }
+
+        // Average transfer amount by window
+        try
+        {
+            var avg24h = await _repository.GetAverageTransferAmountAsync(Window24H, ct);
+            var avg7d = await _repository.GetAverageTransferAmountAsync(Window7D, ct);
+            var avg30d = await _repository.GetAverageTransferAmountAsync(Window30D, ct);
+
+            BusinessKpiMetrics.AverageTransferAmount.WithLabels("24h").Set(avg24h);
+            BusinessKpiMetrics.AverageTransferAmount.WithLabels("7d").Set(avg7d);
+            BusinessKpiMetrics.AverageTransferAmount.WithLabels("30d").Set(avg30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect average transfer amount metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("average_transfer_amount").Inc();
+        }
+
+        // Median transfer amount by window
+        try
+        {
+            var median24h = await _repository.GetMedianTransferAmountAsync(Window24H, ct);
+            var median7d = await _repository.GetMedianTransferAmountAsync(Window7D, ct);
+            var median30d = await _repository.GetMedianTransferAmountAsync(Window30D, ct);
+
+            BusinessKpiMetrics.MedianTransferAmount.WithLabels("24h").Set(median24h);
+            BusinessKpiMetrics.MedianTransferAmount.WithLabels("7d").Set(median7d);
+            BusinessKpiMetrics.MedianTransferAmount.WithLabels("30d").Set(median30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect median transfer amount metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("median_transfer_amount").Inc();
+        }
     }
 
     // ============================================================================
