@@ -18,13 +18,6 @@
         }
     }
 
-    # Nethermind dashboard assets and API (root level for JS compatibility)
-    # These are requested by the dashboard JS at root level
-    @nethermind_root path /data/events /css/* /js/* /logos/* /*.woff2 /favicon.webp /nethermind.svg
-    handle @nethermind_root {
-        reverse_proxy nethermind-gnosis:8545
-    }
-
     # Dashboard HTML and JSON-RPC API under /chain-rpc
     handle_path /chain-rpc/* {
         reverse_proxy nethermind-gnosis:8545
@@ -52,12 +45,12 @@
         reverse_proxy profile-service:3000
     }
 
-    # Grafana dashboard - forwards /grafana/X to grafana:3000/X
-    handle_path /grafana/* {
+    # Grafana dashboard - preserve /grafana path for subpath serving
+    handle /grafana/* {
         reverse_proxy grafana:3000
     }
 
-    handle_path /grafana {
+    handle /grafana {
         reverse_proxy grafana:3000
     }
 
