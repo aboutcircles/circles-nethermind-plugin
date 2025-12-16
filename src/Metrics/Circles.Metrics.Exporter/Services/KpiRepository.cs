@@ -19,7 +19,7 @@ public class KpiRepository
     public async Task<long> GetTotalHumansV1Async(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV1"."Signup"
+            SELECT COUNT(*) FROM "CrcV1_Signup"
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -27,7 +27,7 @@ public class KpiRepository
     public async Task<long> GetTotalHumansV2Async(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2"."RegisterHuman"
+            SELECT COUNT(*) FROM "CrcV2_RegisterHuman"
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -35,7 +35,7 @@ public class KpiRepository
     public async Task<long> GetTotalOrganizationsAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2"."RegisterOrganization"
+            SELECT COUNT(*) FROM "CrcV2_RegisterOrganization"
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -43,7 +43,7 @@ public class KpiRepository
     public async Task<long> GetTotalGroupsAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2"."RegisterGroup"
+            SELECT COUNT(*) FROM "CrcV2_RegisterGroup"
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -51,7 +51,7 @@ public class KpiRepository
     public async Task<long> GetNewUsersAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""
-            SELECT COUNT(*) FROM "CrcV2"."RegisterHuman"
+            SELECT COUNT(*) FROM "CrcV2_RegisterHuman"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
@@ -70,7 +70,7 @@ public class KpiRepository
     public async Task<long> GetNewTrustsAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""
-            SELECT COUNT(*) FROM "CrcV2"."Trust"
+            SELECT COUNT(*) FROM "CrcV2_Trust"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             AND "expiryTime" > EXTRACT(EPOCH FROM NOW())
             """;
@@ -81,13 +81,13 @@ public class KpiRepository
     {
         // Trusts with far future expiry are "added", trusts with past/zero expiry are "removed"
         var sqlAdded = $"""
-            SELECT COUNT(*) FROM "CrcV2"."Trust"
+            SELECT COUNT(*) FROM "CrcV2_Trust"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             AND "expiryTime" > EXTRACT(EPOCH FROM NOW()) + 86400
             """;
 
         var sqlRemoved = $"""
-            SELECT COUNT(*) FROM "CrcV2"."Trust"
+            SELECT COUNT(*) FROM "CrcV2_Trust"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             AND "expiryTime" <= EXTRACT(EPOCH FROM NOW())
             """;
@@ -101,7 +101,7 @@ public class KpiRepository
     public async Task<long> GetTotalBackersAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(DISTINCT "backer") FROM "CrcV2"."CirclesBackingInitiated"
+            SELECT COUNT(DISTINCT "backer") FROM "CrcV2_CirclesBackingInitiated"
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -109,7 +109,7 @@ public class KpiRepository
     public async Task<long> GetActiveMintersAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""
-            SELECT COUNT(DISTINCT "human") FROM "CrcV2"."PersonalMint"
+            SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
@@ -120,7 +120,7 @@ public class KpiRepository
         // Sum of mint amounts in the last 24 hours, converted from wei to CRC (18 decimals)
         const string sql = """
             SELECT COALESCE(SUM(("amount"::numeric) / 1e18), 0)
-            FROM "CrcV2"."PersonalMint"
+            FROM "CrcV2_PersonalMint"
             WHERE "timestamp" > NOW() - INTERVAL '24 hours'
             """;
         return await ExecuteScalarAsync<decimal>(sql, ct);
@@ -131,7 +131,7 @@ public class KpiRepository
         // Sum of transfer amounts in the last 24 hours
         const string sql = """
             SELECT COALESCE(SUM(("value"::numeric) / 1e18), 0)
-            FROM "CrcV2"."TransferSingle"
+            FROM "CrcV2_TransferSingle"
             WHERE "timestamp" > NOW() - INTERVAL '24 hours'
             """;
         return await ExecuteScalarAsync<decimal>(sql, ct);
@@ -140,7 +140,7 @@ public class KpiRepository
     public async Task<long> GetDailyTransferCountAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2"."TransferSingle"
+            SELECT COUNT(*) FROM "CrcV2_TransferSingle"
             WHERE "timestamp" > NOW() - INTERVAL '24 hours'
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
@@ -151,10 +151,10 @@ public class KpiRepository
         // Count unique senders and receivers in transfers
         var sql = $"""
             SELECT COUNT(DISTINCT addr) FROM (
-                SELECT "from" as addr FROM "CrcV2"."TransferSingle"
+                SELECT "from" as addr FROM "CrcV2_TransferSingle"
                 WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
                 UNION
-                SELECT "to" as addr FROM "CrcV2"."TransferSingle"
+                SELECT "to" as addr FROM "CrcV2_TransferSingle"
                 WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             ) addresses
             """;
@@ -165,7 +165,7 @@ public class KpiRepository
     {
         // Members of standard treasury groups
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2"."GroupMembershipJoined"
+            SELECT COUNT(*) FROM "CrcV2_GroupMembershipJoined"
             """;
 
         try
@@ -183,7 +183,7 @@ public class KpiRepository
     {
         var sql = $"""
             SELECT COALESCE(SUM(("mintAmount"::numeric) / 1e18), 0)
-            FROM "CrcV2"."GroupMint"
+            FROM "CrcV2_GroupMint"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             """;
 
@@ -200,7 +200,7 @@ public class KpiRepository
     public async Task<long> GetProfilesCreatedAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""
-            SELECT COUNT(*) FROM "CrcV2"."UpdateMetadataDigest"
+            SELECT COUNT(*) FROM "CrcV2_UpdateMetadataDigest"
             WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
             """;
 
@@ -217,7 +217,7 @@ public class KpiRepository
     public async Task<long> GetProfilesTotalAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT COUNT(DISTINCT "avatar") FROM "CrcV2"."UpdateMetadataDigest"
+            SELECT COUNT(DISTINCT "avatar") FROM "CrcV2_UpdateMetadataDigest"
             """;
 
         try
