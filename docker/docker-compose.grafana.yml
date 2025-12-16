@@ -3,7 +3,7 @@ services:
     container_name: grafana
     image: grafana/grafana:11.3.0
     restart: unless-stopped
-    user: root
+    user: "${MY_UID:-472}:${MY_GID:-472}"
     networks:
       - circles-gnosis
     expose:
