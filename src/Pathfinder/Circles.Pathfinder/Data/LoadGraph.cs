@@ -213,8 +213,18 @@ namespace Circles.Pathfinder.Data
             {
                 var avatar = reader.GetString(0);
                 var flag = (byte[])reader.GetValue(1);
-                // Check LSB (consented flow flag is bytes32(uint256(1)))
-                // bytes32 is big-endian, so LSB is at index 31
+
+                // Decode the consented flow flag from Hub.sol:
+                //
+                // In Solidity (Hub.sol line 45):
+                //   bytes32 internal constant ADVANCED_FLAG_OPTOUT_CONSENTED_FLOW = bytes32(uint256(1));
+                //
+                // bytes32(uint256(1)) creates a 32-byte array where:
+                //   - uint256(1) = 0x0000...0001 (256-bit integer with value 1)
+                //   - bytes32(...) stores this as big-endian (most significant byte first)
+                //   - Result: [0x00, 0x00, ..., 0x00, 0x01] (31 zeros, then 0x01 at index 31)
+                //
+                // So we check byte[31] & 0x01 to see if consented flow is enabled.
                 bool hasConsented = flag.Length >= 32 && (flag[31] & 0x01) != 0;
                 results.Add((avatar, hasConsented));
             }
