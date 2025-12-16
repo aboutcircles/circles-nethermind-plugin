@@ -1,0 +1,81 @@
+groups:
+  - name: circles-kpi-aggregations
+    interval: 1m
+    rules:
+      # User metrics - record for persistence
+      - record: circles:total_humans:sum
+        expr: sum(circles_total_humans)
+
+      - record: circles:total_humans_v1:gauge
+        expr: circles_total_humans{version="v1"}
+
+      - record: circles:total_humans_v2:gauge
+        expr: circles_total_humans{version="v2"}
+
+      - record: circles:total_groups:gauge
+        expr: circles_total_groups
+
+      - record: circles:total_organizations:gauge
+        expr: circles_total_organizations
+
+      # Trust metrics
+      - record: circles:active_trusts:gauge
+        expr: circles_active_trusts
+
+      - record: circles:new_trusts_24h:gauge
+        expr: circles_new_trusts{window="24h"}
+
+      # Economic metrics
+      - record: circles:total_backers:gauge
+        expr: circles_total_backers
+
+      - record: circles:active_minters_24h:gauge
+        expr: circles_active_minters{window="24h"}
+
+      - record: circles:daily_mint_volume:gauge
+        expr: circles_daily_mint_volume_crc
+
+      - record: circles:daily_transfer_volume:gauge
+        expr: circles_daily_transfer_volume_crc
+
+      - record: circles:daily_transfer_count:gauge
+        expr: circles_daily_transfer_count
+
+  - name: circles-rpc-aggregations
+    interval: 1m
+    rules:
+      # Request rate by method (1m rate)
+      - record: circles:rpc_requests_per_second:rate1m
+        expr: sum(rate(circles_rpc_requests_total[1m])) by (method)
+
+      # Total request rate
+      - record: circles:rpc_requests_per_second:total_rate1m
+        expr: sum(rate(circles_rpc_requests_total[1m]))
+
+      # Error rate by method
+      - record: circles:rpc_errors_per_second:rate1m
+        expr: sum(rate(circles_rpc_errors_total[1m])) by (method, error_type)
+
+      # Latency percentiles
+      - record: circles:rpc_latency_p50:gauge
+        expr: histogram_quantile(0.50, rate(circles_rpc_request_duration_seconds_bucket[5m]))
+
+      - record: circles:rpc_latency_p95:gauge
+        expr: histogram_quantile(0.95, rate(circles_rpc_request_duration_seconds_bucket[5m]))
+
+      - record: circles:rpc_latency_p99:gauge
+        expr: histogram_quantile(0.99, rate(circles_rpc_request_duration_seconds_bucket[5m]))
+
+  - name: circles-cache-aggregations
+    interval: 1m
+    rules:
+      # Cache size trends
+      - record: circles:cache_total_entries:gauge
+        expr: circles_cache_entries_total
+
+      - record: circles:cache_avatars_total:gauge
+        expr: circles_cache_v1_avatars_total + circles_cache_v2_avatars_total
+
+      # Block processing rate
+      - record: circles:cache_blocks_per_minute:rate1m
+        expr: rate(circles_cache_blocks_processed_total[1m]) * 60

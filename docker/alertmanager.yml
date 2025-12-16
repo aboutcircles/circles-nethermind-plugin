@@ -1,0 +1,53 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'slack-notifications'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Critical alerts go to both Slack and Telegram
+    - match:
+        severity: critical
+      receiver: 'telegram-critical'
+      continue: true  # Also send to default Slack receiver
+
+receivers:
+  - name: 'slack-notifications'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#circles-alerts'
+        send_resolved: true
+        title: '{{ if eq .Status "firing" }}:fire:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Severity:* {{ .Labels.severity }}
+          *Description:* {{ .Annotations.description }}
+          *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ if .EndsAt }}*Ended:* {{ .EndsAt.Format "2006-01-02 15:04:05 UTC" }}{{ end }}
+          {{ end }}
+        color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+
+  - name: 'telegram-critical'
+    telegram_configs:
+      - bot_token: '${TELEGRAM_BOT_TOKEN}'
+        chat_id: ${TELEGRAM_CHAT_ID}
+        parse_mode: 'HTML'
+        message: |
+          {{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} <b>[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}</b>
+          {{ range .Alerts }}
+          <b>Alert:</b> {{ .Annotations.summary }}
+          <b>Severity:</b> {{ .Labels.severity }}
+          <b>Description:</b> {{ .Annotations.description }}
+          {{ end }}
+
+inhibit_rules:
+  # Don't send warning alerts if a critical alert is already firing for the same service
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'job']
