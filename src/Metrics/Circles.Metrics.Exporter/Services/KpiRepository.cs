@@ -115,26 +115,28 @@ public class KpiRepository
         return await ExecuteScalarAsync<long>(sql, ct);
     }
 
-    public async Task<decimal> GetDailyMintVolumeAsync(CancellationToken ct = default)
+    public async Task<double> GetDailyMintVolumeAsync(CancellationToken ct = default)
     {
-        // Sum of mint amounts in the last 24 hours, converted from wei to CRC (18 decimals)
+        // Sum of mint amounts in the last 24 hours, converted from wei to CRC
+        // Use float8 to avoid decimal overflow on large sums
         const string sql = """
-            SELECT COALESCE(SUM(("amount"::numeric) / 1e18), 0)
+            SELECT COALESCE(SUM(("amount"::float8) / 1e18), 0)
             FROM "CrcV2_PersonalMint"
             WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
             """;
-        return await ExecuteScalarAsync<decimal>(sql, ct);
+        return await ExecuteScalarAsync<double>(sql, ct);
     }
 
-    public async Task<decimal> GetDailyTransferVolumeAsync(CancellationToken ct = default)
+    public async Task<double> GetDailyTransferVolumeAsync(CancellationToken ct = default)
     {
-        // Sum of transfer amounts in the last 24 hours
+        // Sum of transfer amounts in the last 24 hours, converted from wei to CRC
+        // Use float8 to avoid decimal overflow on large sums
         const string sql = """
-            SELECT COALESCE(SUM(("value"::numeric) / 1e18), 0)
+            SELECT COALESCE(SUM(("value"::float8) / 1e18), 0)
             FROM "CrcV2_TransferSingle"
             WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
             """;
-        return await ExecuteScalarAsync<decimal>(sql, ct);
+        return await ExecuteScalarAsync<double>(sql, ct);
     }
 
     public async Task<long> GetDailyTransferCountAsync(CancellationToken ct = default)
@@ -179,17 +181,17 @@ public class KpiRepository
         }
     }
 
-    public async Task<decimal> GetGroupMintVolumeAsync(TimeSpan window, CancellationToken ct = default)
+    public async Task<double> GetGroupMintVolumeAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""
-            SELECT COALESCE(SUM(("mintAmount"::numeric) / 1e18), 0)
+            SELECT COALESCE(SUM(("mintAmount"::float8) / 1e18), 0)
             FROM "CrcV2_GroupMint"
             WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             """;
 
         try
         {
-            return await ExecuteScalarAsync<decimal>(sql, ct);
+            return await ExecuteScalarAsync<double>(sql, ct);
         }
         catch
         {
