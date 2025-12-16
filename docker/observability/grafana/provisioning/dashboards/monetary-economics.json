@@ -87,6 +87,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_active_balance_holders", "refId": "A" }],
       "title": "Active Balance Holders",
+      "description": "Number of unique accounts with non-zero CRC balance. 'Active' means the account holds at least some CRC after demurrage. Counted from V_CrcV2_BalancesByAccountAndToken where demurragedTotalBalance > 0.",
       "type": "stat"
     },
     {
