@@ -10,9 +10,9 @@ services:
       - 9090
     volumes:
       - ../.state/prometheus:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
-      - ./prometheus-recording-rules.yml:/etc/prometheus/prometheus-recording-rules.yml:ro
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - ./observability/prometheus-recording-rules.yml:/etc/prometheus/prometheus-recording-rules.yml:ro
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -46,7 +46,7 @@ services:
       - 3100
     volumes:
       - ../.state/loki:/loki
-      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - ./observability/loki-config.yml:/etc/loki/local-config.yaml:ro
     command: -config.file=/etc/loki/local-config.yaml
 
   promtail:
@@ -60,7 +60,7 @@ services:
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
@@ -96,7 +96,7 @@ services:
       - 9093
     volumes:
       - ../.state/alertmanager:/alertmanager
-      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
     environment:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -122,7 +122,7 @@ services:
     expose:
       - 9115
     volumes:
-      - ./blackbox-exporter.yml:/etc/blackbox_exporter/config.yml:ro
+      - ./observability/blackbox-exporter.yml:/etc/blackbox_exporter/config.yml:ro
     command:
       - --config.file=/etc/blackbox_exporter/config.yml
 
