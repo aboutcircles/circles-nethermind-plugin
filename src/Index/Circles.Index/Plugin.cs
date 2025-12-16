@@ -21,7 +21,15 @@ public class Plugin : INethermindPlugin
         "Indexes Circles related events and provides query capabilities via JSON-RPC.";
 
     public string Author => "Gnosis";
-    public bool Enabled { get; } = true;
+
+    /// <summary>
+    /// Plugin can be disabled by setting CIRCLES_PLUGIN_DISABLED=true environment variable.
+    /// Useful when running Nethermind just as an RPC source for backfill operations.
+    /// </summary>
+    public bool Enabled { get; } = !string.Equals(
+        Environment.GetEnvironmentVariable("CIRCLES_PLUGIN_DISABLED"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
