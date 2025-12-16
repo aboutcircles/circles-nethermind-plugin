@@ -29,8 +29,9 @@
       "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "up{job=\"nethermind\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-nethermind\"}", "refId": "A" }],
       "title": "Nethermind",
+      "description": "Nethermind node health via /health endpoint.",
       "type": "stat"
     },
     {
@@ -47,8 +48,9 @@
       "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "up{job=\"consensus\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-consensus\"}", "refId": "A" }],
       "title": "Lighthouse",
+      "description": "Lighthouse consensus client via /eth/v1/node/health.",
       "type": "stat"
     },
     {
@@ -64,8 +66,9 @@
       "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "up{job=\"pathfinder\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-ready\", service=\"pathfinder\"}", "refId": "A" }],
       "title": "Pathfinder",
+      "description": "Pathfinder /ready - UP when graph loaded.",
       "type": "stat"
     },
     {
@@ -81,8 +84,9 @@
       "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "up{job=\"rpc\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-ready\", service=\"rpc\"}", "refId": "A" }],
       "title": "RPC Host",
+      "description": "RPC /ready - checks sync, DB, pathfinder, lag.",
       "type": "stat"
     },
     {
@@ -98,8 +102,9 @@
       "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "up{job=\"cache-service\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-ready\", service=\"cache-service\"}", "refId": "A" }],
       "title": "Cache Service",
+      "description": "Cache /ready - UP when warmed and connected.",
       "type": "stat"
     },
     {
