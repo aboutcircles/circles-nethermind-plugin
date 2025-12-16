@@ -149,3 +149,45 @@ groups:
         annotations:
           summary: "KPI collection stale"
           description: "No KPI metrics collected in the last 5 minutes"
+
+  - name: circles-health-alerts
+    rules:
+      # Service readiness via Blackbox exporter
+      # Note: 5 minute threshold allows services to complete startup/warmup
+      - alert: ServiceNotReady
+        expr: probe_success{job="blackbox-ready"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Service {{ $labels.service }} not ready"
+          description: "The /ready endpoint for {{ $labels.service }} has been failing for more than 5 minutes. This may indicate sync issues or dependency failures."
+
+      - alert: ServiceNotReadyCritical
+        expr: probe_success{job="blackbox-ready"} == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.service }} not ready (critical)"
+          description: "The /ready endpoint for {{ $labels.service }} has been failing for more than 15 minutes. Manual investigation required."
+
+      # Service liveness via Blackbox exporter
+      - alert: ServiceNotAlive
+        expr: probe_success{job="blackbox-live"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.service }} not responding"
+          description: "The /live endpoint for {{ $labels.service }} is not responding. The service may have crashed."
+
+      # Health check response time
+      - alert: HealthCheckSlow
+        expr: probe_duration_seconds{job=~"blackbox-.*"} > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Health check slow for {{ $labels.service }}"
+          description: "The health endpoint for {{ $labels.service }} is responding slowly ({{ $value | printf \"%.2f\" }}s)."

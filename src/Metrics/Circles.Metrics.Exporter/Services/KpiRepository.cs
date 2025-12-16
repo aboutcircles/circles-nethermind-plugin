@@ -232,6 +232,332 @@ public class KpiRepository
         }
     }
 
+    // ============================================================================
+    // NEW KPIs - Dune parity + enhancements
+    // ============================================================================
+
+    public async Task<long> GetDailyMintCountAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_PersonalMint"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<long> GetNewBackersAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetMintingFraction14DayAsync(CancellationToken ct = default)
+    {
+        // Percentage of registered humans who minted in last 14 days
+        const string sql = """
+            SELECT
+              COALESCE(
+                (SELECT COUNT(DISTINCT "human")::float8 FROM "CrcV2_PersonalMint"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 1209600)
+                /
+                NULLIF((SELECT COUNT(*)::float8 FROM "CrcV2_RegisterHuman"), 0),
+                0
+              )
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<long> GetNewOrganizationsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(*) FROM "CrcV2_RegisterOrganization"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<long> GetNewGroupsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(*) FROM "CrcV2_RegisterGroup"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    // ============================================================================
+    // Activity rates by time window (minters, spenders)
+    // ============================================================================
+
+    public async Task<double> GetMintingRateAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Percentage of registered humans who minted in the given window
+        var sql = $"""
+            SELECT
+              COALESCE(
+                (SELECT COUNT(DISTINCT "human")::float8 FROM "CrcV2_PersonalMint"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds})
+                /
+                NULLIF((SELECT COUNT(*)::float8 FROM "CrcV2_RegisterHuman"), 0),
+                0
+              )
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<double> GetSpendingRateAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Percentage of registered humans who sent transfers in the given window
+        var sql = $"""
+            SELECT
+              COALESCE(
+                (SELECT COUNT(DISTINCT "from")::float8 FROM "CrcV2_TransferSingle"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+                 AND "from" != '0x0000000000000000000000000000000000000000')
+                /
+                NULLIF((SELECT COUNT(*)::float8 FROM "CrcV2_RegisterHuman"), 0),
+                0
+              )
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<double> GetTransferVolumeAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(SUM(("value"::float8) / 1e18), 0)
+            FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<double> GetMintVolumeAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(SUM(("amount"::float8) / 1e18), 0)
+            FROM "CrcV2_PersonalMint"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    // ============================================================================
+    // Sybil detection metrics
+    // ============================================================================
+
+    public async Task<long> GetAccountsWithoutProfileAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
+            LEFT JOIN "CrcV2_UpdateMetadataDigest" m ON h."avatar" = m."avatar"
+            WHERE m."avatar" IS NULL
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetAccountsWithoutIncomingTrustAsync(CancellationToken ct = default)
+    {
+        // Accounts that no one else trusts (excluding self-trust)
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
+            WHERE h."avatar" NOT IN (
+                SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetBatchRegistrationsAsync(TimeSpan window, int threshold, CancellationToken ct = default)
+    {
+        // Count accounts that were registered in batches (same block with > threshold accounts)
+        var sql = $"""
+            SELECT COALESCE(SUM(cnt), 0) FROM (
+                SELECT COUNT(*) as cnt
+                FROM "CrcV2_RegisterHuman"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+                GROUP BY "blockNumber"
+                HAVING COUNT(*) > {threshold}
+            ) batches
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetMintAndDrainAccountsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Accounts that minted in the window but have zero balance now
+        var sql = $"""
+            SELECT COUNT(DISTINCT pm."human")
+            FROM "CrcV2_PersonalMint" pm
+            WHERE pm."timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            AND pm."human" NOT IN (
+                SELECT DISTINCT "account" FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "totalBalance" > 0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetHighVolumeInvitersCountAsync(TimeSpan window, int threshold, CancellationToken ct = default)
+    {
+        // Count of inviters who invited more than threshold accounts in the window
+        var sql = $"""
+            SELECT COUNT(*) FROM (
+                SELECT "inviter"
+                FROM "CrcV2_RegisterHuman"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+                AND "inviter" IS NOT NULL
+                AND "inviter" != '0x0000000000000000000000000000000000000000'
+                GROUP BY "inviter"
+                HAVING COUNT(*) > {threshold}
+            ) high_volume
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetSuspiciousAccountsAsync(CancellationToken ct = default)
+    {
+        // Accounts matching multiple sybil indicators:
+        // - No profile AND no incoming trust AND minted
+        const string sql = """
+            SELECT COUNT(DISTINCT h."avatar")
+            FROM "CrcV2_RegisterHuman" h
+            LEFT JOIN "CrcV2_UpdateMetadataDigest" m ON h."avatar" = m."avatar"
+            WHERE m."avatar" IS NULL
+            AND h."avatar" NOT IN (
+                SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            )
+            AND h."avatar" IN (
+                SELECT DISTINCT "human" FROM "CrcV2_PersonalMint"
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetOrganicAccountsAsync(CancellationToken ct = default)
+    {
+        // Accounts with profile AND incoming trust (healthy accounts)
+        const string sql = """
+            SELECT COUNT(DISTINCT h."avatar")
+            FROM "CrcV2_RegisterHuman" h
+            INNER JOIN "CrcV2_UpdateMetadataDigest" m ON h."avatar" = m."avatar"
+            WHERE h."avatar" IN (
+                SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    // ============================================================================
+    // Network health metrics
+    // ============================================================================
+
+    public async Task<double> GetAverageTrustConnectionsAsync(CancellationToken ct = default)
+    {
+        // Average number of incoming trust connections per registered human
+        const string sql = """
+            SELECT COALESCE(
+                (SELECT COUNT(*)::float8 FROM "V_CrcV2_TrustRelations" WHERE "truster" != "trustee")
+                /
+                NULLIF((SELECT COUNT(*)::float8 FROM "CrcV2_RegisterHuman"), 0),
+                0
+            )
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<long> GetIsolatedAccountsAsync(CancellationToken ct = default)
+    {
+        // Accounts with zero trust connections (neither trusting nor trusted)
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
+            WHERE h."avatar" NOT IN (
+                SELECT DISTINCT "truster" FROM "V_CrcV2_TrustRelations"
+                UNION
+                SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
     private async Task<T> ExecuteScalarAsync<T>(string sql, CancellationToken ct) where T : struct
     {
         await using var conn = new NpgsqlConnection(_connectionString);

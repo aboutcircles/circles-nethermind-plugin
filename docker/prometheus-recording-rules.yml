@@ -79,3 +79,157 @@ groups:
       # Block processing rate
       - record: circles:cache_blocks_per_minute:rate1m
         expr: rate(circles_cache_blocks_processed_total[1m]) * 60
+
+  - name: circles-dune-parity-aggregations
+    interval: 1m
+    rules:
+      # Daily mint count (number of mints, not volume)
+      - record: circles:daily_mint_count:gauge
+        expr: circles_daily_mint_count
+
+      # New backers by window
+      - record: circles:new_backers_24h:gauge
+        expr: circles_new_backers{window="24h"}
+
+      - record: circles:new_backers_7d:gauge
+        expr: circles_new_backers{window="7d"}
+
+      - record: circles:new_backers_30d:gauge
+        expr: circles_new_backers{window="30d"}
+
+      # 14-day minting fraction (engagement metric)
+      - record: circles:minting_fraction_14d:gauge
+        expr: circles_minting_fraction_14d
+
+      # New organizations by window
+      - record: circles:new_organizations_24h:gauge
+        expr: circles_new_organizations{window="24h"}
+
+      - record: circles:new_organizations_7d:gauge
+        expr: circles_new_organizations{window="7d"}
+
+      - record: circles:new_organizations_30d:gauge
+        expr: circles_new_organizations{window="30d"}
+
+      # New groups by window
+      - record: circles:new_groups_24h:gauge
+        expr: circles_new_groups{window="24h"}
+
+      - record: circles:new_groups_7d:gauge
+        expr: circles_new_groups{window="7d"}
+
+      - record: circles:new_groups_30d:gauge
+        expr: circles_new_groups{window="30d"}
+
+  - name: circles-activity-rates-aggregations
+    interval: 1m
+    rules:
+      # Minting rate (% of users who minted in window)
+      - record: circles:minting_rate_14d:gauge
+        expr: circles_minting_rate{window="14d"}
+
+      - record: circles:minting_rate_30d:gauge
+        expr: circles_minting_rate{window="30d"}
+
+      - record: circles:minting_rate_90d:gauge
+        expr: circles_minting_rate{window="90d"}
+
+      # Spending rate (% of users who transferred in window)
+      - record: circles:spending_rate_14d:gauge
+        expr: circles_spending_rate{window="14d"}
+
+      - record: circles:spending_rate_30d:gauge
+        expr: circles_spending_rate{window="30d"}
+
+      - record: circles:spending_rate_90d:gauge
+        expr: circles_spending_rate{window="90d"}
+
+      # Transfer volume by window
+      - record: circles:transfer_volume_24h:gauge
+        expr: circles_transfer_volume{window="24h"}
+
+      - record: circles:transfer_volume_7d:gauge
+        expr: circles_transfer_volume{window="7d"}
+
+      - record: circles:transfer_volume_30d:gauge
+        expr: circles_transfer_volume{window="30d"}
+
+      # Mint volume by window
+      - record: circles:mint_volume_24h:gauge
+        expr: circles_mint_volume{window="24h"}
+
+      - record: circles:mint_volume_7d:gauge
+        expr: circles_mint_volume{window="7d"}
+
+      - record: circles:mint_volume_30d:gauge
+        expr: circles_mint_volume{window="30d"}
+
+  - name: circles-sybil-detection-aggregations
+    interval: 1m
+    rules:
+      # Accounts without profile metadata
+      - record: circles:accounts_without_profile:gauge
+        expr: circles_accounts_without_profile
+
+      # Accounts with no incoming trust
+      - record: circles:accounts_without_incoming_trust:gauge
+        expr: circles_accounts_without_incoming_trust
+
+      # Batch registrations (same block)
+      - record: circles:batch_registrations_24h:gauge
+        expr: circles_batch_registrations{window="24h"}
+
+      # Mint-and-drain accounts
+      - record: circles:mint_and_drain_accounts_24h:gauge
+        expr: circles_mint_and_drain_accounts{window="24h"}
+
+      - record: circles:mint_and_drain_accounts_7d:gauge
+        expr: circles_mint_and_drain_accounts{window="7d"}
+
+      # High-volume inviters
+      - record: circles:high_volume_inviters_24h:gauge
+        expr: circles_high_volume_inviters{window="24h"}
+
+      - record: circles:high_volume_inviters_7d:gauge
+        expr: circles_high_volume_inviters{window="7d"}
+
+      # Suspicious vs organic accounts
+      - record: circles:suspicious_accounts:gauge
+        expr: circles_suspicious_accounts
+
+      - record: circles:organic_accounts:gauge
+        expr: circles_organic_accounts
+
+      # Ratio of suspicious to total accounts
+      - record: circles:suspicious_account_ratio:gauge
+        expr: circles_suspicious_accounts / (circles_suspicious_accounts + circles_organic_accounts)
+
+  - name: circles-network-health-aggregations
+    interval: 1m
+    rules:
+      # Average trust connections per avatar
+      - record: circles:average_trust_connections:gauge
+        expr: circles_average_trust_connections
+
+      # Isolated accounts (no trusts)
+      - record: circles:isolated_accounts:gauge
+        expr: circles_isolated_accounts
+
+      # Isolation rate
+      - record: circles:isolation_rate:gauge
+        expr: circles_isolated_accounts / sum(circles_total_humans)
+
+  - name: circles-health-endpoint-aggregations
+    interval: 1m
+    rules:
+      # Service readiness by service
+      - record: circles:service_ready:gauge
+        expr: probe_success{job="blackbox-ready"}
+
+      # Service liveness by service
+      - record: circles:service_alive:gauge
+        expr: probe_success{job="blackbox-live"}
+
+      # Health check latency by service
+      - record: circles:health_check_latency:gauge
+        expr: probe_duration_seconds{job=~"blackbox-.*"}

@@ -50,3 +50,47 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ['metrics-exporter:9100']
+
+  # Blackbox exporter - probe /ready endpoints for service health
+  - job_name: 'blackbox-ready'
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [http_ready]
+    static_configs:
+      - targets:
+        - http://rpc:8080/ready
+        - http://pathfinder:8080/ready
+        - http://cache-service:3001/ready
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        regex: http://([^:]+):.*
+        target_label: service
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # Blackbox exporter - probe /live endpoints for liveness
+  - job_name: 'blackbox-live'
+    scrape_interval: 15s
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://rpc:8080/live
+        - http://pathfinder:8080/live
+        - http://cache-service:3001/live
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        regex: http://([^:]+):.*
+        target_label: service
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

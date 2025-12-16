@@ -16,7 +16,7 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.time=365d
       - --web.enable-lifecycle
 
   node-exporter:
@@ -112,6 +112,19 @@ services:
             /etc/alertmanager/alertmanager.yml.tmpl > /alertmanager/alertmanager.yml
         # Start alertmanager
         exec /bin/alertmanager --config.file=/alertmanager/alertmanager.yml --storage.path=/alertmanager
+
+  blackbox-exporter:
+    container_name: blackbox-exporter
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    expose:
+      - 9115
+    volumes:
+      - ./blackbox-exporter.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - --config.file=/etc/blackbox_exporter/config.yml
 
 networks:
   circles-gnosis:
