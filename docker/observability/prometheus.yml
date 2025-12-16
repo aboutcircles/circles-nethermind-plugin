@@ -115,11 +115,12 @@ scrape_configs:
         replacement: blackbox-exporter:9115
 
   # Blackbox exporter - probe Lighthouse (consensus) health endpoint
+  # Lighthouse returns 200 when synced, 206 when syncing - both are healthy
   - job_name: 'blackbox-consensus'
     scrape_interval: 30s
     metrics_path: /probe
     params:
-      module: [http_2xx]
+      module: [http_lighthouse]
     static_configs:
       - targets:
         - http://consensus-gnosis:5052/eth/v1/node/health
