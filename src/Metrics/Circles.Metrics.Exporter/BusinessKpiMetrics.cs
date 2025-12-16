@@ -214,6 +214,91 @@ public static class BusinessKpiMetrics
             "Accounts with zero trust connections in either direction");
 
     // ===========================================
+    // Advanced Monetary/Economic Metrics
+    // ===========================================
+
+    public static readonly Gauge TotalCrcSupply = Prometheus.Metrics
+        .CreateGauge("circles_total_crc_supply",
+            "Total CRC in circulation (sum of all balances after demurrage)");
+
+    public static readonly Gauge TotalMintedAllTime = Prometheus.Metrics
+        .CreateGauge("circles_total_minted_all_time_crc",
+            "Total CRC ever minted since genesis (before demurrage)");
+
+    public static readonly Gauge DemurragePaid = Prometheus.Metrics
+        .CreateGauge("circles_demurrage_paid_crc",
+            "CRC lost to demurrage in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge MoneyVelocity = Prometheus.Metrics
+        .CreateGauge("circles_money_velocity",
+            "Money velocity (transfer volume / supply) in time window - how often CRC changes hands",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge ActiveBalanceHolders = Prometheus.Metrics
+        .CreateGauge("circles_active_balance_holders",
+            "Number of accounts with non-zero CRC balance");
+
+    public static readonly Gauge AverageBalance = Prometheus.Metrics
+        .CreateGauge("circles_average_balance_crc",
+            "Average CRC balance per holder");
+
+    public static readonly Gauge MedianBalance = Prometheus.Metrics
+        .CreateGauge("circles_median_balance_crc",
+            "Median CRC balance per holder");
+
+    public static readonly Gauge GiniCoefficient = Prometheus.Metrics
+        .CreateGauge("circles_gini_coefficient",
+            "Gini coefficient of CRC distribution (0=perfect equality, 1=perfect inequality)");
+
+    public static readonly Gauge TopHolderConcentration = Prometheus.Metrics
+        .CreateGauge("circles_top_holder_concentration",
+            "Percentage of total supply held by top N holders (0-1)",
+            new GaugeConfiguration { LabelNames = new[] { "top_n" } });
+
+    public static readonly Gauge DailyActiveWallets = Prometheus.Metrics
+        .CreateGauge("circles_daily_active_wallets",
+            "Unique wallets that transacted in the last 24 hours (DAW)");
+
+    public static readonly Gauge WeeklyActiveWallets = Prometheus.Metrics
+        .CreateGauge("circles_weekly_active_wallets",
+            "Unique wallets that transacted in the last 7 days (WAW)");
+
+    public static readonly Gauge MonthlyActiveWallets = Prometheus.Metrics
+        .CreateGauge("circles_monthly_active_wallets",
+            "Unique wallets that transacted in the last 30 days (MAW)");
+
+    public static readonly Gauge UserRetentionRate = Prometheus.Metrics
+        .CreateGauge("circles_user_retention_rate",
+            "Percentage of users who transacted in both current and previous period (0-1)",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge FirstTimeTransactors = Prometheus.Metrics
+        .CreateGauge("circles_first_time_transactors",
+            "Users who made their first transfer in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge TransferSizePercentile = Prometheus.Metrics
+        .CreateGauge("circles_transfer_size_percentile_crc",
+            "Transfer size at various percentiles (P10, P25, P75, P90)",
+            new GaugeConfiguration { LabelNames = new[] { "percentile", "window" } });
+
+    public static readonly Gauge MicroTransactionCount = Prometheus.Metrics
+        .CreateGauge("circles_micro_transaction_count",
+            "Number of transfers below 1 CRC in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge LargeTransactionCount = Prometheus.Metrics
+        .CreateGauge("circles_large_transaction_count",
+            "Number of transfers above 100 CRC in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge NetInflow = Prometheus.Metrics
+        .CreateGauge("circles_net_inflow_crc",
+            "Net new CRC minted in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    // ===========================================
     // Collection Metrics
     // ===========================================
 

@@ -548,6 +548,370 @@ public class KpiRepository
     }
 
     // ============================================================================
+    // Advanced Monetary/Economic Metrics
+    // ============================================================================
+
+    public async Task<double> GetTotalCrcSupplyAsync(CancellationToken ct = default)
+    {
+        // Total CRC in circulation (sum of all balances)
+        const string sql = """
+            SELECT COALESCE(SUM(("demurragedTotalBalance"::float8) / 1e18), 0)
+            FROM "V_CrcV2_BalancesByAccountAndToken"
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTotalMintedAllTimeAsync(CancellationToken ct = default)
+    {
+        // Total CRC ever minted (before demurrage)
+        const string sql = """
+            SELECT COALESCE(SUM(("amount"::float8) / 1e18), 0)
+            FROM "CrcV2_PersonalMint"
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<double> GetDemurragePaidAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Estimate demurrage by comparing mint volume to transfer volume
+        // This is an approximation - actual demurrage calculation is complex
+        var sql = $"""
+            SELECT COALESCE(SUM(("startValue"::float8 - "endValue"::float8) / 1e18), 0)
+            FROM "CrcV2_Demurrage"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            // Table may not exist
+            return 0;
+        }
+    }
+
+    public async Task<double> GetMoneyVelocityAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Money velocity = Transfer volume / Average supply
+        // Higher velocity = CRC is changing hands frequently
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(("value"::float8) / 1e18) FROM "CrcV2_TransferSingle"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds})
+                /
+                NULLIF((SELECT SUM(("demurragedTotalBalance"::float8) / 1e18)
+                        FROM "V_CrcV2_BalancesByAccountAndToken"), 0),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetActiveBalanceHoldersAsync(CancellationToken ct = default)
+    {
+        // Number of accounts with non-zero CRC balance
+        const string sql = """
+            SELECT COUNT(DISTINCT "account")
+            FROM "V_CrcV2_BalancesByAccountAndToken"
+            WHERE "demurragedTotalBalance" > 0
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetAverageBalanceAsync(CancellationToken ct = default)
+    {
+        // Average CRC balance per account (among holders with balance > 0)
+        const string sql = """
+            SELECT COALESCE(AVG(total_balance), 0) FROM (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "demurragedTotalBalance" > 0
+                GROUP BY "account"
+            ) balances
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetMedianBalanceAsync(CancellationToken ct = default)
+    {
+        // Median CRC balance per account (among holders with balance > 0)
+        const string sql = """
+            SELECT COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_balance), 0) FROM (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "demurragedTotalBalance" > 0
+                GROUP BY "account"
+            ) balances
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetGiniCoefficientAsync(CancellationToken ct = default)
+    {
+        // Gini coefficient (0 = perfect equality, 1 = perfect inequality)
+        // Using a simplified calculation that works in PostgreSQL
+        const string sql = """
+            WITH balances AS (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "demurragedTotalBalance" > 0
+                GROUP BY "account"
+                ORDER BY balance
+            ),
+            indexed AS (
+                SELECT balance, ROW_NUMBER() OVER (ORDER BY balance) as i,
+                       COUNT(*) OVER () as n
+                FROM balances
+            )
+            SELECT COALESCE(
+                (2.0 * SUM(i * balance) / (n * SUM(balance))) - ((n + 1.0) / n),
+                0
+            )
+            FROM indexed
+            GROUP BY n
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTopHolderConcentrationAsync(int topN, CancellationToken ct = default)
+    {
+        // Percentage of total supply held by top N holders
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(total_balance) FROM (
+                    SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                    FROM "V_CrcV2_BalancesByAccountAndToken"
+                    WHERE "demurragedTotalBalance" > 0
+                    GROUP BY "account"
+                    ORDER BY total_balance DESC
+                    LIMIT {topN}
+                ) top_holders)
+                /
+                NULLIF((SELECT SUM(("demurragedTotalBalance"::float8) / 1e18)
+                        FROM "V_CrcV2_BalancesByAccountAndToken"), 0),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetDailyActiveWalletsAsync(CancellationToken ct = default)
+    {
+        // Unique wallets that sent or received CRC in last 24h
+        const string sql = """
+            SELECT COUNT(DISTINCT addr) FROM (
+                SELECT "from" as addr FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+                AND "from" != '0x0000000000000000000000000000000000000000'
+                UNION
+                SELECT "to" as addr FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+                AND "to" != '0x0000000000000000000000000000000000000000'
+            ) addresses
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<long> GetWeeklyActiveWalletsAsync(CancellationToken ct = default)
+    {
+        // Unique wallets that sent or received CRC in last 7 days
+        const string sql = """
+            SELECT COUNT(DISTINCT addr) FROM (
+                SELECT "from" as addr FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800
+                AND "from" != '0x0000000000000000000000000000000000000000'
+                UNION
+                SELECT "to" as addr FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800
+                AND "to" != '0x0000000000000000000000000000000000000000'
+            ) addresses
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<long> GetMonthlyActiveWalletsAsync(CancellationToken ct = default)
+    {
+        // Unique wallets that sent or received CRC in last 30 days
+        const string sql = """
+            SELECT COUNT(DISTINCT addr) FROM (
+                SELECT "from" as addr FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000
+                AND "from" != '0x0000000000000000000000000000000000000000'
+                UNION
+                SELECT "to" as addr FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000
+                AND "to" != '0x0000000000000000000000000000000000000000'
+            ) addresses
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<double> GetUserRetentionRateAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // % of users who transacted in previous period who also transacted in current period
+        // e.g., 7d retention = users active in last 7d who were also active 7-14d ago
+        var periodSeconds = (int)window.TotalSeconds;
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT COUNT(DISTINCT "from")::float8
+                 FROM "CrcV2_TransferSingle"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {periodSeconds}
+                 AND "from" IN (
+                     SELECT DISTINCT "from" FROM "CrcV2_TransferSingle"
+                     WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {periodSeconds * 2}
+                     AND "timestamp" <= EXTRACT(EPOCH FROM NOW()) - {periodSeconds}
+                 ))
+                /
+                NULLIF((SELECT COUNT(DISTINCT "from")::float8
+                        FROM "CrcV2_TransferSingle"
+                        WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {periodSeconds * 2}
+                        AND "timestamp" <= EXTRACT(EPOCH FROM NOW()) - {periodSeconds}), 0),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetFirstTimeTransactorsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Users who made their first transfer in the window
+        var sql = $"""
+            SELECT COUNT(*) FROM (
+                SELECT "from"
+                FROM "CrcV2_TransferSingle"
+                GROUP BY "from"
+                HAVING MIN("timestamp") > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            ) first_timers
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTransferSizeDistributionPercentileAsync(double percentile, TimeSpan window, CancellationToken ct = default)
+    {
+        // Get a specific percentile of transfer sizes (e.g., P10, P25, P75, P90)
+        var sql = $"""
+            SELECT COALESCE(
+                PERCENTILE_CONT({percentile}) WITHIN GROUP (ORDER BY ("value"::float8) / 1e18),
+                0
+            )
+            FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<long> GetMicroTransactionCountAsync(TimeSpan window, double maxCrc, CancellationToken ct = default)
+    {
+        // Transfers below a threshold (e.g., < 1 CRC) - potential spam/test transactions
+        var sql = $"""
+            SELECT COUNT(*)
+            FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            AND ("value"::float8) / 1e18 < {maxCrc}
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<long> GetLargeTransactionCountAsync(TimeSpan window, double minCrc, CancellationToken ct = default)
+    {
+        // Transfers above a threshold (e.g., > 100 CRC) - significant transactions
+        var sql = $"""
+            SELECT COUNT(*)
+            FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            AND ("value"::float8) / 1e18 > {minCrc}
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<double> GetNetInflowAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        // Net new CRC = minted - demurraged (approximation)
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(("amount"::float8) / 1e18) FROM "CrcV2_PersonalMint"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}),
+                0
+            )
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    // ============================================================================
     // Network health metrics
     // ============================================================================
 

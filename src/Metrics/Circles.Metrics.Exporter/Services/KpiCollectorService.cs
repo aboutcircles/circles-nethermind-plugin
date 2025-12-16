@@ -72,7 +72,8 @@ public class KpiCollectorService : BackgroundService
             CollectDuneParityMetricsAsync(ct),
             CollectActivityRatesAsync(ct),
             CollectSybilDetectionMetricsAsync(ct),
-            CollectNetworkHealthMetricsAsync(ct)
+            CollectNetworkHealthMetricsAsync(ct),
+            CollectAdvancedMonetaryMetricsAsync(ct)
         );
     }
 
@@ -617,6 +618,235 @@ public class KpiCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect isolated accounts metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("isolated_accounts").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Advanced Monetary/Economic Metrics
+    // ============================================================================
+
+    private async Task CollectAdvancedMonetaryMetricsAsync(CancellationToken ct)
+    {
+        // Total CRC supply
+        try
+        {
+            var supply = await _repository.GetTotalCrcSupplyAsync(ct);
+            BusinessKpiMetrics.TotalCrcSupply.Set(supply);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect total CRC supply metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("total_crc_supply").Inc();
+        }
+
+        // Total minted all time
+        try
+        {
+            var totalMinted = await _repository.GetTotalMintedAllTimeAsync(ct);
+            BusinessKpiMetrics.TotalMintedAllTime.Set(totalMinted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect total minted all time metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("total_minted_all_time").Inc();
+        }
+
+        // Demurrage paid by window
+        try
+        {
+            var dem24h = await _repository.GetDemurragePaidAsync(Window24H, ct);
+            var dem7d = await _repository.GetDemurragePaidAsync(Window7D, ct);
+            var dem30d = await _repository.GetDemurragePaidAsync(Window30D, ct);
+
+            BusinessKpiMetrics.DemurragePaid.WithLabels("24h").Set(dem24h);
+            BusinessKpiMetrics.DemurragePaid.WithLabels("7d").Set(dem7d);
+            BusinessKpiMetrics.DemurragePaid.WithLabels("30d").Set(dem30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect demurrage paid metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("demurrage_paid").Inc();
+        }
+
+        // Money velocity by window
+        try
+        {
+            var vel7d = await _repository.GetMoneyVelocityAsync(Window7D, ct);
+            var vel30d = await _repository.GetMoneyVelocityAsync(Window30D, ct);
+            var vel90d = await _repository.GetMoneyVelocityAsync(Window90D, ct);
+
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("7d").Set(vel7d);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("30d").Set(vel30d);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("90d").Set(vel90d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect money velocity metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("money_velocity").Inc();
+        }
+
+        // Active balance holders
+        try
+        {
+            var holders = await _repository.GetActiveBalanceHoldersAsync(ct);
+            BusinessKpiMetrics.ActiveBalanceHolders.Set(holders);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect active balance holders metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("active_balance_holders").Inc();
+        }
+
+        // Average and median balance
+        try
+        {
+            var avgBalance = await _repository.GetAverageBalanceAsync(ct);
+            var medianBalance = await _repository.GetMedianBalanceAsync(ct);
+
+            BusinessKpiMetrics.AverageBalance.Set(avgBalance);
+            BusinessKpiMetrics.MedianBalance.Set(medianBalance);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect balance distribution metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("balance_distribution").Inc();
+        }
+
+        // Gini coefficient (wealth equality)
+        try
+        {
+            var gini = await _repository.GetGiniCoefficientAsync(ct);
+            BusinessKpiMetrics.GiniCoefficient.Set(gini);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect Gini coefficient metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("gini_coefficient").Inc();
+        }
+
+        // Top holder concentration
+        try
+        {
+            var top10 = await _repository.GetTopHolderConcentrationAsync(10, ct);
+            var top100 = await _repository.GetTopHolderConcentrationAsync(100, ct);
+            var top1000 = await _repository.GetTopHolderConcentrationAsync(1000, ct);
+
+            BusinessKpiMetrics.TopHolderConcentration.WithLabels("10").Set(top10);
+            BusinessKpiMetrics.TopHolderConcentration.WithLabels("100").Set(top100);
+            BusinessKpiMetrics.TopHolderConcentration.WithLabels("1000").Set(top1000);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect top holder concentration metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("top_holder_concentration").Inc();
+        }
+
+        // Daily/Weekly/Monthly active wallets (DAW/WAW/MAW)
+        try
+        {
+            var daw = await _repository.GetDailyActiveWalletsAsync(ct);
+            var waw = await _repository.GetWeeklyActiveWalletsAsync(ct);
+            var maw = await _repository.GetMonthlyActiveWalletsAsync(ct);
+
+            BusinessKpiMetrics.DailyActiveWallets.Set(daw);
+            BusinessKpiMetrics.WeeklyActiveWallets.Set(waw);
+            BusinessKpiMetrics.MonthlyActiveWallets.Set(maw);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect active wallets metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("active_wallets").Inc();
+        }
+
+        // User retention rate
+        try
+        {
+            var ret7d = await _repository.GetUserRetentionRateAsync(Window7D, ct);
+            var ret30d = await _repository.GetUserRetentionRateAsync(Window30D, ct);
+
+            BusinessKpiMetrics.UserRetentionRate.WithLabels("7d").Set(ret7d);
+            BusinessKpiMetrics.UserRetentionRate.WithLabels("30d").Set(ret30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect user retention rate metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("user_retention_rate").Inc();
+        }
+
+        // First-time transactors
+        try
+        {
+            var first24h = await _repository.GetFirstTimeTransactorsAsync(Window24H, ct);
+            var first7d = await _repository.GetFirstTimeTransactorsAsync(Window7D, ct);
+            var first30d = await _repository.GetFirstTimeTransactorsAsync(Window30D, ct);
+
+            BusinessKpiMetrics.FirstTimeTransactors.WithLabels("24h").Set(first24h);
+            BusinessKpiMetrics.FirstTimeTransactors.WithLabels("7d").Set(first7d);
+            BusinessKpiMetrics.FirstTimeTransactors.WithLabels("30d").Set(first30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect first-time transactors metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("first_time_transactors").Inc();
+        }
+
+        // Transfer size distribution (percentiles)
+        try
+        {
+            var p10_24h = await _repository.GetTransferSizeDistributionPercentileAsync(0.10, Window24H, ct);
+            var p25_24h = await _repository.GetTransferSizeDistributionPercentileAsync(0.25, Window24H, ct);
+            var p75_24h = await _repository.GetTransferSizeDistributionPercentileAsync(0.75, Window24H, ct);
+            var p90_24h = await _repository.GetTransferSizeDistributionPercentileAsync(0.90, Window24H, ct);
+
+            BusinessKpiMetrics.TransferSizePercentile.WithLabels("p10", "24h").Set(p10_24h);
+            BusinessKpiMetrics.TransferSizePercentile.WithLabels("p25", "24h").Set(p25_24h);
+            BusinessKpiMetrics.TransferSizePercentile.WithLabels("p75", "24h").Set(p75_24h);
+            BusinessKpiMetrics.TransferSizePercentile.WithLabels("p90", "24h").Set(p90_24h);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect transfer size percentile metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("transfer_size_percentile").Inc();
+        }
+
+        // Micro and large transaction counts
+        try
+        {
+            // Micro transactions (< 1 CRC)
+            var micro24h = await _repository.GetMicroTransactionCountAsync(Window24H, 1.0, ct);
+            var micro7d = await _repository.GetMicroTransactionCountAsync(Window7D, 1.0, ct);
+
+            BusinessKpiMetrics.MicroTransactionCount.WithLabels("24h").Set(micro24h);
+            BusinessKpiMetrics.MicroTransactionCount.WithLabels("7d").Set(micro7d);
+
+            // Large transactions (> 100 CRC)
+            var large24h = await _repository.GetLargeTransactionCountAsync(Window24H, 100.0, ct);
+            var large7d = await _repository.GetLargeTransactionCountAsync(Window7D, 100.0, ct);
+
+            BusinessKpiMetrics.LargeTransactionCount.WithLabels("24h").Set(large24h);
+            BusinessKpiMetrics.LargeTransactionCount.WithLabels("7d").Set(large7d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect transaction size bucket metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("transaction_size_buckets").Inc();
+        }
+
+        // Net inflow (minting minus demurrage approximation)
+        try
+        {
+            var inflow24h = await _repository.GetNetInflowAsync(Window24H, ct);
+            var inflow7d = await _repository.GetNetInflowAsync(Window7D, ct);
+            var inflow30d = await _repository.GetNetInflowAsync(Window30D, ct);
+
+            BusinessKpiMetrics.NetInflow.WithLabels("24h").Set(inflow24h);
+            BusinessKpiMetrics.NetInflow.WithLabels("7d").Set(inflow7d);
+            BusinessKpiMetrics.NetInflow.WithLabels("30d").Set(inflow30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect net inflow metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("net_inflow").Inc();
         }
     }
 }
