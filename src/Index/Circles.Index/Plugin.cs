@@ -45,6 +45,12 @@ public class Plugin : INethermindPlugin
         ILogger baseLogger = nethermindApi.LogManager.GetClassLogger();
         InterfaceLogger pluginLogger = new LoggerWithPrefix($"{Name}: ", baseLogger);
 
+        if (!Enabled)
+        {
+            pluginLogger.Info("Plugin disabled via CIRCLES_PLUGIN_DISABLED=true. Skipping initialization.");
+            return Task.CompletedTask;
+        }
+
         Settings settings = new();
 
         IDatabaseSchema databaseSchema = new CompositeDatabaseSchema(DatabaseSchemaProvider.Schemas.AllSchemas.ToArray());
@@ -319,6 +325,11 @@ public class Plugin : INethermindPlugin
 
     public Task InitRpcModules()
     {
+        if (!Enabled)
+        {
+            return Task.CompletedTask;
+        }
+
         if (_indexerContext?.NethermindApi.RpcModuleProvider == null)
         {
             throw new Exception("_indexerContext.NethermindApi.RpcModuleProvider is not set");
