@@ -60,6 +60,16 @@ dotnet run --project src/Index/Circles.Index.Backfill -- backfill \
 | `--rpc-url` | `-r` | Nethermind RPC endpoint | `http://localhost:8545` |
 | `--batch-size` | `-b` | Blocks per batch | 1000 |
 | `--dry-run` | - | Parse only, don't write | false |
+| `--force` | - | Bypass safety check (dangerous) | false |
+
+### Safety Check
+
+Before running, the tool verifies the indexer is not running:
+
+1. Checks if `CIRCLES_PLUGIN_DISABLED=true` is set
+2. Monitors `System_Block` for 3 seconds to ensure it's not advancing
+
+If the indexer is detected as running, the tool will refuse to start. Use `--force` to bypass (not recommended).
 
 ### Connection String
 

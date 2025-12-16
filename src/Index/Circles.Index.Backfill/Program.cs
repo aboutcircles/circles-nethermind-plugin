@@ -82,6 +82,11 @@ var hubAddressOption = new Option<string?>(
     name: "--hub-address",
     description: "V2 Hub contract address (default: 0xc12c1e50abb450d6205ea2c3fa861b3b834d13e8 for Gnosis)");
 
+var forceOption = new Option<bool>(
+    name: "--force",
+    description: "Bypass safety check that verifies the indexer is not running",
+    getDefaultValue: () => false);
+
 backfillCommand.AddOption(tablesOption);
 backfillCommand.AddOption(fromBlockOption);
 backfillCommand.AddOption(toBlockOption);
@@ -90,6 +95,7 @@ backfillCommand.AddOption(rpcUrlOption);
 backfillCommand.AddOption(batchSizeOption);
 backfillCommand.AddOption(dryRunOption);
 backfillCommand.AddOption(hubAddressOption);
+backfillCommand.AddOption(forceOption);
 
 backfillCommand.SetHandler(async (context) =>
 {
@@ -101,6 +107,7 @@ backfillCommand.SetHandler(async (context) =>
     var batchSize = context.ParseResult.GetValueForOption(batchSizeOption);
     var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
     var hubAddress = context.ParseResult.GetValueForOption(hubAddressOption);
+    var force = context.ParseResult.GetValueForOption(forceOption);
 
     if (string.IsNullOrEmpty(connectionString))
     {
@@ -120,7 +127,8 @@ backfillCommand.SetHandler(async (context) =>
         RpcUrl = rpcUrl,
         BatchSize = batchSize,
         DryRun = dryRun,
-        V2HubAddress = hubAddress
+        V2HubAddress = hubAddress,
+        Force = force
     };
 
     var runner = new BackfillRunner(options);

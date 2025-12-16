@@ -43,4 +43,9 @@ public class BackfillOptions
     /// V2 Hub contract address (default: Gnosis mainnet)
     /// </summary>
     public string? V2HubAddress { get; init; }
+
+    /// <summary>
+    /// If true, bypass the safety check that verifies the indexer is not running
+    /// </summary>
+    public bool Force { get; init; } = false;
 }
