@@ -5,6 +5,10 @@
       time_format iso8601
     }
   }
+  servers {
+    metrics
+  }
+  admin :2019
 }
 
 # Main domain (HTTPS)
