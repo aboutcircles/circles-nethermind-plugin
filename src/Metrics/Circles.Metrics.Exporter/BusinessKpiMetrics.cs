@@ -101,6 +101,104 @@ public static class BusinessKpiMetrics
             new GaugeConfiguration { LabelNames = new[] { "window" } });
 
     // ===========================================
+    // NEW: Dune Parity KPIs
+    // ===========================================
+
+    public static readonly Gauge DailyMintCount = Prometheus.Metrics
+        .CreateGauge("circles_daily_mint_count",
+            "Number of mint events in the last 24 hours");
+
+    public static readonly Gauge NewBackers = Prometheus.Metrics
+        .CreateGauge("circles_new_backers",
+            "Number of new backers in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge MintingFraction14d = Prometheus.Metrics
+        .CreateGauge("circles_minting_fraction_14d",
+            "Fraction of registered humans who minted in the last 14 days (0-1)");
+
+    public static readonly Gauge NewOrganizations = Prometheus.Metrics
+        .CreateGauge("circles_new_organizations",
+            "Number of new organizations in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge NewGroups = Prometheus.Metrics
+        .CreateGauge("circles_new_groups",
+            "Number of new groups in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    // ===========================================
+    // Activity Rates (Minters/Spenders by window)
+    // ===========================================
+
+    public static readonly Gauge MintingRate = Prometheus.Metrics
+        .CreateGauge("circles_minting_rate",
+            "Fraction of registered humans who minted in time window (0-1)",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge SpendingRate = Prometheus.Metrics
+        .CreateGauge("circles_spending_rate",
+            "Fraction of registered humans who sent transfers in time window (0-1)",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge TransferVolume = Prometheus.Metrics
+        .CreateGauge("circles_transfer_volume_crc",
+            "CRC transferred in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge MintVolume = Prometheus.Metrics
+        .CreateGauge("circles_mint_volume_crc",
+            "CRC minted in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    // ===========================================
+    // Sybil Detection Metrics
+    // ===========================================
+
+    public static readonly Gauge AccountsWithoutProfile = Prometheus.Metrics
+        .CreateGauge("circles_accounts_no_profile",
+            "Number of registered humans without a profile");
+
+    public static readonly Gauge AccountsWithoutIncomingTrust = Prometheus.Metrics
+        .CreateGauge("circles_accounts_no_trust_received",
+            "Number of registered humans not trusted by anyone else");
+
+    public static readonly Gauge BatchRegistrations = Prometheus.Metrics
+        .CreateGauge("circles_batch_registrations",
+            "Accounts registered in batches (same block) in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge MintAndDrainAccounts = Prometheus.Metrics
+        .CreateGauge("circles_mint_and_drain_accounts",
+            "Accounts that minted but have zero balance",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge HighVolumeInviters = Prometheus.Metrics
+        .CreateGauge("circles_high_volume_inviters",
+            "Number of inviters with unusually high invitee counts",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge SuspiciousAccounts = Prometheus.Metrics
+        .CreateGauge("circles_suspicious_accounts",
+            "Accounts matching multiple sybil indicators (no profile, no trust, but minting)");
+
+    public static readonly Gauge OrganicAccounts = Prometheus.Metrics
+        .CreateGauge("circles_organic_accounts",
+            "Accounts with profile and incoming trust (healthy accounts)");
+
+    // ===========================================
+    // Network Health Metrics
+    // ===========================================
+
+    public static readonly Gauge AverageTrustConnections = Prometheus.Metrics
+        .CreateGauge("circles_average_trust_connections",
+            "Average number of trust connections per registered human");
+
+    public static readonly Gauge IsolatedAccounts = Prometheus.Metrics
+        .CreateGauge("circles_isolated_accounts",
+            "Accounts with zero trust connections in either direction");
+
+    // ===========================================
     // Collection Metrics
     // ===========================================
 

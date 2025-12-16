@@ -14,7 +14,9 @@ public class KpiCollectorService : BackgroundService
     // Time windows for metrics
     private static readonly TimeSpan Window24H = TimeSpan.FromHours(24);
     private static readonly TimeSpan Window7D = TimeSpan.FromDays(7);
+    private static readonly TimeSpan Window14D = TimeSpan.FromDays(14);
     private static readonly TimeSpan Window30D = TimeSpan.FromDays(30);
+    private static readonly TimeSpan Window90D = TimeSpan.FromDays(90);
 
     public KpiCollectorService(
         KpiRepository repository,
@@ -66,7 +68,11 @@ public class KpiCollectorService : BackgroundService
             CollectTrustMetricsAsync(ct),
             CollectEconomicMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
-            CollectProfileMetricsAsync(ct)
+            CollectProfileMetricsAsync(ct),
+            CollectDuneParityMetricsAsync(ct),
+            CollectActivityRatesAsync(ct),
+            CollectSybilDetectionMetricsAsync(ct),
+            CollectNetworkHealthMetricsAsync(ct)
         );
     }
 
@@ -284,6 +290,282 @@ public class KpiCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect profiles metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("profiles_created").Inc();
+        }
+    }
+
+    // ============================================================================
+    // NEW: Dune Parity KPIs
+    // ============================================================================
+
+    private async Task CollectDuneParityMetricsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var dailyMintCount = await _repository.GetDailyMintCountAsync(ct);
+            BusinessKpiMetrics.DailyMintCount.Set(dailyMintCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect daily mint count metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("daily_mint_count").Inc();
+        }
+
+        try
+        {
+            var newBackers24h = await _repository.GetNewBackersAsync(Window24H, ct);
+            var newBackers7d = await _repository.GetNewBackersAsync(Window7D, ct);
+            var newBackers30d = await _repository.GetNewBackersAsync(Window30D, ct);
+
+            BusinessKpiMetrics.NewBackers.WithLabels("24h").Set(newBackers24h);
+            BusinessKpiMetrics.NewBackers.WithLabels("7d").Set(newBackers7d);
+            BusinessKpiMetrics.NewBackers.WithLabels("30d").Set(newBackers30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect new backers metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("new_backers").Inc();
+        }
+
+        try
+        {
+            var mintingFraction = await _repository.GetMintingFraction14DayAsync(ct);
+            BusinessKpiMetrics.MintingFraction14d.Set(mintingFraction);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect minting fraction metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("minting_fraction_14d").Inc();
+        }
+
+        try
+        {
+            var newOrgs24h = await _repository.GetNewOrganizationsAsync(Window24H, ct);
+            var newOrgs7d = await _repository.GetNewOrganizationsAsync(Window7D, ct);
+            var newOrgs30d = await _repository.GetNewOrganizationsAsync(Window30D, ct);
+
+            BusinessKpiMetrics.NewOrganizations.WithLabels("24h").Set(newOrgs24h);
+            BusinessKpiMetrics.NewOrganizations.WithLabels("7d").Set(newOrgs7d);
+            BusinessKpiMetrics.NewOrganizations.WithLabels("30d").Set(newOrgs30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect new organizations metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("new_organizations").Inc();
+        }
+
+        try
+        {
+            var newGroups24h = await _repository.GetNewGroupsAsync(Window24H, ct);
+            var newGroups7d = await _repository.GetNewGroupsAsync(Window7D, ct);
+            var newGroups30d = await _repository.GetNewGroupsAsync(Window30D, ct);
+
+            BusinessKpiMetrics.NewGroups.WithLabels("24h").Set(newGroups24h);
+            BusinessKpiMetrics.NewGroups.WithLabels("7d").Set(newGroups7d);
+            BusinessKpiMetrics.NewGroups.WithLabels("30d").Set(newGroups30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect new groups metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("new_groups").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Activity Rates (Minters/Spenders by window)
+    // ============================================================================
+
+    private async Task CollectActivityRatesAsync(CancellationToken ct)
+    {
+        // Minting rates by window
+        try
+        {
+            var rate14d = await _repository.GetMintingRateAsync(Window14D, ct);
+            var rate30d = await _repository.GetMintingRateAsync(Window30D, ct);
+            var rate90d = await _repository.GetMintingRateAsync(Window90D, ct);
+
+            BusinessKpiMetrics.MintingRate.WithLabels("14d").Set(rate14d);
+            BusinessKpiMetrics.MintingRate.WithLabels("30d").Set(rate30d);
+            BusinessKpiMetrics.MintingRate.WithLabels("90d").Set(rate90d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect minting rate metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("minting_rate").Inc();
+        }
+
+        // Spending rates by window
+        try
+        {
+            var rate14d = await _repository.GetSpendingRateAsync(Window14D, ct);
+            var rate30d = await _repository.GetSpendingRateAsync(Window30D, ct);
+            var rate90d = await _repository.GetSpendingRateAsync(Window90D, ct);
+
+            BusinessKpiMetrics.SpendingRate.WithLabels("14d").Set(rate14d);
+            BusinessKpiMetrics.SpendingRate.WithLabels("30d").Set(rate30d);
+            BusinessKpiMetrics.SpendingRate.WithLabels("90d").Set(rate90d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect spending rate metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("spending_rate").Inc();
+        }
+
+        // Transfer volume by window
+        try
+        {
+            var vol7d = await _repository.GetTransferVolumeAsync(Window7D, ct);
+            var vol30d = await _repository.GetTransferVolumeAsync(Window30D, ct);
+            var vol90d = await _repository.GetTransferVolumeAsync(Window90D, ct);
+
+            BusinessKpiMetrics.TransferVolume.WithLabels("7d").Set(vol7d);
+            BusinessKpiMetrics.TransferVolume.WithLabels("30d").Set(vol30d);
+            BusinessKpiMetrics.TransferVolume.WithLabels("90d").Set(vol90d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect transfer volume metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("transfer_volume").Inc();
+        }
+
+        // Mint volume by window
+        try
+        {
+            var vol7d = await _repository.GetMintVolumeAsync(Window7D, ct);
+            var vol30d = await _repository.GetMintVolumeAsync(Window30D, ct);
+            var vol90d = await _repository.GetMintVolumeAsync(Window90D, ct);
+
+            BusinessKpiMetrics.MintVolume.WithLabels("7d").Set(vol7d);
+            BusinessKpiMetrics.MintVolume.WithLabels("30d").Set(vol30d);
+            BusinessKpiMetrics.MintVolume.WithLabels("90d").Set(vol90d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect mint volume metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("mint_volume").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Sybil Detection Metrics
+    // ============================================================================
+
+    private async Task CollectSybilDetectionMetricsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var noProfile = await _repository.GetAccountsWithoutProfileAsync(ct);
+            BusinessKpiMetrics.AccountsWithoutProfile.Set(noProfile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect accounts without profile metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("accounts_no_profile").Inc();
+        }
+
+        try
+        {
+            var noTrust = await _repository.GetAccountsWithoutIncomingTrustAsync(ct);
+            BusinessKpiMetrics.AccountsWithoutIncomingTrust.Set(noTrust);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect accounts without trust metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("accounts_no_trust").Inc();
+        }
+
+        try
+        {
+            // Batch registrations (accounts in same block with > 5 registrations)
+            var batch24h = await _repository.GetBatchRegistrationsAsync(Window24H, 5, ct);
+            var batch7d = await _repository.GetBatchRegistrationsAsync(Window7D, 5, ct);
+
+            BusinessKpiMetrics.BatchRegistrations.WithLabels("24h").Set(batch24h);
+            BusinessKpiMetrics.BatchRegistrations.WithLabels("7d").Set(batch7d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batch registrations metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("batch_registrations").Inc();
+        }
+
+        try
+        {
+            var mintDrain24h = await _repository.GetMintAndDrainAccountsAsync(Window24H, ct);
+            var mintDrain7d = await _repository.GetMintAndDrainAccountsAsync(Window7D, ct);
+
+            BusinessKpiMetrics.MintAndDrainAccounts.WithLabels("24h").Set(mintDrain24h);
+            BusinessKpiMetrics.MintAndDrainAccounts.WithLabels("7d").Set(mintDrain7d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect mint-and-drain metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("mint_and_drain").Inc();
+        }
+
+        try
+        {
+            // High-volume inviters (> 10 invitees in window)
+            var hvInviters24h = await _repository.GetHighVolumeInvitersCountAsync(Window24H, 10, ct);
+            var hvInviters7d = await _repository.GetHighVolumeInvitersCountAsync(Window7D, 10, ct);
+
+            BusinessKpiMetrics.HighVolumeInviters.WithLabels("24h").Set(hvInviters24h);
+            BusinessKpiMetrics.HighVolumeInviters.WithLabels("7d").Set(hvInviters7d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect high-volume inviters metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("high_volume_inviters").Inc();
+        }
+
+        try
+        {
+            var suspicious = await _repository.GetSuspiciousAccountsAsync(ct);
+            BusinessKpiMetrics.SuspiciousAccounts.Set(suspicious);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect suspicious accounts metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("suspicious_accounts").Inc();
+        }
+
+        try
+        {
+            var organic = await _repository.GetOrganicAccountsAsync(ct);
+            BusinessKpiMetrics.OrganicAccounts.Set(organic);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect organic accounts metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("organic_accounts").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Network Health Metrics
+    // ============================================================================
+
+    private async Task CollectNetworkHealthMetricsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var avgTrust = await _repository.GetAverageTrustConnectionsAsync(ct);
+            BusinessKpiMetrics.AverageTrustConnections.Set(avgTrust);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect average trust connections metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("avg_trust_connections").Inc();
+        }
+
+        try
+        {
+            var isolated = await _repository.GetIsolatedAccountsAsync(ct);
+            BusinessKpiMetrics.IsolatedAccounts.Set(isolated);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect isolated accounts metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("isolated_accounts").Inc();
         }
     }
 }

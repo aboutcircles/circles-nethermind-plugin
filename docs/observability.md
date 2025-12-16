@@ -35,7 +35,7 @@ This document describes the observability infrastructure for the Circles Netherm
 - **Port**: 9090
 - **Config**: `docker/prometheus.yml`
 - **Data**: `.state/prometheus/`
-- **Retention**: 30 days
+- **Retention**: 365 days
 
 Scrapes metrics from:
 - `prometheus:9090` - Self-monitoring
@@ -45,6 +45,8 @@ Scrapes metrics from:
 - `rpc:8080` - RPC service
 - `cache-service:3001` - Cache service
 - `consensus-gnosis:5054` - Consensus client
+- `metrics-exporter:9100` - Business KPIs
+- `blackbox-exporter:9115` - Health endpoint probing
 
 ### Loki (Logs)
 - **Port**: 3100
@@ -343,7 +345,12 @@ The Metrics Exporter service queries PostgreSQL periodically (every 60s) to expo
 | Active Minters | `circles_active_minters{window="24h"}` | ✅ Implemented |
 | Metri Profiles | `circles_profiles_created{window="total\|24h"}` | ✅ Implemented |
 | Trust Changes | `circles_trust_changes{window,type}` | ✅ Implemented |
-| Daily Mints | `circles_daily_mint_volume_crc` | ✅ Implemented |
+| Daily Mints (Volume) | `circles_daily_mint_volume_crc` | ✅ Implemented |
+| Daily Mints (Count) | `circles_daily_mint_count` | ✅ Implemented |
+| New Backers | `circles_new_backers{window}` | ✅ Implemented |
+| 14-Day Minting Fraction | `circles_minting_fraction_14d` | ✅ Implemented |
+| New Organizations | `circles_new_organizations{window}` | ✅ Implemented |
+| New Groups | `circles_new_groups{window}` | ✅ Implemented |
 | CRC Price | - | ❌ Needs external API |
 | Gnosis App Txs | - | ❌ App-specific |
 
@@ -387,6 +394,34 @@ The Metrics Exporter service queries PostgreSQL periodically (every 60s) to expo
 | Metric | Labels | SQL Source | Description |
 |--------|--------|------------|-------------|
 | `circles_profiles_created` | `window` | Profile registration events | Profiles created (total/24h) |
+
+### Activity Rate Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_minting_rate` | `window` | Minters in window / total humans | % of users who minted (14d/30d/90d) |
+| `circles_spending_rate` | `window` | Spenders in window / total humans | % of users who transferred (14d/30d/90d) |
+| `circles_transfer_volume` | `window` | `SUM(value) FROM "CrcV2"."TransferSingle"` | Transfer volume by window (24h/7d/30d) |
+| `circles_mint_volume` | `window` | `SUM(amount) FROM "CrcV2"."PersonalMint"` | Mint volume by window (24h/7d/30d) |
+
+### Sybil Detection Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_accounts_without_profile` | - | LEFT JOIN on metadata | Accounts with no profile CID |
+| `circles_accounts_without_incoming_trust` | - | NOT IN trustee list | Accounts trusted by no one |
+| `circles_batch_registrations` | `window` | GROUP BY blockNumber | Accounts in batches (>5/block) |
+| `circles_mint_and_drain_accounts` | `window` | Zero balance after minting | Minted then drained accounts |
+| `circles_high_volume_inviters` | `window` | GROUP BY inviter | Inviters with >10 invites |
+| `circles_suspicious_accounts` | - | Combined sybil indicators | Total suspicious accounts |
+| `circles_organic_accounts` | - | Has profile + trust + activity | Total organic accounts |
+
+### Network Health Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_average_trust_connections` | - | AVG trusts per avatar | Network connectivity |
+| `circles_isolated_accounts` | - | Accounts with 0 trusts | Completely isolated users |
 
 ### Collection Metrics
 
@@ -491,7 +526,7 @@ All data persists across container restarts via Docker volumes:
 
 | Component | Host Path | Container Path | Retention |
 |-----------|-----------|----------------|-----------|
-| Prometheus TSDB | `.state/prometheus/` | `/prometheus` | 30 days |
+| Prometheus TSDB | `.state/prometheus/` | `/prometheus` | 365 days |
 | Loki chunks | `.state/loki/` | `/loki` | 7 days |
 | Alertmanager | `.state/alertmanager/` | `/alertmanager` | Silences/notifications |
 | Grafana | `.state/grafana/` | `/var/lib/grafana` | Dashboards/settings |
@@ -583,11 +618,56 @@ curl http://localhost:9090/api/v1/rules
 ### 7. Services Logs (`services-logs.json`)
 - Per-service log filtering
 
+### 8. Sybil Detection (`sybil-detection.json`)
+
+- Organic vs suspicious account breakdown
+- Account quality indicators (profile adoption, trust reception)
+- Sybil patterns: batch registrations, mint-and-drain, high-volume inviters
+- Network health: average trust connections, isolation rate
+- Pie charts showing account distribution
+
+### 9. Service Health (`service-health.json`)
+
+- Live/Ready status for all services (RPC, Pathfinder, Cache)
+- Health check history timeline
+- Response time monitoring
+- Uptime statistics (24h rolling)
+
+---
+
+## Blackbox Exporter (`blackbox-exporter:9115`)
+
+Probes service health endpoints using HTTP checks.
+
+**Config**: `docker/blackbox-exporter.yml`
+
+### Probed Endpoints
+
+| Job | Endpoint | Interval | Purpose |
+|-----|----------|----------|---------|
+| `blackbox-ready` | `/ready` | 30s | Service readiness (sync, dependencies) |
+| `blackbox-live` | `/live` | 15s | Service liveness (process running) |
+
+### Exposed Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `probe_success` | Gauge | 1 if probe succeeded, 0 otherwise |
+| `probe_duration_seconds` | Gauge | Time taken for probe |
+| `probe_http_status_code` | Gauge | HTTP status code returned |
+
+### Health Endpoint Semantics
+
+| Service | `/live` | `/ready` |
+|---------|---------|----------|
+| **RPC** | Always 200 | Checks Nethermind sync, DB, Pathfinder |
+| **Pathfinder** | Always 200 | Checks graphs loaded |
+| **Cache** | Always 200 | Checks warmup complete, pg_notify connected |
+
 ---
 
 ## Future Enhancements
 
 - [ ] CRC Price metric (needs external API - Balancer/CoW/DIA)
-- [ ] 14-day rolling window metrics (minting fraction)
 - [ ] Index plugin Prometheus metrics (currently console-only)
-- [ ] Per-address activity tracking (top users)
+- [ ] Database indexes for heavy sybil detection queries
