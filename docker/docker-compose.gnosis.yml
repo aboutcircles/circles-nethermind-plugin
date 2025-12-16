@@ -16,7 +16,6 @@ services:
       - 30303:30303/tcp # p2p
       - 30303:30303/udp # p2p
       - 8545:8545
-      - 6060:6060 # metrics
     expose:
       - 8551 # engine api
       - 6060 # metrics
@@ -80,9 +79,9 @@ services:
     ports:
       - 9000:9000/tcp # p2p
       - 9000:9000/udp # p2p
-      - 5054:5054/tcp # metrics
     expose:
       - 4000 # http
+      - 5054 # metrics (internal only for Prometheus)
     volumes:
       - ../.state/consensus-gnosis/data:/data
       - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
@@ -122,8 +121,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 3001:3001
+    expose:
+      - 3001
     environment:
       - PORT=3001
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
