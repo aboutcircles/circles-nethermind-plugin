@@ -52,7 +52,7 @@ public class KpiRepository
     {
         var sql = $"""
             SELECT COUNT(*) FROM "CrcV2_RegisterHuman"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -71,7 +71,7 @@ public class KpiRepository
     {
         var sql = $"""
             SELECT COUNT(*) FROM "CrcV2_Trust"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             AND "expiryTime" > EXTRACT(EPOCH FROM NOW())
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
@@ -82,13 +82,13 @@ public class KpiRepository
         // Trusts with far future expiry are "added", trusts with past/zero expiry are "removed"
         var sqlAdded = $"""
             SELECT COUNT(*) FROM "CrcV2_Trust"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             AND "expiryTime" > EXTRACT(EPOCH FROM NOW()) + 86400
             """;
 
         var sqlRemoved = $"""
             SELECT COUNT(*) FROM "CrcV2_Trust"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             AND "expiryTime" <= EXTRACT(EPOCH FROM NOW())
             """;
 
@@ -110,7 +110,7 @@ public class KpiRepository
     {
         var sql = $"""
             SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -121,7 +121,7 @@ public class KpiRepository
         const string sql = """
             SELECT COALESCE(SUM(("amount"::numeric) / 1e18), 0)
             FROM "CrcV2_PersonalMint"
-            WHERE "timestamp" > NOW() - INTERVAL '24 hours'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
             """;
         return await ExecuteScalarAsync<decimal>(sql, ct);
     }
@@ -132,7 +132,7 @@ public class KpiRepository
         const string sql = """
             SELECT COALESCE(SUM(("value"::numeric) / 1e18), 0)
             FROM "CrcV2_TransferSingle"
-            WHERE "timestamp" > NOW() - INTERVAL '24 hours'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
             """;
         return await ExecuteScalarAsync<decimal>(sql, ct);
     }
@@ -141,7 +141,7 @@ public class KpiRepository
     {
         const string sql = """
             SELECT COUNT(*) FROM "CrcV2_TransferSingle"
-            WHERE "timestamp" > NOW() - INTERVAL '24 hours'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
     }
@@ -152,10 +152,10 @@ public class KpiRepository
         var sql = $"""
             SELECT COUNT(DISTINCT addr) FROM (
                 SELECT "from" as addr FROM "CrcV2_TransferSingle"
-                WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
                 UNION
                 SELECT "to" as addr FROM "CrcV2_TransferSingle"
-                WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             ) addresses
             """;
         return await ExecuteScalarAsync<long>(sql, ct);
@@ -184,7 +184,7 @@ public class KpiRepository
         var sql = $"""
             SELECT COALESCE(SUM(("mintAmount"::numeric) / 1e18), 0)
             FROM "CrcV2_GroupMint"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             """;
 
         try
@@ -201,7 +201,7 @@ public class KpiRepository
     {
         var sql = $"""
             SELECT COUNT(*) FROM "CrcV2_UpdateMetadataDigest"
-            WHERE "timestamp" > NOW() - INTERVAL '{(int)window.TotalSeconds} seconds'
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             """;
 
         try
