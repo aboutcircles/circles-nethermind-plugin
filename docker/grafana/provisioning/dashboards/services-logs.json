@@ -42,102 +42,44 @@
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 },
       "id": 101,
       "panels": [],
-      "title": "Nethermind (Circles & Sync)",
+      "title": "Circles Stack",
       "type": "row"
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 20, "w": 24, "x": 0, "y": 20 },
       "id": 10,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"nethermind-gnosis\"} |~ \"(?i)(circles|changing sync|receipt|ancient|barrier|header|snap|fast|warn|err|reorg|indexed|processed block)\"", "refId": "A" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"nethermind-gnosis\"} |~ \"(?i)(circles|changing sync|receipt|ancient|barrier|header|snap|fast|warn|err|reorg|indexed|processed block)\"", "legendFormat": "", "refId": "nethermind" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"rpc\"}", "legendFormat": "", "refId": "rpc" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"pathfinder\"}", "legendFormat": "", "refId": "pathfinder" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"cache-service\"}", "legendFormat": "", "refId": "cache" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=~\"postgres.*\"}", "legendFormat": "", "refId": "postgres" }
       ],
-      "title": "Nethermind - Circles & Sync Events",
+      "title": "Circles Stack (Nethermind filtered + RPC + Pathfinder + Cache + Postgres)",
       "type": "logs"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
       "id": 102,
       "panels": [],
-      "title": "Circles Services",
+      "title": "Infrastructure",
       "type": "row"
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 33 },
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 41 },
       "id": 20,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
       "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"rpc\"}", "refId": "A" }
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"nethermind-gnosis\"}", "legendFormat": "", "refId": "nethermind" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"consensus-gnosis\"}", "legendFormat": "", "refId": "consensus" },
+        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"caddy\"}", "legendFormat": "", "refId": "caddy" }
       ],
-      "title": "RPC Host",
+      "title": "Infrastructure (Nethermind full + Consensus + Caddy)",
       "type": "logs"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 33 },
-      "id": 21,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"pathfinder\"}", "refId": "A" }
-      ],
-      "title": "Pathfinder",
-      "type": "logs"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 43 },
-      "id": 22,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"cache-service\"}", "refId": "A" }
-      ],
-      "title": "Cache Service",
-      "type": "logs"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 43 },
-      "id": 23,
-      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "targets": [
-        { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=~\"postgres.*\"}", "refId": "A" }
-      ],
-      "title": "PostgreSQL",
-      "type": "logs"
-    },
-    {
-      "collapsed": true,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
-      "id": 103,
-      "panels": [
-        {
-          "datasource": { "type": "loki", "uid": "loki" },
-          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 54 },
-          "id": 30,
-          "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-          "targets": [
-            { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"consensus-gnosis\"}", "refId": "A" }
-          ],
-          "title": "Consensus (Lighthouse)",
-          "type": "logs"
-        },
-        {
-          "datasource": { "type": "loki", "uid": "loki" },
-          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 54 },
-          "id": 31,
-          "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-          "targets": [
-            { "datasource": { "type": "loki", "uid": "loki" }, "expr": "{container=\"caddy\"}", "refId": "A" }
-          ],
-          "title": "Caddy (Reverse Proxy)",
-          "type": "logs"
-        }
-      ],
-      "title": "Infrastructure (collapsed)",
-      "type": "row"
     }
   ],
   "refresh": "10s",
