@@ -263,3 +263,138 @@ groups:
       # Health check latency by service
       - record: circles:health_check_latency:gauge
         expr: probe_duration_seconds{job=~"blackbox-.*"}
+
+  - name: circles-advanced-monetary-aggregations
+    interval: 1m
+    rules:
+      # Total CRC supply in circulation
+      - record: circles:total_crc_supply:gauge
+        expr: circles_total_crc_supply
+
+      # Total minted all time
+      - record: circles:total_minted_all_time:gauge
+        expr: circles_total_minted_all_time_crc
+
+      # Demurrage paid by window
+      - record: circles:demurrage_paid_24h:gauge
+        expr: circles_demurrage_paid_crc{window="24h"}
+
+      - record: circles:demurrage_paid_7d:gauge
+        expr: circles_demurrage_paid_crc{window="7d"}
+
+      - record: circles:demurrage_paid_30d:gauge
+        expr: circles_demurrage_paid_crc{window="30d"}
+
+      # Money velocity (transfer volume / supply)
+      - record: circles:money_velocity_7d:gauge
+        expr: circles_money_velocity{window="7d"}
+
+      - record: circles:money_velocity_30d:gauge
+        expr: circles_money_velocity{window="30d"}
+
+      - record: circles:money_velocity_90d:gauge
+        expr: circles_money_velocity{window="90d"}
+
+      # Active balance holders
+      - record: circles:active_balance_holders:gauge
+        expr: circles_active_balance_holders
+
+      # Balance distribution
+      - record: circles:average_balance:gauge
+        expr: circles_average_balance_crc
+
+      - record: circles:median_balance:gauge
+        expr: circles_median_balance_crc
+
+      # Wealth equality (Gini coefficient)
+      - record: circles:gini_coefficient:gauge
+        expr: circles_gini_coefficient
+
+      # Top holder concentration
+      - record: circles:top_10_holder_concentration:gauge
+        expr: circles_top_holder_concentration{top_n="10"}
+
+      - record: circles:top_100_holder_concentration:gauge
+        expr: circles_top_holder_concentration{top_n="100"}
+
+      - record: circles:top_1000_holder_concentration:gauge
+        expr: circles_top_holder_concentration{top_n="1000"}
+
+      # Daily/Weekly/Monthly active wallets (DAW/WAW/MAW)
+      - record: circles:daily_active_wallets:gauge
+        expr: circles_daily_active_wallets
+
+      - record: circles:weekly_active_wallets:gauge
+        expr: circles_weekly_active_wallets
+
+      - record: circles:monthly_active_wallets:gauge
+        expr: circles_monthly_active_wallets
+
+      # DAW/MAW ratio (stickiness)
+      - record: circles:wallet_stickiness:gauge
+        expr: circles_daily_active_wallets / circles_monthly_active_wallets
+
+      # User retention rate
+      - record: circles:user_retention_7d:gauge
+        expr: circles_user_retention_rate{window="7d"}
+
+      - record: circles:user_retention_30d:gauge
+        expr: circles_user_retention_rate{window="30d"}
+
+      # First-time transactors
+      - record: circles:first_time_transactors_24h:gauge
+        expr: circles_first_time_transactors{window="24h"}
+
+      - record: circles:first_time_transactors_7d:gauge
+        expr: circles_first_time_transactors{window="7d"}
+
+      - record: circles:first_time_transactors_30d:gauge
+        expr: circles_first_time_transactors{window="30d"}
+
+      # Transfer size percentiles (24h)
+      - record: circles:transfer_size_p10_24h:gauge
+        expr: circles_transfer_size_percentile_crc{percentile="p10", window="24h"}
+
+      - record: circles:transfer_size_p25_24h:gauge
+        expr: circles_transfer_size_percentile_crc{percentile="p25", window="24h"}
+
+      - record: circles:transfer_size_p75_24h:gauge
+        expr: circles_transfer_size_percentile_crc{percentile="p75", window="24h"}
+
+      - record: circles:transfer_size_p90_24h:gauge
+        expr: circles_transfer_size_percentile_crc{percentile="p90", window="24h"}
+
+      # Micro transactions (< 1 CRC)
+      - record: circles:micro_transactions_24h:gauge
+        expr: circles_micro_transaction_count{window="24h"}
+
+      - record: circles:micro_transactions_7d:gauge
+        expr: circles_micro_transaction_count{window="7d"}
+
+      # Large transactions (> 100 CRC)
+      - record: circles:large_transactions_24h:gauge
+        expr: circles_large_transaction_count{window="24h"}
+
+      - record: circles:large_transactions_7d:gauge
+        expr: circles_large_transaction_count{window="7d"}
+
+      # Micro transaction ratio (potential spam indicator)
+      - record: circles:micro_transaction_ratio_24h:gauge
+        expr: circles_micro_transaction_count{window="24h"} / circles_transfer_count{window="24h"}
+
+      # Net inflow (new CRC minted)
+      - record: circles:net_inflow_24h:gauge
+        expr: circles_net_inflow_crc{window="24h"}
+
+      - record: circles:net_inflow_7d:gauge
+        expr: circles_net_inflow_crc{window="7d"}
+
+      - record: circles:net_inflow_30d:gauge
+        expr: circles_net_inflow_crc{window="30d"}
+
+      # Supply growth rate (inflow / supply)
+      - record: circles:supply_growth_rate_24h:gauge
+        expr: circles_net_inflow_crc{window="24h"} / circles_total_crc_supply
+
+      - record: circles:supply_growth_rate_7d:gauge
+        expr: circles_net_inflow_crc{window="7d"} / circles_total_crc_supply

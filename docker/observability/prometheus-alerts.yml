@@ -191,3 +191,44 @@ groups:
         annotations:
           summary: "Health check slow for {{ $labels.service }}"
           description: "The health endpoint for {{ $labels.service }} is responding slowly ({{ $value | printf \"%.2f\" }}s)."
+
+      # Nethermind health - critical because it affects the whole stack
+      - alert: NethermindNotHealthy
+        expr: probe_success{job="blackbox-nethermind"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nethermind not healthy"
+          description: "The Nethermind /health endpoint is failing. This affects the entire Circles stack."
+
+      # Consensus client health
+      - alert: ConsensusNotHealthy
+        expr: probe_success{job="blackbox-consensus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Consensus client not healthy"
+          description: "The Lighthouse /eth/v1/node/health endpoint is failing."
+
+      # Long initial sync detection - informational, not an error
+      # RPC /ready is the ULTIMATE stack health check - it validates:
+      # 1. Nethermind is synced
+      # 2. Circles plugin (indexer) is fully synced
+      # 3. Database is connected
+      # 4. Pathfinder is reachable
+      # 5. Block lag is acceptable
+      # When /ready fails but /live succeeds and Nethermind is healthy,
+      # the stack is still syncing - this can take several hours on initial sync
+      - alert: InitialSyncInProgress
+        expr: |
+          probe_success{job="blackbox-ready", service="rpc"} == 0
+          and probe_success{job="blackbox-nethermind"} == 1
+          and probe_success{job="blackbox-live", service="rpc"} == 1
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "Initial sync in progress"
+          description: "RPC /ready is failing but Nethermind is healthy and RPC is alive. The Circles stack is still syncing (Nethermind sync + plugin indexing). Initial sync can take several hours."
