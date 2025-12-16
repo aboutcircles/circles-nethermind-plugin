@@ -17,9 +17,8 @@ services:
     volumes:
       - ../.state/grafana:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-    depends_on:
-      - prometheus
-      - loki
+    # Note: prometheus and loki are in docker-compose.observability.yml
+    # They communicate via the shared circles-gnosis network
 
 networks:
   circles-gnosis:
