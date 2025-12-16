@@ -131,6 +131,20 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
         // STEP 1e: Load consented flow flags
         LoadConsentedFlowFlags(capacityGraph);
 
+        // STEP 1f: Add simulated consented avatars (for testing)
+        if (request?.SimulatedConsentedAvatars != null && request.SimulatedConsentedAvatars.Count > 0)
+        {
+            foreach (var avatar in request.SimulatedConsentedAvatars)
+            {
+                if (!string.IsNullOrWhiteSpace(avatar))
+                {
+                    var avatarId = AddressIdPool.IdOf(avatar.ToLowerInvariant());
+                    capacityGraph.ConsentedAvatars.Add(avatarId);
+                }
+            }
+            Console.WriteLine($"Added {request.SimulatedConsentedAvatars.Count} simulated consented avatars");
+        }
+
         var mergedTrust = simulatedTrust.Count == 0 ? trustLookup : MergeTrust(trustLookup, simulatedTrust);
 
         // Store trust lookup in capacity graph for consented flow validation
