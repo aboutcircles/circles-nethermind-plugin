@@ -16,6 +16,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total number of registered human accounts in Circles V2. Counted from CrcV2_RegisterHuman events.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -34,6 +35,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Users who have backed CRC with xDAI through CirclesBackingInitiated events. Backers provide liquidity to the Circles economy.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -52,6 +54,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Currently active trust relationships in the network. Trust enables transitive transfers between accounts. Calculated from V_CrcV2_TrustRelations view.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -70,6 +73,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Unique users who minted personal CRC in the last 24 hours. Minting is the UBI distribution mechanism in Circles.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -88,6 +92,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total registered groups in Circles V2. Groups can issue their own group CRC and define membership rules.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -106,6 +111,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total Circles profiles created (with metadata/CID). Profiles include user information stored via UpdateMetadataDigest events.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -132,6 +138,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Historical trend of registered human accounts. V2 is the current protocol version, V1 is the legacy version.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -154,6 +161,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Number of new user registrations in the last 24 hours. Tracks organic growth of the Circles network.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -183,6 +191,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total CRC minted in the last 24 hours (before demurrage). Minting is the UBI issuance mechanism - each human can mint ~24 CRC/day.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -204,6 +213,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total CRC transferred between accounts in the last 24 hours. Includes both direct transfers and transitive (path-based) transfers.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -225,6 +235,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Number of individual transfer transactions in the last 24 hours. High count with low volume may indicate micro-transactions or testing.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -254,6 +265,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of registered humans who minted in the last 14 days. Formula: (unique minters in 14d) / (total humans) × 100. Higher = more active UBI claiming.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -273,6 +285,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Number of individual mint transactions in the last 24 hours. Each user can mint once per day to claim their UBI allocation.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -291,6 +304,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Users who initiated CRC backing with xDAI in the last 24 hours. Backers support the Circles economy by providing liquidity.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -309,6 +323,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "New organizations registered in the last 24 hours. Organizations are special accounts that can hold and transfer CRC but cannot mint.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -327,6 +342,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "New groups registered in the last 24 hours. Groups can issue their own group CRC tokens and define membership/minting policies.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -345,6 +361,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Average number of trust connections per avatar. Formula: total_trusts / total_avatars. Higher values indicate a more connected network.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -363,6 +380,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of users who minted within each time window. Formula: (unique minters in window) / (total humans) × 100. Tracks user engagement over different periods.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -387,6 +405,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of users who made outgoing transfers within each window. Formula: (unique senders) / (total humans) × 100. Indicates how actively CRC is being used for payments.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -411,6 +430,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total CRC transferred within each time window. Rolling sum of all transfer values converted to CRC (amount / 10^18).",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -434,6 +454,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total CRC minted (UBI claimed) within each time window. Rolling sum of PersonalMint amounts. Includes both human and group mints.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -465,6 +486,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total number of active trust relationships over time. Trust is required for transitive transfers - if A trusts B, A accepts B's personal CRC tokens.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -486,6 +508,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Net change in trust relationships over 24h. Added = new trusts created, Removed = trusts revoked. A healthy network shows more additions than removals.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },

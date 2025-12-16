@@ -16,6 +16,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "RPC service liveness check (/live endpoint). Returns UP if the process is running. Does not check dependencies.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -36,6 +37,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "RPC service readiness check (/ready endpoint). Checks: Nethermind sync status, PostgreSQL connection, Pathfinder availability, Indexer lag.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -56,6 +58,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Pathfinder service liveness check (/live endpoint). Returns UP if the process is running.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -76,6 +79,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Pathfinder service readiness check (/ready endpoint). Checks: trust graphs loaded in memory, background refresh service healthy.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -96,6 +100,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Cache service liveness check (/live endpoint). Returns UP if the process is running.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -116,6 +121,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Cache service readiness check (/ready endpoint). Checks: warmup replay complete, pg_notify connection established, cache lag within threshold.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -144,6 +150,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Nethermind execution client health check (/health endpoint). Checks node sync status and JSON-RPC availability.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -164,6 +171,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Lighthouse consensus client health check (/eth/v1/node/health). Returns 200 when synced, 206 when syncing - both are considered healthy.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -184,6 +192,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Caddy reverse proxy health check (internal port 80). Routes traffic to RPC, Pathfinder, Profiles, and Chain-RPC services.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -204,6 +213,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Nethermind uptime percentage over last 24 hours. Formula: avg(probe_success) × 100. Green ≥99%, Yellow ≥95%, Red <95%.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -223,6 +233,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Lighthouse consensus client uptime percentage over last 24 hours. Green ≥99%, Yellow ≥95%, Red <95%.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -242,6 +253,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Caddy reverse proxy uptime percentage over last 24 hours. Green ≥99%, Yellow ≥95%, Red <95%.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -269,6 +281,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Readiness probe results over time (0=not ready, 1=ready). Readiness indicates service can handle traffic - dependencies are healthy.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -298,6 +311,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Liveness probe results over time (0=down, 1=up). Liveness checks process health only - does not verify dependencies.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -335,6 +349,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Time taken for /ready endpoint to respond. Includes dependency checks (DB, Nethermind, etc). High times may indicate slow dependencies.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -358,6 +373,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Time taken for /live endpoint to respond. Should be very fast (<100ms) as it only checks process health, not dependencies.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -389,6 +405,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "RPC service availability over 24 hours based on /ready checks. Formula: successful_probes / total_probes × 100.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -408,6 +425,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Pathfinder service availability over 24 hours based on /ready checks. Formula: successful_probes / total_probes × 100.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -427,6 +445,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Cache service availability over 24 hours based on /ready checks. Formula: successful_probes / total_probes × 100.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -454,6 +473,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "External HTTPS probe for main RPC endpoint (staging.circlesubi.network). Tests public accessibility through Caddy reverse proxy.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -474,6 +494,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "External HTTPS probe for Pathfinder endpoint (staging.circlesubi.network/pathfinder). Tests public path calculation API accessibility.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -494,6 +515,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Days until SSL certificate expires. Formula: (cert_expiry_timestamp - now) / 86400. Red <7d, Orange <14d, Yellow <30d, Green ≥30d.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -512,6 +534,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Average time to complete external HTTPS probe including TLS handshake. High values may indicate network or TLS issues.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -530,6 +553,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Response time for all external HTTPS endpoints over time. Includes TLS handshake. Compare across services to identify bottlenecks.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -554,6 +578,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "External endpoint availability over time (0=down, 1=up). Shows public-facing service health as seen from outside the network.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -593,6 +618,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Current HTTP request rate through Caddy reverse proxy. Formula: sum(rate(requests[5m])). Shows overall traffic load.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -611,6 +637,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Total HTTP requests served by Caddy in the last 24 hours. Formula: sum(increase(requests[24h])).",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -629,6 +656,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of requests resulting in 5xx errors. Formula: rate(5xx) / rate(all) × 100. Green <1%, Yellow <5%, Red ≥5%.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -647,6 +675,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "95th percentile request latency through Caddy. Formula: histogram_quantile(0.95, request_duration). 95% of requests complete faster than this.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -665,6 +694,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Request rate breakdown by HTTP status code. 2xx=success, 4xx=client errors (bad requests), 5xx=server errors (investigate!).",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -688,6 +718,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Request latency percentiles over time. P50=median, P90=90% of requests, P99=slowest 1%. Watch for P99 spikes indicating tail latency issues.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },

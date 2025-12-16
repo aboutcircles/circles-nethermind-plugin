@@ -16,6 +16,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Accounts meeting organic criteria: has profile metadata AND has at least one incoming trust from another user. Indicates real human users.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -34,6 +35,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Accounts matching suspicious patterns: no profile AND no incoming trust AND isolated from network. May indicate sybil/bot accounts.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -52,6 +54,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of all accounts flagged as suspicious. Formula: suspicious / (suspicious + organic) × 100. High ratios may indicate sybil attacks.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -71,6 +74,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Registered accounts without profile metadata (no CID in UpdateMetadataDigest). Real users typically create profiles; bots often don't.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -89,6 +93,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Accounts that have never received trust from another user. In Circles, trust enables receiving someone's personal tokens - accounts without incoming trust are isolated.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -107,6 +112,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Accounts with zero trust connections (neither giving nor receiving trust). Completely disconnected from the trust network - cannot participate in transitive transfers.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -133,6 +139,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Trend comparison of organic (likely real) vs suspicious (potentially sybil) accounts. Sudden spikes in suspicious accounts may indicate coordinated attacks.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -155,6 +162,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Registrations in the same block (>5 accounts). Legitimate users rarely register simultaneously; batch registrations suggest automated sybil creation.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -176,6 +184,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Accounts that minted CRC but now have zero balance. Pattern: mint UBI → transfer all out immediately. Common in sybil farming to extract value from fake accounts.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -198,6 +207,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Inviters who registered >10 new accounts in the time window. High-volume inviters may be operating sybil farms. Counted from CrcV2_RegisterHuman inviter field.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -228,6 +238,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Mean trust connections per account. Formula: total_trusts / total_avatars. Higher values indicate a more interconnected and resilient trust network.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -249,6 +260,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Key quality signals over time. Isolated = no trust connections, No Profile = missing metadata, No Incoming Trust = not trusted by anyone. Rising trends may indicate sybil activity.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -272,6 +284,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Pie chart showing organic vs suspicious account distribution. A healthy network should have >90% organic accounts.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -296,6 +309,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of users who have set profile metadata. Formula: (total_humans - no_profile) vs no_profile. Real users typically create profiles with name/avatar.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -320,6 +334,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Percentage of users who have received at least one trust. Formula: (total_humans - no_trust_received) vs no_trust_received. Trust reception indicates integration into the network.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
