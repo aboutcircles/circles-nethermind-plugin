@@ -178,7 +178,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 6 },
       "id": 8,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-consensus\"}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-consensus\", instance=~\".*:4000.*\"}", "refId": "A" }],
       "title": "Consensus (Lighthouse)",
       "type": "stat"
     },
@@ -216,7 +216,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 6 },
       "id": 40,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "avg_over_time(probe_success{job=\"blackbox-consensus\"}[24h]) * 100", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "avg_over_time(probe_success{job=\"blackbox-consensus\", instance=~\".*:4000.*\"}[24h]) * 100", "refId": "A" }],
       "title": "Consensus Uptime (24h)",
       "type": "stat"
     },
