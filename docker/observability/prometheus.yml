@@ -123,7 +123,7 @@ scrape_configs:
       module: [http_lighthouse]
     static_configs:
       - targets:
-        - http://consensus-gnosis:5052/eth/v1/node/health
+        - http://consensus-gnosis:4000/eth/v1/node/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
