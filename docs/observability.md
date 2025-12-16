@@ -327,10 +327,267 @@ open http://localhost:3000
 
 ---
 
+## Business KPI Metrics (`metrics-exporter:9100/metrics`)
+
+The Metrics Exporter service queries PostgreSQL periodically (every 60s) to expose business KPIs.
+
+**Source**: `src/Metrics/Circles.Metrics.Exporter/`
+
+### Dune Dashboard Coverage
+
+| Dune KPI | Metric | Status |
+|----------|--------|--------|
+| Total Humans | `circles_total_humans{version="v1\|v2"}` | ✅ Implemented |
+| Total Backers | `circles_total_backers` | ✅ Implemented |
+| Active Trusts | `circles_active_trusts` | ✅ Implemented |
+| Active Minters | `circles_active_minters{window="24h"}` | ✅ Implemented |
+| Metri Profiles | `circles_profiles_created{window="total\|24h"}` | ✅ Implemented |
+| Trust Changes | `circles_trust_changes{window,type}` | ✅ Implemented |
+| Daily Mints | `circles_daily_mint_volume_crc` | ✅ Implemented |
+| CRC Price | - | ❌ Needs external API |
+| Gnosis App Txs | - | ❌ App-specific |
+
+### User Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_total_humans` | `version` | `COUNT(*) FROM "CrcV1"."Signup"` / `"CrcV2"."RegisterHuman"` | Total registered humans |
+| `circles_total_organizations` | - | `COUNT(*) FROM "CrcV2"."RegisterOrganization"` | Total organizations |
+| `circles_total_groups` | - | `COUNT(*) FROM "CrcV2"."RegisterGroup"` | Total groups |
+| `circles_new_users` | `window` | `WHERE timestamp > NOW() - interval` | New users in 24h/7d/30d |
+
+### Trust Network Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_active_trusts` | - | `COUNT(*) FROM "V_CrcV2_TrustRelations"` | Active trust relationships |
+| `circles_new_trusts` | `window` | `WHERE timestamp > NOW() - interval` | New trusts in 24h/7d |
+| `circles_trust_changes` | `window`, `type` | Trust/Untrust events | Added/removed trusts |
+
+### Economic Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_total_backers` | - | `COUNT(DISTINCT backer) FROM "CrcV2"."CirclesBackingInitiated"` | LBP backers |
+| `circles_active_minters` | `window` | `COUNT(DISTINCT human) FROM "CrcV2"."PersonalMint"` | Unique minters in window |
+| `circles_daily_mint_volume_crc` | - | `SUM(amount) FROM "CrcV2"."PersonalMint"` | CRC minted in 24h |
+| `circles_daily_transfer_volume_crc` | - | `SUM(value) FROM "CrcV2"."TransferSingle"` | CRC transferred in 24h |
+| `circles_daily_transfer_count` | - | `COUNT(*) FROM "CrcV2"."TransferSingle"` | Transfers in 24h |
+| `circles_unique_transacting_addresses` | `window` | Distinct from/to addresses | DAU/WAU equivalent |
+
+### Group Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_group_members_total` | - | Group membership count | Total group memberships |
+| `circles_group_mint_volume` | `window` | Group mint events | Group mint volume |
+
+### Profile Metrics
+
+| Metric | Labels | SQL Source | Description |
+|--------|--------|------------|-------------|
+| `circles_profiles_created` | `window` | Profile registration events | Profiles created (total/24h) |
+
+### Collection Metrics
+
+| Metric | Description |
+|--------|-------------|
+| `circles_kpi_collection_duration_seconds_total` | Time spent collecting KPIs |
+| `circles_kpi_collection_errors_total{metric}` | Collection errors by metric |
+| `circles_kpi_last_collection_timestamp` | Unix timestamp of last collection |
+
+---
+
+## RPC Method Metrics (`rpc:8080/metrics`)
+
+**Source**: `src/Rpc/Circles.Rpc.Host/RpcMetrics.cs`
+
+| Metric | Labels | Type | Description |
+|--------|--------|------|-------------|
+| `circles_rpc_requests_total` | `method` | Counter | Total requests by RPC method |
+| `circles_rpc_request_duration_seconds` | `method` | Histogram | Request duration by method |
+| `circles_rpc_errors_total` | `method`, `error_type` | Counter | Errors by method and type |
+| `circles_rpc_inflight_requests` | `method` | Gauge | Concurrent requests by method |
+| `circles_rpc_active_subscriptions` | - | Gauge | Active WebSocket subscriptions |
+
+**Buckets**: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s
+
+---
+
+## Consensus Client Metrics (`consensus-gnosis:5054/metrics`)
+
+Lighthouse exposes standard Ethereum consensus metrics.
+
+**Required Configuration** (in `docker-compose.gnosis.yml`):
+
+```yaml
+command: |
+  lighthouse
+  beacon_node
+  --metrics
+  --metrics-address=0.0.0.0
+  --metrics-port=5054
+  # ... other flags
+```
+
+| Metric | Description |
+|--------|-------------|
+| `beacon_head_state_slot` | Current beacon head slot |
+| `beacon_finalized_epoch` | Last finalized epoch |
+| `sync_eth2_synced` | 1 if synced, 0 if syncing |
+| `libp2p_peers` | Connected peers |
+| `beacon_participation_*` | Attestation participation rates |
+
+---
+
+## Alerting
+
+### Alertmanager (`alertmanager:9093`)
+
+**Config**: `docker/alertmanager.yml`
+
+**Receivers**:
+- **Slack** (default): All alerts go to `#circles-alerts`
+- **Telegram** (optional): Critical alerts only (uncomment in config)
+
+**Environment Variables**:
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+TELEGRAM_BOT_TOKEN=your-bot-token  # Optional
+TELEGRAM_CHAT_ID=your-chat-id      # Optional
+```
+
+### Alert Rules (`docker/prometheus-alerts.yml`)
+
+| Alert | Severity | Condition | Description |
+|-------|----------|-----------|-------------|
+| `ServiceDown` | critical | `up == 0` for 1m | Service unreachable |
+| `HighRpcErrorRate1h` | warning | `>5 errors in 1h` | Elevated error rate |
+| `HighRpcErrorRate24h` | critical | `>20 errors in 24h` | Critical error rate |
+| `IndexerLag` | warning | `lag > 100 blocks` for 5m | Cache falling behind |
+| `CacheListenerDisconnected` | critical | `listener == 0` for 2m | DB notify disconnected |
+| `HighRpcLatency` | warning | `p95 > 5s` for 5m | Slow RPC responses |
+| `DiskSpaceLow` | warning | `>80% used` | Disk space warning |
+| `DiskSpaceCritical` | critical | `>90% used` | Disk space critical |
+
+### Recording Rules (`docker/prometheus-recording-rules.yml`)
+
+Pre-aggregated metrics for persistence and dashboard efficiency:
+
+```yaml
+circles:total_humans:sum          # Sum of all humans
+circles:active_trusts:sum         # Current active trusts
+circles:daily_mints:sum           # Daily mint volume
+circles:rpc_request_rate:5m       # RPC request rate
+circles:rpc_error_rate:5m         # RPC error rate
+circles:rpc_latency_p95:5m        # RPC p95 latency
+```
+
+---
+
+## Data Persistence
+
+All data persists across container restarts via Docker volumes:
+
+| Component | Host Path | Container Path | Retention |
+|-----------|-----------|----------------|-----------|
+| Prometheus TSDB | `.state/prometheus/` | `/prometheus` | 30 days |
+| Loki chunks | `.state/loki/` | `/loki` | 7 days |
+| Alertmanager | `.state/alertmanager/` | `/alertmanager` | Silences/notifications |
+| Grafana | `.state/grafana/` | `/var/lib/grafana` | Dashboards/settings |
+| Promtail | `.state/promtail/` | `/tmp/promtail` | Position tracking |
+
+**Recording Rules** ensure KPI metrics are persisted in Prometheus TSDB even if the metrics-exporter restarts.
+
+---
+
+## Available UIs
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| **Grafana** | `http://localhost:3000` | Dashboards, logs, alerting visualization |
+| **Prometheus** | `http://localhost:9090` | Query metrics, view targets, check alert rules |
+| **Alertmanager** | `http://localhost:9093` | View/silence alerts, see notification history |
+| **Loki** | `http://localhost:3100` | API only (use Grafana for UI) |
+
+### Prometheus UI Features
+- `/targets` - Check which services are being scraped
+- `/alerts` - View all alert rules and their states
+- `/graph` - Query and graph metrics directly
+- `/config` - View current configuration
+
+### Alertmanager UI Features
+- View firing alerts
+- Silence alerts (temporary mute)
+- See notification history
+- Test alert routing
+
+### Grafana Alert Integration
+- **Alerting menu** (bell icon) shows all Prometheus alerts
+- Create Grafana-native alerts on any metric
+- Configure notification channels
+
+### Testing Alerting
+
+```bash
+# Send test alert to Alertmanager
+curl -X POST 'http://localhost:9093/api/v1/alerts' \
+  -H 'Content-Type: application/json' \
+  -d '[{
+    "labels": {"alertname": "TestAlert", "severity": "warning"},
+    "annotations": {"summary": "Test alert", "description": "Testing alerting pipeline"}
+  }]'
+
+# Check alert status
+curl http://localhost:9093/api/v1/alerts
+
+# Check Prometheus alert rules
+curl http://localhost:9090/api/v1/rules
+```
+
+---
+
+## Dashboards
+
+### 1. Circles Overview (`circles-overview.json`)
+- Service health (Nethermind, Lighthouse, Pathfinder, RPC, Cache)
+- Beacon sync status
+- Block/slot heights
+- Cache statistics
+
+### 2. Circles KPIs (`circles-kpis.json`)
+- Total Humans, Backers, Active Trusts, Minters
+- User growth trends (24h/7d/30d)
+- Economic activity (mint/transfer volume)
+
+### 3. RPC Analytics (`rpc-analytics.json`)
+- Request rate by method
+- Latency percentiles (p50/p95/p99)
+- Errors by method and type
+- Top methods by volume
+
+### 4. Alerting (`alerting.json`)
+- Service health status
+- Alert threshold visualization
+- Error rate trends (1h/24h)
+
+### 5. Node Infrastructure (`node-infrastructure.json`)
+- CPU, Memory, Disk, Network
+- Filesystem usage table
+
+### 6. Logs Explorer (`logs.json`)
+- Container log volume
+- Error/warning filtering
+- Full log search
+
+### 7. Services Logs (`services-logs.json`)
+- Per-service log filtering
+
+---
+
 ## Future Enhancements
 
-- [ ] Business KPI metrics (user growth, transfers, mints)
-- [ ] RPC method-level metrics
-- [ ] Alertmanager integration (Slack/Telegram)
-- [ ] Recording rules for metric persistence
+- [ ] CRC Price metric (needs external API - Balancer/CoW/DIA)
+- [ ] 14-day rolling window metrics (minting fraction)
 - [ ] Index plugin Prometheus metrics (currently console-only)
+- [ ] Per-address activity tracking (top users)
