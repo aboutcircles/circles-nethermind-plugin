@@ -16,6 +16,8 @@ namespace Circles.Pathfinder.Data
 
         IEnumerable<string> LoadGroups();
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
+
+        IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags();
     }
 
     public class LoadGraph : ILoadGraph
@@ -189,6 +191,32 @@ namespace Circles.Pathfinder.Data
                 var groupAddress = reader.GetString(0);
                 var trustedToken = reader.GetString(1);
                 results.Add((groupAddress, trustedToken));
+            }
+
+            return results;
+        }
+
+        // Load consented flow flags (latest per avatar)
+        public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
+        {
+            var query = LoadQueryFromResource("consentedFlowQuery.sql");
+            var results = new List<(string Avatar, bool HasConsentedFlow)>();
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                var avatar = reader.GetString(0);
+                var flag = (byte[])reader.GetValue(1);
+                // Check LSB (consented flow flag is bytes32(uint256(1)))
+                // bytes32 is big-endian, so LSB is at index 31
+                bool hasConsented = flag.Length >= 32 && (flag[31] & 0x01) != 0;
+                results.Add((avatar, hasConsented));
             }
 
             return results;

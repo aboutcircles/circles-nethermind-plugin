@@ -167,9 +167,14 @@ public class V2Pathfinder
         var aggregated = collapsed.AggregateIdenticalEdges();
 
         /* --------------------------------------------------------------------
+         * 5b. Validate consented flow - filter edges that violate consent rules
+         * ------------------------------------------------------------------ */
+        var validatedEdges = ValidateConsentedFlow(aggregated.Edges, capacityGraph);
+
+        /* --------------------------------------------------------------------
          * 6. Post-process to insert Router between Avatar → Group transfers
          * ------------------------------------------------------------------ */
-        var processedEdges = InsertRouterInTransfers(aggregated.Edges, capacityGraph);
+        var processedEdges = InsertRouterInTransfers(validatedEdges, capacityGraph);
 
         /* --------------------------------------------------------------------
          * 6b. Sort edges to ensure mint dependencies are satisfied.
@@ -266,6 +271,72 @@ public class V2Pathfinder
         }
 
         return result;
+    }
+
+    /* ------------------------------------------------------------------------
+     * Validate consented flow rules on transfer edges.
+     * Contract logic (from Hub.sol isPermittedFlow):
+     * - If From does NOT have consented flow → standard trust is sufficient
+     * - If From HAS consented flow → requires:
+     *   1. From trusts To
+     *   2. To also has consented flow enabled
+     * Note: "To trusts TokenOwner" is already enforced by graph construction.
+     * --------------------------------------------------------------------- */
+    private List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
+    {
+        // If no consent data available, pass all edges through
+        if (capacityGraph.TrustLookup == null || capacityGraph.ConsentedAvatars.Count == 0)
+        {
+            return edges;
+        }
+
+        var validEdges = new List<FlowEdge>(edges.Count);
+
+        foreach (var edge in edges)
+        {
+            // Skip pool nodes - they're not avatars
+            if (IsPoolNode(edge.From) || IsPoolNode(edge.To))
+            {
+                validEdges.Add(edge);
+                continue;
+            }
+
+            // Skip router edges
+            if (capacityGraph.IsRouter(edge.From) || capacityGraph.IsRouter(edge.To))
+            {
+                validEdges.Add(edge);
+                continue;
+            }
+
+            // If From doesn't have consented flow, standard trust is sufficient
+            if (!capacityGraph.ConsentedAvatars.Contains(edge.From))
+            {
+                validEdges.Add(edge);
+                continue;
+            }
+
+            // From has consented flow enabled - check additional requirements:
+            // 1. From must trust To
+            bool fromTrustsTo = capacityGraph.TrustLookup.TryGetValue(edge.From, out var fromTrusts)
+                               && fromTrusts.Contains(edge.To);
+            if (!fromTrustsTo)
+            {
+                // Invalid - From has consented flow but doesn't trust To
+                continue;
+            }
+
+            // 2. To must also have consented flow enabled
+            if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
+            {
+                // Invalid - To doesn't have consented flow enabled
+                continue;
+            }
+
+            // All checks passed
+            validEdges.Add(edge);
+        }
+
+        return validEdges;
     }
 
     /* ------------------------------------------------------------------------

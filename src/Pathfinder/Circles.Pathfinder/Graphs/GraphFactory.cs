@@ -128,7 +128,13 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
         // STEP 1d: Load groups and track router node for post-processing
         LoadGroupsAndTrackRouter(capacityGraph);
 
+        // STEP 1e: Load consented flow flags
+        LoadConsentedFlowFlags(capacityGraph);
+
         var mergedTrust = simulatedTrust.Count == 0 ? trustLookup : MergeTrust(trustLookup, simulatedTrust);
+
+        // Store trust lookup in capacity graph for consented flow validation
+        capacityGraph.TrustLookup = mergedTrust;
 
         int? virtualSinkAddress = null;
         HashSet<int> virtualSinkTrustedTokens = new HashSet<int>();
@@ -431,6 +437,28 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
         {
             // Log but don't fail if groups/router can't be loaded
             Console.WriteLine($"Warning: Could not load groups and router tracking: {ex.Message}");
+        }
+    }
+
+    // Load consented flow flags
+    private void LoadConsentedFlowFlags(CapacityGraph capacityGraph)
+    {
+        try
+        {
+            var consentedFlags = loadGraph.LoadConsentedFlowFlags()
+                .Where(x => x.HasConsentedFlow)
+                .Select(x => AddressIdPool.IdOf(x.Avatar.ToLowerInvariant()))
+                .ToHashSet();
+
+            capacityGraph.ConsentedAvatars = consentedFlags;
+
+            Console.WriteLine($"Loaded {consentedFlags.Count} avatars with consented flow enabled");
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail if consented flow flags can't be loaded
+            // Default to empty set (no consented flow validation)
+            Console.WriteLine($"Warning: Could not load consented flow flags: {ex.Message}");
         }
     }
 

@@ -33,6 +33,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
     private readonly Hash256 _groupMintTopic = new(DatabaseSchema.GroupMint.Topic);
     private readonly Hash256 _flowEdgesScopeSingleStarted = new(DatabaseSchema.FlowEdgesScopeSingleStarted.Topic);
     private readonly Hash256 _flowEdgesScopeLastEnded = new(DatabaseSchema.FlowEdgesScopeLastEnded.Topic);
+    private readonly Hash256 _setAdvancedUsageFlagTopic = new(DatabaseSchema.SetAdvancedUsageFlag.Topic);
 
     // CRITICAL: Used by TransferSummaryAggregator to determine token type (inflationary vs demurraged)
     // for correct value conversion during transfer event aggregation.
@@ -344,6 +345,11 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             if (topic == _flowEdgesScopeLastEnded)
             {
                 yield return FlowEdgesScopeLastEnded(block, receipt, log, logIndex);
+            }
+
+            if (topic == _setAdvancedUsageFlagTopic)
+            {
+                yield return SetAdvancedUsageFlag(block, receipt, log, logIndex);
             }
         }
 
@@ -924,6 +930,28 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             logIndex,
             receipt.TxHash!.ToString(),
             log.Address.ToLowerHex()
+        );
+    }
+
+    private SetAdvancedUsageFlag SetAdvancedUsageFlag(
+        Block block,
+        TxReceipt receipt,
+        LogEntry log,
+        int logIndex)
+    {
+        // event SetAdvancedUsageFlag(address indexed avatar, bytes32 flag)
+        string avatar = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        byte[] flag = log.Data; // bytes32 = 32 bytes
+
+        return new SetAdvancedUsageFlag(
+            block.Number,
+            (long)block.Timestamp,
+            receipt.Index,
+            logIndex,
+            receipt.TxHash!.ToString(),
+            log.Address.ToLowerHex(),
+            avatar,
+            flag
         );
     }
 }
