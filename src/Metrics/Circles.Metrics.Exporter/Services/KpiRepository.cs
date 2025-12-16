@@ -184,7 +184,7 @@ public class KpiRepository
     public async Task<double> GetGroupMintVolumeAsync(TimeSpan window, CancellationToken ct = default)
     {
         var sql = $"""
-            SELECT COALESCE(SUM(("mintAmount"::float8) / 1e18), 0)
+            SELECT COALESCE(SUM(("amount"::float8) / 1e18), 0)
             FROM "CrcV2_GroupMint"
             WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             """;
@@ -579,25 +579,11 @@ public class KpiRepository
         return await ExecuteScalarAsync<double>(sql, ct);
     }
 
-    public async Task<double> GetDemurragePaidAsync(TimeSpan window, CancellationToken ct = default)
+    public Task<double> GetDemurragePaidAsync(TimeSpan window, CancellationToken ct = default)
     {
-        // Estimate demurrage by comparing mint volume to transfer volume
-        // This is an approximation - actual demurrage calculation is complex
-        var sql = $"""
-            SELECT COALESCE(SUM(("startValue"::float8 - "endValue"::float8) / 1e18), 0)
-            FROM "CrcV2_Demurrage"
-            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
-            """;
-
-        try
-        {
-            return await ExecuteScalarAsync<double>(sql, ct);
-        }
-        catch
-        {
-            // Table may not exist
-            return 0;
-        }
+        // CrcV2_Demurrage table does not exist - demurrage is applied on-the-fly
+        // Return 0 as we cannot calculate this without a dedicated demurrage tracking table
+        return Task.FromResult(0.0);
     }
 
     public async Task<double> GetMoneyVelocityAsync(TimeSpan window, CancellationToken ct = default)
