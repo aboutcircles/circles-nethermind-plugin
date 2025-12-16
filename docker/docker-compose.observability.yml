@@ -76,7 +76,7 @@ services:
     expose:
       - 9100
     environment:
-      - ConnectionStrings__CirclesDb=${V_POSTGRES_CONNECTION_STRING}
+      - ConnectionStrings__CirclesDb=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - Metrics__CollectionIntervalSeconds=60
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9100/ready"]
@@ -89,20 +89,28 @@ services:
     container_name: alertmanager
     image: prom/alertmanager:v0.27.0
     restart: unless-stopped
+    user: root
     networks:
       - circles-gnosis
     expose:
       - 9093
     volumes:
       - ../.state/alertmanager:/alertmanager
-      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
     environment:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-0}
-    command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
-      - --storage.path=/alertmanager
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        # Install envsubst (part of gettext)
+        apk add --no-cache gettext
+        # Substitute environment variables in config template
+        envsubst < /etc/alertmanager/alertmanager.yml.tmpl > /etc/alertmanager/alertmanager.yml
+        # Start alertmanager
+        exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager
 
 networks:
   circles-gnosis:
