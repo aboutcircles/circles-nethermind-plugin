@@ -164,6 +164,36 @@ groups:
       - record: circles:mint_volume_30d:gauge
         expr: circles_mint_volume{window="30d"}
 
+      # Transfer count by window
+      - record: circles:transfer_count_24h:gauge
+        expr: circles_transfer_count{window="24h"}
+
+      - record: circles:transfer_count_7d:gauge
+        expr: circles_transfer_count{window="7d"}
+
+      - record: circles:transfer_count_30d:gauge
+        expr: circles_transfer_count{window="30d"}
+
+      # Average transfer amount by window
+      - record: circles:average_transfer_amount_24h:gauge
+        expr: circles_average_transfer_amount_crc{window="24h"}
+
+      - record: circles:average_transfer_amount_7d:gauge
+        expr: circles_average_transfer_amount_crc{window="7d"}
+
+      - record: circles:average_transfer_amount_30d:gauge
+        expr: circles_average_transfer_amount_crc{window="30d"}
+
+      # Median transfer amount by window
+      - record: circles:median_transfer_amount_24h:gauge
+        expr: circles_median_transfer_amount_crc{window="24h"}
+
+      - record: circles:median_transfer_amount_7d:gauge
+        expr: circles_median_transfer_amount_crc{window="7d"}
+
+      - record: circles:median_transfer_amount_30d:gauge
+        expr: circles_median_transfer_amount_crc{window="30d"}
+
   - name: circles-sybil-detection-aggregations
     interval: 1m
     rules:

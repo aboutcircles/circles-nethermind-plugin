@@ -353,6 +353,35 @@ public class KpiRepository
         return await ExecuteScalarAsync<double>(sql, ct);
     }
 
+    public async Task<long> GetTransferCountAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(*) FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<long>(sql, ct);
+    }
+
+    public async Task<double> GetAverageTransferAmountAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(AVG(("value"::float8) / 1e18), 0)
+            FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
+    public async Task<double> GetMedianTransferAmountAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ("value"::float8) / 1e18), 0)
+            FROM "CrcV2_TransferSingle"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+        return await ExecuteScalarAsync<double>(sql, ct);
+    }
+
     // ============================================================================
     // Sybil detection metrics
     // ============================================================================
