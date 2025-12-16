@@ -11,6 +11,8 @@ services:
     volumes:
       - ../.state/prometheus:/prometheus
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - ./prometheus-recording-rules.yml:/etc/prometheus/prometheus-recording-rules.yml:ro
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -62,3 +64,42 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+
+  metrics-exporter:
+    container_name: metrics-exporter
+    build:
+      context: ../
+      dockerfile: docker/metrics-exporter.Dockerfile
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 9100:9100
+    environment:
+      - ConnectionStrings__CirclesDb=${V_POSTGRES_CONNECTION_STRING}
+      - Metrics__CollectionIntervalSeconds=60
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/ready"]
+      interval: 30s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+
+  alertmanager:
+    container_name: alertmanager
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    ports:
+      - 9093:9093
+    volumes:
+      - ../.state/alertmanager:/alertmanager
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-0}
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager

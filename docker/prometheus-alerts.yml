@@ -1,0 +1,151 @@
+groups:
+  - name: circles-service-alerts
+    rules:
+      # Service availability
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 1 minute."
+
+      # RPC error rate alerts
+      - alert: HighRpcErrorRate1h
+        expr: increase(circles_rpc_errors_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High RPC error rate"
+          description: "More than 5 RPC errors in the last hour (method: {{ $labels.method }}, type: {{ $labels.error_type }})"
+
+      - alert: HighRpcErrorRate24h
+        expr: increase(circles_rpc_errors_total[24h]) > 20
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical RPC error rate"
+          description: "More than 20 RPC errors in the last 24 hours"
+
+      # Indexer lag
+      - alert: IndexerLag
+        expr: circles_cache_database_lag_blocks > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Indexer lagging behind chain"
+          description: "Cache service is {{ $value }} blocks behind the database"
+
+      - alert: IndexerLagCritical
+        expr: circles_cache_database_lag_blocks > 1000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Indexer severely lagging"
+          description: "Cache service is {{ $value }} blocks behind - may indicate sync issues"
+
+      # Cache service health
+      - alert: CacheListenerDisconnected
+        expr: circles_cache_listener_connected == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cache pg_notify listener disconnected"
+          description: "Cache service lost connection to PostgreSQL notifications"
+
+      - alert: CacheWarmupIncomplete
+        expr: circles_cache_warmup_complete == 0 and (time() - process_start_time_seconds) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache warmup incomplete"
+          description: "Cache service has been running for >5 minutes but warmup is not complete"
+
+      # Request latency
+      - alert: HighRpcLatency
+        expr: histogram_quantile(0.95, rate(circles_rpc_request_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High RPC latency"
+          description: "95th percentile RPC latency is {{ $value }}s for method {{ $labels.method }}"
+
+      # Pathfinder concurrency
+      - alert: PathfinderRejections
+        expr: increase(circles_findpath_rejected_requests_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pathfinder rejecting requests"
+          description: "Pathfinder has rejected {{ $value }} requests in the last hour due to concurrency limits"
+
+  - name: circles-infrastructure-alerts
+    rules:
+      # Disk space
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space on {{ $labels.mountpoint }} is below 15% ({{ $value | printf \"%.1f\" }}% free)"
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space"
+          description: "Disk space on {{ $labels.mountpoint }} is below 5% ({{ $value | printf \"%.1f\" }}% free)"
+
+      # Memory
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 90% ({{ $value | printf \"%.1f\" }}%)"
+
+      # CPU
+      - alert: HighCpuUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 90% ({{ $value | printf \"%.1f\" }}%)"
+
+  - name: circles-kpi-alerts
+    rules:
+      # KPI collection health
+      - alert: KpiCollectionErrors
+        expr: increase(circles_kpi_collection_errors_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KPI collection errors"
+          description: "Multiple errors collecting KPI metrics: {{ $labels.metric }}"
+
+      - alert: KpiCollectionStale
+        expr: (time() - circles_kpi_last_collection_timestamp) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KPI collection stale"
+          description: "No KPI metrics collected in the last 5 minutes"

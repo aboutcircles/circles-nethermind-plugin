@@ -90,6 +90,7 @@ app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService 
     }
 
     var subscriptionId = subscriptionService.Subscribe(webSocket, request.Params?.Address);
+    RpcMetrics.ActiveSubscriptions.Inc();
     logger.LogInformation(
         "Subscription {SubscriptionId} established from {RemoteIp} (address filter: {Address})",
         subscriptionId,
@@ -105,6 +106,7 @@ app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService 
     finally
     {
         subscriptionService.Unsubscribe(subscriptionId);
+        RpcMetrics.ActiveSubscriptions.Dec();
         logger.LogInformation("Subscription {SubscriptionId} closed for {RemoteIp}", subscriptionId, remoteIp);
     }
 }).DisableAntiforgery();
@@ -131,6 +133,11 @@ app.MapPost("/", async (
     var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     var methodName = request.Method ?? "<unknown>";
     var startTimestamp = Stopwatch.GetTimestamp();
+
+    // Track metrics
+    RpcMetrics.RequestsTotal.WithLabels(methodName).Inc();
+    RpcMetrics.InFlightRequests.WithLabels(methodName).Inc();
+
     logger.LogInformation(
         "RPC request {Method} (id={Id}) received from {RemoteIp}",
         methodName,
@@ -187,6 +194,11 @@ app.MapPost("/", async (
         };
 
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+
+        // Record successful request metrics
+        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+
         logger.LogInformation(
             "RPC request {Method} (id={Id}) succeeded in {ElapsedMs} ms (remote {RemoteIp})",
             methodName,
@@ -203,6 +215,10 @@ app.MapPost("/", async (
     catch (RpcMethodNotFoundException ex)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+        RpcMetrics.ErrorsTotal.WithLabels(methodName, "method_not_found").Inc();
+
         logger.LogWarning(ex,
             "RPC method not found: {Method} from {RemoteIp} after {ElapsedMs} ms",
             ex.MethodName,
@@ -217,6 +233,10 @@ app.MapPost("/", async (
     catch (ArgumentException ex)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+        RpcMetrics.ErrorsTotal.WithLabels(methodName, "invalid_params").Inc();
+
         logger.LogWarning(ex,
             "Invalid params for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
             methodName,
@@ -231,6 +251,10 @@ app.MapPost("/", async (
     catch (JsonException ex)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+        RpcMetrics.ErrorsTotal.WithLabels(methodName, "invalid_json").Inc();
+
         logger.LogWarning(ex,
             "Invalid JSON params for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
             methodName,
@@ -245,6 +269,10 @@ app.MapPost("/", async (
     catch (Exception ex)
     {
         var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+        RpcMetrics.ErrorsTotal.WithLabels(methodName, "internal_error").Inc();
+
         logger.LogError(ex,
             "Internal Server Error during RPC execution for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
             methodName,
