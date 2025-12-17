@@ -53,12 +53,20 @@
         }
     }
 
+    # Nethermind Dashboard SSE endpoint - required because dashboard JS uses
+    # EventSource("/data/events") with absolute path from root
+    handle /data/events {
+        rate_limit {
+            zone chain_rpc_zone {
+                key {remote_host}
+                events 50
+                window 1s
+            }
+        }
+        reverse_proxy nethermind-gnosis:8545
+    }
+
     # Nethermind Dashboard and JSON-RPC under /chain-rpc
-    # NOTE: The dashboard's JavaScript makes RPC calls relative to window.location,
-    # which means it calls "/" not "/chain-rpc". This causes the dashboard to show
-    # a skeleton because "/" routes to our Circles RPC, not Nethermind.
-    # The RPC endpoint itself works for direct API calls.
-    # TODO: Consider serving the dashboard on a subdomain to fix this.
     handle_path /chain-rpc/* {
         rate_limit {
             zone chain_rpc_zone {
