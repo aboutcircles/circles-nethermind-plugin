@@ -225,8 +225,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 5432:5432
+    expose:
+      - 5432
     env_file:
       - .env
     environment:
