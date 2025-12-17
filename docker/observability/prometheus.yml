@@ -119,16 +119,16 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
-  # Blackbox exporter - probe Caddy reverse proxy (internal)
-  # Uses http_insecure because Caddy redirects HTTP->HTTPS, and internal hostname has no valid cert
+  # Blackbox exporter - probe Caddy reverse proxy (internal via admin API)
+  # Caddy admin API on port 2019 doesn't require TLS and returns config on GET /config/
   - job_name: 'blackbox-caddy'
     scrape_interval: 30s
     metrics_path: /probe
     params:
-      module: [http_insecure]
+      module: [http_2xx]
     static_configs:
       - targets:
-        - http://caddy:80
+        - http://caddy:2019/config/
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -141,6 +141,7 @@ scrape_configs:
 
   # Blackbox exporter - probe external HTTPS endpoints (public domain)
   # Also monitors SSL certificate expiry via probe_ssl_earliest_cert_expiry
+  # Note: Use /live or /ready endpoints as root paths may return 405 for GET requests
   - job_name: 'blackbox-external'
     scrape_interval: 60s
     metrics_path: /probe
@@ -148,14 +149,12 @@ scrape_configs:
       module: [https_2xx]
     static_configs:
       - targets:
-        # Main RPC endpoint (default route)
-        - https://staging.circlesubi.network
+        # Main RPC endpoint (via /live health check)
+        - https://staging.circlesubi.network/live
         # Pathfinder service
-        - https://staging.circlesubi.network/pathfinder
-        # Profiles service
-        - https://staging.circlesubi.network/profiles
-        # Chain RPC (Nethermind)
-        - https://staging.circlesubi.network/chain-rpc
+        - https://staging.circlesubi.network/pathfinder/live
+        # Chain RPC (Nethermind health)
+        - https://staging.circlesubi.network/chain-rpc/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
