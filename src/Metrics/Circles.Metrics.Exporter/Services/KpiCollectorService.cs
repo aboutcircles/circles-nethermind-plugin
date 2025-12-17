@@ -17,6 +17,8 @@ public class KpiCollectorService : BackgroundService
     private static readonly TimeSpan Window14D = TimeSpan.FromDays(14);
     private static readonly TimeSpan Window30D = TimeSpan.FromDays(30);
     private static readonly TimeSpan Window90D = TimeSpan.FromDays(90);
+    private static readonly TimeSpan Window180D = TimeSpan.FromDays(180);
+    private static readonly TimeSpan Window1Y = TimeSpan.FromDays(365);
 
     public KpiCollectorService(
         KpiRepository repository,
@@ -128,10 +130,16 @@ public class KpiCollectorService : BackgroundService
             var newUsers24h = await _repository.GetNewUsersAsync(Window24H, ct);
             var newUsers7d = await _repository.GetNewUsersAsync(Window7D, ct);
             var newUsers30d = await _repository.GetNewUsersAsync(Window30D, ct);
+            var newUsers90d = await _repository.GetNewUsersAsync(Window90D, ct);
+            var newUsers180d = await _repository.GetNewUsersAsync(Window180D, ct);
+            var newUsers1y = await _repository.GetNewUsersAsync(Window1Y, ct);
 
             BusinessKpiMetrics.NewUsers.WithLabels("24h").Set(newUsers24h);
             BusinessKpiMetrics.NewUsers.WithLabels("7d").Set(newUsers7d);
             BusinessKpiMetrics.NewUsers.WithLabels("30d").Set(newUsers30d);
+            BusinessKpiMetrics.NewUsers.WithLabels("90d").Set(newUsers90d);
+            BusinessKpiMetrics.NewUsers.WithLabels("180d").Set(newUsers180d);
+            BusinessKpiMetrics.NewUsers.WithLabels("1y").Set(newUsers1y);
         }
         catch (Exception ex)
         {
@@ -196,7 +204,18 @@ public class KpiCollectorService : BackgroundService
         try
         {
             var minters24h = await _repository.GetActiveMintersAsync(Window24H, ct);
+            var minters7d = await _repository.GetActiveMintersAsync(Window7D, ct);
+            var minters30d = await _repository.GetActiveMintersAsync(Window30D, ct);
+            var minters90d = await _repository.GetActiveMintersAsync(Window90D, ct);
+            var minters180d = await _repository.GetActiveMintersAsync(Window180D, ct);
+            var minters1y = await _repository.GetActiveMintersAsync(Window1Y, ct);
+
             BusinessKpiMetrics.ActiveMinters.WithLabels("24h").Set(minters24h);
+            BusinessKpiMetrics.ActiveMinters.WithLabels("7d").Set(minters7d);
+            BusinessKpiMetrics.ActiveMinters.WithLabels("30d").Set(minters30d);
+            BusinessKpiMetrics.ActiveMinters.WithLabels("90d").Set(minters90d);
+            BusinessKpiMetrics.ActiveMinters.WithLabels("180d").Set(minters180d);
+            BusinessKpiMetrics.ActiveMinters.WithLabels("1y").Set(minters1y);
         }
         catch (Exception ex)
         {
@@ -316,10 +335,16 @@ public class KpiCollectorService : BackgroundService
             var newBackers24h = await _repository.GetNewBackersAsync(Window24H, ct);
             var newBackers7d = await _repository.GetNewBackersAsync(Window7D, ct);
             var newBackers30d = await _repository.GetNewBackersAsync(Window30D, ct);
+            var newBackers90d = await _repository.GetNewBackersAsync(Window90D, ct);
+            var newBackers180d = await _repository.GetNewBackersAsync(Window180D, ct);
+            var newBackers1y = await _repository.GetNewBackersAsync(Window1Y, ct);
 
             BusinessKpiMetrics.NewBackers.WithLabels("24h").Set(newBackers24h);
             BusinessKpiMetrics.NewBackers.WithLabels("7d").Set(newBackers7d);
             BusinessKpiMetrics.NewBackers.WithLabels("30d").Set(newBackers30d);
+            BusinessKpiMetrics.NewBackers.WithLabels("90d").Set(newBackers90d);
+            BusinessKpiMetrics.NewBackers.WithLabels("180d").Set(newBackers180d);
+            BusinessKpiMetrics.NewBackers.WithLabels("1y").Set(newBackers1y);
         }
         catch (Exception ex)
         {
@@ -343,10 +368,16 @@ public class KpiCollectorService : BackgroundService
             var newOrgs24h = await _repository.GetNewOrganizationsAsync(Window24H, ct);
             var newOrgs7d = await _repository.GetNewOrganizationsAsync(Window7D, ct);
             var newOrgs30d = await _repository.GetNewOrganizationsAsync(Window30D, ct);
+            var newOrgs90d = await _repository.GetNewOrganizationsAsync(Window90D, ct);
+            var newOrgs180d = await _repository.GetNewOrganizationsAsync(Window180D, ct);
+            var newOrgs1y = await _repository.GetNewOrganizationsAsync(Window1Y, ct);
 
             BusinessKpiMetrics.NewOrganizations.WithLabels("24h").Set(newOrgs24h);
             BusinessKpiMetrics.NewOrganizations.WithLabels("7d").Set(newOrgs7d);
             BusinessKpiMetrics.NewOrganizations.WithLabels("30d").Set(newOrgs30d);
+            BusinessKpiMetrics.NewOrganizations.WithLabels("90d").Set(newOrgs90d);
+            BusinessKpiMetrics.NewOrganizations.WithLabels("180d").Set(newOrgs180d);
+            BusinessKpiMetrics.NewOrganizations.WithLabels("1y").Set(newOrgs1y);
         }
         catch (Exception ex)
         {
@@ -359,10 +390,16 @@ public class KpiCollectorService : BackgroundService
             var newGroups24h = await _repository.GetNewGroupsAsync(Window24H, ct);
             var newGroups7d = await _repository.GetNewGroupsAsync(Window7D, ct);
             var newGroups30d = await _repository.GetNewGroupsAsync(Window30D, ct);
+            var newGroups90d = await _repository.GetNewGroupsAsync(Window90D, ct);
+            var newGroups180d = await _repository.GetNewGroupsAsync(Window180D, ct);
+            var newGroups1y = await _repository.GetNewGroupsAsync(Window1Y, ct);
 
             BusinessKpiMetrics.NewGroups.WithLabels("24h").Set(newGroups24h);
             BusinessKpiMetrics.NewGroups.WithLabels("7d").Set(newGroups7d);
             BusinessKpiMetrics.NewGroups.WithLabels("30d").Set(newGroups30d);
+            BusinessKpiMetrics.NewGroups.WithLabels("90d").Set(newGroups90d);
+            BusinessKpiMetrics.NewGroups.WithLabels("180d").Set(newGroups180d);
+            BusinessKpiMetrics.NewGroups.WithLabels("1y").Set(newGroups1y);
         }
         catch (Exception ex)
         {
@@ -383,10 +420,14 @@ public class KpiCollectorService : BackgroundService
             var rate14d = await _repository.GetMintingRateAsync(Window14D, ct);
             var rate30d = await _repository.GetMintingRateAsync(Window30D, ct);
             var rate90d = await _repository.GetMintingRateAsync(Window90D, ct);
+            var rate180d = await _repository.GetMintingRateAsync(Window180D, ct);
+            var rate1y = await _repository.GetMintingRateAsync(Window1Y, ct);
 
             BusinessKpiMetrics.MintingRate.WithLabels("14d").Set(rate14d);
             BusinessKpiMetrics.MintingRate.WithLabels("30d").Set(rate30d);
             BusinessKpiMetrics.MintingRate.WithLabels("90d").Set(rate90d);
+            BusinessKpiMetrics.MintingRate.WithLabels("180d").Set(rate180d);
+            BusinessKpiMetrics.MintingRate.WithLabels("1y").Set(rate1y);
         }
         catch (Exception ex)
         {
@@ -400,10 +441,14 @@ public class KpiCollectorService : BackgroundService
             var rate14d = await _repository.GetSpendingRateAsync(Window14D, ct);
             var rate30d = await _repository.GetSpendingRateAsync(Window30D, ct);
             var rate90d = await _repository.GetSpendingRateAsync(Window90D, ct);
+            var rate180d = await _repository.GetSpendingRateAsync(Window180D, ct);
+            var rate1y = await _repository.GetSpendingRateAsync(Window1Y, ct);
 
             BusinessKpiMetrics.SpendingRate.WithLabels("14d").Set(rate14d);
             BusinessKpiMetrics.SpendingRate.WithLabels("30d").Set(rate30d);
             BusinessKpiMetrics.SpendingRate.WithLabels("90d").Set(rate90d);
+            BusinessKpiMetrics.SpendingRate.WithLabels("180d").Set(rate180d);
+            BusinessKpiMetrics.SpendingRate.WithLabels("1y").Set(rate1y);
         }
         catch (Exception ex)
         {
@@ -417,10 +462,14 @@ public class KpiCollectorService : BackgroundService
             var vol7d = await _repository.GetTransferVolumeAsync(Window7D, ct);
             var vol30d = await _repository.GetTransferVolumeAsync(Window30D, ct);
             var vol90d = await _repository.GetTransferVolumeAsync(Window90D, ct);
+            var vol180d = await _repository.GetTransferVolumeAsync(Window180D, ct);
+            var vol1y = await _repository.GetTransferVolumeAsync(Window1Y, ct);
 
             BusinessKpiMetrics.TransferVolume.WithLabels("7d").Set(vol7d);
             BusinessKpiMetrics.TransferVolume.WithLabels("30d").Set(vol30d);
             BusinessKpiMetrics.TransferVolume.WithLabels("90d").Set(vol90d);
+            BusinessKpiMetrics.TransferVolume.WithLabels("180d").Set(vol180d);
+            BusinessKpiMetrics.TransferVolume.WithLabels("1y").Set(vol1y);
         }
         catch (Exception ex)
         {
@@ -451,10 +500,16 @@ public class KpiCollectorService : BackgroundService
             var count24h = await _repository.GetTransferCountAsync(Window24H, ct);
             var count7d = await _repository.GetTransferCountAsync(Window7D, ct);
             var count30d = await _repository.GetTransferCountAsync(Window30D, ct);
+            var count90d = await _repository.GetTransferCountAsync(Window90D, ct);
+            var count180d = await _repository.GetTransferCountAsync(Window180D, ct);
+            var count1y = await _repository.GetTransferCountAsync(Window1Y, ct);
 
             BusinessKpiMetrics.TransferCount.WithLabels("24h").Set(count24h);
             BusinessKpiMetrics.TransferCount.WithLabels("7d").Set(count7d);
             BusinessKpiMetrics.TransferCount.WithLabels("30d").Set(count30d);
+            BusinessKpiMetrics.TransferCount.WithLabels("90d").Set(count90d);
+            BusinessKpiMetrics.TransferCount.WithLabels("180d").Set(count180d);
+            BusinessKpiMetrics.TransferCount.WithLabels("1y").Set(count1y);
         }
         catch (Exception ex)
         {
@@ -674,10 +729,14 @@ public class KpiCollectorService : BackgroundService
             var vel7d = await _repository.GetMoneyVelocityAsync(Window7D, ct);
             var vel30d = await _repository.GetMoneyVelocityAsync(Window30D, ct);
             var vel90d = await _repository.GetMoneyVelocityAsync(Window90D, ct);
+            var vel180d = await _repository.GetMoneyVelocityAsync(Window180D, ct);
+            var vel1y = await _repository.GetMoneyVelocityAsync(Window1Y, ct);
 
             BusinessKpiMetrics.MoneyVelocity.WithLabels("7d").Set(vel7d);
             BusinessKpiMetrics.MoneyVelocity.WithLabels("30d").Set(vel30d);
             BusinessKpiMetrics.MoneyVelocity.WithLabels("90d").Set(vel90d);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("180d").Set(vel180d);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("1y").Set(vel1y);
         }
         catch (Exception ex)
         {
@@ -763,9 +822,11 @@ public class KpiCollectorService : BackgroundService
         {
             var ret7d = await _repository.GetUserRetentionRateAsync(Window7D, ct);
             var ret30d = await _repository.GetUserRetentionRateAsync(Window30D, ct);
+            var ret90d = await _repository.GetUserRetentionRateAsync(Window90D, ct);
 
             BusinessKpiMetrics.UserRetentionRate.WithLabels("7d").Set(ret7d);
             BusinessKpiMetrics.UserRetentionRate.WithLabels("30d").Set(ret30d);
+            BusinessKpiMetrics.UserRetentionRate.WithLabels("90d").Set(ret90d);
         }
         catch (Exception ex)
         {
@@ -779,10 +840,16 @@ public class KpiCollectorService : BackgroundService
             var first24h = await _repository.GetFirstTimeTransactorsAsync(Window24H, ct);
             var first7d = await _repository.GetFirstTimeTransactorsAsync(Window7D, ct);
             var first30d = await _repository.GetFirstTimeTransactorsAsync(Window30D, ct);
+            var first90d = await _repository.GetFirstTimeTransactorsAsync(Window90D, ct);
+            var first180d = await _repository.GetFirstTimeTransactorsAsync(Window180D, ct);
+            var first1y = await _repository.GetFirstTimeTransactorsAsync(Window1Y, ct);
 
             BusinessKpiMetrics.FirstTimeTransactors.WithLabels("24h").Set(first24h);
             BusinessKpiMetrics.FirstTimeTransactors.WithLabels("7d").Set(first7d);
             BusinessKpiMetrics.FirstTimeTransactors.WithLabels("30d").Set(first30d);
+            BusinessKpiMetrics.FirstTimeTransactors.WithLabels("90d").Set(first90d);
+            BusinessKpiMetrics.FirstTimeTransactors.WithLabels("180d").Set(first180d);
+            BusinessKpiMetrics.FirstTimeTransactors.WithLabels("1y").Set(first1y);
         }
         catch (Exception ex)
         {
@@ -838,10 +905,16 @@ public class KpiCollectorService : BackgroundService
             var inflow24h = await _repository.GetNetInflowAsync(Window24H, ct);
             var inflow7d = await _repository.GetNetInflowAsync(Window7D, ct);
             var inflow30d = await _repository.GetNetInflowAsync(Window30D, ct);
+            var inflow90d = await _repository.GetNetInflowAsync(Window90D, ct);
+            var inflow180d = await _repository.GetNetInflowAsync(Window180D, ct);
+            var inflow1y = await _repository.GetNetInflowAsync(Window1Y, ct);
 
             BusinessKpiMetrics.NetInflow.WithLabels("24h").Set(inflow24h);
             BusinessKpiMetrics.NetInflow.WithLabels("7d").Set(inflow7d);
             BusinessKpiMetrics.NetInflow.WithLabels("30d").Set(inflow30d);
+            BusinessKpiMetrics.NetInflow.WithLabels("90d").Set(inflow90d);
+            BusinessKpiMetrics.NetInflow.WithLabels("180d").Set(inflow180d);
+            BusinessKpiMetrics.NetInflow.WithLabels("1y").Set(inflow1y);
         }
         catch (Exception ex)
         {

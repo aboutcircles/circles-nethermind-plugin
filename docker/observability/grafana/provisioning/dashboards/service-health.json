@@ -617,7 +617,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 29 },
       "id": 60,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network\"}", "legendFormat": "RPC", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/live\"}", "legendFormat": "RPC", "refId": "A" }],
       "title": "RPC Endpoint",
       "type": "stat"
     },
@@ -638,7 +638,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 29 },
       "id": 61,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/pathfinder\"}", "legendFormat": "Pathfinder", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/pathfinder/live\"}", "legendFormat": "Pathfinder", "refId": "A" }],
       "title": "Pathfinder Endpoint",
       "type": "stat"
     },
@@ -657,7 +657,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 29 },
       "id": 62,
       "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network\"} - time()) / 86400", "legendFormat": "Days", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/live\"} - time()) / 86400", "legendFormat": "Days", "refId": "A" }],
       "title": "SSL Certificate Expiry",
       "type": "stat"
     },
@@ -676,7 +676,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 29 },
       "id": 63,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network\"}", "legendFormat": "Response Time", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/live\"}", "legendFormat": "Response Time", "refId": "A" }],
       "title": "External Response Time",
       "type": "stat"
     },
@@ -697,10 +697,9 @@
       "id": 64,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network\"}", "legendFormat": "RPC", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/pathfinder\"}", "legendFormat": "Pathfinder", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/profiles\"}", "legendFormat": "Profiles", "refId": "C" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/chain-rpc\"}", "legendFormat": "Chain RPC", "refId": "D" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/live\"}", "legendFormat": "RPC", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/pathfinder/live\"}", "legendFormat": "Pathfinder", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/chain-rpc/health\"}", "legendFormat": "Chain RPC", "refId": "C" }
       ],
       "title": "External Endpoint Response Time",
       "type": "timeseries"
@@ -729,10 +728,9 @@
       "id": 65,
       "options": { "legend": { "calcs": ["mean"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network\"}", "legendFormat": "RPC", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/pathfinder\"}", "legendFormat": "Pathfinder", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/profiles\"}", "legendFormat": "Profiles", "refId": "C" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/chain-rpc\"}", "legendFormat": "Chain RPC", "refId": "D" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/live\"}", "legendFormat": "RPC", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/pathfinder/live\"}", "legendFormat": "Pathfinder", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-external\", instance=\"https://staging.circlesubi.network/chain-rpc/health\"}", "legendFormat": "Chain RPC", "refId": "C" }
       ],
       "title": "External Endpoint Availability",
       "type": "timeseries"
@@ -823,7 +821,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Percentage of requests resulting in 5xx errors. Formula: rate(5xx) / rate(all) × 100. Green <1%, Yellow <5%, Red ≥5%.",
+      "description": "Percentage of requests resulting in errors. Formula: rate(errors) / rate(all) × 100. Green <1%, Yellow <5%, Red ≥5%.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -833,11 +831,11 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 40 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 44 },
       "id": 72,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_requests_total{job=\"caddy\", code=~\"5..\"}[5m])) / sum(rate(caddy_http_requests_total{job=\"caddy\"}[5m]))", "legendFormat": "Error Rate", "refId": "A" }],
-      "title": "5xx Error Rate",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_request_errors_total{job=\"caddy\"}[5m])) / sum(rate(caddy_http_requests_total{job=\"caddy\"}[5m]))", "legendFormat": "Error Rate", "refId": "A" }],
+      "title": "Error Rate",
       "type": "stat"
     },
     {
@@ -861,7 +859,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Request rate breakdown by HTTP status code. 2xx=success, 4xx=client errors (bad requests), 5xx=server errors (investigate!).",
+      "description": "Request and error rates over time. Total requests and errors handled by Caddy reverse proxy.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -870,17 +868,18 @@
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "reqps"
         },
-        "overrides": []
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Errors" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
       "id": 74,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_requests_total{job=\"caddy\", code=~\"2..\"}[5m]))", "legendFormat": "2xx", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_requests_total{job=\"caddy\", code=~\"4..\"}[5m]))", "legendFormat": "4xx", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_requests_total{job=\"caddy\", code=~\"5..\"}[5m]))", "legendFormat": "5xx", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_requests_total{job=\"caddy\"}[5m]))", "legendFormat": "Total Requests", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(caddy_http_request_errors_total{job=\"caddy\"}[5m]))", "legendFormat": "Errors", "refId": "B" }
       ],
-      "title": "Request Rate by Status",
+      "title": "Request & Error Rate",
       "type": "timeseries"
     },
     {

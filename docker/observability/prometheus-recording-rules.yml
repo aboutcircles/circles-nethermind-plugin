@@ -134,6 +134,12 @@ groups:
       - record: circles:minting_rate_90d:gauge
         expr: circles_minting_rate{window="90d"}
 
+      - record: circles:minting_rate_180d:gauge
+        expr: circles_minting_rate{window="180d"}
+
+      - record: circles:minting_rate_1y:gauge
+        expr: circles_minting_rate{window="1y"}
+
       # Spending rate (% of users who transferred in window)
       - record: circles:spending_rate_14d:gauge
         expr: circles_spending_rate{window="14d"}
@@ -144,6 +150,12 @@ groups:
       - record: circles:spending_rate_90d:gauge
         expr: circles_spending_rate{window="90d"}
 
+      - record: circles:spending_rate_180d:gauge
+        expr: circles_spending_rate{window="180d"}
+
+      - record: circles:spending_rate_1y:gauge
+        expr: circles_spending_rate{window="1y"}
+
       # Transfer volume by window
       - record: circles:transfer_volume_24h:gauge
         expr: circles_transfer_volume{window="24h"}
@@ -153,6 +165,15 @@ groups:
 
       - record: circles:transfer_volume_30d:gauge
         expr: circles_transfer_volume{window="30d"}
+
+      - record: circles:transfer_volume_90d:gauge
+        expr: circles_transfer_volume{window="90d"}
+
+      - record: circles:transfer_volume_180d:gauge
+        expr: circles_transfer_volume{window="180d"}
+
+      - record: circles:transfer_volume_1y:gauge
+        expr: circles_transfer_volume{window="1y"}
 
       # Mint volume by window
       - record: circles:mint_volume_24h:gauge
@@ -173,6 +194,15 @@ groups:
 
       - record: circles:transfer_count_30d:gauge
         expr: circles_transfer_count{window="30d"}
+
+      - record: circles:transfer_count_90d:gauge
+        expr: circles_transfer_count{window="90d"}
+
+      - record: circles:transfer_count_180d:gauge
+        expr: circles_transfer_count{window="180d"}
+
+      - record: circles:transfer_count_1y:gauge
+        expr: circles_transfer_count{window="1y"}
 
       # Average transfer amount by window
       - record: circles:average_transfer_amount_24h:gauge

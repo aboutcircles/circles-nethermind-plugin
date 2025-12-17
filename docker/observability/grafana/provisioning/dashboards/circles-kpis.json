@@ -398,7 +398,9 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_minting_rate{window=\"14d\"} * 100", "legendFormat": "14 days", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_minting_rate{window=\"30d\"} * 100", "legendFormat": "30 days", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_minting_rate{window=\"90d\"} * 100", "legendFormat": "90 days", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_minting_rate{window=\"90d\"} * 100", "legendFormat": "90 days", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_minting_rate{window=\"180d\"} * 100", "legendFormat": "180 days", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_minting_rate{window=\"1y\"} * 100", "legendFormat": "1 year", "refId": "E" }
       ],
       "title": "Minting Rate by Window",
       "type": "timeseries"
@@ -423,7 +425,9 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_spending_rate{window=\"14d\"} * 100", "legendFormat": "14 days", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_spending_rate{window=\"30d\"} * 100", "legendFormat": "30 days", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_spending_rate{window=\"90d\"} * 100", "legendFormat": "90 days", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_spending_rate{window=\"90d\"} * 100", "legendFormat": "90 days", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_spending_rate{window=\"180d\"} * 100", "legendFormat": "180 days", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_spending_rate{window=\"1y\"} * 100", "legendFormat": "1 year", "refId": "E" }
       ],
       "title": "Spending Rate by Window",
       "type": "timeseries"
@@ -447,7 +451,9 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_transfer_volume_crc{window=\"7d\"}", "legendFormat": "7d", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_transfer_volume_crc{window=\"30d\"}", "legendFormat": "30d", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_transfer_volume_crc{window=\"90d\"}", "legendFormat": "90d", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_transfer_volume_crc{window=\"90d\"}", "legendFormat": "90d", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_transfer_volume_crc{window=\"180d\"}", "legendFormat": "180d", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_transfer_volume_crc{window=\"1y\"}", "legendFormat": "1y", "refId": "E" }
       ],
       "title": "Transfer Volume by Window (CRC)",
       "type": "timeseries"
