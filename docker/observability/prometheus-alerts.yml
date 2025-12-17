@@ -500,6 +500,58 @@ groups:
           summary: "SSL certificate expired"
           description: "CRITICAL: SSL certificate for {{ $labels.instance }} has expired!"
 
+  - name: circles-rpc-functional-alerts
+    rules:
+      # Individual RPC method failures
+      - alert: RpcMethodFailing
+        expr: probe_success{job="blackbox-rpc-functional"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RPC method {{ $labels.rpc_method }} failing"
+          description: "The RPC method {{ $labels.rpc_method }} is returning invalid responses. HTTP may be 200 but response content is incorrect."
+
+      # Critical: Multiple RPC methods failing indicates systemic issue
+      - alert: RpcFunctionalDegraded
+        expr: count(probe_success{job="blackbox-rpc-functional"} == 0) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Multiple RPC methods failing"
+          description: "{{ $value }} RPC methods are returning invalid responses. This indicates a systemic service issue."
+
+      # All functional probes failing - service is functionally down
+      - alert: RpcFunctionalDown
+        expr: count(probe_success{job="blackbox-rpc-functional"} == 0) == count(probe_success{job="blackbox-rpc-functional"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RPC service functionally down"
+          description: "All RPC functional probes are failing. The service may be returning 200 OK but is not processing requests correctly."
+
+      # RPC functional probe latency
+      - alert: RpcMethodSlow
+        expr: probe_duration_seconds{job="blackbox-rpc-functional"} > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RPC method {{ $labels.rpc_method }} slow"
+          description: "The RPC method {{ $labels.rpc_method }} is responding slowly ({{ $value | printf \"%.2f\" }}s). Performance may be degraded."
+
+      # Response validation failure (regex didn't match)
+      - alert: RpcResponseInvalid
+        expr: probe_failed_due_to_regex{job="blackbox-rpc-functional"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RPC method {{ $labels.rpc_method }} returning invalid data"
+          description: "The RPC method {{ $labels.rpc_method }} returned a response that didn't match expected format. Data may be corrupt or service is malfunctioning."
+
   - name: circles-blockchain-alerts
     rules:
       # Nethermind peer count low
