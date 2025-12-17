@@ -37,7 +37,8 @@ services:
 
   cadvisor:
     container_name: cadvisor
-    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    # v0.54.1 includes fix for containerd-snapshotter support (PR #3709)
+    image: ghcr.io/google/cadvisor:0.54.1
     restart: unless-stopped
     privileged: true
     networks:
