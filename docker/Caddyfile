@@ -32,12 +32,12 @@
     # Adjust these values based on your traffic patterns
     # ==========================================================================
 
-    # Grafana: Strict limits (protect login)
-    # 20 requests/second per IP, burst up to 50
+    # Grafana: High limit for dashboard usage (login has separate strict limit)
+    # 200 requests/second per IP - dashboards need many concurrent requests
     rate_limit {
         zone grafana_zone {
             key {remote_host}
-            events 20
+            events 200
             window 1s
         }
     }
@@ -127,8 +127,10 @@
         reverse_proxy profile-service:3000
     }
 
-    # Grafana dashboard - strict limits, protect against brute force
-    # 20 req/s general, but login endpoint even stricter
+    # Grafana dashboard
+    # Login endpoint: strict limits for brute-force protection (5 req/10s)
+    # General access: high limit (200 req/s) since Grafana has its own auth
+    # and dashboards need many concurrent requests for assets/API calls
     handle /grafana/login* {
         rate_limit {
             zone grafana_login_zone {
@@ -144,7 +146,7 @@
         rate_limit {
             zone grafana_zone {
                 key {remote_host}
-                events 20
+                events 200
                 window 1s
             }
         }
@@ -155,7 +157,7 @@
         rate_limit {
             zone grafana_zone {
                 key {remote_host}
-                events 20
+                events 200
                 window 1s
             }
         }
