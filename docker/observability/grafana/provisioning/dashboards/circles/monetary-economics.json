@@ -442,7 +442,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 27 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 27 },
       "id": 64,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_supply_share_by_type{account_type=\"group\"}", "refId": "A" }],
@@ -462,7 +462,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 27 },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 31 },
       "id": 65,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_supply_share_by_type{account_type=\"organization\"}", "refId": "A" }],
@@ -484,7 +484,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
       "id": 66,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -514,7 +514,7 @@
           { "matcher": { "id": "byName", "options": "Organizations" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
       "id": 67,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -538,7 +538,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
       "id": 68,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -565,7 +565,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
       "id": 69,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -579,7 +579,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 },
       "id": 102,
       "panels": [],
       "title": "Money Velocity",
@@ -597,7 +597,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 48 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 56 },
       "id": 30,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"7d\"}", "refId": "A" }],
@@ -617,7 +617,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 48 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 56 },
       "id": 31,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"30d\"}", "refId": "A" }],
@@ -636,7 +636,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 48 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 56 },
       "id": 32,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"90d\"}", "refId": "A" }],
@@ -655,7 +655,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 52 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 56 },
       "id": 33,
       "options": { "legend": { "calcs": ["lastNotNull", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -671,7 +671,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 64 },
       "id": 103,
       "panels": [],
       "title": "User Activity (DAW/WAW/MAW)",
@@ -688,7 +688,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 61 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 69 },
       "id": 40,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_daily_active_wallets", "refId": "A" }],
@@ -706,7 +706,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 61 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 69 },
       "id": 41,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_weekly_active_wallets", "refId": "A" }],
@@ -724,7 +724,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 61 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 69 },
       "id": 42,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_monthly_active_wallets", "refId": "A" }],
@@ -743,7 +743,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 61 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 69 },
       "id": 43,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_daily_active_wallets / circles_monthly_active_wallets", "refId": "A" }],
@@ -763,7 +763,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 65 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 69 },
       "id": 44,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -786,7 +786,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 65 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 69 },
       "id": 45,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -800,7 +800,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 73 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 77 },
       "id": 104,
       "panels": [],
       "title": "Transfer Analysis",
@@ -818,7 +818,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 74 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 82 },
       "id": 50,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_average_transfer_amount_crc{window=\"24h\"}", "refId": "A" }],
@@ -837,7 +837,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 74 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 82 },
       "id": 51,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_median_transfer_amount_crc{window=\"24h\"}", "refId": "A" }],
@@ -855,7 +855,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 74 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 82 },
       "id": 52,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_micro_transaction_count{window=\"24h\"}", "refId": "A" }],
@@ -873,7 +873,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 74 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 82 },
       "id": 53,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_large_transaction_count{window=\"24h\"}", "refId": "A" }],
@@ -892,7 +892,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 78 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 82 },
       "id": 54,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
@@ -916,7 +916,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 78 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 82 },
       "id": 55,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
