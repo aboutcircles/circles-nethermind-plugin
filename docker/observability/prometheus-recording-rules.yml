@@ -452,3 +452,76 @@ groups:
 
       - record: circles:supply_growth_rate_7d:gauge
         expr: circles_net_inflow_crc{window="7d"} / circles_total_crc_supply
+
+  - name: circles-account-type-aggregations
+    interval: 1m
+    rules:
+      # Gini coefficient by account type
+      - record: circles:gini_humans:gauge
+        expr: circles_gini_coefficient_by_type{account_type="human"}
+
+      - record: circles:gini_groups:gauge
+        expr: circles_gini_coefficient_by_type{account_type="group"}
+
+      - record: circles:gini_organizations:gauge
+        expr: circles_gini_coefficient_by_type{account_type="organization"}
+
+      # Total balance by account type
+      - record: circles:total_balance_humans:gauge
+        expr: circles_total_balance_by_type_crc{account_type="human"}
+
+      - record: circles:total_balance_groups:gauge
+        expr: circles_total_balance_by_type_crc{account_type="group"}
+
+      - record: circles:total_balance_organizations:gauge
+        expr: circles_total_balance_by_type_crc{account_type="organization"}
+
+      # Balance holder count by account type
+      - record: circles:balance_holders_humans:gauge
+        expr: circles_balance_holders_by_type{account_type="human"}
+
+      - record: circles:balance_holders_groups:gauge
+        expr: circles_balance_holders_by_type{account_type="group"}
+
+      - record: circles:balance_holders_organizations:gauge
+        expr: circles_balance_holders_by_type{account_type="organization"}
+
+      # Average balance by account type
+      - record: circles:average_balance_humans:gauge
+        expr: circles_average_balance_by_type_crc{account_type="human"}
+
+      - record: circles:average_balance_groups:gauge
+        expr: circles_average_balance_by_type_crc{account_type="group"}
+
+      - record: circles:average_balance_organizations:gauge
+        expr: circles_average_balance_by_type_crc{account_type="organization"}
+
+      # Median balance by account type
+      - record: circles:median_balance_humans:gauge
+        expr: circles_median_balance_by_type_crc{account_type="human"}
+
+      - record: circles:median_balance_groups:gauge
+        expr: circles_median_balance_by_type_crc{account_type="group"}
+
+      - record: circles:median_balance_organizations:gauge
+        expr: circles_median_balance_by_type_crc{account_type="organization"}
+
+      # Supply share by account type (% of total supply)
+      - record: circles:supply_share_humans:gauge
+        expr: circles_supply_share_by_type{account_type="human"}
+
+      - record: circles:supply_share_groups:gauge
+        expr: circles_supply_share_by_type{account_type="group"}
+
+      - record: circles:supply_share_organizations:gauge
+        expr: circles_supply_share_by_type{account_type="organization"}
+
+      # Top 10 holder concentration by account type
+      - record: circles:top10_concentration_humans:gauge
+        expr: circles_top_holder_concentration_by_type{top_n="10", account_type="human"}
+
+      - record: circles:top10_concentration_groups:gauge
+        expr: circles_top_holder_concentration_by_type{top_n="10", account_type="group"}
+
+      - record: circles:top10_concentration_organizations:gauge
+        expr: circles_top_holder_concentration_by_type{top_n="10", account_type="organization"}

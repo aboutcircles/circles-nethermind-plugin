@@ -75,7 +75,8 @@ public class KpiCollectorService : BackgroundService
             CollectActivityRatesAsync(ct),
             CollectSybilDetectionMetricsAsync(ct),
             CollectNetworkHealthMetricsAsync(ct),
-            CollectAdvancedMonetaryMetricsAsync(ct)
+            CollectAdvancedMonetaryMetricsAsync(ct),
+            CollectAccountTypeMetricsAsync(ct)
         );
     }
 
@@ -920,6 +921,120 @@ public class KpiCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect net inflow metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("net_inflow").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Account Type Breakdown Metrics (humans, groups, organizations)
+    // ============================================================================
+
+    private async Task CollectAccountTypeMetricsAsync(CancellationToken ct)
+    {
+        var accountTypes = new[] { "human", "group", "organization" };
+
+        // Gini coefficient by account type
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var gini = await _repository.GetGiniCoefficientByTypeAsync(type, ct);
+                BusinessKpiMetrics.GiniCoefficientByType.WithLabels(type).Set(gini);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect Gini coefficient by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("gini_by_type").Inc();
+        }
+
+        // Total balance by account type
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var balance = await _repository.GetTotalBalanceByTypeAsync(type, ct);
+                BusinessKpiMetrics.TotalBalanceByType.WithLabels(type).Set(balance);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect total balance by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("balance_by_type").Inc();
+        }
+
+        // Balance holder count by account type
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var count = await _repository.GetBalanceHolderCountByTypeAsync(type, ct);
+                BusinessKpiMetrics.BalanceHolderCountByType.WithLabels(type).Set(count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect balance holder count by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("holder_count_by_type").Inc();
+        }
+
+        // Average balance by account type
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var avg = await _repository.GetAverageBalanceByTypeAsync(type, ct);
+                BusinessKpiMetrics.AverageBalanceByType.WithLabels(type).Set(avg);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect average balance by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("avg_balance_by_type").Inc();
+        }
+
+        // Median balance by account type
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var median = await _repository.GetMedianBalanceByTypeAsync(type, ct);
+                BusinessKpiMetrics.MedianBalanceByType.WithLabels(type).Set(median);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect median balance by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("median_balance_by_type").Inc();
+        }
+
+        // Top holder concentration by account type (top 10 only for types)
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var top10 = await _repository.GetTopHolderConcentrationByTypeAsync(10, type, ct);
+                BusinessKpiMetrics.TopHolderConcentrationByType.WithLabels("10", type).Set(top10);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect top holder concentration by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("top_holder_by_type").Inc();
+        }
+
+        // Supply share by account type (% of total CRC held by each type)
+        try
+        {
+            foreach (var type in accountTypes)
+            {
+                var share = await _repository.GetSupplyShareByTypeAsync(type, ct);
+                BusinessKpiMetrics.SupplyShareByType.WithLabels(type).Set(share);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect supply share by type metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("supply_share_by_type").Inc();
         }
     }
 }

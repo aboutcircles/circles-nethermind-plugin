@@ -299,6 +299,45 @@ public static class BusinessKpiMetrics
             new GaugeConfiguration { LabelNames = new[] { "window" } });
 
     // ===========================================
+    // Account Type Breakdown Metrics
+    // ===========================================
+
+    public static readonly Gauge GiniCoefficientByType = Prometheus.Metrics
+        .CreateGauge("circles_gini_coefficient_by_type",
+            "Gini coefficient of CRC distribution by account type (0=equality, 1=inequality)",
+            new GaugeConfiguration { LabelNames = new[] { "account_type" } });
+
+    public static readonly Gauge TotalBalanceByType = Prometheus.Metrics
+        .CreateGauge("circles_total_balance_by_type_crc",
+            "Total CRC balance held by account type",
+            new GaugeConfiguration { LabelNames = new[] { "account_type" } });
+
+    public static readonly Gauge BalanceHolderCountByType = Prometheus.Metrics
+        .CreateGauge("circles_balance_holders_by_type",
+            "Number of accounts with non-zero balance by type",
+            new GaugeConfiguration { LabelNames = new[] { "account_type" } });
+
+    public static readonly Gauge AverageBalanceByType = Prometheus.Metrics
+        .CreateGauge("circles_average_balance_by_type_crc",
+            "Average CRC balance per holder by account type",
+            new GaugeConfiguration { LabelNames = new[] { "account_type" } });
+
+    public static readonly Gauge MedianBalanceByType = Prometheus.Metrics
+        .CreateGauge("circles_median_balance_by_type_crc",
+            "Median CRC balance per holder by account type",
+            new GaugeConfiguration { LabelNames = new[] { "account_type" } });
+
+    public static readonly Gauge TopHolderConcentrationByType = Prometheus.Metrics
+        .CreateGauge("circles_top_holder_concentration_by_type",
+            "Percentage of type's total supply held by top N holders (0-1)",
+            new GaugeConfiguration { LabelNames = new[] { "top_n", "account_type" } });
+
+    public static readonly Gauge SupplyShareByType = Prometheus.Metrics
+        .CreateGauge("circles_supply_share_by_type",
+            "Percentage of total CRC supply held by account type (0-1)",
+            new GaugeConfiguration { LabelNames = new[] { "account_type" } });
+
+    // ===========================================
     // Collection Metrics
     // ===========================================
 
