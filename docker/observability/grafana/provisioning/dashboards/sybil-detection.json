@@ -326,7 +326,7 @@
       "id": 23,
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] }, "pieType": "pie", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_total_humans{version=\"v2\"} - circles_accounts_no_profile", "legendFormat": "Has Profile", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_total_humans{version=\"v2\"} - on(instance,job) circles_accounts_no_profile", "legendFormat": "Has Profile", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_profile", "legendFormat": "No Profile", "refId": "B" }
       ],
       "title": "Profile Adoption (V2)",
@@ -351,7 +351,7 @@
       "id": 24,
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] }, "pieType": "pie", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_total_humans{version=\"v2\"} - circles_accounts_no_trust_received", "legendFormat": "Trusted", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_total_humans{version=\"v2\"} - on(instance,job) circles_accounts_no_trust_received", "legendFormat": "Trusted", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_accounts_no_trust_received", "legendFormat": "Not Trusted", "refId": "B" }
       ],
       "title": "Trust Reception (V2)",
