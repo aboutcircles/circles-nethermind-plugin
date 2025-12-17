@@ -898,6 +898,228 @@ public class KpiRepository
     }
 
     // ============================================================================
+    // Account type breakdown metrics (humans, groups, organizations)
+    // ============================================================================
+
+    /// <summary>
+    /// Gets Gini coefficient for a specific account type only.
+    /// Valid types: "human", "group", "organization"
+    /// </summary>
+    public async Task<double> GetGiniCoefficientByTypeAsync(string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            WITH balances AS (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                WHERE b."demurragedTotalBalance" > 0
+                AND a."type" = '{typeFilter}'
+                GROUP BY b."account"
+                ORDER BY balance
+            ),
+            indexed AS (
+                SELECT balance, ROW_NUMBER() OVER (ORDER BY balance) as i,
+                       COUNT(*) OVER () as n
+                FROM balances
+            )
+            SELECT COALESCE(
+                (2.0 * SUM(i * balance) / (n * SUM(balance))) - ((n + 1.0) / n),
+                0
+            )
+            FROM indexed
+            GROUP BY n
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets total CRC balance held by a specific account type.
+    /// </summary>
+    public async Task<double> GetTotalBalanceByTypeAsync(string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            SELECT COALESCE(SUM(("demurragedTotalBalance"::float8) / 1e18), 0)
+            FROM "V_CrcV2_BalancesByAccountAndToken" b
+            INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+            WHERE a."type" = '{typeFilter}'
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets count of accounts with non-zero balance by type.
+    /// </summary>
+    public async Task<long> GetBalanceHolderCountByTypeAsync(string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            SELECT COUNT(DISTINCT b."account")
+            FROM "V_CrcV2_BalancesByAccountAndToken" b
+            INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+            WHERE b."demurragedTotalBalance" > 0
+            AND a."type" = '{typeFilter}'
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets average CRC balance per account by type.
+    /// </summary>
+    public async Task<double> GetAverageBalanceByTypeAsync(string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            SELECT COALESCE(AVG(total_balance), 0) FROM (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                WHERE b."demurragedTotalBalance" > 0
+                AND a."type" = '{typeFilter}'
+                GROUP BY b."account"
+            ) balances
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets median CRC balance per account by type.
+    /// </summary>
+    public async Task<double> GetMedianBalanceByTypeAsync(string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            SELECT COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY total_balance), 0) FROM (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                WHERE b."demurragedTotalBalance" > 0
+                AND a."type" = '{typeFilter}'
+                GROUP BY b."account"
+            ) balances
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets percentage of total supply held by top N holders of a specific type.
+    /// </summary>
+    public async Task<double> GetTopHolderConcentrationByTypeAsync(int topN, string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(total_balance) FROM (
+                    SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                    FROM "V_CrcV2_BalancesByAccountAndToken" b
+                    INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                    WHERE b."demurragedTotalBalance" > 0
+                    AND a."type" = '{typeFilter}'
+                    GROUP BY b."account"
+                    ORDER BY total_balance DESC
+                    LIMIT {topN}
+                ) top_holders)
+                /
+                NULLIF((SELECT SUM(("demurragedTotalBalance"::float8) / 1e18)
+                        FROM "V_CrcV2_BalancesByAccountAndToken" b
+                        INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                        WHERE a."type" = '{typeFilter}'), 0),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets supply share (percentage of total CRC) held by a specific account type.
+    /// </summary>
+    public async Task<double> GetSupplyShareByTypeAsync(string accountType, CancellationToken ct = default)
+    {
+        var typeFilter = GetAccountTypeFilter(accountType);
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(("demurragedTotalBalance"::float8) / 1e18)
+                 FROM "V_CrcV2_BalancesByAccountAndToken" b
+                 INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                 WHERE a."type" = '{typeFilter}')
+                /
+                NULLIF((SELECT SUM(("demurragedTotalBalance"::float8) / 1e18)
+                        FROM "V_CrcV2_BalancesByAccountAndToken"), 0),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static string GetAccountTypeFilter(string accountType)
+    {
+        return accountType.ToLowerInvariant() switch
+        {
+            "human" => "CrcV2_RegisterHuman",
+            "group" => "CrcV2_RegisterGroup",
+            "organization" => "CrcV2_RegisterOrganization",
+            _ => throw new ArgumentException($"Invalid account type: {accountType}. Valid types: human, group, organization")
+        };
+    }
+
+    // ============================================================================
     // Network health metrics
     // ============================================================================
 
