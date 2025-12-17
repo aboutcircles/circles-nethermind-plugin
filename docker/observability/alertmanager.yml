@@ -107,38 +107,38 @@ receivers:
   # 2. Start a chat with your bot or add it to a group
   # 3. Get the chat_id via https://api.telegram.org/bot<TOKEN>/getUpdates
   # NOTE: chat_id must be an integer - replace the 0 below with your actual chat_id
-  # Set TELEGRAM_BOT_TOKEN in docker/.env
-  - name: 'telegram-critical'
-    telegram_configs:
-      - bot_token: '${TELEGRAM_BOT_TOKEN}'
-        chat_id: 0  # Replace with actual chat_id integer, e.g., 123456789
-        parse_mode: 'HTML'
-        disable_notifications: false
-        message: |
-          {{ if eq .Status "firing" }}🚨 <b>CRITICAL ALERT</b> 🚨{{ else }}✅ <b>RESOLVED</b>{{ end }}
-
-          {{ range .Alerts }}
-          <b>{{ .Annotations.summary }}</b>
-          {{ .Annotations.description }}
-
-          Started: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
-          {{ if .EndsAt }}Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 UTC" }}{{ end }}
-          {{ end }}
+  # Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in docker/.env, then uncomment below
+  # - name: 'telegram-critical'
+  #   telegram_configs:
+  #     - bot_token: '${TELEGRAM_BOT_TOKEN}'
+  #       chat_id: ${TELEGRAM_CHAT_ID}
+  #       parse_mode: 'HTML'
+  #       disable_notifications: false
+  #       message: |
+  #         {{ if eq .Status "firing" }}🚨 <b>CRITICAL ALERT</b> 🚨{{ else }}✅ <b>RESOLVED</b>{{ end }}
+  #
+  #         {{ range .Alerts }}
+  #         <b>{{ .Annotations.summary }}</b>
+  #         {{ .Annotations.description }}
+  #
+  #         Started: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+  #         {{ if .EndsAt }}Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 UTC" }}{{ end }}
+  #         {{ end }}
 
   # PagerDuty integration - for on-call rotation and phone escalation
   # To set up:
   # 1. Create a PagerDuty service with "Events API v2" integration
   # 2. Copy the Integration Key (routing key)
-  # Set PAGERDUTY_SERVICE_KEY in docker/.env
-  - name: 'pagerduty-critical'
-    pagerduty_configs:
-      - service_key: '${PAGERDUTY_SERVICE_KEY}'
-        severity: critical
-        description: '{{ .CommonAnnotations.summary }}'
-        details:
-          firing: '{{ .Alerts.Firing | len }}'
-          resolved: '{{ .Alerts.Resolved | len }}'
-          description: '{{ .CommonAnnotations.description }}'
+  # Set PAGERDUTY_SERVICE_KEY in docker/.env, then uncomment below
+  # - name: 'pagerduty-critical'
+  #   pagerduty_configs:
+  #     - service_key: '${PAGERDUTY_SERVICE_KEY}'
+  #       severity: critical
+  #       description: '{{ .CommonAnnotations.summary }}'
+  #       details:
+  #         firing: '{{ .Alerts.Firing | len }}'
+  #         resolved: '{{ .Alerts.Resolved | len }}'
+  #         description: '{{ .CommonAnnotations.description }}'
 
   # Webhook integration - for custom integrations
   # Can be used with:
@@ -146,16 +146,16 @@ receivers:
   # - Pushover for mobile push notifications with sound
   # - Custom scripts/services
   # - ntfy.sh for free push notifications
-  # Set WEBHOOK_URL in docker/.env to your integration endpoint
-  - name: 'webhook-critical'
-    webhook_configs:
-      - url: '${WEBHOOK_URL}'
-        send_resolved: true
-        # Uncomment to add authorization header if needed
-        # http_config:
-        #   authorization:
-        #     type: Bearer
-        #     credentials: '${WEBHOOK_TOKEN}'
+  # Set WEBHOOK_URL in docker/.env, then uncomment below
+  # - name: 'webhook-critical'
+  #   webhook_configs:
+  #     - url: '${WEBHOOK_URL}'
+  #       send_resolved: true
+  #       # Uncomment to add authorization header if needed
+  #       # http_config:
+  #       #   authorization:
+  #       #     type: Bearer
+  #       #     credentials: '${WEBHOOK_TOKEN}'
 
 inhibit_rules:
   # Don't send warning alerts if a critical alert is already firing for the same service
