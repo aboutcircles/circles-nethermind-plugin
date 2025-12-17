@@ -15,8 +15,8 @@ services:
     ports:
       - 30303:30303/tcp # p2p
       - 30303:30303/udp # p2p
-      - 8545:8545
     expose:
+      - 8545 # JSON-RPC (internal, Caddy proxies externally)
       - 8551 # engine api
       - 6060 # metrics
     volumes:
@@ -148,8 +148,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 8080:8080
+    expose:
+      - 8080 # Caddy proxies externally
     environment:
       - NETHERMIND_RPC_URL=http://nethermind-gnosis:8545
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
@@ -177,8 +177,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 8081:8080
+    expose:
+      - 8080 # Caddy proxies externally
     environment:
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
@@ -205,8 +205,8 @@ services:
     restart: unless-stopped
     networks:
       - circles-gnosis
-    ports:
-      - 3000:3000
+    expose:
+      - 3000 # Caddy proxies externally
     volumes:
       - ../.state/profile-service:/data
     env_file:
