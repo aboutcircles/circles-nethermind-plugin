@@ -53,8 +53,12 @@
         }
     }
 
-    # Dashboard HTML and JSON-RPC API under /chain-rpc
-    # Higher limits for RPC calls (50 req/s per IP)
+    # Nethermind Dashboard and JSON-RPC under /chain-rpc
+    # NOTE: The dashboard's JavaScript makes RPC calls relative to window.location,
+    # which means it calls "/" not "/chain-rpc". This causes the dashboard to show
+    # a skeleton because "/" routes to our Circles RPC, not Nethermind.
+    # The RPC endpoint itself works for direct API calls.
+    # TODO: Consider serving the dashboard on a subdomain to fix this.
     handle_path /chain-rpc/* {
         rate_limit {
             zone chain_rpc_zone {
@@ -63,7 +67,6 @@
                 window 1s
             }
         }
-        @whitelisted_chain remote_ip 127.0.0.1 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
         reverse_proxy nethermind-gnosis:8545
     }
 
