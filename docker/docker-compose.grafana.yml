@@ -11,9 +11,20 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
+      # User sign-up settings
+      # Set GRAFANA_ALLOW_SIGN_UP=true in .env to enable sign-ups
+      - GF_USERS_ALLOW_SIGN_UP=${GRAFANA_ALLOW_SIGN_UP:-false}
+      # Restrict sign-ups to specific email domain (e.g., "aboutcircles.com")
+      # Set GRAFANA_ALLOWED_EMAIL_DOMAIN in .env to restrict
+      - GF_USERS_ALLOWED_DOMAINS=${GRAFANA_ALLOWED_EMAIL_DOMAIN:-}
+      # Auto-assign org to new users
+      - GF_USERS_AUTO_ASSIGN_ORG=true
+      - GF_USERS_AUTO_ASSIGN_ORG_ROLE=${GRAFANA_DEFAULT_ROLE:-Viewer}
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3002}
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      # Anonymous access (read-only dashboards without login)
+      - GF_AUTH_ANONYMOUS_ENABLED=${GRAFANA_ANONYMOUS_ACCESS:-false}
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
       - ../.state/grafana:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
