@@ -902,6 +902,52 @@ public class KpiRepository
     // ============================================================================
 
     /// <summary>
+    /// Gets Gini coefficient for humans excluding custodians/aggregators.
+    /// Excludes accounts holding more than maxUniqueTokens different token types,
+    /// as these are likely exchanges, custodians, or protocol treasuries.
+    /// </summary>
+    public async Task<double> GetGiniCoefficientNonCustodialAsync(int maxUniqueTokens = 50, CancellationToken ct = default)
+    {
+        var sql = $"""
+            WITH account_token_counts AS (
+                SELECT
+                    b."account",
+                    COUNT(DISTINCT b."tokenId") as unique_tokens,
+                    SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                WHERE b."demurragedTotalBalance" > 0
+                AND a."type" = 'CrcV2_RegisterHuman'
+                GROUP BY b."account"
+                HAVING COUNT(DISTINCT b."tokenId") <= {maxUniqueTokens}
+            ),
+            balances AS (
+                SELECT balance FROM account_token_counts ORDER BY balance
+            ),
+            indexed AS (
+                SELECT balance, ROW_NUMBER() OVER (ORDER BY balance) as i,
+                       COUNT(*) OVER () as n
+                FROM balances
+            )
+            SELECT COALESCE(
+                (2.0 * SUM(i * balance) / (n * SUM(balance))) - ((n + 1.0) / n),
+                0
+            )
+            FROM indexed
+            GROUP BY n
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
     /// Gets Gini coefficient for a specific account type only.
     /// Valid types: "human", "group", "organization"
     /// </summary>
