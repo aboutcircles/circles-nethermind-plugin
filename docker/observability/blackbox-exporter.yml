@@ -33,6 +33,20 @@ modules:
       follow_redirects: false
       preferred_ip_protocol: ip4
 
+  # HTTP check that follows redirects with insecure TLS (for internal Caddy probes)
+  # Caddy redirects HTTP->HTTPS internally, but the internal hostname has no valid cert
+  http_insecure:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      method: GET
+      follow_redirects: true
+      preferred_ip_protocol: ip4
+      tls_config:
+        insecure_skip_verify: true
+
   # HTTPS check with TLS verification (for external endpoints)
   https_2xx:
     prober: http

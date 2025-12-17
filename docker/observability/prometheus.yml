@@ -120,11 +120,12 @@ scrape_configs:
         replacement: blackbox-exporter:9115
 
   # Blackbox exporter - probe Caddy reverse proxy (internal)
+  # Uses http_insecure because Caddy redirects HTTP->HTTPS, and internal hostname has no valid cert
   - job_name: 'blackbox-caddy'
     scrape_interval: 30s
     metrics_path: /probe
     params:
-      module: [http_2xx]
+      module: [http_insecure]
     static_configs:
       - targets:
         - http://caddy:80
