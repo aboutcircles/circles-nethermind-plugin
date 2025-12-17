@@ -264,6 +264,30 @@ groups:
       - record: circles:health_check_latency:gauge
         expr: probe_duration_seconds{job=~"blackbox-.*"}
 
+  # Pre-computed uptime metrics for longer timeframes (expensive to calculate on-the-fly)
+  - name: circles-uptime-aggregations
+    interval: 5m
+    rules:
+      # Service uptime 7d (percentage)
+      - record: circles:uptime_7d:avg
+        expr: avg_over_time(probe_success{job=~"blackbox-.*"}[7d]) * 100
+        labels:
+          window: "7d"
+
+      # Service uptime 30d (percentage)
+      - record: circles:uptime_30d:avg
+        expr: avg_over_time(probe_success{job=~"blackbox-.*"}[30d]) * 100
+        labels:
+          window: "30d"
+
+      # Caddy traffic 7d total
+      - record: circles:caddy_requests_7d:sum
+        expr: sum(increase(caddy_http_requests_total{job="caddy"}[7d]))
+
+      # Caddy traffic 30d total
+      - record: circles:caddy_requests_30d:sum
+        expr: sum(increase(caddy_http_requests_total{job="caddy"}[30d]))
+
   - name: circles-advanced-monetary-aggregations
     interval: 1m
     rules:
