@@ -129,7 +129,10 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"24h\"}", "legendFormat": "24h", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"7d\"}", "legendFormat": "7d", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"30d\"}", "legendFormat": "30d", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"30d\"}", "legendFormat": "30d", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"90d\"}", "legendFormat": "90d", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"180d\"}", "legendFormat": "180d", "refId": "E" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_net_inflow_crc{window=\"1y\"}", "legendFormat": "1y", "refId": "F" }
       ],
       "title": "Net Inflow (New CRC Minted)",
       "type": "timeseries"
@@ -161,7 +164,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient", "refId": "A" }],
       "title": "Gini Coefficient",
-      "description": "0 = perfect equality, 1 = perfect inequality",
+      "description": "0 = perfect equality, 1 = perfect inequality. Note: Includes all account types (humans, groups, organizations).",
       "type": "stat"
     },
     {
@@ -393,7 +396,9 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"7d\"}", "legendFormat": "7d Velocity", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"30d\"}", "legendFormat": "30d Velocity", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"90d\"}", "legendFormat": "90d Velocity", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"90d\"}", "legendFormat": "90d Velocity", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"180d\"}", "legendFormat": "180d Velocity", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_money_velocity{window=\"1y\"}", "legendFormat": "1y Velocity", "refId": "E" }
       ],
       "title": "Money Velocity Over Time",
       "description": "Higher velocity = CRC is being used actively in transactions",
@@ -521,7 +526,8 @@
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_user_retention_rate{window=\"7d\"}", "legendFormat": "7d Retention", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_user_retention_rate{window=\"30d\"}", "legendFormat": "30d Retention", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_user_retention_rate{window=\"30d\"}", "legendFormat": "30d Retention", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_user_retention_rate{window=\"90d\"}", "legendFormat": "90d Retention", "refId": "C" }
       ],
       "title": "User Retention Rate",
       "description": "% of users active in previous period who returned",
@@ -651,7 +657,10 @@
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"24h\"}", "legendFormat": "24h", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"7d\"}", "legendFormat": "7d", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"30d\"}", "legendFormat": "30d", "refId": "C" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"30d\"}", "legendFormat": "30d", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"90d\"}", "legendFormat": "90d", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"180d\"}", "legendFormat": "180d", "refId": "E" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_first_time_transactors{window=\"1y\"}", "legendFormat": "1y", "refId": "F" }
       ],
       "title": "First-Time Transactors",
       "description": "Users who made their first transfer in the period",
