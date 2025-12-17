@@ -453,6 +453,95 @@ groups:
       - record: circles:supply_growth_rate_7d:gauge
         expr: circles_net_inflow_crc{window="7d"} / circles_total_crc_supply
 
+  # MTTR (Mean Time To Recovery) metrics
+  # Tracks incident duration from alert firing to resolution
+  - name: circles-mttr-aggregations
+    interval: 1m
+    rules:
+      # Track when services transition from down to up (recovery events)
+      # This counts the number of times a service recovered in the window
+      - record: circles:recovery_events:increase
+        expr: |
+          increase(
+            (probe_success{job=~"blackbox-ready|blackbox-live|blackbox-nethermind|blackbox-consensus"} == 1)
+            and
+            (probe_success{job=~"blackbox-ready|blackbox-live|blackbox-nethermind|blackbox-consensus"} offset 1m == 0)
+          [1h])
+        labels:
+          window: "1h"
+
+      # Track downtime duration per incident window
+      # Uses ALERTS metric to track how long alerts have been firing
+      - record: circles:incident_duration_seconds:sum
+        expr: |
+          sum by (alertname, service, job) (
+            ALERTS_FOR_STATE{alertstate="firing", alertname=~"ServiceNotReady|ServiceNotAlive|NethermindNotHealthy|ConsensusNotHealthy|ExternalEndpointDown"}
+          )
+
+      # Count of incidents that fired in the last 24h
+      - record: circles:incidents_24h:count
+        expr: |
+          count by (alertname) (
+            changes(ALERTS{alertstate="firing", alertname=~"ServiceNotReady|ServiceNotAlive|NethermindNotHealthy|ConsensusNotHealthy|ExternalEndpointDown"}[24h]) > 0
+          )
+        labels:
+          window: "24h"
+
+      # Count of incidents that fired in the last 7d
+      - record: circles:incidents_7d:count
+        expr: |
+          count by (alertname) (
+            changes(ALERTS{alertstate="firing", alertname=~"ServiceNotReady|ServiceNotAlive|NethermindNotHealthy|ConsensusNotHealthy|ExternalEndpointDown"}[7d]) > 0
+          )
+        labels:
+          window: "7d"
+
+      # Total downtime seconds in last 24h (for MTTR calculation)
+      # Based on probe failures - each failed probe represents ~scrape_interval of downtime
+      - record: circles:downtime_seconds_24h:sum
+        expr: |
+          sum by (job, service) (
+            (1 - avg_over_time(probe_success{job=~"blackbox-ready|blackbox-live"}[24h])) * 86400
+          )
+        labels:
+          window: "24h"
+
+      # Total downtime seconds in last 7d
+      - record: circles:downtime_seconds_7d:sum
+        expr: |
+          sum by (job, service) (
+            (1 - avg_over_time(probe_success{job=~"blackbox-ready|blackbox-live"}[7d])) * 604800
+          )
+        labels:
+          window: "7d"
+
+      # MTTR estimate: total downtime / number of incidents
+      # This gives average recovery time per incident
+      - record: circles:mttr_seconds_24h:avg
+        expr: |
+          (
+            (1 - avg_over_time(probe_success{job=~"blackbox-ready|blackbox-live"}[24h])) * 86400
+          )
+          /
+          (
+            changes(probe_success{job=~"blackbox-ready|blackbox-live"}[24h]) / 2 + 1
+          )
+        labels:
+          window: "24h"
+
+      # MTTR for 7d window
+      - record: circles:mttr_seconds_7d:avg
+        expr: |
+          (
+            (1 - avg_over_time(probe_success{job=~"blackbox-ready|blackbox-live"}[7d])) * 604800
+          )
+          /
+          (
+            changes(probe_success{job=~"blackbox-ready|blackbox-live"}[7d]) / 2 + 1
+          )
+        labels:
+          window: "7d"
+
   - name: circles-account-type-aggregations
     interval: 1m
     rules:

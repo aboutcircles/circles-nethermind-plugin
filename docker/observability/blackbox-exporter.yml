@@ -76,3 +76,114 @@ modules:
   tcp_connect:
     prober: tcp
     timeout: 5s
+
+  # ============================================================================
+  # Circles JSON-RPC Functional Probes
+  # These modules make actual RPC calls and validate response content
+  # to detect non-functional services that return 200 but invalid data
+  # ============================================================================
+
+  # System category: circles_health - validates the service returns health status
+  rpc_circles_health:
+    prober: http
+    timeout: 10s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_health","params":[]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
+        - '"synced"'
+
+  # System category: circles_tables - validates schema is available
+  rpc_circles_tables:
+    prober: http
+    timeout: 10s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_tables","params":[]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
+        - '"Namespace"'
+        - '"Tables"'
+
+  # Balance category: circles_getTotalBalance - validates balance queries work
+  # Uses a known address that should always have results
+  rpc_circles_getTotalBalance:
+    prober: http
+    timeout: 10s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_getTotalBalance","params":["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0"]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
+
+  # Avatar category: circles_getAvatarInfo - validates avatar lookup works
+  rpc_circles_getAvatarInfo:
+    prober: http
+    timeout: 10s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_getAvatarInfo","params":["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0"]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
+        - '"type"'
+
+  # Trust category: circles_getTrustRelations - validates trust graph queries
+  rpc_circles_getTrustRelations:
+    prober: http
+    timeout: 15s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_getTrustRelations","params":["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0"]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
+
+  # Query category: circles_query - validates generic query engine works
+  rpc_circles_query:
+    prober: http
+    timeout: 15s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_query","params":[{"Namespace":"V_Crc","Table":"Avatars","Columns":[],"Limit":1}]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
+        - '"Columns"'
+        - '"Rows"'
+
+  # Events category: circles_events - validates event streaming works
+  rpc_circles_events:
+    prober: http
+    timeout: 15s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"jsonrpc":"2.0","id":1,"method":"circles_events","params":["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0",null,null,null,null,false]}'
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - '"result"'
