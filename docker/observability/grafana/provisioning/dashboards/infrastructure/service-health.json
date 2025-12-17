@@ -743,7 +743,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 42 },
       "id": 80,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-rpc-functional\"}", "legendFormat": "{{rpc_method}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_success{job=\"blackbox-rpc-functional\", instance=\"http://rpc:8080\"}", "legendFormat": "{{rpc_method}}", "refId": "A" }],
       "title": "RPC Method Status",
       "type": "stat"
     },
@@ -763,7 +763,7 @@
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 42 },
       "id": 81,
       "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-rpc-functional\"}", "legendFormat": "{{rpc_method}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "probe_duration_seconds{job=\"blackbox-rpc-functional\", instance=\"http://rpc:8080\"}", "legendFormat": "{{rpc_method}}", "refId": "A" }],
       "title": "RPC Method Response Time",
       "type": "timeseries"
     },
@@ -783,7 +783,7 @@
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 48 },
       "id": 82,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "horizontal", "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "avg_over_time(probe_success{job=\"blackbox-rpc-functional\"}[24h]) * 100", "legendFormat": "{{rpc_method}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "avg_over_time(probe_success{job=\"blackbox-rpc-functional\", instance=\"http://rpc:8080\"}[24h]) * 100", "legendFormat": "{{rpc_method}}", "refId": "A" }],
       "title": "RPC Method Success Rate (24h)",
       "type": "stat"
     },
