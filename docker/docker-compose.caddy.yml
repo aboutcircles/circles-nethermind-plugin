@@ -28,7 +28,9 @@
 services:
   caddy:
     container_name: caddy
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: caddy.Dockerfile
     restart: unless-stopped
     networks:
       - circles-gnosis
