@@ -90,15 +90,24 @@ groups:
 
   - name: circles-infrastructure-alerts
     rules:
-      # Disk space
+      # Disk space - tiered alerts for progressive urgency
+      - alert: DiskSpaceWarning
+        expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space below 20%"
+          description: "Disk space on {{ $labels.mountpoint }} is below 20% ({{ $value | printf \"%.1f\" }}% free, {{ $labels.device }})"
+
       - alert: DiskSpaceLow
-        expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 15
+        expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Low disk space"
-          description: "Disk space on {{ $labels.mountpoint }} is below 15% ({{ $value | printf \"%.1f\" }}% free)"
+          summary: "Disk space below 10%"
+          description: "Disk space on {{ $labels.mountpoint }} is below 10% ({{ $value | printf \"%.1f\" }}% free). Action required soon."
 
       - alert: DiskSpaceCritical
         expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 5
@@ -106,28 +115,143 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Critical disk space"
-          description: "Disk space on {{ $labels.mountpoint }} is below 5% ({{ $value | printf \"%.1f\" }}% free)"
+          summary: "Critical disk space - below 5%"
+          description: "URGENT: Disk space on {{ $labels.mountpoint }} is below 5% ({{ $value | printf \"%.1f\" }}% free). Services may fail!"
 
-      # Memory
+      - alert: DiskSpaceExhausted
+        expr: (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "EMERGENCY: Disk nearly full"
+          description: "EMERGENCY: Disk space on {{ $labels.mountpoint }} is below 2% ({{ $value | printf \"%.1f\" }}% free). Immediate action required!"
+
+      # Disk space prediction - alert if disk will fill within 24 hours
+      - alert: DiskWillFillIn24h
+        expr: |
+          (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} /
+           (rate(node_filesystem_avail_bytes{fstype=~"ext4|xfs"}[6h]) * -1)) < 24 * 3600
+          and
+          (rate(node_filesystem_avail_bytes{fstype=~"ext4|xfs"}[6h]) < 0)
+          and
+          (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 < 30
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk will fill within 24 hours"
+          description: "At current rate, {{ $labels.mountpoint }} will run out of space in {{ $value | humanizeDuration }}."
+
+      - alert: DiskWillFillIn4h
+        expr: |
+          (node_filesystem_avail_bytes{fstype=~"ext4|xfs"} /
+           (rate(node_filesystem_avail_bytes{fstype=~"ext4|xfs"}[2h]) * -1)) < 4 * 3600
+          and
+          (rate(node_filesystem_avail_bytes{fstype=~"ext4|xfs"}[2h]) < 0)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk will fill within 4 hours"
+          description: "URGENT: At current rate, {{ $labels.mountpoint }} will run out of space in {{ $value | humanizeDuration }}!"
+
+      # Disk I/O saturation
+      - alert: DiskIOSaturation
+        expr: rate(node_disk_io_time_weighted_seconds_total[5m]) > 0.9
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk I/O saturated"
+          description: "Disk {{ $labels.device }} is experiencing high I/O saturation ({{ $value | printf \"%.2f\" }}). Performance may be degraded."
+
+      # Memory - tiered alerts
       - alert: HighMemoryUsage
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High memory usage"
-          description: "Memory usage is above 90% ({{ $value | printf \"%.1f\" }}%)"
+          summary: "High memory usage (>85%)"
+          description: "Memory usage is at {{ $value | printf \"%.1f\" }}%. Consider investigating memory-heavy processes."
 
-      # CPU
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage (>95%)"
+          description: "Memory usage is at {{ $value | printf \"%.1f\" }}%. OOM killer may be triggered!"
+
+      # CPU - tiered alerts
       - alert: HighCpuUsage
-        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage (>85%)"
+          description: "CPU usage is at {{ $value | printf \"%.1f\" }}%."
+
+      - alert: CriticalCpuUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage (>95%)"
+          description: "CPU usage is at {{ $value | printf \"%.1f\" }}%. Services may become unresponsive."
+
+      # Load average
+      - alert: HighLoadAverage
+        expr: node_load15 > on(instance) count by(instance) (node_cpu_seconds_total{mode="idle"}) * 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High system load"
+          description: "15-minute load average ({{ $value | printf \"%.2f\" }}) is more than 2x the CPU count."
+
+      # Network errors
+      - alert: NetworkReceiveErrors
+        expr: rate(node_network_receive_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]) > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High CPU usage"
-          description: "CPU usage is above 90% ({{ $value | printf \"%.1f\" }}%)"
+          summary: "Network receive errors"
+          description: "Interface {{ $labels.device }} is experiencing receive errors ({{ $value | printf \"%.2f\" }}/s)."
+
+      - alert: NetworkTransmitErrors
+        expr: rate(node_network_transmit_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network transmit errors"
+          description: "Interface {{ $labels.device }} is experiencing transmit errors ({{ $value | printf \"%.2f\" }}/s)."
+
+      # Filesystem read-only
+      - alert: FilesystemReadOnly
+        expr: node_filesystem_readonly{fstype=~"ext4|xfs"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Filesystem is read-only"
+          description: "CRITICAL: Filesystem {{ $labels.mountpoint }} has become read-only! This usually indicates disk failure."
+
+      # System time drift
+      - alert: ClockSkew
+        expr: abs(node_timex_offset_seconds) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Clock skew detected"
+          description: "System clock is {{ $value | printf \"%.3f\" }}s out of sync. This can cause TLS and consensus issues."
 
   - name: circles-kpi-alerts
     rules:
@@ -232,3 +356,209 @@ groups:
         annotations:
           summary: "Initial sync in progress"
           description: "RPC /ready is failing but Nethermind is healthy and RPC is alive. The Circles stack is still syncing (Nethermind sync + plugin indexing). Initial sync can take several hours."
+
+      # Extended sync detection - after 6 hours, something may be wrong
+      - alert: SyncTakingTooLong
+        expr: |
+          probe_success{job="blackbox-ready", service="rpc"} == 0
+          and probe_success{job="blackbox-nethermind"} == 1
+          and probe_success{job="blackbox-live", service="rpc"} == 1
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sync taking longer than expected"
+          description: "Initial sync has been running for over 6 hours. This may be normal for a full sync, but worth monitoring."
+
+      # RPC not ready but NOT during initial sync (Nethermind already synced, so plugin should catch up quickly)
+      # This catches the case where services come back after brief downtime
+      - alert: RpcNotReadyAfterSync
+        expr: |
+          probe_success{job="blackbox-ready", service="rpc"} == 0
+          and probe_success{job="blackbox-nethermind"} == 1
+          and probe_success{job="blackbox-live", service="rpc"} == 1
+          and (time() - process_start_time_seconds{job="rpc"}) > 600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RPC not ready despite services running"
+          description: "RPC service has been running for >10 minutes but is still not ready. Check indexer sync status and dependencies."
+
+  - name: circles-database-alerts
+    rules:
+      # PostgreSQL connection pool
+      - alert: PostgresConnectionsHigh
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections high"
+          description: "PostgreSQL has {{ $value }} active connections. Default max is 100."
+
+      - alert: PostgresConnectionsNearLimit
+        expr: pg_stat_activity_count > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL connections near limit"
+          description: "PostgreSQL has {{ $value }} active connections - approaching max limit!"
+
+      # Long-running queries
+      - alert: PostgresLongRunningQuery
+        expr: pg_stat_activity_max_tx_duration > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Long-running PostgreSQL query"
+          description: "A query has been running for {{ $value | printf \"%.0f\" }} seconds."
+
+      # PostgreSQL down
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "Cannot connect to PostgreSQL database. All services will be affected."
+
+      # Deadlocks
+      - alert: PostgresDeadlocks
+        expr: increase(pg_stat_database_deadlocks[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL deadlocks detected"
+          description: "{{ $value }} deadlocks detected in the last hour."
+
+  - name: circles-container-alerts
+    rules:
+      # Container restarts (using Docker/cAdvisor metrics if available)
+      - alert: ContainerRestarting
+        expr: increase(container_restart_count[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container restarting frequently"
+          description: "Container {{ $labels.name }} has restarted {{ $value }} times in the last hour."
+
+      # Container OOM killed (requires cAdvisor or Docker metrics)
+      - alert: ContainerOOMKilled
+        expr: increase(container_oom_events_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container OOM killed"
+          description: "Container {{ $labels.name }} was killed due to out-of-memory. Consider increasing memory limits."
+
+      # Container CPU throttling
+      - alert: ContainerCpuThrottled
+        expr: rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container CPU throttled"
+          description: "Container {{ $labels.name }} is being CPU throttled. Consider increasing CPU limits."
+
+  - name: circles-ssl-alerts
+    rules:
+      # SSL certificate expiring soon (30 days)
+      - alert: SslCertificateExpiring30d
+        expr: probe_ssl_earliest_cert_expiry - time() < 30 * 24 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL certificate expiring within 30 days"
+          description: "SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}."
+
+      # SSL certificate expiring very soon (7 days)
+      - alert: SslCertificateExpiring7d
+        expr: probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 3600
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL certificate expiring within 7 days"
+          description: "URGENT: SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}!"
+
+      # SSL certificate expired
+      - alert: SslCertificateExpired
+        expr: probe_ssl_earliest_cert_expiry - time() < 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL certificate expired"
+          description: "CRITICAL: SSL certificate for {{ $labels.instance }} has expired!"
+
+  - name: circles-blockchain-alerts
+    rules:
+      # Nethermind peer count low
+      - alert: NethermindLowPeers
+        expr: nethermind_sync_peers < 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nethermind has few peers"
+          description: "Nethermind only has {{ $value }} peers connected. Sync performance may be degraded."
+
+      - alert: NethermindNoPeers
+        expr: nethermind_sync_peers == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nethermind has no peers"
+          description: "Nethermind has lost all peer connections. Network connectivity issue?"
+
+      # Consensus client issues
+      - alert: ConsensusLowPeers
+        expr: lighthouse_network_peer_count < 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consensus client has few peers"
+          description: "Lighthouse only has {{ $value }} peers connected."
+
+      # Block processing stalled (no new blocks in 5 minutes)
+      - alert: BlockProcessingStalled
+        expr: increase(nethermind_blocks_total[5m]) == 0 and nethermind_sync_peers > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Block processing may be stalled"
+          description: "No new blocks processed in 10 minutes despite having peers."
+
+  - name: circles-external-alerts
+    rules:
+      # External endpoint down (staging/production URLs)
+      - alert: ExternalEndpointDown
+        expr: probe_success{job="blackbox-external"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "External endpoint unreachable"
+          description: "Cannot reach {{ $labels.instance }}. Users may be affected."
+
+      # External endpoint slow
+      - alert: ExternalEndpointSlow
+        expr: probe_http_duration_seconds{job="blackbox-external"} > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "External endpoint responding slowly"
+          description: "{{ $labels.instance }} is responding slowly ({{ $value | printf \"%.2f\" }}s)."
