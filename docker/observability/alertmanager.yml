@@ -1,5 +1,7 @@
 global:
   resolve_timeout: 5m
+  # Uncomment for PagerDuty integration (requires PAGERDUTY_SERVICE_KEY)
+  # pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
 
 route:
   receiver: 'slack-notifications'
@@ -7,21 +9,54 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  # Uncomment the routes below to enable Telegram escalation for critical alerts
-  # Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables
-  # routes:
-  #   - match:
-  #       severity: critical
-  #     receiver: 'telegram-critical'
-  #     continue: true
+  routes:
+    # Critical alerts: shorter repeat interval, escalation to multiple channels
+    - match:
+        severity: critical
+      receiver: 'slack-critical'
+      group_wait: 10s
+      group_interval: 2m
+      repeat_interval: 1h
+      continue: true  # Also send to other matching routes
+
+    # Uncomment to enable Telegram escalation for critical alerts
+    # Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables
+    # - match:
+    #     severity: critical
+    #   receiver: 'telegram-critical'
+    #   continue: true
+
+    # Uncomment to enable PagerDuty escalation for critical alerts
+    # Requires PAGERDUTY_SERVICE_KEY environment variable
+    # - match:
+    #     severity: critical
+    #   receiver: 'pagerduty-critical'
+    #   continue: true
+
+    # Uncomment to enable Webhook escalation for critical alerts
+    # Can trigger phone calls via services like Twilio, Pushover, etc.
+    # Requires WEBHOOK_URL environment variable
+    # - match:
+    #     severity: critical
+    #   receiver: 'webhook-critical'
+    #   continue: true
+
+    # Info-level alerts (like InitialSyncInProgress) - less noise
+    - match:
+        severity: info
+      receiver: 'slack-info'
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 24h
 
 receivers:
+  # Default Slack notifications for all alerts
   - name: 'slack-notifications'
     slack_configs:
       - api_url: '${SLACK_WEBHOOK_URL}'
         channel: '#circles-alerts'
         send_resolved: true
-        title: '{{ if eq .Status "firing" }}:fire:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        title: '{{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
         text: >-
           {{ range .Alerts }}
           *Alert:* {{ .Annotations.summary }}
@@ -32,19 +67,95 @@ receivers:
           {{ end }}
         color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
 
-  # Uncomment to enable Telegram notifications (requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
-  # - name: 'telegram-critical'
-  #   telegram_configs:
-  #     - bot_token: '${TELEGRAM_BOT_TOKEN}'
-  #       chat_id: ${TELEGRAM_CHAT_ID}
-  #       parse_mode: 'HTML'
-  #       message: |
-  #         {{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} <b>[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}</b>
-  #         {{ range .Alerts }}
-  #         <b>Alert:</b> {{ .Annotations.summary }}
-  #         <b>Severity:</b> {{ .Labels.severity }}
-  #         <b>Description:</b> {{ .Annotations.description }}
-  #         {{ end }}
+  # Critical alerts - more prominent formatting, can mention @channel
+  - name: 'slack-critical'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#circles-alerts'
+        send_resolved: true
+        # Uncomment the line below to @mention channel for critical alerts
+        # link_names: true
+        title: '{{ if eq .Status "firing" }}:rotating_light: CRITICAL{{ else }}:white_check_mark: RESOLVED{{ end }} [{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        # Uncomment to @mention channel: <!channel> or specific user: <@U12345678>
+        text: >-
+          {{ range .Alerts }}
+          :rotating_light: *CRITICAL ALERT* :rotating_light:
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ if .EndsAt }}*Resolved:* {{ .EndsAt.Format "2006-01-02 15:04:05 UTC" }}{{ end }}
+          {{ end }}
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+  # Info-level alerts (sync in progress, etc.)
+  - name: 'slack-info'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#circles-alerts'
+        send_resolved: true
+        title: ':information_source: [INFO] {{ .GroupLabels.alertname }}'
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+        color: '#439FE0'
+
+  # Telegram notifications - enables push notifications to mobile
+  # To set up:
+  # 1. Create a bot via @BotFather on Telegram, get the token
+  # 2. Start a chat with your bot or add it to a group
+  # 3. Get the chat_id via https://api.telegram.org/bot<TOKEN>/getUpdates
+  # NOTE: chat_id must be an integer - replace the 0 below with your actual chat_id
+  # Set TELEGRAM_BOT_TOKEN in docker/.env
+  - name: 'telegram-critical'
+    telegram_configs:
+      - bot_token: '${TELEGRAM_BOT_TOKEN}'
+        chat_id: 0  # Replace with actual chat_id integer, e.g., 123456789
+        parse_mode: 'HTML'
+        disable_notifications: false
+        message: |
+          {{ if eq .Status "firing" }}🚨 <b>CRITICAL ALERT</b> 🚨{{ else }}✅ <b>RESOLVED</b>{{ end }}
+
+          {{ range .Alerts }}
+          <b>{{ .Annotations.summary }}</b>
+          {{ .Annotations.description }}
+
+          Started: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ if .EndsAt }}Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 UTC" }}{{ end }}
+          {{ end }}
+
+  # PagerDuty integration - for on-call rotation and phone escalation
+  # To set up:
+  # 1. Create a PagerDuty service with "Events API v2" integration
+  # 2. Copy the Integration Key (routing key)
+  # Set PAGERDUTY_SERVICE_KEY in docker/.env
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        severity: critical
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          description: '{{ .CommonAnnotations.description }}'
+
+  # Webhook integration - for custom integrations
+  # Can be used with:
+  # - Twilio for phone calls/SMS
+  # - Pushover for mobile push notifications with sound
+  # - Custom scripts/services
+  # - ntfy.sh for free push notifications
+  # Set WEBHOOK_URL in docker/.env to your integration endpoint
+  - name: 'webhook-critical'
+    webhook_configs:
+      - url: '${WEBHOOK_URL}'
+        send_resolved: true
+        # Uncomment to add authorization header if needed
+        # http_config:
+        #   authorization:
+        #     type: Bearer
+        #     credentials: '${WEBHOOK_TOKEN}'
 
 inhibit_rules:
   # Don't send warning alerts if a critical alert is already firing for the same service
@@ -53,3 +164,67 @@ inhibit_rules:
     target_match:
       severity: 'warning'
     equal: ['alertname', 'job']
+
+  # Don't alert on ServiceNotReady during initial sync
+  - source_matchers:
+      - alertname = "InitialSyncInProgress"
+    target_matchers:
+      - alertname = "ServiceNotReady"
+    equal: ['service']
+
+  # Don't alert on RpcNotReadyAfterSync during initial sync
+  - source_matchers:
+      - alertname = "InitialSyncInProgress"
+    target_matchers:
+      - alertname = "RpcNotReadyAfterSync"
+    equal: ['service']
+
+# =============================================================================
+# ESCALATION OPTIONS - DOCUMENTATION
+# =============================================================================
+#
+# For critical alerts that require immediate attention, you have several options
+# for escalation beyond Slack:
+#
+# 1. TELEGRAM (Recommended for personal mobile notifications)
+#    - Pros: Free, instant mobile push notifications, works globally
+#    - Setup: Create bot via @BotFather, get token and chat_id
+#    - Enable: Uncomment telegram-critical route and receiver above
+#    - Env vars: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+#
+# 2. PAGERDUTY (Recommended for teams with on-call rotation)
+#    - Pros: Phone calls, SMS, on-call schedules, escalation policies
+#    - Cost: Starts at $21/user/month
+#    - Setup: Create service with Events API v2 integration
+#    - Enable: Uncomment pagerduty-critical route and receiver above
+#    - Env vars: PAGERDUTY_SERVICE_KEY
+#
+# 3. OPSGENIE (Alternative to PagerDuty)
+#    - Pros: Similar to PagerDuty, owned by Atlassian
+#    - Cost: Free tier available, then $9/user/month
+#    - Setup: Use webhook receiver with OpsGenie API endpoint
+#    - Enable: Configure webhook-critical with OpsGenie URL
+#
+# 4. PUSHOVER (Simple mobile push with customizable sounds)
+#    - Pros: One-time $5 purchase, loud emergency sounds
+#    - Setup: Create app at pushover.net, get API token and user key
+#    - Enable: Use webhook receiver with Pushover API
+#    - Webhook URL: https://api.pushover.net/1/messages.json
+#
+# 5. NTFY.SH (Free, self-hostable push notifications)
+#    - Pros: Free, no account needed, can self-host
+#    - Setup: Just pick a topic name
+#    - Enable: Use webhook receiver
+#    - Webhook URL: https://ntfy.sh/YOUR_TOPIC
+#
+# 6. TWILIO (Phone calls and SMS)
+#    - Pros: Actual phone calls for maximum urgency
+#    - Cost: Pay per call/SMS
+#    - Setup: Create webhook that calls Twilio API
+#    - Enable: Use webhook receiver with your Twilio integration
+#
+# To enable any of these:
+# 1. Add required env vars to docker/.env
+# 2. Uncomment the relevant route in the routes section
+# 3. Restart alertmanager: docker compose restart alertmanager
+# =============================================================================
