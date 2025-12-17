@@ -84,6 +84,7 @@ modules:
   # ============================================================================
 
   # System category: circles_health - validates the service returns health status
+  # Response: {"jsonrpc":"2.0","result":"Healthy","id":1}
   rpc_circles_health:
     prober: http
     timeout: 10s
@@ -96,9 +97,10 @@ modules:
       valid_status_codes: [200]
       fail_if_body_not_matches_regexp:
         - '"result"'
-        - '"synced"'
+        - '"Healthy"'
 
   # System category: circles_tables - validates schema is available
+  # Response has lowercase keys: "namespace", "tables"
   rpc_circles_tables:
     prober: http
     timeout: 10s
@@ -111,8 +113,8 @@ modules:
       valid_status_codes: [200]
       fail_if_body_not_matches_regexp:
         - '"result"'
-        - '"Namespace"'
-        - '"Tables"'
+        - '"namespace"'
+        - '"tables"'
 
   # Balance category: circles_getTotalBalance - validates balance queries work
   # Uses a known address that should always have results
@@ -159,6 +161,7 @@ modules:
         - '"result"'
 
   # Query category: circles_query - validates generic query engine works
+  # Response has lowercase keys: "columns", "rows"
   rpc_circles_query:
     prober: http
     timeout: 15s
@@ -171,8 +174,8 @@ modules:
       valid_status_codes: [200]
       fail_if_body_not_matches_regexp:
         - '"result"'
-        - '"Columns"'
-        - '"Rows"'
+        - '"columns"'
+        - '"rows"'
 
   # Events category: circles_events - validates event streaming works
   rpc_circles_events:
