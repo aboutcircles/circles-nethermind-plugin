@@ -156,9 +156,9 @@ groups:
           summary: "Disk will fill within 4 hours"
           description: "URGENT: At current rate, {{ $labels.mountpoint }} will run out of space in {{ $value | humanizeDuration }}!"
 
-      # Disk I/O saturation
+      # Disk I/O saturation (threshold 1.0 = 100% I/O time, values >1 indicate queue depth)
       - alert: DiskIOSaturation
-        expr: rate(node_disk_io_time_weighted_seconds_total[5m]) > 0.9
+        expr: rate(node_disk_io_time_weighted_seconds_total[5m]) > 1.0
         for: 15m
         labels:
           severity: warning
