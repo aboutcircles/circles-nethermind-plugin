@@ -9,8 +9,8 @@ services:
     ports:
       - 30303:30303/tcp # p2p
       - 30303:30303/udp # p2p
-      - 8545:8545
     expose:
+      - 8545 # JSON-RPC (internal only)
       - 8551 # engine api
     volumes:
       - ../.state/nethermind-chiado:/data
@@ -65,9 +65,9 @@ services:
     ports:
       - 9000:9000/tcp # p2p
       - 9000:9000/udp # p2p
-      - 5054:5054/tcp # metrics
     expose:
       - 4000 # http
+      - 5054 # metrics (internal for Prometheus)
     volumes:
       - ../.state/consensus-chiado/data:/data
       - ../.state/jwtsecret-chiado/jwt.hex:/jwt.hex
