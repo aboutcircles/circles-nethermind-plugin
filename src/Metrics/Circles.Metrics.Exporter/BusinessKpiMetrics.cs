@@ -307,6 +307,10 @@ public static class BusinessKpiMetrics
             "Gini coefficient of CRC distribution by account type (0=equality, 1=inequality)",
             new GaugeConfiguration { LabelNames = new[] { "account_type" } });
 
+    public static readonly Gauge GiniCoefficientNonCustodial = Prometheus.Metrics
+        .CreateGauge("circles_gini_coefficient_non_custodial",
+            "Gini coefficient for humans excluding custodians/aggregators (accounts holding >50 unique tokens)");
+
     public static readonly Gauge TotalBalanceByType = Prometheus.Metrics
         .CreateGauge("circles_total_balance_by_type_crc",
             "Total CRC balance held by account type",

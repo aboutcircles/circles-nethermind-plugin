@@ -947,6 +947,18 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.CollectionErrors.WithLabels("gini_by_type").Inc();
         }
 
+        // Gini coefficient for non-custodial humans (excluding aggregators/exchanges)
+        try
+        {
+            var giniNonCustodial = await _repository.GetGiniCoefficientNonCustodialAsync(ct: ct);
+            BusinessKpiMetrics.GiniCoefficientNonCustodial.Set(giniNonCustodial);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect non-custodial Gini coefficient metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("gini_non_custodial").Inc();
+        }
+
         // Total balance by account type
         try
         {

@@ -31,6 +31,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_total_crc_supply", "refId": "A" }],
       "title": "Total CRC Supply",
+      "description": "Current total CRC in circulation. This is the sum of all demurraged balances across all accounts. Lower than 'Total Minted' because CRC continuously loses value through demurrage (~7% annually).",
       "type": "stat"
     },
     {
@@ -50,6 +51,7 @@
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_total_minted_all_time_crc", "refId": "A" }],
       "title": "Total Minted (All Time)",
+      "description": "Total CRC ever minted since genesis (before demurrage). This number only goes up. The difference between this and 'Total Supply' represents CRC lost to demurrage over time.",
       "type": "stat"
     },
     {
@@ -392,17 +394,39 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 0.7 }] },
+          "unit": "none",
+          "decimals": 3,
+          "max": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 27 },
+      "id": 70,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient_non_custodial", "refId": "A" }],
+      "title": "Gini (Non-Custodial)",
+      "description": "Gini coefficient for humans EXCLUDING custodians/aggregators (accounts holding >50 unique tokens). This provides a more accurate picture of wealth distribution among regular users, filtering out exchanges and protocol treasuries.",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "percentunit",
           "decimals": 1
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 27 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 27 },
       "id": 63,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_supply_share_by_type{account_type=\"human\"}", "refId": "A" }],
-      "title": "Supply Share (Humans)",
+      "title": "Supply (Humans)",
       "description": "Percentage of total CRC supply held by humans.",
       "type": "stat"
     },
@@ -422,7 +446,7 @@
       "id": 64,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_supply_share_by_type{account_type=\"group\"}", "refId": "A" }],
-      "title": "Supply Share (Groups)",
+      "title": "Supply (Groups)",
       "description": "Percentage of total CRC supply held by groups.",
       "type": "stat"
     },
@@ -442,7 +466,7 @@
       "id": 65,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_supply_share_by_type{account_type=\"organization\"}", "refId": "A" }],
-      "title": "Supply Share (Orgs)",
+      "title": "Supply (Orgs)",
       "description": "Percentage of total CRC supply held by organizations.",
       "type": "stat"
     },
@@ -467,10 +491,11 @@
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient_by_type{account_type=\"human\"}", "legendFormat": "Humans", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient_by_type{account_type=\"group\"}", "legendFormat": "Groups", "refId": "B" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient_by_type{account_type=\"organization\"}", "legendFormat": "Organizations", "refId": "C" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient", "legendFormat": "All (Combined)", "refId": "D" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient", "legendFormat": "All (Combined)", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_gini_coefficient_non_custodial", "legendFormat": "Non-Custodial Humans", "refId": "E" }
       ],
       "title": "Gini Coefficient by Account Type",
-      "description": "Comparing wealth inequality across account types. Humans-only shows the 'fair money' picture.",
+      "description": "Comparing wealth inequality across account types. 'Non-Custodial Humans' excludes exchanges/aggregators (accounts holding >50 unique tokens) for a more accurate picture.",
       "type": "timeseries"
     },
     {
