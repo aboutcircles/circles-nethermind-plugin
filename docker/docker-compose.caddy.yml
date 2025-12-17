@@ -40,6 +40,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../.state/caddy/data:/data
       - ../.state/caddy/config:/config
+    env_file:
+      - .env
     depends_on:
       - nethermind-gnosis
       - rpc
