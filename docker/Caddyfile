@@ -9,13 +9,44 @@
     metrics
   }
   admin :2019
+
+  # Rate limit configuration
+  # See: https://github.com/mholt/caddy-ratelimit
+  order rate_limit before basicauth
 }
 
 # Main domain (HTTPS)
 {$DOMAIN:localhost} {
     encode zstd gzip
 
-    # WebSocket subscription endpoint
+    # ==========================================================================
+    # WHITELISTED IPs/RANGES (no rate limiting)
+    # Add trusted IPs here - they bypass all rate limits
+    # ==========================================================================
+    @whitelisted remote_ip 127.0.0.1 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+    # Add specific trusted external IPs:
+    # @whitelisted remote_ip 127.0.0.1 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 203.0.113.50 198.51.100.0/24
+
+    # ==========================================================================
+    # RATE LIMIT ZONES
+    # Adjust these values based on your traffic patterns
+    # ==========================================================================
+
+    # Grafana: Strict limits (protect login)
+    # 20 requests/second per IP, burst up to 50
+    rate_limit {
+        zone grafana_zone {
+            key {remote_host}
+            events 20
+            window 1s
+        }
+    }
+
+    # ==========================================================================
+    # ROUTES
+    # ==========================================================================
+
+    # WebSocket subscription endpoint (no rate limit - persistent connections)
     handle /ws/subscribe {
         reverse_proxy rpc:8080 {
             rewrite /ws/subscribe
@@ -23,43 +54,120 @@
     }
 
     # Dashboard HTML and JSON-RPC API under /chain-rpc
+    # Higher limits for RPC calls (50 req/s per IP)
     handle_path /chain-rpc/* {
+        rate_limit {
+            zone chain_rpc_zone {
+                key {remote_host}
+                events 50
+                window 1s
+            }
+        }
+        @whitelisted_chain remote_ip 127.0.0.1 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
         reverse_proxy nethermind-gnosis:8545
     }
 
     handle_path /chain-rpc {
+        rate_limit {
+            zone chain_rpc_zone {
+                key {remote_host}
+                events 50
+                window 1s
+            }
+        }
         reverse_proxy nethermind-gnosis:8545
     }
 
-    # Pathfinder - forwards /pathfinder/X to pathfinder:8080/X
+    # Pathfinder - expensive operations, stricter limits (10 req/s per IP)
     handle_path /pathfinder/* {
+        rate_limit {
+            zone pathfinder_zone {
+                key {remote_host}
+                events 10
+                window 1s
+            }
+        }
         reverse_proxy pathfinder:8080
     }
 
     handle_path /pathfinder {
+        rate_limit {
+            zone pathfinder_zone {
+                key {remote_host}
+                events 10
+                window 1s
+            }
+        }
         reverse_proxy pathfinder:8080
     }
 
-    # Profile Service - forwards /profiles/X to profile-service:3000/X
+    # Profile Service (30 req/s per IP)
     handle_path /profiles/* {
+        rate_limit {
+            zone profiles_zone {
+                key {remote_host}
+                events 30
+                window 1s
+            }
+        }
         reverse_proxy profile-service:3000
     }
 
     handle_path /profiles {
+        rate_limit {
+            zone profiles_zone {
+                key {remote_host}
+                events 30
+                window 1s
+            }
+        }
         reverse_proxy profile-service:3000
     }
 
-    # Grafana dashboard - preserve /grafana path for subpath serving
+    # Grafana dashboard - strict limits, protect against brute force
+    # 20 req/s general, but login endpoint even stricter
+    handle /grafana/login* {
+        rate_limit {
+            zone grafana_login_zone {
+                key {remote_host}
+                events 5
+                window 10s
+            }
+        }
+        reverse_proxy grafana:3000
+    }
+
     handle /grafana/* {
+        rate_limit {
+            zone grafana_zone {
+                key {remote_host}
+                events 20
+                window 1s
+            }
+        }
         reverse_proxy grafana:3000
     }
 
     handle /grafana {
+        rate_limit {
+            zone grafana_zone {
+                key {remote_host}
+                events 20
+                window 1s
+            }
+        }
         reverse_proxy grafana:3000
     }
 
-    # Default: RPC service
+    # Default: RPC service (100 req/s per IP - main API)
     handle {
+        rate_limit {
+            zone rpc_zone {
+                key {remote_host}
+                events 100
+                window 1s
+            }
+        }
         reverse_proxy rpc:8080
     }
 }
