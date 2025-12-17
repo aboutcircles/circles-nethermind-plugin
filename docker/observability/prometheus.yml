@@ -200,13 +200,13 @@ scrape_configs:
       # Each target is: module|target_url|method_name
       # We use relabeling to extract these parts
       - targets:
-        - rpc_circles_health|http://rpc:8081|circles_health
-        - rpc_circles_tables|http://rpc:8081|circles_tables
-        - rpc_circles_getTotalBalance|http://rpc:8081|circles_getTotalBalance
-        - rpc_circles_getAvatarInfo|http://rpc:8081|circles_getAvatarInfo
-        - rpc_circles_getTrustRelations|http://rpc:8081|circles_getTrustRelations
-        - rpc_circles_query|http://rpc:8081|circles_query
-        - rpc_circles_events|http://rpc:8081|circles_events
+        - rpc_circles_health|http://rpc:8080|circles_health
+        - rpc_circles_tables|http://rpc:8080|circles_tables
+        - rpc_circles_getTotalBalance|http://rpc:8080|circles_getTotalBalance
+        - rpc_circles_getAvatarInfo|http://rpc:8080|circles_getAvatarInfo
+        - rpc_circles_getTrustRelations|http://rpc:8080|circles_getTrustRelations
+        - rpc_circles_query|http://rpc:8080|circles_query
+        - rpc_circles_events|http://rpc:8080|circles_events
     relabel_configs:
       # Extract module name (before first |)
       - source_labels: [__address__]
