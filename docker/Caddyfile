@@ -67,18 +67,11 @@
     }
 
     # Nethermind Dashboard and JSON-RPC under /chain-rpc
-    handle_path /chain-rpc/* {
-        rate_limit {
-            zone chain_rpc_zone {
-                key {remote_host}
-                events 50
-                window 1s
-            }
-        }
-        reverse_proxy nethermind-gnosis:8545
-    }
+    # Redirect /chain-rpc to /chain-rpc/ to ensure relative asset paths resolve correctly
+    @chainrpc_no_slash path /chain-rpc
+    redir @chainrpc_no_slash /chain-rpc/ permanent
 
-    handle_path /chain-rpc {
+    handle_path /chain-rpc/* {
         rate_limit {
             zone chain_rpc_zone {
                 key {remote_host}
