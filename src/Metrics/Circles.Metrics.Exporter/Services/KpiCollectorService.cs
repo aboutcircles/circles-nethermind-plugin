@@ -1177,6 +1177,12 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.TokenOfferCurrentLimitInCrc.Set(metrics.CurrentLimitInCrc);
             BusinessKpiMetrics.TokenOfferAcceptedCrcCount.Set(metrics.AcceptedCrcCount);
 
+            // Calculate average CRC per claim
+            var avgCrcPerClaim = metrics.ClaimsTotal > 0
+                ? metrics.CrcSpentTotal / metrics.ClaimsTotal
+                : 0;
+            BusinessKpiMetrics.TokenOfferAvgCrcPerClaim.Set(avgCrcPerClaim);
+
             // Cache the offer price for USD calculations
             _lastTokenOfferPriceInCrc = metrics.CurrentPriceInCrc;
         }
@@ -1266,6 +1272,12 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.PaymentGatewaysTotal.Set(metrics.GatewaysTotal);
             BusinessKpiMetrics.PaymentGatewayPaymentsTotal.Set(metrics.PaymentsTotal);
             BusinessKpiMetrics.PaymentGatewayVolumeTotal.Set(metrics.VolumeTotal);
+
+            // Calculate average payment size
+            var avgPaymentSize = metrics.PaymentsTotal > 0
+                ? metrics.VolumeTotal / metrics.PaymentsTotal
+                : 0;
+            BusinessKpiMetrics.PaymentGatewayAvgPaymentSize.Set(avgPaymentSize);
         }
         catch (Exception ex)
         {
