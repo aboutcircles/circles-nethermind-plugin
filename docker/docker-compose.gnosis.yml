@@ -213,6 +213,9 @@ services:
       - ../.state/profile-service:/data
     env_file:
       - .env
+    environment:
+      - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
+      - IPFS_MAX_PARALLELISM=192
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
       interval: 30s

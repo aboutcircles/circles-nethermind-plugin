@@ -113,7 +113,8 @@ services:
 
   postgres-exporter:
     container_name: postgres-exporter
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    # v0.17.0 adds PostgreSQL 17 support (pg_stat_bgwriter columns renamed)
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.0
     restart: unless-stopped
     networks:
       - circles-gnosis
