@@ -2088,6 +2088,148 @@ public class KpiRepository
         return new PaymentGatewayMetrics(0, 0, 0);
     }
 
+    // ============================================================================
+    // Advanced Monetary Metrics (batched)
+    // ============================================================================
+
+    /// <summary>
+    /// Result of batched advanced monetary metrics query.
+    /// Contains metrics not covered by EconomicMetrics batch.
+    /// </summary>
+    public record AdvancedMonetaryMetrics(
+        // Money velocity by window
+        double MoneyVelocity7d,
+        double MoneyVelocity30d,
+        double MoneyVelocity90d,
+        // Top holder concentration
+        double TopHolderConcentration10,
+        double TopHolderConcentration100,
+        double TopHolderConcentration1000,
+        // Net inflow (minting) by window
+        double NetInflow24h,
+        double NetInflow7d,
+        double NetInflow30d,
+        // Transaction size buckets (24h)
+        long MicroTransactions24h,
+        long LargeTransactions24h,
+        // Demurrage paid
+        double DemurragePaid24h,
+        double DemurragePaid7d,
+        double DemurragePaid30d
+    );
+
+    /// <summary>
+    /// Gets advanced monetary/economic metrics in a single query.
+    /// Includes: money velocity, concentration, net inflow, tx size buckets, demurrage.
+    /// </summary>
+    public async Task<AdvancedMonetaryMetrics> GetAdvancedMonetaryMetricsBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            WITH total_supply AS (
+                SELECT COALESCE(SUM(("demurragedTotalBalance"::float8) / 1e18), 0) as supply
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+            ),
+            transfer_volumes AS (
+                SELECT
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800 THEN ("value"::float8) / 1e18 ELSE 0 END), 0) as vol_7d,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000 THEN ("value"::float8) / 1e18 ELSE 0 END), 0) as vol_30d,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 7776000 THEN ("value"::float8) / 1e18 ELSE 0 END), 0) as vol_90d
+                FROM "CrcV2_TransferSingle"
+            ),
+            top_holders AS (
+                SELECT total_balance, ROW_NUMBER() OVER (ORDER BY total_balance DESC) as rank
+                FROM (
+                    SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                    FROM "V_CrcV2_BalancesByAccountAndToken"
+                    WHERE "demurragedTotalBalance" > 0
+                    GROUP BY "account"
+                ) balances
+            ),
+            concentration AS (
+                SELECT
+                    COALESCE(SUM(CASE WHEN rank <= 10 THEN total_balance ELSE 0 END), 0) as top10,
+                    COALESCE(SUM(CASE WHEN rank <= 100 THEN total_balance ELSE 0 END), 0) as top100,
+                    COALESCE(SUM(CASE WHEN rank <= 1000 THEN total_balance ELSE 0 END), 0) as top1000
+                FROM top_holders
+            ),
+            mint_inflow AS (
+                SELECT
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as inflow_24h,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as inflow_7d,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as inflow_30d
+                FROM "CrcV2_PersonalMint"
+            ),
+            tx_sizes AS (
+                SELECT
+                    COUNT(CASE WHEN ("value"::float8) / 1e18 < 1 AND "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400 THEN 1 END) as micro_24h,
+                    COUNT(CASE WHEN ("value"::float8) / 1e18 > 100 AND "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400 THEN 1 END) as large_24h
+                FROM "CrcV2_TransferSingle"
+            ),
+            demurrage AS (
+                SELECT
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as dem_24h,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as dem_7d,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as dem_30d
+                FROM "CrcV2_DiscountCost"
+            )
+            SELECT
+                -- Money velocity = transfer_volume / supply
+                CASE WHEN (SELECT supply FROM total_supply) > 0 THEN (SELECT vol_7d FROM transfer_volumes) / (SELECT supply FROM total_supply) ELSE 0 END,
+                CASE WHEN (SELECT supply FROM total_supply) > 0 THEN (SELECT vol_30d FROM transfer_volumes) / (SELECT supply FROM total_supply) ELSE 0 END,
+                CASE WHEN (SELECT supply FROM total_supply) > 0 THEN (SELECT vol_90d FROM transfer_volumes) / (SELECT supply FROM total_supply) ELSE 0 END,
+                -- Top holder concentration = top_sum / supply
+                CASE WHEN (SELECT supply FROM total_supply) > 0 THEN (SELECT top10 FROM concentration) / (SELECT supply FROM total_supply) ELSE 0 END,
+                CASE WHEN (SELECT supply FROM total_supply) > 0 THEN (SELECT top100 FROM concentration) / (SELECT supply FROM total_supply) ELSE 0 END,
+                CASE WHEN (SELECT supply FROM total_supply) > 0 THEN (SELECT top1000 FROM concentration) / (SELECT supply FROM total_supply) ELSE 0 END,
+                -- Net inflow
+                (SELECT inflow_24h FROM mint_inflow),
+                (SELECT inflow_7d FROM mint_inflow),
+                (SELECT inflow_30d FROM mint_inflow),
+                -- Tx size buckets
+                (SELECT micro_24h FROM tx_sizes),
+                (SELECT large_24h FROM tx_sizes),
+                -- Demurrage
+                (SELECT dem_24h FROM demurrage),
+                (SELECT dem_7d FROM demurrage),
+                (SELECT dem_30d FROM demurrage)
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 120;
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return new AdvancedMonetaryMetrics(
+                    MoneyVelocity7d: reader.GetDouble(0),
+                    MoneyVelocity30d: reader.GetDouble(1),
+                    MoneyVelocity90d: reader.GetDouble(2),
+                    TopHolderConcentration10: reader.GetDouble(3),
+                    TopHolderConcentration100: reader.GetDouble(4),
+                    TopHolderConcentration1000: reader.GetDouble(5),
+                    NetInflow24h: reader.GetDouble(6),
+                    NetInflow7d: reader.GetDouble(7),
+                    NetInflow30d: reader.GetDouble(8),
+                    MicroTransactions24h: reader.GetInt64(9),
+                    LargeTransactions24h: reader.GetInt64(10),
+                    DemurragePaid24h: reader.GetDouble(11),
+                    DemurragePaid7d: reader.GetDouble(12),
+                    DemurragePaid30d: reader.GetDouble(13)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to execute batched advanced monetary metrics query");
+        }
+
+        return new AdvancedMonetaryMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
     private async Task<T> ExecuteScalarAsync<T>(string sql, CancellationToken ct) where T : struct
     {
         await using var conn = new NpgsqlConnection(_connectionString);
