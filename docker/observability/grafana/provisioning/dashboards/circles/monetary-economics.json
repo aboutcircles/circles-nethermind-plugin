@@ -88,7 +88,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_gno_price_usd",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "GNO Price (USD)",
@@ -148,7 +149,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_crc_price_usd",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "CRC Price (USD)",
@@ -208,7 +210,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_crc_price_gno",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "CRC/GNO Rate",
@@ -268,7 +271,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_total_crc_supply_usd",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Total Supply (USD)",
@@ -328,7 +332,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_daily_mint_volume_usd",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Daily Mint (USD)",
@@ -388,7 +393,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_daily_transfer_volume_usd",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Daily Volume (USD)",
@@ -686,7 +692,8 @@
           },
           "expr": "circles_price_source{source=\"coingecko\"}",
           "legendFormat": "CoinGecko Live",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         },
         {
           "datasource": {
@@ -695,7 +702,8 @@
           },
           "expr": "circles_price_source{source=\"cached\"}",
           "legendFormat": "Cached",
-          "refId": "B"
+          "refId": "B",
+          "instant": true
         },
         {
           "datasource": {
@@ -704,7 +712,8 @@
           },
           "expr": "circles_price_source{source=\"fallback\"}",
           "legendFormat": "Fallback",
-          "refId": "C"
+          "refId": "C",
+          "instant": true
         }
       ],
       "title": "Price Source Status",
@@ -879,7 +888,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_total_crc_supply",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Total CRC Supply",
@@ -939,7 +949,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_total_minted_all_time_crc",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Total Minted (All Time)",
@@ -999,7 +1010,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_net_inflow_crc{window=\"24h\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Net Inflow (24h)",
@@ -1057,7 +1069,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_active_balance_holders",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Active Balance Holders",
@@ -1369,7 +1382,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_gini_coefficient",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Gini Coefficient",
@@ -1429,7 +1443,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_average_balance_crc",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Average Balance (CRC)",
@@ -1488,7 +1503,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_median_balance_crc",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Median Balance (CRC)",
@@ -1556,7 +1572,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_top_holder_concentration{top_n=\"10\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Top 10 Concentration",
@@ -1616,7 +1633,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_top_holder_concentration{top_n=\"100\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Top 100 Concentration",
@@ -1676,7 +1694,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_top_holder_concentration{top_n=\"1000\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Top 1000 Concentration",
@@ -1961,7 +1980,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_gini_coefficient_by_type{account_type=\"human\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Gini (Humans Only)",
@@ -2023,7 +2043,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_gini_coefficient_by_type{account_type=\"group\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Gini (Groups)",
@@ -2085,7 +2106,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_gini_coefficient_by_type{account_type=\"organization\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Gini (Organizations)",
@@ -2155,7 +2177,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_gini_coefficient_non_custodial",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Gini (Non-Custodial)",
@@ -2215,7 +2238,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_supply_share_by_type{account_type=\"human\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Supply (Humans)",
@@ -2275,7 +2299,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_supply_share_by_type{account_type=\"group\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Supply (Groups)",
@@ -2335,7 +2360,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_supply_share_by_type{account_type=\"organization\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Supply (Orgs)",
@@ -2925,7 +2951,7 @@
         "h": 4,
         "w": 8,
         "x": 0,
-        "y": 74
+        "y": 70
       },
       "id": 30,
       "options": {
@@ -2949,7 +2975,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_money_velocity{window=\"7d\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Money Velocity (7d)",
@@ -2985,7 +3012,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 74
+        "y": 70
       },
       "id": 31,
       "options": {
@@ -3009,7 +3036,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_money_velocity{window=\"30d\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Money Velocity (30d)",
@@ -3044,7 +3072,7 @@
         "h": 4,
         "w": 8,
         "x": 16,
-        "y": 74
+        "y": 70
       },
       "id": 32,
       "options": {
@@ -3068,7 +3096,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_money_velocity{window=\"90d\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Money Velocity (90d)",
@@ -3244,7 +3273,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 87
+        "y": 83
       },
       "id": 40,
       "options": {
@@ -3268,7 +3297,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_daily_active_wallets",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Daily Active Wallets",
@@ -3302,7 +3332,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 87
+        "y": 83
       },
       "id": 41,
       "options": {
@@ -3326,7 +3356,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_weekly_active_wallets",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Weekly Active Wallets",
@@ -3360,7 +3391,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 87
+        "y": 83
       },
       "id": 42,
       "options": {
@@ -3384,7 +3415,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_monthly_active_wallets",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Monthly Active Wallets",
@@ -3427,7 +3459,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 87
+        "y": 83
       },
       "id": 43,
       "options": {
@@ -3451,7 +3483,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_daily_active_wallets / circles_monthly_active_wallets",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "DAW/MAW Stickiness",
@@ -3719,7 +3752,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 100
+        "y": 96
       },
       "id": 50,
       "options": {
@@ -3743,7 +3776,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_average_transfer_amount_crc{window=\"24h\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Avg Transfer (24h)",
@@ -3778,7 +3812,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 100
+        "y": 96
       },
       "id": 51,
       "options": {
@@ -3802,7 +3836,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_median_transfer_amount_crc{window=\"24h\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Median Transfer (24h)",
@@ -3836,7 +3871,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 100
+        "y": 96
       },
       "id": 52,
       "options": {
@@ -3860,7 +3895,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_micro_transaction_count{window=\"24h\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Micro Txs (<1 CRC)",
@@ -3894,7 +3930,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 100
+        "y": 96
       },
       "id": 53,
       "options": {
@@ -3918,7 +3954,8 @@
             "uid": "prometheus"
           },
           "expr": "circles_large_transaction_count{window=\"24h\"}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
       "title": "Large Txs (>100 CRC)",
