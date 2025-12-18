@@ -82,6 +82,7 @@ public class KpiCollectorService : BackgroundService
         await Task.WhenAll(
             CollectTrustMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
+            CollectEconomicMetricsAsync(ct),
             CollectActivityRatesAsync(ct),
             CollectNetworkHealthMetricsAsync(ct),
             CollectAccountTypeMetricsAsync(ct),
