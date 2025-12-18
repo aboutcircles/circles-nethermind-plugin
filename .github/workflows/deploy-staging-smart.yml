@@ -5,14 +5,15 @@ name: Smart Deploy to Staging
 on:
   push:
     branches:
-      - feature/refactor_pathfinder_rpc  # Direct deploy for your dev branch
+      - feature/refactor_pathfinder_rpc # Direct deploy for your dev branch
     paths:
-      - 'docker/**'
-      - 'src/**'
+      - "docker/**"
+      - "src/**"
+      - ".github/workflows/**"
   workflow_call:
     inputs:
       skip_tests:
-        description: 'Skip waiting for tests'
+        description: "Skip waiting for tests"
         type: boolean
         default: false
       deploy_all:
@@ -33,23 +34,23 @@ on:
   workflow_dispatch:
     inputs:
       deploy_all:
-        description: 'Deploy everything (ignore change detection)'
+        description: "Deploy everything (ignore change detection)"
         type: boolean
         default: false
       deploy_gnosis:
-        description: 'Deploy Gnosis stack'
+        description: "Deploy Gnosis stack"
         type: boolean
         default: false
       deploy_observability:
-        description: 'Deploy observability stack'
+        description: "Deploy observability stack"
         type: boolean
         default: false
       deploy_grafana:
-        description: 'Deploy Grafana dashboards'
+        description: "Deploy Grafana dashboards"
         type: boolean
         default: false
       deploy_caddy:
-        description: 'Deploy Caddy proxy'
+        description: "Deploy Caddy proxy"
         type: boolean
         default: false
 
@@ -70,7 +71,7 @@ jobs:
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.sha }}
-          check-name: 'build-and-test'
+          check-name: "build-and-test"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 30
           # Don't wait forever - 15 min max
@@ -298,7 +299,6 @@ jobs:
       needs.detect-changes.outputs.any_deploy == 'true' &&
       (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
     runs-on: ubuntu-latest
-
     steps:
       - name: Trigger Ansible deployment
         uses: peter-evans/repository-dispatch@v3
