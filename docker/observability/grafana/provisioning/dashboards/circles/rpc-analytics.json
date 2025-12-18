@@ -272,7 +272,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "RPC Analytics",
+  "title": "Circles RPC Analytics",
   "uid": "rpc-analytics",
   "version": 1,
   "weekStart": ""
