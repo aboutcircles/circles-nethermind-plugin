@@ -98,13 +98,29 @@ services:
     expose:
       - 9100
     environment:
-      - ConnectionStrings__CirclesDb=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+      - ConnectionStrings__CirclesDb=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=metrics-exporter;
       - Metrics__CollectionIntervalSeconds=60
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9100/ready"]
       interval: 30s
       timeout: 3s
       start_period: 30s
+      retries: 3
+
+  postgres-exporter:
+    container_name: postgres-exporter
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    expose:
+      - 9187
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-gnosis:5432/postgres?sslmode=disable&application_name=postgres-exporter"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
       retries: 3
 
   alertmanager:
