@@ -1167,6 +1167,395 @@ public class KpiRepository
     }
 
     // ============================================================================
+    // BATCHED QUERIES - Reduce database round-trips
+    // ============================================================================
+
+    /// <summary>
+    /// Result of batched entity counts query
+    /// </summary>
+    public record EntityCounts(
+        long HumansV1,
+        long HumansV2,
+        long Organizations,
+        long Groups,
+        long Backers,
+        long ProfilesTotal,
+        long ActiveTrusts
+    );
+
+    /// <summary>
+    /// Gets all basic entity counts in a single query.
+    /// Replaces 7 individual queries.
+    /// </summary>
+    public async Task<EntityCounts> GetEntityCountsBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                (SELECT COUNT(*) FROM "CrcV1_Signup") as humans_v1,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman") as humans_v2,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization") as organizations,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup") as groups,
+                (SELECT COUNT(DISTINCT "backer") FROM "CrcV2_CirclesBackingInitiated") as backers,
+                (SELECT COUNT(DISTINCT "avatar") FROM "CrcV2_UpdateMetadataDigest") as profiles_total,
+                (SELECT COUNT(*) FROM "V_CrcV2_TrustRelations" WHERE "trustee" != "truster") as active_trusts
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 60;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return new EntityCounts(
+                HumansV1: reader.GetInt64(0),
+                HumansV2: reader.GetInt64(1),
+                Organizations: reader.GetInt64(2),
+                Groups: reader.GetInt64(3),
+                Backers: reader.GetInt64(4),
+                ProfilesTotal: reader.GetInt64(5),
+                ActiveTrusts: reader.GetInt64(6)
+            );
+        }
+
+        return new EntityCounts(0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Result of batched time-windowed counts query
+    /// </summary>
+    public record TimeWindowedCounts(
+        Dictionary<string, long> NewUsers,
+        Dictionary<string, long> NewOrganizations,
+        Dictionary<string, long> NewGroups,
+        Dictionary<string, long> NewBackers,
+        Dictionary<string, long> ActiveMinters,
+        Dictionary<string, long> TransferCounts
+    );
+
+    /// <summary>
+    /// Gets counts for multiple time windows in a single query.
+    /// Replaces ~36 individual queries.
+    /// </summary>
+    public async Task<TimeWindowedCounts> GetTimeWindowedCountsBatchedAsync(CancellationToken ct = default)
+    {
+        // Time window boundaries in seconds
+        const int h24 = 86400;
+        const int d7 = 604800;
+        const int d30 = 2592000;
+        const int d90 = 7776000;
+        const int d180 = 15552000;
+        const int d365 = 31536000;
+
+        var sql = $"""
+            WITH time_bounds AS (
+                SELECT EXTRACT(EPOCH FROM NOW()) as now
+            )
+            SELECT
+                -- New users by window
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman", time_bounds WHERE "timestamp" > now - {h24}) as new_users_24h,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman", time_bounds WHERE "timestamp" > now - {d7}) as new_users_7d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman", time_bounds WHERE "timestamp" > now - {d30}) as new_users_30d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman", time_bounds WHERE "timestamp" > now - {d90}) as new_users_90d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman", time_bounds WHERE "timestamp" > now - {d180}) as new_users_180d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman", time_bounds WHERE "timestamp" > now - {d365}) as new_users_1y,
+                -- New organizations by window
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization", time_bounds WHERE "timestamp" > now - {h24}) as new_orgs_24h,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization", time_bounds WHERE "timestamp" > now - {d7}) as new_orgs_7d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization", time_bounds WHERE "timestamp" > now - {d30}) as new_orgs_30d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization", time_bounds WHERE "timestamp" > now - {d90}) as new_orgs_90d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization", time_bounds WHERE "timestamp" > now - {d180}) as new_orgs_180d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterOrganization", time_bounds WHERE "timestamp" > now - {d365}) as new_orgs_1y,
+                -- New groups by window
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup", time_bounds WHERE "timestamp" > now - {h24}) as new_groups_24h,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup", time_bounds WHERE "timestamp" > now - {d7}) as new_groups_7d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup", time_bounds WHERE "timestamp" > now - {d30}) as new_groups_30d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup", time_bounds WHERE "timestamp" > now - {d90}) as new_groups_90d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup", time_bounds WHERE "timestamp" > now - {d180}) as new_groups_180d,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterGroup", time_bounds WHERE "timestamp" > now - {d365}) as new_groups_1y,
+                -- New backers by window
+                (SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated", time_bounds WHERE "timestamp" > now - {h24}) as new_backers_24h,
+                (SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated", time_bounds WHERE "timestamp" > now - {d7}) as new_backers_7d,
+                (SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated", time_bounds WHERE "timestamp" > now - {d30}) as new_backers_30d,
+                (SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated", time_bounds WHERE "timestamp" > now - {d90}) as new_backers_90d,
+                (SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated", time_bounds WHERE "timestamp" > now - {d180}) as new_backers_180d,
+                (SELECT COUNT(*) FROM "CrcV2_CirclesBackingInitiated", time_bounds WHERE "timestamp" > now - {d365}) as new_backers_1y,
+                -- Active minters by window
+                (SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint", time_bounds WHERE "timestamp" > now - {h24}) as minters_24h,
+                (SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint", time_bounds WHERE "timestamp" > now - {d7}) as minters_7d,
+                (SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint", time_bounds WHERE "timestamp" > now - {d30}) as minters_30d,
+                (SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint", time_bounds WHERE "timestamp" > now - {d90}) as minters_90d,
+                (SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint", time_bounds WHERE "timestamp" > now - {d180}) as minters_180d,
+                (SELECT COUNT(DISTINCT "human") FROM "CrcV2_PersonalMint", time_bounds WHERE "timestamp" > now - {d365}) as minters_1y,
+                -- Transfer counts by window
+                (SELECT COUNT(*) FROM "CrcV2_TransferSingle", time_bounds WHERE "timestamp" > now - {h24}) as transfers_24h,
+                (SELECT COUNT(*) FROM "CrcV2_TransferSingle", time_bounds WHERE "timestamp" > now - {d7}) as transfers_7d,
+                (SELECT COUNT(*) FROM "CrcV2_TransferSingle", time_bounds WHERE "timestamp" > now - {d30}) as transfers_30d,
+                (SELECT COUNT(*) FROM "CrcV2_TransferSingle", time_bounds WHERE "timestamp" > now - {d90}) as transfers_90d,
+                (SELECT COUNT(*) FROM "CrcV2_TransferSingle", time_bounds WHERE "timestamp" > now - {d180}) as transfers_180d,
+                (SELECT COUNT(*) FROM "CrcV2_TransferSingle", time_bounds WHERE "timestamp" > now - {d365}) as transfers_1y
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.CommandTimeout = 120;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+        {
+            return new TimeWindowedCounts(
+                NewUsers: new Dictionary<string, long>
+                {
+                    ["24h"] = reader.GetInt64(0), ["7d"] = reader.GetInt64(1), ["30d"] = reader.GetInt64(2),
+                    ["90d"] = reader.GetInt64(3), ["180d"] = reader.GetInt64(4), ["1y"] = reader.GetInt64(5)
+                },
+                NewOrganizations: new Dictionary<string, long>
+                {
+                    ["24h"] = reader.GetInt64(6), ["7d"] = reader.GetInt64(7), ["30d"] = reader.GetInt64(8),
+                    ["90d"] = reader.GetInt64(9), ["180d"] = reader.GetInt64(10), ["1y"] = reader.GetInt64(11)
+                },
+                NewGroups: new Dictionary<string, long>
+                {
+                    ["24h"] = reader.GetInt64(12), ["7d"] = reader.GetInt64(13), ["30d"] = reader.GetInt64(14),
+                    ["90d"] = reader.GetInt64(15), ["180d"] = reader.GetInt64(16), ["1y"] = reader.GetInt64(17)
+                },
+                NewBackers: new Dictionary<string, long>
+                {
+                    ["24h"] = reader.GetInt64(18), ["7d"] = reader.GetInt64(19), ["30d"] = reader.GetInt64(20),
+                    ["90d"] = reader.GetInt64(21), ["180d"] = reader.GetInt64(22), ["1y"] = reader.GetInt64(23)
+                },
+                ActiveMinters: new Dictionary<string, long>
+                {
+                    ["24h"] = reader.GetInt64(24), ["7d"] = reader.GetInt64(25), ["30d"] = reader.GetInt64(26),
+                    ["90d"] = reader.GetInt64(27), ["180d"] = reader.GetInt64(28), ["1y"] = reader.GetInt64(29)
+                },
+                TransferCounts: new Dictionary<string, long>
+                {
+                    ["24h"] = reader.GetInt64(30), ["7d"] = reader.GetInt64(31), ["30d"] = reader.GetInt64(32),
+                    ["90d"] = reader.GetInt64(33), ["180d"] = reader.GetInt64(34), ["1y"] = reader.GetInt64(35)
+                }
+            );
+        }
+
+        return new TimeWindowedCounts(
+            new Dictionary<string, long>(), new Dictionary<string, long>(),
+            new Dictionary<string, long>(), new Dictionary<string, long>(),
+            new Dictionary<string, long>(), new Dictionary<string, long>()
+        );
+    }
+
+    /// <summary>
+    /// Result of batched economic metrics query
+    /// </summary>
+    public record EconomicMetrics(
+        double TotalSupply,
+        double TotalMintedAllTime,
+        double DailyMintVolume,
+        double DailyTransferVolume,
+        long DailyMintCount,
+        long ActiveBalanceHolders,
+        double AverageBalance,
+        double MedianBalance,
+        double GiniCoefficient,
+        long DailyActiveWallets,
+        long WeeklyActiveWallets,
+        long MonthlyActiveWallets
+    );
+
+    /// <summary>
+    /// Gets economic/monetary metrics in a single query.
+    /// Replaces ~12 individual queries.
+    /// </summary>
+    public async Task<EconomicMetrics> GetEconomicMetricsBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            WITH balance_stats AS (
+                SELECT
+                    SUM(("demurragedTotalBalance"::float8) / 1e18) as total_supply,
+                    COUNT(DISTINCT "account") as holder_count
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "demurragedTotalBalance" > 0
+            ),
+            balance_per_account AS (
+                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "demurragedTotalBalance" > 0
+                GROUP BY "account"
+            ),
+            balance_distribution AS (
+                SELECT
+                    AVG(balance) as avg_balance,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY balance) as median_balance
+                FROM balance_per_account
+            ),
+            gini_calc AS (
+                SELECT COALESCE(
+                    (2.0 * SUM(i * balance) / (n * SUM(balance))) - ((n + 1.0) / n),
+                    0
+                ) as gini
+                FROM (
+                    SELECT balance, ROW_NUMBER() OVER (ORDER BY balance) as i, COUNT(*) OVER () as n
+                    FROM balance_per_account
+                ) indexed
+                GROUP BY n
+            ),
+            daily_activity AS (
+                SELECT
+                    COALESCE(SUM(("amount"::float8) / 1e18), 0) as mint_volume,
+                    COUNT(*) as mint_count
+                FROM "CrcV2_PersonalMint"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+            ),
+            daily_transfers AS (
+                SELECT COALESCE(SUM(("value"::float8) / 1e18), 0) as transfer_volume
+                FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+            ),
+            active_wallets AS (
+                SELECT
+                    (SELECT COUNT(DISTINCT addr) FROM (
+                        SELECT "from" as addr FROM "CrcV2_TransferSingle" WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+                        UNION SELECT "to" as addr FROM "CrcV2_TransferSingle" WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400
+                    ) d) as daw,
+                    (SELECT COUNT(DISTINCT addr) FROM (
+                        SELECT "from" as addr FROM "CrcV2_TransferSingle" WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800
+                        UNION SELECT "to" as addr FROM "CrcV2_TransferSingle" WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800
+                    ) w) as waw,
+                    (SELECT COUNT(DISTINCT addr) FROM (
+                        SELECT "from" as addr FROM "CrcV2_TransferSingle" WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000
+                        UNION SELECT "to" as addr FROM "CrcV2_TransferSingle" WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000
+                    ) m) as maw
+            )
+            SELECT
+                COALESCE((SELECT total_supply FROM balance_stats), 0),
+                COALESCE((SELECT SUM(("amount"::float8) / 1e18) FROM "CrcV2_PersonalMint"), 0),
+                COALESCE((SELECT mint_volume FROM daily_activity), 0),
+                COALESCE((SELECT transfer_volume FROM daily_transfers), 0),
+                COALESCE((SELECT mint_count FROM daily_activity), 0),
+                COALESCE((SELECT holder_count FROM balance_stats), 0),
+                COALESCE((SELECT avg_balance FROM balance_distribution), 0),
+                COALESCE((SELECT median_balance FROM balance_distribution), 0),
+                COALESCE((SELECT gini FROM gini_calc), 0),
+                COALESCE((SELECT daw FROM active_wallets), 0),
+                COALESCE((SELECT waw FROM active_wallets), 0),
+                COALESCE((SELECT maw FROM active_wallets), 0)
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 120;
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return new EconomicMetrics(
+                    TotalSupply: reader.GetDouble(0),
+                    TotalMintedAllTime: reader.GetDouble(1),
+                    DailyMintVolume: reader.GetDouble(2),
+                    DailyTransferVolume: reader.GetDouble(3),
+                    DailyMintCount: reader.GetInt64(4),
+                    ActiveBalanceHolders: reader.GetInt64(5),
+                    AverageBalance: reader.GetDouble(6),
+                    MedianBalance: reader.GetDouble(7),
+                    GiniCoefficient: reader.GetDouble(8),
+                    DailyActiveWallets: reader.GetInt64(9),
+                    WeeklyActiveWallets: reader.GetInt64(10),
+                    MonthlyActiveWallets: reader.GetInt64(11)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to execute batched economic metrics query");
+        }
+
+        return new EconomicMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Result of batched sybil detection metrics query
+    /// </summary>
+    public record SybilMetrics(
+        long AccountsWithoutProfile,
+        long AccountsWithoutIncomingTrust,
+        long SuspiciousAccounts,
+        long OrganicAccounts,
+        long IsolatedAccounts
+    );
+
+    /// <summary>
+    /// Gets sybil detection metrics in a single query.
+    /// Replaces ~5 individual queries.
+    /// </summary>
+    public async Task<SybilMetrics> GetSybilMetricsBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            WITH profile_status AS (
+                SELECT h."avatar",
+                       CASE WHEN m."avatar" IS NOT NULL THEN true ELSE false END as has_profile
+                FROM "CrcV2_RegisterHuman" h
+                LEFT JOIN "CrcV2_UpdateMetadataDigest" m ON h."avatar" = m."avatar"
+            ),
+            trust_status AS (
+                SELECT DISTINCT "trustee" as avatar FROM "V_CrcV2_TrustRelations" WHERE "truster" != "trustee"
+            ),
+            mint_status AS (
+                SELECT DISTINCT "human" as avatar FROM "CrcV2_PersonalMint"
+            ),
+            all_trust_participants AS (
+                SELECT DISTINCT "truster" as avatar FROM "V_CrcV2_TrustRelations"
+                UNION
+                SELECT DISTINCT "trustee" as avatar FROM "V_CrcV2_TrustRelations"
+            )
+            SELECT
+                (SELECT COUNT(*) FROM profile_status WHERE NOT has_profile) as no_profile,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h WHERE h."avatar" NOT IN (SELECT avatar FROM trust_status)) as no_incoming_trust,
+                (SELECT COUNT(DISTINCT p."avatar")
+                 FROM profile_status p
+                 WHERE NOT p.has_profile
+                 AND p."avatar" NOT IN (SELECT avatar FROM trust_status)
+                 AND p."avatar" IN (SELECT avatar FROM mint_status)) as suspicious,
+                (SELECT COUNT(DISTINCT p."avatar")
+                 FROM profile_status p
+                 WHERE p.has_profile
+                 AND p."avatar" IN (SELECT avatar FROM trust_status)) as organic,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
+                 WHERE h."avatar" NOT IN (SELECT avatar FROM all_trust_participants)) as isolated
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 120;
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return new SybilMetrics(
+                    AccountsWithoutProfile: reader.GetInt64(0),
+                    AccountsWithoutIncomingTrust: reader.GetInt64(1),
+                    SuspiciousAccounts: reader.GetInt64(2),
+                    OrganicAccounts: reader.GetInt64(3),
+                    IsolatedAccounts: reader.GetInt64(4)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to execute batched sybil metrics query");
+        }
+
+        return new SybilMetrics(0, 0, 0, 0, 0);
+    }
+
+    // ============================================================================
     // Network health metrics
     // ============================================================================
 
