@@ -81,7 +81,10 @@ public class KpiCollectorService : BackgroundService
         // Phase 3: Run remaining individual queries in parallel
         // Note: Some methods have partial overlap with batched queries (harmless, just sets same value twice)
         // but they also contain unique metrics not covered by batched queries.
-        // CollectUserMetricsAsync and CollectAdvancedMonetaryMetricsAsync are fully covered by batched.
+        // CollectUserMetricsAsync is fully covered by batched, so excluded.
+        // CollectAdvancedMonetaryMetricsAsync has partial overlap but contains unique metrics:
+        //   - UserRetentionRate, FirstTimeTransactors, TransferSizePercentile
+        //   - Extended windows (180d, 1y) for MoneyVelocity, NetInflow, MicroTx, LargeTx
         await Task.WhenAll(
             CollectTrustMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
@@ -93,7 +96,8 @@ public class KpiCollectorService : BackgroundService
             CollectPriceAndEcosystemValueMetricsAsync(ct),
             CollectProfileMetricsAsync(ct),           // Unique: ProfilesCreated 24h
             CollectDuneParityMetricsAsync(ct),        // Unique: MintingFraction14d
-            CollectSybilDetectionMetricsAsync(ct)     // Unique: BatchRegistrations, MintAndDrain, HighVolumeInviters
+            CollectSybilDetectionMetricsAsync(ct),    // Unique: BatchRegistrations, MintAndDrain, HighVolumeInviters
+            CollectAdvancedMonetaryMetricsAsync(ct)   // Unique: UserRetention, FirstTimeTx, TransferPercentiles, extended windows
         );
     }
 
