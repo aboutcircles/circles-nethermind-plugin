@@ -393,6 +393,10 @@ public static class BusinessKpiMetrics
         .CreateGauge("circles_token_offer_accepted_crc_count",
             "Number of CRC tokens accepted by current offer");
 
+    public static readonly Gauge TokenOfferAvgCrcPerClaim = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_avg_crc_per_claim",
+            "Average CRC spent per offer claim (total_spent / claim_count)");
+
     // ===========================================
     // Payment Gateway Metrics
     // ===========================================
@@ -433,6 +437,10 @@ public static class BusinessKpiMetrics
         .CreateGauge("circles_payment_gateway_unique_payees",
             "Unique payees through gateways in time window",
             new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge PaymentGatewayAvgPaymentSize = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_avg_payment_size",
+            "Average payment size in CRC (total_volume / payment_count)");
 
     // ===========================================
     // Ecosystem Value & Price Metrics
