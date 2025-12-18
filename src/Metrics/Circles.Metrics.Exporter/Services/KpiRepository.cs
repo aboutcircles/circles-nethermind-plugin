@@ -1308,33 +1308,57 @@ public class KpiRepository
             return new TimeWindowedCounts(
                 NewUsers: new Dictionary<string, long>
                 {
-                    ["24h"] = reader.GetInt64(0), ["7d"] = reader.GetInt64(1), ["30d"] = reader.GetInt64(2),
-                    ["90d"] = reader.GetInt64(3), ["180d"] = reader.GetInt64(4), ["1y"] = reader.GetInt64(5)
+                    ["24h"] = reader.GetInt64(0),
+                    ["7d"] = reader.GetInt64(1),
+                    ["30d"] = reader.GetInt64(2),
+                    ["90d"] = reader.GetInt64(3),
+                    ["180d"] = reader.GetInt64(4),
+                    ["1y"] = reader.GetInt64(5)
                 },
                 NewOrganizations: new Dictionary<string, long>
                 {
-                    ["24h"] = reader.GetInt64(6), ["7d"] = reader.GetInt64(7), ["30d"] = reader.GetInt64(8),
-                    ["90d"] = reader.GetInt64(9), ["180d"] = reader.GetInt64(10), ["1y"] = reader.GetInt64(11)
+                    ["24h"] = reader.GetInt64(6),
+                    ["7d"] = reader.GetInt64(7),
+                    ["30d"] = reader.GetInt64(8),
+                    ["90d"] = reader.GetInt64(9),
+                    ["180d"] = reader.GetInt64(10),
+                    ["1y"] = reader.GetInt64(11)
                 },
                 NewGroups: new Dictionary<string, long>
                 {
-                    ["24h"] = reader.GetInt64(12), ["7d"] = reader.GetInt64(13), ["30d"] = reader.GetInt64(14),
-                    ["90d"] = reader.GetInt64(15), ["180d"] = reader.GetInt64(16), ["1y"] = reader.GetInt64(17)
+                    ["24h"] = reader.GetInt64(12),
+                    ["7d"] = reader.GetInt64(13),
+                    ["30d"] = reader.GetInt64(14),
+                    ["90d"] = reader.GetInt64(15),
+                    ["180d"] = reader.GetInt64(16),
+                    ["1y"] = reader.GetInt64(17)
                 },
                 NewBackers: new Dictionary<string, long>
                 {
-                    ["24h"] = reader.GetInt64(18), ["7d"] = reader.GetInt64(19), ["30d"] = reader.GetInt64(20),
-                    ["90d"] = reader.GetInt64(21), ["180d"] = reader.GetInt64(22), ["1y"] = reader.GetInt64(23)
+                    ["24h"] = reader.GetInt64(18),
+                    ["7d"] = reader.GetInt64(19),
+                    ["30d"] = reader.GetInt64(20),
+                    ["90d"] = reader.GetInt64(21),
+                    ["180d"] = reader.GetInt64(22),
+                    ["1y"] = reader.GetInt64(23)
                 },
                 ActiveMinters: new Dictionary<string, long>
                 {
-                    ["24h"] = reader.GetInt64(24), ["7d"] = reader.GetInt64(25), ["30d"] = reader.GetInt64(26),
-                    ["90d"] = reader.GetInt64(27), ["180d"] = reader.GetInt64(28), ["1y"] = reader.GetInt64(29)
+                    ["24h"] = reader.GetInt64(24),
+                    ["7d"] = reader.GetInt64(25),
+                    ["30d"] = reader.GetInt64(26),
+                    ["90d"] = reader.GetInt64(27),
+                    ["180d"] = reader.GetInt64(28),
+                    ["1y"] = reader.GetInt64(29)
                 },
                 TransferCounts: new Dictionary<string, long>
                 {
-                    ["24h"] = reader.GetInt64(30), ["7d"] = reader.GetInt64(31), ["30d"] = reader.GetInt64(32),
-                    ["90d"] = reader.GetInt64(33), ["180d"] = reader.GetInt64(34), ["1y"] = reader.GetInt64(35)
+                    ["24h"] = reader.GetInt64(30),
+                    ["7d"] = reader.GetInt64(31),
+                    ["30d"] = reader.GetInt64(32),
+                    ["90d"] = reader.GetInt64(33),
+                    ["180d"] = reader.GetInt64(34),
+                    ["1y"] = reader.GetInt64(35)
                 }
             );
         }
