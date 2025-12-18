@@ -1309,7 +1309,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 89 },
       "id": 505,
       "options": { "displayLabels": ["name", "value"], "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] }, "pieType": "pie", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "pg_stat_activity_count{datname=\"postgres\"}", "legendFormat": "{{application_name}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (application_name) (pg_stat_activity_count{datname=\"postgres\", application_name!=\"\"})", "legendFormat": "{{application_name}}", "refId": "A" }],
       "title": "Connection Distribution",
       "type": "piechart"
     },
