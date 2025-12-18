@@ -93,9 +93,16 @@ jobs:
           fetch-depth: 0
 
       - name: Detect changed paths
+        # Only run path detection for push events (direct or via workflow_call)
+        # For workflow_dispatch, user must select components manually via checkboxes
+        if: github.event.before != ''
         uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Compare files changed in this push/merge
+          # github.event.before = commit branch pointed to before push
+          # This correctly handles: single commits, multi-commit pushes, and PR merges
+          base: ${{ github.event.before }}
           filters: |
             src:
               - 'src/**'
