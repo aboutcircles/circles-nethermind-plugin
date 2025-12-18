@@ -59,13 +59,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Wait for CI tests to pass before deploying (only when src changed)
+  # Wait for CI tests to pass before deploying
+  # Only runs when called from dev/main workflows (workflow_call), not on direct push (feature branches)
   wait-for-tests:
     runs-on: ubuntu-latest
-    # Skip if: workflow_call with skip_tests, or workflow_dispatch, or only docker/** changed
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_call' && !inputs.skip_tests)
+    if: github.event_name == 'workflow_call' && !inputs.skip_tests
     steps:
       - name: Wait for CI build and test
         uses: lewagon/wait-on-check-action@v1.3.4
