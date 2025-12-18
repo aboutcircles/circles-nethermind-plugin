@@ -157,9 +157,10 @@ groups:
           description: "URGENT: At current rate, {{ $labels.mountpoint }} will run out of space in {{ $value | humanizeDuration }}!"
 
       # Disk I/O saturation (threshold 1.0 = 100% I/O time, values >1 indicate queue depth)
+      # Note: During blockchain sync, values of 2-3 are common; threshold raised to reduce noise
       - alert: DiskIOSaturation
-        expr: rate(node_disk_io_time_weighted_seconds_total[5m]) > 1.0
-        for: 15m
+        expr: rate(node_disk_io_time_weighted_seconds_total[5m]) > 3.0
+        for: 30m
         labels:
           severity: warning
         annotations:
@@ -555,9 +556,10 @@ groups:
   - name: circles-blockchain-alerts
     rules:
       # Nethermind peer count low
+      # Note: Peer counts naturally fluctuate; 3+ peers is sufficient for sync
       - alert: NethermindLowPeers
-        expr: nethermind_sync_peers < 5
-        for: 10m
+        expr: nethermind_sync_peers < 3
+        for: 20m
         labels:
           severity: warning
         annotations:

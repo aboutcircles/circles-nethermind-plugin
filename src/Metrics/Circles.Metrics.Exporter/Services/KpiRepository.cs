@@ -165,9 +165,10 @@ public class KpiRepository
 
     public async Task<long> GetGroupMembersTotalAsync(CancellationToken ct = default)
     {
-        // Members of standard treasury groups
+        // Count distinct group memberships from the view
+        // (trust relations where truster is a group)
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2_GroupMembershipJoined"
+            SELECT COUNT(DISTINCT ("group", member)) FROM "V_CrcV2_GroupMemberships"
             """;
 
         try
@@ -176,7 +177,7 @@ public class KpiRepository
         }
         catch
         {
-            // Table may not exist
+            // View may not exist during initial sync
             return 0;
         }
     }
