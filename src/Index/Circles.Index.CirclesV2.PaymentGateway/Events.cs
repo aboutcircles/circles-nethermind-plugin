@@ -6,10 +6,10 @@ namespace Circles.Index.CirclesV2.PaymentGateway;
 public static class Events
 {
     public record GatewayCreated(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Owner,
@@ -17,10 +17,10 @@ public static class Events
     ) : IIndexEvent;
 
     public record PaymentReceived(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Payer,
@@ -32,10 +32,10 @@ public static class Events
     ) : IIndexEvent;
 
     public record TrustUpdated(
-        long   BlockNumber,
-        long   Timestamp,
-        int    TransactionIndex,
-        int    LogIndex,
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
         string TransactionHash,
         string Emitter,
         string Gateway,
