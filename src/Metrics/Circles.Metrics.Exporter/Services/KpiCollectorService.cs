@@ -74,15 +74,17 @@ public class KpiCollectorService : BackgroundService
         // Phase 1: Run batched queries (4 queries instead of ~60)
         await CollectBatchedMetricsAsync(ct);
 
-        // Phase 2: Run remaining individual queries that aren't batched yet
-        // These run in parallel for efficiency
+        // Phase 2: Collect Token Offers metrics first (needed for price calculation)
+        // This sets _lastTokenOfferPriceInCrc which is used by price metrics
+        await CollectTokenOffersMetricsAsync(ct);
+
+        // Phase 3: Run remaining individual queries in parallel
         await Task.WhenAll(
             CollectTrustMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
             CollectActivityRatesAsync(ct),
             CollectNetworkHealthMetricsAsync(ct),
             CollectAccountTypeMetricsAsync(ct),
-            CollectTokenOffersMetricsAsync(ct),
             CollectPaymentGatewayMetricsAsync(ct),
             CollectPriceAndEcosystemValueMetricsAsync(ct)
         );
