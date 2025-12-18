@@ -293,7 +293,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 11 },
       "id": 110,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nethermind_sync_peers{job=\"nethermind\"}", "legendFormat": "Peers", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(nethermind_sync_peers{job=\"nethermind\"})", "legendFormat": "Peers", "refId": "A" }],
       "title": "Nethermind Peers",
       "type": "stat"
     },
@@ -311,7 +311,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 11 },
       "id": 111,
       "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "lighthouse_network_peer_count{job=\"consensus\"}", "legendFormat": "Peers", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "libp2p_peers{job=\"consensus\"}", "legendFormat": "Peers", "refId": "A" }],
       "title": "Consensus (Lighthouse) Peers",
       "type": "stat"
     },
@@ -335,8 +335,8 @@
       "id": 112,
       "options": { "legend": { "calcs": ["min", "mean", "max"], "displayMode": "table", "placement": "right" }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "nethermind_sync_peers{job=\"nethermind\"}", "legendFormat": "Nethermind", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "lighthouse_network_peer_count{job=\"consensus\"}", "legendFormat": "Lighthouse", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(nethermind_sync_peers{job=\"nethermind\"})", "legendFormat": "Nethermind", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "libp2p_peers{job=\"consensus\"}", "legendFormat": "Lighthouse", "refId": "B" }
       ],
       "title": "Peer Count Over Time",
       "type": "timeseries"
