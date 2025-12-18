@@ -8,6 +8,7 @@ namespace Circles.Metrics.Exporter.Services;
 public class KpiCollectorService : BackgroundService
 {
     private readonly KpiRepository _repository;
+    private readonly PriceService _priceService;
     private readonly ILogger<KpiCollectorService> _logger;
     private readonly TimeSpan _collectionInterval;
 
@@ -20,12 +21,18 @@ public class KpiCollectorService : BackgroundService
     private static readonly TimeSpan Window180D = TimeSpan.FromDays(180);
     private static readonly TimeSpan Window1Y = TimeSpan.FromDays(365);
 
+    // Cached values for USD calculations
+    private double _lastCrcPriceUsd;
+    private double _lastTokenOfferPriceInCrc;
+
     public KpiCollectorService(
         KpiRepository repository,
+        PriceService priceService,
         ILogger<KpiCollectorService> logger,
         IConfiguration configuration)
     {
         _repository = repository;
+        _priceService = priceService;
         _logger = logger;
 
         var intervalSeconds = configuration.GetValue<int>("Metrics:CollectionIntervalSeconds", 60);
@@ -74,7 +81,10 @@ public class KpiCollectorService : BackgroundService
             CollectGroupMetricsAsync(ct),
             CollectActivityRatesAsync(ct),
             CollectNetworkHealthMetricsAsync(ct),
-            CollectAccountTypeMetricsAsync(ct)
+            CollectAccountTypeMetricsAsync(ct),
+            CollectTokenOffersMetricsAsync(ct),
+            CollectPaymentGatewayMetricsAsync(ct),
+            CollectPriceAndEcosystemValueMetricsAsync(ct)
         );
     }
 
@@ -1143,6 +1153,271 @@ public class KpiCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect supply share by type metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("supply_share_by_type").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Token Offers Metrics (GNO Bonus, Marketplace)
+    // ============================================================================
+
+    private async Task CollectTokenOffersMetricsAsync(CancellationToken ct)
+    {
+        // Batched query for totals
+        try
+        {
+            var metrics = await _repository.GetTokenOffersMetricsBatchedAsync(ct);
+
+            BusinessKpiMetrics.TokenOfferCyclesTotal.Set(metrics.CyclesTotal);
+            BusinessKpiMetrics.TokenOfferClaimsTotal.Set(metrics.ClaimsTotal);
+            BusinessKpiMetrics.TokenOfferCrcSpentTotal.Set(metrics.CrcSpentTotal);
+            BusinessKpiMetrics.TokenOfferTokensReceivedTotal.Set(metrics.TokensReceivedTotal);
+            BusinessKpiMetrics.TokenOfferCurrentPriceInCrc.Set(metrics.CurrentPriceInCrc);
+            BusinessKpiMetrics.TokenOfferCurrentLimitInCrc.Set(metrics.CurrentLimitInCrc);
+            BusinessKpiMetrics.TokenOfferAcceptedCrcCount.Set(metrics.AcceptedCrcCount);
+
+            // Cache the offer price for USD calculations
+            _lastTokenOfferPriceInCrc = metrics.CurrentPriceInCrc;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched token offers metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("token_offers_batched").Inc();
+        }
+
+        // Time-windowed metrics
+        try
+        {
+            var claims24h = await _repository.GetTokenOfferClaimsAsync(Window24H, ct);
+            var claims7d = await _repository.GetTokenOfferClaimsAsync(Window7D, ct);
+            var claims30d = await _repository.GetTokenOfferClaimsAsync(Window30D, ct);
+
+            BusinessKpiMetrics.TokenOfferClaims.WithLabels("24h").Set(claims24h);
+            BusinessKpiMetrics.TokenOfferClaims.WithLabels("7d").Set(claims7d);
+            BusinessKpiMetrics.TokenOfferClaims.WithLabels("30d").Set(claims30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect token offer claims metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("token_offer_claims").Inc();
+        }
+
+        try
+        {
+            var claimers24h = await _repository.GetTokenOfferUniqueClaimersAsync(Window24H, ct);
+            var claimers7d = await _repository.GetTokenOfferUniqueClaimersAsync(Window7D, ct);
+            var claimers30d = await _repository.GetTokenOfferUniqueClaimersAsync(Window30D, ct);
+
+            BusinessKpiMetrics.TokenOfferUniqueClaimers.WithLabels("24h").Set(claimers24h);
+            BusinessKpiMetrics.TokenOfferUniqueClaimers.WithLabels("7d").Set(claimers7d);
+            BusinessKpiMetrics.TokenOfferUniqueClaimers.WithLabels("30d").Set(claimers30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect token offer unique claimers metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("token_offer_claimers").Inc();
+        }
+
+        try
+        {
+            var crcSpent24h = await _repository.GetTokenOfferCrcSpentAsync(Window24H, ct);
+            var crcSpent7d = await _repository.GetTokenOfferCrcSpentAsync(Window7D, ct);
+            var crcSpent30d = await _repository.GetTokenOfferCrcSpentAsync(Window30D, ct);
+
+            BusinessKpiMetrics.TokenOfferCrcSpent.WithLabels("24h").Set(crcSpent24h);
+            BusinessKpiMetrics.TokenOfferCrcSpent.WithLabels("7d").Set(crcSpent7d);
+            BusinessKpiMetrics.TokenOfferCrcSpent.WithLabels("30d").Set(crcSpent30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect token offer CRC spent metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("token_offer_crc_spent").Inc();
+        }
+
+        try
+        {
+            var received24h = await _repository.GetTokenOfferTokensReceivedAsync(Window24H, ct);
+            var received7d = await _repository.GetTokenOfferTokensReceivedAsync(Window7D, ct);
+            var received30d = await _repository.GetTokenOfferTokensReceivedAsync(Window30D, ct);
+
+            BusinessKpiMetrics.TokenOfferTokensReceived.WithLabels("24h").Set(received24h);
+            BusinessKpiMetrics.TokenOfferTokensReceived.WithLabels("7d").Set(received7d);
+            BusinessKpiMetrics.TokenOfferTokensReceived.WithLabels("30d").Set(received30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect token offer tokens received metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("token_offer_received").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Payment Gateway Metrics
+    // ============================================================================
+
+    private async Task CollectPaymentGatewayMetricsAsync(CancellationToken ct)
+    {
+        // Batched query for totals
+        try
+        {
+            var metrics = await _repository.GetPaymentGatewayMetricsBatchedAsync(ct);
+
+            BusinessKpiMetrics.PaymentGatewaysTotal.Set(metrics.GatewaysTotal);
+            BusinessKpiMetrics.PaymentGatewayPaymentsTotal.Set(metrics.PaymentsTotal);
+            BusinessKpiMetrics.PaymentGatewayVolumeTotal.Set(metrics.VolumeTotal);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched payment gateway metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("payment_gateway_batched").Inc();
+        }
+
+        // Time-windowed metrics
+        try
+        {
+            var gateways24h = await _repository.GetPaymentGatewaysCreatedAsync(Window24H, ct);
+            var gateways7d = await _repository.GetPaymentGatewaysCreatedAsync(Window7D, ct);
+            var gateways30d = await _repository.GetPaymentGatewaysCreatedAsync(Window30D, ct);
+
+            BusinessKpiMetrics.PaymentGatewaysCreated.WithLabels("24h").Set(gateways24h);
+            BusinessKpiMetrics.PaymentGatewaysCreated.WithLabels("7d").Set(gateways7d);
+            BusinessKpiMetrics.PaymentGatewaysCreated.WithLabels("30d").Set(gateways30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect payment gateways created metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("payment_gateways_created").Inc();
+        }
+
+        try
+        {
+            var payments24h = await _repository.GetPaymentGatewayPaymentsAsync(Window24H, ct);
+            var payments7d = await _repository.GetPaymentGatewayPaymentsAsync(Window7D, ct);
+            var payments30d = await _repository.GetPaymentGatewayPaymentsAsync(Window30D, ct);
+
+            BusinessKpiMetrics.PaymentGatewayPayments.WithLabels("24h").Set(payments24h);
+            BusinessKpiMetrics.PaymentGatewayPayments.WithLabels("7d").Set(payments7d);
+            BusinessKpiMetrics.PaymentGatewayPayments.WithLabels("30d").Set(payments30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect payment gateway payments metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("payment_gateway_payments").Inc();
+        }
+
+        try
+        {
+            var volume24h = await _repository.GetPaymentGatewayVolumeAsync(Window24H, ct);
+            var volume7d = await _repository.GetPaymentGatewayVolumeAsync(Window7D, ct);
+            var volume30d = await _repository.GetPaymentGatewayVolumeAsync(Window30D, ct);
+
+            BusinessKpiMetrics.PaymentGatewayVolume.WithLabels("24h").Set(volume24h);
+            BusinessKpiMetrics.PaymentGatewayVolume.WithLabels("7d").Set(volume7d);
+            BusinessKpiMetrics.PaymentGatewayVolume.WithLabels("30d").Set(volume30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect payment gateway volume metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("payment_gateway_volume").Inc();
+        }
+
+        try
+        {
+            var payers24h = await _repository.GetPaymentGatewayUniquePayersAsync(Window24H, ct);
+            var payers7d = await _repository.GetPaymentGatewayUniquePayersAsync(Window7D, ct);
+            var payers30d = await _repository.GetPaymentGatewayUniquePayersAsync(Window30D, ct);
+
+            BusinessKpiMetrics.PaymentGatewayUniquePayers.WithLabels("24h").Set(payers24h);
+            BusinessKpiMetrics.PaymentGatewayUniquePayers.WithLabels("7d").Set(payers7d);
+            BusinessKpiMetrics.PaymentGatewayUniquePayers.WithLabels("30d").Set(payers30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect payment gateway unique payers metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("payment_gateway_payers").Inc();
+        }
+
+        try
+        {
+            var payees24h = await _repository.GetPaymentGatewayUniquePayeesAsync(Window24H, ct);
+            var payees7d = await _repository.GetPaymentGatewayUniquePayeesAsync(Window7D, ct);
+            var payees30d = await _repository.GetPaymentGatewayUniquePayeesAsync(Window30D, ct);
+
+            BusinessKpiMetrics.PaymentGatewayUniquePayees.WithLabels("24h").Set(payees24h);
+            BusinessKpiMetrics.PaymentGatewayUniquePayees.WithLabels("7d").Set(payees7d);
+            BusinessKpiMetrics.PaymentGatewayUniquePayees.WithLabels("30d").Set(payees30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect payment gateway unique payees metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("payment_gateway_payees").Inc();
+        }
+    }
+
+    // ============================================================================
+    // Price & Ecosystem Value Metrics
+    // ============================================================================
+
+    private async Task CollectPriceAndEcosystemValueMetricsAsync(CancellationToken ct)
+    {
+        // Fetch GNO price and derive CRC price
+        try
+        {
+            var (crcPriceUsd, crcPriceGno, source) = await _priceService.GetCrcPriceAsync(_lastTokenOfferPriceInCrc, ct);
+
+            _lastCrcPriceUsd = crcPriceUsd;
+
+            BusinessKpiMetrics.CrcPriceUsd.Set(crcPriceUsd);
+            BusinessKpiMetrics.CrcPriceGno.Set(crcPriceGno);
+
+            var (gnoPriceUsd, _) = await _priceService.GetGnoPriceUsdAsync(ct);
+            BusinessKpiMetrics.GnoPriceUsd.Set(gnoPriceUsd);
+
+            // Update price source indicator
+            BusinessKpiMetrics.PriceSource.WithLabels("coingecko").Set(source == PriceService.PriceSource.CoinGeckoLive ? 1 : 0);
+            BusinessKpiMetrics.PriceSource.WithLabels("cached").Set(source == PriceService.PriceSource.Cached ? 1 : 0);
+            BusinessKpiMetrics.PriceSource.WithLabels("fallback").Set(source == PriceService.PriceSource.FallbackManual ? 1 : 0);
+
+            if (_priceService.LastUpdate > DateTimeOffset.MinValue)
+            {
+                BusinessKpiMetrics.PriceLastUpdated.Set(_priceService.LastUpdate.ToUnixTimeSeconds());
+            }
+
+            _logger.LogDebug("Price metrics updated: CRC=${CrcUsd:F6}, GNO=${GnoUsd:F2}, Source={Source}",
+                crcPriceUsd, gnoPriceUsd, source);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect price metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("price_metrics").Inc();
+        }
+
+        // Calculate USD-denominated ecosystem values
+        try
+        {
+            if (_lastCrcPriceUsd > 0)
+            {
+                // Total CRC supply in USD (use cached value from batched economic metrics)
+                var totalSupply = await _repository.GetTotalCrcSupplyAsync(ct);
+                BusinessKpiMetrics.TotalCrcSupplyUsd.Set(totalSupply * _lastCrcPriceUsd);
+
+                // Daily mint volume in USD
+                var dailyMintVolume = await _repository.GetDailyMintVolumeAsync(ct);
+                BusinessKpiMetrics.DailyMintVolumeUsd.Set((double)dailyMintVolume * _lastCrcPriceUsd);
+
+                // Daily transfer volume in USD
+                var dailyTransferVolume = await _repository.GetDailyTransferVolumeAsync(ct);
+                BusinessKpiMetrics.DailyTransferVolumeUsd.Set((double)dailyTransferVolume * _lastCrcPriceUsd);
+
+                _logger.LogDebug("Ecosystem USD values: Supply=${Supply:F0}, DailyMint=${Mint:F2}, DailyTransfer=${Transfer:F2}",
+                    totalSupply * _lastCrcPriceUsd,
+                    (double)dailyMintVolume * _lastCrcPriceUsd,
+                    (double)dailyTransferVolume * _lastCrcPriceUsd);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect ecosystem value metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("ecosystem_value").Inc();
         }
     }
 }

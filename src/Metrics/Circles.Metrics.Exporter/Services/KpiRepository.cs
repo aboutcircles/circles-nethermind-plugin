@@ -1595,6 +1595,475 @@ public class KpiRepository
         }
     }
 
+    // ============================================================================
+    // Token Offers Metrics (GNO Bonus, Marketplace)
+    // ============================================================================
+
+    public async Task<long> GetTokenOfferCyclesTotalAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_TokenOffers_ERC20TokenOfferCycleCreated"
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetTokenOfferClaimsTotalAsync(CancellationToken ct = default)
+    {
+        // Claims can come from both OfferClaimed and OfferClaimedFromCycle
+        const string sql = """
+            SELECT
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_OfferClaimed") +
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle")
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetTokenOfferClaimsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_OfferClaimed"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}) +
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds})
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetTokenOfferUniqueClaimersAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(DISTINCT account) FROM (
+                SELECT "account" FROM "CrcV2_TokenOffers_OfferClaimed"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+                UNION
+                SELECT "account" FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            ) claimers
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTokenOfferCrcSpentAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(("spent"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimed"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}) +
+                (SELECT SUM(("spent"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTokenOfferCrcSpentTotalAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COALESCE(
+                (SELECT SUM(("spent"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimed") +
+                (SELECT SUM(("spent"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTokenOfferTokensReceivedAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(
+                (SELECT SUM(("received"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimed"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}) +
+                (SELECT SUM(("received"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"
+                 WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetTokenOfferTokensReceivedTotalAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COALESCE(
+                (SELECT SUM(("received"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimed") +
+                (SELECT SUM(("received"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Gets the latest offer configuration (price, limit, accepted CRCs).
+    /// Returns (tokenPriceInCrc, offerLimitInCrc, acceptedCrcCount).
+    /// </summary>
+    public async Task<(double priceInCrc, double limitInCrc, int acceptedCrcCount)> GetLatestOfferConfigAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                ("tokenPriceInCRC"::float8) / 1e18 as price,
+                ("offerLimitInCRC"::float8) / 1e18 as limit_crc,
+                COALESCE(array_length("acceptedCRC", 1), 0) as accepted_count
+            FROM "CrcV2_TokenOffers_NextOfferCreated"
+            ORDER BY "blockNumber" DESC, "logIndex" DESC
+            LIMIT 1
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 30;
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return (
+                    reader.GetDouble(0),
+                    reader.GetDouble(1),
+                    reader.GetInt32(2)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get latest offer config");
+        }
+
+        return (0, 0, 0);
+    }
+
+    // ============================================================================
+    // Payment Gateway Metrics
+    // ============================================================================
+
+    public async Task<long> GetPaymentGatewaysTotalAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_PaymentGateway_GatewayCreated"
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetPaymentGatewaysCreatedAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(*) FROM "CrcV2_PaymentGateway_GatewayCreated"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetPaymentGatewayPaymentsTotalAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COUNT(*) FROM "CrcV2_PaymentGateway_PaymentReceived"
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetPaymentGatewayPaymentsAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(*) FROM "CrcV2_PaymentGateway_PaymentReceived"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetPaymentGatewayVolumeAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COALESCE(SUM(("amount"::float8) / 1e18), 0)
+            FROM "CrcV2_PaymentGateway_PaymentReceived"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> GetPaymentGatewayVolumeTotalAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT COALESCE(SUM(("amount"::float8) / 1e18), 0)
+            FROM "CrcV2_PaymentGateway_PaymentReceived"
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetPaymentGatewayUniquePayersAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(DISTINCT "payer")
+            FROM "CrcV2_PaymentGateway_PaymentReceived"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<long> GetPaymentGatewayUniquePayeesAsync(TimeSpan window, CancellationToken ct = default)
+    {
+        var sql = $"""
+            SELECT COUNT(DISTINCT "payee")
+            FROM "CrcV2_PaymentGateway_PaymentReceived"
+            WHERE "timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<long>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Batched query for token offers metrics.
+    /// </summary>
+    public record TokenOffersMetrics(
+        long CyclesTotal,
+        long ClaimsTotal,
+        double CrcSpentTotal,
+        double TokensReceivedTotal,
+        double CurrentPriceInCrc,
+        double CurrentLimitInCrc,
+        int AcceptedCrcCount
+    );
+
+    public async Task<TokenOffersMetrics> GetTokenOffersMetricsBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_ERC20TokenOfferCycleCreated") as cycles_total,
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_OfferClaimed") +
+                (SELECT COUNT(*) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle") as claims_total,
+                COALESCE(
+                    (SELECT SUM(("spent"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimed") +
+                    (SELECT SUM(("spent"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"),
+                    0
+                ) as crc_spent_total,
+                COALESCE(
+                    (SELECT SUM(("received"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimed") +
+                    (SELECT SUM(("received"::float8) / 1e18) FROM "CrcV2_TokenOffers_OfferClaimedFromCycle"),
+                    0
+                ) as tokens_received_total,
+                COALESCE((
+                    SELECT ("tokenPriceInCRC"::float8) / 1e18
+                    FROM "CrcV2_TokenOffers_NextOfferCreated"
+                    ORDER BY "blockNumber" DESC, "logIndex" DESC
+                    LIMIT 1
+                ), 0) as current_price,
+                COALESCE((
+                    SELECT ("offerLimitInCRC"::float8) / 1e18
+                    FROM "CrcV2_TokenOffers_NextOfferCreated"
+                    ORDER BY "blockNumber" DESC, "logIndex" DESC
+                    LIMIT 1
+                ), 0) as current_limit,
+                COALESCE((
+                    SELECT array_length("acceptedCRC", 1)
+                    FROM "CrcV2_TokenOffers_NextOfferCreated"
+                    ORDER BY "blockNumber" DESC, "logIndex" DESC
+                    LIMIT 1
+                ), 0) as accepted_count
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 60;
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return new TokenOffersMetrics(
+                    CyclesTotal: reader.GetInt64(0),
+                    ClaimsTotal: reader.GetInt64(1),
+                    CrcSpentTotal: reader.GetDouble(2),
+                    TokensReceivedTotal: reader.GetDouble(3),
+                    CurrentPriceInCrc: reader.GetDouble(4),
+                    CurrentLimitInCrc: reader.GetDouble(5),
+                    AcceptedCrcCount: reader.GetInt32(6)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to execute batched token offers metrics query");
+        }
+
+        return new TokenOffersMetrics(0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Batched query for payment gateway metrics.
+    /// </summary>
+    public record PaymentGatewayMetrics(
+        long GatewaysTotal,
+        long PaymentsTotal,
+        double VolumeTotal
+    );
+
+    public async Task<PaymentGatewayMetrics> GetPaymentGatewayMetricsBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                (SELECT COUNT(*) FROM "CrcV2_PaymentGateway_GatewayCreated") as gateways_total,
+                (SELECT COUNT(*) FROM "CrcV2_PaymentGateway_PaymentReceived") as payments_total,
+                COALESCE((SELECT SUM(("amount"::float8) / 1e18) FROM "CrcV2_PaymentGateway_PaymentReceived"), 0) as volume_total
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 60;
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return new PaymentGatewayMetrics(
+                    GatewaysTotal: reader.GetInt64(0),
+                    PaymentsTotal: reader.GetInt64(1),
+                    VolumeTotal: reader.GetDouble(2)
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to execute batched payment gateway metrics query");
+        }
+
+        return new PaymentGatewayMetrics(0, 0, 0);
+    }
+
     private async Task<T> ExecuteScalarAsync<T>(string sql, CancellationToken ct) where T : struct
     {
         await using var conn = new NpgsqlConnection(_connectionString);
