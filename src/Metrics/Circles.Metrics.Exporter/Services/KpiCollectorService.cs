@@ -64,20 +64,116 @@ public class KpiCollectorService : BackgroundService
 
     private async Task CollectAllKpisAsync(CancellationToken ct)
     {
-        // Collect all KPIs in parallel for efficiency
+        // Phase 1: Run batched queries (4 queries instead of ~60)
+        await CollectBatchedMetricsAsync(ct);
+
+        // Phase 2: Run remaining individual queries that aren't batched yet
+        // These run in parallel for efficiency
         await Task.WhenAll(
-            CollectUserMetricsAsync(ct),
             CollectTrustMetricsAsync(ct),
-            CollectEconomicMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
-            CollectProfileMetricsAsync(ct),
-            CollectDuneParityMetricsAsync(ct),
             CollectActivityRatesAsync(ct),
-            CollectSybilDetectionMetricsAsync(ct),
             CollectNetworkHealthMetricsAsync(ct),
-            CollectAdvancedMonetaryMetricsAsync(ct),
             CollectAccountTypeMetricsAsync(ct)
         );
+    }
+
+    /// <summary>
+    /// Collects metrics using batched queries to reduce database round-trips.
+    /// </summary>
+    private async Task CollectBatchedMetricsAsync(CancellationToken ct)
+    {
+        // Entity counts (replaces 7 individual queries)
+        try
+        {
+            var counts = await _repository.GetEntityCountsBatchedAsync(ct);
+            BusinessKpiMetrics.TotalHumans.WithLabels("v1").Set(counts.HumansV1);
+            BusinessKpiMetrics.TotalHumans.WithLabels("v2").Set(counts.HumansV2);
+            BusinessKpiMetrics.TotalOrganizations.Set(counts.Organizations);
+            BusinessKpiMetrics.TotalGroups.Set(counts.Groups);
+            BusinessKpiMetrics.TotalBackers.Set(counts.Backers);
+            BusinessKpiMetrics.ProfilesCreated.WithLabels("total").Set(counts.ProfilesTotal);
+            BusinessKpiMetrics.ActiveTrusts.Set(counts.ActiveTrusts);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched entity counts");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("batched_entity_counts").Inc();
+        }
+
+        // Time-windowed counts (replaces ~36 individual queries)
+        try
+        {
+            var windowed = await _repository.GetTimeWindowedCountsBatchedAsync(ct);
+
+            // New users
+            foreach (var (window, count) in windowed.NewUsers)
+                BusinessKpiMetrics.NewUsers.WithLabels(window).Set(count);
+
+            // New organizations
+            foreach (var (window, count) in windowed.NewOrganizations)
+                BusinessKpiMetrics.NewOrganizations.WithLabels(window).Set(count);
+
+            // New groups
+            foreach (var (window, count) in windowed.NewGroups)
+                BusinessKpiMetrics.NewGroups.WithLabels(window).Set(count);
+
+            // New backers
+            foreach (var (window, count) in windowed.NewBackers)
+                BusinessKpiMetrics.NewBackers.WithLabels(window).Set(count);
+
+            // Active minters
+            foreach (var (window, count) in windowed.ActiveMinters)
+                BusinessKpiMetrics.ActiveMinters.WithLabels(window).Set(count);
+
+            // Transfer counts
+            foreach (var (window, count) in windowed.TransferCounts)
+                BusinessKpiMetrics.TransferCount.WithLabels(window).Set(count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched time-windowed counts");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("batched_time_windowed").Inc();
+        }
+
+        // Economic metrics (replaces ~12 individual queries)
+        try
+        {
+            var economic = await _repository.GetEconomicMetricsBatchedAsync(ct);
+            BusinessKpiMetrics.TotalCrcSupply.Set(economic.TotalSupply);
+            BusinessKpiMetrics.TotalMintedAllTime.Set(economic.TotalMintedAllTime);
+            BusinessKpiMetrics.DailyMintVolume.Set(economic.DailyMintVolume);
+            BusinessKpiMetrics.DailyTransferVolume.Set(economic.DailyTransferVolume);
+            BusinessKpiMetrics.DailyMintCount.Set(economic.DailyMintCount);
+            BusinessKpiMetrics.ActiveBalanceHolders.Set(economic.ActiveBalanceHolders);
+            BusinessKpiMetrics.AverageBalance.Set(economic.AverageBalance);
+            BusinessKpiMetrics.MedianBalance.Set(economic.MedianBalance);
+            BusinessKpiMetrics.GiniCoefficient.Set(economic.GiniCoefficient);
+            BusinessKpiMetrics.DailyActiveWallets.Set(economic.DailyActiveWallets);
+            BusinessKpiMetrics.WeeklyActiveWallets.Set(economic.WeeklyActiveWallets);
+            BusinessKpiMetrics.MonthlyActiveWallets.Set(economic.MonthlyActiveWallets);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched economic metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("batched_economic").Inc();
+        }
+
+        // Sybil metrics (replaces ~5 individual queries)
+        try
+        {
+            var sybil = await _repository.GetSybilMetricsBatchedAsync(ct);
+            BusinessKpiMetrics.AccountsWithoutProfile.Set(sybil.AccountsWithoutProfile);
+            BusinessKpiMetrics.AccountsWithoutIncomingTrust.Set(sybil.AccountsWithoutIncomingTrust);
+            BusinessKpiMetrics.SuspiciousAccounts.Set(sybil.SuspiciousAccounts);
+            BusinessKpiMetrics.OrganicAccounts.Set(sybil.OrganicAccounts);
+            BusinessKpiMetrics.IsolatedAccounts.Set(sybil.IsolatedAccounts);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched sybil metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("batched_sybil").Inc();
+        }
     }
 
     private async Task CollectUserMetricsAsync(CancellationToken ct)
