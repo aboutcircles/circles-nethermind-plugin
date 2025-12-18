@@ -104,26 +104,31 @@ jobs:
           # This correctly handles: single commits, multi-commit pushes, and PR merges
           base: ${{ github.event.before }}
           filters: |
-            src:
-              - 'src/**'
-            gnosis_compose:
+            # GNOSIS: Index, Pathfinder, Rpc, Cache services
+            gnosis_src:
+              - 'src/Index/**'
+              - 'src/Pathfinder/**'
+              - 'src/Rpc/**'
+              - 'src/Cache/**'
+            gnosis_docker:
               - 'docker/docker-compose.gnosis.yml'
               - 'docker/Index.Dockerfile'
               - 'docker/pathfinder-host.Dockerfile'
               - 'docker/rpc-host.Dockerfile'
               - 'docker/cache-service.Dockerfile'
               - 'docker/.env.example'
-            observability:
-              - 'docker/observability/prometheus*.yml'
-              - 'docker/observability/alertmanager.yml'
-              - 'docker/observability/blackbox-exporter.yml'
-              - 'docker/observability/loki-config.yml'
-              - 'docker/observability/promtail-config.yml'
+            # OBSERVABILITY: Metrics exporter + monitoring configs (excluding grafana/)
+            observability_src:
+              - 'src/Metrics/**'
+            observability_docker:
+              - 'docker/observability/*.yml'
               - 'docker/docker-compose.observability.yml'
               - 'docker/metrics-exporter.Dockerfile'
+            # GRAFANA: Dashboards and provisioning
             grafana:
               - 'docker/observability/grafana/**'
               - 'docker/docker-compose.grafana.yml'
+            # CADDY: Reverse proxy
             caddy:
               - 'docker/Caddyfile'
               - 'docker/caddy.Dockerfile'
@@ -146,9 +151,10 @@ jobs:
           CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
           CALL_DEPLOY_CADDY: ${{ inputs.deploy_caddy }}
           # Path filter results
-          FILTER_SRC: ${{ steps.filter.outputs.src }}
-          FILTER_GNOSIS: ${{ steps.filter.outputs.gnosis_compose }}
-          FILTER_OBS: ${{ steps.filter.outputs.observability }}
+          FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
+          FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
+          FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
+          FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
           FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
         run: |
@@ -187,22 +193,33 @@ jobs:
             GRAFANA="false"
             CADDY="false"
 
-            if [ "$FILTER_SRC" == "true" ]; then
+            # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache + docker files
+            if [ "$FILTER_GNOSIS_SRC" == "true" ]; then
               GNOSIS="true"
-              echo "::notice::Source code changed - will deploy gnosis stack"
+              echo "::notice::Gnosis source (Index/Pathfinder/Rpc/Cache) changed - will deploy gnosis"
             fi
-            if [ "$FILTER_GNOSIS" == "true" ]; then
+            if [ "$FILTER_GNOSIS_DOCKER" == "true" ]; then
               GNOSIS="true"
-              echo "::notice::Gnosis docker files changed - will deploy gnosis stack"
+              echo "::notice::Gnosis docker files changed - will deploy gnosis"
             fi
-            if [ "$FILTER_OBS" == "true" ]; then
+
+            # OBSERVABILITY: src/Metrics + docker/observability/*.yml (not grafana/)
+            if [ "$FILTER_OBS_SRC" == "true" ]; then
               OBS="true"
-              echo "::notice::Observability config changed - will deploy observability"
+              echo "::notice::Metrics source changed - will deploy observability"
             fi
+            if [ "$FILTER_OBS_DOCKER" == "true" ]; then
+              OBS="true"
+              echo "::notice::Observability docker files changed - will deploy observability"
+            fi
+
+            # GRAFANA: docker/observability/grafana/**
             if [ "$FILTER_GRAFANA" == "true" ]; then
               GRAFANA="true"
               echo "::notice::Grafana files changed - will deploy grafana"
             fi
+
+            # CADDY: Caddyfile, caddy dockerfile, caddy compose
             if [ "$FILTER_CADDY" == "true" ]; then
               CADDY="true"
               echo "::notice::Caddy files changed - will deploy caddy"
@@ -222,9 +239,10 @@ jobs:
 
       - name: Summary of detected changes
         env:
-          FILTER_SRC: ${{ steps.filter.outputs.src }}
-          FILTER_GNOSIS: ${{ steps.filter.outputs.gnosis_compose }}
-          FILTER_OBS: ${{ steps.filter.outputs.observability }}
+          FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
+          FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
+          FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
+          FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
           FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
           DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
@@ -234,13 +252,12 @@ jobs:
         run: |
           echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Changed | Will Deploy |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|---------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Source (src/) | $FILTER_SRC | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Gnosis Docker | $FILTER_GNOSIS | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Observability | $FILTER_OBS | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Grafana | $FILTER_GRAFANA | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Caddy | $FILTER_CADDY | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Source Changed | Docker Changed | Will Deploy |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|----------------|----------------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Gnosis (Index/Pathfinder/Rpc/Cache) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability (Metrics) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | - | $FILTER_GRAFANA | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
+          echo "| Caddy | - | $FILTER_CADDY | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
 
   build-images:
     needs: detect-changes
