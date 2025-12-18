@@ -1,0 +1,270 @@
+name: Smart Deploy to Staging
+
+on:
+  push:
+    branches:
+      - feature/refactor_pathfinder_rpc
+      # - dev  # Uncomment when ready to use on dev
+    paths:
+      - 'docker/**'
+      - 'src/**'
+  workflow_dispatch:
+    inputs:
+      deploy_all:
+        description: 'Deploy everything (ignore change detection)'
+        type: boolean
+        default: false
+      deploy_gnosis:
+        description: 'Deploy Gnosis stack'
+        type: boolean
+        default: false
+      deploy_observability:
+        description: 'Deploy observability stack'
+        type: boolean
+        default: false
+      deploy_grafana:
+        description: 'Deploy Grafana dashboards'
+        type: boolean
+        default: false
+      deploy_caddy:
+        description: 'Deploy Caddy proxy'
+        type: boolean
+        default: false
+
+concurrency:
+  group: smart-deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
+      deploy_observability: ${{ steps.set-flags.outputs.deploy_observability }}
+      deploy_grafana: ${{ steps.set-flags.outputs.deploy_grafana }}
+      deploy_caddy: ${{ steps.set-flags.outputs.deploy_caddy }}
+      any_deploy: ${{ steps.set-flags.outputs.any_deploy }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - 'src/**'
+            gnosis_compose:
+              - 'docker/docker-compose.gnosis.yml'
+              - 'docker/Index.Dockerfile'
+              - 'docker/pathfinder-host.Dockerfile'
+              - 'docker/rpc-host.Dockerfile'
+              - 'docker/cache-service.Dockerfile'
+              - 'docker/.env.example'
+            observability:
+              - 'docker/observability/prometheus*.yml'
+              - 'docker/observability/alertmanager.yml'
+              - 'docker/observability/blackbox-exporter.yml'
+              - 'docker/observability/loki-config.yml'
+              - 'docker/observability/promtail-config.yml'
+              - 'docker/docker-compose.observability.yml'
+              - 'docker/metrics-exporter.Dockerfile'
+            grafana:
+              - 'docker/observability/grafana/**'
+              - 'docker/docker-compose.grafana.yml'
+            caddy:
+              - 'docker/Caddyfile'
+              - 'docker/caddy.Dockerfile'
+              - 'docker/docker-compose.caddy.yml'
+
+      - name: Set deployment flags
+        id: set-flags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_DEPLOY_ALL: ${{ github.event.inputs.deploy_all }}
+          INPUT_DEPLOY_GNOSIS: ${{ github.event.inputs.deploy_gnosis }}
+          INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
+          INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
+          INPUT_DEPLOY_CADDY: ${{ github.event.inputs.deploy_caddy }}
+          FILTER_SRC: ${{ steps.filter.outputs.src }}
+          FILTER_GNOSIS: ${{ steps.filter.outputs.gnosis_compose }}
+          FILTER_OBS: ${{ steps.filter.outputs.observability }}
+          FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
+          FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
+        run: |
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            if [ "$INPUT_DEPLOY_ALL" == "true" ]; then
+              echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
+              echo "deploy_observability=true" >> $GITHUB_OUTPUT
+              echo "deploy_grafana=true" >> $GITHUB_OUTPUT
+              echo "deploy_caddy=true" >> $GITHUB_OUTPUT
+              echo "any_deploy=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            GNOSIS="$INPUT_DEPLOY_GNOSIS"
+            OBS="$INPUT_DEPLOY_OBS"
+            GRAFANA="$INPUT_DEPLOY_GRAFANA"
+            CADDY="$INPUT_DEPLOY_CADDY"
+          else
+            GNOSIS="false"
+            OBS="false"
+            GRAFANA="false"
+            CADDY="false"
+
+            if [ "$FILTER_SRC" == "true" ]; then
+              GNOSIS="true"
+              echo "::notice::Source code changed - will deploy gnosis stack"
+            fi
+            if [ "$FILTER_GNOSIS" == "true" ]; then
+              GNOSIS="true"
+              echo "::notice::Gnosis docker files changed - will deploy gnosis stack"
+            fi
+            if [ "$FILTER_OBS" == "true" ]; then
+              OBS="true"
+              echo "::notice::Observability config changed - will deploy observability"
+            fi
+            if [ "$FILTER_GRAFANA" == "true" ]; then
+              GRAFANA="true"
+              echo "::notice::Grafana files changed - will deploy grafana"
+            fi
+            if [ "$FILTER_CADDY" == "true" ]; then
+              CADDY="true"
+              echo "::notice::Caddy files changed - will deploy caddy"
+            fi
+          fi
+
+          echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
+          echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
+          echo "deploy_grafana=$GRAFANA" >> $GITHUB_OUTPUT
+          echo "deploy_caddy=$CADDY" >> $GITHUB_OUTPUT
+
+          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ] || [ "$CADDY" == "true" ]; then
+            echo "any_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "any_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Summary of detected changes
+        env:
+          FILTER_SRC: ${{ steps.filter.outputs.src }}
+          FILTER_GNOSIS: ${{ steps.filter.outputs.gnosis_compose }}
+          FILTER_OBS: ${{ steps.filter.outputs.observability }}
+          FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
+          FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
+          DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
+          DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
+          DEPLOY_GRAFANA: ${{ steps.set-flags.outputs.deploy_grafana }}
+          DEPLOY_CADDY: ${{ steps.set-flags.outputs.deploy_caddy }}
+        run: |
+          echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Changed | Will Deploy |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|---------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Source (src/) | $FILTER_SRC | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gnosis Docker | $FILTER_GNOSIS | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability | $FILTER_OBS | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | $FILTER_GRAFANA | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
+          echo "| Caddy | $FILTER_CADDY | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
+
+  build-images:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy_gnosis == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push circles-client
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Index.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:dev
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:buildcache-dev
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:buildcache-dev,mode=max
+
+      - name: Build & push pathfinder
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/pathfinder-host.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:dev
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:buildcache-dev
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:buildcache-dev,mode=max
+
+      - name: Build & push rpc-host
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/rpc-host.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:dev
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:buildcache-dev
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:buildcache-dev,mode=max
+
+  trigger-deploy:
+    needs: [detect-changes, build-images]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any_deploy == 'true' &&
+      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Ansible deployment
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.ANSIBLE_REPO_PAT }}
+          repository: ${{ secrets.ANSIBLE_REPO }}
+          event-type: deploy-circles-smart
+          client-payload: |
+            {
+              "environment": "staging",
+              "image_tag": "dev",
+              "commit_sha": "${{ github.sha }}",
+              "triggered_by": "${{ github.actor }}",
+              "source_repo": "${{ github.repository }}",
+              "source_branch": "${{ github.ref_name }}",
+              "deploy_gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
+              "deploy_observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
+              "deploy_grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}",
+              "deploy_caddy": "${{ needs.detect-changes.outputs.deploy_caddy }}"
+            }
+
+      - name: Deployment summary
+        env:
+          DEPLOY_GNOSIS: ${{ needs.detect-changes.outputs.deploy_gnosis }}
+          DEPLOY_OBS: ${{ needs.detect-changes.outputs.deploy_observability }}
+          DEPLOY_GRAFANA: ${{ needs.detect-changes.outputs.deploy_grafana }}
+          DEPLOY_CADDY: ${{ needs.detect-changes.outputs.deploy_caddy }}
+        run: |
+          echo "## Deployment Triggered" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Will Deploy |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Gnosis | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
+          echo "| Caddy | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
