@@ -1,0 +1,23 @@
+# name: Deploy Dev Branch
+
+# on:
+#   push:
+#     branches:
+#       - dev
+#     paths:
+#       - 'docker/**'
+#       - 'src/**'
+#   workflow_dispatch:
+#     inputs:
+#       deploy_all:
+#         description: 'Deploy everything'
+#         type: boolean
+#         default: false
+
+# jobs:
+#   # Dev branch: run tests, then smart deploy
+#   deploy:
+#     uses: ./.github/workflows/deploy-staging-smart.yml
+#     with:
+#       skip_tests: false  # Always wait for tests on dev
+#     secrets: inherit
