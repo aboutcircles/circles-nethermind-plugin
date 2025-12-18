@@ -2167,9 +2167,9 @@ public class KpiRepository
             ),
             demurrage AS (
                 SELECT
-                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as dem_24h,
-                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as dem_7d,
-                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000 THEN ("amount"::float8) / 1e18 ELSE 0 END), 0) as dem_30d
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 86400 THEN ("discountCost"::float8) / 1e18 ELSE 0 END), 0) as dem_24h,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 604800 THEN ("discountCost"::float8) / 1e18 ELSE 0 END), 0) as dem_7d,
+                    COALESCE(SUM(CASE WHEN "timestamp" > EXTRACT(EPOCH FROM NOW()) - 2592000 THEN ("discountCost"::float8) / 1e18 ELSE 0 END), 0) as dem_30d
                 FROM "CrcV2_DiscountCost"
             )
             SELECT
