@@ -234,3 +234,27 @@ scrape_configs:
       # Point to blackbox exporter
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  # Blackbox exporter - probe external IPFS gateway (Filebase)
+  # Fetches a known Circles profile CID to verify gateway is functional
+  - job_name: 'blackbox-ipfs-gateway'
+    scrape_interval: 60s
+    scrape_timeout: 35s
+    metrics_path: /probe
+    params:
+      module: [ipfs_gateway]
+    static_configs:
+      - targets:
+        # Known Circles profile CID - should return JSON with "name" field
+        - https://circles-profiles.myfilebase.com/ipfs/QmQNi5EW8yw8VwrrxG3ykrjr8xQv8Z5qXDDS5R4b8kFCjG
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: service
+        replacement: ipfs-gateway
+      - target_label: provider
+        replacement: filebase
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
