@@ -246,7 +246,7 @@ scrape_configs:
     static_configs:
       - targets:
         # Known Circles profile CID - should return JSON with "name" field
-        - https://circles-profiles.myfilebase.com/ipfs/QmQNi5EW8yw8VwrrxG3ykrjr8xQv8Z5qXDDS5R4b8kFCjG
+        - https://circles-profiles.myfilebase.com/ipfs/Qmb2s3hjxXXcFqWvDDSPCd1fXXa9gcFJd8bzdZNNAvkq9W
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
