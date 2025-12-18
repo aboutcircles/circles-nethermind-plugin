@@ -1,18 +1,17 @@
 name: Code Quality & Security
 
 on:
-  # Temporarily disabled - re-enable after fixing formatting issues
+  # Only run on PRs and main pushes (not every dev push - too expensive)
   push:
     branches:
-      - dev
-      - main
+      - main # Run on main pushes (releases)
   pull_request:
     branches:
       - dev
       - main
-  # schedule:
-  #   # Run weekly security scans
-  #   - cron: '0 0 * * 1'
+  schedule:
+    # Run weekly security scans (Monday 6am UTC)
+    - cron: "0 9 * * 1"
   workflow_dispatch:
 
 jobs:
