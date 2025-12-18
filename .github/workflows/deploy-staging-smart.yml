@@ -1,13 +1,35 @@
 name: Smart Deploy to Staging
 
+# Reusable workflow - called by branch-specific workflows
+# Direct push trigger for feature branches only
 on:
   push:
     branches:
-      - feature/refactor_pathfinder_rpc
-      # - dev  # Uncomment when ready to use on dev
+      - feature/refactor_pathfinder_rpc  # Direct deploy for your dev branch
     paths:
       - 'docker/**'
       - 'src/**'
+  workflow_call:
+    inputs:
+      skip_tests:
+        description: 'Skip waiting for tests'
+        type: boolean
+        default: false
+      deploy_all:
+        type: boolean
+        default: false
+      deploy_gnosis:
+        type: boolean
+        default: false
+      deploy_observability:
+        type: boolean
+        default: false
+      deploy_grafana:
+        type: boolean
+        default: false
+      deploy_caddy:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       deploy_all:
@@ -36,7 +58,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Wait for CI tests to pass before deploying (only when src changed)
+  wait-for-tests:
+    runs-on: ubuntu-latest
+    # Skip if: workflow_call with skip_tests, or workflow_dispatch, or only docker/** changed
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_call' && !inputs.skip_tests)
+    steps:
+      - name: Wait for CI build and test
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: 'build-and-test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
+          # Don't wait forever - 15 min max
+          allowed-conclusions: success
+
   detect-changes:
+    needs: [wait-for-tests]
+    # Run even if wait-for-tests was skipped (workflow_dispatch)
+    if: always() && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
@@ -84,17 +127,26 @@ jobs:
         id: set-flags
         env:
           EVENT_NAME: ${{ github.event_name }}
+          # workflow_dispatch inputs
           INPUT_DEPLOY_ALL: ${{ github.event.inputs.deploy_all }}
           INPUT_DEPLOY_GNOSIS: ${{ github.event.inputs.deploy_gnosis }}
           INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
           INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
           INPUT_DEPLOY_CADDY: ${{ github.event.inputs.deploy_caddy }}
+          # workflow_call inputs (reusable workflow)
+          CALL_DEPLOY_ALL: ${{ inputs.deploy_all }}
+          CALL_DEPLOY_GNOSIS: ${{ inputs.deploy_gnosis }}
+          CALL_DEPLOY_OBS: ${{ inputs.deploy_observability }}
+          CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
+          CALL_DEPLOY_CADDY: ${{ inputs.deploy_caddy }}
+          # Path filter results
           FILTER_SRC: ${{ steps.filter.outputs.src }}
           FILTER_GNOSIS: ${{ steps.filter.outputs.gnosis_compose }}
           FILTER_OBS: ${{ steps.filter.outputs.observability }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
           FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
         run: |
+          # Handle workflow_dispatch (manual trigger from UI)
           if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
             if [ "$INPUT_DEPLOY_ALL" == "true" ]; then
               echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
@@ -108,6 +160,21 @@ jobs:
             OBS="$INPUT_DEPLOY_OBS"
             GRAFANA="$INPUT_DEPLOY_GRAFANA"
             CADDY="$INPUT_DEPLOY_CADDY"
+          # Handle workflow_call (reusable workflow)
+          elif [ "$EVENT_NAME" == "workflow_call" ]; then
+            if [ "$CALL_DEPLOY_ALL" == "true" ]; then
+              echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
+              echo "deploy_observability=true" >> $GITHUB_OUTPUT
+              echo "deploy_grafana=true" >> $GITHUB_OUTPUT
+              echo "deploy_caddy=true" >> $GITHUB_OUTPUT
+              echo "any_deploy=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            GNOSIS="$CALL_DEPLOY_GNOSIS"
+            OBS="$CALL_DEPLOY_OBS"
+            GRAFANA="$CALL_DEPLOY_GRAFANA"
+            CADDY="$CALL_DEPLOY_CADDY"
+          # Handle push (auto-detect from changed files)
           else
             GNOSIS="false"
             OBS="false"
