@@ -616,3 +616,23 @@ groups:
         annotations:
           summary: "External endpoint responding slowly"
           description: "{{ $labels.instance }} is responding slowly ({{ $value | printf \"%.2f\" }}s)."
+
+      # IPFS Gateway (Filebase) down - affects profile fetching
+      - alert: IpfsGatewayDown
+        expr: probe_success{job="blackbox-ipfs-gateway"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IPFS Gateway (Filebase) unreachable"
+          description: "Cannot fetch Circles profiles from {{ $labels.provider }} gateway. Profile images and metadata will be unavailable."
+
+      # IPFS Gateway slow - may cause timeouts in profile-service
+      - alert: IpfsGatewaySlow
+        expr: probe_duration_seconds{job="blackbox-ipfs-gateway"} > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IPFS Gateway responding slowly"
+          description: "The {{ $labels.provider }} IPFS gateway is responding slowly ({{ $value | printf \"%.2f\" }}s). Profile fetching may timeout."
