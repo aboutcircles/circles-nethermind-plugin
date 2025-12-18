@@ -48,6 +48,11 @@ public class PriceService
         {
             _logger.LogWarning("CoinGecko API key not configured. Price fetching will use fallback values.");
         }
+        else
+        {
+            var tier = _apiKey.StartsWith("CG-Pro-", StringComparison.OrdinalIgnoreCase) ? "Pro" : "Demo/Free";
+            _logger.LogInformation("CoinGecko API configured with {Tier} tier key", tier);
+        }
     }
 
     /// <summary>
@@ -154,12 +159,18 @@ public class PriceService
     {
         _lastApiCall = DateTimeOffset.UtcNow;
 
-        // CoinGecko Pro API endpoint
         // GNO token ID on CoinGecko: "gnosis"
-        var url = "https://pro-api.coingecko.com/api/v3/simple/price?ids=gnosis&vs_currencies=usd";
+        // Determine API tier based on key prefix:
+        // - "CG-Pro-" = Pro API (pro-api.coingecko.com, x-cg-pro-api-key)
+        // - "CG-" = Demo/Free API (api.coingecko.com, x-cg-demo-api-key)
+        var isProKey = _apiKey?.StartsWith("CG-Pro-", StringComparison.OrdinalIgnoreCase) ?? false;
+        var baseUrl = isProKey ? "https://pro-api.coingecko.com" : "https://api.coingecko.com";
+        var headerName = isProKey ? "x-cg-pro-api-key" : "x-cg-demo-api-key";
+
+        var url = $"{baseUrl}/api/v3/simple/price?ids=gnosis&vs_currencies=usd";
 
         var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("x-cg-pro-api-key", _apiKey);
+        request.Headers.Add(headerName, _apiKey);
         request.Headers.Add("Accept", "application/json");
 
         var response = await _httpClient.SendAsync(request, ct);
