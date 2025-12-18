@@ -81,7 +81,7 @@ public class KpiCollectorService : BackgroundService
         // Phase 3: Run remaining individual queries in parallel
         // Note: Some methods have partial overlap with batched queries (harmless, just sets same value twice)
         // but they also contain unique metrics not covered by batched queries.
-        // CollectUserMetricsAsync is fully covered by batched, so excluded.
+        // CollectUserMetricsAsync and CollectAdvancedMonetaryMetricsAsync are fully covered by batched.
         await Task.WhenAll(
             CollectTrustMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
@@ -93,8 +93,7 @@ public class KpiCollectorService : BackgroundService
             CollectPriceAndEcosystemValueMetricsAsync(ct),
             CollectProfileMetricsAsync(ct),           // Unique: ProfilesCreated 24h
             CollectDuneParityMetricsAsync(ct),        // Unique: MintingFraction14d
-            CollectSybilDetectionMetricsAsync(ct),    // Unique: BatchRegistrations, MintAndDrain, HighVolumeInviters
-            CollectAdvancedMonetaryMetricsAsync(ct)   // Unique: MoneyVelocity, Concentration, NetInflow, etc.
+            CollectSybilDetectionMetricsAsync(ct)     // Unique: BatchRegistrations, MintAndDrain, HighVolumeInviters
         );
     }
 
@@ -193,6 +192,31 @@ public class KpiCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect batched sybil metrics");
             BusinessKpiMetrics.CollectionErrors.WithLabels("batched_sybil").Inc();
+        }
+
+        // Advanced monetary metrics (replaces ~14 individual queries)
+        try
+        {
+            var monetary = await _repository.GetAdvancedMonetaryMetricsBatchedAsync(ct);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("7d").Set(monetary.MoneyVelocity7d);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("30d").Set(monetary.MoneyVelocity30d);
+            BusinessKpiMetrics.MoneyVelocity.WithLabels("90d").Set(monetary.MoneyVelocity90d);
+            BusinessKpiMetrics.TopHolderConcentration.WithLabels("10").Set(monetary.TopHolderConcentration10);
+            BusinessKpiMetrics.TopHolderConcentration.WithLabels("100").Set(monetary.TopHolderConcentration100);
+            BusinessKpiMetrics.TopHolderConcentration.WithLabels("1000").Set(monetary.TopHolderConcentration1000);
+            BusinessKpiMetrics.NetInflow.WithLabels("24h").Set(monetary.NetInflow24h);
+            BusinessKpiMetrics.NetInflow.WithLabels("7d").Set(monetary.NetInflow7d);
+            BusinessKpiMetrics.NetInflow.WithLabels("30d").Set(monetary.NetInflow30d);
+            BusinessKpiMetrics.MicroTransactionCount.WithLabels("24h").Set(monetary.MicroTransactions24h);
+            BusinessKpiMetrics.LargeTransactionCount.WithLabels("24h").Set(monetary.LargeTransactions24h);
+            BusinessKpiMetrics.DemurragePaid.WithLabels("24h").Set(monetary.DemurragePaid24h);
+            BusinessKpiMetrics.DemurragePaid.WithLabels("7d").Set(monetary.DemurragePaid7d);
+            BusinessKpiMetrics.DemurragePaid.WithLabels("30d").Set(monetary.DemurragePaid30d);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect batched advanced monetary metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("batched_advanced_monetary").Inc();
         }
     }
 
