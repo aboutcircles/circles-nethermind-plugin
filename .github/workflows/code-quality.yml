@@ -2,14 +2,15 @@ name: Code Quality & Security
 
 on:
   # Temporarily disabled - re-enable after fixing formatting issues
-  # push:
-  #   branches:
-  #     - dev
-  #     - main
-  # pull_request:
-  #   branches:
-  #     - dev
-  #     - main
+  push:
+    branches:
+      - dev
+      - main
+      - feature/refactor_pathfinder_rpc
+  pull_request:
+    branches:
+      - dev
+      - main
   # schedule:
   #   # Run weekly security scans
   #   - cron: '0 0 * * 1'
@@ -38,7 +39,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: "9.0.x"
 
       - name: Restore dependencies
         run: dotnet restore
@@ -62,7 +63,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: "9.0.x"
 
       - name: Restore dependencies
         run: dotnet restore
