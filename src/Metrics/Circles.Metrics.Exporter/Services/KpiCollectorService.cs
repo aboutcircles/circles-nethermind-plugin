@@ -79,6 +79,9 @@ public class KpiCollectorService : BackgroundService
         await CollectTokenOffersMetricsAsync(ct);
 
         // Phase 3: Run remaining individual queries in parallel
+        // Note: Some methods have partial overlap with batched queries (harmless, just sets same value twice)
+        // but they also contain unique metrics not covered by batched queries.
+        // CollectUserMetricsAsync is fully covered by batched, so excluded.
         await Task.WhenAll(
             CollectTrustMetricsAsync(ct),
             CollectGroupMetricsAsync(ct),
@@ -87,7 +90,11 @@ public class KpiCollectorService : BackgroundService
             CollectNetworkHealthMetricsAsync(ct),
             CollectAccountTypeMetricsAsync(ct),
             CollectPaymentGatewayMetricsAsync(ct),
-            CollectPriceAndEcosystemValueMetricsAsync(ct)
+            CollectPriceAndEcosystemValueMetricsAsync(ct),
+            CollectProfileMetricsAsync(ct),           // Unique: ProfilesCreated 24h
+            CollectDuneParityMetricsAsync(ct),        // Unique: MintingFraction14d
+            CollectSybilDetectionMetricsAsync(ct),    // Unique: BatchRegistrations, MintAndDrain, HighVolumeInviters
+            CollectAdvancedMonetaryMetricsAsync(ct)   // Unique: MoneyVelocity, Concentration, NetInflow, etc.
         );
     }
 
