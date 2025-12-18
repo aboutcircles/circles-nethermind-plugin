@@ -342,6 +342,136 @@ public static class BusinessKpiMetrics
             new GaugeConfiguration { LabelNames = new[] { "account_type" } });
 
     // ===========================================
+    // Token Offers Metrics (GNO Bonus, Marketplace)
+    // ===========================================
+
+    public static readonly Gauge TokenOfferCyclesTotal = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_cycles_total",
+            "Total number of token offer cycles created");
+
+    public static readonly Gauge TokenOfferClaimsTotal = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_claims_total",
+            "Total number of offer claims");
+
+    public static readonly Gauge TokenOfferClaims = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_claims",
+            "Number of offer claims in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge TokenOfferUniqueClaimers = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_unique_claimers",
+            "Unique accounts claiming offers in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge TokenOfferCrcSpent = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_crc_spent",
+            "Total CRC spent on offers in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge TokenOfferCrcSpentTotal = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_crc_spent_total",
+            "Total CRC spent on offers all time");
+
+    public static readonly Gauge TokenOfferTokensReceived = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_tokens_received",
+            "Total tokens received from offers in time window (in token units)",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge TokenOfferTokensReceivedTotal = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_tokens_received_total",
+            "Total tokens received from offers all time (in token units)");
+
+    public static readonly Gauge TokenOfferCurrentPriceInCrc = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_current_price_crc",
+            "Current offer price in CRC (from latest NextOfferCreated)");
+
+    public static readonly Gauge TokenOfferCurrentLimitInCrc = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_current_limit_crc",
+            "Current offer limit in CRC per user (from latest NextOfferCreated)");
+
+    public static readonly Gauge TokenOfferAcceptedCrcCount = Prometheus.Metrics
+        .CreateGauge("circles_token_offer_accepted_crc_count",
+            "Number of CRC tokens accepted by current offer");
+
+    // ===========================================
+    // Payment Gateway Metrics
+    // ===========================================
+
+    public static readonly Gauge PaymentGatewaysTotal = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateways_total",
+            "Total number of payment gateways created");
+
+    public static readonly Gauge PaymentGatewaysCreated = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateways_created",
+            "Payment gateways created in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge PaymentGatewayPaymentsTotal = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_payments_total",
+            "Total number of payments through gateways");
+
+    public static readonly Gauge PaymentGatewayPayments = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_payments",
+            "Payments through gateways in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge PaymentGatewayVolume = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_volume_crc",
+            "CRC volume through payment gateways in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge PaymentGatewayVolumeTotal = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_volume_total_crc",
+            "Total CRC volume through payment gateways all time");
+
+    public static readonly Gauge PaymentGatewayUniquePayers = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_unique_payers",
+            "Unique payers through gateways in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    public static readonly Gauge PaymentGatewayUniquePayees = Prometheus.Metrics
+        .CreateGauge("circles_payment_gateway_unique_payees",
+            "Unique payees through gateways in time window",
+            new GaugeConfiguration { LabelNames = new[] { "window" } });
+
+    // ===========================================
+    // Ecosystem Value & Price Metrics
+    // ===========================================
+
+    public static readonly Gauge GnoPriceUsd = Prometheus.Metrics
+        .CreateGauge("circles_gno_price_usd",
+            "Current GNO price in USD (from CoinGecko)");
+
+    public static readonly Gauge CrcPriceUsd = Prometheus.Metrics
+        .CreateGauge("circles_crc_price_usd",
+            "Derived CRC price in USD (from GNO offer price)");
+
+    public static readonly Gauge CrcPriceGno = Prometheus.Metrics
+        .CreateGauge("circles_crc_price_gno",
+            "CRC price in GNO (derived from token offers)");
+
+    public static readonly Gauge TotalCrcSupplyUsd = Prometheus.Metrics
+        .CreateGauge("circles_total_crc_supply_usd",
+            "Total CRC supply valued in USD");
+
+    public static readonly Gauge DailyMintVolumeUsd = Prometheus.Metrics
+        .CreateGauge("circles_daily_mint_volume_usd",
+            "CRC minted in last 24h valued in USD");
+
+    public static readonly Gauge DailyTransferVolumeUsd = Prometheus.Metrics
+        .CreateGauge("circles_daily_transfer_volume_usd",
+            "CRC transferred in last 24h valued in USD");
+
+    public static readonly Gauge PriceLastUpdated = Prometheus.Metrics
+        .CreateGauge("circles_price_last_updated_timestamp",
+            "Unix timestamp of last successful price update");
+
+    public static readonly Gauge PriceSource = Prometheus.Metrics
+        .CreateGauge("circles_price_source",
+            "Price source indicator: 1=CoinGecko live, 2=cached, 3=fallback manual",
+            new GaugeConfiguration { LabelNames = new[] { "source" } });
+
+    // ===========================================
     // Collection Metrics
     // ===========================================
 

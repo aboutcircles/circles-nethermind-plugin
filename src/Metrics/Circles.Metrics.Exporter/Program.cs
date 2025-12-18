@@ -14,6 +14,10 @@ var connectionString = builder.Configuration.GetConnectionString("CirclesDb")
 builder.Services.AddSingleton(sp =>
     new KpiRepository(connectionString, sp.GetRequiredService<ILogger<KpiRepository>>()));
 
+// Register HttpClient and PriceService for CoinGecko integration
+builder.Services.AddHttpClient<PriceService>();
+builder.Services.AddSingleton<PriceService>();
+
 builder.Services.AddHostedService<KpiCollectorService>();
 
 // Health checks
