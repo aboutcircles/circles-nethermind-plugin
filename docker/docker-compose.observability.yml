@@ -99,7 +99,7 @@ services:
       - 9100
     environment:
       - ConnectionStrings__CirclesDb=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=metrics-exporter;
-      - Metrics__CollectionIntervalSeconds=60
+      - Metrics__CollectionIntervalSeconds=300
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9100/ready"]
       interval: 30s
