@@ -557,9 +557,10 @@ groups:
     rules:
       # Nethermind peer count low
       # Note: Peer counts naturally fluctuate; 3+ peers is sufficient for sync
+      # Brief drops are common during peer churn - use longer windows to avoid noise
       - alert: NethermindLowPeers
         expr: nethermind_sync_peers < 3
-        for: 20m
+        for: 30m
         labels:
           severity: warning
         annotations:
@@ -568,7 +569,7 @@ groups:
 
       - alert: NethermindNoPeers
         expr: nethermind_sync_peers == 0
-        for: 5m
+        for: 15m
         labels:
           severity: critical
         annotations:
