@@ -1213,6 +1213,31 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Traffic distribution by endpoint over the last 24 hours. Shows which routes receive the most requests: RPC (/), Grafana (/grafana), Pathfinder (/pathfinder), Profiles (/profiles), Chain-RPC (/chain-rpc).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 86 },
+      "id": 406,
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
+        "pieType": "pie",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (handler) (increase(caddy_http_requests_total{job=\"caddy\"}[24h]))", "legendFormat": "{{handler}}", "refId": "A" }],
+      "title": "Requests by Endpoint (24h)",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "description": "Request and error rates over time. Total requests and errors handled by Caddy reverse proxy.",
       "fieldConfig": {
         "defaults": {
