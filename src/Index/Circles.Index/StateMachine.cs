@@ -53,6 +53,12 @@ public class StateMachine(
     // Track if REINDEX_FROM_BLOCK cleanup was already performed (to avoid re-running on retries)
     private bool _reindexCleanupDone;
 
+    // Track if we've sent at least one pg_notify to signal "live mode" to subscribers (e.g., cache service).
+    // During initial sync, large batches (>1000 blocks) skip notifications to avoid flooding.
+    // This flag ensures we send at least one notification when entering WaitForNewBlock,
+    // so subscribers know sync is complete and they can start warming up.
+    private bool _hasSentLiveNotification;
+
     public async Task HandleEvent(IEvent e)
     {
         try
@@ -187,6 +193,21 @@ public class StateMachine(
                 case State.WaitForNewBlock:
                     switch (e)
                     {
+                        case EnterState:
+                            // On first entry to WaitForNewBlock after sync, send a notification
+                            // to signal to subscribers (e.g., cache service) that sync is complete.
+                            // This handles the case where all sync batches were >1000 blocks
+                            // and no notifications were sent during catchup.
+                            if (!_hasSentLiveNotification)
+                            {
+                                var latestIndexedBlock = context.Database.LatestBlock() ?? 0;
+                                context.Logger.Info(
+                                    $"Sending initial sync-complete notification at block {latestIndexedBlock}");
+                                await NotifyViaPostgres(new Range<long> { Min = latestIndexedBlock, Max = latestIndexedBlock });
+                                _hasSentLiveNotification = true;
+                            }
+                            return;
+
                         case NewHead newHead:
                             var latestBlock = context.Database.LatestBlock();
                             if (newHead.Head <= latestBlock)
@@ -278,6 +299,7 @@ public class StateMachine(
                             else
                             {
                                 await NotifyViaPostgres(range);
+                                _hasSentLiveNotification = true;
                             }
 
                             await TransitionTo(State.WaitForNewBlock);
