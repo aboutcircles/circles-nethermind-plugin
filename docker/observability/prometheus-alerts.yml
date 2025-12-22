@@ -558,8 +558,10 @@ groups:
       # Nethermind peer count low
       # Note: Peer counts naturally fluctuate; 3+ peers is sufficient for sync
       # Brief drops are common during peer churn - use longer windows to avoid noise
+      # IMPORTANT: Must use sum() because the metric has client_type labels (Nethermind, Geth, etc.)
+      # Without sum(), individual series with 0 peers (e.g., client_type="Unknown") trigger false alerts
       - alert: NethermindLowPeers
-        expr: nethermind_sync_peers < 3
+        expr: sum(nethermind_sync_peers) < 3
         for: 30m
         labels:
           severity: warning
@@ -568,7 +570,7 @@ groups:
           description: "Nethermind only has {{ $value }} peers connected. Sync performance may be degraded."
 
       - alert: NethermindNoPeers
-        expr: nethermind_sync_peers == 0
+        expr: sum(nethermind_sync_peers) == 0
         for: 15m
         labels:
           severity: critical
