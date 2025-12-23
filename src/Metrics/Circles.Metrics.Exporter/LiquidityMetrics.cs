@@ -108,36 +108,6 @@ public static class LiquidityMetrics
             new GaugeConfiguration { LabelNames = new[] { "token_address" } });
 
     // ===========================================
-    // Arbitrage Bot Activity Metrics
-    // ===========================================
-
-    public static readonly Counter ArbbotQuotesTotal = Prometheus.Metrics
-        .CreateCounter("circles_arbbot_quotes_total",
-            "Total quotes fetched from Balancer",
-            new CounterConfiguration { LabelNames = new[] { "status" } });
-
-    public static readonly Gauge ArbbotQuotesRate1m = Prometheus.Metrics
-        .CreateGauge("circles_arbbot_quotes_rate_1m",
-            "Quotes per minute (rolling average)");
-
-    public static readonly Counter ArbbotOpportunitiesFound = Prometheus.Metrics
-        .CreateCounter("circles_arbbot_opportunities_found_total",
-            "Arbitrage opportunities identified");
-
-    public static readonly Histogram ArbbotProfitEstimated = Prometheus.Metrics
-        .CreateHistogram("circles_arbbot_profit_estimated",
-            "Distribution of estimated profits (in wei)",
-            new HistogramConfiguration
-            {
-                Buckets = new[] { 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18 }
-            });
-
-    public static readonly Gauge ArbbotLiquidityEstimate = Prometheus.Metrics
-        .CreateGauge("circles_arbbot_liquidity_estimate",
-            "Latest pathfinder liquidity estimate (in wei)",
-            new GaugeConfiguration { LabelNames = new[] { "source_avatar", "target_avatar" } });
-
-    // ===========================================
     // Collection Metrics
     // ===========================================
 
