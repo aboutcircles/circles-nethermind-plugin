@@ -1,3 +1,5 @@
+using System.Numerics;
+using Circles.Index.Common;
 using Npgsql;
 
 namespace Circles.Metrics.Exporter.Services;
@@ -40,14 +42,24 @@ public class LiquidityRepository
     public async Task<List<BalancerVaultBalance>> GetBalancerVaultBalancesAsync(CancellationToken ct)
     {
         // Join through ERC20WrapperDeployed to get the avatar, then get the name from V_CrcV2_Avatars
+        // For humans (who have no name), fall back to their short name from CrcV2_RegisterShortName
+        // Short name is stored as numeric, needs Base58 conversion in C#
         const string sql = """
             SELECT
                 b."tokenAddress",
-                COALESCE(a.name, SUBSTRING(b."tokenAddress", 1, 10) || '...') as "tokenName",
+                a.name as "avatarName",
+                sn."shortName" as "shortNameNumeric",
                 b.value as "balance"
             FROM "V_CrcV2_Erc20BalancerVaultBalance_1h" b
             LEFT JOIN "CrcV2_ERC20WrapperDeployed" w ON w."erc20Wrapper" = b."tokenAddress"
             LEFT JOIN "V_CrcV2_Avatars" a ON a.avatar = w.avatar
+            LEFT JOIN LATERAL (
+                SELECT "shortName"
+                FROM "CrcV2_RegisterShortName" r
+                WHERE r.avatar = w.avatar
+                ORDER BY r."blockNumber" DESC
+                LIMIT 1
+            ) sn ON true
             WHERE b."timestamp" = (SELECT MAX("timestamp") FROM "V_CrcV2_Erc20BalancerVaultBalance_1h")
               AND b.value > 0
             ORDER BY b.value DESC
@@ -62,11 +74,31 @@ public class LiquidityRepository
 
         while (await reader.ReadAsync(ct))
         {
+            var tokenAddress = reader.GetString(0);
+            var avatarName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var shortNameNumeric = reader.IsDBNull(2) ? (BigInteger?)null : reader.GetFieldValue<BigInteger>(2);
+            var balance = reader.GetDecimal(3);
+
+            // Resolve token name: avatar name > short name (Base58) > truncated address
+            string tokenName;
+            if (!string.IsNullOrEmpty(avatarName))
+            {
+                tokenName = avatarName;
+            }
+            else if (shortNameNumeric.HasValue)
+            {
+                tokenName = shortNameNumeric.Value.ToBase58Btc();
+            }
+            else
+            {
+                tokenName = tokenAddress.Length > 10 ? tokenAddress[..10] + "..." : tokenAddress;
+            }
+
             results.Add(new BalancerVaultBalance
             {
-                TokenAddress = reader.GetString(0),
-                TokenName = reader.GetString(1),
-                Balance = reader.GetDecimal(2)
+                TokenAddress = tokenAddress,
+                TokenName = tokenName,
+                Balance = balance
             });
         }
 
@@ -177,6 +209,7 @@ public class LiquidityRepository
     public async Task<List<TokenZScore>> GetBalancerVaultZScoresAsync(CancellationToken ct)
     {
         // Join through ERC20WrapperDeployed to get token names
+        // For humans (who have no name), fall back to their short name from CrcV2_RegisterShortName
         const string sql = """
             WITH top_tokens AS (
                 -- Limit to top 100 tokens by current balance to avoid metric cardinality explosion
@@ -214,7 +247,8 @@ public class LiquidityRepository
             )
             SELECT
                 l."tokenAddress",
-                COALESCE(a.name, SUBSTRING(l."tokenAddress", 1, 10) || '...') as "tokenName",
+                a.name as "avatarName",
+                sn."shortName" as "shortNameNumeric",
                 l.latest_change,
                 s.mean_change,
                 s.stddev_change,
@@ -227,6 +261,13 @@ public class LiquidityRepository
             JOIN stats s USING ("tokenAddress")
             LEFT JOIN "CrcV2_ERC20WrapperDeployed" w ON w."erc20Wrapper" = l."tokenAddress"
             LEFT JOIN "V_CrcV2_Avatars" a ON a.avatar = w.avatar
+            LEFT JOIN LATERAL (
+                SELECT "shortName"
+                FROM "CrcV2_RegisterShortName" r
+                WHERE r.avatar = w.avatar
+                ORDER BY r."blockNumber" DESC
+                LIMIT 1
+            ) sn ON true
             WHERE s.stddev_change > 0
             ORDER BY z_score ASC
             """;
@@ -240,14 +281,33 @@ public class LiquidityRepository
 
         while (await reader.ReadAsync(ct))
         {
+            var tokenAddress = reader.GetString(0);
+            var avatarName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var shortNameNumeric = reader.IsDBNull(2) ? (BigInteger?)null : reader.GetFieldValue<BigInteger>(2);
+
+            // Resolve token name: avatar name > short name (Base58) > truncated address
+            string tokenName;
+            if (!string.IsNullOrEmpty(avatarName))
+            {
+                tokenName = avatarName;
+            }
+            else if (shortNameNumeric.HasValue)
+            {
+                tokenName = shortNameNumeric.Value.ToBase58Btc();
+            }
+            else
+            {
+                tokenName = tokenAddress.Length > 10 ? tokenAddress[..10] + "..." : tokenAddress;
+            }
+
             results.Add(new TokenZScore
             {
-                TokenAddress = reader.GetString(0),
-                TokenName = reader.GetString(1),
-                LatestChange = reader.GetDecimal(2),
-                MeanChange = reader.GetDouble(3),
-                StdDevChange = reader.GetDouble(4),
-                ZScore = reader.GetDouble(5)
+                TokenAddress = tokenAddress,
+                TokenName = tokenName,
+                LatestChange = reader.GetDecimal(3),
+                MeanChange = reader.GetDouble(4),
+                StdDevChange = reader.GetDouble(5),
+                ZScore = reader.GetDouble(6)
             });
         }
 
