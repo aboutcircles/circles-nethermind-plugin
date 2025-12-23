@@ -39,13 +39,15 @@ public class LiquidityRepository
     /// </summary>
     public async Task<List<BalancerVaultBalance>> GetBalancerVaultBalancesAsync(CancellationToken ct)
     {
+        // Join through ERC20WrapperDeployed to get the avatar, then get the name from V_CrcV2_Avatars
         const string sql = """
             SELECT
                 b."tokenAddress",
-                COALESCE(g.name, 'Unknown') as "tokenName",
+                COALESCE(a.name, SUBSTRING(b."tokenAddress", 1, 10) || '...') as "tokenName",
                 b.value as "balance"
             FROM "V_CrcV2_Erc20BalancerVaultBalance_1h" b
-            LEFT JOIN "V_CrcV2_Groups" g ON g."erc20WrapperDemurraged" = b."tokenAddress"
+            LEFT JOIN "CrcV2_ERC20WrapperDeployed" w ON w."erc20Wrapper" = b."tokenAddress"
+            LEFT JOIN "V_CrcV2_Avatars" a ON a.avatar = w.avatar
             WHERE b."timestamp" = (SELECT MAX("timestamp") FROM "V_CrcV2_Erc20BalancerVaultBalance_1h")
               AND b.value > 0
             ORDER BY b.value DESC
@@ -170,17 +172,28 @@ public class LiquidityRepository
     /// <summary>
     /// Calculate z-scores for each token based on 30-day historical changes.
     /// Z-score = (current_change - mean) / std_dev
+    /// Limited to top 100 tokens by balance to avoid cardinality explosion.
     /// </summary>
     public async Task<List<TokenZScore>> GetBalancerVaultZScoresAsync(CancellationToken ct)
     {
+        // Join through ERC20WrapperDeployed to get token names
         const string sql = """
-            WITH hourly_changes AS (
-                SELECT
-                    "tokenAddress",
-                    "timestamp",
-                    value - LAG(value) OVER (PARTITION BY "tokenAddress" ORDER BY "timestamp") as change
+            WITH top_tokens AS (
+                -- Limit to top 100 tokens by current balance to avoid metric cardinality explosion
+                SELECT "tokenAddress"
                 FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
-                WHERE "timestamp" > NOW() - interval '30 days'
+                WHERE "timestamp" = (SELECT MAX("timestamp") FROM "V_CrcV2_Erc20BalancerVaultBalance_1h")
+                ORDER BY value DESC
+                LIMIT 100
+            ),
+            hourly_changes AS (
+                SELECT
+                    b."tokenAddress",
+                    b."timestamp",
+                    b.value - LAG(b.value) OVER (PARTITION BY b."tokenAddress" ORDER BY b."timestamp") as change
+                FROM "V_CrcV2_Erc20BalancerVaultBalance_1h" b
+                WHERE b."timestamp" > NOW() - interval '30 days'
+                  AND b."tokenAddress" IN (SELECT "tokenAddress" FROM top_tokens)
             ),
             stats AS (
                 SELECT
@@ -201,6 +214,7 @@ public class LiquidityRepository
             )
             SELECT
                 l."tokenAddress",
+                COALESCE(a.name, SUBSTRING(l."tokenAddress", 1, 10) || '...') as "tokenName",
                 l.latest_change,
                 s.mean_change,
                 s.stddev_change,
@@ -211,6 +225,8 @@ public class LiquidityRepository
                 END as z_score
             FROM latest l
             JOIN stats s USING ("tokenAddress")
+            LEFT JOIN "CrcV2_ERC20WrapperDeployed" w ON w."erc20Wrapper" = l."tokenAddress"
+            LEFT JOIN "V_CrcV2_Avatars" a ON a.avatar = w.avatar
             WHERE s.stddev_change > 0
             ORDER BY z_score ASC
             """;
@@ -227,10 +243,11 @@ public class LiquidityRepository
             results.Add(new TokenZScore
             {
                 TokenAddress = reader.GetString(0),
-                LatestChange = reader.GetDecimal(1),
-                MeanChange = reader.GetDouble(2),
-                StdDevChange = reader.GetDouble(3),
-                ZScore = reader.GetDouble(4)
+                TokenName = reader.GetString(1),
+                LatestChange = reader.GetDecimal(2),
+                MeanChange = reader.GetDouble(3),
+                StdDevChange = reader.GetDouble(4),
+                ZScore = reader.GetDouble(5)
             });
         }
 
@@ -408,6 +425,7 @@ public record BalancerVaultChange
 public record TokenZScore
 {
     public required string TokenAddress { get; init; }
+    public required string TokenName { get; init; }
     public decimal LatestChange { get; init; }
     public double MeanChange { get; init; }
     public double StdDevChange { get; init; }
