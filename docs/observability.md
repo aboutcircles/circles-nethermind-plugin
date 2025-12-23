@@ -131,10 +131,12 @@ All dashboards are provisioned automatically from `docker/observability/grafana/
 #### Wealth Distribution
 | Panel | Metric | Why It Matters |
 |-------|--------|----------------|
-| Gini Coefficient | `circles_gini_coefficient` | 0=equal, 1=unequal. Tracks if CRC is fairly distributed |
+| Gini Coefficient | `circles_gini_coefficient` | 0=equal, 1=unequal. Excludes infrastructure addresses |
+| Gini by Type | `circles_gini_coefficient_by_type` | Inequality within humans/groups/orgs |
 | Average Balance | `circles_average_balance_crc` | Mean CRC per holder |
 | Median Balance | `circles_median_balance_crc` | Typical user balance (less affected by whales) |
 | Top Holder Concentration | `circles_top_holder_concentration{top_n}` | % of supply held by top 10/100/1000 |
+| Infrastructure vs Economic | `circles_infrastructure_holdings_*` | Pie chart: protocol holdings vs economic actors |
 
 #### Money Velocity
 | Panel | Metric | Why It Matters |
@@ -412,16 +414,28 @@ These show what **percentage** of registered users are actively using the system
 
 | Metric | Calculation | Interpretation |
 |--------|-------------|----------------|
-| `circles_gini_coefficient` | Standard Gini formula | 0=perfect equality, 1=one person has all |
+| `circles_gini_coefficient` | Standard Gini formula (excludes infrastructure) | 0=perfect equality, 1=one person has all |
+| `circles_gini_coefficient_by_type{account_type}` | Gini per account type | Inequality within humans/groups/orgs |
+| `circles_gini_coefficient_non_custodial` | Humans with <50 unique tokens | Excludes exchanges/aggregators |
 | `circles_average_balance_crc` | Mean of account balances | Affected by whales |
 | `circles_median_balance_crc` | Median of account balances | Typical user balance |
 | `circles_top_holder_concentration{top_n}` | Top N balance / Total | Whale concentration |
 
-**Gini Coefficient Calculation**:
+**Gini Coefficient Calculation** (excludes infrastructure addresses):
 ```sql
-WITH balances AS (
+WITH infrastructure_addresses AS (
+    -- Balancer vault addresses (hardcoded)
+    SELECT '0xba12222222228d8ba445958a75a0704d566bf2c8' as address  -- V2 (compromised)
+    UNION ALL
+    SELECT '0xba1333333333a1ba1108e8412f11850a5c319ba9' as address  -- V3 (active)
+    UNION ALL
+    -- Group treasury vaults (dynamic)
+    SELECT vault as address FROM "CrcV2_CreateVault"
+),
+balances AS (
     SELECT SUM(demurragedTotalBalance / 1e18) as balance
     FROM V_CrcV2_BalancesByAccountAndToken
+    WHERE account NOT IN (SELECT address FROM infrastructure_addresses)
     GROUP BY account ORDER BY balance
 ),
 indexed AS (
@@ -432,6 +446,24 @@ indexed AS (
 SELECT (2.0 * SUM(i * balance) / (n * SUM(balance))) - ((n + 1.0) / n)
 FROM indexed GROUP BY n
 ```
+
+#### Infrastructure vs Economic Actors
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `circles_infrastructure_holdings_crc` | - | CRC held by Balancer vaults + group treasuries |
+| `circles_economic_actors_holdings_crc` | - | CRC held by humans, groups, orgs (excluding infrastructure) |
+| `circles_infrastructure_holdings_percentage` | - | % of total CRC in infrastructure (0-100) |
+| `circles_economic_actors_holdings_percentage` | - | % of total CRC held by economic actors (0-100) |
+| `circles_infrastructure_address_count` | - | Infrastructure addresses with non-zero balance |
+| `circles_economic_actors_count` | - | Economic actor addresses with non-zero balance |
+
+**Infrastructure Addresses**:
+- Balancer V2 Vault: `0xba12222222228d8ba445958a75a0704d566bf2c8` (compromised Dec 2024, tracked for historical)
+- Balancer V3 Vault: `0xba1333333333a1ba1108e8412f11850a5c319ba9` (active)
+- Group treasury vaults (dynamically queried from `CrcV2_CreateVault` table)
+
+**Why Separate?**: Infrastructure addresses hold tokens for liquidity/collateral, not economic activity. Including them in inequality metrics (Gini) would skew results.
 
 #### Velocity Metrics
 

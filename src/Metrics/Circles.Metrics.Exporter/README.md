@@ -119,8 +119,13 @@ Data source: `CrcV2_Erc20WrapperTransfer` table
 | `circles_active_trusts` | Gauge | Current trust relationships |
 | `circles_daily_mint_volume_crc` | Gauge | CRC minted in last 24h |
 | `circles_daily_transfer_volume_crc` | Gauge | CRC transferred in last 24h |
-| `circles_gini_coefficient` | Gauge | Wealth distribution (0=equal, 1=unequal) |
+| `circles_gini_coefficient` | Gauge | Wealth distribution (0=equal, 1=unequal), excludes infrastructure |
+| `circles_gini_coefficient_by_type` | Gauge | Gini per account type (human/group/org) |
 | `circles_money_velocity` | Gauge | Transfer volume / total supply |
+| `circles_infrastructure_holdings_crc` | Gauge | CRC held by Balancer vaults + group treasuries |
+| `circles_economic_actors_holdings_crc` | Gauge | CRC held by economic actors (excluding infrastructure) |
+| `circles_infrastructure_holdings_percentage` | Gauge | % of total CRC in infrastructure (0-100) |
+| `circles_economic_actors_holdings_percentage` | Gauge | % of total CRC held by economic actors (0-100) |
 | ... | | See `BusinessKpiMetrics.cs` for full list |
 
 ### Liquidity Metrics (`LiquidityMetrics.cs`)
