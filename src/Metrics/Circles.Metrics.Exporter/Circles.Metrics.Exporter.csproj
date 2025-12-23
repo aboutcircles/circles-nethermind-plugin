@@ -27,4 +27,9 @@
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Project references for Base58 encoding -->
+    <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
+  </ItemGroup>
+
 </Project>

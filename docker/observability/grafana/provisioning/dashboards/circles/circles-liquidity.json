@@ -151,7 +151,7 @@
       "title": "Top 10 Tokens by Balance",
       "type": "barchart",
       "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": { "Value": "Balance", "token_name": "Token" } } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "token_address": true, "instance": true, "job": true, "__name__": true }, "indexByName": {}, "renameByName": { "Value": "Balance", "token_name": "Name" } } }
       ]
     },
     {
@@ -226,7 +226,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
       "id": 20,
       "options": { "colWidth": 0.9, "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "rowHeight": 0.9, "showValue": "auto", "tooltip": { "mode": "single", "sort": "none" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_balancer_vault_zscore_1h", "legendFormat": "{{token_address}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(20, abs(circles_balancer_vault_zscore_1h)) * (circles_balancer_vault_zscore_1h / abs(circles_balancer_vault_zscore_1h))", "legendFormat": "{{token_name}}", "refId": "A" }],
       "title": "Z-Score by Token (Drain Detection)",
       "type": "status-history"
     },
@@ -246,7 +246,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "id": 21,
       "options": { "legend": { "calcs": [], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_balancer_vault_change_1h / 1e18", "legendFormat": "{{token_address}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(10, abs(circles_balancer_vault_change_1h)) * (circles_balancer_vault_change_1h / abs(circles_balancer_vault_change_1h)) / 1e18", "legendFormat": "{{token_name}}", "refId": "A" }],
       "title": "Hourly Balance Change (CRC)",
       "type": "timeseries"
     },
