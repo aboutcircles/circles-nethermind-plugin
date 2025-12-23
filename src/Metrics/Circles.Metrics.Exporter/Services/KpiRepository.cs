@@ -10,6 +10,11 @@ public class KpiRepository
     private readonly string _connectionString;
     private readonly ILogger<KpiRepository> _logger;
 
+    // Infrastructure addresses to exclude from economic metrics (Gini, etc.)
+    // Balancer vault addresses on Gnosis Chain
+    private const string BalancerV2VaultAddress = "0xba12222222228d8ba445958a75a0704d566bf2c8";
+    private const string BalancerV3VaultAddress = "0xba1333333333a1ba1108e8412f11850a5c319ba9";
+
     public KpiRepository(string connectionString, ILogger<KpiRepository> logger)
     {
         _connectionString = connectionString;
@@ -678,12 +683,22 @@ public class KpiRepository
     public async Task<double> GetGiniCoefficientAsync(CancellationToken ct = default)
     {
         // Gini coefficient (0 = perfect equality, 1 = perfect inequality)
-        // Using a simplified calculation that works in PostgreSQL
-        const string sql = """
-            WITH balances AS (
+        // Excludes infrastructure addresses: Balancer vaults and group treasury vaults
+        var sql = $"""
+            WITH infrastructure_addresses AS (
+                -- Balancer vault addresses (hardcoded)
+                SELECT '{BalancerV2VaultAddress}' as address
+                UNION ALL
+                SELECT '{BalancerV3VaultAddress}' as address
+                UNION ALL
+                -- Group treasury vaults (dynamic)
+                SELECT vault as address FROM "CrcV2_CreateVault"
+            ),
+            balances AS (
                 SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
                 FROM "V_CrcV2_BalancesByAccountAndToken"
                 WHERE "demurragedTotalBalance" > 0
+                AND "account" NOT IN (SELECT address FROM infrastructure_addresses)
                 GROUP BY "account"
                 ORDER BY balance
             ),
@@ -1152,6 +1167,110 @@ public class KpiRepository
         catch
         {
             return 0;
+        }
+    }
+
+    // ============================================================================
+    // Infrastructure vs Economic Actors Holdings
+    // ============================================================================
+
+    /// <summary>
+    /// Result of infrastructure holdings breakdown query.
+    /// </summary>
+    public record InfrastructureHoldings(
+        double InfrastructureBalance,
+        double EconomicActorsBalance,
+        double TotalBalance,
+        double InfrastructurePercentage,
+        double EconomicActorsPercentage,
+        long InfrastructureAddressCount,
+        long EconomicActorsCount
+    );
+
+    /// <summary>
+    /// Gets the breakdown of CRC holdings between infrastructure addresses
+    /// (Balancer vaults, group treasury vaults) and economic actors (humans, groups, orgs).
+    /// </summary>
+    public async Task<InfrastructureHoldings> GetInfrastructureHoldingsAsync(CancellationToken ct = default)
+    {
+        var sql = $"""
+            WITH infrastructure_addresses AS (
+                -- Balancer vault addresses (hardcoded)
+                SELECT '{BalancerV2VaultAddress}' as address
+                UNION ALL
+                SELECT '{BalancerV3VaultAddress}' as address
+                UNION ALL
+                -- Group treasury vaults (dynamic)
+                SELECT vault as address FROM "CrcV2_CreateVault"
+            ),
+            all_balances AS (
+                SELECT
+                    "account",
+                    SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
+                FROM "V_CrcV2_BalancesByAccountAndToken"
+                WHERE "demurragedTotalBalance" > 0
+                GROUP BY "account"
+            ),
+            infrastructure_total AS (
+                SELECT
+                    COALESCE(SUM(balance), 0) as total,
+                    COUNT(*) as addr_count
+                FROM all_balances
+                WHERE "account" IN (SELECT address FROM infrastructure_addresses)
+            ),
+            economic_actors_total AS (
+                SELECT
+                    COALESCE(SUM(balance), 0) as total,
+                    COUNT(*) as addr_count
+                FROM all_balances
+                WHERE "account" NOT IN (SELECT address FROM infrastructure_addresses)
+            ),
+            grand_total AS (
+                SELECT COALESCE(SUM(balance), 0) as total FROM all_balances
+            )
+            SELECT
+                (SELECT total FROM infrastructure_total) as infra_balance,
+                (SELECT total FROM economic_actors_total) as economic_balance,
+                (SELECT total FROM grand_total) as total_balance,
+                CASE WHEN (SELECT total FROM grand_total) > 0
+                    THEN (SELECT total FROM infrastructure_total) / (SELECT total FROM grand_total) * 100
+                    ELSE 0
+                END as infra_pct,
+                CASE WHEN (SELECT total FROM grand_total) > 0
+                    THEN (SELECT total FROM economic_actors_total) / (SELECT total FROM grand_total) * 100
+                    ELSE 0
+                END as economic_pct,
+                (SELECT addr_count FROM infrastructure_total) as infra_count,
+                (SELECT addr_count FROM economic_actors_total) as economic_count
+            """;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.CommandTimeout = 30;
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (await reader.ReadAsync(ct))
+            {
+                return new InfrastructureHoldings(
+                    InfrastructureBalance: reader.GetDouble(0),
+                    EconomicActorsBalance: reader.GetDouble(1),
+                    TotalBalance: reader.GetDouble(2),
+                    InfrastructurePercentage: reader.GetDouble(3),
+                    EconomicActorsPercentage: reader.GetDouble(4),
+                    InfrastructureAddressCount: reader.GetInt64(5),
+                    EconomicActorsCount: reader.GetInt64(6)
+                );
+            }
+
+            return new InfrastructureHoldings(0, 0, 0, 0, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting infrastructure holdings");
+            return new InfrastructureHoldings(0, 0, 0, 0, 0, 0, 0);
         }
     }
 
