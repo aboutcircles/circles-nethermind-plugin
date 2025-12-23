@@ -342,6 +342,34 @@ public static class BusinessKpiMetrics
             new GaugeConfiguration { LabelNames = new[] { "account_type" } });
 
     // ===========================================
+    // Infrastructure vs Economic Actors Holdings
+    // ===========================================
+
+    public static readonly Gauge InfrastructureHoldingsBalance = Prometheus.Metrics
+        .CreateGauge("circles_infrastructure_holdings_crc",
+            "Total CRC held by infrastructure addresses (Balancer vaults, group treasuries)");
+
+    public static readonly Gauge EconomicActorsHoldingsBalance = Prometheus.Metrics
+        .CreateGauge("circles_economic_actors_holdings_crc",
+            "Total CRC held by economic actors (humans, groups, orgs - excluding infrastructure)");
+
+    public static readonly Gauge InfrastructureHoldingsPercentage = Prometheus.Metrics
+        .CreateGauge("circles_infrastructure_holdings_percentage",
+            "Percentage of total CRC held by infrastructure addresses (0-100)");
+
+    public static readonly Gauge EconomicActorsHoldingsPercentage = Prometheus.Metrics
+        .CreateGauge("circles_economic_actors_holdings_percentage",
+            "Percentage of total CRC held by economic actors (0-100)");
+
+    public static readonly Gauge InfrastructureAddressCount = Prometheus.Metrics
+        .CreateGauge("circles_infrastructure_address_count",
+            "Number of infrastructure addresses with non-zero balance");
+
+    public static readonly Gauge EconomicActorsCount = Prometheus.Metrics
+        .CreateGauge("circles_economic_actors_count",
+            "Number of economic actor addresses with non-zero balance");
+
+    // ===========================================
     // Token Offers Metrics (GNO Bonus, Marketplace)
     // ===========================================
 

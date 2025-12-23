@@ -1062,6 +1062,23 @@ public class KpiCollectorService : BackgroundService
             _logger.LogWarning(ex, "Failed to collect supply share by type metric");
             BusinessKpiMetrics.CollectionErrors.WithLabels("supply_share_by_type").Inc();
         }
+
+        // Infrastructure vs Economic Actors holdings breakdown
+        try
+        {
+            var holdings = await _repository.GetInfrastructureHoldingsAsync(ct);
+            BusinessKpiMetrics.InfrastructureHoldingsBalance.Set(holdings.InfrastructureBalance);
+            BusinessKpiMetrics.EconomicActorsHoldingsBalance.Set(holdings.EconomicActorsBalance);
+            BusinessKpiMetrics.InfrastructureHoldingsPercentage.Set(holdings.InfrastructurePercentage);
+            BusinessKpiMetrics.EconomicActorsHoldingsPercentage.Set(holdings.EconomicActorsPercentage);
+            BusinessKpiMetrics.InfrastructureAddressCount.Set(holdings.InfrastructureAddressCount);
+            BusinessKpiMetrics.EconomicActorsCount.Set(holdings.EconomicActorsCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect infrastructure holdings metrics");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("infrastructure_holdings").Inc();
+        }
     }
 
     // ============================================================================
