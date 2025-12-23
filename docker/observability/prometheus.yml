@@ -11,6 +11,7 @@ alerting:
 # Load rules
 rule_files:
   - /etc/prometheus/prometheus-alerts.yml
+  - /etc/prometheus/prometheus-alerts-liquidity.yml
   - /etc/prometheus/prometheus-recording-rules.yml
 
 scrape_configs:

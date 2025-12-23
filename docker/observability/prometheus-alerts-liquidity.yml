@@ -1,0 +1,212 @@
+groups:
+  - name: circles-liquidity-alerts
+    rules:
+      # ============================================================================
+      # Z-Score Based Anomaly Detection
+      # ============================================================================
+
+      # Statistical anomaly - unusual outflow (z-score based)
+      # A z-score below -2.0 means the outflow is 2+ standard deviations below normal
+      - alert: BalancerPoolAnomalyWarning
+        expr: circles_balancer_vault_zscore_1h < -2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusual outflow detected: {{ $labels.token_address }}"
+          description: "Z-score {{ $value | printf \"%.2f\" }} indicates 2+ std devs below normal hourly change. This may indicate unusual withdrawals."
+
+      # Statistical anomaly - critical drain
+      # A z-score below -3.0 is a severe anomaly (0.1% probability if normal)
+      - alert: BalancerPoolDrainCritical
+        expr: circles_balancer_vault_zscore_1h < -3.0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL: Pool draining {{ $labels.token_address }}"
+          description: "Z-score {{ $value | printf \"%.2f\" }} indicates 3+ std devs - possible attack or coordinated withdrawal. Investigate immediately!"
+
+      # Anomaly flag metric (from collector)
+      - alert: DrainAnomalyDetected
+        expr: circles_balancer_vault_anomaly{severity="critical"} == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Drain anomaly flagged: {{ $labels.token_address }}"
+          description: "The liquidity collector has flagged a critical drain anomaly for this token."
+
+      # ============================================================================
+      # Whale Activity Monitoring
+      # ============================================================================
+
+      # Whale activity spike - many large transfers in short period
+      - alert: WhaleActivitySpike
+        expr: increase(circles_whale_transfer_total[1h]) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High whale activity on {{ $labels.token_address }}"
+          description: "{{ $value | printf \"%.0f\" }} whale transfers (>100 tokens each) in last hour. Direction: {{ $labels.direction }}"
+
+      # Large single withdrawal from Balancer vault
+      - alert: LargeWithdrawal
+        expr: circles_whale_transfer_last{direction="withdrawal"} > 1e21
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large withdrawal: {{ $labels.token_address }}"
+          description: "Single transfer of {{ $value | printf \"%.2e\" }} wei (>1000 tokens) from Balancer vault by {{ $labels.from }}"
+
+      # Whale outflow exceeds inflow significantly
+      - alert: WhaleNetOutflow
+        expr: |
+          sum by (token_address) (increase(circles_whale_transfer_volume{direction="withdrawal"}[1h]))
+          >
+          sum by (token_address) (increase(circles_whale_transfer_volume{direction="deposit"}[1h])) * 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Whale net outflow for {{ $labels.token_address }}"
+          description: "Whale withdrawals exceed deposits by more than 2x in the last hour."
+
+      # ============================================================================
+      # Group Treasury Monitoring
+      # ============================================================================
+
+      # Group treasury depletion (using z-score when available, or percentage drop)
+      - alert: GroupTreasuryDepleting
+        expr: circles_group_treasury_zscore < -2.0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Group treasury depleting: {{ $labels.group_name }}"
+          description: "Z-score {{ $value | printf \"%.2f\" }} indicates unusual collateral outflow from group {{ $labels.group_address }}"
+
+      # Low treasury balance (absolute threshold)
+      - alert: GroupTreasuryLow
+        expr: circles_group_treasury_total < 1e18 and circles_group_member_count > 10
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low treasury for group {{ $labels.group_name }}"
+          description: "Group {{ $labels.group_address }} has {{ $value | printf \"%.2e\" }} wei in treasury with {{ $labels.group_member_count }} members"
+
+      # ============================================================================
+      # Balancer Vault Health
+      # ============================================================================
+
+      # Low liquidity for a token
+      - alert: LowBalancerLiquidity
+        expr: circles_balancer_vault_balance < 1e18 and circles_balancer_vault_balance > 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Low liquidity for {{ $labels.token_name }}"
+          description: "Token {{ $labels.token_address }} has only {{ $value | printf \"%.2e\" }} wei in Balancer vault"
+
+      # Significant hourly drop (>20% of balance)
+      - alert: SignificantBalanceDrop
+        expr: |
+          circles_balancer_vault_change_1h < 0
+          and
+          abs(circles_balancer_vault_change_1h) > circles_balancer_vault_balance * 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Significant balance drop: {{ $labels.token_address }}"
+          description: "Balance dropped by {{ $value | printf \"%.2e\" }} wei (>20% of current balance) in the last hour"
+
+      # Total TVL drop
+      - alert: TotalTvlDrop
+        expr: |
+          (circles_balancer_vault_balance_total - circles_balancer_vault_balance_total offset 1h)
+          / circles_balancer_vault_balance_total offset 1h
+          < -0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Total Balancer TVL dropped >10%"
+          description: "Total value locked in Balancer vault decreased by {{ $value | printf \"%.1f\" }}% in the last hour"
+
+      # ============================================================================
+      # Arbitrage Bot Monitoring
+      # ============================================================================
+
+      # No arbitrage opportunities found (may indicate market equilibrium or bot issues)
+      - alert: NoArbitrageOpportunities
+        expr: rate(circles_arbbot_opportunities_found_total[1h]) == 0
+        for: 6h
+        labels:
+          severity: info
+        annotations:
+          summary: "No arbitrage opportunities found in 6h"
+          description: "The arbitrage bot hasn't found any opportunities in 6 hours. This may be normal market conditions or indicate bot issues."
+
+      # High quote failure rate
+      - alert: ArbbotHighFailureRate
+        expr: |
+          increase(circles_arbbot_quotes_total{status="failed"}[1h])
+          /
+          (increase(circles_arbbot_quotes_total{status="success"}[1h]) + increase(circles_arbbot_quotes_total{status="failed"}[1h]))
+          > 0.5
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High arbbot quote failure rate"
+          description: "More than 50% of Balancer quotes are failing. This may indicate API issues or network problems."
+
+      # Arbbot quotes rate dropped (bot may be stalled)
+      - alert: ArbbotQuotesStalled
+        expr: circles_arbbot_quotes_rate_1m < 0.1 and circles_arbbot_quotes_rate_1m > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Arbitrage bot quotes stalled"
+          description: "Quote rate dropped to {{ $value | printf \"%.2f\" }}/min. The bot may be experiencing issues."
+
+      # ============================================================================
+      # Liquidity Collection Health
+      # ============================================================================
+
+      # Collection stale (no updates in 10 minutes, interval is 5 min)
+      - alert: LiquidityCollectionStale
+        expr: (time() - circles_liquidity_last_collection_timestamp) > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Liquidity collection stale"
+          description: "No liquidity metrics collected in the last 10 minutes. The collector may be stuck."
+
+      # Multiple collection errors
+      - alert: LiquidityCollectionErrors
+        expr: increase(circles_liquidity_collection_errors_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Liquidity collection errors"
+          description: "Multiple errors collecting liquidity metrics: {{ $labels.metric }}. Check database connectivity."
+
+      # Collection taking too long
+      - alert: LiquidityCollectionSlow
+        expr: |
+          rate(circles_liquidity_collection_duration_seconds_total[5m]) * 300 > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Liquidity collection slow"
+          description: "Liquidity collection is taking more than 60 seconds. This may indicate database performance issues."
