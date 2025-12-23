@@ -292,6 +292,69 @@ Organic Account = (Has Profile) AND (Has Incoming Trust) AND (Recent Activity)
 
 ---
 
+### 10. Circles Liquidity Monitoring (`circles-liquidity.json`)
+
+**Purpose**: Monitor Balancer vault liquidity, detect drains via statistical anomaly detection, and track whale transfers.
+
+**Source Code**: `src/Metrics/Circles.Metrics.Exporter/Services/LiquidityCollectorService.cs`
+
+**Collection Interval**: 5 minutes (configurable via `Metrics:LiquidityCollectionIntervalSeconds`)
+
+**Sections**:
+
+#### Overview Row
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Balancer TVL (CRC) | `circles_balancer_vault_balance_total` | Total value locked across all tokens |
+| Active Tokens | `circles_balancer_vault_tokens_count` | Distinct tokens with liquidity |
+| Active Warnings | `circles_balancer_vault_anomaly{severity="warning"}` | Tokens with z-score < -2.0 |
+| Critical Alerts | `circles_balancer_vault_anomaly{severity="critical"}` | Tokens with z-score < -3.0 |
+| Whale Transfers (1h) | `circles_whale_transfer_total` | Large transfers (>100 CRC) in last hour |
+
+#### Balancer Pool Liquidity
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Top 10 Tokens by Balance | `circles_balancer_vault_balance` | Per-token balance in vault |
+| Token Balances Over Time | `circles_balancer_vault_balance` | Historical balance trends |
+| Balancer Vault TVL Over Time | `circles_balancer_vault_balance_total` | Aggregate TVL history |
+
+#### Drain Detection (Z-Score Anomalies)
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Z-Score by Token | `circles_balancer_vault_zscore_1h` | Statistical anomaly indicator |
+| Hourly Balance Change | `circles_balancer_vault_change_1h` | Per-token hourly delta |
+| Drain Events by Severity | `circles_balancer_vault_drain_events_total` | Cumulative anomaly count |
+
+**Z-Score Interpretation**:
+- `z > -1.0`: Normal activity
+- `-2.0 < z < -1.0`: Slightly elevated outflow
+- `-3.0 < z < -2.0`: **Warning** - unusual outflow (2+ std devs)
+- `z < -3.0`: **Critical** - severe drain (3+ std devs, ~0.1% probability under normal conditions)
+
+#### Whale Transfers
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Whale Transfers by Direction | `circles_whale_transfer_total` | Count of deposits vs withdrawals |
+| Whale Transfer Volume | `circles_whale_transfer_volume` | Volume by direction |
+
+**Whale Threshold**: 100 CRC (1e20 wei)
+
+#### Group Treasuries
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Top 10 Group Treasuries | `circles_group_treasury_total` | Collateral per group |
+| Group Treasury vs Members | `circles_group_member_count` | Treasury correlation with membership |
+
+#### Collection Health
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Collection Duration | `circles_liquidity_collection_duration_seconds_total` | Time spent collecting metrics |
+| Collection Errors | `circles_liquidity_collection_errors_total` | Errors by metric type |
+
+**Use Case**: Security monitoring and early warning for liquidity pool drains or coordinated attacks.
+
+---
+
 ## Business KPI Metrics Explained
 
 All business KPIs are collected by the `metrics-exporter` service every 60 seconds from PostgreSQL.
@@ -389,6 +452,80 @@ FROM indexed GROUP BY n
 | `circles_first_time_transactors{window}` | Users with first-ever transfer in window | Onboarding |
 
 **DAW/MAW Ratio** (Stickiness): 0.2-0.4 is healthy for financial apps. Higher = users return daily.
+
+---
+
+## Liquidity Monitoring Metrics Explained
+
+Liquidity metrics are collected by `LiquidityCollectorService` every 5 minutes from the Circles indexer database.
+
+**Source Code**: `src/Metrics/Circles.Metrics.Exporter/Services/LiquidityCollectorService.cs`
+
+### Balancer Vault Metrics
+
+| Metric | Labels | Source Table | Purpose |
+|--------|--------|--------------|---------|
+| `circles_balancer_vault_balance` | `token_address`, `token_name` | `V_CrcV2_Erc20BalancerVaultBalance_1h` | Per-token balance in vault |
+| `circles_balancer_vault_balance_total` | - | Aggregated | Sum of all token balances |
+| `circles_balancer_vault_tokens_count` | - | Aggregated | Distinct tokens with liquidity |
+
+### Drain Detection Metrics (Z-Score Based)
+
+| Metric | Labels | Calculation | Purpose |
+|--------|--------|-------------|---------|
+| `circles_balancer_vault_change_1h` | `token_address` | Current - Previous hour | Hourly balance delta |
+| `circles_balancer_vault_zscore_1h` | `token_address` | `(change - mean) / stddev` | Statistical anomaly indicator |
+| `circles_balancer_vault_anomaly` | `token_address`, `severity` | `1` if z-score below threshold | Binary anomaly flag |
+| `circles_balancer_vault_drain_events_total` | `token_address`, `severity` | Counter | Cumulative anomaly count |
+
+**Z-Score Calculation**:
+```sql
+WITH hourly_changes AS (
+    SELECT "tokenAddress", "timestamp",
+           value - LAG(value) OVER (PARTITION BY "tokenAddress" ORDER BY "timestamp") as change
+    FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
+    WHERE "timestamp" > NOW() - interval '30 days'
+),
+stats AS (
+    SELECT "tokenAddress", AVG(change) as mean_change, STDDEV(change) as stddev_change
+    FROM hourly_changes WHERE change IS NOT NULL GROUP BY "tokenAddress"
+)
+SELECT (latest_change - mean_change) / stddev_change as z_score
+```
+
+**Thresholds**:
+- `z < -2.0`: Warning severity (unusual outflow)
+- `z < -3.0`: Critical severity (severe drain)
+
+### Whale Transfer Metrics
+
+| Metric | Labels | Source Table | Purpose |
+|--------|--------|--------------|---------|
+| `circles_whale_transfer_total` | `token_address`, `direction` | `CrcV2_Erc20WrapperTransfer` | Count of large transfers |
+| `circles_whale_transfer_volume` | `token_address`, `direction` | `CrcV2_Erc20WrapperTransfer` | Volume of large transfers |
+| `circles_whale_transfer_last` | `token_address`, `from`, `to`, `direction` | `CrcV2_Erc20WrapperTransfer` | Most recent whale transfer |
+| `circles_whale_transfer_timestamp` | `token_address` | `CrcV2_Erc20WrapperTransfer` | Timestamp of last transfer |
+
+**Direction Labels**: `deposit` (to vault), `withdrawal` (from vault)
+
+**Whale Threshold**: 100 CRC (1e20 wei for 18-decimal tokens)
+
+**Balancer Vault Address**: `0xba12222222228d8ba445958a75a0704d566bf2c8`
+
+### Group Treasury Metrics
+
+| Metric | Labels | Source Table | Purpose |
+|--------|--------|--------------|---------|
+| `circles_group_treasury_total` | `group_address`, `group_name` | `V_CrcV2_GroupVaultBalancesByToken` | Total collateral per group |
+| `circles_group_member_count` | `group_address`, `group_name` | `V_CrcV2_Groups` | Members per group |
+
+### Collection Health Metrics
+
+| Metric | Labels | Purpose |
+|--------|--------|---------|
+| `circles_liquidity_collection_duration_seconds_total` | - | Time spent collecting metrics |
+| `circles_liquidity_collection_errors_total` | `metric` | Errors by collection type |
+| `circles_liquidity_last_collection_timestamp` | - | Unix timestamp of last successful collection |
 
 ---
 
@@ -516,6 +653,25 @@ circles:suspicious_account_ratio:gauge
 | `HighRpcLatency` | warning | `p95 > 5s` for 5m | Slow RPC responses |
 | `DiskSpaceLow` | warning | `>80% used` | Disk space warning |
 | `DiskSpaceCritical` | critical | `>90% used` | Disk space critical |
+
+### Liquidity Alert Rules (`docker/observability/prometheus-alerts-liquidity.yml`)
+
+| Alert | Severity | Condition | Description |
+|-------|----------|-----------|-------------|
+| `BalancerPoolAnomalyWarning` | warning | z-score < -2.0 for 5m | Unusual outflow detected |
+| `BalancerPoolDrainCritical` | critical | z-score < -3.0 for 5m | Severe drain - possible attack |
+| `DrainAnomalyDetected` | critical | Anomaly flag = 1 for 2m | Collector flagged critical drain |
+| `WhaleActivitySpike` | warning | >10 whale transfers/hour for 10m | High large transfer activity |
+| `LargeWithdrawal` | warning | Single transfer >1000 CRC | Large withdrawal from vault |
+| `WhaleNetOutflow` | warning | Withdrawals > 2x deposits for 15m | Imbalanced whale activity |
+| `GroupTreasuryDepleting` | warning | Treasury z-score < -2.0 for 15m | Unusual collateral outflow |
+| `GroupTreasuryLow` | warning | <1 CRC with >10 members for 1h | Underfunded group |
+| `LowBalancerLiquidity` | info | Balance < 1 CRC for 1h | Low token liquidity |
+| `SignificantBalanceDrop` | warning | >20% drop in 1 hour for 5m | Rapid balance decrease |
+| `TotalTvlDrop` | warning | >10% TVL drop in 1 hour for 10m | Significant TVL decrease |
+| `LiquidityCollectionStale` | warning | No collection for 10m | Collector may be stuck |
+| `LiquidityCollectionErrors` | warning | >10 errors/hour for 5m | Check DB connectivity |
+| `LiquidityCollectionSlow` | warning | >60s collection time for 15m | Database performance issue |
 
 ### Alertmanager (`alertmanager:9093`)
 
@@ -658,3 +814,4 @@ Check `InitialSyncInProgress` alert - it's informational, not an error.
 - [ ] Index plugin Prometheus metrics (currently console-only)
 - [ ] Database indexes for heavy sybil detection queries
 - [ ] Trust graph analysis metrics (clustering coefficient, diameter)
+- [ ] Arbitrage bot metrics integration (requires separate `bot_activity` database connection)

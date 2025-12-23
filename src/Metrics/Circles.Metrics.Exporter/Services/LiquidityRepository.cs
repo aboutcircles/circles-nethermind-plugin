@@ -9,8 +9,7 @@ namespace Circles.Metrics.Exporter.Services;
 /// </summary>
 public class LiquidityRepository
 {
-    private readonly string _circlesConnectionString;
-    private readonly string? _loggerConnectionString;
+    private readonly string _connectionString;
     private readonly ILogger<LiquidityRepository> _logger;
 
     // Balancer vault address on Gnosis Chain
@@ -20,12 +19,10 @@ public class LiquidityRepository
     private const decimal WhaleThreshold = 100_000_000_000_000_000_000m; // 1e20
 
     public LiquidityRepository(
-        string circlesConnectionString,
-        string? loggerConnectionString,
+        string connectionString,
         ILogger<LiquidityRepository> logger)
     {
-        _circlesConnectionString = circlesConnectionString;
-        _loggerConnectionString = loggerConnectionString;
+        _connectionString = connectionString;
         _logger = logger;
     }
 
@@ -49,7 +46,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<BalancerVaultBalance>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -94,7 +91,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<BalancerVaultChange>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -140,7 +137,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<BalancerVaultChange>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -213,7 +210,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<TokenZScore>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -263,7 +260,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<WhaleTransfer>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -312,7 +309,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<WhaleTransferSummary>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -359,7 +356,7 @@ public class LiquidityRepository
             """;
 
         var results = new List<GroupTreasury>();
-        await using var conn = new NpgsqlConnection(_circlesConnectionString);
+        await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync(ct);
 
         await using var cmd = new NpgsqlCommand(sql, conn);
