@@ -20,6 +20,16 @@ builder.Services.AddSingleton<PriceService>();
 
 builder.Services.AddHostedService<KpiCollectorService>();
 
+// Liquidity monitoring services (optional logger DB connection)
+var loggerDbConnectionString = builder.Configuration.GetConnectionString("LoggerDb");
+builder.Services.AddSingleton(sp =>
+    new LiquidityRepository(
+        connectionString,
+        loggerDbConnectionString,
+        sp.GetRequiredService<ILogger<LiquidityRepository>>()));
+
+builder.Services.AddHostedService<LiquidityCollectorService>();
+
 // Health checks
 builder.Services.AddHealthChecks();
 
@@ -36,12 +46,20 @@ app.MapMetrics();
 app.MapGet("/", () => Results.Ok(new
 {
     Service = "Circles Metrics Exporter",
-    Version = "1.0.0",
+    Version = "1.1.0",
     Endpoints = new[]
     {
-        "/metrics - Prometheus metrics",
+        "/metrics - Prometheus metrics (KPIs + Liquidity)",
         "/health - Health check",
         "/ready - Readiness check"
+    },
+    Features = new[]
+    {
+        "Business KPIs (users, trusts, transfers, groups)",
+        "Liquidity monitoring (Balancer vault, group treasuries)",
+        "Drain detection (z-score anomaly detection)",
+        "Whale transfer tracking",
+        "Arbitrage bot activity (requires LoggerDb connection)"
     }
 }));
 
