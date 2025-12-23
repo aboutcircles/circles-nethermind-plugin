@@ -44,7 +44,12 @@ A Prometheus metrics exporter for the Circles protocol on Gnosis Chain. Collects
 
 ### Balancer Vault Liquidity
 
-The exporter tracks **ALL tokens with non-zero balance** in the Balancer vault at address `0xba12222222228d8ba445958a75a0704d566bf2c8`.
+The exporter tracks **ALL tokens with non-zero balance** in the Balancer vaults on Gnosis Chain:
+
+| Vault | Address | Status |
+|-------|---------|--------|
+| V2 | `0xba12222222228d8ba445958a75a0704d566bf2c8` | Compromised (Dec 2024) - tracked for historical data |
+| V3 | `0xba1333333333a1ba1108e8412f11850a5c319ba9` | **Active** - current vault |
 
 Data source: `V_CrcV2_Erc20BalancerVaultBalance_1h` (hourly snapshots)
 
@@ -78,7 +83,7 @@ Thresholds:
 
 ### Whale Transfers
 
-Tracks individual transfers **>100 CRC** (1e20 wei) to/from the Balancer vault.
+Tracks individual transfers **>100 CRC** (1e20 wei) to/from both Balancer vaults (V2 and V3).
 
 Data source: `CrcV2_Erc20WrapperTransfer` table
 

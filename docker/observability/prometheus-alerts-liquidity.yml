@@ -139,44 +139,6 @@ groups:
           description: "Total value locked in Balancer vault decreased by {{ $value | printf \"%.1f\" }}% in the last hour"
 
       # ============================================================================
-      # Arbitrage Bot Monitoring
-      # ============================================================================
-
-      # No arbitrage opportunities found (may indicate market equilibrium or bot issues)
-      - alert: NoArbitrageOpportunities
-        expr: rate(circles_arbbot_opportunities_found_total[1h]) == 0
-        for: 6h
-        labels:
-          severity: info
-        annotations:
-          summary: "No arbitrage opportunities found in 6h"
-          description: "The arbitrage bot hasn't found any opportunities in 6 hours. This may be normal market conditions or indicate bot issues."
-
-      # High quote failure rate
-      - alert: ArbbotHighFailureRate
-        expr: |
-          increase(circles_arbbot_quotes_total{status="failed"}[1h])
-          /
-          (increase(circles_arbbot_quotes_total{status="success"}[1h]) + increase(circles_arbbot_quotes_total{status="failed"}[1h]))
-          > 0.5
-        for: 30m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High arbbot quote failure rate"
-          description: "More than 50% of Balancer quotes are failing. This may indicate API issues or network problems."
-
-      # Arbbot quotes rate dropped (bot may be stalled)
-      - alert: ArbbotQuotesStalled
-        expr: circles_arbbot_quotes_rate_1m < 0.1 and circles_arbbot_quotes_rate_1m > 0
-        for: 30m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Arbitrage bot quotes stalled"
-          description: "Quote rate dropped to {{ $value | printf \"%.2f\" }}/min. The bot may be experiencing issues."
-
-      # ============================================================================
       # Liquidity Collection Health
       # ============================================================================
 

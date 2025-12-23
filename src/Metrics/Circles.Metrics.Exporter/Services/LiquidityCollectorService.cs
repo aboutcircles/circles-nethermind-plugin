@@ -5,19 +5,13 @@ namespace Circles.Metrics.Exporter.Services;
 /// <summary>
 /// Background service that periodically collects liquidity metrics and updates Prometheus gauges.
 /// Tracks Balancer vault balances, group treasuries, drain detection (z-score anomalies),
-/// whale transfers, and arbitrage bot activity.
+/// and whale transfers.
 /// </summary>
 public class LiquidityCollectorService : BackgroundService
 {
     private readonly LiquidityRepository _repository;
     private readonly ILogger<LiquidityCollectorService> _logger;
     private readonly TimeSpan _collectionInterval;
-
-    /// <summary>
-    /// Whale transfer threshold in wei (1e20 = 100 tokens).
-    /// Transfers larger than this are tracked individually.
-    /// </summary>
-    private readonly decimal _whaleThreshold;
 
     /// <summary>
     /// Z-score threshold for warning-level anomalies.
@@ -43,15 +37,12 @@ public class LiquidityCollectorService : BackgroundService
         // More frequent than KPI collection since liquidity changes can be rapid
         var intervalSeconds = configuration.GetValue<int>("Metrics:LiquidityCollectionIntervalSeconds", 300);
         _collectionInterval = TimeSpan.FromSeconds(intervalSeconds);
-
-        // Whale threshold from config (default: 1e20 = 100 tokens)
-        _whaleThreshold = configuration.GetValue<decimal>("Metrics:WhaleThresholdWei", 100_000_000_000_000_000_000m);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Liquidity Collector starting with {Interval}s interval, whale threshold: {Threshold}",
-            _collectionInterval.TotalSeconds, _whaleThreshold);
+        _logger.LogInformation("Liquidity Collector starting with {Interval}s interval",
+            _collectionInterval.TotalSeconds);
 
         // Wait for app startup
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
@@ -86,8 +77,7 @@ public class LiquidityCollectorService : BackgroundService
             CollectBalancerVaultMetricsAsync(ct),
             CollectGroupTreasuryMetricsAsync(ct),
             CollectDrainDetectionMetricsAsync(ct),
-            CollectWhaleTransferMetricsAsync(ct),
-            CollectArbbotMetricsAsync(ct)
+            CollectWhaleTransferMetricsAsync(ct)
         );
     }
 
@@ -141,12 +131,12 @@ public class LiquidityCollectorService : BackgroundService
             {
                 // Set per-group total treasury balance
                 LiquidityMetrics.GroupTreasuryTotal
-                    .WithLabels(treasury.GroupAddress, treasury.GroupName ?? "unknown")
-                    .Set((double)treasury.TotalBalance);
+                    .WithLabels(treasury.GroupAddress, treasury.Name)
+                    .Set((double)treasury.TreasuryTotal);
 
                 // Set member count
                 LiquidityMetrics.GroupMemberCount
-                    .WithLabels(treasury.GroupAddress, treasury.GroupName ?? "unknown")
+                    .WithLabels(treasury.GroupAddress, treasury.Name)
                     .Set(treasury.MemberCount);
             }
 
@@ -243,7 +233,7 @@ public class LiquidityCollectorService : BackgroundService
     {
         try
         {
-            var transfers = await _repository.GetRecentWhaleTransfersAsync(_whaleThreshold, ct);
+            var transfers = await _repository.GetRecentWhaleTransfersAsync(100, ct);
 
             foreach (var transfer in transfers)
             {
@@ -265,7 +255,7 @@ public class LiquidityCollectorService : BackgroundService
                 // Update timestamp
                 LiquidityMetrics.WhaleTransferTimestamp
                     .WithLabels(transfer.TokenAddress)
-                    .Set(transfer.Timestamp.ToUnixTimeSeconds());
+                    .Set(transfer.Timestamp);
 
                 _logger.LogInformation("Whale transfer: {Direction} {Amount} of {Token} from {From} to {To}",
                     transfer.Direction, transfer.Amount, transfer.TokenAddress, transfer.From, transfer.To);
@@ -277,43 +267,6 @@ public class LiquidityCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect whale transfer metrics");
             LiquidityMetrics.LiquidityCollectionErrors.WithLabels("whale_transfers").Inc();
-        }
-    }
-
-    /// <summary>
-    /// Collects arbitrage bot activity metrics from the logger database.
-    /// </summary>
-    private async Task CollectArbbotMetricsAsync(CancellationToken ct)
-    {
-        try
-        {
-            var stats = await _repository.GetArbbotStatsAsync(ct);
-
-            if (stats != null)
-            {
-                // Quote counts
-                LiquidityMetrics.ArbbotQuotesTotal
-                    .WithLabels("success")
-                    .Inc(stats.SuccessfulQuotes);
-                LiquidityMetrics.ArbbotQuotesTotal
-                    .WithLabels("failed")
-                    .Inc(stats.FailedQuotes);
-
-                // Quotes per minute rate
-                LiquidityMetrics.ArbbotQuotesRate1m.Set(stats.QuotesPerMinute);
-
-                // Opportunities found
-                LiquidityMetrics.ArbbotOpportunitiesFound.Inc(stats.OpportunitiesFound);
-
-                _logger.LogDebug("Collected arbbot stats: {Quotes} quotes ({Rate}/min), {Opportunities} opportunities",
-                    stats.SuccessfulQuotes + stats.FailedQuotes, stats.QuotesPerMinute, stats.OpportunitiesFound);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Arbbot metrics are optional - logger DB may not be available
-            _logger.LogDebug(ex, "Failed to collect arbbot metrics (logger DB may not be configured)");
-            LiquidityMetrics.LiquidityCollectionErrors.WithLabels("arbbot").Inc();
         }
     }
 }

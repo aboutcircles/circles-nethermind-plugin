@@ -510,7 +510,11 @@ SELECT (latest_change - mean_change) / stddev_change as z_score
 
 **Whale Threshold**: 100 CRC (1e20 wei for 18-decimal tokens)
 
-**Balancer Vault Address**: `0xba12222222228d8ba445958a75a0704d566bf2c8`
+**Balancer Vault Addresses**:
+| Vault | Address | Status |
+|-------|---------|--------|
+| V2 | `0xba12222222228d8ba445958a75a0704d566bf2c8` | Compromised (Dec 2024) - tracked for historical data |
+| V3 | `0xba1333333333a1ba1108e8412f11850a5c319ba9` | **Active** - current vault |
 
 ### Group Treasury Metrics
 

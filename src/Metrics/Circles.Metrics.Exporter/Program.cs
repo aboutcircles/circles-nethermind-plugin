@@ -20,12 +20,10 @@ builder.Services.AddSingleton<PriceService>();
 
 builder.Services.AddHostedService<KpiCollectorService>();
 
-// Liquidity monitoring services (optional logger DB connection)
-var loggerDbConnectionString = builder.Configuration.GetConnectionString("LoggerDb");
+// Liquidity monitoring services
 builder.Services.AddSingleton(sp =>
     new LiquidityRepository(
         connectionString,
-        loggerDbConnectionString,
         sp.GetRequiredService<ILogger<LiquidityRepository>>()));
 
 builder.Services.AddHostedService<LiquidityCollectorService>();
@@ -58,8 +56,7 @@ app.MapGet("/", () => Results.Ok(new
         "Business KPIs (users, trusts, transfers, groups)",
         "Liquidity monitoring (Balancer vault, group treasuries)",
         "Drain detection (z-score anomaly detection)",
-        "Whale transfer tracking",
-        "Arbitrage bot activity (requires LoggerDb connection)"
+        "Whale transfer tracking"
     }
 }));
 

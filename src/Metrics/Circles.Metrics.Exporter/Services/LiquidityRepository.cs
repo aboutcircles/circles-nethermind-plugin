@@ -12,8 +12,14 @@ public class LiquidityRepository
     private readonly string _connectionString;
     private readonly ILogger<LiquidityRepository> _logger;
 
-    // Balancer vault address on Gnosis Chain
-    private const string BalancerVaultAddress = "0xba12222222228d8ba445958a75a0704d566bf2c8";
+    // Balancer vault addresses on Gnosis Chain
+    // V2 was compromised but still tracked for historical data
+    private const string BalancerV2VaultAddress = "0xba12222222228d8ba445958a75a0704d566bf2c8";
+    // V3 is the current active vault
+    private const string BalancerV3VaultAddress = "0xba1333333333a1ba1108e8412f11850a5c319ba9";
+
+    // Combined list for queries
+    private static readonly string[] BalancerVaultAddresses = { BalancerV2VaultAddress, BalancerV3VaultAddress };
 
     // Whale threshold: 100 tokens (1e20 wei for 18-decimal tokens)
     private const decimal WhaleThreshold = 100_000_000_000_000_000_000m; // 1e20
@@ -236,7 +242,7 @@ public class LiquidityRepository
     #region Whale Transfer Detection
 
     /// <summary>
-    /// Get recent whale transfers to/from Balancer vault.
+    /// Get recent whale transfers to/from Balancer vaults (V2 and V3).
     /// </summary>
     public async Task<List<WhaleTransfer>> GetRecentWhaleTransfersAsync(int limit, CancellationToken ct)
     {
@@ -248,13 +254,14 @@ public class LiquidityRepository
                 "tokenAddress",
                 amount,
                 CASE
-                    WHEN "to" = '{BalancerVaultAddress}' THEN 'deposit'
-                    WHEN "from" = '{BalancerVaultAddress}' THEN 'withdrawal'
+                    WHEN "to" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}') THEN 'deposit'
+                    WHEN "from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}') THEN 'withdrawal'
                     ELSE 'transfer'
                 END as direction
             FROM "CrcV2_Erc20WrapperTransfer"
             WHERE amount > @threshold
-              AND ("from" = '{BalancerVaultAddress}' OR "to" = '{BalancerVaultAddress}')
+              AND ("from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}')
+                   OR "to" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}'))
             ORDER BY "timestamp" DESC
             LIMIT @limit
             """;
@@ -295,15 +302,16 @@ public class LiquidityRepository
             SELECT
                 "tokenAddress",
                 CASE
-                    WHEN "to" = '{BalancerVaultAddress}' THEN 'deposit'
-                    WHEN "from" = '{BalancerVaultAddress}' THEN 'withdrawal'
+                    WHEN "to" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}') THEN 'deposit'
+                    WHEN "from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}') THEN 'withdrawal'
                 END as direction,
                 COUNT(*) as transfer_count,
                 SUM(amount) as total_volume
             FROM "CrcV2_Erc20WrapperTransfer"
             WHERE amount > @threshold
               AND "timestamp" > @cutoff
-              AND ("from" = '{BalancerVaultAddress}' OR "to" = '{BalancerVaultAddress}')
+              AND ("from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}')
+                   OR "to" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}'))
             GROUP BY "tokenAddress", direction
             ORDER BY total_volume DESC
             """;
@@ -378,109 +386,6 @@ public class LiquidityRepository
     }
 
     #endregion
-
-    #region Arbbot Activity (Logger DB)
-
-    /// <summary>
-    /// Get arbbot quote statistics from logger database.
-    /// </summary>
-    public async Task<ArbbotStats?> GetArbbotStatsAsync(TimeSpan window, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(_loggerConnectionString))
-        {
-            _logger.LogDebug("Logger connection string not configured, skipping arbbot stats");
-            return null;
-        }
-
-        var sql = """
-            SELECT
-                COUNT(*) as total_quotes,
-                COUNT(CASE WHEN outputamountraw IS NOT NULL THEN 1 END) as successful_quotes,
-                COUNT(CASE WHEN outputamountraw IS NULL THEN 1 END) as failed_quotes
-            FROM quotes
-            WHERE timestamp > NOW() - @window
-            """;
-
-        try
-        {
-            await using var conn = new NpgsqlConnection(_loggerConnectionString);
-            await conn.OpenAsync(ct);
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("window", window);
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-
-            if (await reader.ReadAsync(ct))
-            {
-                return new ArbbotStats
-                {
-                    TotalQuotes = reader.GetInt64(0),
-                    SuccessfulQuotes = reader.GetInt64(1),
-                    FailedQuotes = reader.GetInt64(2)
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to query arbbot stats from logger DB");
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Get arbbot trade opportunities from logger database.
-    /// </summary>
-    public async Task<List<TradeOpportunity>> GetTradeOpportunitiesAsync(TimeSpan window, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(_loggerConnectionString))
-        {
-            return new List<TradeOpportunity>();
-        }
-
-        var sql = """
-            SELECT
-                timestamp,
-                buytoken,
-                selltoken,
-                estimatedprofit
-            FROM "tradeOpportunties"
-            WHERE timestamp > NOW() - @window
-            ORDER BY timestamp DESC
-            LIMIT 100
-            """;
-
-        var results = new List<TradeOpportunity>();
-
-        try
-        {
-            await using var conn = new NpgsqlConnection(_loggerConnectionString);
-            await conn.OpenAsync(ct);
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("window", window);
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-
-            while (await reader.ReadAsync(ct))
-            {
-                results.Add(new TradeOpportunity
-                {
-                    Timestamp = reader.GetDateTime(0),
-                    BuyToken = reader.GetString(1),
-                    SellToken = reader.GetString(2),
-                    EstimatedProfit = reader.IsDBNull(3) ? 0 : reader.GetDecimal(3)
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to query trade opportunities from logger DB");
-        }
-
-        return results;
-    }
-
-    #endregion
 }
 
 #region DTOs
@@ -534,21 +439,6 @@ public record GroupTreasury
     public required string Symbol { get; init; }
     public long MemberCount { get; init; }
     public decimal TreasuryTotal { get; init; }
-}
-
-public record ArbbotStats
-{
-    public long TotalQuotes { get; init; }
-    public long SuccessfulQuotes { get; init; }
-    public long FailedQuotes { get; init; }
-}
-
-public record TradeOpportunity
-{
-    public DateTime Timestamp { get; init; }
-    public required string BuyToken { get; init; }
-    public required string SellToken { get; init; }
-    public decimal EstimatedProfit { get; init; }
 }
 
 #endregion
