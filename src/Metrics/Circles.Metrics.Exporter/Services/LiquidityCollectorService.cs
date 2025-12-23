@@ -164,12 +164,12 @@ public class LiquidityCollectorService : BackgroundService
             {
                 // Set 1-hour change
                 LiquidityMetrics.BalancerVaultChange1h
-                    .WithLabels(score.TokenAddress)
+                    .WithLabels(score.TokenAddress, score.TokenName)
                     .Set((double)score.LatestChange);
 
                 // Set z-score
                 LiquidityMetrics.BalancerVaultZScore1h
-                    .WithLabels(score.TokenAddress)
+                    .WithLabels(score.TokenAddress, score.TokenName)
                     .Set(score.ZScore);
 
                 // Determine anomaly severity and update metrics
@@ -177,42 +177,42 @@ public class LiquidityCollectorService : BackgroundService
                 {
                     // Critical anomaly (potential drain)
                     LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, "critical")
+                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
                         .Set(1);
                     LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, "warning")
+                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
                         .Set(0);
                     LiquidityMetrics.BalancerVaultDrainEvents
-                        .WithLabels(score.TokenAddress, "critical")
+                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
                         .Inc();
 
-                    _logger.LogWarning("CRITICAL drain detected for {Token}: z-score={ZScore:F2}, change={Change}",
-                        score.TokenAddress, score.ZScore, score.LatestChange);
+                    _logger.LogWarning("CRITICAL drain detected for {TokenName} ({Token}): z-score={ZScore:F2}, change={Change}",
+                        score.TokenName, score.TokenAddress, score.ZScore, score.LatestChange);
                 }
                 else if (score.ZScore < ZScoreWarningThreshold)
                 {
                     // Warning-level anomaly
                     LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, "warning")
+                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
                         .Set(1);
                     LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, "critical")
+                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
                         .Set(0);
                     LiquidityMetrics.BalancerVaultDrainEvents
-                        .WithLabels(score.TokenAddress, "warning")
+                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
                         .Inc();
 
-                    _logger.LogWarning("Unusual outflow for {Token}: z-score={ZScore:F2}, change={Change}",
-                        score.TokenAddress, score.ZScore, score.LatestChange);
+                    _logger.LogWarning("Unusual outflow for {TokenName} ({Token}): z-score={ZScore:F2}, change={Change}",
+                        score.TokenName, score.TokenAddress, score.ZScore, score.LatestChange);
                 }
                 else
                 {
                     // No anomaly
                     LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, "warning")
+                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
                         .Set(0);
                     LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, "critical")
+                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
                         .Set(0);
                 }
             }

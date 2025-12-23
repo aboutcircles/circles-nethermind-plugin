@@ -51,27 +51,27 @@ public static class LiquidityMetrics
     public static readonly Gauge BalancerVaultChange1h = Prometheus.Metrics
         .CreateGauge("circles_balancer_vault_change_1h",
             "Balance change in last hour (in wei)",
-            new GaugeConfiguration { LabelNames = new[] { "token_address" } });
+            new GaugeConfiguration { LabelNames = new[] { "token_address", "token_name" } });
 
     public static readonly Gauge BalancerVaultChange24h = Prometheus.Metrics
         .CreateGauge("circles_balancer_vault_change_24h",
             "Balance change in last 24 hours (in wei)",
-            new GaugeConfiguration { LabelNames = new[] { "token_address" } });
+            new GaugeConfiguration { LabelNames = new[] { "token_address", "token_name" } });
 
     public static readonly Gauge BalancerVaultZScore1h = Prometheus.Metrics
         .CreateGauge("circles_balancer_vault_zscore_1h",
             "Z-score of 1h change vs 30d historical standard deviation",
-            new GaugeConfiguration { LabelNames = new[] { "token_address" } });
+            new GaugeConfiguration { LabelNames = new[] { "token_address", "token_name" } });
 
     public static readonly Gauge BalancerVaultAnomaly = Prometheus.Metrics
         .CreateGauge("circles_balancer_vault_anomaly",
             "1 if anomaly detected, 0 otherwise",
-            new GaugeConfiguration { LabelNames = new[] { "token_address", "severity" } });
+            new GaugeConfiguration { LabelNames = new[] { "token_address", "token_name", "severity" } });
 
     public static readonly Counter BalancerVaultDrainEvents = Prometheus.Metrics
         .CreateCounter("circles_balancer_vault_drain_events_total",
             "Cumulative count of drain anomalies detected",
-            new CounterConfiguration { LabelNames = new[] { "token_address", "severity" } });
+            new CounterConfiguration { LabelNames = new[] { "token_address", "token_name", "severity" } });
 
     public static readonly Gauge GroupTreasuryChange24h = Prometheus.Metrics
         .CreateGauge("circles_group_treasury_change_24h",
