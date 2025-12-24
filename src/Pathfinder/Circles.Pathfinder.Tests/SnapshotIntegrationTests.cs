@@ -205,17 +205,17 @@ public class MintAlongPathRegressionTests
         var targetFlow = UInt256.Parse("1000000000000000000000"); // 1000 CRC
         var response = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, targetFlow);
 
-        if (response.TransferPath == null || response.TransferPath.Count == 0)
+        if (response.Transfers == null || response.Transfers.Count == 0)
         {
             TestContext.WriteLine("No path found - may need different source/sink");
             Assert.Ignore("No path found at this block state");
             return;
         }
 
-        TestContext.WriteLine($"Found path with {response.TransferPath.Count} steps");
+        TestContext.WriteLine($"Found path with {response.Transfers.Count} steps");
 
         // Validate edge ordering: for each group, collateral edges must come before mint edges
-        ValidateGroupEdgeOrdering(response.TransferPath, capacityGraph);
+        ValidateGroupEdgeOrdering(response.Transfers, capacityGraph);
     }
 
     private void ValidateGroupEdgeOrdering(List<TransferPathStep> path, CapacityGraph graph)
