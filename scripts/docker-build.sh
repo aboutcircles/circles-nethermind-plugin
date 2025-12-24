@@ -36,12 +36,15 @@ echo -e "${BLUE}Building all Docker images...${NC}\n"
 
 cd "$DOCKER_DIR"
 
-# Array of images to build
+# Array of core images to build
+# test-environment is optional and built via docker compose (requires submodule)
 IMAGES=(
+  "cache-service:cache-service.Dockerfile"
+  "caddy:caddy.Dockerfile"
   "index:Index.Dockerfile"
+  "metrics-exporter:metrics-exporter.Dockerfile"
   "pathfinder-host:pathfinder-host.Dockerfile"
   "rpc-host:rpc-host.Dockerfile"
-  "cache-service:cache-service.Dockerfile"
 )
 
 # Parse arguments for specific image
@@ -50,7 +53,7 @@ SPECIFIC_IMAGE=""
 
 for arg in "$@"; do
   case $arg in
-    index|pathfinder|rpc)
+    index|pathfinder|rpc|cache|test-environment)
       BUILD_ALL=false
       SPECIFIC_IMAGE="$arg"
       shift
@@ -59,10 +62,13 @@ for arg in "$@"; do
       echo "Usage: ./docker-build.sh [image]"
       echo ""
       echo "Images:"
-      echo "  index         Build Nethermind plugin (Index.Dockerfile)"
-      echo "  pathfinder    Build Pathfinder host (pathfinder-host.Dockerfile)"
-      echo "  rpc           Build RPC host (rpc-host.Dockerfile)"
-      echo "  cache         Build cache service (cache-service.Dockerfile)"
+      echo "  cache             Build cache service (cache-service.Dockerfile)"
+      echo "  caddy             Build caddy service (caddy.Dockerfile)"
+      echo "  index             Build Nethermind plugin (Index.Dockerfile)"
+      echo "  metrics-exporter  Build metrics exporter (metrics-exporter.Dockerfile)"
+      echo "  pathfinder        Build Pathfinder host (pathfinder-host.Dockerfile)"
+      echo "  rpc               Build RPC host (rpc-host.Dockerfile)"
+      echo "  test-environment  Build test environment (requires submodule init)"
       echo ""
       echo "Platform detection:"
       echo "  - Uses DOCKER_DEFAULT_PLATFORM if set (e.g., export DOCKER_DEFAULT_PLATFORM=linux/arm64)"
@@ -115,6 +121,18 @@ else
       ;;
     cache)
       build_image "cache-service" "cache-service.Dockerfile"
+      ;;
+    test-environment)
+      # Test environment is in a submodule, use docker compose to build
+      TEST_ENV_DIR="$PROJECT_ROOT/circles-test-environment"
+      if [ ! -d "$TEST_ENV_DIR" ]; then
+        echo -e "${RED}circles-test-environment submodule not found${NC}"
+        echo "Run: git submodule update --init circles-test-environment"
+        exit 1
+      fi
+      echo -e "${GREEN}Building test-environment via docker compose...${NC}"
+      docker compose -f "$DOCKER_DIR/docker-compose.test-environment.yml" build --no-cache
+      echo -e "${GREEN}✓ Successfully built test-environment${NC}\n"
       ;;
     *)
       echo -e "${RED}Unknown image: $SPECIFIC_IMAGE${NC}"

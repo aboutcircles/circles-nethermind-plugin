@@ -1,4 +1,4 @@
-.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder pack push clean run-pathfinder run-rpc run-postgres test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release
+.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release
 
 # Default target
 help:
@@ -17,6 +17,7 @@ help:
 	@echo "  make docker-index      Build Index plugin image"
 	@echo "  make docker-pathfinder Build Pathfinder image"
 	@echo "  make docker-rpc        Build RPC image"
+	@echo "  make docker-test-environment  Build test environment image"
 	@echo "  make docker-up         Start services (Gnosis)"
 	@echo "  make docker-down       Stop services"
 	@echo "  make docker-logs       View logs (all services)"
@@ -35,6 +36,7 @@ help:
 	@echo "  make run-cache-service Run Cache Service"
 	@echo "  make run-pathfinder    Run Pathfinder service"
 	@echo "  make run-rpc           Run RPC service"
+	@echo "  make run-test-environment  Run test environment (requires submodule)"
 	@echo "  make run-postgres      Run PostgreSQL database (Gnosis)"
 	@echo "  make call-rpc          Call RPC interactively"
 	@echo "  make call-http         Call HTTP endpoints interactively (profiles, pathfinder)"
@@ -111,6 +113,9 @@ docker-pathfinder:
 docker-rpc:
 	./scripts/docker-build.sh rpc
 
+docker-test-environment:
+	./scripts/docker-build.sh test-environment
+
 # Docker Compose operations
 docker-up:
 	./scripts/docker-run.sh gnosis up -d
@@ -157,6 +162,14 @@ run-pathfinder:
 
 run-rpc:
 	./scripts/run-rpc.sh
+
+run-test-environment:
+	@if [ ! -d "circles-test-environment" ]; then \
+		echo "Error: circles-test-environment submodule not found"; \
+		echo "Run: git submodule update --init circles-test-environment"; \
+		exit 1; \
+	fi
+	docker compose -f docker/docker-compose.test-environment.yml up -d
 
 run-postgres:
 	./scripts/run-postgres.sh
