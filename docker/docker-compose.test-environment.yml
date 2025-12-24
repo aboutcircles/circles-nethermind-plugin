@@ -20,8 +20,8 @@ services:
       context: ../circles-test-environment
       dockerfile: docker/Dockerfile
     container_name: circles-test-environment
-    ports:
-      - "${TEST_ENV_PORT:-5200}:8080"
+    expose:
+      - "8080"
     environment:
       - ConnectionStrings__Postgres=Host=postgres-gnosis;Port=5432;Database=postgres;Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD}
       - GnosisRpcUrl=${GNOSIS_RPC_URL:-http://nethermind-gnosis:8545}
