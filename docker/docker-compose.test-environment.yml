@@ -1,0 +1,37 @@
+# Circles Test Environment
+# Provides isolated test sessions with block-filtered database access and Anvil forks
+#
+# Usage:
+#   docker compose -f docker-compose.test-environment.yml up -d
+#
+# Requires the circles-gnosis network to exist (from docker-compose.gnosis.yml)
+# Requires the circles-test-environment submodule to be checked out
+
+services:
+  test-environment:
+    build:
+      context: ../circles-test-environment
+      dockerfile: docker/Dockerfile
+    container_name: circles-test-environment
+    ports:
+      - "${TEST_ENV_PORT:-5200}:8080"
+    environment:
+      - ConnectionStrings__Postgres=Host=postgres-gnosis;Port=5432;Database=postgres;Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD}
+      - GnosisRpcUrl=${GNOSIS_RPC_URL:-http://nethermind-gnosis:8545}
+      - CirclesRpcUrl=${CIRCLES_RPC_URL:-http://rpc:8080}
+      - MaxConcurrentSessions=${TEST_ENV_MAX_SESSIONS:-10}
+    networks:
+      - circles-gnosis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - postgres-gnosis
+
+networks:
+  circles-gnosis:
+    external: true
