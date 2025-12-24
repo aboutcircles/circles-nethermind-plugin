@@ -204,11 +204,11 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Z-score of hourly balance change vs 30-day historical standard deviation. Values below -2 indicate unusual outflow, below -3 is critical.",
+      "description": "Current Z-score for top tokens. Values below -2 indicate unusual outflow, below -3 is critical.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "custom": { "fillOpacity": 70, "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "insertNulls": false, "lineWidth": 1, "spanNulls": false },
+          "custom": { "align": "auto", "cellOptions": { "type": "color-background" }, "inspect": false },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -219,16 +219,22 @@
               { "color": "green", "value": -1 }
             ]
           },
-          "unit": "none"
+          "unit": "none",
+          "decimals": 2
         },
-        "overrides": []
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Token" }, "properties": [{ "id": "custom.width", "value": 150 }] }
+        ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
       "id": 20,
-      "options": { "colWidth": 0.9, "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "rowHeight": 0.9, "showValue": "auto", "tooltip": { "mode": "single", "sort": "none" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(20, abs(circles_balancer_vault_zscore_1h)) * (circles_balancer_vault_zscore_1h / abs(circles_balancer_vault_zscore_1h))", "legendFormat": "{{token_name}}", "refId": "A" }],
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false }, "sortBy": [{ "desc": false, "displayName": "Z-Score" }] },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "bottomk(20, circles_balancer_vault_zscore_1h)", "format": "table", "instant": true, "refId": "A" }],
       "title": "Z-Score by Token (Drain Detection)",
-      "type": "status-history"
+      "type": "table",
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "token_address": true, "instance": true, "job": true, "__name__": true }, "indexByName": {}, "renameByName": { "Value": "Z-Score", "token_name": "Token" } } }
+      ]
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -246,7 +252,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "id": 21,
       "options": { "legend": { "calcs": [], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(10, abs(circles_balancer_vault_change_1h)) * (circles_balancer_vault_change_1h / abs(circles_balancer_vault_change_1h)) / 1e18", "legendFormat": "{{token_name}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "topk(10, abs(circles_balancer_vault_change_1h)) / 1e18", "legendFormat": "{{token_name}}", "refId": "A" }],
       "title": "Hourly Balance Change (CRC)",
       "type": "timeseries"
     },
