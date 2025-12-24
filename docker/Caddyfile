@@ -165,6 +165,97 @@
         reverse_proxy grafana:3000
     }
 
+    # Invitation Backend (referrals) API (30 req/s per IP)
+    # Only available when INVITATION_BACKEND_ENABLED=true
+    @invitation_backend_enabled expression `{env.INVITATION_BACKEND_ENABLED} == "true"`
+
+    handle_path /referrals/* {
+        rate_limit {
+            zone referrals_zone {
+                key {remote_host}
+                events 30
+                window 1s
+            }
+        }
+        handle @invitation_backend_enabled {
+            reverse_proxy invitation-app:3000
+        }
+        handle {
+            respond "Invitation backend not deployed. Set deploy_invitation_backend=true in Ansible." 503
+        }
+    }
+
+    handle_path /referrals {
+        rate_limit {
+            zone referrals_zone {
+                key {remote_host}
+                events 30
+                window 1s
+            }
+        }
+        handle @invitation_backend_enabled {
+            reverse_proxy invitation-app:3000
+        }
+        handle {
+            respond "Invitation backend not deployed. Set deploy_invitation_backend=true in Ansible." 503
+        }
+    }
+
+    # Auth Service API (50 req/s per IP)
+    # Handles authentication, passkeys, and JWKS endpoints
+    # Only available when AUTH_SERVICE_ENABLED=true
+    @auth_service_enabled expression `{env.AUTH_SERVICE_ENABLED} == "true"`
+
+    # JWKS endpoint - high limit, frequently cached but needs availability
+    handle /.well-known/jwks.json {
+        rate_limit {
+            zone jwks_zone {
+                key {remote_host}
+                events 100
+                window 1s
+            }
+        }
+        handle @auth_service_enabled {
+            reverse_proxy auth-service:3001
+        }
+        handle {
+            respond "Auth service not deployed. Set deploy_auth_service=true in Ansible." 503
+        }
+    }
+
+    # Auth endpoints
+    handle_path /auth/* {
+        rate_limit {
+            zone auth_zone {
+                key {remote_host}
+                events 50
+                window 1s
+            }
+        }
+        handle @auth_service_enabled {
+            reverse_proxy auth-service:3001
+        }
+        handle {
+            respond "Auth service not deployed. Set deploy_auth_service=true in Ansible." 503
+        }
+    }
+
+    handle_path /auth {
+        rate_limit {
+            zone auth_zone {
+                key {remote_host}
+                events 50
+                window 1s
+            }
+        }
+        handle @auth_service_enabled {
+            reverse_proxy auth-service:3001
+        }
+        handle {
+            respond "Auth service not deployed. Set deploy_auth_service=true in Ansible." 503
+        }
+    }
+
     # Test Environment API (10 req/s per IP - integration testing)
     # Only available when TEST_ENV_ENABLED=true (set via docker-compose env)
     # When disabled, returns 503 with informative message
