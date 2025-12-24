@@ -303,5 +303,17 @@
     "excludedFromTokens": [],
     "excludedToTokens": [],
     "withWrap": false
+  },
+  {
+    "name": "GroupMintMultipleCollateral-BugRepro",
+    "description": "Reproduces Nov 17, 2025 edge ordering bug: multiple collateral tokens minting into single group. Block range ~43193632-43193872. All Router->Group edges must precede Group->Sink edge.",
+    "source": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+    "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
+    "targetFlow": "700000000000000000000",
+    "fromTokens": [],
+    "toTokens": [],
+    "excludedFromTokens": [],
+    "excludedToTokens": [],
+    "withWrap": true
   }
-  ]
+]
