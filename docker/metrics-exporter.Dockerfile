@@ -2,8 +2,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy Metrics Exporter project
+# Copy Metrics Exporter project and its dependencies
 COPY src/Metrics ./Metrics
+COPY src/Index/Circles.Index.Common ./Index/Circles.Index.Common
 
 # Restore dependencies
 RUN dotnet restore ./Metrics/Circles.Metrics.Exporter/Circles.Metrics.Exporter.csproj
