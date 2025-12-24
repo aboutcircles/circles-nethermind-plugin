@@ -1,16 +1,21 @@
 # Circles Test Environment
 # Provides isolated test sessions with block-filtered database access and Anvil forks
 #
-# Usage:
+# Usage (local build):
+#   docker compose -f docker-compose.test-environment.yml build
 #   docker compose -f docker-compose.test-environment.yml up -d
 #
+# Usage (pull from Docker Hub - CI/CD):
+#   docker compose -f docker-compose.test-environment.yml up -d --pull always
+#
 # Requires the circles-gnosis network to exist (from docker-compose.gnosis.yml)
-# Requires the circles-test-environment submodule to be checked out
+# For local build: requires the circles-test-environment submodule to be checked out
 #
 # Note: Set TEST_ENV_ENABLED=true in .env to enable Caddy routing to /test-env/*
 
 services:
   test-environment:
+    image: ${DOCKERHUB_USERNAME:-jaensen}/circles-test-environment:${TEST_ENV_TAG:-dev}
     build:
       context: ../circles-test-environment
       dockerfile: docker/Dockerfile

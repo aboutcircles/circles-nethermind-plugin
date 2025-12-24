@@ -31,6 +31,9 @@ on:
       deploy_caddy:
         type: boolean
         default: false
+      deploy_test_environment:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       deploy_all:
@@ -51,6 +54,10 @@ on:
         default: false
       deploy_caddy:
         description: "Deploy Caddy proxy"
+        type: boolean
+        default: false
+      deploy_test_environment:
+        description: "Deploy test environment"
         type: boolean
         default: false
 
@@ -85,6 +92,7 @@ jobs:
       deploy_observability: ${{ steps.set-flags.outputs.deploy_observability }}
       deploy_grafana: ${{ steps.set-flags.outputs.deploy_grafana }}
       deploy_caddy: ${{ steps.set-flags.outputs.deploy_caddy }}
+      deploy_test_environment: ${{ steps.set-flags.outputs.deploy_test_environment }}
       any_deploy: ${{ steps.set-flags.outputs.any_deploy }}
     steps:
       - name: Check out code
@@ -133,6 +141,10 @@ jobs:
               - 'docker/Caddyfile'
               - 'docker/caddy.Dockerfile'
               - 'docker/docker-compose.caddy.yml'
+            # TEST ENVIRONMENT: Integration testing service
+            test_environment:
+              - 'circles-test-environment/**'
+              - 'docker/docker-compose.test-environment.yml'
 
       - name: Set deployment flags
         id: set-flags
@@ -144,12 +156,14 @@ jobs:
           INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
           INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
           INPUT_DEPLOY_CADDY: ${{ github.event.inputs.deploy_caddy }}
+          INPUT_DEPLOY_TEST_ENV: ${{ github.event.inputs.deploy_test_environment }}
           # workflow_call inputs (reusable workflow)
           CALL_DEPLOY_ALL: ${{ inputs.deploy_all }}
           CALL_DEPLOY_GNOSIS: ${{ inputs.deploy_gnosis }}
           CALL_DEPLOY_OBS: ${{ inputs.deploy_observability }}
           CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
           CALL_DEPLOY_CADDY: ${{ inputs.deploy_caddy }}
+          CALL_DEPLOY_TEST_ENV: ${{ inputs.deploy_test_environment }}
           # Path filter results
           FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
@@ -157,6 +171,7 @@ jobs:
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
           FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
+          FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
         run: |
           # Handle workflow_dispatch (manual trigger from UI)
           if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
@@ -165,6 +180,7 @@ jobs:
               echo "deploy_observability=true" >> $GITHUB_OUTPUT
               echo "deploy_grafana=true" >> $GITHUB_OUTPUT
               echo "deploy_caddy=true" >> $GITHUB_OUTPUT
+              echo "deploy_test_environment=true" >> $GITHUB_OUTPUT
               echo "any_deploy=true" >> $GITHUB_OUTPUT
               exit 0
             fi
@@ -172,6 +188,7 @@ jobs:
             OBS="$INPUT_DEPLOY_OBS"
             GRAFANA="$INPUT_DEPLOY_GRAFANA"
             CADDY="$INPUT_DEPLOY_CADDY"
+            TEST_ENV="$INPUT_DEPLOY_TEST_ENV"
           # Handle workflow_call (reusable workflow)
           elif [ "$EVENT_NAME" == "workflow_call" ]; then
             if [ "$CALL_DEPLOY_ALL" == "true" ]; then
@@ -179,6 +196,7 @@ jobs:
               echo "deploy_observability=true" >> $GITHUB_OUTPUT
               echo "deploy_grafana=true" >> $GITHUB_OUTPUT
               echo "deploy_caddy=true" >> $GITHUB_OUTPUT
+              echo "deploy_test_environment=true" >> $GITHUB_OUTPUT
               echo "any_deploy=true" >> $GITHUB_OUTPUT
               exit 0
             fi
@@ -186,12 +204,14 @@ jobs:
             OBS="$CALL_DEPLOY_OBS"
             GRAFANA="$CALL_DEPLOY_GRAFANA"
             CADDY="$CALL_DEPLOY_CADDY"
+            TEST_ENV="$CALL_DEPLOY_TEST_ENV"
           # Handle push (auto-detect from changed files)
           else
             GNOSIS="false"
             OBS="false"
             GRAFANA="false"
             CADDY="false"
+            TEST_ENV="false"
 
             # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache + docker files
             if [ "$FILTER_GNOSIS_SRC" == "true" ]; then
@@ -224,14 +244,21 @@ jobs:
               CADDY="true"
               echo "::notice::Caddy files changed - will deploy caddy"
             fi
+
+            # TEST ENVIRONMENT: submodule or compose file changed
+            if [ "$FILTER_TEST_ENV" == "true" ]; then
+              TEST_ENV="true"
+              echo "::notice::Test environment files changed - will deploy test-environment"
+            fi
           fi
 
           echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
           echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
           echo "deploy_grafana=$GRAFANA" >> $GITHUB_OUTPUT
           echo "deploy_caddy=$CADDY" >> $GITHUB_OUTPUT
+          echo "deploy_test_environment=$TEST_ENV" >> $GITHUB_OUTPUT
 
-          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ] || [ "$CADDY" == "true" ]; then
+          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ] || [ "$CADDY" == "true" ] || [ "$TEST_ENV" == "true" ]; then
             echo "any_deploy=true" >> $GITHUB_OUTPUT
           else
             echo "any_deploy=false" >> $GITHUB_OUTPUT
@@ -245,10 +272,12 @@ jobs:
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
           FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
+          FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
           DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ steps.set-flags.outputs.deploy_grafana }}
           DEPLOY_CADDY: ${{ steps.set-flags.outputs.deploy_caddy }}
+          DEPLOY_TEST_ENV: ${{ steps.set-flags.outputs.deploy_test_environment }}
         run: |
           echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -258,6 +287,7 @@ jobs:
           echo "| Observability (Metrics) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | - | $FILTER_GRAFANA | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
           echo "| Caddy | - | $FILTER_CADDY | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Environment | $FILTER_TEST_ENV | - | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
 
   build-images:
     needs: detect-changes
@@ -314,12 +344,46 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:buildcache-dev
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:buildcache-dev,mode=max
 
+  build-test-environment:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy_test_environment == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push test-environment
+        uses: docker/build-push-action@v5
+        with:
+          context: ./circles-test-environment
+          file: ./circles-test-environment/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/circles-test-environment:dev
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/circles-test-environment:buildcache-dev
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/circles-test-environment:buildcache-dev,mode=max
+
   trigger-deploy:
-    needs: [detect-changes, build-images]
+    needs: [detect-changes, build-images, build-test-environment]
     if: |
       always() &&
       needs.detect-changes.outputs.any_deploy == 'true' &&
-      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
+      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped') &&
+      (needs.build-test-environment.result == 'success' || needs.build-test-environment.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Ansible deployment
@@ -339,7 +403,8 @@ jobs:
               "deploy_gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
               "deploy_observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
               "deploy_grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}",
-              "deploy_caddy": "${{ needs.detect-changes.outputs.deploy_caddy }}"
+              "deploy_caddy": "${{ needs.detect-changes.outputs.deploy_caddy }}",
+              "deploy_test_environment": "${{ needs.detect-changes.outputs.deploy_test_environment }}"
             }
 
       - name: Deployment summary
@@ -348,6 +413,7 @@ jobs:
           DEPLOY_OBS: ${{ needs.detect-changes.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ needs.detect-changes.outputs.deploy_grafana }}
           DEPLOY_CADDY: ${{ needs.detect-changes.outputs.deploy_caddy }}
+          DEPLOY_TEST_ENV: ${{ needs.detect-changes.outputs.deploy_test_environment }}
         run: |
           echo "## Deployment Triggered" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -357,3 +423,4 @@ jobs:
           echo "| Observability | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
           echo "| Caddy | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Environment | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
