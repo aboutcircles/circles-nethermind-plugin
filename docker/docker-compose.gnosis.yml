@@ -227,6 +227,7 @@ services:
     container_name: postgres-gnosis
     image: postgres:17
     command: -c 'max_connections=100'
+    shm_size: 1g  # Required for PostgreSQL parallel workers (default 64MB is too small)
     restart: unless-stopped
     networks:
       - circles-gnosis
