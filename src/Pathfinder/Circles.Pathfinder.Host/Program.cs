@@ -199,7 +199,8 @@ app.MapGet("/findMaxFlow", async (
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findMaxFlow threw non-fatal exception");
+        log.LogWarning(ex, "findMaxFlow threw non-fatal exception for request: from={From}, to={To}, amount={Amount}",
+            from, to, amount);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
     finally
@@ -301,7 +302,8 @@ app.MapGet("/findPath", async (
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findPath threw non-fatal exception");
+        log.LogWarning(ex, "findPath threw non-fatal exception for request: from={From}, to={To}, amount={Amount}",
+            from, to, amount);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
     finally
@@ -375,7 +377,8 @@ app.MapPost("/findPath", async (
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findPath threw non-fatal exception");
+        log.LogWarning(ex, "findPath threw non-fatal exception for request: from={From}, to={To}, amount={Amount}",
+            request.Source, request.Sink, request.TargetFlow);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
     finally
