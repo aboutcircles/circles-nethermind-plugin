@@ -166,7 +166,10 @@
     }
 
     # Test Environment API (10 req/s per IP - integration testing)
-    # Only available when deploy_test_environment=true
+    # Only available when TEST_ENV_ENABLED=true (set via docker-compose env)
+    # When disabled, returns 503 with informative message
+    @test_env_enabled expression `{env.TEST_ENV_ENABLED} == "true"`
+
     handle_path /test-env/* {
         rate_limit {
             zone test_env_zone {
@@ -175,7 +178,14 @@
                 window 1s
             }
         }
-        reverse_proxy circles-test-environment:8080
+        # Only proxy if test environment is enabled
+        handle @test_env_enabled {
+            reverse_proxy circles-test-environment:8080
+        }
+        # Otherwise return 503
+        handle {
+            respond "Test environment not deployed. Set deploy_test_environment=true in Ansible." 503
+        }
     }
 
     handle_path /test-env {
@@ -186,7 +196,12 @@
                 window 1s
             }
         }
-        reverse_proxy circles-test-environment:8080
+        handle @test_env_enabled {
+            reverse_proxy circles-test-environment:8080
+        }
+        handle {
+            respond "Test environment not deployed. Set deploy_test_environment=true in Ansible." 503
+        }
     }
 
     # Default: RPC service (100 req/s per IP - main API)

@@ -6,6 +6,8 @@
 #
 # Requires the circles-gnosis network to exist (from docker-compose.gnosis.yml)
 # Requires the circles-test-environment submodule to be checked out
+#
+# Note: Set TEST_ENV_ENABLED=true in .env to enable Caddy routing to /test-env/*
 
 services:
   test-environment:
