@@ -400,11 +400,13 @@ jobs:
               "triggered_by": "${{ github.actor }}",
               "source_repo": "${{ github.repository }}",
               "source_branch": "${{ github.ref_name }}",
-              "deploy_gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
-              "deploy_observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
-              "deploy_grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}",
-              "deploy_caddy": "${{ needs.detect-changes.outputs.deploy_caddy }}",
-              "deploy_test_environment": "${{ needs.detect-changes.outputs.deploy_test_environment }}"
+              "deploy": {
+                "gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
+                "observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
+                "grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}",
+                "caddy": "${{ needs.detect-changes.outputs.deploy_caddy }}",
+                "test_environment": "${{ needs.detect-changes.outputs.deploy_test_environment }}"
+              }
             }
 
       - name: Deployment summary
