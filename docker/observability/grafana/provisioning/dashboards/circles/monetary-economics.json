@@ -1917,7 +1917,7 @@
       },
       "id": 105,
       "panels": [],
-      "title": "Account Type Breakdown",
+      "title": "Human Wealth Distribution",
       "type": "row"
     },
     {
@@ -1925,6 +1925,68 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Number of human accounts with non-zero CRC balance. Provides context for other wealth distribution metrics.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 45
+      },
+      "id": 600,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_balance_holders_by_type{account_type=\"human\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Holders",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Wealth inequality among human accounts (0=perfect equality, 1=perfect inequality). This is the key 'fair money' indicator for the Circles economy.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1957,11 +2019,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 0,
+        "w": 3,
+        "x": 3,
         "y": 45
       },
-      "id": 60,
+      "id": 601,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -1987,8 +2049,7 @@
           "instant": true
         }
       ],
-      "title": "Gini (Humans Only)",
-      "description": "Wealth inequality among human accounts only (0=equal, 1=unequal). INCLUDES: All registered humans with CRC balance. EXCLUDES: Groups, organizations, pools, non-registered addresses. This is the key 'fair money' indicator for the Circles economy.",
+      "title": "Gini",
       "type": "stat"
     },
     {
@@ -1996,6 +2057,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Percentage of total CRC supply held by human accounts.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2006,25 +2068,23 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "green",
                 "value": null
               }
             ]
           },
-          "unit": "none",
-          "decimals": 3,
-          "max": 1,
-          "min": 0
+          "unit": "percentunit",
+          "decimals": 1
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 4,
+        "w": 3,
+        "x": 6,
         "y": 45
       },
-      "id": 61,
+      "id": 602,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -2045,13 +2105,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_gini_coefficient_by_type{account_type=\"group\"}",
+          "expr": "circles_supply_share_by_type{account_type=\"human\"}",
           "refId": "A",
           "instant": true
         }
       ],
-      "title": "Gini (Groups)",
-      "description": "Wealth inequality among group accounts (0=equal, 1=unequal). INCLUDES: Registered groups (community currencies) with CRC balance. Groups naturally pool resources, so higher inequality is expected compared to humans.",
+      "title": "Supply Share",
       "type": "stat"
     },
     {
@@ -2059,6 +2118,139 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "% of human-held CRC owned by top 10 human accounts.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.3
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 45
+      },
+      "id": 603,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"10\", account_type=\"human\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Top 10",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "% of human-held CRC owned by top 100 human accounts.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 45
+      },
+      "id": 604,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"100\", account_type=\"human\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Top 100",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "% of human-held CRC owned by top 1000 human accounts.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2074,20 +2266,19 @@
               }
             ]
           },
-          "unit": "none",
-          "decimals": 3,
-          "max": 1,
-          "min": 0
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 8,
+        "w": 3,
+        "x": 15,
         "y": 45
       },
-      "id": 62,
+      "id": 605,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -2108,13 +2299,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_gini_coefficient_by_type{account_type=\"organization\"}",
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"1000\", account_type=\"human\"}",
           "refId": "A",
           "instant": true
         }
       ],
-      "title": "Gini (Organizations)",
-      "description": "Wealth inequality among organization accounts (0=equal, 1=unequal). INCLUDES: Registered organizations (businesses, services) with CRC balance. Organizations typically have varied holdings based on business activity.",
+      "title": "Top 1000",
       "type": "stat"
     },
     {
@@ -2122,6 +2312,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Gini for humans EXCLUDING custodians/aggregators (accounts with >50 unique tokens). Filters out exchanges and protocol treasuries for a purer measure.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2154,11 +2345,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 12,
+        "w": 3,
+        "x": 18,
         "y": 45
       },
-      "id": 70,
+      "id": 606,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -2184,130 +2375,7 @@
           "instant": true
         }
       ],
-      "title": "Gini (Non-Custodial)",
-      "description": "Gini coefficient for humans EXCLUDING custodians/aggregators (accounts holding >50 unique tokens). This provides a more accurate picture of wealth distribution among regular users, filtering out exchanges and protocol treasuries.",
-      "type": "stat"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
-      "id": 800,
-      "panels": [],
-      "title": "Concentration by Account Type",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Top 10 concentration among HUMANS ONLY (excludes groups, orgs, pools). This is the most meaningful metric for understanding wealth distribution among regular users.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] },
-          "unit": "percentunit", "decimals": 1, "max": 1
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 50 },
-      "id": 801,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_by_type{top_n=\"10\", account_type=\"human\"}", "refId": "A", "instant": true }],
-      "title": "Top 10 (Humans)",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Top 100 concentration among humans only.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
-          "unit": "percentunit", "decimals": 1, "max": 1
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 50 },
-      "id": 802,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_by_type{top_n=\"100\", account_type=\"human\"}", "refId": "A", "instant": true }],
-      "title": "Top 100 (Humans)",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Top 1000 concentration among humans only.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
-          "unit": "percentunit", "decimals": 1, "max": 1
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 50 },
-      "id": 803,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_by_type{top_n=\"1000\", account_type=\"human\"}", "refId": "A", "instant": true }],
-      "title": "Top 1000 (Humans)",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Top 10 concentration among NON-CUSTODIAL humans (excludes accounts with >50 unique tokens like exchanges). The purest measure of wealth concentration among regular users.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.2 }, { "color": "red", "value": 0.4 }] },
-          "unit": "percentunit", "decimals": 1, "max": 1
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 50 },
-      "id": 804,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_non_custodial{top_n=\"10\"}", "refId": "A", "instant": true }],
-      "title": "Top 10 (Non-Custodial)",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Top 100 concentration among non-custodial humans.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
-          "unit": "percentunit", "decimals": 1, "max": 1
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 50 },
-      "id": 805,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_non_custodial{top_n=\"100\"}", "refId": "A", "instant": true }],
-      "title": "Top 100 (Non-Custodial)",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Top 1000 concentration among non-custodial humans.",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
-          "unit": "percentunit", "decimals": 1, "max": 1
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 50 },
-      "id": 806,
-      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_non_custodial{top_n=\"1000\"}", "refId": "A", "instant": true }],
-      "title": "Top 1000 (Non-Custodial)",
+      "title": "Gini (Non-Cust)",
       "type": "stat"
     },
     {
@@ -2315,6 +2383,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Top 10 concentration among non-custodial humans only.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2327,21 +2396,30 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.2
+              },
+              {
+                "color": "red",
+                "value": 0.4
               }
             ]
           },
           "unit": "percentunit",
-          "decimals": 1
+          "decimals": 1,
+          "max": 1
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 16,
+        "w": 3,
+        "x": 21,
         "y": 45
       },
-      "id": 63,
+      "id": 607,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -2362,13 +2440,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_supply_share_by_type{account_type=\"human\"}",
+          "expr": "circles_top_holder_concentration_non_custodial{top_n=\"10\"}",
           "refId": "A",
           "instant": true
         }
       ],
-      "title": "Supply (Humans)",
-      "description": "Percentage of total CRC supply held by humans.",
+      "title": "Top 10 (NC)",
       "type": "stat"
     },
     {
@@ -2376,6 +2453,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Top 100 concentration among non-custodial humans.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2386,23 +2464,24 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "orange",
                 "value": null
               }
             ]
           },
           "unit": "percentunit",
-          "decimals": 1
+          "decimals": 1,
+          "max": 1
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 45
+        "w": 3,
+        "x": 0,
+        "y": 49
       },
-      "id": 64,
+      "id": 608,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -2423,13 +2502,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_supply_share_by_type{account_type=\"group\"}",
+          "expr": "circles_top_holder_concentration_non_custodial{top_n=\"100\"}",
           "refId": "A",
           "instant": true
         }
       ],
-      "title": "Supply (Groups)",
-      "description": "Percentage of total CRC supply held by groups.",
+      "title": "Top 100 (NC)",
       "type": "stat"
     },
     {
@@ -2437,6 +2515,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Top 1000 concentration among non-custodial humans.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2453,17 +2532,18 @@
             ]
           },
           "unit": "percentunit",
-          "decimals": 1
+          "decimals": 1,
+          "max": 1
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 0,
+        "w": 3,
+        "x": 3,
         "y": 49
       },
-      "id": 65,
+      "id": 609,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -2484,13 +2564,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_supply_share_by_type{account_type=\"organization\"}",
+          "expr": "circles_top_holder_concentration_non_custodial{top_n=\"1000\"}",
           "refId": "A",
           "instant": true
         }
       ],
-      "title": "Supply (Orgs)",
-      "description": "Percentage of total CRC supply held by organizations.",
+      "title": "Top 1000 (NC)",
       "type": "stat"
     },
     {
@@ -2498,6 +2577,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Historical Gini coefficient for human accounts over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2546,30 +2626,30 @@
             ]
           },
           "unit": "none",
-          "max": 1,
-          "min": 0
+          "min": 0,
+          "max": 1
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 53
+        "w": 9,
+        "x": 6,
+        "y": 49
       },
-      "id": 66,
+      "id": 610,
       "options": {
         "legend": {
           "calcs": [
             "lastNotNull"
           ],
           "displayMode": "table",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -2579,7 +2659,7 @@
             "uid": "prometheus"
           },
           "expr": "circles_gini_coefficient_by_type{account_type=\"human\"}",
-          "legendFormat": "Humans",
+          "legendFormat": "Humans (All)",
           "refId": "A"
         },
         {
@@ -2587,40 +2667,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_gini_coefficient_by_type{account_type=\"group\"}",
-          "legendFormat": "Groups",
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "circles_gini_coefficient_by_type{account_type=\"organization\"}",
-          "legendFormat": "Organizations",
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "circles_gini_coefficient",
-          "legendFormat": "All (Combined)",
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
           "expr": "circles_gini_coefficient_non_custodial",
-          "legendFormat": "Non-Custodial Humans",
-          "refId": "E"
+          "legendFormat": "Humans (Non-Custodial)",
+          "refId": "B"
         }
       ],
-      "title": "Gini Coefficient by Account Type",
-      "description": "Comparing wealth inequality across account types. 'Non-Custodial Humans' excludes exchanges/aggregators (accounts holding >50 unique tokens) for a more accurate picture.",
+      "title": "Human Gini Over Time",
       "type": "timeseries"
     },
     {
@@ -2628,6 +2680,808 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Historical concentration metrics for human accounts.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 15,
+        "y": 49
+      },
+      "id": 611,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"10\", account_type=\"human\"}",
+          "legendFormat": "Top 10",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"100\", account_type=\"human\"}",
+          "legendFormat": "Top 100",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"1000\", account_type=\"human\"}",
+          "legendFormat": "Top 1000",
+          "refId": "C"
+        }
+      ],
+      "title": "Human Concentration Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "id": 700,
+      "panels": [],
+      "title": "Organization Wealth Distribution",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Number of organization accounts with non-zero CRC balance.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 58
+      },
+      "id": 701,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_balance_holders_by_type{account_type=\"organization\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Holders",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Wealth inequality among organization accounts.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 3,
+          "max": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 58
+      },
+      "id": 702,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_gini_coefficient_by_type{account_type=\"organization\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Gini",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Percentage of total CRC supply held by organizations.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 58
+      },
+      "id": 703,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_supply_share_by_type{account_type=\"organization\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Supply Share",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "% of org-held CRC owned by top 10 organizations.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 58
+      },
+      "id": 704,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"10\", account_type=\"organization\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Top 10",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "% of org-held CRC owned by top 100 organizations.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 58
+      },
+      "id": 705,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"100\", account_type=\"organization\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Top 100",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "% of org-held CRC owned by top 1000 organizations.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 58
+      },
+      "id": 706,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_top_holder_concentration_by_type{top_n=\"1000\", account_type=\"organization\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Top 1000",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "id": 800,
+      "panels": [],
+      "title": "Groups (Token Issuers)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Number of group accounts. NOTE: Groups are token ISSUERS - they mint their own community currency rather than accumulating CRC. These metrics are informational only.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 63
+      },
+      "id": 801,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_balance_holders_by_type{account_type=\"group\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Groups with CRC",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Gini among groups that hold CRC. High values are expected since groups rarely hold CRC - they issue their own tokens instead.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 3,
+          "max": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 63
+      },
+      "id": 802,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_gini_coefficient_by_type{account_type=\"group\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Gini (Groups)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "% of total CRC held by groups. Expected to be near 0% since groups issue their own tokens.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 63
+      },
+      "id": 803,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_supply_share_by_type{account_type=\"group\"}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "Supply Share",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 67
+      },
+      "id": 900,
+      "panels": [],
+      "title": "CRC Supply Distribution",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Distribution of CRC holdings across account types.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 68
+      },
+      "id": 901,
+      "options": {
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_supply_share_by_type{account_type=\"human\"}",
+          "legendFormat": "Humans",
+          "refId": "A",
+          "instant": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_supply_share_by_type{account_type=\"organization\"}",
+          "legendFormat": "Organizations",
+          "refId": "B",
+          "instant": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "circles_supply_share_by_type{account_type=\"group\"}",
+          "legendFormat": "Groups",
+          "refId": "C",
+          "instant": true
+        }
+      ],
+      "title": "CRC Supply Share by Type",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Historical supply share by account type.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2659,7 +3513,7 @@
             "spanNulls": true,
             "stacking": {
               "group": "A",
-              "mode": "normal"
+              "mode": "percent"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -2675,7 +3529,9 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
         },
         "overrides": [
           {
@@ -2696,21 +3552,6 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Groups"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
               "options": "Organizations"
             },
             "properties": [
@@ -2722,28 +3563,43 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Groups"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 53
+        "w": 16,
+        "x": 8,
+        "y": 68
       },
-      "id": 67,
+      "id": 902,
       "options": {
         "legend": {
           "calcs": [
             "lastNotNull"
           ],
           "displayMode": "table",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -2761,8 +3617,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_supply_share_by_type{account_type=\"group\"}",
-          "legendFormat": "Groups",
+          "expr": "circles_supply_share_by_type{account_type=\"organization\"}",
+          "legendFormat": "Organizations",
           "refId": "B"
         },
         {
@@ -2770,13 +3626,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_supply_share_by_type{account_type=\"organization\"}",
-          "legendFormat": "Organizations",
+          "expr": "circles_supply_share_by_type{account_type=\"group\"}",
+          "legendFormat": "Groups",
           "refId": "C"
         }
       ],
-      "title": "CRC Supply Share by Account Type",
-      "description": "How is the total CRC supply distributed across humans, groups, and organizations?",
+      "title": "Supply Share Over Time",
       "type": "timeseries"
     },
     {
@@ -2784,6 +3639,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Gini coefficient comparison across all account types over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2793,7 +3649,7 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "CRC",
+            "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
@@ -2831,29 +3687,77 @@
               }
             ]
           },
-          "unit": "none"
+          "unit": "none",
+          "min": 0,
+          "max": 1
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Humans"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Organizations"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Groups"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 76
       },
-      "id": 68,
+      "id": 903,
       "options": {
         "legend": {
           "calcs": [
             "lastNotNull"
           ],
           "displayMode": "table",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -2862,8 +3766,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_average_balance_by_type_crc{account_type=\"human\"}",
-          "legendFormat": "Avg Human",
+          "expr": "circles_gini_coefficient_by_type{account_type=\"human\"}",
+          "legendFormat": "Humans",
           "refId": "A"
         },
         {
@@ -2871,8 +3775,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_average_balance_by_type_crc{account_type=\"group\"}",
-          "legendFormat": "Avg Group",
+          "expr": "circles_gini_coefficient_by_type{account_type=\"organization\"}",
+          "legendFormat": "Organizations",
           "refId": "B"
         },
         {
@@ -2880,40 +3784,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_average_balance_by_type_crc{account_type=\"organization\"}",
-          "legendFormat": "Avg Organization",
+          "expr": "circles_gini_coefficient_by_type{account_type=\"group\"}",
+          "legendFormat": "Groups",
           "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "circles_median_balance_by_type_crc{account_type=\"human\"}",
-          "legendFormat": "Median Human",
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "circles_median_balance_by_type_crc{account_type=\"group\"}",
-          "legendFormat": "Median Group",
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "circles_median_balance_by_type_crc{account_type=\"organization\"}",
-          "legendFormat": "Median Organization",
-          "refId": "F"
         }
       ],
-      "title": "Average & Median Balance by Type",
-      "description": "Comparison of average and median balances across account types.",
+      "title": "Gini by Account Type Over Time",
       "type": "timeseries"
     },
     {
@@ -2921,6 +3797,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Number of accounts with non-zero CRC balance by type over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2970,27 +3847,73 @@
           },
           "unit": "none"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Humans"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Organizations"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Groups"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 76
       },
-      "id": 69,
+      "id": 904,
       "options": {
         "legend": {
           "calcs": [
             "lastNotNull"
           ],
           "displayMode": "table",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "targets": [
@@ -3008,8 +3931,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_balance_holders_by_type{account_type=\"group\"}",
-          "legendFormat": "Groups",
+          "expr": "circles_balance_holders_by_type{account_type=\"organization\"}",
+          "legendFormat": "Organizations",
           "refId": "B"
         },
         {
@@ -3017,13 +3940,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "circles_balance_holders_by_type{account_type=\"organization\"}",
-          "legendFormat": "Organizations",
+          "expr": "circles_balance_holders_by_type{account_type=\"group\"}",
+          "legendFormat": "Groups",
           "refId": "C"
         }
       ],
       "title": "Balance Holder Count by Type",
-      "description": "Number of accounts with non-zero balance, broken down by type.",
       "type": "timeseries"
     },
     {
@@ -3032,7 +3954,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 85
       },
       "id": 102,
       "panels": [],
@@ -3076,7 +3998,7 @@
         "h": 4,
         "w": 8,
         "x": 0,
-        "y": 70
+        "y": 86
       },
       "id": 30,
       "options": {
@@ -3137,7 +4059,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 70
+        "y": 86
       },
       "id": 31,
       "options": {
@@ -3197,7 +4119,7 @@
         "h": 4,
         "w": 8,
         "x": 16,
-        "y": 70
+        "y": 86
       },
       "id": 32,
       "options": {
@@ -3288,7 +4210,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 74
+        "y": 90
       },
       "id": 33,
       "options": {
@@ -3363,7 +4285,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 98
       },
       "id": 103,
       "panels": [],
@@ -3398,7 +4320,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 83
+        "y": 99
       },
       "id": 40,
       "options": {
@@ -3457,7 +4379,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 83
+        "y": 99
       },
       "id": 41,
       "options": {
@@ -3516,7 +4438,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 83
+        "y": 99
       },
       "id": 42,
       "options": {
@@ -3584,7 +4506,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 83
+        "y": 99
       },
       "id": 43,
       "options": {
@@ -3676,7 +4598,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 87
+        "y": 103
       },
       "id": 44,
       "options": {
@@ -3785,7 +4707,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 87
+        "y": 103
       },
       "id": 45,
       "options": {
@@ -3841,7 +4763,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 111
       },
       "id": 104,
       "panels": [],
@@ -3877,7 +4799,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 96
+        "y": 112
       },
       "id": 50,
       "options": {
@@ -3937,7 +4859,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 96
+        "y": 112
       },
       "id": 51,
       "options": {
@@ -3996,7 +4918,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 96
+        "y": 112
       },
       "id": 52,
       "options": {
@@ -4055,7 +4977,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 96
+        "y": 112
       },
       "id": 53,
       "options": {
@@ -4146,7 +5068,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 100
+        "y": 116
       },
       "id": 54,
       "options": {
@@ -4264,7 +5186,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 100
+        "y": 116
       },
       "id": 55,
       "options": {
@@ -4398,20 +5320,28 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 110
+        "y": 126
       },
       "id": 200,
       "options": {
-        "displayLabels": ["name", "percent"],
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
         "legend": {
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": ["value", "percent"]
+          "values": [
+            "value",
+            "percent"
+          ]
         },
         "pieType": "donut",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -4472,7 +5402,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 110
+        "y": 126
       },
       "id": 201,
       "options": {
@@ -4481,7 +5411,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -4531,7 +5463,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 114
+        "y": 130
       },
       "id": 202,
       "options": {
@@ -4540,7 +5472,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -4653,12 +5587,14 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 110
+        "y": 126
       },
       "id": 203,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
