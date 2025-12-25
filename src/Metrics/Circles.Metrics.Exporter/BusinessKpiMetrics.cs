@@ -336,6 +336,11 @@ public static class BusinessKpiMetrics
             "Percentage of type's total supply held by top N holders (0-1)",
             new GaugeConfiguration { LabelNames = new[] { "top_n", "account_type" } });
 
+    public static readonly Gauge TopHolderConcentrationNonCustodial = Prometheus.Metrics
+        .CreateGauge("circles_top_holder_concentration_non_custodial",
+            "Percentage of non-custodial humans' supply held by top N holders (excludes accounts with >50 unique tokens)",
+            new GaugeConfiguration { LabelNames = new[] { "top_n" } });
+
     public static readonly Gauge SupplyShareByType = Prometheus.Metrics
         .CreateGauge("circles_supply_share_by_type",
             "Percentage of total CRC supply held by account type (0-1)",

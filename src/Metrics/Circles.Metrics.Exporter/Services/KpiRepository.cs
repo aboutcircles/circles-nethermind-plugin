@@ -1142,6 +1142,48 @@ public class KpiRepository
     }
 
     /// <summary>
+    /// Gets percentage of total supply held by top N non-custodial human holders.
+    /// Excludes accounts holding more than maxUniqueTokens different token types
+    /// (likely exchanges, custodians, or protocol treasuries).
+    /// </summary>
+    public async Task<double> GetTopHolderConcentrationNonCustodialAsync(int topN, int maxUniqueTokens = 50, CancellationToken ct = default)
+    {
+        var sql = $"""
+            WITH account_balances AS (
+                SELECT
+                    b."account",
+                    COUNT(DISTINCT b."tokenId") as unique_tokens,
+                    SUM(("demurragedTotalBalance"::float8) / 1e18) as total_balance
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                INNER JOIN "V_CrcV2_Avatars" a ON b."account" = a."avatar"
+                WHERE b."demurragedTotalBalance" > 0
+                AND a."type" = 'CrcV2_RegisterHuman'
+                GROUP BY b."account"
+                HAVING COUNT(DISTINCT b."tokenId") <= {maxUniqueTokens}
+            ),
+            total_supply AS (
+                SELECT COALESCE(SUM(total_balance), 0) as supply FROM account_balances
+            ),
+            top_holders AS (
+                SELECT total_balance FROM account_balances ORDER BY total_balance DESC LIMIT {topN}
+            )
+            SELECT COALESCE(
+                (SELECT SUM(total_balance) FROM top_holders) / NULLIF((SELECT supply FROM total_supply), 0),
+                0
+            )
+            """;
+
+        try
+        {
+            return await ExecuteScalarAsync<double>(sql, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
     /// Gets supply share (percentage of total CRC) held by a specific account type.
     /// </summary>
     public async Task<double> GetSupplyShareByTypeAsync(string accountType, CancellationToken ct = default)

@@ -1212,8 +1212,8 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Traffic distribution by endpoint over the last 24 hours. Shows which routes receive the most requests: RPC (/), Grafana (/grafana), Pathfinder (/pathfinder), Profiles (/profiles), Chain-RPC (/chain-rpc).",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Traffic distribution by route prefix over the last 24 hours. Extracted from Caddy access logs. Routes: / (RPC), /grafana, /pathfinder, /profiles, /chain-rpc, /referrals, /auth, /test-env. Empty route indicates root RPC requests.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -1232,8 +1232,8 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "tooltip": { "mode": "single", "sort": "none" }
       },
-      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (handler) (increase(caddy_http_requests_total{job=\"caddy\"}[24h]))", "legendFormat": "{{handler}}", "refId": "A" }],
-      "title": "Requests by Endpoint (24h)",
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (route) (count_over_time({service=\"caddy\"} | json | route != \"\" [24h]))", "legendFormat": "{{route}}", "refId": "A" }],
+      "title": "Requests by Route (24h)",
       "type": "piechart"
     },
     {
