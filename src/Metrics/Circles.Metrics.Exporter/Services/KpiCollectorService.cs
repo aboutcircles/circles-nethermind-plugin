@@ -973,6 +973,22 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.CollectionErrors.WithLabels("gini_non_custodial").Inc();
         }
 
+        // Top holder concentration for non-custodial humans (top 10, 100, 1000)
+        try
+        {
+            int[] topNValues = [10, 100, 1000];
+            foreach (var topN in topNValues)
+            {
+                var concentration = await _repository.GetTopHolderConcentrationNonCustodialAsync(topN, ct: ct);
+                BusinessKpiMetrics.TopHolderConcentrationNonCustodial.WithLabels(topN.ToString()).Set(concentration);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect non-custodial top holder concentration metric");
+            BusinessKpiMetrics.CollectionErrors.WithLabels("top_holder_non_custodial").Inc();
+        }
+
         // Total balance by account type
         try
         {
@@ -1033,13 +1049,17 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.CollectionErrors.WithLabels("median_balance_by_type").Inc();
         }
 
-        // Top holder concentration by account type (top 10 only for types)
+        // Top holder concentration by account type (top 10, 100, 1000 for each type)
         try
         {
+            int[] topNValues = [10, 100, 1000];
             foreach (var type in accountTypes)
             {
-                var top10 = await _repository.GetTopHolderConcentrationByTypeAsync(10, type, ct);
-                BusinessKpiMetrics.TopHolderConcentrationByType.WithLabels("10", type).Set(top10);
+                foreach (var topN in topNValues)
+                {
+                    var concentration = await _repository.GetTopHolderConcentrationByTypeAsync(topN, type, ct);
+                    BusinessKpiMetrics.TopHolderConcentrationByType.WithLabels(topN.ToString(), type).Set(concentration);
+                }
             }
         }
         catch (Exception ex)

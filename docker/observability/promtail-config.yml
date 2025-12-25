@@ -44,3 +44,23 @@ scrape_configs:
                   time: time
             - output:
                 source: log
+
+      # Parse Caddy access logs to extract route information
+      # Caddy JSON logs contain: {"level":"info","ts":...,"logger":"http.log.access","msg":"handled request","request":{"uri":"/pathfinder/..."}}
+      - match:
+          selector: '{service="caddy"}'
+          stages:
+            - json:
+                expressions:
+                  uri: request.uri
+                  status: status
+                  duration: duration
+                  method: request.method
+            # Extract route prefix from URI for aggregation
+            - regex:
+                source: uri
+                expression: '^(?P<route>/[^/]*)'
+            - labels:
+                route:
+                method:
+                status:

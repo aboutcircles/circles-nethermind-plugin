@@ -1387,7 +1387,7 @@
         }
       ],
       "title": "Gini Coefficient",
-      "description": "0 = perfect equality, 1 = perfect inequality. Note: Includes all account types (humans, groups, organizations).",
+      "description": "Wealth inequality measure (0=equal, 1=unequal). INCLUDES: All registered Circles accounts - humans, groups, and organizations with any CRC balance. EXCLUDES: Zero-balance accounts, non-registered addresses. For human-only analysis, see 'Gini (Humans Only)' below.",
       "type": "stat"
     },
     {
@@ -1577,6 +1577,7 @@
         }
       ],
       "title": "Top 10 Concentration",
+      "description": "% of total CRC held by top 10 accounts. INCLUDES: All account types (humans, groups, organizations, pools). WARNING: May be dominated by liquidity pools or group treasuries. For human-only concentration, see breakdown by account type.",
       "type": "stat"
     },
     {
@@ -1638,6 +1639,7 @@
         }
       ],
       "title": "Top 100 Concentration",
+      "description": "% of total CRC held by top 100 accounts. INCLUDES: All account types. Higher values indicate wealth concentration; lower values indicate broader distribution.",
       "type": "stat"
     },
     {
@@ -1699,6 +1701,7 @@
         }
       ],
       "title": "Top 1000 Concentration",
+      "description": "% of total CRC held by top 1000 accounts. INCLUDES: All account types. If close to 100%, indicates most value is held by a small portion of accounts.",
       "type": "stat"
     },
     {
@@ -1985,7 +1988,7 @@
         }
       ],
       "title": "Gini (Humans Only)",
-      "description": "Gini coefficient for human accounts only. This is the 'fair money' indicator - lower is better.",
+      "description": "Wealth inequality among human accounts only (0=equal, 1=unequal). INCLUDES: All registered humans with CRC balance. EXCLUDES: Groups, organizations, pools, non-registered addresses. This is the key 'fair money' indicator for the Circles economy.",
       "type": "stat"
     },
     {
@@ -2048,7 +2051,7 @@
         }
       ],
       "title": "Gini (Groups)",
-      "description": "Gini coefficient for group accounts. Groups pool resources, so expect higher inequality.",
+      "description": "Wealth inequality among group accounts (0=equal, 1=unequal). INCLUDES: Registered groups (community currencies) with CRC balance. Groups naturally pool resources, so higher inequality is expected compared to humans.",
       "type": "stat"
     },
     {
@@ -2111,7 +2114,7 @@
         }
       ],
       "title": "Gini (Organizations)",
-      "description": "Gini coefficient for organization accounts.",
+      "description": "Wealth inequality among organization accounts (0=equal, 1=unequal). INCLUDES: Registered organizations (businesses, services) with CRC balance. Organizations typically have varied holdings based on business activity.",
       "type": "stat"
     },
     {
@@ -2183,6 +2186,128 @@
       ],
       "title": "Gini (Non-Custodial)",
       "description": "Gini coefficient for humans EXCLUDING custodians/aggregators (accounts holding >50 unique tokens). This provides a more accurate picture of wealth distribution among regular users, filtering out exchanges and protocol treasuries.",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
+      "id": 800,
+      "panels": [],
+      "title": "Concentration by Account Type",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Top 10 concentration among HUMANS ONLY (excludes groups, orgs, pools). This is the most meaningful metric for understanding wealth distribution among regular users.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] },
+          "unit": "percentunit", "decimals": 1, "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 50 },
+      "id": 801,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_by_type{top_n=\"10\", account_type=\"human\"}", "refId": "A", "instant": true }],
+      "title": "Top 10 (Humans)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Top 100 concentration among humans only.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "percentunit", "decimals": 1, "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 50 },
+      "id": 802,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_by_type{top_n=\"100\", account_type=\"human\"}", "refId": "A", "instant": true }],
+      "title": "Top 100 (Humans)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Top 1000 concentration among humans only.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "percentunit", "decimals": 1, "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 50 },
+      "id": 803,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_by_type{top_n=\"1000\", account_type=\"human\"}", "refId": "A", "instant": true }],
+      "title": "Top 1000 (Humans)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Top 10 concentration among NON-CUSTODIAL humans (excludes accounts with >50 unique tokens like exchanges). The purest measure of wealth concentration among regular users.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.2 }, { "color": "red", "value": 0.4 }] },
+          "unit": "percentunit", "decimals": 1, "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 50 },
+      "id": 804,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_non_custodial{top_n=\"10\"}", "refId": "A", "instant": true }],
+      "title": "Top 10 (Non-Custodial)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Top 100 concentration among non-custodial humans.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "percentunit", "decimals": 1, "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 50 },
+      "id": 805,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_non_custodial{top_n=\"100\"}", "refId": "A", "instant": true }],
+      "title": "Top 100 (Non-Custodial)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Top 1000 concentration among non-custodial humans.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "percentunit", "decimals": 1, "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 50 },
+      "id": 806,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_top_holder_concentration_non_custodial{top_n=\"1000\"}", "refId": "A", "instant": true }],
+      "title": "Top 1000 (Non-Custodial)",
       "type": "stat"
     },
     {
