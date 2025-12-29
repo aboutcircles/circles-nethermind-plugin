@@ -28,9 +28,6 @@ on:
       deploy_grafana:
         type: boolean
         default: false
-      deploy_caddy:
-        type: boolean
-        default: false
       deploy_test_environment:
         type: boolean
         default: false
@@ -50,10 +47,6 @@ on:
         default: false
       deploy_grafana:
         description: "Deploy Grafana dashboards"
-        type: boolean
-        default: false
-      deploy_caddy:
-        description: "Deploy Caddy proxy"
         type: boolean
         default: false
       deploy_test_environment:
@@ -91,7 +84,6 @@ jobs:
       deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
       deploy_observability: ${{ steps.set-flags.outputs.deploy_observability }}
       deploy_grafana: ${{ steps.set-flags.outputs.deploy_grafana }}
-      deploy_caddy: ${{ steps.set-flags.outputs.deploy_caddy }}
       deploy_test_environment: ${{ steps.set-flags.outputs.deploy_test_environment }}
       any_deploy: ${{ steps.set-flags.outputs.any_deploy }}
     steps:
@@ -136,11 +128,6 @@ jobs:
             grafana:
               - 'docker/observability/grafana/**'
               - 'docker/docker-compose.grafana.yml'
-            # CADDY: Reverse proxy
-            caddy:
-              - 'docker/Caddyfile'
-              - 'docker/caddy.Dockerfile'
-              - 'docker/docker-compose.caddy.yml'
             # TEST ENVIRONMENT: Integration testing service
             test_environment:
               - 'circles-test-environment/**'
@@ -155,14 +142,12 @@ jobs:
           INPUT_DEPLOY_GNOSIS: ${{ github.event.inputs.deploy_gnosis }}
           INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
           INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
-          INPUT_DEPLOY_CADDY: ${{ github.event.inputs.deploy_caddy }}
           INPUT_DEPLOY_TEST_ENV: ${{ github.event.inputs.deploy_test_environment }}
           # workflow_call inputs (reusable workflow)
           CALL_DEPLOY_ALL: ${{ inputs.deploy_all }}
           CALL_DEPLOY_GNOSIS: ${{ inputs.deploy_gnosis }}
           CALL_DEPLOY_OBS: ${{ inputs.deploy_observability }}
           CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
-          CALL_DEPLOY_CADDY: ${{ inputs.deploy_caddy }}
           CALL_DEPLOY_TEST_ENV: ${{ inputs.deploy_test_environment }}
           # Path filter results
           FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
@@ -170,7 +155,6 @@ jobs:
           FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
-          FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
           FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
         run: |
           # Handle workflow_dispatch (manual trigger from UI)
@@ -179,7 +163,6 @@ jobs:
               echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
               echo "deploy_observability=true" >> $GITHUB_OUTPUT
               echo "deploy_grafana=true" >> $GITHUB_OUTPUT
-              echo "deploy_caddy=true" >> $GITHUB_OUTPUT
               echo "deploy_test_environment=true" >> $GITHUB_OUTPUT
               echo "any_deploy=true" >> $GITHUB_OUTPUT
               exit 0
@@ -187,7 +170,6 @@ jobs:
             GNOSIS="$INPUT_DEPLOY_GNOSIS"
             OBS="$INPUT_DEPLOY_OBS"
             GRAFANA="$INPUT_DEPLOY_GRAFANA"
-            CADDY="$INPUT_DEPLOY_CADDY"
             TEST_ENV="$INPUT_DEPLOY_TEST_ENV"
           # Handle workflow_call (reusable workflow)
           elif [ "$EVENT_NAME" == "workflow_call" ]; then
@@ -195,7 +177,6 @@ jobs:
               echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
               echo "deploy_observability=true" >> $GITHUB_OUTPUT
               echo "deploy_grafana=true" >> $GITHUB_OUTPUT
-              echo "deploy_caddy=true" >> $GITHUB_OUTPUT
               echo "deploy_test_environment=true" >> $GITHUB_OUTPUT
               echo "any_deploy=true" >> $GITHUB_OUTPUT
               exit 0
@@ -203,14 +184,12 @@ jobs:
             GNOSIS="$CALL_DEPLOY_GNOSIS"
             OBS="$CALL_DEPLOY_OBS"
             GRAFANA="$CALL_DEPLOY_GRAFANA"
-            CADDY="$CALL_DEPLOY_CADDY"
             TEST_ENV="$CALL_DEPLOY_TEST_ENV"
           # Handle push (auto-detect from changed files)
           else
             GNOSIS="false"
             OBS="false"
             GRAFANA="false"
-            CADDY="false"
             TEST_ENV="false"
 
             # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache + docker files
@@ -239,12 +218,6 @@ jobs:
               echo "::notice::Grafana files changed - will deploy grafana"
             fi
 
-            # CADDY: Caddyfile, caddy dockerfile, caddy compose
-            if [ "$FILTER_CADDY" == "true" ]; then
-              CADDY="true"
-              echo "::notice::Caddy files changed - will deploy caddy"
-            fi
-
             # TEST ENVIRONMENT: submodule or compose file changed
             if [ "$FILTER_TEST_ENV" == "true" ]; then
               TEST_ENV="true"
@@ -255,10 +228,9 @@ jobs:
           echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
           echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
           echo "deploy_grafana=$GRAFANA" >> $GITHUB_OUTPUT
-          echo "deploy_caddy=$CADDY" >> $GITHUB_OUTPUT
           echo "deploy_test_environment=$TEST_ENV" >> $GITHUB_OUTPUT
 
-          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ] || [ "$CADDY" == "true" ] || [ "$TEST_ENV" == "true" ]; then
+          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ] || [ "$TEST_ENV" == "true" ]; then
             echo "any_deploy=true" >> $GITHUB_OUTPUT
           else
             echo "any_deploy=false" >> $GITHUB_OUTPUT
@@ -271,12 +243,10 @@ jobs:
           FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
-          FILTER_CADDY: ${{ steps.filter.outputs.caddy }}
           FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
           DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ steps.set-flags.outputs.deploy_grafana }}
-          DEPLOY_CADDY: ${{ steps.set-flags.outputs.deploy_caddy }}
           DEPLOY_TEST_ENV: ${{ steps.set-flags.outputs.deploy_test_environment }}
         run: |
           echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
@@ -286,7 +256,6 @@ jobs:
           echo "| Gnosis (Index/Pathfinder/Rpc/Cache) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
           echo "| Observability (Metrics) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | - | $FILTER_GRAFANA | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Caddy | - | $FILTER_CADDY | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
           echo "| Test Environment | $FILTER_TEST_ENV | - | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
 
   build-images:
@@ -404,7 +373,6 @@ jobs:
                 "gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
                 "observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
                 "grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}",
-                "caddy": "${{ needs.detect-changes.outputs.deploy_caddy }}",
                 "test_environment": "${{ needs.detect-changes.outputs.deploy_test_environment }}"
               }
             }
@@ -414,7 +382,6 @@ jobs:
           DEPLOY_GNOSIS: ${{ needs.detect-changes.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ needs.detect-changes.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ needs.detect-changes.outputs.deploy_grafana }}
-          DEPLOY_CADDY: ${{ needs.detect-changes.outputs.deploy_caddy }}
           DEPLOY_TEST_ENV: ${{ needs.detect-changes.outputs.deploy_test_environment }}
         run: |
           echo "## Deployment Triggered" >> $GITHUB_STEP_SUMMARY
@@ -424,5 +391,4 @@ jobs:
           echo "| Gnosis | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
           echo "| Observability | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Caddy | $DEPLOY_CADDY |" >> $GITHUB_STEP_SUMMARY
           echo "| Test Environment | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
