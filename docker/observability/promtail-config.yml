@@ -30,7 +30,14 @@ scrape_configs:
         target_label: 'container'
       - source_labels: ['__meta_docker_container_log_stream']
         target_label: 'stream'
+      # Use docker-compose service label if available
       - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+      # Fallback: use container name as service if no compose label exists
+      # This handles containers deployed via Ansible docker_container (like Caddy)
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service', '__meta_docker_container_name']
+        regex: '^;/(.+)$'
+        replacement: '$1'
         target_label: 'service'
     pipeline_stages:
       # Try JSON parsing for structured logs (Docker json-file driver)
@@ -48,8 +55,9 @@ scrape_configs:
       # Parse Caddy access logs to extract route information
       # Caddy JSON logs contain: {"level":"info","ts":...,"logger":"http.log.access.log0","msg":"handled request","request":{"uri":"/pathfinder/..."}}
       # Note: Only http.log.access logs have the request object with uri field
+      # Match by container name since service label is set via relabel fallback
       - match:
-          selector: '{service="caddy"}'
+          selector: '{container="caddy"}'
           stages:
             - json:
                 expressions:
@@ -60,7 +68,7 @@ scrape_configs:
                   method: request.method
             # Only process access logs (not admin API logs)
             - match:
-                selector: '{service="caddy"} |= "http.log.access"'
+                selector: '{container="caddy"} |= "http.log.access"'
                 stages:
                   # Extract route prefix from URI for aggregation
                   - regex:

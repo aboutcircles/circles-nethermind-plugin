@@ -4888,7 +4888,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({service=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[24h]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[24h]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -4961,7 +4961,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({service=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[7d]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[7d]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -5034,7 +5034,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({service=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[30d]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[30d]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
