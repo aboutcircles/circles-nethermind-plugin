@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Circles.Common.TestUtils;
 using Circles.Index.Common.Dto;
 using Circles.Pathfinder.Data;
@@ -187,13 +188,30 @@ public class RegressionTests
 /// </summary>
 public class RegressionScenario
 {
+    [JsonPropertyName("name")]
     public string? Name { get; set; }
+
+    [JsonPropertyName("block")]
     public long Block { get; set; }
+
+    [JsonPropertyName("source")]
     public string? Source { get; set; }
+
+    [JsonPropertyName("sink")]
     public string? Sink { get; set; }
+
+    [JsonPropertyName("description")]
     public string? Description { get; set; }
+
+    [JsonPropertyName("expectedError")]
     public string? ExpectedError { get; set; }
+
+    [JsonPropertyName("minFlow")]
     public string? MinFlow { get; set; }
+
+    [JsonPropertyName("discoveredAt")]
     public string? DiscoveredAt { get; set; }
+
+    [JsonPropertyName("fixedIn")]
     public string? FixedIn { get; set; }
 }

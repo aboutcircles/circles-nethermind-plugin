@@ -62,7 +62,8 @@ public class TestEnvironmentClient : IAsyncDisposable
     private TestEnvironmentClient(string baseUrl)
     {
         _baseUrl = baseUrl.TrimEnd('/');
-        _httpClient = new HttpClient { BaseAddress = new Uri(_baseUrl) };
+        // Must end with / for relative URLs to work correctly with BaseAddress
+        _httpClient = new HttpClient { BaseAddress = new Uri(_baseUrl + "/") };
     }
 
     /// <summary>
@@ -89,7 +90,7 @@ public class TestEnvironmentClient : IAsyncDisposable
             Ttl = ttl
         };
 
-        var response = await client._httpClient.PostAsJsonAsync("/api/v1/session", request);
+        var response = await client._httpClient.PostAsJsonAsync("api/v1/session", request);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -113,12 +114,10 @@ public class TestEnvironmentClient : IAsyncDisposable
     /// </summary>
     public static async Task<long> GetCurrentBlockAsync(string? testEnvUrl = null)
     {
-        using var client = new HttpClient
-        {
-            BaseAddress = new Uri((testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/'))
-        };
+        var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var response = await client.GetFromJsonAsync<BlockInfo>("/api/v1/blocks/current");
+        var response = await client.GetFromJsonAsync<BlockInfo>("api/v1/blocks/current");
         return response?.BlockNumber ?? 0;
     }
 
@@ -127,13 +126,11 @@ public class TestEnvironmentClient : IAsyncDisposable
     /// </summary>
     public static async Task<bool> BlockExistsAsync(long blockNumber, string? testEnvUrl = null)
     {
-        using var client = new HttpClient
-        {
-            BaseAddress = new Uri((testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/'))
-        };
+        var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
         var response = await client.GetFromJsonAsync<BlockExistsInfo>(
-            $"/api/v1/blocks/{blockNumber}/exists");
+            $"api/v1/blocks/{blockNumber}/exists");
         return response?.Exists ?? false;
     }
 
@@ -142,12 +139,10 @@ public class TestEnvironmentClient : IAsyncDisposable
     /// </summary>
     public static async Task<HealthResponse?> GetHealthAsync(string? testEnvUrl = null)
     {
-        using var client = new HttpClient
-        {
-            BaseAddress = new Uri((testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/'))
-        };
+        var baseUrl = (testEnvUrl ?? DefaultTestEnvUrl).TrimEnd('/') + "/";
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        return await client.GetFromJsonAsync<HealthResponse>("/health");
+        return await client.GetFromJsonAsync<HealthResponse>("health");
     }
 
     /// <summary>
@@ -194,7 +189,7 @@ public class TestEnvironmentClient : IAsyncDisposable
             throw new InvalidOperationException("No active session");
         }
 
-        var response = await _httpClient.GetAsync($"/api/v1/session/{_session.SessionId}");
+        var response = await _httpClient.GetAsync($"api/v1/session/{_session.SessionId}");
         response.EnsureSuccessStatusCode();
 
         _session = await response.Content.ReadFromJsonAsync<SessionResponse>();
@@ -209,7 +204,7 @@ public class TestEnvironmentClient : IAsyncDisposable
 
         try
         {
-            await _httpClient.DeleteAsync($"/api/v1/session/{_session.SessionId}");
+            await _httpClient.DeleteAsync($"api/v1/session/{_session.SessionId}");
         }
         catch
         {
