@@ -79,3 +79,71 @@ public record RpcInfo
 {
     public string Url { get; init; } = "";
 }
+
+/// <summary>
+/// Request to execute a SQL query through the test environment proxy.
+/// </summary>
+public record QueryRequest
+{
+    /// <summary>
+    /// The SQL query to execute.
+    /// </summary>
+    public required string Sql { get; init; }
+
+    /// <summary>
+    /// Parameters for the query (optional).
+    /// </summary>
+    public Dictionary<string, object?>? Parameters { get; init; }
+
+    /// <summary>
+    /// Maximum number of rows to return (default: 1000).
+    /// </summary>
+    public int MaxRows { get; init; } = 1000;
+}
+
+/// <summary>
+/// Response from a SQL query execution.
+/// </summary>
+public record QueryResponse
+{
+    /// <summary>
+    /// Column names in the result set.
+    /// </summary>
+    public List<string> Columns { get; init; } = [];
+
+    /// <summary>
+    /// Rows of data, where each row is an array of values.
+    /// </summary>
+    public List<object?[]> Rows { get; init; } = [];
+
+    /// <summary>
+    /// Number of rows returned.
+    /// </summary>
+    public int RowCount { get; init; }
+
+    /// <summary>
+    /// Whether the result was truncated due to MaxRows limit.
+    /// </summary>
+    public bool Truncated { get; init; }
+
+    /// <summary>
+    /// Execution time in milliseconds.
+    /// </summary>
+    public long ExecutionTimeMs { get; init; }
+}
+
+/// <summary>
+/// Response for scalar query execution.
+/// </summary>
+public record ScalarResponse
+{
+    /// <summary>
+    /// The scalar result value.
+    /// </summary>
+    public object? Value { get; init; }
+
+    /// <summary>
+    /// Execution time in milliseconds.
+    /// </summary>
+    public long ExecutionTimeMs { get; init; }
+}
