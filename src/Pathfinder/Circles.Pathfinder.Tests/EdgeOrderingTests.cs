@@ -12,27 +12,48 @@ namespace Circles.Pathfinder.Tests;
 /// - All Avatar → Router edges should come before Router → Group edges
 ///
 /// These tests verify the SortEdgesForMintDependencies and ValidateMintEdgeOrdering
-/// methods in V2Pathfinder.
+/// methods in V2Pathfinder by calling the REAL implementation (not duplicated logic).
 /// </summary>
 [TestFixture]
 public class EdgeOrderingTests
 {
-    // Test avatar IDs
-    private const int Source = 1;
-    private const int Sink = 2;
-    private const int Router = 3;
-    private const int Group1 = 4;
-    private const int Group2 = 5;
-    private const int Avatar1 = 6;
-    private const int Avatar2 = 7;
+    // Test addresses - using realistic-looking addresses for clarity
+    private const string SourceAddr = "0x1111111111111111111111111111111111111111";
+    private const string SinkAddr = "0x2222222222222222222222222222222222222222";
+    private const string RouterAddr = "0x3333333333333333333333333333333333333333";
+    private const string Group1Addr = "0x4444444444444444444444444444444444444444";
+    private const string Group2Addr = "0x5555555555555555555555555555555555555555";
+    private const string Group3Addr = "0x6666666666666666666666666666666666666666";
+    private const string Avatar1Addr = "0x7777777777777777777777777777777777777777";
+    private const string Avatar2Addr = "0x8888888888888888888888888888888888888888";
 
-    // Token IDs
-    private const int Token1 = 100;
-    private const int Token2 = 101;
-    private const int Token3 = 102;
+    // Token addresses
+    private const string Token1Addr = "0xaaaa111111111111111111111111111111111111";
+    private const string Token2Addr = "0xaaaa222222222222222222222222222222222222";
+    private const string Token3Addr = "0xaaaa333333333333333333333333333333333333";
+    private const string Token4Addr = "0xaaaa444444444444444444444444444444444444";
+    private const string Token5Addr = "0xaaaa555555555555555555555555555555555555";
+
+    // Resolved IDs (populated from AddressIdPool in tests)
+    private int Source => AddressIdPool.IdOf(SourceAddr);
+    private int Sink => AddressIdPool.IdOf(SinkAddr);
+    private int Router => AddressIdPool.IdOf(RouterAddr);
+    private int Group1 => AddressIdPool.IdOf(Group1Addr);
+    private int Group2 => AddressIdPool.IdOf(Group2Addr);
+    private int Group3 => AddressIdPool.IdOf(Group3Addr);
+    private int Avatar1 => AddressIdPool.IdOf(Avatar1Addr);
+    private int Avatar2 => AddressIdPool.IdOf(Avatar2Addr);
+
+    private int Token1 => AddressIdPool.IdOf(Token1Addr);
+    private int Token2 => AddressIdPool.IdOf(Token2Addr);
+    private int Token3 => AddressIdPool.IdOf(Token3Addr);
+    private int Token4 => AddressIdPool.IdOf(Token4Addr);
+    private int Token5 => AddressIdPool.IdOf(Token5Addr);
+
     // Group tokens have same ID as group address
-    private const int GroupToken1 = Group1;
-    private const int GroupToken2 = Group2;
+    private int GroupToken1 => Group1;
+    private int GroupToken2 => Group2;
+    private int GroupToken3 => Group3;
 
     #region SortEdgesForMintDependencies Tests
 
@@ -54,8 +75,8 @@ public class EdgeOrderingTests
             new(Router, Group1, Token2, 50) { Flow = 50 },
         };
 
-        // Act
-        var sorted = SortEdgesForMintDependencies(edges, capacityGraph);
+        // Act - call REAL V2Pathfinder implementation
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
 
         // Assert: All collateral edges before mint edge
         int group1MintIndex = sorted.FindIndex(e => e.From == Group1 && e.To == Sink);
@@ -82,8 +103,8 @@ public class EdgeOrderingTests
             new(Router, Group1, Token1, 50) { Flow = 50 },      // Group1 collateral (wrong position)
         };
 
-        // Act
-        var sorted = SortEdgesForMintDependencies(edges, capacityGraph);
+        // Act - call REAL V2Pathfinder implementation
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
 
         // Assert: Each group's collateral precedes its mint
         AssertGroupCollateralBeforeMint(sorted, Group1, capacityGraph);
@@ -106,8 +127,8 @@ public class EdgeOrderingTests
             new(Avatar2, Sink, Token1, 100) { Flow = 100 },
         };
 
-        // Act
-        var sorted = SortEdgesForMintDependencies(edges, capacityGraph);
+        // Act - call REAL V2Pathfinder implementation
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
 
         // Assert: Order unchanged (all go to "otherEdges")
         Assert.That(sorted.Count, Is.EqualTo(3));
@@ -135,8 +156,8 @@ public class EdgeOrderingTests
             new(Group1, Sink, GroupToken1, 100) { Flow = 100 },
         };
 
-        // Act
-        var sorted = SortEdgesForMintDependencies(edges, capacityGraph);
+        // Act - call REAL V2Pathfinder implementation
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
 
         // Assert: Same edges returned (no sorting without router)
         Assert.That(sorted, Is.SameAs(edges));
@@ -157,12 +178,100 @@ public class EdgeOrderingTests
             new(Group1, Sink, GroupToken1, 50) { Flow = 50 },   // Group→Sink
         };
 
-        // Act
-        var sorted = SortEdgesForMintDependencies(edges, capacityGraph);
+        // Act - call REAL V2Pathfinder implementation
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
 
         // Assert: Avatar→Router comes first
         Assert.That(sorted[0].From, Is.EqualTo(Source));
         Assert.That(sorted[0].To, Is.EqualTo(Router));
+    }
+
+    /// <summary>
+    /// Three groups in sequence - tests complex dependency ordering.
+    /// </summary>
+    [Test]
+    public void SortEdges_ThreeGroupsSequential_AllDependenciesSatisfied()
+    {
+        // Arrange: Three groups with interleaved edges
+        var capacityGraph = CreateCapacityGraphWithGroups(new[] { Group1, Group2, Group3 }, Router);
+        var edges = new List<FlowEdge>
+        {
+            new(Group3, Sink, GroupToken3, 20) { Flow = 20 },   // Group3 mint (wrong)
+            new(Group1, Sink, GroupToken1, 50) { Flow = 50 },   // Group1 mint (wrong)
+            new(Router, Group2, Token2, 30) { Flow = 30 },
+            new(Group2, Sink, GroupToken2, 30) { Flow = 30 },
+            new(Router, Group1, Token1, 50) { Flow = 50 },      // Group1 collateral
+            new(Router, Group3, Token3, 20) { Flow = 20 },      // Group3 collateral
+        };
+
+        // Act
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
+
+        // Assert: Each group's collateral precedes its mint
+        AssertGroupCollateralBeforeMint(sorted, Group1, capacityGraph);
+        AssertGroupCollateralBeforeMint(sorted, Group2, capacityGraph);
+        AssertGroupCollateralBeforeMint(sorted, Group3, capacityGraph);
+    }
+
+    /// <summary>
+    /// Five different collateral token types to a single group.
+    /// </summary>
+    [Test]
+    public void SortEdges_FiveCollateralTokenTypes_CorrectOrdering()
+    {
+        var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
+        var edges = new List<FlowEdge>
+        {
+            new(Router, Group1, Token1, 10) { Flow = 10 },
+            new(Group1, Sink, GroupToken1, 50) { Flow = 50 },  // Mint in middle (wrong)
+            new(Router, Group1, Token2, 10) { Flow = 10 },
+            new(Router, Group1, Token3, 10) { Flow = 10 },
+            new(Router, Group1, Token4, 10) { Flow = 10 },
+            new(Router, Group1, Token5, 10) { Flow = 10 },
+        };
+
+        // Act
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
+
+        // Assert: All 5 collateral tokens before mint
+        int mintIndex = sorted.FindIndex(e => e.From == Group1 && e.To == Sink);
+        int lastCollateralIndex = sorted.FindLastIndex(e => e.To == Group1 && capacityGraph.IsRouter(e.From));
+
+        Assert.That(lastCollateralIndex, Is.LessThan(mintIndex),
+            "All 5 collateral edges must precede mint edge");
+        Assert.That(sorted.Count(e => e.To == Group1 && capacityGraph.IsRouter(e.From)), Is.EqualTo(5),
+            "Should have exactly 5 collateral edges");
+    }
+
+    /// <summary>
+    /// Mixed group and avatar-to-avatar transfers in same path.
+    /// </summary>
+    [Test]
+    public void SortEdges_MixedGroupAndAvatarTransfers_CorrectOrdering()
+    {
+        var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
+        capacityGraph.AddAvatar(Avatar1);
+        capacityGraph.AddAvatar(Avatar2);
+
+        var edges = new List<FlowEdge>
+        {
+            new(Avatar1, Avatar2, Token1, 25) { Flow = 25 },    // Standard transfer
+            new(Group1, Sink, GroupToken1, 50) { Flow = 50 },   // Mint (wrong position)
+            new(Source, Avatar1, Token1, 25) { Flow = 25 },     // Standard transfer
+            new(Router, Group1, Token2, 50) { Flow = 50 },      // Collateral
+            new(Source, Router, Token2, 50) { Flow = 50 },      // Avatar→Router
+        };
+
+        // Act
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
+
+        // Assert: Group ordering correct, other edges preserved
+        AssertGroupCollateralBeforeMint(sorted, Group1, capacityGraph);
+
+        // Avatar→Router should come before Router→Group
+        int avatarToRouterIdx = sorted.FindIndex(e => e.From == Source && e.To == Router);
+        int routerToGroupIdx = sorted.FindIndex(e => e.From == Router && e.To == Group1);
+        Assert.That(avatarToRouterIdx, Is.LessThan(routerToGroupIdx));
     }
 
     #endregion
@@ -183,7 +292,8 @@ public class EdgeOrderingTests
             new(Group1, Sink, GroupToken1, 100) { Flow = 100 },
         };
 
-        Assert.DoesNotThrow(() => ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act/Assert - call REAL V2Pathfinder implementation
+        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
     }
 
     /// <summary>
@@ -200,8 +310,9 @@ public class EdgeOrderingTests
             new(Router, Group1, Token1, 100) { Flow = 100 },     // Collateral after
         };
 
+        // Act/Assert - call REAL V2Pathfinder implementation
         var ex = Assert.Throws<InvalidOperationException>(
-            () => ValidateMintEdgeOrdering(edges, capacityGraph));
+            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
 
         // Either "ordering violation" or "insufficient collateral" is valid
         Assert.That(ex!.Message, Does.Contain("collateral").Or.Contain("ordering"));
@@ -222,8 +333,9 @@ public class EdgeOrderingTests
             new(Router, Group1, Token2, 50) { Flow = 50 },       // Too late
         };
 
+        // Act/Assert - call REAL V2Pathfinder implementation
         var ex = Assert.Throws<InvalidOperationException>(
-            () => ValidateMintEdgeOrdering(edges, capacityGraph));
+            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
 
         Assert.That(ex!.Message, Does.Contain("insufficient collateral"));
     }
@@ -245,7 +357,8 @@ public class EdgeOrderingTests
             new(Group2, Sink, GroupToken2, 30) { Flow = 30 },
         };
 
-        Assert.DoesNotThrow(() => ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act/Assert - call REAL V2Pathfinder implementation
+        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
     }
 
     /// <summary>
@@ -261,7 +374,8 @@ public class EdgeOrderingTests
             new(Avatar1, Sink, Token1, 100) { Flow = 100 },
         };
 
-        Assert.DoesNotThrow(() => ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act/Assert - call REAL V2Pathfinder implementation
+        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
     }
 
     /// <summary>
@@ -277,7 +391,30 @@ public class EdgeOrderingTests
             // No Group1→Sink edge (maybe filtered out or unused)
         };
 
-        Assert.DoesNotThrow(() => ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act/Assert - call REAL V2Pathfinder implementation
+        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+    }
+
+    /// <summary>
+    /// Collateral appearing after we've already seen outbound from group - ordering violation.
+    /// </summary>
+    [Test]
+    public void ValidateOrdering_CollateralAfterMint_ThrowsOrderingViolation()
+    {
+        var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
+        // First mint (with some collateral), then more collateral arrives
+        var edges = new List<FlowEdge>
+        {
+            new(Router, Group1, Token1, 50) { Flow = 50 },       // First collateral
+            new(Group1, Sink, GroupToken1, 50) { Flow = 50 },    // Mint (OK so far)
+            new(Router, Group1, Token2, 50) { Flow = 50 },       // More collateral AFTER mint - WRONG!
+        };
+
+        // Act/Assert
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+
+        Assert.That(ex!.Message, Does.Contain("ordering violation").IgnoreCase);
     }
 
     #endregion
@@ -305,8 +442,8 @@ public class EdgeOrderingTests
             new(Router, Group1, Token3, 1400) { Flow = 1400 },   // Third collateral
         };
 
-        // Act: Sort the edges
-        var sorted = SortEdgesForMintDependencies(badOrder, capacityGraph);
+        // Act: Sort the edges using REAL V2Pathfinder
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(badOrder, capacityGraph);
 
         // Assert: All collateral before mint
         int mintIndex = sorted.FindIndex(e => e.From == Group1);
@@ -315,8 +452,8 @@ public class EdgeOrderingTests
         Assert.That(lastCollateralIndex, Is.LessThan(mintIndex),
             "Bug fix: All 3 collateral edges must precede mint edge");
 
-        // Assert: Validation passes
-        Assert.DoesNotThrow(() => ValidateMintEdgeOrdering(sorted, capacityGraph));
+        // Assert: Validation passes using REAL V2Pathfinder
+        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(sorted, capacityGraph));
     }
 
     /// <summary>
@@ -336,18 +473,42 @@ public class EdgeOrderingTests
             new(Router, Group1, Token3, 1400) { Flow = 1400 },   // Third collateral (too late)
         };
 
-        // This should fail with insufficient collateral
+        // This should fail with insufficient collateral using REAL V2Pathfinder
         var ex = Assert.Throws<InvalidOperationException>(
-            () => ValidateMintEdgeOrdering(buggyOrder, capacityGraph));
+            () => V2Pathfinder.ValidateMintEdgeOrdering(buggyOrder, capacityGraph));
 
         Assert.That(ex!.Message, Does.Contain("insufficient collateral"));
+    }
+
+    /// <summary>
+    /// Integration test: Sort then validate should always succeed.
+    /// </summary>
+    [Test]
+    public void SortThenValidate_AlwaysSucceeds()
+    {
+        var capacityGraph = CreateCapacityGraphWithGroups(new[] { Group1, Group2 }, Router);
+
+        // Deliberately bad order
+        var edges = new List<FlowEdge>
+        {
+            new(Group2, Sink, GroupToken2, 100) { Flow = 100 },
+            new(Group1, Sink, GroupToken1, 50) { Flow = 50 },
+            new(Router, Group1, Token1, 50) { Flow = 50 },
+            new(Router, Group2, Token2, 100) { Flow = 100 },
+        };
+
+        // Sort then validate
+        var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
+
+        // Should not throw
+        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(sorted, capacityGraph));
     }
 
     #endregion
 
     #region Helper Methods
 
-    private static CapacityGraph CreateCapacityGraphWithGroup(int groupId, int routerId)
+    private CapacityGraph CreateCapacityGraphWithGroup(int groupId, int routerId)
     {
         var graph = new CapacityGraph();
         graph.AddAvatar(Source);
@@ -357,7 +518,7 @@ public class EdgeOrderingTests
         return graph;
     }
 
-    private static CapacityGraph CreateCapacityGraphWithGroups(int[] groupIds, int routerId)
+    private CapacityGraph CreateCapacityGraphWithGroups(int[] groupIds, int routerId)
     {
         var graph = new CapacityGraph();
         graph.AddAvatar(Source);
@@ -370,7 +531,7 @@ public class EdgeOrderingTests
         return graph;
     }
 
-    private static CapacityGraph CreateCapacityGraphNoGroups()
+    private CapacityGraph CreateCapacityGraphNoGroups()
     {
         var graph = new CapacityGraph();
         graph.AddAvatar(Source);
@@ -390,128 +551,6 @@ public class EdgeOrderingTests
         {
             Assert.That(lastCollateralIndex, Is.LessThan(mintIndex),
                 $"Group {groupId}: collateral must precede mint");
-        }
-    }
-
-    /// <summary>
-    /// Replicates SortEdgesForMintDependencies logic from V2Pathfinder for testing.
-    /// </summary>
-    private static List<FlowEdge> SortEdgesForMintDependencies(List<FlowEdge> edges, CapacityGraph capacityGraph)
-    {
-        if (capacityGraph.RouterNode == null || capacityGraph.GroupNodes.Count == 0)
-        {
-            return edges;
-        }
-
-        var avatarToRouter = new List<FlowEdge>();
-        var groupEdges = new Dictionary<int, (List<FlowEdge> Inbound, List<FlowEdge> Outbound)>();
-        var otherEdges = new List<FlowEdge>();
-
-        foreach (var edge in edges)
-        {
-            bool fromIsRouter = capacityGraph.IsRouter(edge.From);
-            bool toIsRouter = capacityGraph.IsRouter(edge.To);
-            bool fromIsGroup = capacityGraph.IsGroup(edge.From);
-            bool toIsGroup = capacityGraph.IsGroup(edge.To);
-
-            if (!fromIsRouter && !fromIsGroup && toIsRouter)
-            {
-                avatarToRouter.Add(edge);
-            }
-            else if (fromIsRouter && toIsGroup)
-            {
-                int groupId = edge.To;
-                if (!groupEdges.TryGetValue(groupId, out var lists))
-                {
-                    lists = (new List<FlowEdge>(), new List<FlowEdge>());
-                    groupEdges[groupId] = lists;
-                }
-                lists.Inbound.Add(edge);
-            }
-            else if (fromIsGroup && !toIsGroup && !toIsRouter)
-            {
-                int groupId = edge.From;
-                if (!groupEdges.TryGetValue(groupId, out var lists))
-                {
-                    lists = (new List<FlowEdge>(), new List<FlowEdge>());
-                    groupEdges[groupId] = lists;
-                }
-                lists.Outbound.Add(edge);
-            }
-            else
-            {
-                otherEdges.Add(edge);
-            }
-        }
-
-        var result = new List<FlowEdge>(edges.Count);
-        result.AddRange(avatarToRouter);
-
-        foreach (var (_, (inbound, outbound)) in groupEdges)
-        {
-            result.AddRange(inbound);
-            result.AddRange(outbound);
-        }
-
-        result.AddRange(otherEdges);
-        return result;
-    }
-
-    /// <summary>
-    /// Replicates ValidateMintEdgeOrdering logic from V2Pathfinder for testing.
-    /// Note: Uses groupId directly instead of AddressIdPool.StringOf() since test IDs
-    /// are synthetic and not registered in the pool.
-    /// </summary>
-    private static void ValidateMintEdgeOrdering(List<FlowEdge> edges, CapacityGraph capacityGraph)
-    {
-        if (capacityGraph.RouterNode == null || capacityGraph.GroupNodes.Count == 0)
-        {
-            return;
-        }
-
-        var groupsWithOutboundSeen = new HashSet<int>();
-        var groupInboundFlow = new Dictionary<int, long>();
-        var groupOutboundFlow = new Dictionary<int, long>();
-
-        for (int i = 0; i < edges.Count; i++)
-        {
-            var edge = edges[i];
-            bool fromIsRouter = capacityGraph.IsRouter(edge.From);
-            bool fromIsGroup = capacityGraph.IsGroup(edge.From);
-            bool toIsGroup = capacityGraph.IsGroup(edge.To);
-
-            if (fromIsRouter && toIsGroup)
-            {
-                int groupId = edge.To;
-
-                if (groupsWithOutboundSeen.Contains(groupId))
-                {
-                    throw new InvalidOperationException(
-                        $"Edge ordering violation: Router → Group edge for group {groupId} " +
-                        $"appears after Group → Avatar edge at index {i}. " +
-                        "All collateral must be deposited before minting.");
-                }
-
-                groupInboundFlow.TryGetValue(groupId, out long current);
-                groupInboundFlow[groupId] = current + edge.Flow;
-            }
-            else if (fromIsGroup && !capacityGraph.IsRouter(edge.To) && !capacityGraph.IsGroup(edge.To))
-            {
-                int groupId = edge.From;
-                groupsWithOutboundSeen.Add(groupId);
-
-                groupOutboundFlow.TryGetValue(groupId, out long currentOutbound);
-                groupOutboundFlow[groupId] = currentOutbound + edge.Flow;
-
-                groupInboundFlow.TryGetValue(groupId, out long inbound);
-                if (inbound < groupOutboundFlow[groupId])
-                {
-                    throw new InvalidOperationException(
-                        $"Flow violation: Group {groupId} has insufficient collateral at edge index {i}. " +
-                        $"Cumulative inbound: {inbound}, cumulative outbound required: {groupOutboundFlow[groupId]}. " +
-                        "Ensure all Router → Group edges precede Group → Avatar edges.");
-                }
-            }
         }
     }
 

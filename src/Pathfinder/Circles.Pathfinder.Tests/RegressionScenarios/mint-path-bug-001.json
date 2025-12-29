@@ -1,0 +1,11 @@
+{
+  "name": "Original November 2025 Edge Ordering Bug",
+  "block": 43193632,
+  "source": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
+  "description": "GNO token offer failure. Dictionary iteration order caused edges to be returned in arbitrary order. User sent 13.63 + 27 + 14 CRC as collateral to mint 54.61 CRC of group tokens. Edge order: Router→Group(13.63), Group→Sink(54.61), Router→Group(27), Router→Group(14). Contract failed with ERC1155InsufficientBalance because group only had 13.63 when trying to transfer 54.61.",
+  "expectedError": null,
+  "minFlow": "1000000000000000000",
+  "discoveredAt": "2025-11-17T23:18:00+01:00",
+  "fixedIn": "SortEdgesForMintDependencies()"
+}
