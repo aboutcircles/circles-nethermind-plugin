@@ -214,6 +214,100 @@ public class TestEnvironmentClient : IAsyncDisposable
         _session = null;
     }
 
+    /// <summary>
+    /// Executes a SQL query through the test environment proxy.
+    /// Use this when direct database connection is not available (remote access).
+    /// </summary>
+    /// <param name="sql">The SQL SELECT query to execute.</param>
+    /// <param name="parameters">Optional query parameters.</param>
+    /// <param name="maxRows">Maximum rows to return (default: 1000).</param>
+    /// <returns>Query response with columns and rows.</returns>
+    public async Task<QueryResponse> ExecuteQueryAsync(
+        string sql,
+        Dictionary<string, object?>? parameters = null,
+        int maxRows = 1000)
+    {
+        if (_session?.SessionId == null)
+        {
+            throw new InvalidOperationException("No active session");
+        }
+
+        var request = new QueryRequest
+        {
+            Sql = sql,
+            Parameters = parameters,
+            MaxRows = maxRows
+        };
+
+        var response = await _httpClient.PostAsJsonAsync(
+            $"api/v1/session/{_session.SessionId}/query", request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Query failed: {response.StatusCode} - {error}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<QueryResponse>()
+            ?? throw new InvalidOperationException("Query response was null");
+    }
+
+    /// <summary>
+    /// Executes a scalar query through the test environment proxy.
+    /// </summary>
+    /// <param name="sql">The SQL query that returns a single value.</param>
+    /// <param name="parameters">Optional query parameters.</param>
+    /// <returns>The scalar result.</returns>
+    public async Task<object?> ExecuteScalarAsync(
+        string sql,
+        Dictionary<string, object?>? parameters = null)
+    {
+        if (_session?.SessionId == null)
+        {
+            throw new InvalidOperationException("No active session");
+        }
+
+        var request = new QueryRequest
+        {
+            Sql = sql,
+            Parameters = parameters
+        };
+
+        var response = await _httpClient.PostAsJsonAsync(
+            $"api/v1/session/{_session.SessionId}/query/scalar", request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Scalar query failed: {response.StatusCode} - {error}");
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<ScalarResponse>();
+        return result?.Value;
+    }
+
+    /// <summary>
+    /// Checks if direct database connection is available.
+    /// When false, use ExecuteQueryAsync instead of OpenConnectionAsync.
+    /// </summary>
+    public bool IsDirectConnectionAvailable
+    {
+        get
+        {
+            if (_session?.Postgres?.Host == null) return false;
+
+            // Check if we can reach the postgres host
+            // Internal docker hostnames like "postgres-gnosis" are not reachable externally
+            var host = _session.Postgres.Host;
+            return !host.Contains("postgres-") && host != "localhost" || IsLocalhost();
+        }
+    }
+
+    private bool IsLocalhost()
+    {
+        return _baseUrl.Contains("localhost") || _baseUrl.Contains("127.0.0.1");
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
