@@ -4,12 +4,12 @@ groups:
       # Service availability
       - alert: ServiceDown
         expr: up == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
         annotations:
           summary: "Service {{ $labels.job }} is down"
-          description: "{{ $labels.job }} has been unreachable for more than 1 minute."
+          description: "{{ $labels.job }} has been unreachable for more than 3 minutes."
 
       # RPC error rate alerts
       - alert: HighRpcErrorRate1h
@@ -300,12 +300,12 @@ groups:
       # Service liveness via Blackbox exporter
       - alert: ServiceNotAlive
         expr: probe_success{job="blackbox-live"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
         annotations:
           summary: "Service {{ $labels.service }} not responding"
-          description: "The /live endpoint for {{ $labels.service }} is not responding. The service may have crashed."
+          description: "The /live endpoint for {{ $labels.service }} is not responding for more than 3 minutes. The service may have crashed."
 
       # Health check response time
       - alert: HealthCheckSlow
@@ -649,12 +649,12 @@ groups:
       # Service availability
       - alert: InvitationsServiceDown
         expr: up{job="invitations"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
         annotations:
           summary: "Invitations service is down"
-          description: "The Circles Invitations service has been unreachable for more than 1 minute."
+          description: "The Circles Invitations service has been unreachable for more than 3 minutes."
 
       - alert: InvitationsNotReady
         expr: probe_success{job="blackbox-ready", service="invitations"} == 0
@@ -667,12 +667,12 @@ groups:
 
       - alert: InvitationsNotAlive
         expr: probe_success{job="blackbox-live", service="invitations"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
         annotations:
           summary: "Invitations service not responding"
-          description: "The /live endpoint for Invitations service is not responding. The service may have crashed."
+          description: "The /live endpoint for Invitations service is not responding for more than 3 minutes. The service may have crashed."
 
       # Error rate alerts
       - alert: InvitationsHighErrorRate
@@ -728,12 +728,12 @@ groups:
       # Service availability
       - alert: AuthServiceDown
         expr: up{job="auth"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
         annotations:
           summary: "Auth service is down"
-          description: "The Circles Auth service has been unreachable for more than 1 minute."
+          description: "The Circles Auth service has been unreachable for more than 3 minutes."
 
       - alert: AuthNotReady
         expr: probe_success{job="blackbox-ready", service="auth"} == 0
@@ -746,12 +746,12 @@ groups:
 
       - alert: AuthNotAlive
         expr: probe_success{job="blackbox-live", service="auth"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
         annotations:
           summary: "Auth service not responding"
-          description: "The /live endpoint for Auth service is not responding. The service may have crashed."
+          description: "The /live endpoint for Auth service is not responding for more than 3 minutes. The service may have crashed."
 
       # Error rate alerts
       - alert: AuthHighErrorRate
