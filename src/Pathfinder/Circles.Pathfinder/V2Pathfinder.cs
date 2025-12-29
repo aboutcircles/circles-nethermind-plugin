@@ -687,7 +687,7 @@ public class V2Pathfinder
      * This ensures that when a group's outbound edge is processed, it has
      * already received all the collateral it needs.
      * --------------------------------------------------------------------- */
-    private List<FlowEdge> SortEdgesForMintDependencies(List<FlowEdge> edges, CapacityGraph capacityGraph)
+    internal static List<FlowEdge> SortEdgesForMintDependencies(List<FlowEdge> edges, CapacityGraph capacityGraph)
     {
         if (capacityGraph.RouterNode == null || capacityGraph.GroupNodes.Count == 0)
         {
@@ -771,7 +771,7 @@ public class V2Pathfinder
      *
      * This validation ensures the contract won't revert with ERC1155InsufficientBalance.
      * --------------------------------------------------------------------- */
-    private void ValidateMintEdgeOrdering(List<FlowEdge> edges, CapacityGraph capacityGraph)
+    internal static void ValidateMintEdgeOrdering(List<FlowEdge> edges, CapacityGraph capacityGraph)
     {
         if (capacityGraph.RouterNode == null || capacityGraph.GroupNodes.Count == 0)
         {
