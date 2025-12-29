@@ -3264,11 +3264,18 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Total downtime across all services in the last 24 hours.",
+      "description": "Downtime per service in the last 24 hours.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "color-text"
+            },
+            "inspect": false
           },
           "mappings": [],
           "thresholds": {
@@ -3290,7 +3297,20 @@
           },
           "unit": "s"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Service"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 4,
@@ -3300,18 +3320,21 @@
       },
       "id": 72,
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "enablePagination": false,
           "fields": "",
-          "values": false
+          "reducer": ["sum"],
+          "show": false
         },
-        "textMode": "auto"
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Value"
+          }
+        ]
       },
       "targets": [
         {
@@ -3319,13 +3342,31 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(circles:downtime_seconds_24h:sum)",
-          "legendFormat": "Total",
+          "expr": "circles:downtime_seconds_24h:sum",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{service}}",
           "refId": "A"
         }
       ],
-      "title": "Total Downtime (24h)",
-      "type": "stat"
+      "title": "Downtime by Service (24h)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "job": true,
+              "window": true
+            },
+            "renameByName": {
+              "service": "Service",
+              "Value": "Downtime"
+            }
+          }
+        }
+      ],
+      "type": "table"
     },
     {
       "datasource": {
@@ -4850,8 +4891,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 0,
         "y": 91
       },
       "id": 406,
@@ -4923,9 +4964,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 0,
-        "y": 99
+        "w": 8,
+        "x": 8,
+        "y": 91
       },
       "id": 407,
       "options": {
@@ -4974,7 +5015,7 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "Traffic distribution by route prefix over the last 30 days.",
+      "description": "Traffic distribution by route prefix over the last 14 days.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4996,9 +5037,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 6,
-        "y": 99
+        "w": 8,
+        "x": 16,
+        "y": 91
       },
       "id": 408,
       "options": {
@@ -5034,12 +5075,12 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({container=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[30d]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route!=\"\", route!=\"favicon.ico\"}[14d]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
       ],
-      "title": "Requests by Route (30d)",
+      "title": "Requests by Route (14d)",
       "type": "piechart"
     },
     {
