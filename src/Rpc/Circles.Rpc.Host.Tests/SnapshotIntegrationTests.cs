@@ -11,6 +11,9 @@ namespace Circles.Rpc.Host.Tests;
 /// Snapshot-based integration tests for RPC database queries using the Circles Test Environment.
 /// These tests validate SQL queries and data access patterns against historical blockchain state.
 ///
+/// The tests automatically use the query proxy when direct database connection is not available
+/// (e.g., when running against staging.circlesubi.network/test-env from external network).
+///
 /// To run these tests:
 /// 1. Start the test environment locally:
 ///    docker compose -f docker/docker-compose.test-environment.yml up -d
@@ -44,6 +47,7 @@ public class RpcSnapshotTests
 /// <summary>
 /// Tests for RPC query functionality using historical database state.
 /// These tests verify SQL queries work correctly with block-filtered data.
+/// Uses proxy endpoint when direct DB connection is unavailable.
 /// </summary>
 [TestFixture]
 [Category("Snapshot")]
@@ -57,6 +61,20 @@ public class RpcQuerySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
         var exists = await TestEnvironmentClient.BlockExistsAsync(TestBlock);
         if (!exists)
         {
@@ -83,16 +101,11 @@ public class RpcQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Query CrcV2_RegisterHuman events - should have registered humans at this block
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(*)
             FROM ""CrcV2_RegisterHuman""
-            WHERE ""blockNumber"" <= @block", conn);
-        cmd.Parameters.AddWithValue("block", TestBlock);
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
+            WHERE ""blockNumber"" <= @block",
+            new Dictionary<string, object?> { ["block"] = TestBlock });
 
         TestContext.WriteLine($"CrcV2_RegisterHuman events up to block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have RegisterHuman events at this block");
@@ -103,14 +116,9 @@ public class RpcQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Query V_CrcV2 trust view - should have trust relations
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(*)
-            FROM ""V_CrcV2_TrustRelations""", conn);
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
+            FROM ""V_CrcV2_TrustRelations""");
 
         TestContext.WriteLine($"V_CrcV2_TrustRelations at block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have trust relations at this block");
@@ -121,17 +129,12 @@ public class RpcQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Query aggregated balances view
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(DISTINCT ""account"")
-            FROM ""V_CrcV2_BalancesByAccountAndToken""", conn);
+            FROM ""V_CrcV2_BalancesByAccountAndToken""");
 
-        var accountCount = (long)(await cmd.ExecuteScalarAsync() ?? 0);
-
-        TestContext.WriteLine($"Unique accounts with V2 balances at block {TestBlock}: {accountCount}");
-        Assert.That(accountCount, Is.GreaterThan(0), "Should have accounts with balances");
+        TestContext.WriteLine($"Unique accounts with V2 balances at block {TestBlock}: {count}");
+        Assert.That(count, Is.GreaterThan(0), "Should have accounts with balances");
     }
 
     [Test]
@@ -139,20 +142,36 @@ public class RpcQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Query registered groups
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(*)
             FROM ""CrcV2_RegisterGroup""
-            WHERE ""blockNumber"" <= @block", conn);
-        cmd.Parameters.AddWithValue("block", TestBlock);
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
+            WHERE ""blockNumber"" <= @block",
+            new Dictionary<string, object?> { ["block"] = TestBlock });
 
         TestContext.WriteLine($"Registered groups at block {TestBlock}: {count}");
-        // Groups may or may not exist at this block
         Assert.That(count, Is.GreaterThanOrEqualTo(0));
+    }
+
+    private async Task<long> ExecuteScalarLongAsync(string sql, Dictionary<string, object?>? parameters = null)
+    {
+        if (_session!.IsDirectConnectionAvailable)
+        {
+            await using var conn = await _session.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            if (parameters != null)
+            {
+                foreach (var (name, value) in parameters)
+                {
+                    cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+                }
+            }
+            return (long)(await cmd.ExecuteScalarAsync() ?? 0);
+        }
+        else
+        {
+            var result = await _session.ExecuteScalarAsync(sql, parameters);
+            return Convert.ToInt64(result ?? 0);
+        }
     }
 }
 
@@ -170,6 +189,20 @@ public class SchemaValidationSnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
         var exists = await TestEnvironmentClient.BlockExistsAsync(TestBlock);
         if (!exists)
         {
@@ -196,18 +229,29 @@ public class SchemaValidationSnapshotTests
         var schema = new CompositeDatabaseSchema(SchemaProvider.AllSchemas.ToArray());
         var failures = new List<string>();
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
         foreach (var (ns, table) in schema.Tables.Keys)
         {
             var fullTableName = $"{ns}_{table}";
+            var sql = $"SELECT 1 FROM \"{fullTableName}\" LIMIT 1";
+
             try
             {
-                await using var cmd = new NpgsqlCommand(
-                    $"SELECT 1 FROM \"{fullTableName}\" LIMIT 1", conn);
-                await cmd.ExecuteScalarAsync();
+                if (_session!.IsDirectConnectionAvailable)
+                {
+                    await using var conn = await _session.OpenConnectionAsync();
+                    await using var cmd = new NpgsqlCommand(sql, conn);
+                    await cmd.ExecuteScalarAsync();
+                }
+                else
+                {
+                    await _session.ExecuteScalarAsync(sql);
+                }
             }
-            catch (PostgresException ex) when (ex.SqlState == "42P01") // table does not exist
+            catch (PostgresException ex) when (ex.SqlState == "42P01")
+            {
+                failures.Add($"{fullTableName}: does not exist");
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("42P01"))
             {
                 failures.Add($"{fullTableName}: does not exist");
             }
@@ -222,7 +266,6 @@ public class SchemaValidationSnapshotTests
             TestContext.WriteLine($"Schema validation failures:\n{string.Join("\n", failures)}");
         }
 
-        // Allow some missing tables (views may not exist in all environments)
         var criticalTables = new[]
         {
             "System_Block",
@@ -249,18 +292,29 @@ public class SchemaValidationSnapshotTests
             "V_Crc_Avatars"
         };
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
         foreach (var view in criticalViews)
         {
+            var sql = $"SELECT 1 FROM \"{view}\" LIMIT 1";
+
             try
             {
-                await using var cmd = new NpgsqlCommand(
-                    $"SELECT 1 FROM \"{view}\" LIMIT 1", conn);
-                await cmd.ExecuteScalarAsync();
+                if (_session!.IsDirectConnectionAvailable)
+                {
+                    await using var conn = await _session.OpenConnectionAsync();
+                    await using var cmd = new NpgsqlCommand(sql, conn);
+                    await cmd.ExecuteScalarAsync();
+                }
+                else
+                {
+                    await _session.ExecuteScalarAsync(sql);
+                }
                 TestContext.WriteLine($"View {view}: OK");
             }
             catch (PostgresException ex) when (ex.SqlState == "42P01")
+            {
+                Assert.Fail($"Critical view {view} does not exist");
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("42P01"))
             {
                 Assert.Fail($"Critical view {view} does not exist");
             }
@@ -287,6 +341,20 @@ public class AvatarQuerySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
         var exists = await TestEnvironmentClient.BlockExistsAsync(BugReproBlock);
         if (!exists)
         {
@@ -310,16 +378,11 @@ public class AvatarQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Check if the source address exists as a registered human or organization
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(*)
             FROM ""V_Crc_Avatars""
-            WHERE ""avatar"" = @address", conn);
-        cmd.Parameters.AddWithValue("address", KnownSource);
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
+            WHERE ""avatar"" = @address",
+            new Dictionary<string, object?> { ["address"] = KnownSource });
 
         Assert.That(count, Is.EqualTo(1), $"Source address {KnownSource} should exist in avatars");
     }
@@ -329,15 +392,11 @@ public class AvatarQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(*)
             FROM ""V_Crc_Avatars""
-            WHERE ""avatar"" = @address", conn);
-        cmd.Parameters.AddWithValue("address", KnownSink);
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
+            WHERE ""avatar"" = @address",
+            new Dictionary<string, object?> { ["address"] = KnownSink });
 
         Assert.That(count, Is.EqualTo(1), $"Sink address {KnownSink} should exist in avatars");
     }
@@ -347,33 +406,27 @@ public class AvatarQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Check for direct or indirect trust relations
-        await using var cmd = new NpgsqlCommand(@"
-            SELECT ""truster"", ""trustee"", ""expiryTime""
+        var sql = @"
+            SELECT ""truster"", ""trustee""
             FROM ""V_CrcV2_TrustRelations""
             WHERE ""truster"" = @source OR ""trustee"" = @source
                OR ""truster"" = @sink OR ""trustee"" = @sink
-            LIMIT 100", conn);
-        cmd.Parameters.AddWithValue("source", KnownSource);
-        cmd.Parameters.AddWithValue("sink", KnownSink);
-
-        var trustRelations = new List<(string truster, string trustee)>();
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+            LIMIT 100";
+        var parameters = new Dictionary<string, object?>
         {
-            trustRelations.Add((reader.GetString(0), reader.GetString(1)));
+            ["source"] = KnownSource,
+            ["sink"] = KnownSink
+        };
+
+        var result = await _session!.ExecuteQueryAsync(sql, parameters, maxRows: 100);
+
+        TestContext.WriteLine($"Trust relations involving source/sink: {result.RowCount}");
+        foreach (var row in result.Rows.Take(10))
+        {
+            TestContext.WriteLine($"  {row[0]} trusts {row[1]}");
         }
 
-        TestContext.WriteLine($"Trust relations involving source/sink: {trustRelations.Count}");
-        foreach (var (truster, trustee) in trustRelations.Take(10))
-        {
-            TestContext.WriteLine($"  {truster} trusts {trustee}");
-        }
-
-        // At least one trust relation should exist for the path to be computable
-        Assert.That(trustRelations.Count, Is.GreaterThan(0),
+        Assert.That(result.RowCount, Is.GreaterThan(0),
             "Should have trust relations for known addresses");
     }
 
@@ -382,31 +435,45 @@ public class AvatarQuerySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        await using var cmd = new NpgsqlCommand(@"
+        var sql = @"
             SELECT ""tokenId"", ""balance""
             FROM ""V_CrcV2_BalancesByAccountAndToken""
             WHERE ""account"" = @address
-            LIMIT 50", conn);
-        cmd.Parameters.AddWithValue("address", KnownSource);
+            LIMIT 50";
+        var parameters = new Dictionary<string, object?> { ["address"] = KnownSource };
 
-        var balances = new List<(string tokenId, decimal balance)>();
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        var result = await _session!.ExecuteQueryAsync(sql, parameters, maxRows: 50);
+
+        TestContext.WriteLine($"Balances for {KnownSource}: {result.RowCount} tokens");
+        foreach (var row in result.Rows.Take(5))
         {
-            balances.Add((reader.GetString(0), reader.GetDecimal(1)));
+            TestContext.WriteLine($"  {row[0]}: {row[1]}");
         }
 
-        TestContext.WriteLine($"Balances for {KnownSource}: {balances.Count} tokens");
-        foreach (var (tokenId, balance) in balances.Take(5))
-        {
-            TestContext.WriteLine($"  {tokenId}: {balance}");
-        }
-
-        // Source should have some tokens to transfer
-        Assert.That(balances.Count, Is.GreaterThan(0),
+        Assert.That(result.RowCount, Is.GreaterThan(0),
             "Known source should have token balances at this block");
+    }
+
+    private async Task<long> ExecuteScalarLongAsync(string sql, Dictionary<string, object?>? parameters = null)
+    {
+        if (_session!.IsDirectConnectionAvailable)
+        {
+            await using var conn = await _session.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            if (parameters != null)
+            {
+                foreach (var (name, value) in parameters)
+                {
+                    cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+                }
+            }
+            return (long)(await cmd.ExecuteScalarAsync() ?? 0);
+        }
+        else
+        {
+            var result = await _session.ExecuteScalarAsync(sql, parameters);
+            return Convert.ToInt64(result ?? 0);
+        }
     }
 }
 
@@ -423,6 +490,20 @@ public class TransactionHistorySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
         var exists = await TestEnvironmentClient.BlockExistsAsync(TestBlock);
         if (!exists)
         {
@@ -446,35 +527,25 @@ public class TransactionHistorySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        // Query recent transfers
-        await using var cmd = new NpgsqlCommand(@"
-            SELECT ""blockNumber"", ""transactionHash"", ""from"", ""to"", ""value""
+        var sql = @"
+            SELECT ""blockNumber"", ""transactionHash"", ""from"", ""to""
             FROM ""CrcV2_TransferSingle""
             WHERE ""blockNumber"" <= @block
             ORDER BY ""blockNumber"" DESC
-            LIMIT 10", conn);
-        cmd.Parameters.AddWithValue("block", TestBlock);
+            LIMIT 10";
+        var parameters = new Dictionary<string, object?> { ["block"] = TestBlock };
 
-        var transfers = new List<(long block, string txHash, string from, string to)>();
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            transfers.Add((
-                reader.GetInt64(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3)));
-        }
+        var result = await _session!.ExecuteQueryAsync(sql, parameters, maxRows: 10);
 
         TestContext.WriteLine($"Recent V2 transfers (up to block {TestBlock}):");
-        foreach (var (block, txHash, from, to) in transfers)
+        foreach (var row in result.Rows)
         {
-            TestContext.WriteLine($"  Block {block}: {from.Substring(0, 10)}... -> {to.Substring(0, 10)}...");
+            var from = row[2]?.ToString() ?? "";
+            var to = row[3]?.ToString() ?? "";
+            TestContext.WriteLine($"  Block {row[0]}: {from[..Math.Min(10, from.Length)]}... -> {to[..Math.Min(10, to.Length)]}...");
         }
 
-        Assert.That(transfers.Count, Is.GreaterThan(0), "Should have transfer history");
+        Assert.That(result.RowCount, Is.GreaterThan(0), "Should have transfer history");
     }
 
     [Test]
@@ -482,18 +553,35 @@ public class TransactionHistorySnapshotTests
     {
         Assert.That(_session, Is.Not.Null);
 
-        await using var conn = await _session!.OpenConnectionAsync();
-
-        await using var cmd = new NpgsqlCommand(@"
+        var count = await ExecuteScalarLongAsync(@"
             SELECT COUNT(*)
             FROM ""CrcV1_Transfer""
-            WHERE ""blockNumber"" <= @block", conn);
-        cmd.Parameters.AddWithValue("block", TestBlock);
-
-        var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
+            WHERE ""blockNumber"" <= @block",
+            new Dictionary<string, object?> { ["block"] = TestBlock });
 
         TestContext.WriteLine($"V1 transfers up to block {TestBlock}: {count}");
-        // V1 should have historical transfers
         Assert.That(count, Is.GreaterThan(0), "Should have V1 transfer history");
+    }
+
+    private async Task<long> ExecuteScalarLongAsync(string sql, Dictionary<string, object?>? parameters = null)
+    {
+        if (_session!.IsDirectConnectionAvailable)
+        {
+            await using var conn = await _session.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            if (parameters != null)
+            {
+                foreach (var (name, value) in parameters)
+                {
+                    cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+                }
+            }
+            return (long)(await cmd.ExecuteScalarAsync() ?? 0);
+        }
+        else
+        {
+            var result = await _session.ExecuteScalarAsync(sql, parameters);
+            return Convert.ToInt64(result ?? 0);
+        }
     }
 }

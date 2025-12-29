@@ -20,6 +20,9 @@ namespace Circles.Pathfinder.Tests;
 ///
 /// Or set TEST_ENV_URL to point to staging:
 ///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test --filter "Category=Snapshot"
+///
+/// Note: Tests that require LoadGraph need direct database access. When running
+/// against remote test-env (staging), these tests will be skipped.
 /// </summary>
 [TestFixture]
 [Category("Snapshot")]
@@ -55,6 +58,9 @@ public class SnapshotIntegrationTests
 /// in the wrong order, causing ERC1155InsufficientBalance reverts.
 ///
 /// Reference: docs/_resources/mintAlongAPath/MINTINGALONGPATH_SUMMARY.md
+///
+/// Note: These tests require direct database access for LoadGraph. When running
+/// against remote test-env, they will skip unless direct connection is available.
 /// </summary>
 [TestFixture]
 [Category("Snapshot")]
@@ -76,6 +82,20 @@ public class MintAlongPathRegressionTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
         // Skip if block doesn't exist (fresh database)
         var exists = await TestEnvironmentClient.BlockExistsAsync(BugReproBlock);
         if (!exists)
@@ -87,6 +107,14 @@ public class MintAlongPathRegressionTests
             BugReproBlock,
             features: ["db"],
             ttl: "15m");
+
+        // LoadGraph tests require direct database connection
+        if (!_session.IsDirectConnectionAvailable)
+        {
+            await _session.DisposeAsync();
+            _session = null;
+            Assert.Ignore("LoadGraph tests require direct database connection. Run locally or on staging server.");
+        }
 
         _settings = new Settings();
     }
@@ -264,6 +292,20 @@ public class ConsentedFlowSnapshotTests
     [Test]
     public async Task LoadConsentedFlowFlags_ReturnsFlags()
     {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
         var exists = await TestEnvironmentClient.BlockExistsAsync(TestBlock);
         if (!exists)
         {
@@ -271,6 +313,13 @@ public class ConsentedFlowSnapshotTests
         }
 
         await using var session = await TestEnvironmentClient.CreateSessionAsync(TestBlock);
+
+        // LoadGraph requires direct database connection
+        if (!session.IsDirectConnectionAvailable)
+        {
+            Assert.Ignore("LoadGraph tests require direct database connection. Run locally or on staging server.");
+        }
+
         var settings = new Settings();
         var loadGraph = new LoadGraph(session.PostgresConnectionString!, settings);
 
@@ -280,5 +329,146 @@ public class ConsentedFlowSnapshotTests
 
         // Just verify we can load the flags - the actual content depends on chain state
         Assert.That(flags, Is.Not.Null);
+    }
+}
+
+/// <summary>
+/// Snapshot tests that can use the query proxy (don't require LoadGraph).
+/// These tests work with both local and remote test-env.
+/// </summary>
+[TestFixture]
+[Category("Snapshot")]
+public class PathfinderQuerySnapshotTests
+{
+    private const long TestBlock = 43193632;
+    private const string BugSource = "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c";
+    private const string BugSink = "0xb3129372e52b910b6994eaef77bbc1892ea48779";
+
+    private TestEnvironmentClient? _session;
+
+    [OneTimeSetUp]
+    public async Task Setup()
+    {
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
+        var exists = await TestEnvironmentClient.BlockExistsAsync(TestBlock);
+        if (!exists)
+        {
+            Assert.Ignore($"Block {TestBlock} not indexed");
+        }
+
+        _session = await TestEnvironmentClient.CreateSessionAsync(TestBlock, ttl: "15m");
+    }
+
+    [OneTimeTearDown]
+    public async Task Teardown()
+    {
+        if (_session != null)
+        {
+            await _session.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task QueryV2Balances_ReturnsData()
+    {
+        Assert.That(_session, Is.Not.Null);
+
+        var result = await _session!.ExecuteQueryAsync(@"
+            SELECT COUNT(*)
+            FROM ""V_CrcV2_BalancesByAccountAndToken""
+            WHERE ""balance"" > 0");
+
+        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        TestContext.WriteLine($"V2 balances with positive balance: {count}");
+        Assert.That(count, Is.GreaterThan(0), "Should have positive balances");
+    }
+
+    [Test]
+    public async Task QueryV2Trust_ReturnsData()
+    {
+        Assert.That(_session, Is.Not.Null);
+
+        var result = await _session!.ExecuteQueryAsync(@"
+            SELECT COUNT(*)
+            FROM ""V_CrcV2_TrustRelations""");
+
+        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        TestContext.WriteLine($"V2 trust relations: {count}");
+        Assert.That(count, Is.GreaterThan(0), "Should have trust relations");
+    }
+
+    [Test]
+    public async Task QueryGroups_ReturnsData()
+    {
+        Assert.That(_session, Is.Not.Null);
+
+        var result = await _session!.ExecuteQueryAsync(@"
+            SELECT COUNT(*)
+            FROM ""CrcV2_RegisterGroup""");
+
+        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        TestContext.WriteLine($"Registered groups: {count}");
+        Assert.That(count, Is.GreaterThanOrEqualTo(0), "Should be able to query groups");
+    }
+
+    [Test]
+    public async Task QueryBugSourceBalances_ReturnsTokens()
+    {
+        Assert.That(_session, Is.Not.Null);
+
+        var result = await _session!.ExecuteQueryAsync(@"
+            SELECT ""tokenId"", ""balance""
+            FROM ""V_CrcV2_BalancesByAccountAndToken""
+            WHERE ""account"" = @address AND ""balance"" > 0
+            LIMIT 10",
+            new Dictionary<string, object?> { ["address"] = BugSource });
+
+        TestContext.WriteLine($"Bug source ({BugSource}) has {result.RowCount} tokens with balance");
+        foreach (var row in result.Rows.Take(5))
+        {
+            TestContext.WriteLine($"  {row[0]}: {row[1]}");
+        }
+
+        Assert.That(result.RowCount, Is.GreaterThan(0), "Bug source should have token balances");
+    }
+
+    [Test]
+    public async Task QueryTrustInvolvingBugAddresses_ReturnsTrust()
+    {
+        Assert.That(_session, Is.Not.Null);
+
+        var result = await _session!.ExecuteQueryAsync(@"
+            SELECT ""truster"", ""trustee""
+            FROM ""V_CrcV2_TrustRelations""
+            WHERE ""truster"" = @source OR ""trustee"" = @source
+               OR ""truster"" = @sink OR ""trustee"" = @sink
+            LIMIT 20",
+            new Dictionary<string, object?>
+            {
+                ["source"] = BugSource,
+                ["sink"] = BugSink
+            });
+
+        TestContext.WriteLine($"Trust relations involving bug addresses: {result.RowCount}");
+        foreach (var row in result.Rows.Take(5))
+        {
+            TestContext.WriteLine($"  {row[0]} trusts {row[1]}");
+        }
+
+        Assert.That(result.RowCount, Is.GreaterThan(0),
+            "Should have trust relations for pathfinding to be possible");
     }
 }
