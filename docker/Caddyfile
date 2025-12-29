@@ -20,6 +20,17 @@
     encode zstd gzip
 
     # ==========================================================================
+    # HTTP ACCESS LOGGING
+    # Logs all requests in JSON format for Loki/Grafana dashboards
+    # ==========================================================================
+    log {
+        output stdout
+        format json {
+            time_format iso8601
+        }
+    }
+
+    # ==========================================================================
     # WHITELISTED IPs/RANGES (no rate limiting)
     # Add trusted IPs here - they bypass all rate limits
     # ==========================================================================
