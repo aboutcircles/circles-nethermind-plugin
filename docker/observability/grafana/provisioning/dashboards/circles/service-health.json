@@ -1232,7 +1232,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "tooltip": { "mode": "single", "sort": "none" }
       },
-      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (route) (count_over_time({service=\"caddy\"} | json | route != \"\" [24h]))", "legendFormat": "{{route}}", "refId": "A" }],
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (route) (count_over_time({service=\"caddy\"} | json | logger=\"http.log.access\" | label_format route=`{{if eq .request_uri \"/\"}}rpc{{else}}{{regexReplaceAll \"^/([^/?]+).*\" .request_uri \"${1}\"}}{{end}}` | route != \"\" | route != \"favicon.ico\" [24h]))", "legendFormat": "{{route}}", "refId": "A" }],
       "title": "Requests by Route (24h)",
       "type": "piechart"
     },
