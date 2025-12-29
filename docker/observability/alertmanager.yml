@@ -54,7 +54,7 @@ receivers:
   - name: 'slack-notifications'
     slack_configs:
       - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#circles-alerts'
+        channel: '#circles-infra-alerts'
         send_resolved: true
         title: '{{ if eq .Status "firing" }}:warning:{{ else }}:white_check_mark:{{ end }} [{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
         text: >-
@@ -71,7 +71,7 @@ receivers:
   - name: 'slack-critical'
     slack_configs:
       - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#circles-alerts'
+        channel: '#circles-infra-alerts'
         send_resolved: true
         # Uncomment the line below to @mention channel for critical alerts
         # link_names: true
@@ -91,7 +91,7 @@ receivers:
   - name: 'slack-info'
     slack_configs:
       - api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#circles-alerts'
+        channel: '#circles-infra-alerts'
         send_resolved: true
         title: ':information_source: [INFO] {{ .GroupLabels.alertname }}'
         text: >-
