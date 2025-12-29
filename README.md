@@ -22,6 +22,16 @@ make all                    # Build, test, and pack
 ./scripts/run-pathfinder.sh # Run Pathfinder locally
 ```
 
+## Deployment Note
+
+This repository contains the core indexer services. For staging/production deployment:
+
+- **Deployment orchestration** is handled by [aboutcircles-infrastructure](https://github.com/aboutcircles/aboutcircles-infrastructure)
+- **Caddy reverse proxy configuration** (routing rules, rate limits) is managed as an Ansible template in the infrastructure repo
+- Only `docker/caddy.Dockerfile` remains here (builds the custom Caddy image with rate-limit plugin)
+
+See the infrastructure repo's [DEPLOYMENT_ARCHITECTURE.md](https://github.com/aboutcircles/aboutcircles-infrastructure/blob/main/docs/DEPLOYMENT_ARCHITECTURE.md) for the full architecture.
+
 ---
 
 - [Circles Nethermind Plug-in](#circles-nethermind-plug-in)

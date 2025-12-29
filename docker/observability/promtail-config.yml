@@ -46,21 +46,29 @@ scrape_configs:
                 source: log
 
       # Parse Caddy access logs to extract route information
-      # Caddy JSON logs contain: {"level":"info","ts":...,"logger":"http.log.access","msg":"handled request","request":{"uri":"/pathfinder/..."}}
+      # Caddy JSON logs contain: {"level":"info","ts":...,"logger":"http.log.access.log0","msg":"handled request","request":{"uri":"/pathfinder/..."}}
+      # Note: Only http.log.access logs have the request object with uri field
       - match:
           selector: '{service="caddy"}'
           stages:
             - json:
                 expressions:
+                  logger: logger
                   uri: request.uri
                   status: status
                   duration: duration
                   method: request.method
-            # Extract route prefix from URI for aggregation
-            - regex:
-                source: uri
-                expression: '^(?P<route>/[^/]*)'
-            - labels:
-                route:
-                method:
-                status:
+            # Only process access logs (not admin API logs)
+            - match:
+                selector: '{service="caddy"} |= "http.log.access"'
+                stages:
+                  # Extract route prefix from URI for aggregation
+                  - regex:
+                      source: uri
+                      expression: '^/(?P<route>[^/?]*)'
+                  # Map empty route (root path /) to "rpc"
+                  - template:
+                      source: route
+                      template: '{{ if eq .Value "" }}rpc{{ else }}{{ .Value }}{{ end }}'
+                  - labels:
+                      route:
