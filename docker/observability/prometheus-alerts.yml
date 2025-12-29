@@ -639,3 +639,195 @@ groups:
         annotations:
           summary: "IPFS Gateway responding slowly"
           description: "The {{ $labels.provider }} IPFS gateway is responding slowly ({{ $value | printf \"%.2f\" }}s). Profile fetching may timeout."
+
+  # ============================================================================
+  # Circles Ecosystem Services - Invitations & Authentication
+  # ============================================================================
+
+  - name: circles-invitations-alerts
+    rules:
+      # Service availability
+      - alert: InvitationsServiceDown
+        expr: up{job="invitations"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Invitations service is down"
+          description: "The Circles Invitations service has been unreachable for more than 1 minute."
+
+      - alert: InvitationsNotReady
+        expr: probe_success{job="blackbox-ready", service="invitations"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Invitations service not ready"
+          description: "The /ready endpoint for Invitations service has been failing for more than 5 minutes. Database may be down."
+
+      - alert: InvitationsNotAlive
+        expr: probe_success{job="blackbox-live", service="invitations"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Invitations service not responding"
+          description: "The /live endpoint for Invitations service is not responding. The service may have crashed."
+
+      # Error rate alerts
+      - alert: InvitationsHighErrorRate
+        expr: |
+          (
+            sum(rate(circles_referrals_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(circles_referrals_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in Invitations service"
+          description: "Invitations service error rate is {{ $value | printf \"%.1f\" }}% (>5%)."
+
+      # Business metrics alerts
+      - alert: HighPendingReferrals
+        expr: circles_referrals_pending_keys_total > 10000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of pending referrals"
+          description: "There are {{ $value }} pending referral keys. This may indicate invitations are not being claimed."
+
+      - alert: ReferralClaimRateLow
+        expr: |
+          (
+            rate(circles_referrals_claimed_total[1h])
+            /
+            (rate(circles_referrals_claimed_total[1h]) + rate(circles_referrals_pruned_total[1h]) + 0.001)
+          ) < 0.1
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low referral claim rate"
+          description: "Less than 10% of referrals are being claimed in the last hour. Most are expiring."
+
+      # Request latency
+      - alert: InvitationsHighLatency
+        expr: histogram_quantile(0.95, rate(circles_referrals_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency in Invitations service"
+          description: "95th percentile latency is {{ $value | printf \"%.2f\" }}s."
+
+  - name: circles-auth-alerts
+    rules:
+      # Service availability
+      - alert: AuthServiceDown
+        expr: up{job="auth"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Auth service is down"
+          description: "The Circles Auth service has been unreachable for more than 1 minute."
+
+      - alert: AuthNotReady
+        expr: probe_success{job="blackbox-ready", service="auth"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Auth service not ready"
+          description: "The /ready endpoint for Auth service has been failing for more than 5 minutes. Database may be down."
+
+      - alert: AuthNotAlive
+        expr: probe_success{job="blackbox-live", service="auth"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Auth service not responding"
+          description: "The /live endpoint for Auth service is not responding. The service may have crashed."
+
+      # Error rate alerts
+      - alert: AuthHighErrorRate
+        expr: |
+          (
+            sum(rate(circles_auth_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(circles_auth_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in Auth service"
+          description: "Auth service error rate is {{ $value | printf \"%.1f\" }}% (>5%)."
+
+      # Authentication failure rate
+      - alert: HighAuthFailureRate
+        expr: |
+          (
+            sum(rate(circles_auth_siwe_verifications_total{result!="success"}[15m]))
+            /
+            sum(rate(circles_auth_siwe_verifications_total[15m]))
+          ) > 0.3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High SIWE authentication failure rate"
+          description: "More than 30% of SIWE authentication attempts are failing."
+
+      - alert: HighPasskeyAuthFailureRate
+        expr: |
+          (
+            sum(rate(circles_auth_passkey_authentications_total{result!="success"}[15m]))
+            /
+            sum(rate(circles_auth_passkey_authentications_total[15m]))
+          ) > 0.3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High passkey authentication failure rate"
+          description: "More than 30% of passkey authentication attempts are failing."
+
+      # Passkey registration failures
+      - alert: PasskeyRegistrationFailures
+        expr: |
+          (
+            sum(rate(circles_auth_passkey_registrations_total{result="failed"}[30m]))
+            /
+            sum(rate(circles_auth_passkey_registrations_total[30m]))
+          ) > 0.2
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High passkey registration failure rate"
+          description: "More than 20% of passkey registrations are failing."
+
+      # Request latency
+      - alert: AuthHighLatency
+        expr: histogram_quantile(0.95, rate(circles_auth_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency in Auth service"
+          description: "95th percentile latency is {{ $value | printf \"%.2f\" }}s."
+
+      # RPC call failures (for ERC-1271 verification)
+      - alert: AuthRpcCallFailures
+        expr: rate(circles_auth_rpc_calls_total{success="false"}[10m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Auth RPC calls failing"
+          description: "ERC-1271 signature verification RPC calls are failing. Smart wallet auth may be impacted."
