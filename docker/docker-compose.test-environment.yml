@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.test-environment.yml build
 #   docker compose -f docker-compose.test-environment.yml up -d
 #
-# Usage (pull from Docker Hub - CI/CD):
+# Usage (pull from GitHub Container Registry - CI/CD):
 #   docker compose -f docker-compose.test-environment.yml up -d --pull always
 #
 # Requires the circles-gnosis network to exist (from docker-compose.gnosis.yml)
@@ -15,7 +15,7 @@
 
 services:
   test-environment:
-    image: ${DOCKERHUB_USERNAME:-jaensen}/circles-test-environment:${TEST_ENV_TAG:-dev}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-circlesubi}/circles-test-environment:${TEST_ENV_TAG:-dev}
     build:
       context: ../circles-test-environment
       dockerfile: docker/Dockerfile

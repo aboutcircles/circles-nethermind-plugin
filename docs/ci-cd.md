@@ -190,25 +190,29 @@ Add these in Settings → Secrets and variables → Actions:
 
 | Secret | Where to Get | Purpose |
 |--------|--------------|---------|
-| `DOCKERHUB_USERNAME` | Docker Hub account | Docker authentication |
-| `DOCKERHUB_TOKEN` | Docker Hub → Settings → Security → New Access Token | Push images |
 | `NUGET_API_KEY` | NuGet.org → API Keys → Create | Publish packages |
+
+**Note**: Docker images are pushed to GitHub Container Registry (ghcr.io) using the built-in `GITHUB_TOKEN` - no additional secrets required.
 
 **Add secrets via CLI**:
 ```bash
-gh secret set DOCKERHUB_USERNAME --body "your-username"
-gh secret set DOCKERHUB_TOKEN      # Will prompt
 gh secret set NUGET_API_KEY        # Will prompt
 ```
 
-### Docker Hub Token
+### GitHub Container Registry
 
-1. Go to [hub.docker.com](https://hub.docker.com)
-2. Settings → Security → New Access Token
-3. Name: `GitHub Actions`
-4. Permissions: **Read & Write**
-5. Generate and copy token
-6. Add to GitHub secrets
+Docker images are automatically pushed to `ghcr.io` using the built-in `GITHUB_TOKEN`. No setup required.
+
+**Image locations**:
+- `ghcr.io/OWNER/nethermind-circlesubi:TAG`
+- `ghcr.io/OWNER/pathfinder-host:TAG`
+- `ghcr.io/OWNER/rpc-host:TAG`
+- `ghcr.io/OWNER/circles-test-environment:TAG`
+
+**Visibility**: Images are private by default. To make public:
+1. Go to repository → Packages
+2. Select the package
+3. Package settings → Change visibility
 
 ### NuGet API Key
 
@@ -357,9 +361,9 @@ docker system prune -af --volumes
 ```
 
 **Authentication failed**:
-- Verify `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are set
-- Check token has Read & Write permissions
-- Regenerate token if needed
+- Verify workflow has `packages: write` permission
+- Check that `GITHUB_TOKEN` is being used correctly
+- Ensure the image name uses lowercase owner (ghcr.io requires lowercase)
 
 **Multi-arch build hangs**:
 - ARM builds can take 2-3x longer than AMD64
@@ -369,7 +373,7 @@ docker system prune -af --volumes
   ```
 
 **Cache issues**:
-- Delete buildcache tags on Docker Hub
+- Delete buildcache tags in ghcr.io (Packages → Package → Versions)
 - Next build will be slower but fresh
 
 ### NuGet Issues
@@ -500,14 +504,14 @@ gh pr checks 123 --watch
 ### Docker Commands
 
 ```bash
-# Pull dev images
-docker pull username/nethermind-circlesubi:dev
-docker pull username/pathfinder-host:dev
-docker pull username/rpc-host:dev
+# Pull dev images from GitHub Container Registry
+docker pull ghcr.io/OWNER/nethermind-circlesubi:dev
+docker pull ghcr.io/OWNER/pathfinder-host:dev
+docker pull ghcr.io/OWNER/rpc-host:dev
 
 # Pull release images
-docker pull username/nethermind-circlesubi:latest
-docker pull username/pathfinder-host:v1.2.3
+docker pull ghcr.io/OWNER/nethermind-circlesubi:latest
+docker pull ghcr.io/OWNER/pathfinder-host:v1.2.3
 ```
 
 ### Local Development
@@ -800,6 +804,7 @@ ansible-repo/
   become: yes
   vars:
     image_tag: "{{ image_tag | default('dev') }}"
+    registry: "ghcr.io/{{ github_owner }}"
   tasks:
     - name: Pull latest Docker images
       community.docker.docker_image:
@@ -808,9 +813,9 @@ ansible-repo/
         source: pull
         force_source: yes
       loop:
-        - "{{ dockerhub_user }}/nethermind-circlesubi"
-        - "{{ dockerhub_user }}/pathfinder-host"
-        - "{{ dockerhub_user }}/rpc-host"
+        - "{{ registry }}/nethermind-circlesubi"
+        - "{{ registry }}/pathfinder-host"
+        - "{{ registry }}/rpc-host"
 
     - name: Restart services
       community.docker.docker_compose_v2:
