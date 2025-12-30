@@ -1,0 +1,16 @@
+{
+  "id": "self-conversion-wrapped-001",
+  "name": "Self-conversion with wrapped tokens",
+  "category": "self-conversion",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "description": "Token self-conversion with wrapped tokens enabled. Combines virtual sink handling with wrapped token support.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+  "withWrap": true,
+  "tags": ["self-conversion", "wrapped", "virtual-sink"]
+}

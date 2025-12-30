@@ -1,0 +1,16 @@
+{
+  "id": "direct-transfer-combined-filter-001",
+  "name": "Direct transfer with both fromTokens and toTokens filters",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "Transfer with both source and destination token restrictions. Tests combined filter logic.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+  "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0", "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"],
+  "tags": ["filter", "fromTokens", "toTokens", "combined"]
+}

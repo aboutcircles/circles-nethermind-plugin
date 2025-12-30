@@ -1,0 +1,15 @@
+{
+  "id": "self-conversion-001",
+  "name": "Token self-conversion with toTokens filter",
+  "category": "self-conversion",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "description": "User converts their own tokens to a different token type. Source equals sink with toTokens filter. Tests virtual sink handling.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
+  "tags": ["self-conversion", "virtual-sink"]
+}
