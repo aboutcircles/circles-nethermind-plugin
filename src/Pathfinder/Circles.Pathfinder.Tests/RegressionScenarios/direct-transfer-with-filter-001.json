@@ -1,0 +1,15 @@
+{
+  "id": "direct-transfer-with-filter-001",
+  "name": "Direct transfer with fromTokens filter",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+  "description": "Transfer using only specific source tokens. Tests fromTokens filter functionality.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+  "tags": ["filter", "fromTokens"]
+}

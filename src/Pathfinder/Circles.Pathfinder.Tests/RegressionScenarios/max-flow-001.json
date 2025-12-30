@@ -1,0 +1,14 @@
+{
+  "id": "max-flow-001",
+  "name": "Maximum flow calculation",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "Request very high target flow to test max flow calculation. The pathfinder should return the maximum possible flow even if target cannot be fully satisfied.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "tags": ["max-flow", "basic"]
+}

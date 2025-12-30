@@ -1,0 +1,14 @@
+{
+  "id": "group-minting-002",
+  "name": "Group minting edge ordering validation",
+  "category": "group-minting",
+  "block": 43193632,
+  "source": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
+  "description": "Tests that group minting paths have correct edge ordering. All Router→Group edges must precede Group→Avatar edges for the same group. This is critical for contract execution.",
+  "shouldFindPath": true,
+  "minFlow": "10000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "tags": ["group-minting", "edge-ordering", "router"]
+}
