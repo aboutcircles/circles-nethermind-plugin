@@ -4,9 +4,19 @@ on:
   release:
     types: [published]
 
+env:
+  REGISTRY: ghcr.io
+  # Image names (will be prefixed with ghcr.io/owner/)
+  IMAGE_INDEX: nethermind-plugin
+  IMAGE_PATHFINDER: pathfinder-host
+  IMAGE_RPC: rpc-host
+
 jobs:
   build-and-push-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Check out code
@@ -20,11 +30,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push circles-client (release)
         uses: docker/build-push-action@v5
@@ -35,10 +46,10 @@ jobs:
           push: true
           # Tag with the GitHub release version (e.g., v1.2.3) and also 'latest'
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:${{ github.event.release.tag_name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:latest
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/nethermind-circlesubi:buildcache,mode=max
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache,mode=max
 
       - name: Build & push pathfinder (release)
         uses: docker/build-push-action@v5
@@ -48,10 +59,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:${{ github.event.release.tag_name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:latest
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-host:buildcache,mode=max
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache,mode=max
 
       - name: Build & push rpc (release)
         uses: docker/build-push-action@v5
@@ -61,7 +72,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:${{ github.event.release.tag_name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:latest
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/rpc-host:buildcache,mode=max
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache,mode=max
