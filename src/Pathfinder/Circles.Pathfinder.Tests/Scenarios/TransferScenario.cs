@@ -161,4 +161,9 @@ public static class ScenarioCategories
     public const string SelfConversion = "self-conversion";
     public const string WrappedTokens = "wrapped-tokens";
     public const string ConsentedFlow = "consented-flow";
+
+    // Negative test categories
+    public const string NoPath = "no-path";
+    public const string InvalidInput = "invalid-input";
+    public const string ContractRevert = "contract-revert";
 }
