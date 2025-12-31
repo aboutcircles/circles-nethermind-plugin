@@ -1,0 +1,19 @@
+{
+  "id": "no-path-all-tokens-excluded-001",
+  "name": "Excluding all available tokens should yield no path",
+  "category": "no-path",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "description": "When the excludedTokens list contains all tokens that the source has balance in, no transfer is possible.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"],
+  "maxTransfers": null,
+  "withWrap": false,
+  "tags": ["negative-test", "no-path", "excluded-tokens"]
+}

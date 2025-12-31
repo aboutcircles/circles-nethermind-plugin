@@ -18,6 +18,7 @@ public class ControllerTests
 {
     private readonly CacheContainer _cache;
     private readonly CacheServiceState _state;
+    private readonly IpfsContentCache _ipfsCache;
 
     public ControllerTests()
     {
@@ -26,6 +27,10 @@ public class ControllerTests
         _state.LastProcessedBlock = 1000;
         _state.WarmupComplete = true;
         _state.ListenerConnected = true;
+
+        // Create IpfsContentCache with dummy connection string (won't be used in tests)
+        var ipfsLogger = new Mock<ILogger<IpfsContentCache>>();
+        _ipfsCache = new IpfsContentCache("Host=localhost;Database=test", maxEntries: 100, ipfsLogger.Object);
     }
 
     /// <summary>
@@ -77,7 +82,7 @@ public class ControllerTests
     private ProfilesController CreateProfilesController()
     {
         var logger = new Mock<ILogger<ProfilesController>>();
-        var controller = new ProfilesController(_cache, _state, logger.Object);
+        var controller = new ProfilesController(_cache, _ipfsCache, _state, logger.Object);
         controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
         return controller;
     }

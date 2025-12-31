@@ -1,0 +1,19 @@
+{
+  "id": "invalid-zero-address-sink-001",
+  "name": "Zero address as sink should fail",
+  "category": "invalid-input",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x0000000000000000000000000000000000000000",
+  "description": "The zero address is not a valid Circles participant and cannot be a transfer destination. The system should reject this request early.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": null,
+  "withWrap": false,
+  "tags": ["negative-test", "invalid-input", "zero-address"]
+}

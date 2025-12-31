@@ -1,0 +1,19 @@
+{
+  "id": "invalid-zero-address-source-001",
+  "name": "Zero address as source should fail",
+  "category": "invalid-input",
+  "block": 43193632,
+  "source": "0x0000000000000000000000000000000000000000",
+  "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "description": "The zero address is not a valid Circles participant and cannot be a transfer source. The system should reject this request early.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": null,
+  "withWrap": false,
+  "tags": ["negative-test", "invalid-input", "zero-address"]
+}
