@@ -328,12 +328,13 @@ dotnet test --filter "Category!=E2E"
 
 - **NumericPrecisionTests.cs** - Tests for demurrage edge cases (day 0, underflow, large values)
 - **PathExtractionTests.cs** - Unit tests for path extraction algorithm (empty/cyclic graphs)
+- **LogDataParsingHelperTests.cs** - ABI decoding tests (addresses, UInt256, arrays, strings)
 - **Negative scenario JSON files** - `no-path-*.json` for expected failure cases
 
 ### Remaining Gaps
 
-1. **LogParser tests** - `src/Index/Circles.Index.CirclesV2/` has no dedicated parser tests
-   - Requires mocking Nethermind `Block`, `TxReceipt`, `LogEntry` types
+1. **Full LogParser tests** - `src/Index/Circles.Index.CirclesV2/LogParser.cs` integration tests
+   - `LogDataParsingHelper` is now tested but the full `LogParser` needs Nethermind mocks
    - Consider using real log fixtures from blockchain
 2. **RPC integration** - CirclesRpcModule methods marked `[Ignore]`
 
