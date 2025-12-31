@@ -5,8 +5,9 @@ WORKDIR /src
 ARG TARGETARCH
 RUN echo "Building for architecture: ${TARGETARCH}"
 
-# Copy Index and Pathfinder sources (Pathfinder depends on Circles.Index.Common)
+# Copy Index, Common, and Pathfinder sources (Pathfinder depends on Circles.Common)
 COPY ./src/Index ./Index
+COPY ./src/Common ./Common
 COPY ./src/Pathfinder ./Pathfinder
 
 # Restore Pathfinder host and its dependencies
