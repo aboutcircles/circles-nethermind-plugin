@@ -4,7 +4,7 @@ WORKDIR /src
 
 # Copy Metrics Exporter project and its dependencies
 COPY src/Metrics ./Metrics
-COPY src/Index/Circles.Index.Common ./Index/Circles.Index.Common
+COPY src/Common/Circles.Common ./Common/Circles.Common
 
 # Restore dependencies
 RUN dotnet restore ./Metrics/Circles.Metrics.Exporter/Circles.Metrics.Exporter.csproj
