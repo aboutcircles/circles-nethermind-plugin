@@ -16,6 +16,7 @@ namespace Circles.Pathfinder.Tests;
 /// </summary>
 [TestFixture]
 [Category("Scenarios")]
+[Category("Snapshot")]
 public class ScenarioTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -205,6 +206,7 @@ public class ScenarioTests
 [TestFixture]
 [Category("E2E")]
 [Category("Scenarios")]
+[Category("Snapshot")]
 public class ScenarioE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -327,17 +329,32 @@ public class ScenarioE2ETests
         }
 
         TestContext.WriteLine($"Scenario {scenario.Id}: Path has {response.Transfers.Count} steps");
-
-        // Execute on Anvil
-        // Note: Full contract execution would require building operateFlowMatrix call data
-        // For now, we validate the path structure and Anvil connectivity
-        TestContext.WriteLine($"Scenario {scenario.Id}: Anvil execution validation passed");
         TestContext.WriteLine($"  Source: {scenario.Source}");
         TestContext.WriteLine($"  Sink: {scenario.Sink}");
         TestContext.WriteLine($"  Max flow: {response.MaxFlow}");
 
-        // TODO: Implement full operateFlowMatrix call execution
-        // This requires building the call data from TransferPathStep list
-        // and executing it through anvil.ExecuteTransactionAsync()
+        // Execute on Anvil using the operateFlowMatrix call
+        var result = await anvil.ExecuteTransferPathAsync(
+            scenario.Source,
+            scenario.Sink,
+            response.Transfers);
+
+        if (scenario.ExpectedRevertReason != null)
+        {
+            // Negative test - expect transaction to fail
+            Assert.That(result.Success, Is.False,
+                $"Scenario {scenario.Id}: Expected revert but transaction succeeded");
+            Assert.That(result.Error, Does.Contain(scenario.ExpectedRevertReason).IgnoreCase,
+                $"Scenario {scenario.Id}: Expected revert reason '{scenario.ExpectedRevertReason}' but got '{result.Error}'");
+            TestContext.WriteLine($"Scenario {scenario.Id}: Transaction reverted as expected: {result.Error}");
+        }
+        else
+        {
+            // Positive test - expect transaction to succeed
+            Assert.That(result.Success, Is.True,
+                $"Scenario {scenario.Id}: Expected success but transaction failed: {result.Error}");
+            TestContext.WriteLine($"Scenario {scenario.Id}: Transaction succeeded! Gas used: {result.GasUsed}");
+            TestContext.WriteLine($"  TxHash: {result.TxHash}");
+        }
     }
 }
