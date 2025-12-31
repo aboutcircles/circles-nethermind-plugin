@@ -5,15 +5,7 @@ namespace Circles.Index.CirclesV2.Tests;
 
 /// <summary>
 /// Unit tests for TransferSummaryAggregator - the core transfer aggregation logic.
-///
-/// NOTE: Tests that invoke AddNonStreamTransfers require Nethermind.Core at runtime
-/// because TransferSummaryAggregator uses Nethermind.Core.Extensions.ToHexString() internally.
-/// These tests are marked [Ignore] until Nethermind build artifacts are available.
-///
-/// To run ignored tests:
-/// 1. Clone nethermind to nethermind-dev/nethermind
-/// 2. Build: dotnet build nethermind-dev/nethermind/src/Nethermind/Nethermind.sln
-/// 3. Tests will auto-detect the assemblies
+/// Uses HexHelper from Circles.Index.Common to avoid Nethermind.Core runtime dependency.
 /// </summary>
 [TestFixture]
 public class TransferSummaryAggregatorTests
@@ -77,8 +69,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime - AddNonStreamTransfers is called")]
-    public void AggregateAll_GroupMintEvents_NotAggregated()
+        public void AggregateAll_GroupMintEvents_NotAggregated()
     {
         // GroupMint events are added to nonStreamEvents but don't trigger transfer aggregation
         var events = new IIndexedEventV2[]
@@ -93,8 +84,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime - AddNonStreamTransfers is called")]
-    public void AggregateAll_TrustEvents_NotAggregated()
+        public void AggregateAll_TrustEvents_NotAggregated()
     {
         var events = new IIndexedEventV2[]
         {
@@ -111,8 +101,7 @@ public class TransferSummaryAggregatorTests
     // StreamCompleted aggregation uses ToHexString but only on stream transfers
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_MultipleStreamCompleted_AggregatesCorrectly()
+        public void AggregateAll_MultipleStreamCompleted_AggregatesCorrectly()
     {
         var events = new IIndexedEventV2[]
         {
@@ -138,8 +127,7 @@ public class TransferSummaryAggregatorTests
     // ─────────────────────── TransferSingle Tests (Require Nethermind) ───────────────────────
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_SingleTransfer_CreatesOneSummary()
+        public void AggregateAll_SingleTransfer_CreatesOneSummary()
     {
         var events = new IIndexedEventV2[]
         {
@@ -160,8 +148,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_MultipleTransfersSameDirection_SumsValues()
+        public void AggregateAll_MultipleTransfersSameDirection_SumsValues()
     {
         var events = new IIndexedEventV2[]
         {
@@ -182,8 +169,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_BidirectionalTransfers_CreatesSeparateSummaries()
+        public void AggregateAll_BidirectionalTransfers_CreatesSeparateSummaries()
     {
         var events = new IIndexedEventV2[]
         {
@@ -204,8 +190,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_MultipleUniqueTokens_TracksAllTokens()
+        public void AggregateAll_MultipleUniqueTokens_TracksAllTokens()
     {
         var events = new IIndexedEventV2[]
         {
@@ -222,8 +207,7 @@ public class TransferSummaryAggregatorTests
     // ─────────────────────── TransferBatch Tests (Require Nethermind) ───────────────────────
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_TransferBatch_AggregatesLikeSingle()
+        public void AggregateAll_TransferBatch_AggregatesLikeSingle()
     {
         var events = new IIndexedEventV2[]
         {
@@ -241,8 +225,7 @@ public class TransferSummaryAggregatorTests
     // ─────────────────────── ERC20 Wrapper Transfer Tests (Require Nethermind) ───────────────────────
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_Erc20DemurragedTransfer_UsesValueAsIs()
+        public void AggregateAll_Erc20DemurragedTransfer_UsesValueAsIs()
     {
         var events = new IIndexedEventV2[]
         {
@@ -256,8 +239,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_Erc20InflationaryTransfer_AppliesConversion()
+        public void AggregateAll_Erc20InflationaryTransfer_AppliesConversion()
     {
         var events = new IIndexedEventV2[]
         {
@@ -271,8 +253,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_Erc20UnknownWrapper_UsesValueAsIs()
+        public void AggregateAll_Erc20UnknownWrapper_UsesValueAsIs()
     {
         const string unknownWrapper = "0x9999999999999999999999999999999999999999";
         var events = new IIndexedEventV2[]
@@ -289,8 +270,7 @@ public class TransferSummaryAggregatorTests
     // ─────────────────────── Stream Transfer Tests (Require Nethermind) ───────────────────────
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_StreamFlow_SeparatesFromNonStream()
+        public void AggregateAll_StreamFlow_SeparatesFromNonStream()
     {
         var events = new IIndexedEventV2[]
         {
@@ -313,8 +293,7 @@ public class TransferSummaryAggregatorTests
     // ─────────────────────── Mint/Burn Tests (Require Nethermind) ───────────────────────
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_MintFromZeroAddress_CreatesTransferFromZero()
+        public void AggregateAll_MintFromZeroAddress_CreatesTransferFromZero()
     {
         var events = new IIndexedEventV2[]
         {
@@ -329,8 +308,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_BurnToZeroAddress_CreatesTransferToZero()
+        public void AggregateAll_BurnToZeroAddress_CreatesTransferToZero()
     {
         var events = new IIndexedEventV2[]
         {
@@ -347,8 +325,7 @@ public class TransferSummaryAggregatorTests
     // ─────────────────────── Complex Transaction Tests (Require Nethermind) ───────────────────────
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_MixedEventTypes_AggregatesAllCorrectly()
+        public void AggregateAll_MixedEventTypes_AggregatesAllCorrectly()
     {
         var events = new IIndexedEventV2[]
         {
@@ -372,8 +349,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_VeryLargeValues_HandlesWithoutOverflow()
+        public void AggregateAll_VeryLargeValues_HandlesWithoutOverflow()
     {
         var largeValue = UInt256.MaxValue / 2;
         var events = new IIndexedEventV2[]
@@ -389,8 +365,7 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    [Ignore("Requires Nethermind runtime for ToHexString extension")]
-    public void AggregateAll_StreamEvents_ContainsAllEventsInStream()
+        public void AggregateAll_StreamEvents_ContainsAllEventsInStream()
     {
         var events = new IIndexedEventV2[]
         {
