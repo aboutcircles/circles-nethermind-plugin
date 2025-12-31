@@ -1,0 +1,15 @@
+{
+  "id": "no-path-max-transfers-zero-001",
+  "name": "maxTransfers=0 prevents any path",
+  "category": "no-path",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+  "description": "With maxTransfers set to 0, no transfers are allowed so no path can be computed. Tests that the limit is properly enforced.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "maxTransfers": 0,
+  "tags": ["negative-test", "no-path", "max-transfers"]
+}

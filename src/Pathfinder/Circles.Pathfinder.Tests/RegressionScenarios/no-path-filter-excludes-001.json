@@ -1,0 +1,15 @@
+{
+  "id": "no-path-filter-excludes-001",
+  "name": "fromTokens filter excludes all available tokens",
+  "category": "no-path",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+  "description": "The fromTokens filter restricts to tokens the source doesn't hold. Path computation should fail because there's no overlap between available tokens and allowed tokens.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": ["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000002"],
+  "tags": ["negative-test", "no-path", "filter"]
+}
