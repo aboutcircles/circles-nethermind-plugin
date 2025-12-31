@@ -47,7 +47,10 @@ public record SessionResponse
     public PostgresInfo? Postgres { get; init; }
     public AnvilInfo? Anvil { get; init; }
     public RpcInfo? Rpc { get; init; }
-    public string Status { get; init; } = "";
+    /// <summary>
+    /// Session status (numeric enum: 0=Created, 1=Active, 2=Expired, 3=Terminated).
+    /// </summary>
+    public int Status { get; init; }
     public DateTimeOffset ExpiresAt { get; init; }
 }
 

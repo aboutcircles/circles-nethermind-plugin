@@ -1,8 +1,6 @@
 using System.Collections.Immutable;
 using System.Numerics;
 using Circles.Index.Common;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 
 namespace Circles.Index.CirclesV2;
 

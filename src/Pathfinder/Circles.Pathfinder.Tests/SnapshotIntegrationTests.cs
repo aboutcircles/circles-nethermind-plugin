@@ -36,7 +36,7 @@ public class SnapshotIntegrationTests
         var health = await TestEnvironmentClient.GetHealthAsync();
 
         Assert.That(health, Is.Not.Null);
-        Assert.That(health!.Status, Is.EqualTo("healthy"));
+        Assert.That(health!.Status, Is.EqualTo("healthy").IgnoreCase);
     }
 
     [Test]

@@ -25,12 +25,14 @@ public class TestEnvironmentIntegrationTests
     public async Task Setup()
     {
         _testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL") ?? "http://localhost:5200";
-        _client = new HttpClient { BaseAddress = new Uri(_testEnvUrl) };
+        // Ensure trailing slash for proper relative URL resolution
+        var baseUrl = _testEnvUrl.TrimEnd('/') + "/";
+        _client = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
         // Check if test environment is available
         try
         {
-            var response = await _client.GetAsync("/health");
+            var response = await _client.GetAsync("health");
             if (!response.IsSuccessStatusCode)
             {
                 Assert.Ignore($"Test environment not healthy at {_testEnvUrl}");
@@ -49,7 +51,7 @@ public class TestEnvironmentIntegrationTests
         {
             try
             {
-                await _client.DeleteAsync($"/api/v1/session/{_sessionId}");
+                await _client.DeleteAsync($"api/v1/session/{_sessionId}");
             }
             catch
             {
@@ -63,7 +65,7 @@ public class TestEnvironmentIntegrationTests
     [Order(1)]
     public async Task HealthCheck_ReturnsHealthy()
     {
-        var response = await _client.GetAsync("/health");
+        var response = await _client.GetAsync("health");
         response.EnsureSuccessStatusCode();
 
         var health = await response.Content.ReadFromJsonAsync<HealthResponse>();
@@ -75,7 +77,7 @@ public class TestEnvironmentIntegrationTests
     [Order(2)]
     public async Task GetCurrentBlock_ReturnsBlockNumber()
     {
-        var response = await _client.GetAsync("/api/v1/blocks/current");
+        var response = await _client.GetAsync("api/v1/blocks/current");
         response.EnsureSuccessStatusCode();
 
         var blockInfo = await response.Content.ReadFromJsonAsync<BlockInfo>();
@@ -89,7 +91,7 @@ public class TestEnvironmentIntegrationTests
     {
         const long blockNumber = 43193632; // Bug repro block
 
-        var response = await _client.PostAsJsonAsync("/api/v1/session", new
+        var response = await _client.PostAsJsonAsync("api/v1/session", new
         {
             blockNumber,
             features = new[] { "db" },
@@ -117,13 +119,13 @@ public class TestEnvironmentIntegrationTests
             Assert.Ignore("No session created - run CreateSession test first");
         }
 
-        var response = await _client.GetAsync($"/api/v1/session/{_sessionId}");
+        var response = await _client.GetAsync($"api/v1/session/{_sessionId}");
         response.EnsureSuccessStatusCode();
 
         var session = await response.Content.ReadFromJsonAsync<SessionResponse>();
         Assert.That(session, Is.Not.Null);
         Assert.That(session!.SessionId, Is.EqualTo(_sessionId));
-        Assert.That(session.Status, Is.EqualTo("Active"));
+        Assert.That(session.Status, Is.EqualTo(1)); // 1 = Active
     }
 
     [Test]
@@ -135,11 +137,11 @@ public class TestEnvironmentIntegrationTests
             Assert.Ignore("No session created - run CreateSession test first");
         }
 
-        var response = await _client.DeleteAsync($"/api/v1/session/{_sessionId}");
+        var response = await _client.DeleteAsync($"api/v1/session/{_sessionId}");
         Assert.That(response.StatusCode, Is.EqualTo(System.Net.HttpStatusCode.NoContent));
 
         // Verify session is gone
-        var getResponse = await _client.GetAsync($"/api/v1/session/{_sessionId}");
+        var getResponse = await _client.GetAsync($"api/v1/session/{_sessionId}");
         Assert.That(getResponse.StatusCode, Is.EqualTo(System.Net.HttpStatusCode.NotFound));
 
         _sessionId = null; // Clear so teardown doesn't try to delete again
@@ -151,7 +153,7 @@ public class TestEnvironmentIntegrationTests
     {
         const long knownBlock = 43193632; // We know this block exists from bug investigation
 
-        var response = await _client.GetAsync($"/api/v1/blocks/{knownBlock}/exists");
+        var response = await _client.GetAsync($"api/v1/blocks/{knownBlock}/exists");
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<BlockExistsInfo>();
@@ -165,7 +167,7 @@ public class TestEnvironmentIntegrationTests
     [Order(7)]
     public async Task GetSession_ForNonExistent_Returns404()
     {
-        var response = await _client.GetAsync("/api/v1/session/nonexistent123");
+        var response = await _client.GetAsync("api/v1/session/nonexistent123");
         Assert.That(response.StatusCode, Is.EqualTo(System.Net.HttpStatusCode.NotFound));
     }
 
@@ -194,7 +196,7 @@ public class TestEnvironmentIntegrationTests
         public PostgresInfo? Postgres { get; init; }
         public AnvilInfo? Anvil { get; init; }
         public RpcInfo? Rpc { get; init; }
-        public string Status { get; init; } = "";
+        public int Status { get; init; } // 0=Created, 1=Active, 2=Expired, 3=Terminated
         public DateTimeOffset ExpiresAt { get; init; }
     }
 
