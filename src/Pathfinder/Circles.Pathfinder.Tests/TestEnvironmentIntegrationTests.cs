@@ -22,10 +22,24 @@ public class TestEnvironmentIntegrationTests
     private string? _sessionId;
 
     [OneTimeSetUp]
-    public void Setup()
+    public async Task Setup()
     {
         _testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL") ?? "http://localhost:5200";
         _client = new HttpClient { BaseAddress = new Uri(_testEnvUrl) };
+
+        // Check if test environment is available
+        try
+        {
+            var response = await _client.GetAsync("/health");
+            if (!response.IsSuccessStatusCode)
+            {
+                Assert.Ignore($"Test environment not healthy at {_testEnvUrl}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available at {_testEnvUrl}: {ex.Message}");
+        }
     }
 
     [OneTimeTearDown]

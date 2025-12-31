@@ -1,0 +1,19 @@
+{
+  "id": "max-transfers-one-001",
+  "name": "Single transfer limit with direct trust",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "description": "Tests that maxTransfers=1 allows a direct transfer when trust exists. The path should contain exactly one transfer edge.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 1,
+  "withWrap": false,
+  "tags": ["positive-test", "max-transfers", "single-hop"]
+}

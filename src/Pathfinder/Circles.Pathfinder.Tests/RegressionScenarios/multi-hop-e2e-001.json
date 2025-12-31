@@ -1,0 +1,19 @@
+{
+  "id": "multi-hop-e2e-001",
+  "name": "Multi-hop transitive transfer on Anvil",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
+  "description": "Tests a multi-hop transitive transfer requiring intermediary addresses. Validates that the path execution works correctly on-chain with multiple transfer steps.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 10,
+  "withWrap": false,
+  "tags": ["positive-test", "e2e", "multi-hop", "transitive"]
+}

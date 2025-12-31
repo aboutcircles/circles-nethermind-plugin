@@ -1,0 +1,19 @@
+{
+  "id": "contract-revert-insufficient-balance-001",
+  "name": "Transfer exceeding available balance should revert",
+  "category": "contract-revert",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "description": "This test validates that attempting a transfer larger than the source's available balance causes an ERC1155InsufficientBalance revert when executed on Anvil. The pathfinder may find a path at the database level, but contract execution should fail.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000000000000000",
+  "expectedRevertReason": "ERC1155InsufficientBalance",
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": null,
+  "withWrap": false,
+  "tags": ["negative-test", "contract-revert", "e2e", "anvil"]
+}
