@@ -1,7 +1,7 @@
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public interface ILogParser
 {

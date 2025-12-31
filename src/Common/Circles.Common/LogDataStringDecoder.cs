@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public static class LogDataStringDecoder
 {

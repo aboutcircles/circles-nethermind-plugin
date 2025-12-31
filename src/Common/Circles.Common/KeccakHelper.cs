@@ -1,7 +1,7 @@
 using Nethereum.Hex.HexConvertors.Extensions;
 using Nethereum.Util;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Helper class for computing Keccak256 hashes using Nethereum.

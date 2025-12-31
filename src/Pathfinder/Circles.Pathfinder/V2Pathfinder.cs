@@ -1,6 +1,6 @@
 using System.Globalization;
-using Circles.Index.Common;
-using Circles.Index.Common.Dto;
+using Circles.Common;
+using Circles.Common.Dto;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
 using Nethermind.Int256;

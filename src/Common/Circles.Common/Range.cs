@@ -1,4 +1,4 @@
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public class Range<T>
     where T : struct

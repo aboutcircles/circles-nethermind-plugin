@@ -2,9 +2,9 @@ using System.Numerics;
 using System.Text;
 using Circles.Index.ContractClient;
 
-namespace Circles.Index.Common.Tests;
+namespace Circles.Common.Tests;
 
-using MathConv = Circles.Index.Common.CirclesConverter;
+using MathConv = Circles.Common.CirclesConverter;
 using ChainConv = Circles.Index.ContractClient.CirclesConverter;
 
 [TestFixture]

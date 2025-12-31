@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+using Circles.Common;
 using Npgsql;
 
 namespace Circles.Rpc.Host;

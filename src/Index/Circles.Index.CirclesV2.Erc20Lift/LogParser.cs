@@ -4,7 +4,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using System.Numerics;
-using Circles.Index.Common;
+using Circles.Common;
 
 using Nethermind.Logging;
 

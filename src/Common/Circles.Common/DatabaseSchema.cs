@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Text.Json;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Simple block representation for database schema without Nethermind.Core dependency.

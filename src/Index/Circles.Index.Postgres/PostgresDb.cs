@@ -1,7 +1,7 @@
 using System.Data;
 using System.Numerics;
 using System.Text;
-using Circles.Index.Common;
+using Circles.Common;
 using Nethermind.Core.Crypto;
 using Npgsql;
 using NpgsqlTypes;

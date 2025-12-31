@@ -6,7 +6,9 @@
   <Authors>Gnosis Service GmbH</Authors>
   <Copyright>Gnosis Service GmbH</Copyright>
   <Product>Circles</Product>
-  <PackageId>Gnosis.Circles.Nethermind.Plugin.Common</PackageId>
+  <PackageId>Gnosis.Circles.Common</PackageId>
+  <RootNamespace>Circles.Common</RootNamespace>
+  <AssemblyName>Circles.Common</AssemblyName>
   <Description>Common utilities and interfaces for Circles indexing</Description>
   <PackageTags>circles;blockchain;indexing</PackageTags>
   <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>

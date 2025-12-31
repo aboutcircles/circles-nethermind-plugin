@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
-using Circles.Index.Common;
+using Circles.Common;
 using System.Text.RegularExpressions;
 
 namespace Circles.Cache.Service.Controllers;

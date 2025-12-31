@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
 using Circles.Pathfinder.Data;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool(Circles.Index.Common.Settings settings, LoadGraph loadGraph)
+public sealed class CapacityGraphPool(Circles.Common.Settings settings, LoadGraph loadGraph)
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;

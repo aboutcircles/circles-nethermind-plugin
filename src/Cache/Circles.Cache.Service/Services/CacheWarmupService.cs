@@ -1,6 +1,6 @@
 using System.Numerics;
 using Circles.Cache.Service.Caches;
-using Circles.Index.Common;
+using Circles.Common;
 using Npgsql;
 
 namespace Circles.Cache.Service.Services;

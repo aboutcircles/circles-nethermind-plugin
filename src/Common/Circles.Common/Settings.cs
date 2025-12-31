@@ -1,4 +1,4 @@
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Specifies how the indexer writes batches to the database.

@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public class InsertBuffer<T>
 {

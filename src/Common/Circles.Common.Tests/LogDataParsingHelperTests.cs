@@ -1,6 +1,6 @@
 using Nethermind.Int256;
 
-namespace Circles.Index.Common.Tests;
+namespace Circles.Common.Tests;
 
 /// <summary>
 /// Unit tests for LogDataParsingHelper - the core ABI decoding logic for event logs.

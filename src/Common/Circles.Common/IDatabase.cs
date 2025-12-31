@@ -2,7 +2,7 @@ using System.Data;
 using System.Text.RegularExpressions;
 using Nethermind.Core.Crypto;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public interface IDatabaseUtils
 {

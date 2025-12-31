@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
 using Circles.Index.Query.Dto;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 
 var builder = BuilderSetup.ConfigureBuilder(args);
 

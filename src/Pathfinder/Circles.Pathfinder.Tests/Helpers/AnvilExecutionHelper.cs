@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 using Nethereum.Util;
 
 namespace Circles.Pathfinder.Tests.Helpers;

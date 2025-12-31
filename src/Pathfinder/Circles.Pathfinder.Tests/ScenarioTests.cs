@@ -1,6 +1,6 @@
 using Circles.Common.TestUtils;
-using Circles.Index.Common;
-using Circles.Index.Common.Dto;
+using Circles.Common;
+using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Tests.Helpers;

@@ -8,7 +8,7 @@ using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Text.Json;
-using Circles.Index.Common;
+using Circles.Common;
 using Circles.Index.Postgres;
 using Circles.Index.Query.Dto;
 using Circles.Rpc.Host;

@@ -1,6 +1,6 @@
-using Circles.Index.Common;
+using Circles.Common;
 using Circles.Pathfinder.Data;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
@@ -350,7 +350,7 @@ public class GraphFactory(string routerAddress, LoadGraph loadGraph)
         return merged;
     }
 
-    private List<SimulatedBalance> NormalizeSimulatedBalances(List<Circles.Index.Common.Dto.SimulatedBalance>? raw)
+    private List<SimulatedBalance> NormalizeSimulatedBalances(List<Circles.Common.Dto.SimulatedBalance>? raw)
     {
         if (raw == null || raw.Count == 0)
         {

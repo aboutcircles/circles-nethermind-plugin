@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using Circles.Index.Common;
+using Circles.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

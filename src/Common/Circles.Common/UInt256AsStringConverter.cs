@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public class UInt256AsStringConverter : JsonConverter<UInt256>
 {

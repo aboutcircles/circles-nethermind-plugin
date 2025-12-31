@@ -2,15 +2,15 @@ namespace Circles.Pathfinder.Host;
 
 public class Settings : Pathfinder.Settings
 {
-    private readonly Index.Common.Settings _commonSettings;
+    private readonly Common.Settings _commonSettings;
 
     public Settings()
     {
-        _commonSettings = new Index.Common.Settings();
+        _commonSettings = new Common.Settings();
     }
 
     // Expose the common settings instance for dependency injection
-    internal Index.Common.Settings CommonSettings => _commonSettings;
+    internal Common.Settings CommonSettings => _commonSettings;
 
     public string NethermindRpcUrl =>
         Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")

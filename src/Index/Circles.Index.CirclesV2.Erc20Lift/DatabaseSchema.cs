@@ -1,6 +1,6 @@
 namespace Circles.Index.CirclesV2.Erc20Lift;
 
-using Circles.Index.Common;
+using Circles.Common;
 using System.Numerics;
 
 public class DatabaseSchema : IDatabaseSchema

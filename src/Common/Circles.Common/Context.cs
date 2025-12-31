@@ -1,7 +1,7 @@
 using Nethermind.Api;
 using Nethermind.Logging;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public record Context(
     INethermindApi NethermindApi,

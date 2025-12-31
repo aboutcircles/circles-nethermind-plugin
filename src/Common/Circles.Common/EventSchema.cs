@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public record EventFieldSchema(string Column, ValueTypes Type, bool IsIndexed, bool IncludeInPrimaryKey = false);
 
