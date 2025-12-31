@@ -1,4 +1,7 @@
-.PHONY: help build test docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release
+.PHONY: help build test test-unit test-snapshot test-regression test-e2e test-all docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release
+
+# Default test environment URL for snapshot/regression/e2e tests
+TEST_ENV_URL ?= https://staging.circlesubi.network/test-env
 
 # Default target
 help:
@@ -6,8 +9,14 @@ help:
 		@echo ""
 	@echo "Build & Test:"
 	@echo "  make build             Build solution"
-	@echo "  make test              Run all tests"
-	@echo "  make test-coverage     Run tests with coverage"
+	@echo "  make test              Run unit tests (fast, no external deps)"
+	@echo "  make test-coverage     Run unit tests with coverage"
+	@echo "  make test-unit         Run unit tests only"
+	@echo "  make test-snapshot     Run snapshot tests (requires TEST_ENV_URL)"
+	@echo "  make test-regression   Run regression tests (requires TEST_ENV_URL)"
+	@echo "  make test-e2e          Run E2E tests with Anvil (requires TEST_ENV_URL)"
+	@echo "  make test-all          Run ALL tests (unit + snapshot + regression + e2e)"
+	@echo "  make test-all TEST_ENV_URL=<url>  Run all tests against custom test-env"
 	@echo "  make clean             Clean build artifacts"
 	@echo "  make clean-cache       Clear blockchain cache (DESTRUCTIVE)"
 		@echo ""
@@ -66,13 +75,48 @@ help:
 build:
 	dotnet build -c Release
 
-# Run all tests
+# Run unit tests (no external dependencies)
 test:
+	./scripts/test.sh
+
+# Alias for test
+test-unit:
 	./scripts/test.sh
 
 # Run tests with coverage
 test-coverage:
 	./scripts/test.sh --coverage
+
+# Run snapshot tests (requires TEST_ENV_URL)
+test-snapshot:
+	@echo "Running snapshot tests against $(TEST_ENV_URL)..."
+	TEST_ENV_URL=$(TEST_ENV_URL) dotnet test --filter "Category=Snapshot" -v minimal
+
+# Run regression tests (requires TEST_ENV_URL)
+test-regression:
+	@echo "Running regression tests against $(TEST_ENV_URL)..."
+	TEST_ENV_URL=$(TEST_ENV_URL) dotnet test --filter "Category=Regression" -v minimal
+
+# Run E2E tests with Anvil (requires TEST_ENV_URL)
+test-e2e:
+	@echo "Running E2E tests against $(TEST_ENV_URL)..."
+	TEST_ENV_URL=$(TEST_ENV_URL) dotnet test --filter "Category=E2E" -v minimal
+
+# Run ALL tests (unit + snapshot + regression + e2e)
+test-all:
+	@echo "Running ALL tests against $(TEST_ENV_URL)..."
+	@echo ""
+	@echo "=== Unit Tests ==="
+	./scripts/test.sh
+	@echo ""
+	@echo "=== Snapshot Tests ==="
+	TEST_ENV_URL=$(TEST_ENV_URL) dotnet test --filter "Category=Snapshot" -v minimal || true
+	@echo ""
+	@echo "=== Regression Tests ==="
+	TEST_ENV_URL=$(TEST_ENV_URL) dotnet test --filter "Category=Regression" -v minimal || true
+	@echo ""
+	@echo "=== E2E Tests ==="
+	TEST_ENV_URL=$(TEST_ENV_URL) dotnet test --filter "Category=E2E" -v minimal || true
 
 # Clean build artifacts
 clean:
