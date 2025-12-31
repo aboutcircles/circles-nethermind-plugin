@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Npgsql;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Tracks write performance metrics for monitoring and debugging.

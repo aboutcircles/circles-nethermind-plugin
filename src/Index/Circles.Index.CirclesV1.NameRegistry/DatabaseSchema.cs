@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+using Circles.Common;
 
 namespace Circles.Index.CirclesV1.NameRegistry;
 

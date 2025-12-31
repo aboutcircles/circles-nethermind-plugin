@@ -35,7 +35,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
+        <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
         <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.6" />
     </ItemGroup>
 

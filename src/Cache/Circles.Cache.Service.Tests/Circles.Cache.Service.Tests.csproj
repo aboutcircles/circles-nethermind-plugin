@@ -26,7 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Circles.Cache.Service\Circles.Cache.Service.csproj" />
-    <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj" />
+    <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
     <ProjectReference Include="..\..\Rpc\Circles.Rpc.CacheServiceClient\Circles.Rpc.CacheServiceClient.csproj" />
   </ItemGroup>
 

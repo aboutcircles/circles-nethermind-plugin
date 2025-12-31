@@ -1,4 +1,4 @@
-﻿namespace Circles.Index.Common.Tests;
+﻿namespace Circles.Common.Tests;
 
 /// <summary>
 /// Verification tests for <see cref="RollbackCache{TKey,TValue}"/>.

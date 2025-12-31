@@ -37,7 +37,7 @@
 
   <ItemGroup>
     <!-- Reference to Common (for RollbackCache and shared types) -->
-    <ProjectReference Include="..\..\Index\Circles.Index.Common\Circles.Index.Common.csproj">
+    <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj">
       <!-- Exclude Nethermind reference assemblies - cache service doesn't need them -->
       <ExcludeAssets>all</ExcludeAssets>
       <IncludeAssets>compile;build</IncludeAssets>

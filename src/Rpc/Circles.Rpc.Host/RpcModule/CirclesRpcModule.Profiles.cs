@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Circles.Index.Common;
+using Circles.Common;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 

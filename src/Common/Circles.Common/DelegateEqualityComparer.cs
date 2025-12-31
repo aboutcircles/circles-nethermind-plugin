@@ -1,4 +1,4 @@
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public class DelegateEqualityComparer<T>(Func<T, T, bool> equals, Func<T, int> getHashCode)
     : IEqualityComparer<T> where T : IIndexEvent

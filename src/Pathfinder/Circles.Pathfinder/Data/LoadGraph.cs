@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using Npgsql;
 using System.Reflection;
-using Circles.Index.Common;
+using Circles.Common;
 
 namespace Circles.Pathfinder.Data
 {

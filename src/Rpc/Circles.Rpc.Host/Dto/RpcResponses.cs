@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 
 namespace Circles.Rpc.Host.Dto;
 

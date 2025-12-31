@@ -1,7 +1,7 @@
 using System.Numerics;
 using Nethermind.Int256;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Conversions between the three Circles value representations.

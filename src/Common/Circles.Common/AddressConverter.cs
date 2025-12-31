@@ -2,7 +2,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public abstract class AddressConverter
 {

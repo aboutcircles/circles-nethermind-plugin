@@ -1,7 +1,7 @@
 using System.Numerics;
 using Nethermind.Int256;
 
-namespace Circles.Index.Common.Tests;
+namespace Circles.Common.Tests;
 
 /// <summary>
 /// Edge case tests for numeric precision in demurrage calculations and conversions.

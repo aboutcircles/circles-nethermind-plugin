@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+using Circles.Common;
 using Nethermind.Int256;
 
 namespace Circles.Index.CirclesV2.OIC;

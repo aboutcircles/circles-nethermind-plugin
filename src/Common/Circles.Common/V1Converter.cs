@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace Circles.Index.Common
+namespace Circles.Common
 {
     /// <summary>Implements the linear interpolation used during v1→v2 migration.</summary>
     public static class V1Converter

@@ -1,7 +1,7 @@
 using System.Numerics;
 using Nethermind.Int256;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 // adjust to whatever namespace you use
 
 public static class BigIntegerExtensions

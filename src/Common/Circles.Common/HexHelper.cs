@@ -1,7 +1,7 @@
 using Nethermind.Int256;
 using Nethereum.Hex.HexConvertors.Extensions;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Helper class for hex encoding/decoding using Nethereum.

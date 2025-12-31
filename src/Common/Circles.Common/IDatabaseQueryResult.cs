@@ -2,7 +2,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 [JsonConverter(typeof(DatabaseQueryResultConverter))]
 public record DatabaseQueryResult(

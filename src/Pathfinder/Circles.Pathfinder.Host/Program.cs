@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
@@ -40,7 +40,7 @@ var builder = WebApplication.CreateSlimBuilder(args);
 
 // Register the host settings instance and expose its common settings to components that need it
 builder.Services.AddSingleton(settings);
-builder.Services.AddSingleton<Circles.Index.Common.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>().CommonSettings);
+builder.Services.AddSingleton<Circles.Common.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>().CommonSettings);
 builder.Services.AddSingleton<Circles.Pathfinder.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>());
 builder.Services.AddSingleton(semaphore);
 builder.Services.AddSingleton<NetworkState>();
@@ -48,7 +48,7 @@ builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<LoadGraph>(provider => new LoadGraph(settings));
 builder.Services.AddSingleton<CapacityGraphPool>(provider =>
     new CapacityGraphPool(
-        provider.GetRequiredService<Circles.Index.Common.Settings>(),
+        provider.GetRequiredService<Circles.Common.Settings>(),
         provider.GetRequiredService<LoadGraph>()));
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();

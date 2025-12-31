@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Numerics;
-using Circles.Index.Common;
+using Circles.Common;
 
 namespace Circles.Index.CirclesV2;
 

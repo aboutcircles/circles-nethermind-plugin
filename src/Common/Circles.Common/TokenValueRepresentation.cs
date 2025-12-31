@@ -1,4 +1,4 @@
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// The low bit (0x01) encodes the basic monetary model.

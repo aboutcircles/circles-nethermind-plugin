@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+using Circles.Common;
 using Circles.Index.Query;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

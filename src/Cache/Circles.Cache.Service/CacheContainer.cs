@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+using Circles.Common;
 
 namespace Circles.Cache.Service.Caches;
 

@@ -1,7 +1,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 /// <summary>
 /// Helper methods for decoding standard Solidity event log data

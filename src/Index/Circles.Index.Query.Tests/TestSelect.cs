@@ -3,7 +3,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Circles.Index.Common;
+using Circles.Common;
 using Circles.Index.Query.Dto;
 
 namespace Circles.Index.Query.Tests;

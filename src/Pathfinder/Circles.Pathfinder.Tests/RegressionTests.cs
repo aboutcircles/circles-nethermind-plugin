@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Circles.Common.TestUtils;
-using Circles.Index.Common.Dto;
+using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Nethermind.Int256;

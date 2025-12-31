@@ -1,6 +1,6 @@
 using Nethermind.Logging;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public class LoggerWithPrefix(string prefix, ILogger logger) : InterfaceLogger
 {

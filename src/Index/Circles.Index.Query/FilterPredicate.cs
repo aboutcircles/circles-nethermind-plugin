@@ -1,7 +1,7 @@
 using System.Collections;
 using System.Data;
 using System.Text.Json;
-using Circles.Index.Common;
+using Circles.Common;
 
 namespace Circles.Index.Query;
 

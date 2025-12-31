@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 // one unit in 64.64
 /// <summary>

@@ -1,5 +1,5 @@
 using System.Threading.Tasks.Dataflow;
-using Circles.Index.Common;
+using Circles.Common;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;

@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace Circles.Index.Common;
+namespace Circles.Common;
 
 public class CidHelper
 {

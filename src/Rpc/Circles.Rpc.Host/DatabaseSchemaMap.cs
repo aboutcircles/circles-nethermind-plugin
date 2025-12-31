@@ -1,4 +1,4 @@
-using Circles.Index.Common;
+using Circles.Common;
 using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
 
 namespace Circles.Rpc.Host;

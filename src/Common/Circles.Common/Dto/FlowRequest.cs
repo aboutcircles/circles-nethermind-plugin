@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Circles.Index.Common.Dto;
+namespace Circles.Common.Dto;
 
 public class FlowRequest
 {

@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Circles.Index.Common\Circles.Index.Common.csproj" />
+      <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
       <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
     </ItemGroup>
 

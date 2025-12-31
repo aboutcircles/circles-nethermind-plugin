@@ -1,5 +1,5 @@
 using System.Data;
-using Circles.Index.Common;
+using Circles.Common;
 
 namespace Circles.Index.Query;
 

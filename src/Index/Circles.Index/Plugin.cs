@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using Autofac;
-using Circles.Index.Common;
+using Circles.Common;
 using Circles.Index.Postgres;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;

@@ -3,7 +3,7 @@ namespace Circles.Rpc.Host;
 /// <summary>
 /// Settings for the Circles.Rpc.Host service.
 /// </summary>
-public class Settings : Circles.Index.Common.Settings
+public class Settings : Circles.Common.Settings
 {
     public new readonly string NethermindRpcUrl =
         Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")
