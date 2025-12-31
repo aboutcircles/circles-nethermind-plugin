@@ -5,14 +5,15 @@ WORKDIR /src
 ARG TARGETARCH
 RUN echo "Building for architecture: ${TARGETARCH}"
 
-# Copy Index, Pathfinder, and RPC sources (required for local project references)
+# Copy Index, Common, and RPC sources (required for local project references)
 # RPC Host specifically depends on:
-# - Circles.Index.Common
+# - Circles.Common (shared types)
 # - Circles.Index.Query
 # - Circles.Index.DatabaseSchemaProvider
 # We copy the entire Index folder since Docker COPY works at directory level
 # and DatabaseSchemaProvider transitively depends on other Index projects
 COPY ./src/Index ./Index
+COPY ./src/Common ./Common
 COPY ./src/Rpc ./Rpc
 
 # Restore RPC host and its dependencies

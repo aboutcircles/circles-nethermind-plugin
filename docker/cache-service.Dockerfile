@@ -5,6 +5,9 @@ WORKDIR /src
 # Copy entire Index directory (needed for project references)
 COPY src/Index ./Index
 
+# Copy Common directory (Circles.Common shared types)
+COPY src/Common ./Common
+
 # Copy Cache Service project
 COPY src/Cache ./Cache
 

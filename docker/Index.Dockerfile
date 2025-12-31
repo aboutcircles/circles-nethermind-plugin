@@ -19,18 +19,19 @@ COPY src/Index/Circles.Index.CirclesV2.PaymentGateway/Circles.Index.CirclesV2.Pa
 COPY src/Index/Circles.Index.CirclesV2.StandardTreasury/Circles.Index.CirclesV2.StandardTreasury.csproj ./Circles.Index.CirclesV2.StandardTreasury/
 COPY src/Index/Circles.Index.CirclesV2.TokenOffers/Circles.Index.CirclesV2.TokenOffers.csproj ./Circles.Index.CirclesV2.TokenOffers/
 COPY src/Index/Circles.Index.CirclesViews/Circles.Index.CirclesViews.csproj ./Circles.Index.CirclesViews/
-COPY src/Index/Circles.Index.Common/Circles.Index.Common.csproj ./Circles.Index.Common/
 COPY src/Index/Circles.Index.DatabaseSchemaProvider/Circles.Index.DatabaseSchemaProvider.csproj ./Circles.Index.DatabaseSchemaProvider/
 COPY src/Index/Circles.Index.Postgres/Circles.Index.Postgres.csproj ./Circles.Index.Postgres/
 COPY src/Index/Circles.Index.Profiles/Circles.Index.Profiles.csproj ./Circles.Index.Profiles/
 COPY src/Index/Circles.Index.Query/Circles.Index.Query.csproj ./Circles.Index.Query/
 COPY src/Index/Circles.Index.Safe/Circles.Index.Safe.csproj ./Circles.Index.Safe/
+COPY src/Common/Circles.Common/Circles.Common.csproj ./Common/Circles.Common/
 
 # Restore dependencies
 RUN dotnet restore ./Circles.Index/Circles.Index.csproj
 
 # Copy all source code
 COPY ./src/Index .
+COPY ./src/Common ./Common
 WORKDIR /src/Circles.Index
 
 # Build and publish
