@@ -1,0 +1,14 @@
+{
+  "id": "direct-mutual-trust-001",
+  "name": "Direct transfer between mutually trusting users",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0x000b7b9b19317ad64d1859f5945b6ae44bfbba3b",
+  "sink": "0x211d4db9d1d2290fcc62b66574e2bbafba734c98",
+  "description": "Transfer between two users who mutually trust each other. Discovered via query on staging at block 43193632.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "tags": ["mutual-trust", "direct-transfer", "discovered"]
+}
