@@ -36,6 +36,9 @@ public static class BuilderSetup
         // HTTP client factory for health checks and external API calls
         builder.Services.AddHttpClient();
 
+        // HTTP context accessor for per-request block filtering
+        builder.Services.AddHttpContextAccessor();
+
         // HTTP client factory for Nethermind RPC client with timeout configuration
         builder.Services.AddHttpClient<NethermindRpcClient>()
             .ConfigureHttpClient(client =>
@@ -68,9 +71,10 @@ public static class BuilderSetup
         {
             var settings = sp.GetRequiredService<Settings>();
             var httpClientFactory = sp.GetService<IHttpClientFactory>();
+            var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
             var logger = sp.GetService<ILogger<CirclesRpcModule>>();
             var cacheServiceClient = settings.UseCacheService ? sp.GetService<CacheServiceClient.CacheServiceClient>() : null;
-            return new CirclesRpcModule(settings, httpClientFactory, logger, cacheServiceClient);
+            return new CirclesRpcModule(settings, httpClientFactory, httpContextAccessor, logger, cacheServiceClient);
         });
 
         builder.Services.AddSingleton<CirclesSubscriptionService>();

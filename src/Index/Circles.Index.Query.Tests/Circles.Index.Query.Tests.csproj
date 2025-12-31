@@ -29,6 +29,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
+      <ProjectReference Include="..\..\Common\Circles.Common.TestUtils\Circles.Common.TestUtils.csproj" />
     </ItemGroup>
 
 </Project>

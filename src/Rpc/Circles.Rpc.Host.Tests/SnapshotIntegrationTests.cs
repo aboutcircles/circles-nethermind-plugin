@@ -14,21 +14,25 @@ namespace Circles.Rpc.Host.Tests;
 /// The tests automatically use the query proxy when direct database connection is not available
 /// (e.g., when running against staging.circlesubi.network/test-env from external network).
 ///
-/// To run these tests:
-/// 1. Start the test environment locally:
-///    docker compose -f docker/docker-compose.test-environment.yml up -d
-/// 2. Run: dotnet test --filter "Category=Snapshot"
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
+/// CI triggers these tests automatically on merges to main/dev branches.
 ///
-/// Or set TEST_ENV_URL to point to staging:
-///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test --filter "Category=Snapshot"
+/// To run locally:
+///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class RpcSnapshotTests
 {
     [Test]
     public async Task HealthCheck_TestEnvironmentIsAvailable()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         var health = await TestEnvironmentClient.GetHealthAsync();
 
         Assert.That(health, Is.Not.Null);
@@ -38,6 +42,13 @@ public class RpcSnapshotTests
     [Test]
     public async Task CurrentBlock_IsIndexed()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         var currentBlock = await TestEnvironmentClient.GetCurrentBlockAsync();
 
         Assert.That(currentBlock, Is.GreaterThan(0), "Database should have indexed blocks");
@@ -48,9 +59,10 @@ public class RpcSnapshotTests
 /// Tests for RPC query functionality using historical database state.
 /// These tests verify SQL queries work correctly with block-filtered data.
 /// Uses proxy endpoint when direct DB connection is unavailable.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class RpcQuerySnapshotTests
 {
     // Block 43193632 = state at the time of the mint-along-path bug
@@ -61,6 +73,13 @@ public class RpcQuerySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();
@@ -178,9 +197,10 @@ public class RpcQuerySnapshotTests
 /// <summary>
 /// Tests for database schema and view availability using test environment.
 /// Verifies that all expected tables and views exist and are queryable.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class SchemaValidationSnapshotTests
 {
     private const long TestBlock = 43193632;
@@ -189,6 +209,13 @@ public class SchemaValidationSnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();
@@ -325,9 +352,10 @@ public class SchemaValidationSnapshotTests
 /// <summary>
 /// Tests for specific avatar queries at historical blocks.
 /// These tests use known addresses from bug investigations.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class AvatarQuerySnapshotTests
 {
     private const long BugReproBlock = 43193632;
@@ -341,6 +369,13 @@ public class AvatarQuerySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();
@@ -479,9 +514,10 @@ public class AvatarQuerySnapshotTests
 
 /// <summary>
 /// Tests for transaction history queries at historical blocks.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class TransactionHistorySnapshotTests
 {
     private const long TestBlock = 43193632;
@@ -490,6 +526,13 @@ public class TransactionHistorySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();

@@ -148,6 +148,7 @@ public static class ScenarioLoader
 
     /// <summary>
     /// Provides test case data for Anvil E2E scenarios.
+    /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
     /// </summary>
     public static IEnumerable<TestCaseData> AnvilScenariosTestData()
     {
@@ -156,7 +157,6 @@ public static class ScenarioLoader
             yield return new TestCaseData(scenario)
                 .SetName($"E2E/{scenario.Category}/{scenario.Id}")
                 .SetDescription(scenario.Description ?? scenario.Name)
-                .SetCategory("E2E")
                 .SetCategory(scenario.Category);
         }
     }

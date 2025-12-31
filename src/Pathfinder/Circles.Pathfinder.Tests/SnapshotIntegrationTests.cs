@@ -13,19 +13,16 @@ namespace Circles.Pathfinder.Tests;
 /// These tests load real blockchain state from a specific block to ensure
 /// deterministic, reproducible test results.
 ///
-/// To run these tests:
-/// 1. Start the test environment locally:
-///    docker compose -f docker/docker-compose.test-environment.yml up -d
-/// 2. Run: dotnet test --filter "Category=Snapshot"
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
+/// CI triggers these tests automatically on merges to main/dev branches.
 ///
-/// Or set TEST_ENV_URL to point to staging:
-///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test --filter "Category=Snapshot"
+/// To run locally:
+///    TEST_ENV_URL=https://staging.circlesubi.network/test-env dotnet test
 ///
 /// Note: Tests that require LoadGraph need direct database access. When running
 /// against remote test-env (staging), these tests will be skipped.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class SnapshotIntegrationTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -33,6 +30,13 @@ public class SnapshotIntegrationTests
     [Test]
     public async Task HealthCheck_TestEnvironmentIsAvailable()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         var health = await TestEnvironmentClient.GetHealthAsync();
 
         Assert.That(health, Is.Not.Null);
@@ -42,6 +46,13 @@ public class SnapshotIntegrationTests
     [Test]
     public async Task CurrentBlock_IsIndexed()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         var currentBlock = await TestEnvironmentClient.GetCurrentBlockAsync();
 
         Assert.That(currentBlock, Is.GreaterThan(0), "Database should have indexed blocks");
@@ -59,11 +70,11 @@ public class SnapshotIntegrationTests
 ///
 /// Reference: docs/_resources/mintAlongAPath/MINTINGALONGPATH_SUMMARY.md
 ///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// Note: These tests require direct database access for LoadGraph. When running
 /// against remote test-env, they will skip unless direct connection is available.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class MintAlongPathRegressionTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -82,6 +93,13 @@ public class MintAlongPathRegressionTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();
@@ -281,9 +299,10 @@ public class MintAlongPathRegressionTests
 
 /// <summary>
 /// Tests for consented flow validation at historical blocks.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class ConsentedFlowSnapshotTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -292,6 +311,13 @@ public class ConsentedFlowSnapshotTests
     [Test]
     public async Task LoadConsentedFlowFlags_ReturnsFlags()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();
@@ -335,9 +361,10 @@ public class ConsentedFlowSnapshotTests
 /// <summary>
 /// Snapshot tests that can use the query proxy (don't require LoadGraph).
 /// These tests work with both local and remote test-env.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Snapshot")]
 public class PathfinderQuerySnapshotTests
 {
     private const long TestBlock = 43193632;
@@ -349,6 +376,13 @@ public class PathfinderQuerySnapshotTests
     [OneTimeSetUp]
     public async Task Setup()
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run snapshot tests.");
+            return;
+        }
+
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();

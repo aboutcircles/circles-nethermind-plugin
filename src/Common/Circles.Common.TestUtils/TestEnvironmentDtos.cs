@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Circles.Common.TestUtils;
 
 /// <summary>
@@ -149,4 +151,30 @@ public record ScalarResponse
     /// Execution time in milliseconds.
     /// </summary>
     public long ExecutionTimeMs { get; init; }
+}
+
+/// <summary>
+/// Exception thrown when a JSON-RPC call returns an error.
+/// </summary>
+public class JsonRpcException : Exception
+{
+    /// <summary>
+    /// The raw JSON error object from the RPC response.
+    /// </summary>
+    public JsonElement ErrorObject { get; }
+
+    /// <summary>
+    /// The error code from the JSON-RPC error, if available.
+    /// </summary>
+    public int? ErrorCode { get; }
+
+    public JsonRpcException(string message, JsonElement errorObject) : base(message)
+    {
+        ErrorObject = errorObject;
+        if (errorObject.TryGetProperty("code", out var codeElement) &&
+            codeElement.ValueKind == JsonValueKind.Number)
+        {
+            ErrorCode = codeElement.GetInt32();
+        }
+    }
 }

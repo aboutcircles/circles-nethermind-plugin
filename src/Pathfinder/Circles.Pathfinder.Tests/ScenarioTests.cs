@@ -13,10 +13,10 @@ namespace Circles.Pathfinder.Tests;
 /// <summary>
 /// Data-driven scenario tests for the pathfinder.
 /// Loads scenarios from JSON files and validates path computation and contract execution.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Scenarios")]
-[Category("Snapshot")]
 public class ScenarioTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -28,6 +28,13 @@ public class ScenarioTests
     [TestCaseSource(typeof(ScenarioLoader), nameof(ScenarioLoader.AllScenariosTestData))]
     public async Task PathfinderScenario(TransferScenario scenario)
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run scenario tests.");
+            return;
+        }
+
         // Check test environment availability
         TestEnvironmentClient? session = null;
         try
@@ -202,11 +209,11 @@ public class ScenarioTests
 /// <summary>
 /// E2E tests that execute computed paths on Anvil fork.
 /// Validates that paths actually work on-chain.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
+/// CI triggers these tests automatically on merges to main/dev branches.
 /// </summary>
 [TestFixture]
-[Category("E2E")]
-[Category("Scenarios")]
-[Category("Snapshot")]
 public class ScenarioE2ETests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -217,6 +224,15 @@ public class ScenarioE2ETests
     [TestCaseSource(typeof(ScenarioLoader), nameof(ScenarioLoader.AnvilScenariosTestData))]
     public async Task AnvilExecutionScenario(TransferScenario scenario)
     {
+        // Check if TEST_ENV_URL is set
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore(
+                "TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run E2E tests.");
+            return;
+        }
+
         if (!scenario.RunOnAnvil)
         {
             Assert.Ignore("Scenario not configured for Anvil execution");
@@ -249,7 +265,7 @@ public class ScenarioE2ETests
                 features: ["db", "anvil"],
                 ttl: "30m");
 
-            if (session.AnvilRpcUrl == null)
+            if (!session.HasAnvil)
             {
                 Assert.Ignore("Anvil not available in test environment");
             }
@@ -259,7 +275,8 @@ public class ScenarioE2ETests
                 Assert.Ignore("Direct database connection required for E2E tests");
             }
 
-            anvil = new AnvilExecutionHelper(session.AnvilRpcUrl);
+            // Use proxied Anvil - works from anywhere
+            anvil = new AnvilExecutionHelper(session);
         }
         catch (Exception ex)
         {

@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using Circles.Common.Dto;
+using Circles.Common.TestUtils;
 using Nethereum.Util;
 
 namespace Circles.Pathfinder.Tests.Helpers;
@@ -14,15 +15,42 @@ namespace Circles.Pathfinder.Tests.Helpers;
 /// 1. Taking sorted transfer paths from the pathfinder
 /// 2. Building operateFlowMatrix call data
 /// 3. Executing on an Anvil fork and checking success/failure
+///
+/// Supports two modes:
+/// - Proxied: Uses TestEnvironmentClient.ExecuteAnvilRpcAsync (works from anywhere)
+/// - Direct: Uses direct HTTP to Anvil URL (only works from staging CI)
 /// </summary>
 public class AnvilExecutionHelper : IDisposable
 {
-    private readonly HttpClient _httpClient;
-    private readonly string _anvilUrl;
+    private readonly HttpClient? _httpClient;
+    private readonly string? _anvilUrl;
+    private readonly TestEnvironmentClient? _session;
 
     // Circles Hub V2 contract address on Gnosis
     public const string CirclesHubAddress = "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8";
 
+    /// <summary>
+    /// Creates an AnvilExecutionHelper that uses proxied RPC calls through the test environment.
+    /// This is the recommended mode for external clients.
+    /// </summary>
+    /// <param name="session">The test environment session with Anvil enabled.</param>
+    public AnvilExecutionHelper(TestEnvironmentClient session)
+    {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+
+        if (!session.HasAnvil)
+        {
+            throw new InvalidOperationException(
+                "Session does not have Anvil enabled. Create session with features: [\"anvil\"]");
+        }
+    }
+
+    /// <summary>
+    /// Creates an AnvilExecutionHelper with direct HTTP access to an Anvil URL.
+    /// This only works when the Anvil URL is reachable (e.g., staging CI).
+    /// </summary>
+    /// <param name="anvilUrl">The Anvil RPC URL.</param>
+    [Obsolete("Use the TestEnvironmentClient constructor for external access. Direct URL only works internally.")]
     public AnvilExecutionHelper(string anvilUrl)
     {
         _anvilUrl = anvilUrl.TrimEnd('/');
@@ -191,19 +219,17 @@ public class AnvilExecutionHelper : IDisposable
         // Poll for receipt (transaction might not be mined immediately)
         for (int i = 0; i < 10; i++)
         {
-            var response = await _httpClient.PostAsJsonAsync("", new
+            try
             {
-                jsonrpc = "2.0",
-                method = "eth_getTransactionReceipt",
-                @params = new object[] { txHash },
-                id = 1
-            });
-
-            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-
-            if (json.TryGetProperty("result", out var result) && result.ValueKind != JsonValueKind.Null)
+                var result = await CallRpcAsync<JsonElement>("eth_getTransactionReceipt", txHash);
+                if (result.ValueKind != JsonValueKind.Null)
+                {
+                    return result;
+                }
+            }
+            catch
             {
-                return result;
+                // Receipt not ready yet
             }
 
             await Task.Delay(100);
@@ -214,25 +240,40 @@ public class AnvilExecutionHelper : IDisposable
 
     private async Task<T> CallRpcAsync<T>(string method, params object[] parameters)
     {
-        var response = await _httpClient.PostAsJsonAsync("", new
-        {
-            jsonrpc = "2.0",
-            method,
-            @params = parameters,
-            id = 1
-        });
+        JsonElement result;
 
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-
-        if (json.TryGetProperty("error", out var error))
+        if (_session != null)
         {
-            var message = error.TryGetProperty("message", out var msg)
-                ? msg.GetString()
-                : "RPC error";
-            throw new Exception(message);
+            // Use proxied RPC through test environment
+            result = await _session.ExecuteAnvilRpcAsync(method, parameters);
         }
+        else if (_httpClient != null)
+        {
+            // Use direct HTTP (legacy mode for internal access)
+            var response = await _httpClient.PostAsJsonAsync("", new
+            {
+                jsonrpc = "2.0",
+                method,
+                @params = parameters,
+                id = 1
+            });
 
-        var result = json.GetProperty("result");
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+            if (json.TryGetProperty("error", out var error))
+            {
+                var message = error.TryGetProperty("message", out var msg)
+                    ? msg.GetString()
+                    : "RPC error";
+                throw new Exception(message);
+            }
+
+            result = json.GetProperty("result");
+        }
+        else
+        {
+            throw new InvalidOperationException("No RPC connection available");
+        }
 
         if (typeof(T) == typeof(string))
         {
