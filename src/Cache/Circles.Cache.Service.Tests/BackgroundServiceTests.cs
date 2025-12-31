@@ -159,6 +159,15 @@ public class NotificationListenerServiceTests
 
         var caches = new CacheContainer(settings.RollbackCapacity);
         const string avatarKey = "0xabc";
+        const string dummyAvatarKey = "0xdummy";
+
+        // Seed ALL caches with initial state at block 8 (the common ancestor before the reorg)
+        // This establishes the rollback baseline so RollbackAll can roll back to block 9
+        SeedAllCachesAtBlock(caches, 8);
+
+        // Add data at block 9 so it exists in the rollback history
+        // (rollback to block 9 requires block 9 to be in _blockOrder)
+        caches.V1Avatars.Add(9, dummyAvatarKey, ("Human", "0xdummy"));
         caches.V1Avatars.Add(10, avatarKey, ("Human", "0xtoken"));
 
         var blocks = new List<(long BlockNumber, string BlockHash)>
@@ -175,7 +184,9 @@ public class NotificationListenerServiceTests
 
         service.ProcessedRanges.Should().Equal(new[] { (9L, 11L) });
         state.LastProcessedBlock.Should().Be(11);
+        // Both avatars added at blocks 9 and 10 should be rolled back (removed)
         caches.V1Avatars.ContainsKey(avatarKey).Should().BeFalse();
+        caches.V1Avatars.ContainsKey(dummyAvatarKey).Should().BeFalse();
     }
 
     private sealed class TestNotificationListenerService : NotificationListenerService
@@ -211,5 +222,26 @@ public class NotificationListenerServiceTests
             _processedRanges.Add((fromBlock, toBlock));
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Seeds all caches in the container with empty data at the specified block.
+    /// This establishes a rollback baseline for the RollbackAll operation.
+    /// </summary>
+    private static void SeedAllCachesAtBlock(CacheContainer caches, long blockNo)
+    {
+        caches.V1Avatars.Seed(new Dictionary<string, (string, string?)>(), blockNo);
+        caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>(), blockNo);
+        caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>(), blockNo);
+        caches.V2Avatars.Seed(new Dictionary<string, (string, long)>(), blockNo);
+        caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>(), blockNo);
+        caches.Groups.Seed(new Dictionary<string, (string, string, string)>(), blockNo);
+        caches.GroupMemberships.Seed(new Dictionary<string, (string Member, long ExpiryTime)>(), blockNo);
+        caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>(), blockNo);
+        caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>(), blockNo);
+        caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>(), blockNo);
+        caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>(), blockNo);
+        caches.V1TrustRelations.Seed(new Dictionary<string, long>(), blockNo);
+        caches.V2TrustRelations.Seed(new Dictionary<string, long>(), blockNo);
     }
 }
