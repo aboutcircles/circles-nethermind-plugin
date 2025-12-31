@@ -4,7 +4,36 @@ This test suite provides testing for the Circles Pathfinder service, which imple
 
 ## Test Structure
 
-The test suite has been simplified and now consists of a single integration test approach:
+### Unit Tests (always run)
+
+- **EdgeOrderingTests.cs**: Tests for edge ordering in group minting scenarios
+
+  - Validates `SortEdgesForMintDependencies()` and `ValidateMintEdgeOrdering()`
+  - Tests the mint-along-path bug fix (collateral must precede mints)
+
+- **V2PathfinderTests.cs**: Core pathfinder algorithm tests
+
+### Regression Tests (require test-env)
+
+- **RegressionScenarios/**: JSON scenario files defining specific block states and source/sink pairs
+- **RegressionTests.cs**: Category=Regression - loads scenarios, validates edge ordering against test-env
+- **ScenarioTests.cs**: Category=Scenarios - comprehensive scenario validation with E2E framework
+
+See [Regression Readme](./RegressionScenarios/README.md) for details on creating regression scenarios.
+
+**Running regression tests:**
+
+```bash
+# Requires test environment
+TEST_ENV_URL=https://staging.circlesubi.network/test-env \
+dotnet test --filter "Category=Regression"
+
+# Or run all scenario tests
+TEST_ENV_URL=https://staging.circlesubi.network/test-env \
+dotnet test --filter "Category=Scenarios"
+```
+
+### Network Integration Tests
 
 - **NetworkPathfinderTests.cs**: End-to-end tests that validate the pathfinder service by:
   - Making direct API calls to the running pathfinder service
@@ -27,6 +56,7 @@ All test cases are defined in the JSON file `pathfinder-test-cases.json`. Each t
 - `withWrap`: Boolean flag to enable/disable wrapped token support
 
 Example test case:
+
 ```json
 {
   "name": "BasicPath-1",
@@ -45,23 +75,28 @@ Example test case:
 The test suite performs comprehensive validation on pathfinder responses:
 
 1. **Flow Conservation**: Ensures the flow is balanced at each node
+
    - Total outflow from source equals the max flow
    - Total inflow to sink equals the max flow
    - For all intermediate nodes, inflow equals outflow
 
 2. **Token Filter Validation**: Verifies that filter constraints are respected
+
    - When `fromTokens` is specified, only those tokens are used by the source
    - When `toTokens` is specified, only those tokens flow into the sink
 
 3. **Trust Relationship Validation**: Ensures trust relationships are respected
+
    - Every receiver trusts the token they're receiving
    - Creates a full trust graph from database for validation
 
 4. **Balance Validation**: Verifies addresses have sufficient token balances
+
    - Every sender has enough balance of the token they're sending
    - Creates a full balance graph from database for validation
 
 5. **Virtual Sink / Self-Conversion Validation**: Tests for token-to-token conversion
+
    - Prevents creation of circular flows
    - Validates that tokens in `toTokens` aren't being used as source tokens
 
@@ -105,6 +140,7 @@ The test output includes detailed validation information with color-coded result
 - 🟡 **YELLOW**: Test skipped or inconclusive
 
 For each test, a comprehensive report is provided showing:
+
 - Flow validation
 - Intermediate node flow validation
 - Token filter validation
@@ -113,6 +149,8 @@ For each test, a comprehensive report is provided showing:
 - Wrapped token validation
 
 ## Adding New Test Cases
+
+### Network Test Cases
 
 To add new test cases, simply extend the `pathfinder-test-cases.json` file with additional entries. Each test case will be automatically picked up and executed by the test framework.
 
@@ -127,6 +165,40 @@ To add new test cases, simply extend the `pathfinder-test-cases.json` file with 
   "toTokens": ["0xtoken3", "0xtoken4"],
   "withWrap": false
 }
+```
+
+### Regression Scenarios
+
+Add JSON files to `RegressionScenarios/` directory. They are automatically discovered:
+
+```json
+{
+  "id": "my-scenario-001",
+  "name": "Description of the bug or scenario",
+  "category": "group-minting",
+  "block": 43193632,
+  "source": "0xsourceaddress",
+  "sink": "0xsinkaddress",
+  "description": "Detailed description of what this tests",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "runOnAnvil": true,
+  "tags": ["group-minting", "edge-ordering"]
+}
+```
+
+**Categories:** `direct-transfer`, `group-minting`, `self-conversion`, `wrapped-tokens`, `consented-flow`
+
+**Discovery:** Use SQL queries against staging database to find interesting scenarios:
+
+```sql
+-- Find users with multiple collateral tokens for group minting
+SELECT b.account, COUNT(DISTINCT b."tokenId") as tokens
+FROM "V_CrcV2_BalancesByAccountAndToken" b
+WHERE b."balance" > 1000000000000000000
+GROUP BY b.account
+HAVING COUNT(DISTINCT b."tokenId") >= 3
+LIMIT 10;
 ```
 
 ## Network Validation
