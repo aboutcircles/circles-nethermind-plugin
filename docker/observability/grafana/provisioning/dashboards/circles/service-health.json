@@ -4869,7 +4869,7 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "Traffic distribution by route prefix over the last 24 hours. Extracted from Caddy access logs. Routes: / (RPC), /grafana, /pathfinder, /profiles, /chain-rpc, /referrals, /auth, /test-env. Empty route indicates root RPC requests.",
+      "description": "Traffic distribution by route prefix over the last 24 hours. Extracted from Caddy access logs. Routes: rpc (root), grafana, pathfinder, profiles, chain-rpc, referrals, auth, test-env.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4929,7 +4929,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({container=\"caddy\", route=~\"grafana|pathfinder|chain-rpc|profiles|referrals|auth|test-env|\"}[24h]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route=~\"rpc|grafana|pathfinder|chain-rpc|profiles|referrals|auth|test-env\"}[24h]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -5002,7 +5002,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({container=\"caddy\", route=~\"grafana|pathfinder|chain-rpc|profiles|referrals|auth|test-env|\"}[7d]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route=~\"rpc|grafana|pathfinder|chain-rpc|profiles|referrals|auth|test-env\"}[7d]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
@@ -5075,7 +5075,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (route) (count_over_time({container=\"caddy\", route=~\"grafana|pathfinder|chain-rpc|profiles|referrals|auth|test-env|\"}[14d]))",
+          "expr": "sum by (route) (count_over_time({container=\"caddy\", route=~\"rpc|grafana|pathfinder|chain-rpc|profiles|referrals|auth|test-env\"}[14d]))",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
