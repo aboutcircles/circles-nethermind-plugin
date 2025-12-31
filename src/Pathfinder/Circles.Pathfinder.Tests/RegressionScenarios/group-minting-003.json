@@ -1,0 +1,14 @@
+{
+  "id": "group-minting-003",
+  "name": "Group minting with moderate token diversity (29 tokens)",
+  "category": "group-minting",
+  "block": 43193632,
+  "source": "0x0202ad5b682c0858c167be39b910de61a844a254",
+  "sink": "0x6fae976eb90127b895ceddf8311864cda42ac6ac",
+  "description": "User with 29 different token types sending to a group. Tests edge ordering with realistic collateral diversity. Discovered via query on staging.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "tags": ["group-minting", "multi-collateral", "edge-ordering", "discovered"]
+}
