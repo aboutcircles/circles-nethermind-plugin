@@ -17,13 +17,10 @@ namespace Circles.Pathfinder.Tests;
 /// after the mint-along-path fix. Each fixture captures a specific
 /// block state and source/sink pair that previously caused issues.
 ///
-/// To run:
-///   TEST_ENV_URL=https://staging.circlesubi.network/test-env \
-///   dotnet test --filter "Category=Regression"
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
+/// CI triggers these tests automatically on merges to main/dev branches.
 /// </summary>
 [TestFixture]
-[Category("Regression")]
-[Category("Snapshot")]
 public class RegressionTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
@@ -74,6 +71,15 @@ public class RegressionTests
     [TestCaseSource(nameof(LoadScenarios))]
     public async Task RegressionScenario_EdgeOrderingIsCorrect(RegressionScenario scenario)
     {
+        // Check if TEST_ENV_URL is set
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore(
+                "TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run regression tests.");
+            return;
+        }
+
         // Check if test environment is available
         try
         {

@@ -5,16 +5,11 @@ namespace Circles.Pathfinder.Tests;
 
 /// <summary>
 /// Integration tests that use the Circles Test Environment API.
-/// These tests require the test environment to be running.
+/// These tests verify the test environment itself works correctly.
 ///
-/// To run these tests:
-/// 1. Start the test environment: docker compose -f docker/docker-compose.test-environment.yml up -d
-/// 2. Run: dotnet test --filter "Category=Integration"
-///
-/// Or set TEST_ENV_URL environment variable to point to a remote test environment.
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Integration")]
 public class TestEnvironmentIntegrationTests
 {
     private HttpClient _client = null!;
@@ -24,7 +19,13 @@ public class TestEnvironmentIntegrationTests
     [OneTimeSetUp]
     public async Task Setup()
     {
-        _testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL") ?? "http://localhost:5200";
+        _testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL") ?? "";
+        if (string.IsNullOrEmpty(_testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run integration tests.");
+            return;
+        }
+
         // Ensure trailing slash for proper relative URL resolution
         var baseUrl = _testEnvUrl.TrimEnd('/') + "/";
         _client = new HttpClient { BaseAddress = new Uri(baseUrl) };

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Npgsql;
 
 namespace Circles.Common.TestUtils;
@@ -41,12 +42,18 @@ public class TestEnvironmentClient : IAsyncDisposable
 
     /// <summary>
     /// Anvil RPC URL for contract testing (if anvil feature was requested).
+    /// Note: This returns the internal URL which is not accessible externally.
+    /// Use ExecuteAnvilRpcAsync for proxied access.
     /// </summary>
+    [Obsolete("Use ExecuteAnvilRpcAsync for external access. This URL is only accessible internally.")]
     public string? AnvilRpcUrl => _session?.Anvil?.RpcUrl;
 
     /// <summary>
     /// Circles RPC URL with session parameters (if rpc feature was requested).
+    /// Note: This returns the internal URL which is not accessible externally.
+    /// Use ExecuteCirclesRpcAsync for proxied access.
     /// </summary>
+    [Obsolete("Use ExecuteCirclesRpcAsync for external access. This URL is only accessible internally.")]
     public string? CirclesRpcUrl => _session?.Rpc?.Url;
 
     /// <summary>
@@ -307,6 +314,131 @@ public class TestEnvironmentClient : IAsyncDisposable
     {
         return _baseUrl.Contains("localhost") || _baseUrl.Contains("127.0.0.1");
     }
+
+    /// <summary>
+    /// Executes a JSON-RPC call to the session's Anvil fork through the test environment proxy.
+    /// This is the recommended way to interact with Anvil from external clients.
+    /// </summary>
+    /// <param name="method">The JSON-RPC method name (e.g., "eth_blockNumber", "eth_call").</param>
+    /// <param name="parameters">The method parameters.</param>
+    /// <returns>The JSON-RPC result.</returns>
+    /// <exception cref="InvalidOperationException">If no session exists or anvil feature wasn't requested.</exception>
+    /// <exception cref="HttpRequestException">If the request fails.</exception>
+    public async Task<JsonElement> ExecuteAnvilRpcAsync(string method, params object[] parameters)
+    {
+        if (_session?.SessionId == null)
+        {
+            throw new InvalidOperationException("No active session");
+        }
+
+        if (_session.Anvil == null)
+        {
+            throw new InvalidOperationException(
+                "Anvil not available. Ensure session was created with 'anvil' feature.");
+        }
+
+        var request = new
+        {
+            jsonrpc = "2.0",
+            method,
+            @params = parameters,
+            id = 1
+        };
+
+        var response = await _httpClient.PostAsJsonAsync(
+            $"api/v1/session/{_session.SessionId}/anvil", request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Anvil RPC failed: {response.StatusCode} - {error}");
+        }
+
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Check for JSON-RPC error
+        if (json.TryGetProperty("error", out var errorElement))
+        {
+            var errorMessage = errorElement.TryGetProperty("message", out var msg)
+                ? msg.GetString()
+                : "Unknown error";
+            throw new JsonRpcException(errorMessage ?? "Unknown error", errorElement);
+        }
+
+        if (json.TryGetProperty("result", out var result))
+        {
+            return result;
+        }
+
+        throw new InvalidOperationException("Invalid JSON-RPC response: missing 'result' field");
+    }
+
+    /// <summary>
+    /// Executes a JSON-RPC call to the Circles RPC service through the test environment proxy.
+    /// Note: Block filtering is not yet fully implemented in the RPC service.
+    /// </summary>
+    /// <param name="method">The Circles RPC method name (e.g., "circles_getAvatarInfo").</param>
+    /// <param name="parameters">The method parameters.</param>
+    /// <returns>The JSON-RPC result.</returns>
+    /// <exception cref="InvalidOperationException">If no session exists.</exception>
+    /// <exception cref="HttpRequestException">If the request fails.</exception>
+    public async Task<JsonElement> ExecuteCirclesRpcAsync(string method, params object[] parameters)
+    {
+        if (_session?.SessionId == null)
+        {
+            throw new InvalidOperationException("No active session");
+        }
+
+        var request = new
+        {
+            jsonrpc = "2.0",
+            method,
+            @params = parameters,
+            id = 1
+        };
+
+        var response = await _httpClient.PostAsJsonAsync(
+            $"api/v1/session/{_session.SessionId}/rpc", request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Circles RPC failed: {response.StatusCode} - {error}");
+        }
+
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Check for JSON-RPC error
+        if (json.TryGetProperty("error", out var errorElement))
+        {
+            var errorMessage = errorElement.TryGetProperty("message", out var msg)
+                ? msg.GetString()
+                : "Unknown error";
+            throw new JsonRpcException(errorMessage ?? "Unknown error", errorElement);
+        }
+
+        if (json.TryGetProperty("result", out var result))
+        {
+            return result;
+        }
+
+        throw new InvalidOperationException("Invalid JSON-RPC response: missing 'result' field");
+    }
+
+    /// <summary>
+    /// Checks if the session has Anvil available.
+    /// </summary>
+    public bool HasAnvil => _session?.Anvil != null;
+
+    /// <summary>
+    /// Pre-funded test accounts from Anvil (if available).
+    /// </summary>
+    public string[] AnvilAccounts => _session?.Anvil?.Accounts ?? [];
+
+    /// <summary>
+    /// Chain ID of the Anvil fork.
+    /// </summary>
+    public long AnvilChainId => _session?.Anvil?.ChainId ?? 0;
 
     public async ValueTask DisposeAsync()
     {

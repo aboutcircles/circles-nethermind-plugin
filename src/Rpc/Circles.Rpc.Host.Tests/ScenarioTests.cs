@@ -25,10 +25,10 @@ public record RpcScenario
 /// RPC tests that validate database state at scenario blocks.
 /// These tests verify that the RPC queries return consistent data
 /// for the addresses used in pathfinder scenarios.
+///
+/// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
-[Category("Scenarios")]
-[Category("Snapshot")]
 public class RpcScenarioTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -109,6 +109,13 @@ public class RpcScenarioTests
     [TestCaseSource(nameof(LoadScenarios))]
     public async Task ValidateScenarioAddresses(RpcScenario scenario)
     {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run scenario tests.");
+            return;
+        }
+
         TestEnvironmentClient? session = null;
 
         try
