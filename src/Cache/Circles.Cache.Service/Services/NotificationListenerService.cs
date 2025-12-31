@@ -53,6 +53,17 @@ public class NotificationListenerService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // If warmup was reset (e.g., due to recovery failure), wait for it to complete again
+            while (!_state.WarmupComplete && !stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Warmup required. Pausing notification listener...");
+                _state.ListenerConnected = false;
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+
+            if (stoppingToken.IsCancellationRequested)
+                break;
+
             try
             {
                 await ListenForNotificationsAsync(stoppingToken);
@@ -158,22 +169,107 @@ public class NotificationListenerService : BackgroundService
             _logger.LogInformation("Processing block range {FromBlock} → {ToBlock} ({Count} blocks)",
                 fromBlock, latestBlock, blocksProcessed);
 
-            // Process new blocks
-            await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
+            try
+            {
+                // Process new blocks
+                await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
 
-            _state.LastProcessedBlock = latestBlock;
+                _state.LastProcessedBlock = latestBlock;
 
-            // Track blocks processed
-            CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
+                // Track blocks processed
+                CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
 
-            _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
-                fromBlock, latestBlock, _state.LastProcessedBlock);
+                _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
+                    fromBlock, latestBlock, _state.LastProcessedBlock);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Failed to process block range {FromBlock} → {ToBlock}", fromBlock, latestBlock);
+
+                // Attempt to rollback caches to restore consistency with _state.LastProcessedBlock
+                // The rollback target is fromBlock (first unprocessed block), which restores state to
+                // what it was after processing (LastProcessedBlock = fromBlock - 1)
+                await AttemptRecoveryRollbackAsync(fromBlock, ct);
+
+                throw;
+            }
         }
         else
         {
             _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
                 _state.LastProcessedBlock, latestBlock);
         }
+    }
+
+    /// <summary>
+    /// Attempts to rollback all caches to restore consistency after a processing failure.
+    /// If rollback succeeds, the caches will be back in sync with _state.LastProcessedBlock.
+    /// If rollback fails (e.g., beyond rollback capacity), triggers a full re-warmup.
+    /// </summary>
+    private Task AttemptRecoveryRollbackAsync(long rollbackToBlock, CancellationToken ct)
+    {
+        try
+        {
+            _logger.LogWarning("Attempting recovery rollback to block {Block}...", rollbackToBlock);
+
+            _caches.RollbackAll(rollbackToBlock);
+            _caches.RebuildSecondaryIndexes();
+
+            _logger.LogInformation("Recovery rollback to block {Block} succeeded. Caches are now consistent with LastProcessedBlock={LastProcessed}",
+                rollbackToBlock, _state.LastProcessedBlock);
+        }
+        catch (InvalidOperationException rollbackEx)
+        {
+            // Cannot rollback beyond stored history (rollback capacity exceeded)
+            // The only safe recovery is a full re-warmup
+            _logger.LogError(rollbackEx,
+                "Cannot rollback to block {Block} - beyond rollback capacity. Triggering full re-warmup...",
+                rollbackToBlock);
+
+            // Signal that warmup needs to be redone
+            // This will cause the service to be unhealthy and the warmup service to restart
+            _state.WarmupComplete = false;
+            _state.LastProcessedBlock = 0;
+
+            // Clear all caches to force clean re-warmup
+            ClearAllCaches();
+
+            _logger.LogWarning("Caches cleared. Service will re-warmup on next iteration.");
+        }
+        catch (Exception ex)
+        {
+            // Unexpected error during rollback - still try to trigger re-warmup
+            _logger.LogError(ex, "Unexpected error during recovery rollback. Triggering full re-warmup...");
+
+            _state.WarmupComplete = false;
+            _state.LastProcessedBlock = 0;
+            ClearAllCaches();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Clears all cache data by re-seeding with empty dictionaries.
+    /// Used when recovery rollback fails and a full re-warmup is required.
+    /// </summary>
+    private void ClearAllCaches()
+    {
+        _caches.V1Avatars.Seed(new Dictionary<string, (string, string?)>());
+        _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
+        _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
+        _caches.V2Avatars.Seed(new Dictionary<string, (string, long)>());
+        _caches.Erc20WrapperAddresses.Seed(new Dictionary<string, (string, int)>());
+        _caches.Groups.Seed(new Dictionary<string, (string, string, string)>());
+        _caches.GroupMemberships.Seed(new Dictionary<string, (string, long)>());
+        _caches.V2AvatarToCidMap.Seed(new Dictionary<string, string>());
+        _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
+        _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
+        _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
+        _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
+        _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
+
+        _caches.RebuildSecondaryIndexes();
     }
 
     protected virtual async Task WithReadonlyConnectionAsync(

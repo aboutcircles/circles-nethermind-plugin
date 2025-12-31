@@ -42,10 +42,19 @@ public class CacheWarmupService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Wait for warmup to be needed (either initially or after a recovery reset)
+            while (_state.WarmupComplete && !stoppingToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+
+            if (stoppingToken.IsCancellationRequested)
+                break;
+
             try
             {
                 await RunWarmupIterationAsync(stoppingToken);
-                break;
+                // Don't break - keep monitoring for re-warmup requests
             }
             catch (Exception ex)
             {
