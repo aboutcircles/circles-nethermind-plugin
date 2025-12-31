@@ -75,7 +75,7 @@ scrape_configs:
   - job_name: 'auth'
     metrics_path: /metrics
     static_configs:
-      - targets: ['auth:3000']
+      - targets: ['auth:3001']
 
   # Blackbox exporter - probe /ready endpoints for service health
   - job_name: 'blackbox-ready'
@@ -89,7 +89,7 @@ scrape_configs:
         - http://pathfinder:8080/ready
         - http://cache-service:3001/ready
         - http://invitations:3000/health/ready
-        - http://auth:3000/health/ready
+        - http://auth:3001/health/ready
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -113,7 +113,7 @@ scrape_configs:
         - http://pathfinder:8080/live
         - http://cache-service:3001/live
         - http://invitations:3000/health/live
-        - http://auth:3000/health/live
+        - http://auth:3001/health/live
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
