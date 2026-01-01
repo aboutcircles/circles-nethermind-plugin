@@ -6,11 +6,11 @@ This guide covers the testing infrastructure for the Circles Nethermind Plugin.
 
 ### Test Types
 
-| Type | Description | Runs On |
-|------|-------------|---------|
-| **Unit Tests** | Fast, isolated tests with no external dependencies | All PRs + pushes |
-| **Integration Tests** | Tests against real blockchain state via test-env | Push to dev/main only |
-| **E2E Tests** | Full contract execution on Anvil forks | Push to dev/main only |
+| Type                  | Description                                        | Runs On               |
+| --------------------- | -------------------------------------------------- | --------------------- |
+| **Unit Tests**        | Fast, isolated tests with no external dependencies | All PRs + pushes      |
+| **Integration Tests** | Tests against real blockchain state via test-env   | Push to dev/main only |
+| **E2E Tests**         | Full contract execution on Anvil forks             | Push to dev/main only |
 
 All tests run by default. When `TEST_ENV_URL` is not set, integration/E2E tests skip gracefully with a message.
 
@@ -50,27 +50,27 @@ Each test session provides:
 │  │                  TEST ENVIRONMENT SERVICE (:8080)                       │ │
 │  │                                                                         │ │
 │  │  /api/v1/session              Create/manage sessions                    │ │
-│  │  /api/v1/session/{id}/query   Execute SQL (SELECT only)      ──────┐   │ │
-│  │  /api/v1/session/{id}/anvil   Proxy to Anvil JSON-RPC        ───┐  │   │ │
-│  │  /api/v1/session/{id}/rpc     Proxy to Circles RPC Host  ──┐ │  │   │ │
-│  │  /api/v1/blocks               Block availability info      │  │  │   │ │
-│  └─────────────────────────────────────────────────────────────│──│──│───┘ │
-│                                                                │  │  │     │
-│            ┌───────────────────────────────────────────────────┘  │  │     │
-│            │              ┌───────────────────────────────────────┘  │     │
-│            │              │              ┌───────────────────────────┘     │
-│            ▼              ▼              ▼                                 │
-│  ┌──────────────────┐  ┌─────────────┐  ┌──────────────────┐              │
-│  │ Circles RPC Host │  │ Anvil       │  │ PostgreSQL       │              │
-│  │                  │  │ (per-session│  │                  │              │
-│  │ Receives header: │  │  on dynamic │  │ Block-filtered   │              │
-│  │ X-Max-Block-Number│  │  ports)     │  │ via session var  │              │
-│  │ to filter queries│  │             │  │                  │              │
-│  └────────┬─────────┘  └─────────────┘  └────────▲─────────┘              │
-│           │                                      │                        │
-│           └──────────────────────────────────────┘                        │
-│                    (RPC Host also queries PostgreSQL)                     │
-└───────────────────────────────────────────────────────────────────────────┘
+│  │  /api/v1/session/{id}/query   Execute SQL (SELECT only)     ──────┐     │ │
+│  │  /api/v1/session/{id}/anvil   Proxy to Anvil JSON-RPC       ───┐  │     │ │
+│  │  /api/v1/session/{id}/rpc     Proxy to Circles RPC Host   ──┐  │  │     │ │
+│  │  /api/v1/blocks               Block availability info       │  │  │     │ │
+│  └─────────────────────────────────────────────────────────────│──│──│     │ │
+│                                                                │  │  │     │ │
+│            ┌───────────────────────────────────────────────────┘  │  │     │ │
+│            │              ┌───────────────────────────────────────┘  │     │ │
+│            │              │              ┌───────────────────────────┘     │ │
+│            ▼              ▼              ▼                                 │ │
+│  ┌──────────────────┐  ┌─────────────┐  ┌──────────────────┐               │ │
+│  │ Circles RPC Host │  │ Anvil       │  │ PostgreSQL       │               │ │
+│  │                  │  │ (per-session│  │                  │               │ │
+│  │ Receives header: │  │  on dynamic │  │ Block-filtered   │               │ │
+│  │X-Max-Block-Number│  │  ports)     │  │ via session var  │               │ │
+│  │ to filter queries│  │             │  │                  │               │ │
+│  └────────┬─────────┘  └─────────────┘  └────────▲─────────┘               │ │
+│           │                                      │                         │ │
+│           └──────────────────────────────────────┘                         │ │
+│                    (RPC Host also queries PostgreSQL)                      │ │
+└──────────────────────────────────────────────────────────────────────────────┘
           ▲
           │ HTTPS (publicly accessible via Caddy reverse proxy)
           │
@@ -94,23 +94,23 @@ Each test session provides:
 
 ### Endpoints
 
-| Endpoint | Service | Description |
-|----------|---------|-------------|
-| `/query` | PostgreSQL | Raw SQL queries (SELECT only) against indexed data |
-| `/rpc` | Circles RPC Host | `circles_*` methods with block filtering |
-| `/anvil` | Anvil fork | Execute transactions, impersonate accounts |
+| Endpoint | Service          | Description                                        |
+| -------- | ---------------- | -------------------------------------------------- |
+| `/query` | PostgreSQL       | Raw SQL queries (SELECT only) against indexed data |
+| `/rpc`   | Circles RPC Host | `circles_*` methods with block filtering           |
+| `/anvil` | Anvil fork       | Execute transactions, impersonate accounts         |
 
 ---
 
 ## Test Projects
 
-| Project | Location | Coverage Focus |
-|---------|----------|----------------|
-| **Circles.Pathfinder.Tests** | `src/Pathfinder/` | Path algorithm, edge ordering, scenarios |
-| **Circles.Index.Common.Tests** | `src/Index/` | Demurrage math, numeric precision |
-| **Circles.Index.Query.Tests** | `src/Index/` | Query building, SQL generation |
-| **Circles.Cache.Service.Tests** | `src/Cache/` | Cache invalidation, state management |
-| **Circles.Rpc.Host.Tests** | `src/Rpc/` | RPC handlers, ABI encoding |
+| Project                         | Location          | Coverage Focus                           |
+| ------------------------------- | ----------------- | ---------------------------------------- |
+| **Circles.Pathfinder.Tests**    | `src/Pathfinder/` | Path algorithm, edge ordering, scenarios |
+| **Circles.Common.Tests**  | `src/Common/`      | Demurrage math, numeric precision        |
+| **Circles.Index.Query.Tests**   | `src/Index/`      | Query building, SQL generation           |
+| **Circles.Cache.Service.Tests** | `src/Cache/`      | Cache invalidation, state management     |
+| **Circles.Rpc.Host.Tests**      | `src/Rpc/`        | RPC handlers, ABI encoding               |
 
 ---
 
@@ -148,12 +148,12 @@ dotnet test --filter "Name~mint-path-bug-001"
 
 ### Environment Variables
 
-| Variable | Purpose | Default |
-|----------|---------|---------|
-| `TEST_ENV_URL` | Test environment base URL | (none - tests skip) |
-| `PATHFINDER_URL` | Pathfinder service URL | `http://localhost:8080` |
-| `BUILD_CONFIGURATION` | Build config for test.sh | `Debug` |
-| `TEST_VERBOSITY` | Test output verbosity | `normal` |
+| Variable              | Purpose                   | Default                 |
+| --------------------- | ------------------------- | ----------------------- |
+| `TEST_ENV_URL`        | Test environment base URL | (none - tests skip)     |
+| `PATHFINDER_URL`      | Pathfinder service URL    | `http://localhost:8080` |
+| `BUILD_CONFIGURATION` | Build config for test.sh  | `Debug`                 |
+| `TEST_VERBOSITY`      | Test output verbosity     | `normal`                |
 
 ---
 
@@ -173,6 +173,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "sessionId": "abc123def456",
@@ -195,6 +196,7 @@ POST /api/v1/session/{sessionId}/query
 ```
 
 **Safety constraints:**
+
 - Only SELECT/WITH queries allowed
 - Blocked: DROP, DELETE, UPDATE, INSERT, ALTER, etc.
 - Max rows: 10,000
@@ -297,15 +299,16 @@ try {
     body: JSON.stringify({
       jsonrpc: "2.0",
       method: "eth_sendTransaction",
-      params: [{
-        from: "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        to: "0x...",
-        data: "0x...",
-      }],
+      params: [
+        {
+          from: "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+          to: "0x...",
+          data: "0x...",
+        },
+      ],
       id: 3,
     }),
   }).then((r) => r.json())
-
 } finally {
   // 5. Always cleanup!
   await fetch(`${TEST_ENV}/api/v1/session/${sessionId}`, {
@@ -388,6 +391,7 @@ Create files in `src/Pathfinder/Circles.Pathfinder.Tests/RegressionScenarios/`:
 ```
 
 **Categories:**
+
 - `direct-transfer` - Simple A→B token transfer
 - `group-minting` - Transfers involving group token minting
 - `self-conversion` - source==sink, converting between tokens
@@ -415,6 +419,7 @@ E2E tests **actually execute transfers on-chain** via Anvil fork:
 ### Tests Skip with "TEST_ENV_URL not set"
 
 Expected behavior for local development. Set the env var to run integration tests:
+
 ```bash
 export TEST_ENV_URL=https://staging.circlesubi.network/test-env
 ```
@@ -432,6 +437,7 @@ Anvil forking requires an archive node with historical state. The test environme
 ### Edge Ordering Tests Fail
 
 These tests validate the mint-along-path fix. If failing:
+
 1. Check `SortEdgesForMintDependencies()` in `TransferPathService.cs`
 2. Ensure collateral edges precede mint edges in sorted output
 3. Run specific scenario: `dotnet test --filter "Name~mint-path"`
