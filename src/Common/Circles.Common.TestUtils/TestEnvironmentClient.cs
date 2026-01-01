@@ -78,14 +78,14 @@ public class TestEnvironmentClient : IAsyncDisposable
     /// </summary>
     /// <param name="blockNumber">Block number to freeze the session at.</param>
     /// <param name="features">Features to enable: "db", "anvil", "rpc". Default: ["db"]</param>
-    /// <param name="ttl">Session time-to-live. Default: "10m". Examples: "1h", "30m", "2h30m"</param>
+    /// <param name="ttl">Session time-to-live. Default: "5m", Max: "10m" (server enforced).</param>
     /// <param name="testEnvUrl">Test environment URL. Default: TEST_ENV_URL env var or http://localhost:5200</param>
     /// <returns>A TestEnvironmentClient with an active session.</returns>
     /// <exception cref="HttpRequestException">If the session creation fails.</exception>
     public static async Task<TestEnvironmentClient> CreateSessionAsync(
         long blockNumber,
         string[]? features = null,
-        string ttl = "10m",
+        string ttl = "5m",
         string? testEnvUrl = null)
     {
         var client = new TestEnvironmentClient(testEnvUrl ?? DefaultTestEnvUrl);

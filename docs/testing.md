@@ -34,10 +34,10 @@ Each test session provides:
 
 - **State Isolation** - Each Anvil fork is independent; tests don't interfere with each other
 - **Block-Specific Views** - PostgreSQL queries only see data up to the session's block number
-- **Resource Management** - Sessions auto-expire (default 1h), preventing leaks
+- **Resource Management** - Sessions auto-expire (default 5m, max 10m), preventing leaks
 - **Concurrency Limit** - Max 10 concurrent sessions to prevent resource exhaustion
 
-**Important:** Always close sessions when done. If users don't delete sessions, they block slots for the full TTL (default 1h).
+**Important:** Always close sessions when done. Abandoned sessions block slots until TTL expires.
 
 ### Architecture
 
@@ -80,8 +80,8 @@ Each test session provides:
 ### Session Workflow
 
 ```
-1. POST /api/v1/session { blockNumber: N, features: ["db", "anvil"] }
-   → Creates: Anvil fork at block N, DB connection with block filter
+1. POST /api/v1/session { blockNumber: N, features: ["db", "anvil", "rpc"], ttl: "5m" }
+   → Creates: Anvil fork at block N, DB connection with block filter, RPC proxy
    → Returns: sessionId
 
 2. Use session:
@@ -167,8 +167,8 @@ Content-Type: application/json
 
 {
   "blockNumber": 43193632,
-  "features": ["db", "anvil"],
-  "ttl": "1h"
+  "features": ["db", "anvil", "rpc"],
+  "ttl": "5m"
 }
 ```
 
@@ -234,7 +234,49 @@ POST /api/v1/session/{sessionId}/rpc
 
 ## Usage Examples
 
-### TypeScript
+### TypeScript (with SDK)
+
+Using the `@aboutcircles/test-env` SDK package:
+
+```typescript
+import { TestEnvironmentClient } from "@aboutcircles/test-env"
+
+const client = new TestEnvironmentClient("https://staging.circlesubi.network/test-env")
+
+const session = await client.createSession({
+  blockNumber: 43193632,
+  features: ["db", "anvil", "rpc"],
+  ttl: "5m", // Keep it short!
+})
+
+try {
+  // 1. Query PostgreSQL (block-filtered)
+  const trustData = await session.query(
+    `SELECT * FROM "CrcV2_Trust" WHERE truster = @addr LIMIT 100`,
+    { addr: "0xde374ece6fa50e781e81aac78e811b33d16912c7" }
+  )
+
+  // 2. Query Circles RPC (block-filtered)
+  const avatarInfo = await session.getAvatarInfo("0xde374ece6fa50e781e81aac78e811b33d16912c7")
+
+  // 3. Execute on Anvil fork
+  await session.impersonateAccount("0xde374ece6fa50e781e81aac78e811b33d16912c7")
+  await session.setBalance("0xde374ece6fa50e781e81aac78e811b33d16912c7", 10n ** 18n)
+
+  const txHash = await session.sendTransaction({
+    from: "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    to: "0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8",
+    data: "0x...",
+  })
+
+  const receipt = await session.getTransactionReceipt(txHash)
+  console.log("Success:", receipt.status === "0x1")
+} finally {
+  await session.close() // Always cleanup!
+}
+```
+
+### TypeScript (raw fetch)
 
 ```typescript
 const TEST_ENV = "https://staging.circlesubi.network/test-env"
@@ -245,8 +287,8 @@ const session = await fetch(`${TEST_ENV}/api/v1/session`, {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     blockNumber: 43193632,
-    features: ["db", "anvil"],
-    ttl: "30m",
+    features: ["db", "anvil", "rpc"],
+    ttl: "5m",
   }),
 }).then((r) => r.json())
 
@@ -427,7 +469,7 @@ export TEST_ENV_URL=https://staging.circlesubi.network/test-env
 ### "Session creation failed" or "Max sessions reached"
 
 1. Check test-env health: `curl $TEST_ENV_URL/health`
-2. Wait for existing sessions to expire (TTL default: 1h)
+2. Wait for existing sessions to expire (TTL default: 5m)
 3. Staging may be under maintenance
 
 ### Anvil Timeout Errors
