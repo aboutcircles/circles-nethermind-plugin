@@ -42,10 +42,8 @@ RUN dotnet publish \
 
 FROM nethermind/nethermind:1.35.8 AS base
 
-# Install psql for manual DB operations
-USER root
+# Install psql for manual DB operations (runs as root, compose sets runtime user)
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
-USER nethermind
 
 WORKDIR /nethermind/plugins
 

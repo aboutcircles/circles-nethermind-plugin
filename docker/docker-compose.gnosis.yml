@@ -4,6 +4,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Index.Dockerfile
+    user: "${MY_UID}:${MY_GID}"
     restart: unless-stopped
     depends_on:
       postgres-gnosis:
