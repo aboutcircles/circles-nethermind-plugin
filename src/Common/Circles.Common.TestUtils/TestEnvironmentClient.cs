@@ -375,7 +375,7 @@ public class TestEnvironmentClient : IAsyncDisposable
 
     /// <summary>
     /// Executes a JSON-RPC call to the Circles RPC service through the test environment proxy.
-    /// Note: Block filtering is not yet fully implemented in the RPC service.
+    /// The proxy passes X-Max-Block-Number header which filters database queries to the session's block.
     /// </summary>
     /// <param name="method">The Circles RPC method name (e.g., "circles_getAvatarInfo").</param>
     /// <param name="parameters">The method parameters.</param>
