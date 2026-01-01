@@ -10,6 +10,7 @@ on:
       - "docker/**"
       - "src/**"
       - ".github/workflows/**"
+      - "circles-test-environment"  # Submodule pointer changes
   workflow_call:
     inputs:
       skip_tests:
