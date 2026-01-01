@@ -281,6 +281,11 @@ public class AnvilExecutionHelper : IDisposable
         }
         else if (typeof(T) == typeof(bool))
         {
+            // Some Anvil methods return null for success (e.g., anvil_impersonateAccount, anvil_setBalance)
+            if (result.ValueKind == JsonValueKind.Null)
+            {
+                return (T)(object)true;
+            }
             return (T)(object)result.GetBoolean();
         }
         else if (typeof(T) == typeof(JsonElement))
@@ -529,7 +534,7 @@ public class AnvilExecutionHelper : IDisposable
 
     public void Dispose()
     {
-        _httpClient.Dispose();
+        _httpClient?.Dispose();
     }
 }
 
