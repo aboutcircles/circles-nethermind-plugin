@@ -5,28 +5,34 @@ This document describes the observability infrastructure for the Circles Netherm
 ## Architecture Overview
 
 ```
-                                   ┌─────────────────────┐
-                                   │      Grafana        │
-                                   │    (Dashboards)     │
-                                   └──────────┬──────────┘
-                                              │
-                          ┌───────────────────┼───────────────────┐
-                          │                   │                   │
-                    ┌─────▼─────┐      ┌──────▼─────┐      ┌──────▼─────┐
-                    │Prometheus │      │    Loki    │      │Alertmanager│
-                    │ (Metrics) │      │   (Logs)   │      │  (Alerts)  │
-                    └─────┬─────┘      └──────┬─────┘      └────────────┘
-                          │                   │
-         ┌────────────────┼────────────────┐  │
-         │                │                │  │
-    ┌────▼────┐     ┌─────▼────┐    ┌──────▼──────┐
-    │ Services│     │Nethermind│    │  Promtail   │
-    │ /metrics│     │  :6060   │    │(Log scraper)│
-    └─────────┘     └──────────┘    └──────┬──────┘
-                                          │
-                                   ┌───────▼───────┐
-                                   │Docker Containers│
-                                   └───────────────┘
+                                    ┌─────────────────────┐
+                                    │      Grafana        │
+                                    │    (Dashboards)     │
+                                    └──────────┬──────────┘
+                                               │
+                           ┌───────────────────┼───────────────────┐
+                           │                   │                   │
+                     ┌─────▼─────┐      ┌──────▼─────┐      ┌──────▼─────┐
+                     │Prometheus │      │    Loki    │      │Alertmanager│
+                     │ (Metrics) │      │   (Logs)   │      │  (Alerts)  │
+                     └─────┬─────┘      └──────┬─────┘      └────────────┘
+                           │                   │
+    ┌──────────────────────┼───────────────────┼───────────────────┐
+    │                      │                   │                   │
+┌───▼───┐ ┌────────┐ ┌─────▼────┐ ┌────────┐ ┌─▼───────┐ ┌─────────▼───────┐
+│cAdvisor│ │Services│ │Nethermind│ │Blackbox│ │Promtail │ │ Docker Containers│
+│        │ │/metrics│ │  :6060   │ │Exporter│ │(Logs)   │ │                  │
+└────────┘ └────────┘ └──────────┘ └────────┘ └─────────┘ └──────────────────┘
+    │           │                       │
+    │     ┌─────┴─────────────┐         │
+    │     │                   │         │
+    ▼     ▼                   ▼         ▼
+┌──────────────────────────────────────────────────────┐
+│ Core: rpc, pathfinder, cache-service, nethermind     │
+│ Ecosystem: invitations, auth                         │
+│ Infra: postgres-exporter, caddy, node-exporter       │
+│ External: IPFS gateway, staging.circlesubi.network   │
+└──────────────────────────────────────────────────────┘
 ```
 
 ## Components
@@ -42,12 +48,17 @@ Scrapes metrics from:
 
 - `prometheus:9090` - Self-monitoring
 - `node-exporter:9100` - Host system metrics
+- `cadvisor:8080` - Container-level resource metrics (CPU, memory, network, disk per container)
 - `nethermind-gnosis:6060` - Blockchain node metrics
 - `pathfinder:8080` - Path calculation service
 - `rpc:8080` - RPC service
 - `cache-service:3001` - Cache service
 - `consensus-gnosis:5054` - Consensus client
 - `metrics-exporter:9100` - Business KPIs
+- `postgres-exporter:9187` - PostgreSQL-specific metrics
+- `caddy:2019` - Reverse proxy metrics
+- `invitation-app:3000` - Referral invitations service
+- `auth-service:3001` - Authentication service (SIWE, Passkeys)
 - `blackbox-exporter:9115` - Health endpoint probing
 
 ### Loki (Logs)
@@ -230,6 +241,8 @@ Organic Account = (Has Profile) AND (Has Incoming Trust) AND (Recent Activity)
 | **Cache** | Process running | Warmup complete + pg_notify connected + lag acceptable |
 | **Nethermind** | Process running | Blockchain synced |
 | **Consensus** | Process running | Beacon chain synced |
+| **Invitations** | Process running | Database connected + referral system ready |
+| **Auth** | Process running | Database connected + SIWE/Passkey services ready |
 
 **Important**: RPC `/ready` is the **ultimate stack health check**. It validates the entire Circles stack is operational, not just individual services.
 
@@ -354,6 +367,159 @@ Organic Account = (Has Profile) AND (Has Incoming Trust) AND (Recent Activity)
 | Collection Errors | `circles_liquidity_collection_errors_total` | Errors by metric type |
 
 **Use Case**: Security monitoring and early warning for liquidity pool drains or coordinated attacks.
+
+---
+
+### 11. Circles Ecosystem KPIs (`ecosystem-kpis.json`)
+
+**Purpose**: Monitor the Invitations and Auth ecosystem services that support user onboarding and authentication.
+
+**Sections**:
+
+#### Invitations Service Overview
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Total Referrals Stored | `circles_referrals_stored_total` | All-time referral invitations created |
+| Pending Referrals | `circles_referrals_pending_keys_total` | Unclaimed referral keys (thresholds: green <5k, yellow 5-10k, red >10k) |
+| Total Claimed | `circles_referrals_claimed_total` | Referrals successfully claimed |
+| Unique Inviters | `circles_referrals_unique_inviters_total` | Users who have sent invitations |
+| Claim Rate (1h) | Calculated | Claimed / (claimed + expired) ratio |
+| Referrals/Hour | `increase(circles_referrals_stored_total[1h])` | New referral creation rate |
+
+#### Invitations Trends
+| Panel | Metrics | Description |
+|-------|---------|-------------|
+| Referral Activity | stored, claimed, expired rates | Funnel visualization of referral lifecycle |
+| Time to Claim | `circles_referrals_key_age_at_claim_hours_bucket` | p50/p95 histogram of claim latency |
+
+#### Auth Service Overview
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| SIWE Sessions (Total) | `circles_auth_siwe_sessions_created_total` | Sign-In With Ethereum sessions |
+| Passkey Sessions (Total) | `circles_auth_passkey_sessions_created_total` | WebAuthn passkey sessions |
+| Registered Passkeys | `circles_auth_total_passkeys` | Total passkeys enrolled |
+| Passkey Users | `circles_auth_unique_passkey_users` | Unique users with passkeys |
+| SIWE Success Rate | Calculated | Successful verifications / total attempts |
+| Auths/Hour | Combined SIWE + Passkey rate | Authentication throughput |
+
+#### Auth Service Trends
+| Panel | Metrics | Description |
+|-------|---------|-------------|
+| Authentication Activity | SIWE and Passkey session rates | Method comparison over time |
+| SIWE Verification Results | `circles_auth_siwe_verifications_total{result}` | Success/failure breakdown |
+
+#### Request Performance
+| Panel | Metrics | Description |
+|-------|---------|-------------|
+| Invitations Request Latency | p50/p95/p99 from histogram | Response time percentiles |
+| Auth Request Latency | p50/p95/p99 from histogram | Response time percentiles |
+| Request Rate | `circles_referrals_http_requests_total`, `circles_auth_http_requests_total` | Throughput per service |
+| Error Rate | 5xx responses / total | Service error rates |
+
+**Use Case**: Track user onboarding funnel and authentication method adoption. Monitor for invitation spam or auth service issues.
+
+---
+
+### 12. Token Offers & Marketplace (`token-offers.json`)
+
+**Purpose**: Monitor the GNO Bonus Cycle and Payment Gateway systems that enable CRC-to-token exchanges.
+
+**External Link**: [Dune: Circles V2 Offers](https://dune.com/gnosischain_team/circles-v2-offers)
+
+**Sections**:
+
+#### Token Offers Overview (GNO Bonus Cycle)
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Offer Cycles | `circles_token_offer_cycles_total` | Number of bonus rounds created |
+| Total Claims | `circles_token_offer_claims_total` | All-time offer claims |
+| CRC Spent (Total) | `circles_token_offer_crc_spent_total` | CRC exchanged for tokens |
+| GNO Received (Total) | `circles_token_offer_tokens_received_total` | Tokens distributed to users |
+| GNO Price (CRC) | `circles_token_offer_current_price_crc` | Current exchange rate |
+| Accepted CRC Types | `circles_token_offer_accepted_crc_count` | Token types eligible for offers |
+
+#### Average Metrics
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Avg CRC per Claim | `circles_token_offer_avg_crc_per_claim` | Mean claim size |
+| Avg Payment Size | `circles_payment_gateway_avg_payment_size` | Mean gateway payment |
+| Avg Claim Value (USD) | Calculated with `circles_crc_price_usd` | USD-denominated claim value |
+| Avg Payment Value (USD) | Calculated with `circles_crc_price_usd` | USD-denominated payment value |
+
+#### Offer Claims Activity
+| Panel | Metrics | Description |
+|-------|---------|-------------|
+| Offer Claims Over Time | 24h and 7d windows | Claim volume trends |
+| Unique Claimers | 24h/7d/30d windows | User engagement metrics |
+
+#### CRC & GNO Flow
+| Panel | Metrics | Description |
+|-------|---------|-------------|
+| CRC Spent on Offers | 24h and 7d windows | CRC flowing into offers |
+| GNO Received from Offers | 24h and 7d windows | Tokens flowing to users |
+
+#### Offer Pricing
+| Panel | Metrics | Description |
+|-------|---------|-------------|
+| GNO Offer Price (CRC) | Historical price | Exchange rate evolution |
+| Offer Configuration | Limit and accepted types | Current offer parameters |
+
+#### Payment Gateway
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Total Gateways | `circles_payment_gateways_total` | Payment gateways created |
+| Total Payments | `circles_payment_gateway_payments_total` | All-time payment count |
+| Total Volume (CRC) | `circles_payment_gateway_volume_total_crc` | All-time CRC processed |
+| New Gateways (24h) | `circles_payment_gateways_created{window="24h"}` | Recent gateway creation |
+| Gateway Activity | Payments and gateway creation rates | Activity over time |
+| Unique Payers & Payees | By window | User participation |
+| Payment Gateway Volume | 24h/7d/30d windows | CRC volume trends |
+
+**Use Case**: Track the effectiveness of CRC-to-GNO incentive programs and payment gateway adoption.
+
+---
+
+### 13. Resource Usage (`resource-usage.json`)
+
+**Purpose**: Container-level resource monitoring using cAdvisor metrics. Provides per-container breakdown of CPU, memory, network, and disk I/O.
+
+**Sections**:
+
+#### Host Overview
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Host CPU Usage | `100 - avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100` | Overall CPU utilization (thresholds: green ≤70%, yellow 70-90%, red >90%) |
+| Host Memory Usage | `(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100` | Memory utilization (thresholds: green ≤70%, yellow 70-90%, red >90%) |
+| Host Disk Usage (/) | Root filesystem percentage | Disk utilization (thresholds: green ≤70%, yellow 70-85%, red >85%) |
+| Total Memory | `node_memory_MemTotal_bytes` | Available host memory |
+
+#### Container CPU Usage
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| CPU Usage by Container | `container_cpu_usage_seconds_total` | Per-container CPU (100% = 1 core) |
+| Top 10 CPU Consumers | Ranked bar gauge | Highest CPU containers |
+| CPU Usage Stacked | Stacked timeseries | Total CPU distribution |
+
+#### Container Memory Usage
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Memory Usage by Container | `container_memory_usage_bytes` | Per-container memory |
+| Top 10 Memory Consumers | Ranked bar gauge | Highest memory containers (yellow >2GB, red >4GB) |
+| Memory Usage Stacked | Stacked timeseries | Total memory distribution |
+
+#### Container Network I/O
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Network Receive Rate | `container_network_receive_bytes_total` | Incoming traffic per container |
+| Network Transmit Rate | `container_network_transmit_bytes_total` | Outgoing traffic per container |
+
+#### Container Disk I/O
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| Disk Read Rate | `container_fs_reads_bytes_total` | Read throughput per container |
+| Disk Write Rate | `container_fs_writes_bytes_total` | Write throughput per container |
+
+**Use Case**: Identify resource-hungry containers, capacity planning, and troubleshooting performance issues at the container level.
 
 ---
 
@@ -618,12 +784,29 @@ This is the **ultimate health check** for the Circles stack. It validates:
 
 ### Blackbox Exporter Probes
 
-| Job | Target | Interval | Alert Condition |
-|-----|--------|----------|-----------------|
-| `blackbox-ready` | Service `/ready` | 30s | Failure for 5m triggers alert |
-| `blackbox-live` | Service `/live` | 15s | Failure for 1m triggers alert |
-| `blackbox-nethermind` | Nethermind `/health` | 30s | Failure for 2m triggers alert |
-| `blackbox-consensus` | Lighthouse `/eth/v1/node/health` | 30s | Failure for 2m triggers alert |
+| Job | Target | Interval | Description |
+|-----|--------|----------|-------------|
+| `blackbox-ready` | Service `/ready` endpoints | 30s | Validates services are ready to serve traffic |
+| `blackbox-live` | Service `/live` endpoints | 15s | Validates services are alive (liveness) |
+| `blackbox-nethermind` | Nethermind `/health` | 30s | Blockchain node health |
+| `blackbox-consensus` | Lighthouse `/eth/v1/node/health` | 30s | Accepts 200 (synced) and 206 (syncing) |
+| `blackbox-caddy` | Caddy admin API `/config/` | 30s | Reverse proxy health |
+| `blackbox-external` | Public HTTPS endpoints | 60s | External domain monitoring + SSL cert expiry |
+| `blackbox-rpc-functional` | JSON-RPC method validation | 60s | Validates actual RPC responses, not just HTTP 200 |
+| `blackbox-ipfs-gateway` | Filebase IPFS gateway | 60s | Fetches known Circles profile CID |
+
+**Services monitored via `/ready` and `/live`**:
+- rpc, pathfinder, cache-service, invitations, auth
+
+**Functional RPC Probes** validate these methods:
+- `circles_health`, `circles_tables`, `circles_getTotalBalance`
+- `circles_getAvatarInfo`, `circles_getTrustRelations`
+- `circles_query`, `circles_events`
+
+**External Endpoints** monitored:
+- `https://staging.circlesubi.network/live` - Main RPC
+- `https://staging.circlesubi.network/pathfinder/live` - Pathfinder
+- `https://staging.circlesubi.network/chain-rpc/health` - Nethermind
 
 ### Sync-Aware Alerting
 
@@ -846,7 +1029,11 @@ Check `InitialSyncInProgress` alert - it's informational, not an error.
 
 ## Future Enhancements
 
-- [ ] CRC Price metric (needs external API - Balancer/CoW/DIA)
+- [x] CRC Price metric (`circles_crc_price_usd` - used in token-offers dashboard)
+- [x] Container-level resource monitoring (cAdvisor integration)
+- [x] Ecosystem services monitoring (invitations, auth)
+- [x] External endpoint and SSL monitoring
+- [x] Functional RPC probes (validates method responses)
 - [ ] Index plugin Prometheus metrics (currently console-only)
 - [ ] Database indexes for heavy sybil detection queries
 - [ ] Trust graph analysis metrics (clustering coefficient, diameter)
