@@ -28,6 +28,7 @@ services:
       - CirclesRpcUrl=${CIRCLES_RPC_URL:-http://rpc:8080}
       - AnvilForkRpcUrl=${ANVIL_FORK_RPC_URL:-https://rpc.gnosischain.com}
       - MaxConcurrentSessions=${TEST_ENV_MAX_SESSIONS:-10}
+      - PublicBaseUrl=${TEST_ENV_PUBLIC_BASE_URL:-}
     networks:
       - circles-gnosis
     restart: unless-stopped
