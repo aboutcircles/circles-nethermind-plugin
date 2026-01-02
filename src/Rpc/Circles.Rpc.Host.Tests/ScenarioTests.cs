@@ -172,7 +172,7 @@ public class RpcScenarioTests
             cmd.Parameters.AddWithValue("address", scenario.Source);
 
             var sourceBalances = Convert.ToInt64(await cmd.ExecuteScalarAsync());
-            TestContext.WriteLine($"Scenario {scenario.Id}: Source has {sourceBalances} token balances");
+            TestContext.Out.WriteLine($"Scenario {scenario.Id}: Source has {sourceBalances} token balances");
 
             if (scenario.ShouldFindPath)
             {
@@ -191,7 +191,7 @@ public class RpcScenarioTests
             cmd.Parameters.AddWithValue("sink", scenario.Sink);
 
             var trustCount = Convert.ToInt64(await cmd.ExecuteScalarAsync());
-            TestContext.WriteLine($"Scenario {scenario.Id}: Trust relations involving addresses: {trustCount}");
+            TestContext.Out.WriteLine($"Scenario {scenario.Id}: Trust relations involving addresses: {trustCount}");
 
             if (scenario.ShouldFindPath)
             {
@@ -211,7 +211,7 @@ public class RpcScenarioTests
                     new Dictionary<string, object?> { ["address"] = scenario.Source });
 
                 var sourceBalances = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
-                TestContext.WriteLine($"Scenario {scenario.Id}: Source has {sourceBalances} token balances");
+                TestContext.Out.WriteLine($"Scenario {scenario.Id}: Source has {sourceBalances} token balances");
 
                 if (scenario.ShouldFindPath)
                 {

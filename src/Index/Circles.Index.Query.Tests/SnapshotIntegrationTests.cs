@@ -73,7 +73,7 @@ public class SnapshotIntegrationTests
             });
 
         Assert.That(result, Is.Not.Null);
-        TestContext.WriteLine($"Trust count for address: {result.Rows.FirstOrDefault()?[0]}");
+        TestContext.Out.WriteLine($"Trust count for address: {result.Rows.FirstOrDefault()?[0]}");
     }
 
     [Test]
@@ -94,7 +94,7 @@ public class SnapshotIntegrationTests
         Assert.That(result, Is.Not.Null);
         var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
         Assert.That(count, Is.GreaterThan(0));
-        TestContext.WriteLine($"Trust events after block {TestBlock - 10000}: {count}");
+        TestContext.Out.WriteLine($"Trust events after block {TestBlock - 10000}: {count}");
     }
 
     [Test]
@@ -115,7 +115,7 @@ public class SnapshotIntegrationTests
             });
 
         Assert.That(result, Is.Not.Null);
-        TestContext.WriteLine($"Trust relations found: {result.RowCount}");
+        TestContext.Out.WriteLine($"Trust relations found: {result.RowCount}");
     }
 
     [Test]
@@ -142,7 +142,7 @@ public class SnapshotIntegrationTests
             prevBlock = blockNum;
         }
 
-        TestContext.WriteLine($"Latest trust at block: {result.Rows.FirstOrDefault()?[0]}");
+        TestContext.Out.WriteLine($"Latest trust at block: {result.Rows.FirstOrDefault()?[0]}");
     }
 
     [Test]
@@ -163,7 +163,7 @@ public class SnapshotIntegrationTests
         var trusters = result.Rows.Select(r => r[0]?.ToString()).ToList();
         Assert.That(trusters.Distinct().Count(), Is.EqualTo(trusters.Count), "All trusters should be unique");
 
-        TestContext.WriteLine($"Distinct trusters found: {result.RowCount}");
+        TestContext.Out.WriteLine($"Distinct trusters found: {result.RowCount}");
     }
 
     [Test]
@@ -186,11 +186,11 @@ public class SnapshotIntegrationTests
             });
 
         Assert.That(result, Is.Not.Null);
-        TestContext.WriteLine($"Trust events in range: {result.RowCount}");
+        TestContext.Out.WriteLine($"Trust events in range: {result.RowCount}");
 
         foreach (var row in result.Rows.Take(3))
         {
-            TestContext.WriteLine($"  Block {row[2]}: {row[0]} -> {row[1]}");
+            TestContext.Out.WriteLine($"  Block {row[2]}: {row[0]} -> {row[1]}");
         }
     }
 
@@ -205,7 +205,7 @@ public class SnapshotIntegrationTests
 
         var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
         Assert.That(count, Is.GreaterThan(0), "Should have V1 signups");
-        TestContext.WriteLine($"V1 signups: {count}");
+        TestContext.Out.WriteLine($"V1 signups: {count}");
     }
 
     [Test]
@@ -219,7 +219,7 @@ public class SnapshotIntegrationTests
 
         var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
         Assert.That(count, Is.GreaterThan(0), "Should have V2 registrations");
-        TestContext.WriteLine($"V2 RegisterHuman events: {count}");
+        TestContext.Out.WriteLine($"V2 RegisterHuman events: {count}");
     }
 
     [Test]
@@ -232,7 +232,7 @@ public class SnapshotIntegrationTests
 
         var maxBlock = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
         Assert.That(maxBlock, Is.GreaterThanOrEqualTo(TestBlock), "Should have blocks indexed up to test block");
-        TestContext.WriteLine($"Max indexed block: {maxBlock}");
+        TestContext.Out.WriteLine($"Max indexed block: {maxBlock}");
     }
 
     [Test]
@@ -252,7 +252,7 @@ public class SnapshotIntegrationTests
         {
             var result = await _session!.ExecuteQueryAsync($"SELECT COUNT(*) FROM \"{view}\"");
             var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
-            TestContext.WriteLine($"{view}: {count} rows");
+            TestContext.Out.WriteLine($"{view}: {count} rows");
             Assert.That(count, Is.GreaterThanOrEqualTo(0), $"View {view} should be queryable");
         }
     }
@@ -272,6 +272,6 @@ public class SnapshotIntegrationTests
         Assert.That(maxBlock, Is.LessThanOrEqualTo(TestBlock),
             $"Max block {maxBlock} should not exceed session block {TestBlock}");
 
-        TestContext.WriteLine($"Max trust block: {maxBlock} (session limit: {TestBlock})");
+        TestContext.Out.WriteLine($"Max trust block: {maxBlock} (session limit: {TestBlock})");
     }
 }

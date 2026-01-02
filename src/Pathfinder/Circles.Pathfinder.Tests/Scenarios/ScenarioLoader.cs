@@ -24,7 +24,7 @@ public static class ScenarioLoader
         var scenariosDir = GetScenariosDirectory();
         if (!Directory.Exists(scenariosDir))
         {
-            TestContext.WriteLine($"Scenarios directory not found: {scenariosDir}");
+            TestContext.Out.WriteLine($"Scenarios directory not found: {scenariosDir}");
             yield break;
         }
 
@@ -43,7 +43,7 @@ public static class ScenarioLoader
             }
             catch (JsonException ex)
             {
-                TestContext.WriteLine($"Failed to parse scenario file {file}: {ex.Message}");
+                TestContext.Out.WriteLine($"Failed to parse scenario file {file}: {ex.Message}");
             }
 
             if (scenario != null)
