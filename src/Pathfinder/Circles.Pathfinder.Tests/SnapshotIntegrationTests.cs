@@ -162,7 +162,7 @@ public class MintAlongPathRegressionTests
         Assert.That(balances.Count, Is.GreaterThan(0), "Should have balances at this block");
         Assert.That(trusts.Count, Is.GreaterThan(0), "Should have trust relations at this block");
 
-        TestContext.WriteLine($"Loaded {balances.Count} balances, {trusts.Count} trusts, {groups.Count} groups");
+        TestContext.Out.WriteLine($"Loaded {balances.Count} balances, {trusts.Count} trusts, {groups.Count} groups");
     }
 
     [Test]
@@ -219,7 +219,7 @@ public class MintAlongPathRegressionTests
         var targetFlow = UInt256.Parse("1000000000000000000"); // 1 CRC in wei
         var maxFlow = pathfinder.ComputeMaxFlow(capacityGraph, request, targetFlow);
 
-        TestContext.WriteLine($"Max flow from {BugSource} to {BugSink}: {maxFlow}");
+        TestContext.Out.WriteLine($"Max flow from {BugSource} to {BugSink}: {maxFlow}");
 
         // We expect some flow to be possible (though may be less than target)
         // The exact amount depends on the balance state at this block
@@ -253,12 +253,12 @@ public class MintAlongPathRegressionTests
 
         if (response.Transfers == null || response.Transfers.Count == 0)
         {
-            TestContext.WriteLine("No path found - may need different source/sink");
+            TestContext.Out.WriteLine("No path found - may need different source/sink");
             Assert.Ignore("No path found at this block state");
             return;
         }
 
-        TestContext.WriteLine($"Found path with {response.Transfers.Count} steps");
+        TestContext.Out.WriteLine($"Found path with {response.Transfers.Count} steps");
 
         // Validate edge ordering: for each group, collateral edges must come before mint edges
         ValidateGroupEdgeOrdering(response.Transfers, capacityGraph);
@@ -279,7 +279,7 @@ public class MintAlongPathRegressionTests
             if (from == routerAddr && graph.IsGroup(AddressIdPool.IdOf(to)))
             {
                 groupsWithCollateral.Add(to);
-                TestContext.WriteLine($"Collateral: Router → {to}");
+                TestContext.Out.WriteLine($"Collateral: Router → {to}");
             }
 
             // Check if this is a Group → Avatar edge (minting)
@@ -291,7 +291,7 @@ public class MintAlongPathRegressionTests
                     $"Group {from} minted before receiving collateral. " +
                     $"Mint edge (Group→{to}) appeared before collateral edge (Router→Group).");
 
-                TestContext.WriteLine($"Mint: {from} → {to} (collateral received: OK)");
+                TestContext.Out.WriteLine($"Mint: {from} → {to} (collateral received: OK)");
             }
         }
     }
@@ -351,7 +351,7 @@ public class ConsentedFlowSnapshotTests
 
         var flags = loadGraph.LoadConsentedFlowFlags().ToList();
 
-        TestContext.WriteLine($"Loaded {flags.Count} consented flow flags");
+        TestContext.Out.WriteLine($"Loaded {flags.Count} consented flow flags");
 
         // Just verify we can load the flags - the actual content depends on chain state
         Assert.That(flags, Is.Not.Null);
@@ -426,7 +426,7 @@ public class PathfinderQuerySnapshotTests
             WHERE ""balance"" > 0");
 
         var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
-        TestContext.WriteLine($"V2 balances with positive balance: {count}");
+        TestContext.Out.WriteLine($"V2 balances with positive balance: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have positive balances");
     }
 
@@ -440,7 +440,7 @@ public class PathfinderQuerySnapshotTests
             FROM ""V_CrcV2_TrustRelations""");
 
         var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
-        TestContext.WriteLine($"V2 trust relations: {count}");
+        TestContext.Out.WriteLine($"V2 trust relations: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have trust relations");
     }
 
@@ -454,7 +454,7 @@ public class PathfinderQuerySnapshotTests
             FROM ""CrcV2_RegisterGroup""");
 
         var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
-        TestContext.WriteLine($"Registered groups: {count}");
+        TestContext.Out.WriteLine($"Registered groups: {count}");
         Assert.That(count, Is.GreaterThanOrEqualTo(0), "Should be able to query groups");
     }
 
@@ -470,10 +470,10 @@ public class PathfinderQuerySnapshotTests
             LIMIT 10",
             new Dictionary<string, object?> { ["address"] = BugSource });
 
-        TestContext.WriteLine($"Bug source ({BugSource}) has {result.RowCount} tokens with balance");
+        TestContext.Out.WriteLine($"Bug source ({BugSource}) has {result.RowCount} tokens with balance");
         foreach (var row in result.Rows.Take(5))
         {
-            TestContext.WriteLine($"  {row[0]}: {row[1]}");
+            TestContext.Out.WriteLine($"  {row[0]}: {row[1]}");
         }
 
         Assert.That(result.RowCount, Is.GreaterThan(0), "Bug source should have token balances");
@@ -496,10 +496,10 @@ public class PathfinderQuerySnapshotTests
                 ["sink"] = BugSink
             });
 
-        TestContext.WriteLine($"Trust relations involving bug addresses: {result.RowCount}");
+        TestContext.Out.WriteLine($"Trust relations involving bug addresses: {result.RowCount}");
         foreach (var row in result.Rows.Take(5))
         {
-            TestContext.WriteLine($"  {row[0]} trusts {row[1]}");
+            TestContext.Out.WriteLine($"  {row[0]} trusts {row[1]}");
         }
 
         Assert.That(result.RowCount, Is.GreaterThan(0),

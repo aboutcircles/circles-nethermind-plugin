@@ -106,7 +106,7 @@ public class ScenarioTests
                 var response = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, targetFlow);
                 if (response.Transfers == null || response.Transfers.Count == 0)
                 {
-                    TestContext.WriteLine($"Scenario {scenario.Id}: Correctly found no path");
+                    TestContext.Out.WriteLine($"Scenario {scenario.Id}: Correctly found no path");
                     Assert.Pass("No path found as expected");
                 }
                 else
@@ -116,7 +116,7 @@ public class ScenarioTests
             }
             catch (ArgumentException ex)
             {
-                TestContext.WriteLine($"Scenario {scenario.Id}: Expected exception - {ex.Message}");
+                TestContext.Out.WriteLine($"Scenario {scenario.Id}: Expected exception - {ex.Message}");
                 Assert.Pass($"Expected exception: {ex.Message}");
             }
         }
@@ -142,8 +142,8 @@ public class ScenarioTests
                 Assert.Fail($"Scenario {scenario.Id}: Path has no transfer steps");
             }
 
-            TestContext.WriteLine($"Scenario {scenario.Id}: Found path with {response.Transfers.Count} steps");
-            TestContext.WriteLine($"Max flow: {response.MaxFlow}");
+            TestContext.Out.WriteLine($"Scenario {scenario.Id}: Found path with {response.Transfers.Count} steps");
+            TestContext.Out.WriteLine($"Max flow: {response.MaxFlow}");
 
             // Validate minimum flow if specified
             if (!string.IsNullOrEmpty(scenario.MinFlow) && !string.IsNullOrEmpty(response.MaxFlow))
@@ -190,7 +190,7 @@ public class ScenarioTests
             if (from == routerAddr && graph.IsGroup(AddressIdPool.IdOf(to)))
             {
                 groupsWithCollateral.Add(to);
-                TestContext.WriteLine($"  Collateral: Router → {to[..10]}...");
+                TestContext.Out.WriteLine($"  Collateral: Router → {to[..10]}...");
             }
 
             // Check if this is a Group → Avatar edge (minting)
@@ -200,7 +200,7 @@ public class ScenarioTests
                 Assert.That(groupsWithCollateral.Contains(from), Is.True,
                     $"Scenario {scenarioId}: Group {from[..10]}... minted before receiving collateral");
 
-                TestContext.WriteLine($"  Mint: {from[..10]}... → {to[..10]}... (collateral received: OK)");
+                TestContext.Out.WriteLine($"  Mint: {from[..10]}... → {to[..10]}... (collateral received: OK)");
             }
         }
     }
@@ -308,7 +308,7 @@ public class ScenarioE2ETests
         Assert.That(blockNumber, Is.GreaterThanOrEqualTo(scenario.Block),
             $"Anvil fork should be at block {scenario.Block} or later");
 
-        TestContext.WriteLine($"Scenario {scenario.Id}: Anvil at block {blockNumber}");
+        TestContext.Out.WriteLine($"Scenario {scenario.Id}: Anvil at block {blockNumber}");
 
         // Compute path
         var settings = new Settings();
@@ -345,10 +345,10 @@ public class ScenarioE2ETests
             return;
         }
 
-        TestContext.WriteLine($"Scenario {scenario.Id}: Path has {response.Transfers.Count} steps");
-        TestContext.WriteLine($"  Source: {scenario.Source}");
-        TestContext.WriteLine($"  Sink: {scenario.Sink}");
-        TestContext.WriteLine($"  Max flow: {response.MaxFlow}");
+        TestContext.Out.WriteLine($"Scenario {scenario.Id}: Path has {response.Transfers.Count} steps");
+        TestContext.Out.WriteLine($"  Source: {scenario.Source}");
+        TestContext.Out.WriteLine($"  Sink: {scenario.Sink}");
+        TestContext.Out.WriteLine($"  Max flow: {response.MaxFlow}");
 
         // Execute on Anvil using the operateFlowMatrix call
         var result = await anvil.ExecuteTransferPathAsync(
@@ -363,15 +363,15 @@ public class ScenarioE2ETests
                 $"Scenario {scenario.Id}: Expected revert but transaction succeeded");
             Assert.That(result.Error, Does.Contain(scenario.ExpectedRevertReason).IgnoreCase,
                 $"Scenario {scenario.Id}: Expected revert reason '{scenario.ExpectedRevertReason}' but got '{result.Error}'");
-            TestContext.WriteLine($"Scenario {scenario.Id}: Transaction reverted as expected: {result.Error}");
+            TestContext.Out.WriteLine($"Scenario {scenario.Id}: Transaction reverted as expected: {result.Error}");
         }
         else
         {
             // Positive test - expect transaction to succeed
             Assert.That(result.Success, Is.True,
                 $"Scenario {scenario.Id}: Expected success but transaction failed: {result.Error}");
-            TestContext.WriteLine($"Scenario {scenario.Id}: Transaction succeeded! Gas used: {result.GasUsed}");
-            TestContext.WriteLine($"  TxHash: {result.TxHash}");
+            TestContext.Out.WriteLine($"Scenario {scenario.Id}: Transaction succeeded! Gas used: {result.GasUsed}");
+            TestContext.Out.WriteLine($"  TxHash: {result.TxHash}");
         }
     }
 }

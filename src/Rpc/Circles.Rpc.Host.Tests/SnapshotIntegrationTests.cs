@@ -126,7 +126,7 @@ public class RpcQuerySnapshotTests
             WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        TestContext.WriteLine($"CrcV2_RegisterHuman events up to block {TestBlock}: {count}");
+        TestContext.Out.WriteLine($"CrcV2_RegisterHuman events up to block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have RegisterHuman events at this block");
     }
 
@@ -139,7 +139,7 @@ public class RpcQuerySnapshotTests
             SELECT COUNT(*)
             FROM ""V_CrcV2_TrustRelations""");
 
-        TestContext.WriteLine($"V_CrcV2_TrustRelations at block {TestBlock}: {count}");
+        TestContext.Out.WriteLine($"V_CrcV2_TrustRelations at block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have trust relations at this block");
     }
 
@@ -152,7 +152,7 @@ public class RpcQuerySnapshotTests
             SELECT COUNT(DISTINCT ""account"")
             FROM ""V_CrcV2_BalancesByAccountAndToken""");
 
-        TestContext.WriteLine($"Unique accounts with V2 balances at block {TestBlock}: {count}");
+        TestContext.Out.WriteLine($"Unique accounts with V2 balances at block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have accounts with balances");
     }
 
@@ -167,7 +167,7 @@ public class RpcQuerySnapshotTests
             WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        TestContext.WriteLine($"Registered groups at block {TestBlock}: {count}");
+        TestContext.Out.WriteLine($"Registered groups at block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThanOrEqualTo(0));
     }
 
@@ -290,7 +290,7 @@ public class SchemaValidationSnapshotTests
 
         if (failures.Any())
         {
-            TestContext.WriteLine($"Schema validation failures:\n{string.Join("\n", failures)}");
+            TestContext.Out.WriteLine($"Schema validation failures:\n{string.Join("\n", failures)}");
         }
 
         var criticalTables = new[]
@@ -335,7 +335,7 @@ public class SchemaValidationSnapshotTests
                 {
                     await _session.ExecuteScalarAsync(sql);
                 }
-                TestContext.WriteLine($"View {view}: OK");
+                TestContext.Out.WriteLine($"View {view}: OK");
             }
             catch (PostgresException ex) when (ex.SqlState == "42P01")
             {
@@ -455,10 +455,10 @@ public class AvatarQuerySnapshotTests
 
         var result = await _session!.ExecuteQueryAsync(sql, parameters, maxRows: 100);
 
-        TestContext.WriteLine($"Trust relations involving source/sink: {result.RowCount}");
+        TestContext.Out.WriteLine($"Trust relations involving source/sink: {result.RowCount}");
         foreach (var row in result.Rows.Take(10))
         {
-            TestContext.WriteLine($"  {row[0]} trusts {row[1]}");
+            TestContext.Out.WriteLine($"  {row[0]} trusts {row[1]}");
         }
 
         Assert.That(result.RowCount, Is.GreaterThan(0),
@@ -479,10 +479,10 @@ public class AvatarQuerySnapshotTests
 
         var result = await _session!.ExecuteQueryAsync(sql, parameters, maxRows: 50);
 
-        TestContext.WriteLine($"Balances for {KnownSource}: {result.RowCount} tokens");
+        TestContext.Out.WriteLine($"Balances for {KnownSource}: {result.RowCount} tokens");
         foreach (var row in result.Rows.Take(5))
         {
-            TestContext.WriteLine($"  {row[0]}: {row[1]}");
+            TestContext.Out.WriteLine($"  {row[0]}: {row[1]}");
         }
 
         Assert.That(result.RowCount, Is.GreaterThan(0),
@@ -580,12 +580,12 @@ public class TransactionHistorySnapshotTests
 
         var result = await _session!.ExecuteQueryAsync(sql, parameters, maxRows: 10);
 
-        TestContext.WriteLine($"Recent V2 transfers (up to block {TestBlock}):");
+        TestContext.Out.WriteLine($"Recent V2 transfers (up to block {TestBlock}):");
         foreach (var row in result.Rows)
         {
             var from = row[2]?.ToString() ?? "";
             var to = row[3]?.ToString() ?? "";
-            TestContext.WriteLine($"  Block {row[0]}: {from[..Math.Min(10, from.Length)]}... -> {to[..Math.Min(10, to.Length)]}...");
+            TestContext.Out.WriteLine($"  Block {row[0]}: {from[..Math.Min(10, from.Length)]}... -> {to[..Math.Min(10, to.Length)]}...");
         }
 
         Assert.That(result.RowCount, Is.GreaterThan(0), "Should have transfer history");
@@ -602,7 +602,7 @@ public class TransactionHistorySnapshotTests
             WHERE ""blockNumber"" <= @block",
             new Dictionary<string, object?> { ["block"] = TestBlock });
 
-        TestContext.WriteLine($"V1 transfers up to block {TestBlock}: {count}");
+        TestContext.Out.WriteLine($"V1 transfers up to block {TestBlock}: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have V1 transfer history");
     }
 
