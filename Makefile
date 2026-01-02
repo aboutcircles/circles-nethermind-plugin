@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit test-snapshot test-regression test-e2e test-all docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release
+.PHONY: help build test test-unit test-snapshot test-regression test-e2e test-all docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release setup-hooks lint
 
 # Default test environment URL for snapshot/regression/e2e tests
 TEST_ENV_URL ?= https://staging.circlesubi.network/test-env
@@ -66,6 +66,11 @@ help:
 	@echo "  make test-subscriptions                    Test WebSocket subscriptions (default: localhost:8081)"
 	@echo "  make test-subscriptions URL=<ws_url>       Test subscriptions against custom WebSocket URL"
 	@echo "  make test-subscriptions ARGS='--duration 60 --filter 0x...' Test with custom options"
+		@echo ""
+	@echo "Setup:"
+	@echo "  make setup-hooks       Install git hooks (run after cloning)"
+	@echo "  make lint              Check code formatting"
+	@echo "  make lint-fix          Fix code formatting issues"
 		@echo ""
 	@echo "Complete Workflows:"
 	@echo "  make all               Build, test, and pack"
@@ -257,6 +262,17 @@ test-http:
 	else \
 		./scripts/test-http.sh $(ARGS); \
 	fi
+
+# Git hooks
+setup-hooks:
+	./scripts/setup-hooks.sh
+
+# Linting
+lint:
+	dotnet format --verify-no-changes
+
+lint-fix:
+	dotnet format
 
 # Complete workflows
 all: build test pack

@@ -1,0 +1,62 @@
+#!/bin/bash
+# Pre-push hook: Runs linting and build checks before pushing
+# Ensures code quality and prevents broken code from being pushed
+#
+# Install with: ./scripts/setup-hooks.sh
+# Or: make setup-hooks
+
+set -e
+
+echo "🔍 Running pre-push checks..."
+
+# Get the root of the repository
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Track if any check failed
+FAILED=0
+
+# 1. Check code formatting (lint)
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "${YELLOW}[1/2] Checking code formatting...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if dotnet format --verify-no-changes --verbosity quiet 2>/dev/null; then
+    echo -e "${GREEN}✓ Code formatting is correct${NC}"
+else
+    echo -e "${RED}✗ Code formatting issues detected${NC}"
+    echo "  Run 'dotnet format' to fix formatting issues"
+    FAILED=1
+fi
+
+# 2. Build the solution
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "${YELLOW}[2/2] Building solution...${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if dotnet build -c Release --verbosity quiet --nologo >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Build succeeded${NC}"
+else
+    echo -e "${RED}✗ Build failed${NC}"
+    echo "  Run 'dotnet build -c Release' to see errors"
+    FAILED=1
+fi
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if [ $FAILED -eq 1 ]; then
+    echo -e "${RED}Pre-push checks FAILED. Push aborted.${NC}"
+    echo ""
+    echo "To bypass this check (not recommended), use: git push --no-verify"
+    exit 1
+else
+    echo -e "${GREEN}All pre-push checks passed!${NC}"
+    exit 0
+fi

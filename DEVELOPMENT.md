@@ -13,6 +13,16 @@ Quick reference for building, testing, and running the Circles Nethermind Plugin
    - PostgreSQL via Docker, everything else via `dotnet run`
    - See [Local Development](#local-development)
 
+## Initial Setup
+
+After cloning the repository, install git hooks:
+
+```bash
+make setup-hooks
+```
+
+This installs pre-push hooks that run linting and build checks before pushing.
+
 ## Quick Start Scripts
 
 All scripts are located in the [`scripts/`](scripts/) directory.
