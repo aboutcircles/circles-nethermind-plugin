@@ -20,6 +20,9 @@ WORKDIR /app
 # Install curl for health checks and psql for manual DB operations
 RUN apt-get update && apt-get install -y curl postgresql-client && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user with fixed UID (consistent across all circles services)
+RUN groupadd -g 10000 circles && useradd -u 10000 -g circles -s /sbin/nologin circles
+
 # Copy published app
 COPY --from=build /app/publish .
 
@@ -34,4 +37,5 @@ EXPOSE 9100
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:9100/ready || exit 1
 
+USER circles
 ENTRYPOINT ["dotnet", "Circles.Metrics.Exporter.dll"]
