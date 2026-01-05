@@ -17,9 +17,6 @@ on:
         description: "Skip waiting for tests"
         type: boolean
         default: false
-      deploy_all:
-        type: boolean
-        default: false
       deploy_gnosis:
         type: boolean
         default: false
@@ -34,10 +31,6 @@ on:
         default: false
   workflow_dispatch:
     inputs:
-      deploy_all:
-        description: "Deploy everything (ignore change detection)"
-        type: boolean
-        default: false
       deploy_gnosis:
         description: "Deploy Gnosis stack"
         type: boolean
@@ -147,13 +140,11 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           # workflow_dispatch inputs
-          INPUT_DEPLOY_ALL: ${{ github.event.inputs.deploy_all }}
           INPUT_DEPLOY_GNOSIS: ${{ github.event.inputs.deploy_gnosis }}
           INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
           INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
           INPUT_DEPLOY_TEST_ENV: ${{ github.event.inputs.deploy_test_environment }}
           # workflow_call inputs (reusable workflow)
-          CALL_DEPLOY_ALL: ${{ inputs.deploy_all }}
           CALL_DEPLOY_GNOSIS: ${{ inputs.deploy_gnosis }}
           CALL_DEPLOY_OBS: ${{ inputs.deploy_observability }}
           CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
@@ -168,28 +159,12 @@ jobs:
         run: |
           # Handle workflow_dispatch (manual trigger from UI)
           if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
-            if [ "$INPUT_DEPLOY_ALL" == "true" ]; then
-              echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
-              echo "deploy_observability=true" >> $GITHUB_OUTPUT
-              echo "deploy_grafana=true" >> $GITHUB_OUTPUT
-              echo "deploy_test_environment=true" >> $GITHUB_OUTPUT
-              echo "any_deploy=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
             GNOSIS="$INPUT_DEPLOY_GNOSIS"
             OBS="$INPUT_DEPLOY_OBS"
             GRAFANA="$INPUT_DEPLOY_GRAFANA"
             TEST_ENV="$INPUT_DEPLOY_TEST_ENV"
           # Handle workflow_call (reusable workflow)
           elif [ "$EVENT_NAME" == "workflow_call" ]; then
-            if [ "$CALL_DEPLOY_ALL" == "true" ]; then
-              echo "deploy_gnosis=true" >> $GITHUB_OUTPUT
-              echo "deploy_observability=true" >> $GITHUB_OUTPUT
-              echo "deploy_grafana=true" >> $GITHUB_OUTPUT
-              echo "deploy_test_environment=true" >> $GITHUB_OUTPUT
-              echo "any_deploy=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
             GNOSIS="$CALL_DEPLOY_GNOSIS"
             OBS="$CALL_DEPLOY_OBS"
             GRAFANA="$CALL_DEPLOY_GRAFANA"
