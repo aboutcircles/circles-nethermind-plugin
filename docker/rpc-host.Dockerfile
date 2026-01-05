@@ -30,6 +30,10 @@ WORKDIR /app
 # Install psql for manual DB operations
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user with fixed UID (consistent across all circles services)
+RUN groupadd -g 10000 circles && useradd -u 10000 -g circles -s /sbin/nologin circles
+
 COPY --from=build /app/publish .
 
+USER circles
 ENTRYPOINT ["./Circles.Rpc.Host"]
