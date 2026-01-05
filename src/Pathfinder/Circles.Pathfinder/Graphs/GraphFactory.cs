@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
-public class GraphFactory(string routerAddress, LoadGraph loadGraph)
+public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
 {
     private const string VirtualSinkSuffix = "_virtual_sink";
     private static int _createdCount;

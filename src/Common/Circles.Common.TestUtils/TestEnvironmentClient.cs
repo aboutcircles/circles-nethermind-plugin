@@ -301,12 +301,19 @@ public class TestEnvironmentClient : IAsyncDisposable
     {
         get
         {
-            if (_session?.Postgres?.Host == null) return false;
+            // Must have a valid connection string
+            if (string.IsNullOrEmpty(_session?.Postgres?.ConnectionString)) return false;
+            if (string.IsNullOrEmpty(_session.Postgres.Host)) return false;
 
             // Check if we can reach the postgres host
             // Internal docker hostnames like "postgres-gnosis" are not reachable externally
             var host = _session.Postgres.Host;
-            return !host.Contains("postgres-") && host != "localhost" || IsLocalhost();
+
+            // If we're running locally, we can reach local postgres
+            if (IsLocalhost()) return true;
+
+            // External access: can't reach internal docker hostnames
+            return !host.Contains("postgres-") && host != "localhost";
         }
     }
 
