@@ -11,7 +11,4 @@ src/nethermind
 
 # Environment files (but keep examples)
 .env
-.env.local
-docker/.env
 !docker/.env.example
-!.env.local.example
