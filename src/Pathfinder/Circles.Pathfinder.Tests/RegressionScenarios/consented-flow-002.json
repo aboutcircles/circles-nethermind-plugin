@@ -1,0 +1,13 @@
+{
+  "id": "consented-flow-002",
+  "name": "Non-consented source to consented sink",
+  "category": "consented-flow",
+  "block": 43677011,
+  "source": "0x14aab8d72b68c79cbb7873d003585a7c3ef98633",
+  "sink": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
+  "description": "Transfer from non-consented user to consented user. Should find path because consent rules only restrict when SOURCE has consent enabled. The receiver's consent status does not affect incoming transfers.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "runOnAnvil": true,
+  "tags": ["consented-flow", "positive"]
+}

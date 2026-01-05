@@ -1,0 +1,12 @@
+{
+  "id": "consented-flow-004",
+  "name": "Consented source to trusted but non-consented sink",
+  "category": "consented-flow",
+  "block": 43677011,
+  "source": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
+  "sink": "0x14aab8d72b68c79cbb7873d003585a7c3ef98633",
+  "description": "Transfer from consented user to non-consented user who IS trusted by source. Edge case: Should find no direct path because even though source trusts receiver, the receiver must ALSO have consent enabled. This validates that trust alone is not sufficient for consented flow.",
+  "shouldFindPath": false,
+  "runOnAnvil": false,
+  "tags": ["consented-flow", "negative", "edge-case"]
+}
