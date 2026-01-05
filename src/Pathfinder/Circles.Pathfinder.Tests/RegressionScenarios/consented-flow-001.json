@@ -1,14 +1,12 @@
 {
   "id": "consented-flow-001",
-  "name": "Consented flow transfer between mutually trusted users",
+  "name": "Consented source to non-consented but trusted sink",
   "category": "consented-flow",
   "block": 43677011,
   "source": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
   "sink": "0x211d4db9d1d2290fcc62b66574e2bbafba734c98",
-  "description": "User with consented flow (ApprovalForAll) transferring to a mutually trusted address. Tests that the pathfinder respects operator approvals. Discovered via staging query.",
-  "shouldFindPath": true,
-  "minFlow": "1000000000000000000",
-  "expectedRevertReason": null,
-  "runOnAnvil": true,
-  "tags": ["consented-flow", "mutual-trust", "discovered"]
+  "description": "Transfer from consented user to NON-consented user who is trusted by source. Since receiver doesn't have consent enabled, pathfinder should NOT find direct path (consented source requires receiver also has consent). Note: Only 1 consented user exists on staging at this block.",
+  "shouldFindPath": false,
+  "runOnAnvil": false,
+  "tags": ["consented-flow", "negative", "edge-case"]
 }

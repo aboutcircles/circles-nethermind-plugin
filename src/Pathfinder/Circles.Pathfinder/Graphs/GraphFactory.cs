@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
-public class GraphFactory(Settings settings, LoadGraph loadGraph)
+public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
 {
     private const string VirtualSinkSuffix = "_virtual_sink";
     private static int _createdCount;
@@ -257,15 +257,12 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
             excludedToTokensFilter);
 
         // STEP 8: Add Group minting edges (Group → Avatar with group token)
-        if (request?.EnableGroupMinting ?? settings.EnableGroupMinting)
-        {
-            AddGroupMintingEdges(
-                capacityGraph,
-                mergedTrust,
-                sinkId,
-                toTokensFilter,
-                excludedToTokensFilter);
-        }
+        AddGroupMintingEdges(
+            capacityGraph,
+            mergedTrust,
+            sinkId,
+            toTokensFilter,
+            excludedToTokensFilter);
 
         // If a virtual sink was created but received no edges, prune it (mirror legacy behaviour)
         if (virtualSinkAddress != null)
@@ -420,7 +417,7 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
         {
             // Track router node ID for post-processing (inserting router between Avatar->Group transfers)
             // Note: Router node is added to graph but has no edges during graph construction
-            int routerId = AddressIdPool.IdOf(settings.BaseGroupRouter);
+            int routerId = AddressIdPool.IdOf(routerAddress);
             capacityGraph.SetRouter(routerId);
 
             // Load groups

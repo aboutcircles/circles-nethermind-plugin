@@ -56,10 +56,7 @@ public class ScenarioTests
                 features: ["db"],
                 ttl: "15m");
 
-            if (!session.IsDirectConnectionAvailable)
-            {
-                Assert.Ignore("Direct database connection required for pathfinder tests");
-            }
+            // No longer require direct DB - ProxyLoadGraph enables remote testing via query proxy API
         }
         catch (Exception ex)
         {
@@ -83,7 +80,14 @@ public class ScenarioTests
     private async Task ExecutePathfinderTest(TransferScenario scenario, TestEnvironmentClient session)
     {
         var settings = new Settings();
-        var loadGraph = new LoadGraph(session.PostgresConnectionString!, settings);
+
+        // Use direct DB connection if available, otherwise use query proxy API
+        ILoadGraph loadGraph = session.IsDirectConnectionAvailable
+            ? new LoadGraph(session.PostgresConnectionString!, settings)
+            : new ProxyLoadGraph(session, settings);
+
+        TestContext.Out.WriteLine($"Using {(session.IsDirectConnectionAvailable ? "direct DB" : "query proxy")} for data loading");
+
         var factory = new GraphFactory(RouterAddress, loadGraph);
 
         var trustGraph = factory.V2TrustGraph();
@@ -270,11 +274,7 @@ public class ScenarioE2ETests
                 Assert.Ignore("Anvil not available in test environment");
             }
 
-            if (!session.IsDirectConnectionAvailable)
-            {
-                Assert.Ignore("Direct database connection required for E2E tests");
-            }
-
+            // No longer require direct DB - ProxyLoadGraph enables remote testing via query proxy API
             // Use proxied Anvil - works from anywhere
             anvil = new AnvilExecutionHelper(session);
         }
@@ -312,7 +312,14 @@ public class ScenarioE2ETests
 
         // Compute path
         var settings = new Settings();
-        var loadGraph = new LoadGraph(session.PostgresConnectionString!, settings);
+
+        // Use direct DB connection if available, otherwise use query proxy API
+        ILoadGraph loadGraph = session.IsDirectConnectionAvailable
+            ? new LoadGraph(session.PostgresConnectionString!, settings)
+            : new ProxyLoadGraph(session, settings);
+
+        TestContext.Out.WriteLine($"Using {(session.IsDirectConnectionAvailable ? "direct DB" : "query proxy")} for data loading");
+
         var factory = new GraphFactory(RouterAddress, loadGraph);
 
         var trustGraph = factory.V2TrustGraph();
