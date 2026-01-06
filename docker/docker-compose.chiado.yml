@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Index.x64.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
     restart: unless-stopped
     networks:
       - circles-chiado
@@ -42,6 +43,7 @@ services:
 
   postgres-chiado:
     image: postgres:16
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
     command: -c 'max_connections=100'
     shm_size: 1g  # Required for PostgreSQL parallel workers (default 64MB is too small)
     restart: unless-stopped

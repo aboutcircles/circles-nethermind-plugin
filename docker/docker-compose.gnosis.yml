@@ -118,6 +118,7 @@ services:
     build:
       context: ..
       dockerfile: docker/cache-service.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
     depends_on:
       postgres-gnosis:
         condition: service_healthy
@@ -145,6 +146,7 @@ services:
     build:
       context: ..
       dockerfile: docker/pathfinder-host.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
     depends_on:
       nethermind-gnosis:
         condition: service_healthy
@@ -169,6 +171,7 @@ services:
     build:
       context: ..
       dockerfile: docker/rpc-host.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
     depends_on:
       nethermind-gnosis:
         condition: service_healthy
