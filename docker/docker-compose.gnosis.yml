@@ -227,6 +227,7 @@ services:
   postgres-gnosis:
     container_name: postgres-gnosis
     image: postgres:17
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
     command: -c 'max_connections=100'
     shm_size: 1g  # Required for PostgreSQL parallel workers (default 64MB is too small)
     restart: unless-stopped
@@ -291,9 +292,7 @@ services:
           fi
           openssl rand -hex 32 > /jwt/jwt.hex
           chmod 0644 /jwt/jwt.hex
-          if [ -n "${MY_UID:-}" ] && [ -n "${MY_GID:-}" ]; then
-            chown "${MY_UID}:${MY_GID}" /jwt/jwt.hex || true
-          fi
+          chown "${MY_UID:-10000}:${MY_GID:-10000}" /jwt/jwt.hex || true
         fi
         exec tail -f /dev/null
     healthcheck:
