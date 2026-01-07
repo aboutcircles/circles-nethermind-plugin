@@ -54,7 +54,7 @@ if [ ! -f "$DOCKER_DIR/$COMPOSE_FILE" ]; then
 fi
 
 # Check if service is already running
-if docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" ps "$POSTGRES_SERVICE" | grep -q "Up"; then
+if docker compose --env-file "$PROJECT_ROOT/.env" -f "$DOCKER_DIR/$COMPOSE_FILE" ps "$POSTGRES_SERVICE" | grep -q "Up"; then
   echo -e "${GREEN}✓ PostgreSQL is already running${NC}"
   echo -e "${YELLOW}To stop: docker compose -f $DOCKER_DIR/$COMPOSE_FILE down $POSTGRES_SERVICE${NC}"
   echo -e "${YELLOW}To view logs: docker compose -f $DOCKER_DIR/$COMPOSE_FILE logs -f $POSTGRES_SERVICE${NC}"
@@ -63,14 +63,14 @@ fi
 
 # Start PostgreSQL service
 echo -e "${YELLOW}Starting PostgreSQL service...${NC}"
-docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" up -d "$POSTGRES_SERVICE"
+docker compose --env-file "$PROJECT_ROOT/.env" -f "$DOCKER_DIR/$COMPOSE_FILE" up -d "$POSTGRES_SERVICE"
 
 # Wait for service to be healthy
 echo -e "${YELLOW}Waiting for PostgreSQL to be ready...${NC}"
 timeout=60
 counter=0
 while [ $counter -lt $timeout ]; do
-  if docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" ps "$POSTGRES_SERVICE" | grep -q "Up"; then
+  if docker compose --env-file "$PROJECT_ROOT/.env" -f "$DOCKER_DIR/$COMPOSE_FILE" ps "$POSTGRES_SERVICE" | grep -q "Up"; then
     echo -e "${GREEN}✓ PostgreSQL is running and ready${NC}"
     echo ""
     echo -e "${YELLOW}Connection details:${NC}"

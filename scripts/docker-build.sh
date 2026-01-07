@@ -131,7 +131,7 @@ else
         exit 1
       fi
       echo -e "${GREEN}Building test-environment via docker compose...${NC}"
-      docker compose -f "$DOCKER_DIR/docker-compose.test-environment.yml" build --no-cache
+      docker compose --env-file "$PROJECT_ROOT/.env" -f "$DOCKER_DIR/docker-compose.test-environment.yml" build --no-cache
       echo -e "${GREEN}✓ Successfully built test-environment${NC}\n"
       ;;
     *)
