@@ -141,7 +141,7 @@ run_test_project() {
   local services_started=false
   if [[ "$project_name" == "Circles.Pathfinder.Tests" ]]; then
     echo -e "${YELLOW}Starting required services with docker-compose...${NC}"
-    docker compose -f docker/docker-compose.gnosis.yml up -d postgres-gnosis pathfinder rpc
+    docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml up -d postgres-gnosis pathfinder rpc
 
     # Wait for RPC service to be ready
     echo -e "${YELLOW}Waiting for RPC service to be ready...${NC}"
@@ -153,7 +153,7 @@ run_test_project() {
       sleep 1
       if [ $i -eq 30 ]; then
         echo -e "${RED}RPC service failed to start${NC}"
-        docker compose -f docker/docker-compose.gnosis.yml down
+        docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml down
         return 1
       fi
     done
@@ -172,7 +172,7 @@ run_test_project() {
 
   if [[ "$services_started" == true ]]; then
     echo -e "${YELLOW}Stopping services...${NC}"
-    docker compose -f docker/docker-compose.gnosis.yml down
+    docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml down
   fi
 
   return $test_result

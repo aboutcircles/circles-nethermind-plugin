@@ -91,7 +91,7 @@ echo -e "${YELLOW}Compose file: $COMPOSE_FILE${NC}"
 echo -e "${YELLOW}Command: ${COMMAND[*]}${NC}\n"
 
 # Run docker compose
-docker compose -f "$DOCKER_DIR/$COMPOSE_FILE" "${COMMAND[@]}"
+docker compose --env-file "$PROJECT_ROOT/.env" -f "$DOCKER_DIR/$COMPOSE_FILE" "${COMMAND[@]}"
 
 echo -e "\n${GREEN}Command completed successfully!${NC}"
 

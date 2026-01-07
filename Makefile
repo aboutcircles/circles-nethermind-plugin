@@ -1,4 +1,4 @@
-.PHONY: help build test test-unit test-snapshot test-regression test-e2e test-all docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs call-rpc call-http all release setup-hooks lint
+.PHONY: help build test test-unit test-snapshot test-regression test-e2e test-all docker docker-clean docker-index docker-rpc docker-pathfinder docker-test-environment pack push clean run-pathfinder run-rpc run-postgres run-test-environment test-rpc test-rpc-prod test-rpc-regression test-subscriptions test-http docker-up docker-down docker-logs docker-logs-nethermind call-rpc call-http all release setup-hooks lint
 
 # Default test environment URL for snapshot/regression/e2e tests
 TEST_ENV_URL ?= https://staging.circlesubi.network/test-env
@@ -12,9 +12,12 @@ help:
 	@echo "  make test              Run unit tests (fast, no external deps)"
 	@echo "  make test-coverage     Run unit tests with coverage"
 	@echo "  make test-unit         Run unit tests only"
-	@echo "  make test-snapshot     Run snapshot tests (requires TEST_ENV_URL)"
-	@echo "  make test-regression   Run regression tests (requires TEST_ENV_URL)"
-	@echo "  make test-e2e          Run E2E tests with Anvil (requires TEST_ENV_URL)"
+	@echo "  make test-snapshot     Run snapshot tests (default: staging)"
+	@echo "  make test-snapshot TEST_ENV_URL=<url>  Run snapshot tests against custom test-env"
+	@echo "  make test-regression   Run regression tests (default: staging)"
+	@echo "  make test-regression TEST_ENV_URL=<url>  Run regression tests against custom test-env"
+	@echo "  make test-e2e          Run E2E tests with Anvil (default: staging)"
+	@echo "  make test-e2e TEST_ENV_URL=<url>  Run E2E tests against custom test-env"
 	@echo "  make test-all          Run ALL tests (unit + snapshot + regression + e2e)"
 	@echo "  make test-all TEST_ENV_URL=<url>  Run all tests against custom test-env"
 	@echo "  make clean             Clean build artifacts"
@@ -31,6 +34,7 @@ help:
 	@echo "  make docker-down       Stop services"
 	@echo "  make docker-logs       View logs (all services)"
 	@echo "  make docker-logs SERVICE=<name>  View logs for specific service"
+	@echo "  make docker-logs-nethermind      View filtered nethermind logs (circles, sync, errors)"
 	@echo "  make clean-docker      Clean Docker cache and unused images"
 		@echo ""
 	@echo "NuGet:"
@@ -48,7 +52,9 @@ help:
 	@echo "  make run-test-environment  Run test environment (requires submodule)"
 	@echo "  make run-postgres      Run PostgreSQL database (Gnosis)"
 	@echo "  make call-rpc          Call RPC interactively"
+	@echo "  make call-rpc ARGS='<args>'  Call RPC with custom arguments"
 	@echo "  make call-http         Call HTTP endpoints interactively (profiles, pathfinder)"
+	@echo "  make call-http ARGS='<args>' Call HTTP with custom arguments"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-rpc                              Run RPC tests (default: localhost:8081)"
@@ -150,7 +156,7 @@ docker:
 
 # Build all Docker images (no cache)
 docker-clean:
-	docker compose -f docker/docker-compose.gnosis.yml build --no-cache --pull
+	docker compose --env-file .env -f docker/docker-compose.gnosis.yml build --no-cache --pull
 
 # Build specific Docker images
 docker-index:
@@ -178,6 +184,10 @@ docker-logs:
 	else \
 		./scripts/docker-run.sh gnosis logs -f; \
 	fi
+
+# Filtered logs for nethermind (circles, sync, errors)
+docker-logs-nethermind:
+	@docker compose --env-file .env -f docker/docker-compose.gnosis.yml logs -f --tail 10000 nethermind-gnosis 2>&1 | \grep -E -i "circles|changing sync|receipt|ancient|barrier|header|snap|fast|warn|err"
 
 # NuGet package operations
 pack:
@@ -218,7 +228,7 @@ run-test-environment:
 		echo "Run: git submodule update --init circles-test-environment"; \
 		exit 1; \
 	fi
-	docker compose -f docker/docker-compose.test-environment.yml up -d
+	docker compose --env-file .env -f docker/docker-compose.test-environment.yml up -d
 
 run-postgres:
 	./scripts/run-postgres.sh
