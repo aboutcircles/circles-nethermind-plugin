@@ -118,7 +118,6 @@ jobs:
               - 'docker/pathfinder-host.Dockerfile'
               - 'docker/rpc-host.Dockerfile'
               - 'docker/cache-service.Dockerfile'
-              - 'docker/.env.example'
             # OBSERVABILITY: Metrics exporter + monitoring configs (excluding grafana/)
             observability_src:
               - 'src/Metrics/**'
