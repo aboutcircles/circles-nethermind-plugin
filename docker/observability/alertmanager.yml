@@ -129,7 +129,7 @@ receivers:
   # To set up:
   # 1. Create a PagerDuty service with "Events API v2" integration
   # 2. Copy the Integration Key (routing key)
-  # Set PAGERDUTY_SERVICE_KEY in docker/.env, then uncomment below
+  # Set PAGERDUTY_SERVICE_KEY in .env, then uncomment below
   # - name: 'pagerduty-critical'
   #   pagerduty_configs:
   #     - service_key: '${PAGERDUTY_SERVICE_KEY}'
@@ -146,7 +146,7 @@ receivers:
   # - Pushover for mobile push notifications with sound
   # - Custom scripts/services
   # - ntfy.sh for free push notifications
-  # Set WEBHOOK_URL in docker/.env, then uncomment below
+  # Set WEBHOOK_URL in .env, then uncomment below
   # - name: 'webhook-critical'
   #   webhook_configs:
   #     - url: '${WEBHOOK_URL}'
@@ -224,7 +224,7 @@ inhibit_rules:
 #    - Enable: Use webhook receiver with your Twilio integration
 #
 # To enable any of these:
-# 1. Add required env vars to docker/.env
+# 1. Add required env vars to .env
 # 2. Uncomment the relevant route in the routes section
 # 3. Restart alertmanager: docker compose restart alertmanager
 # =============================================================================
