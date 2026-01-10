@@ -159,14 +159,14 @@ echo "REINDEX_FROM_BLOCK=43610000" >> .env
 
 When `REINDEX_FROM_BLOCK=43610000` is set:
 
-| Affected          | Action                                  |
-| ----------------- | --------------------------------------- |
-| `CrcV1_*` tables  | DELETE WHERE blockNumber >= 43610000    |
-| `CrcV2_*` tables  | DELETE WHERE blockNumber >= 43610000    |
-| `Safe_*` tables   | DELETE WHERE blockNumber >= 43610000    |
-| `System_Block`    | DELETE WHERE blockNumber >= 43610000    |
-| Views (`V_*`)     | Skipped (auto-update from base tables)  |
-| Caches            | Reinitialized from database             |
+| Affected         | Action                                 |
+| ---------------- | -------------------------------------- |
+| `CrcV1_*` tables | DELETE WHERE blockNumber >= 43610000   |
+| `CrcV2_*` tables | DELETE WHERE blockNumber >= 43610000   |
+| `Safe_*` tables  | DELETE WHERE blockNumber >= 43610000   |
+| `System_Block`   | DELETE WHERE blockNumber >= 43610000   |
+| Views (`V_*`)    | Skipped (auto-update from base tables) |
+| Caches           | Reinitialized from database            |
 
 **No manual table deletion needed** - the plugin manages all tables atomically.
 
@@ -251,24 +251,24 @@ docker build -t circles-backfill:local -f docker/backfill.Dockerfile .
 
 ## Key Environment Variables
 
-| Variable                     | Description                                     | Example         |
-| ---------------------------- | ----------------------------------------------- | --------------- |
-| `REINDEX_FROM_BLOCK`         | Delete all data >= this block and resync        | `43610000`      |
-| `CIRCLES_PLUGIN_DISABLED`    | Run Nethermind without indexing (RPC-only)      | `true`          |
-| `POSTGRES_CONNECTION_STRING` | Database connection                             | `Server=...`    |
-| `START_BLOCK`                | Initial sync start block (fresh DB only)        | `36501311`      |
+| Variable                     | Description                                | Example      |
+| ---------------------------- | ------------------------------------------ | ------------ |
+| `REINDEX_FROM_BLOCK`         | Delete all data >= this block and resync   | `43610000`   |
+| `CIRCLES_PLUGIN_DISABLED`    | Run Nethermind without indexing (RPC-only) | `true`       |
+| `POSTGRES_CONNECTION_STRING` | Database connection                        | `Server=...` |
+| `START_BLOCK`                | Initial sync start block (fresh DB only)   | `36501311`   |
 
 ## Reindex Time Estimates
 
 When Nethermind is already synced (no network sync needed):
 
-| Scope                              | Blocks | Estimated Time    |
-| ---------------------------------- | ------ | ----------------- |
-| Full reindex (from V2 launch)      | ~7.4M  | 1-3 days          |
-| Payment gateway (from first event) | ~340K  | Few hours         |
-| Specific table backfill            | Varies | Minutes to hours  |
+| Scope                              | Blocks | Estimated Time   |
+| ---------------------------------- | ------ | ---------------- |
+| Full reindex (from V2 launch)      | ~7.4M  | 1-3 days         |
+| Payment gateway (from first event) | ~340K  | Few hours        |
+| Specific table backfill            | Varies | Minutes to hours |
 
-*Times depend on hardware, database performance, and event density.*
+_Times depend on hardware, database performance, and event density._
 
 ## Safety Guarantees
 
