@@ -2,46 +2,23 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Numerics;
 using System.Text.Json;
-using Nethereum.Util;
 using Npgsql;
 
 namespace Circles.Index.Backfill;
 
 /// <summary>
 /// Standalone backfill runner that doesn't depend on Nethermind types.
-/// Parses specific CrcV2 events directly from RPC responses.
+/// Uses EventRegistry for schema definitions and LogParser for parsing.
 /// </summary>
 public class BackfillRunner
 {
     private readonly BackfillOptions _options;
     private readonly HttpClient _httpClient;
 
-    // V2 Hub address (default for Gnosis)
-    private readonly string _v2HubAddress;
-
-    // Event topic hashes (keccak256 of event signatures)
-    private static readonly string FlowEdgesScopeSingleStartedTopic =
-        "0x" + Sha3Keccack.Current.CalculateHash("FlowEdgesScopeSingleStarted(uint256,uint16)").ToLowerInvariant();
-
-    private static readonly string FlowEdgesScopeLastEndedTopic =
-        "0x" + Sha3Keccack.Current.CalculateHash("FlowEdgesScopeLastEnded()").ToLowerInvariant();
-
-    private static readonly string SetAdvancedUsageFlagTopic =
-        "0x" + Sha3Keccack.Current.CalculateHash("SetAdvancedUsageFlag(address,bytes32)").ToLowerInvariant();
-
-    // Supported tables
-    private static readonly HashSet<string> SupportedTables = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "CrcV2_FlowEdgesScopeSingleStarted",
-        "CrcV2_FlowEdgesScopeLastEnded",
-        "CrcV2_SetAdvancedUsageFlag"
-    };
-
     public BackfillRunner(BackfillOptions options)
     {
         _options = options;
         _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-        _v2HubAddress = (options.V2HubAddress ?? "0xc12c1e50abb450d6205ea2c3fa861b3b834d13e8").ToLowerInvariant();
     }
 
     public async Task<int> RunAsync(CancellationToken cancellationToken)
@@ -65,19 +42,31 @@ public class BackfillRunner
         }
 
         // Validate tables
-        var unsupportedTables = _options.Tables.Where(t => !SupportedTables.Contains(t)).ToList();
+        var unsupportedTables = _options.Tables
+            .Where(t => !EventRegistry.Events.ContainsKey(t))
+            .ToList();
+
         if (unsupportedTables.Count > 0)
         {
             Console.Error.WriteLine($"Error: Unsupported tables: {string.Join(", ", unsupportedTables)}");
-            Console.Error.WriteLine($"Supported tables: {string.Join(", ", SupportedTables)}");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("Supported tables:");
+            foreach (var table in EventRegistry.Events.Keys.OrderBy(t => t))
+            {
+                Console.Error.WriteLine($"  {table}");
+            }
             return 1;
         }
 
         var targetTables = _options.Tables.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var topics = EventRegistry.GetTopicsForTables(targetTables);
+        var contractAddresses = EventRegistry.GetContractAddressesForTables(targetTables);
 
         Console.WriteLine($"Target tables: {string.Join(", ", _options.Tables)}");
+        Console.WriteLine($"Topics to match: {topics.Count}");
+        if (contractAddresses != null)
+            Console.WriteLine($"Contract addresses: {string.Join(", ", contractAddresses)}");
         Console.WriteLine($"From block: {_options.FromBlock:N0}");
-        Console.WriteLine($"V2 Hub: {_v2HubAddress}");
         Console.WriteLine($"RPC URL: {_options.RpcUrl}");
         Console.WriteLine($"Batch size: {_options.BatchSize}");
         Console.WriteLine($"Dry run: {_options.DryRun}");
@@ -127,7 +116,7 @@ public class BackfillRunner
             var batchSw = Stopwatch.StartNew();
 
             // Fetch logs for this batch using eth_getLogs
-            var events = await FetchAndParseLogsAsync(batchStart, batchEnd, targetTables, cancellationToken);
+            var events = await FetchAndParseLogsAsync(batchStart, batchEnd, targetTables, topics, contractAddresses, cancellationToken);
 
             // Write events to database
             if (!_options.DryRun && events.Count > 0)
@@ -173,9 +162,6 @@ public class BackfillRunner
 
     /// <summary>
     /// Verifies that the Circles indexer is not running to prevent conflicts.
-    /// Checks:
-    /// 1. CIRCLES_PLUGIN_DISABLED environment variable (recommended)
-    /// 2. System_Block is not advancing (practical check)
     /// </summary>
     private async Task<bool> VerifyIndexerNotRunningAsync(CancellationToken cancellationToken)
     {
@@ -273,37 +259,42 @@ public class BackfillRunner
         long fromBlock,
         long toBlock,
         HashSet<string> targetTables,
+        List<string> topics,
+        HashSet<string>? contractAddresses,
         CancellationToken cancellationToken)
     {
         var events = new List<ParsedEvent>();
 
-        // Build topics filter based on target tables
-        var topics = new List<string>();
-        if (targetTables.Contains("CrcV2_FlowEdgesScopeSingleStarted"))
-            topics.Add(FlowEdgesScopeSingleStartedTopic);
-        if (targetTables.Contains("CrcV2_FlowEdgesScopeLastEnded"))
-            topics.Add(FlowEdgesScopeLastEndedTopic);
-        if (targetTables.Contains("CrcV2_SetAdvancedUsageFlag"))
-            topics.Add(SetAdvancedUsageFlagTopic);
-
         if (topics.Count == 0)
             return events;
 
-        // eth_getLogs request
+        // Build filter
+        object filter;
+        if (contractAddresses != null && contractAddresses.Count > 0)
+        {
+            filter = new
+            {
+                address = contractAddresses.ToArray(),
+                fromBlock = $"0x{fromBlock:X}",
+                toBlock = $"0x{toBlock:X}",
+                topics = new object[] { topics.ToArray() }
+            };
+        }
+        else
+        {
+            filter = new
+            {
+                fromBlock = $"0x{fromBlock:X}",
+                toBlock = $"0x{toBlock:X}",
+                topics = new object[] { topics.ToArray() }
+            };
+        }
+
         var request = new
         {
             jsonrpc = "2.0",
             method = "eth_getLogs",
-            @params = new object[]
-            {
-                new
-                {
-                    address = _v2HubAddress,
-                    fromBlock = $"0x{fromBlock:X}",
-                    toBlock = $"0x{toBlock:X}",
-                    topics = new object[] { topics.ToArray() }
-                }
-            },
+            @params = new object[] { filter },
             id = 1
         };
 
@@ -332,7 +323,7 @@ public class BackfillRunner
         // Parse each log
         foreach (var log in result.EnumerateArray())
         {
-            var parsed = ParseLog(log, blockTimestamps, targetTables);
+            var parsed = LogParser.ParseLog(log, blockTimestamps, targetTables);
             if (parsed != null)
             {
                 events.Add(parsed);
@@ -377,108 +368,6 @@ public class BackfillRunner
         }
 
         return timestamps;
-    }
-
-    private ParsedEvent? ParseLog(JsonElement log, Dictionary<long, long> blockTimestamps, HashSet<string> targetTables)
-    {
-        var topics = log.GetProperty("topics");
-        if (topics.GetArrayLength() == 0)
-            return null;
-
-        var topic0 = topics[0].GetString()!.ToLowerInvariant();
-        var blockNumber = Convert.ToInt64(log.GetProperty("blockNumber").GetString(), 16);
-        var transactionIndex = Convert.ToInt32(log.GetProperty("transactionIndex").GetString(), 16);
-        var logIndex = Convert.ToInt32(log.GetProperty("logIndex").GetString(), 16);
-        var transactionHash = log.GetProperty("transactionHash").GetString()!;
-        var timestamp = blockTimestamps.GetValueOrDefault(blockNumber, 0);
-        var data = log.GetProperty("data").GetString() ?? "0x";
-
-        if (topic0 == FlowEdgesScopeSingleStartedTopic.ToLowerInvariant() &&
-            targetTables.Contains("CrcV2_FlowEdgesScopeSingleStarted"))
-        {
-            // event FlowEdgesScopeSingleStarted(uint256 indexed flowEdgeId, uint16 streamId)
-            // topics[1] = flowEdgeId (indexed)
-            // data = streamId (uint16, but encoded as uint256)
-            var flowEdgeId = topics.GetArrayLength() > 1
-                ? BigInteger.Parse("0" + topics[1].GetString()![2..], System.Globalization.NumberStyles.HexNumber)
-                : BigInteger.Zero;
-
-            var streamId = 0L;
-            if (data.Length > 2)
-            {
-                var dataBytes = Convert.FromHexString(data[2..]);
-                if (dataBytes.Length >= 32)
-                {
-                    // streamId is in the last 2 bytes of the 32-byte word
-                    streamId = (dataBytes[30] << 8) | dataBytes[31];
-                }
-            }
-
-            return new ParsedEvent
-            {
-                Table = "CrcV2_FlowEdgesScopeSingleStarted",
-                BlockNumber = blockNumber,
-                Timestamp = timestamp,
-                TransactionIndex = transactionIndex,
-                LogIndex = logIndex,
-                TransactionHash = transactionHash,
-                Fields = new Dictionary<string, object?>
-                {
-                    ["flowEdgeId"] = flowEdgeId,
-                    ["streamId"] = streamId
-                }
-            };
-        }
-
-        if (topic0 == FlowEdgesScopeLastEndedTopic.ToLowerInvariant() &&
-            targetTables.Contains("CrcV2_FlowEdgesScopeLastEnded"))
-        {
-            // event FlowEdgesScopeLastEnded() - no parameters
-            return new ParsedEvent
-            {
-                Table = "CrcV2_FlowEdgesScopeLastEnded",
-                BlockNumber = blockNumber,
-                Timestamp = timestamp,
-                TransactionIndex = transactionIndex,
-                LogIndex = logIndex,
-                TransactionHash = transactionHash,
-                Fields = new Dictionary<string, object?>()
-            };
-        }
-
-        if (topic0 == SetAdvancedUsageFlagTopic.ToLowerInvariant() &&
-            targetTables.Contains("CrcV2_SetAdvancedUsageFlag"))
-        {
-            // event SetAdvancedUsageFlag(address indexed avatar, bytes32 flag)
-            // topics[1] = avatar (indexed)
-            // data = flag (bytes32)
-            var avatar = topics.GetArrayLength() > 1
-                ? "0x" + topics[1].GetString()![^40..].ToLowerInvariant()
-                : "";
-
-            byte[] flag = Array.Empty<byte>();
-            if (data.Length > 2)
-            {
-                flag = Convert.FromHexString(data[2..]);
-            }
-
-            return new ParsedEvent
-            {
-                Table = "CrcV2_SetAdvancedUsageFlag",
-                BlockNumber = blockNumber,
-                Timestamp = timestamp,
-                TransactionIndex = transactionIndex,
-                LogIndex = logIndex,
-                TransactionHash = transactionHash,
-                Fields = new Dictionary<string, object?>
-                {
-                    ["avatar"] = avatar,
-                    ["flag"] = flag
-                }
-            };
-        }
-
-        return null;
     }
 
     private async Task WriteEventsAsync(List<ParsedEvent> events)
@@ -644,12 +533,17 @@ public class BackfillRunner
         Console.WriteLine("Supported tables for backfill:");
         Console.WriteLine();
 
-        foreach (var table in SupportedTables.OrderBy(t => t))
+        foreach (var table in EventRegistry.Events.Keys.OrderBy(t => t))
         {
+            var def = EventRegistry.Events[table];
             Console.WriteLine($"  {table}");
+            Console.WriteLine($"    Topic: {def.TopicHex[..10]}...");
+            if (EventRegistry.ContractFilters.TryGetValue(def.TopicHex, out var addrs))
+            {
+                Console.WriteLine($"    Contracts: {string.Join(", ", addrs.Select(a => a[..10] + "..."))}");
+            }
+            Console.WriteLine();
         }
-
-        Console.WriteLine();
 
         // Try to get row counts
         try
@@ -660,18 +554,18 @@ public class BackfillRunner
             Console.WriteLine("Current row counts:");
             Console.WriteLine();
 
-            foreach (var table in SupportedTables.OrderBy(t => t))
+            foreach (var table in EventRegistry.Events.Keys.OrderBy(t => t))
             {
                 try
                 {
                     await using var cmd = new NpgsqlCommand(
                         $@"SELECT COUNT(*) FROM ""{table}""", connection);
                     var count = (long)(await cmd.ExecuteScalarAsync() ?? 0);
-                    Console.WriteLine($"  {table,-45} {count:N0} rows");
+                    Console.WriteLine($"  {table,-50} {count:N0} rows");
                 }
                 catch
                 {
-                    Console.WriteLine($"  {table,-45} (table not found)");
+                    Console.WriteLine($"  {table,-50} (table not found)");
                 }
             }
         }
@@ -749,16 +643,5 @@ public class BackfillRunner
         public long CurrentBlock { get; init; }
         public long ToBlock { get; init; }
         public string Status { get; init; } = "";
-    }
-
-    private class ParsedEvent
-    {
-        public string Table { get; init; } = "";
-        public long BlockNumber { get; init; }
-        public long Timestamp { get; init; }
-        public int TransactionIndex { get; init; }
-        public int LogIndex { get; init; }
-        public string TransactionHash { get; init; } = "";
-        public Dictionary<string, object?> Fields { get; init; } = new();
     }
 }
