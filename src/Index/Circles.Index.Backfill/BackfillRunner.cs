@@ -202,17 +202,17 @@ public class BackfillRunner
                 return false;
             }
 
-            // Wait 3 seconds and check again
+            // Wait 15 seconds and check again (Gnosis chain has ~5s block time)
             Console.WriteLine($"    Block at start: {maxBlock1:N0}");
-            Console.WriteLine("    Waiting 3 seconds to verify block is stable...");
-            await Task.Delay(3000, cancellationToken);
+            Console.WriteLine("    Waiting 15 seconds to verify block is stable...");
+            await Task.Delay(15000, cancellationToken);
 
             await using var cmd2 = new NpgsqlCommand(
                 @"SELECT MAX(""blockNumber"") FROM ""System_Block""", connection);
             var block2 = await cmd2.ExecuteScalarAsync(cancellationToken);
             var maxBlock2 = block2 is long l2 ? l2 : 0;
 
-            Console.WriteLine($"    Block after 3s: {maxBlock2:N0}");
+            Console.WriteLine($"    Block after 15s: {maxBlock2:N0}");
 
             if (maxBlock2 > maxBlock1)
             {
