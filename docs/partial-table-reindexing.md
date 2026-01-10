@@ -10,43 +10,61 @@ The `Circles.Index.Backfill` CLI tool allows you to populate specific tables fro
 - Fixing data in specific tables
 - Recovering from partial data issues
 
-## Tables Requiring Backfill
+## Quick Start (Docker - Recommended)
 
-The following CrcV2 tables were added after initial deployment and may need backfilling:
+The recommended way to run backfill is using the Docker script, which handles networking and connection strings automatically:
+
+```bash
+# 1. Ensure indexer is stopped (set CIRCLES_PLUGIN_DISABLED=true in .env)
+./scripts/docker-run.sh gnosis up -d nethermind-gnosis
+
+# 2. List available tables
+./scripts/docker-backfill.sh list-tables
+
+# 3. Run backfill for specific tables
+./scripts/docker-backfill.sh backfill \
+  -t CrcV2_PaymentGateway_GatewayCreated \
+     CrcV2_PaymentGateway_PaymentReceived \
+     CrcV2_PaymentGateway_TrustUpdated \
+  -f 43610000
+
+# 4. Re-enable indexer (set CIRCLES_PLUGIN_DISABLED=false in .env)
+./scripts/docker-run.sh gnosis up -d nethermind-gnosis
+```
+
+## Supported Tables
+
+Run `./scripts/docker-backfill.sh list-tables` to see all backfillable tables:
 
 | Table | Description |
 |-------|-------------|
 | `CrcV2_FlowEdgesScopeSingleStarted` | Flow edge scope start events |
 | `CrcV2_FlowEdgesScopeLastEnded` | Flow edge scope end events |
 | `CrcV2_SetAdvancedUsageFlag` | Advanced usage flag events |
+| `CrcV2_PaymentGateway_GatewayCreated` | Payment gateway creation |
+| `CrcV2_PaymentGateway_PaymentReceived` | Payments through gateways |
+| `CrcV2_PaymentGateway_TrustUpdated` | Gateway trust updates |
 
 ## CLI Commands
 
 ### List Tables
 
-Show all available tables with their row counts:
-
 ```bash
-dotnet run --project src/Index/Circles.Index.Backfill -- list-tables
+./scripts/docker-backfill.sh list-tables
 ```
-
-Tables with 0 rows are candidates for backfilling.
 
 ### Check Status
 
-View progress of ongoing or completed backfills:
-
 ```bash
-dotnet run --project src/Index/Circles.Index.Backfill -- status
+./scripts/docker-backfill.sh status
 ```
 
 ### Run Backfill
 
 ```bash
-dotnet run --project src/Index/Circles.Index.Backfill -- backfill \
-  --tables CrcV2_FlowEdgesScopeSingleStarted CrcV2_FlowEdgesScopeLastEnded CrcV2_SetAdvancedUsageFlag \
-  --from-block 37534026 \
-  --rpc-url http://localhost:8545
+./scripts/docker-backfill.sh backfill \
+  --tables CrcV2_PaymentGateway_GatewayCreated \
+  --from-block 43610000
 ```
 
 ## Command Options
@@ -56,119 +74,66 @@ dotnet run --project src/Index/Circles.Index.Backfill -- backfill \
 | `--tables` | `-t` | Tables to backfill (required, space-separated) | - |
 | `--from-block` | `-f` | Start block number | 37534026 (V2 deployment) |
 | `--to-block` | `-e` | End block number | System_Block max |
-| `--connection-string` | `-c` | PostgreSQL connection string | See below |
-| `--rpc-url` | `-r` | Nethermind RPC endpoint | `http://localhost:8545` |
 | `--batch-size` | `-b` | Blocks per batch | 1000 |
 | `--dry-run` | - | Parse only, don't write | false |
 | `--force` | - | Bypass safety check (dangerous) | false |
 
-### Safety Check
+## Safety Check
 
 Before running, the tool verifies the indexer is not running:
 
 1. Checks if `CIRCLES_PLUGIN_DISABLED=true` is set
 2. Monitors `System_Block` for 3 seconds to ensure it's not advancing
 
-If the indexer is detected as running, the tool will refuse to start. Use `--force` to bypass (not recommended).
+If the indexer is detected as running, the tool will refuse to start.
 
-### Connection String
+## Adding New Events to the Backfill Tool
 
-The tool automatically constructs the connection string from environment variables:
+When new event types are added to the indexer, register them in `src/Index/Circles.Index.Backfill/EventRegistry.cs`:
 
-1. `--connection-string` option (if provided)
-2. `POSTGRES_CONNECTION_STRING` env var
-3. Constructed from `POSTGRES_USER` + `POSTGRES_PASSWORD` (+ optional `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`)
+```csharp
+// Find the contract address in Settings.cs, then add:
+RegisterEvent("CrcV2_MyProtocol_MyEvent",
+    "event MyEvent(address indexed user, uint256 amount)",
+    "0x1234..."); // factory address
 
-## Step-by-Step Guide
-
-### 1. Stop Indexer and Restart Nethermind in RPC-only Mode
-
-```bash
-# Stop the indexer (Nethermind with Circles plugin)
-docker compose -f docker/docker-compose.gnosis.yml stop nethermind-gnosis
-
-# Restart Nethermind with the Circles plugin disabled (RPC-only mode)
-CIRCLES_PLUGIN_DISABLED=true docker compose -f docker/docker-compose.gnosis.yml up -d nethermind-gnosis
+// For non-standard types (e.g., uint96):
+RegisterEventManual("CrcV2_MyProtocol_SpecialEvent",
+    "SpecialEvent(address,uint96)",
+    new[] {
+        ("user", FieldType.Address, true),
+        ("value", FieldType.BigInt, false)
+    },
+    "0x1234...");
 ```
 
-This runs Nethermind without the Circles indexing plugin, so it only serves as an RPC endpoint for the backfill tool.
+Then rebuild: `docker build -t circles-backfill:local -f docker/backfill.Dockerfile .`
 
-### 2. Source Environment
-
-```bash
-source docker/.env
-```
-
-### 3. Get Current Block Height
-
-```bash
-PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U $POSTGRES_USER -d postgres \
-  -c "SELECT MAX(\"blockNumber\") as current_block FROM \"System_Block\";"
-```
-
-### 4. Run Backfill
-
-```bash
-dotnet run --project src/Index/Circles.Index.Backfill -- backfill \
-  -t CrcV2_FlowEdgesScopeSingleStarted CrcV2_FlowEdgesScopeLastEnded CrcV2_SetAdvancedUsageFlag \
-  -f 37534026 \
-  -r "http://localhost:8545"
-```
-
-### 5. Verify Data
-
-```bash
-PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U $POSTGRES_USER -d postgres <<EOF
-SELECT 'CrcV2_FlowEdgesScopeSingleStarted' as table_name,
-       COUNT(*) as count,
-       MIN("blockNumber") as min_block,
-       MAX("blockNumber") as max_block
-FROM "CrcV2_FlowEdgesScopeSingleStarted"
-UNION ALL
-SELECT 'CrcV2_FlowEdgesScopeLastEnded', COUNT(*), MIN("blockNumber"), MAX("blockNumber")
-FROM "CrcV2_FlowEdgesScopeLastEnded"
-UNION ALL
-SELECT 'CrcV2_SetAdvancedUsageFlag', COUNT(*), MIN("blockNumber"), MAX("blockNumber")
-FROM "CrcV2_SetAdvancedUsageFlag";
-EOF
-```
-
-### 6. Restart Indexer
-
-```bash
-docker compose -f docker/docker-compose.gnosis.yml start circles-indexer
-```
+See [Detailed Backfill Documentation](_resources/partial-table-reindexing.md) for full extensibility guide.
 
 ## Re-indexing Existing Tables
 
 If you need to re-index tables that already have data:
 
 ```bash
-# 1. Stop indexer
-docker compose -f docker/docker-compose.gnosis.yml stop circles-indexer
+# 1. Connect to postgres and delete existing data
+source .env
+docker exec -it postgres-gnosis psql -U "$POSTGRES_USER" -d postgres \
+  -c 'DELETE FROM "CrcV2_PaymentGateway_GatewayCreated" WHERE "blockNumber" >= 43610000;'
 
-# 2. Delete existing data
-PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U $POSTGRES_USER -d postgres \
-  -c "DELETE FROM \"CrcV2_FlowEdgesScopeSingleStarted\" WHERE \"blockNumber\" >= 37534026;"
-
-# 3. Run backfill
-dotnet run --project src/Index/Circles.Index.Backfill -- backfill \
-  -t CrcV2_FlowEdgesScopeSingleStarted \
-  -f 37534026
-
-# 4. Restart indexer
-docker compose -f docker/docker-compose.gnosis.yml start circles-indexer
+# 2. Run backfill
+./scripts/docker-backfill.sh backfill -t CrcV2_PaymentGateway_GatewayCreated -f 43610000
 ```
 
 ## Progress Tracking
 
-The tool creates a `System_BackfillProgress` table to track progress:
+The tool tracks progress in `System_BackfillProgress`:
 
 ```sql
 SELECT * FROM "System_BackfillProgress";
 ```
 
-If backfill is interrupted, run the same command again to resume from the last completed batch.
+If interrupted, run the same command again to resume.
 
 ## Safety Guarantees
 
@@ -178,27 +143,26 @@ If backfill is interrupted, run the same command again to resume from the last c
 | Existing tables modified | Only writes to explicitly specified tables |
 | Incomplete backfill | Progress tracked, can resume |
 | Wrong data written | Upsert mode allows safe re-runs |
-| Indexer starts during backfill | Stop indexer before backfilling |
+| Indexer starts during backfill | Safety check + CIRCLES_PLUGIN_DISABLED |
 
 ## Troubleshooting
 
-### Connection refused to RPC
+### Connection refused
 
-- Ensure Nethermind is running
-- Check RPC URL is correct
+- Ensure Docker stack is running: `./scripts/docker-run.sh gnosis ps`
 
-### Table not found in schema
+### Table not found
 
 - Use `list-tables` to see available tables
-- Format: `Namespace_Table` (e.g., `CrcV2_FlowEdgesScopeSingleStarted`)
+- Table names are case-sensitive
 
-### Slow backfill
+### No events found
 
-- Increase batch size: `--batch-size 5000`
-- Use local RPC endpoint
-- Direct database connection (not via tunnel)
+- Verify contract address in EventRegistry.cs matches Settings.cs
+- Verify from-block is before the first event
 
 ## Related Documentation
 
+- [Detailed Backfill Documentation](_resources/partial-table-reindexing.md) - Full guide with extensibility
+- [Reindexing Guide](_resources/reindexing-guide.md) - Full reindex via REINDEX_FROM_BLOCK
 - [Indexer State Machine Flow](indexer-flow.md) - How the indexer processes blocks
-- [CLAUDE.md](../CLAUDE.md) - Project overview and commands
