@@ -4,7 +4,7 @@ namespace Circles.Metrics.Exporter.Services;
 
 /// <summary>
 /// Background service that periodically collects liquidity metrics and updates Prometheus gauges.
-/// Tracks Balancer vault balances, group treasuries, drain detection (z-score anomalies),
+/// Tracks Balancer vault balances, group treasuries, drain detection (multi-factor anomalies),
 /// and whale transfers.
 /// </summary>
 public class LiquidityCollectorService : BackgroundService
@@ -13,17 +13,19 @@ public class LiquidityCollectorService : BackgroundService
     private readonly ILogger<LiquidityCollectorService> _logger;
     private readonly TimeSpan _collectionInterval;
 
-    /// <summary>
-    /// Z-score threshold for warning-level anomalies.
-    /// A z-score below this indicates unusual outflow (2 standard deviations).
-    /// </summary>
-    private const double ZScoreWarningThreshold = -2.0;
+    // Multi-factor drain detection thresholds (configurable)
+    private readonly double _zScoreWarningThreshold;
+    private readonly double _zScoreCriticalThreshold;
+    private readonly double _minBalancePercentage;
+    private readonly decimal _minAbsoluteAmountCrc;
+    private readonly double _rateAccelerationFactor;
 
-    /// <summary>
-    /// Z-score threshold for critical-level anomalies.
-    /// A z-score below this indicates severe drain (3 standard deviations).
-    /// </summary>
-    private const double ZScoreCriticalThreshold = -3.0;
+    // Default thresholds
+    private const double DefaultZScoreWarningThreshold = -3.0;
+    private const double DefaultZScoreCriticalThreshold = -4.0;
+    private const double DefaultMinBalancePercentage = 10.0; // 10% of balance
+    private const decimal DefaultMinAbsoluteAmountCrc = 100m; // 100 CRC minimum
+    private const double DefaultRateAccelerationFactor = 3.0; // 3x average daily withdrawal
 
     public LiquidityCollectorService(
         LiquidityRepository repository,
@@ -34,9 +36,19 @@ public class LiquidityCollectorService : BackgroundService
         _logger = logger;
 
         // Liquidity metrics collection interval (default: 5 minutes)
-        // More frequent than KPI collection since liquidity changes can be rapid
         var intervalSeconds = configuration.GetValue<int>("Metrics:LiquidityCollectionIntervalSeconds", 300);
         _collectionInterval = TimeSpan.FromSeconds(intervalSeconds);
+
+        // Multi-factor drain detection thresholds (configurable via appsettings)
+        _zScoreWarningThreshold = configuration.GetValue<double>("Metrics:DrainDetection:ZScoreWarningThreshold", DefaultZScoreWarningThreshold);
+        _zScoreCriticalThreshold = configuration.GetValue<double>("Metrics:DrainDetection:ZScoreCriticalThreshold", DefaultZScoreCriticalThreshold);
+        _minBalancePercentage = configuration.GetValue<double>("Metrics:DrainDetection:MinBalancePercentage", DefaultMinBalancePercentage);
+        _minAbsoluteAmountCrc = configuration.GetValue<decimal>("Metrics:DrainDetection:MinAbsoluteAmountCrc", DefaultMinAbsoluteAmountCrc);
+        _rateAccelerationFactor = configuration.GetValue<double>("Metrics:DrainDetection:RateAccelerationFactor", DefaultRateAccelerationFactor);
+
+        _logger.LogInformation(
+            "Drain detection configured: ZScoreCritical={Critical}, ZScoreWarning={Warning}, MinBalance%={MinPct}, MinAmount={MinAmt}CRC, RateAccel={Rate}x",
+            _zScoreCriticalThreshold, _zScoreWarningThreshold, _minBalancePercentage, _minAbsoluteAmountCrc, _rateAccelerationFactor);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -150,9 +162,12 @@ public class LiquidityCollectorService : BackgroundService
     }
 
     /// <summary>
-    /// Collects z-score based anomaly detection metrics for drain detection.
-    /// Z-score measures how many standard deviations the current hourly change
-    /// is from the 30-day historical mean.
+    /// Collects multi-factor anomaly detection metrics for drain detection.
+    /// Uses a combination of:
+    /// - Z-score (statistical anomaly vs 30-day history)
+    /// - Percentage of balance withdrawn
+    /// - Absolute amount in CRC
+    /// - Rate acceleration (spike vs gradual trend)
     /// </summary>
     private async Task CollectDrainDetectionMetricsAsync(CancellationToken ct)
     {
@@ -162,58 +177,42 @@ public class LiquidityCollectorService : BackgroundService
 
             foreach (var score in zScores)
             {
-                // Set 1-hour change
+                // Set 1-hour change metric
                 LiquidityMetrics.BalancerVaultChange1h
                     .WithLabels(score.TokenAddress, score.TokenName)
                     .Set((double)score.LatestChange);
 
-                // Set z-score
+                // Set z-score metric
                 LiquidityMetrics.BalancerVaultZScore1h
                     .WithLabels(score.TokenAddress, score.TokenName)
                     .Set(score.ZScore);
 
-                // Determine anomaly severity and update metrics
-                if (score.ZScore < ZScoreCriticalThreshold)
-                {
-                    // Critical anomaly (potential drain)
-                    LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
-                        .Set(1);
-                    LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
-                        .Set(0);
-                    LiquidityMetrics.BalancerVaultDrainEvents
-                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
-                        .Inc();
+                // Multi-factor drain detection
+                var severity = EvaluateDrainSeverity(score);
 
-                    _logger.LogWarning("CRITICAL drain detected for {TokenName} ({Token}): z-score={ZScore:F2}, change={Change}",
-                        score.TokenName, score.TokenAddress, score.ZScore, score.LatestChange);
-                }
-                else if (score.ZScore < ZScoreWarningThreshold)
+                switch (severity)
                 {
-                    // Warning-level anomaly
-                    LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
-                        .Set(1);
-                    LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
-                        .Set(0);
-                    LiquidityMetrics.BalancerVaultDrainEvents
-                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
-                        .Inc();
+                    case DrainSeverity.Critical:
+                        SetAnomalyMetrics(score, "critical");
+                        _logger.LogWarning(
+                            "CRITICAL drain detected for {TokenName} ({Token}): z-score={ZScore:F2}, " +
+                            "withdrawal={Change:F2}CRC ({Pct:F1}% of balance), rate={Rate:F1}x avg",
+                            score.TokenName, score.TokenAddress, score.ZScore,
+                            Math.Abs(score.LatestChangeCrc), score.BalancePercentage, score.RateAcceleration);
+                        break;
 
-                    _logger.LogWarning("Unusual outflow for {TokenName} ({Token}): z-score={ZScore:F2}, change={Change}",
-                        score.TokenName, score.TokenAddress, score.ZScore, score.LatestChange);
-                }
-                else
-                {
-                    // No anomaly
-                    LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, score.TokenName, "warning")
-                        .Set(0);
-                    LiquidityMetrics.BalancerVaultAnomaly
-                        .WithLabels(score.TokenAddress, score.TokenName, "critical")
-                        .Set(0);
+                    case DrainSeverity.Warning:
+                        SetAnomalyMetrics(score, "warning");
+                        _logger.LogWarning(
+                            "Unusual outflow for {TokenName} ({Token}): z-score={ZScore:F2}, " +
+                            "withdrawal={Change:F2}CRC ({Pct:F1}% of balance)",
+                            score.TokenName, score.TokenAddress, score.ZScore,
+                            Math.Abs(score.LatestChangeCrc), score.BalancePercentage);
+                        break;
+
+                    default:
+                        ClearAnomalyMetrics(score);
+                        break;
                 }
             }
 
@@ -224,6 +223,80 @@ public class LiquidityCollectorService : BackgroundService
             _logger.LogWarning(ex, "Failed to collect drain detection metrics");
             LiquidityMetrics.LiquidityCollectionErrors.WithLabels("drain_detection").Inc();
         }
+    }
+
+    /// <summary>
+    /// Evaluates drain severity using multi-factor scoring.
+    /// Critical requires: z-score breach + significant % of balance + minimum absolute amount.
+    /// Warning requires: z-score breach only (for visibility).
+    /// </summary>
+    private DrainSeverity EvaluateDrainSeverity(TokenZScore score)
+    {
+        // Not an outflow? No alert.
+        if (score.LatestChange >= 0)
+            return DrainSeverity.None;
+
+        var absChangeCrc = Math.Abs(score.LatestChangeCrc);
+
+        // Critical: Multi-factor check
+        // All conditions must be met for critical alert
+        if (score.ZScore < _zScoreCriticalThreshold &&
+            score.BalancePercentage >= _minBalancePercentage &&
+            absChangeCrc >= _minAbsoluteAmountCrc)
+        {
+            // Optional: Check rate acceleration for extra confidence
+            // If withdrawal is N times larger than average daily outflow, it's more suspicious
+            if (score.RateAcceleration >= _rateAccelerationFactor)
+            {
+                return DrainSeverity.Critical;
+            }
+
+            // Even without rate acceleration, if other factors are severe enough, still critical
+            if (score.ZScore < _zScoreCriticalThreshold * 1.5) // e.g., z < -6 with default -4 threshold
+            {
+                return DrainSeverity.Critical;
+            }
+        }
+
+        // Warning: Just z-score breach (for monitoring, not alerting)
+        if (score.ZScore < _zScoreWarningThreshold)
+        {
+            return DrainSeverity.Warning;
+        }
+
+        return DrainSeverity.None;
+    }
+
+    private void SetAnomalyMetrics(TokenZScore score, string severity)
+    {
+        var isCritical = severity == "critical";
+
+        LiquidityMetrics.BalancerVaultAnomaly
+            .WithLabels(score.TokenAddress, score.TokenName, "critical")
+            .Set(isCritical ? 1 : 0);
+        LiquidityMetrics.BalancerVaultAnomaly
+            .WithLabels(score.TokenAddress, score.TokenName, "warning")
+            .Set(isCritical ? 0 : 1);
+        LiquidityMetrics.BalancerVaultDrainEvents
+            .WithLabels(score.TokenAddress, score.TokenName, severity)
+            .Inc();
+    }
+
+    private void ClearAnomalyMetrics(TokenZScore score)
+    {
+        LiquidityMetrics.BalancerVaultAnomaly
+            .WithLabels(score.TokenAddress, score.TokenName, "warning")
+            .Set(0);
+        LiquidityMetrics.BalancerVaultAnomaly
+            .WithLabels(score.TokenAddress, score.TokenName, "critical")
+            .Set(0);
+    }
+
+    private enum DrainSeverity
+    {
+        None,
+        Warning,
+        Critical
     }
 
     /// <summary>
