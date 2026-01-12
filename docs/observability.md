@@ -667,6 +667,31 @@ Liquidity metrics are collected by `LiquidityCollectorService` every 5 minutes f
 | `circles_balancer_vault_balance_total` | - | Aggregated | Sum of all token balances |
 | `circles_balancer_vault_tokens_count` | - | Aggregated | Distinct tokens with liquidity |
 
+### Why Statistical Anomaly Detection?
+
+Traditional threshold-based alerts (e.g., "alert if balance drops below X") fail for liquidity pools because:
+
+- **Different tokens have different scales**: A 1000 CRC drop is normal for high-volume tokens, critical for low-volume ones
+- **Normal variation differs**: Some tokens fluctuate wildly, others are stable
+- **Static thresholds require constant tuning**: What's anomalous changes over time
+
+**Z-score based detection** solves this by measuring "how unusual is this compared to this token's normal behavior":
+
+- Calculates mean and standard deviation of hourly changes over 30 days
+- Compares current change to that baseline
+- Normalizes across all tokens regardless of scale
+
+**Z-Score Interpretation**:
+
+| Z-Score | Meaning | Probability (if normal) | Action |
+|---------|---------|-------------------------|--------|
+| > -1.0 | Normal | ~84% | None |
+| -1.0 to -2.0 | Slightly elevated outflow | ~16% | Monitor |
+| -2.0 to -3.0 | Unusual outflow | ~2.5% | **Warning alert** |
+| < -3.0 | Severe anomaly | ~0.1% | **Critical alert** |
+
+A z-score of -3.0 means "if this token's behavior were random noise, we'd expect this level of outflow only 0.1% of the time."
+
 ### Drain Detection Metrics (Z-Score Based)
 
 | Metric | Labels | Calculation | Purpose |
@@ -692,8 +717,24 @@ SELECT (latest_change - mean_change) / stddev_change as z_score
 ```
 
 **Thresholds**:
+
 - `z < -2.0`: Warning severity (unusual outflow)
 - `z < -3.0`: Critical severity (severe drain)
+
+#### Dashboard: Drain Events by Severity
+
+The `circles_balancer_vault_drain_events_total` metric is a **cumulative counter** (not a gauge). The Grafana panel shows:
+
+- **Y-axis**: Total anomaly events since collector started
+- **Stair-step pattern**: Counter increments when anomaly detected
+- **Colors by severity label**: warning (orange), critical (red)
+- **Counter resets**: Drops to 0 indicate service restarts
+
+This helps identify:
+
+- Frequency of anomalies over time
+- Whether anomalies cluster together (coordinated activity)
+- Historical pattern of drain events
 
 ### Whale Transfer Metrics
 
