@@ -188,28 +188,35 @@ public class LiquidityCollectorService : BackgroundService
     /// <summary>
     /// Collects aggregate TVL metrics for Balancer and Group Treasuries.
     /// These are the primary metrics used for alerting (simpler, less noisy than per-token).
+    /// Includes both 1h and 15m windows for different alert sensitivity.
     /// </summary>
     private async Task CollectAggregateTvlMetricsAsync(CancellationToken ct)
     {
         try
         {
-            // Collect Balancer TVL
+            // Collect Balancer TVL (includes 1h and 15m changes)
             var balancerTvl = await _repository.GetBalancerTvlAsync(ct);
             LiquidityMetrics.BalancerTvlTotal.Set((double)balancerTvl.CurrentTotalCrc);
             LiquidityMetrics.BalancerTvlChange1h.Set((double)balancerTvl.Change1hCrc);
             LiquidityMetrics.BalancerTvlChangePct1h.Set(balancerTvl.Change1hPct);
+            LiquidityMetrics.BalancerTvlChange15m.Set((double)balancerTvl.Change15mCrc);
+            LiquidityMetrics.BalancerTvlChangePct15m.Set(balancerTvl.Change15mPct);
 
-            _logger.LogDebug("Balancer TVL: {Total:F2} CRC, 1h change: {Change:F2} CRC ({Pct:F2}%)",
-                balancerTvl.CurrentTotalCrc, balancerTvl.Change1hCrc, balancerTvl.Change1hPct);
+            _logger.LogDebug("Balancer TVL: {Total:F2} CRC, 1h: {Change1h:F2}% ({Abs1h:F2} CRC), 15m: {Change15m:F2}% ({Abs15m:F2} CRC)",
+                balancerTvl.CurrentTotalCrc, balancerTvl.Change1hPct, balancerTvl.Change1hCrc,
+                balancerTvl.Change15mPct, balancerTvl.Change15mCrc);
 
-            // Collect Group Treasury TVL
+            // Collect Group Treasury TVL (includes 1h and 15m changes)
             var treasuryTvl = await _repository.GetGroupTreasuryTvlAsync(ct);
             LiquidityMetrics.GroupTreasuryTvlTotal.Set((double)treasuryTvl.CurrentTotalCrc);
             LiquidityMetrics.GroupTreasuryTvlChange1h.Set((double)treasuryTvl.Change1hCrc);
             LiquidityMetrics.GroupTreasuryTvlChangePct1h.Set(treasuryTvl.Change1hPct);
+            LiquidityMetrics.GroupTreasuryTvlChange15m.Set((double)treasuryTvl.Change15mCrc);
+            LiquidityMetrics.GroupTreasuryTvlChangePct15m.Set(treasuryTvl.Change15mPct);
 
-            _logger.LogDebug("Group Treasury TVL: {Total:F2} CRC, 1h change: {Change:F2} CRC ({Pct:F2}%)",
-                treasuryTvl.CurrentTotalCrc, treasuryTvl.Change1hCrc, treasuryTvl.Change1hPct);
+            _logger.LogDebug("Group Treasury TVL: {Total:F2} CRC, 1h: {Change1h:F2}% ({Abs1h:F2} CRC), 15m: {Change15m:F2}% ({Abs15m:F2} CRC)",
+                treasuryTvl.CurrentTotalCrc, treasuryTvl.Change1hPct, treasuryTvl.Change1hCrc,
+                treasuryTvl.Change15mPct, treasuryTvl.Change15mCrc);
         }
         catch (Exception ex)
         {

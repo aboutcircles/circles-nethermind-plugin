@@ -697,12 +697,13 @@ public class LiquidityRepository
     #region Aggregate TVL
 
     /// <summary>
-    /// Get aggregate Balancer TVL with hourly change.
-    /// Returns total value locked and the change from 1 hour ago.
+    /// Get aggregate Balancer TVL with hourly and 15-minute changes.
+    /// Returns total value locked, change from 1 hour ago, and net flow in last 15 minutes.
     /// </summary>
     public async Task<TvlSnapshot> GetBalancerTvlAsync(CancellationToken ct)
     {
-        const string sql = """
+        // Query combines hourly view for 1h change + raw events for 15m rapid detection
+        var sql = $"""
             WITH current_tvl AS (
                 SELECT
                     SUM(value) as total_balance,
@@ -717,13 +718,29 @@ public class LiquidityRepository
                     SELECT MAX("timestamp") - interval '1 hour'
                     FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
                 )
+            ),
+            -- 15-minute net flow from raw transfer events
+            recent_flow AS (
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN "to" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}') THEN amount
+                        WHEN "from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}') THEN -amount
+                        ELSE 0
+                    END
+                ), 0) as net_flow_15m
+                FROM "CrcV2_Erc20WrapperTransfer"
+                WHERE "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '15 minutes')
+                  AND ("from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}')
+                       OR "to" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}'))
             )
             SELECT
                 COALESCE(c.total_balance, 0) as current_total,
                 COALESCE(p.total_balance, 0) as previous_total,
-                c."timestamp"
+                c."timestamp",
+                r.net_flow_15m
             FROM current_tvl c
             CROSS JOIN previous_tvl p
+            CROSS JOIN recent_flow r
             """;
 
         await using var conn = new NpgsqlConnection(_connectionString);
@@ -737,19 +754,25 @@ public class LiquidityRepository
             var currentTotal = reader.GetDecimal(0);
             var previousTotal = reader.GetDecimal(1);
             var timestamp = reader.IsDBNull(2) ? DateTimeOffset.UtcNow : reader.GetFieldValue<DateTimeOffset>(2);
+            var netFlow15m = reader.GetDecimal(3);
 
             // Convert to CRC (divide by 1e18)
             var currentCrc = currentTotal / 1_000_000_000_000_000_000m;
             var previousCrc = previousTotal / 1_000_000_000_000_000_000m;
-            var changeCrc = currentCrc - previousCrc;
-            var changePct = previousCrc > 0 ? (double)(changeCrc / previousCrc * 100) : 0;
+            var change1hCrc = currentCrc - previousCrc;
+            var change1hPct = previousCrc > 0 ? (double)(change1hCrc / previousCrc * 100) : 0;
+
+            var change15mCrc = netFlow15m / 1_000_000_000_000_000_000m;
+            var change15mPct = currentCrc > 0 ? (double)(change15mCrc / currentCrc * 100) : 0;
 
             return new TvlSnapshot
             {
                 CurrentTotalCrc = currentCrc,
                 PreviousTotalCrc = previousCrc,
-                Change1hCrc = changeCrc,
-                Change1hPct = changePct,
+                Change1hCrc = change1hCrc,
+                Change1hPct = change1hPct,
+                Change15mCrc = change15mCrc,
+                Change15mPct = change15mPct,
                 Timestamp = timestamp
             };
         }
@@ -758,8 +781,8 @@ public class LiquidityRepository
     }
 
     /// <summary>
-    /// Get aggregate Group Treasury TVL with hourly change.
-    /// Uses the new hourly view for time-series data.
+    /// Get aggregate Group Treasury TVL with hourly and 15-minute changes.
+    /// Uses the hourly view for 1h change + raw events for 15m rapid detection.
     /// </summary>
     public async Task<TvlSnapshot> GetGroupTreasuryTvlAsync(CancellationToken ct)
     {
@@ -778,11 +801,33 @@ public class LiquidityRepository
                     SELECT MAX("timestamp") - 3600  -- 1 hour in unix seconds
                     FROM "V_CrcV2_GroupVaultBalancesByToken_1h"
                 )
+            ),
+            -- 15-minute net flow from raw collateral events
+            recent_inflows AS (
+                SELECT COALESCE(SUM(value), 0) as total
+                FROM (
+                    SELECT value FROM "CrcV2_CollateralLockedSingle"
+                    WHERE "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '15 minutes')
+                    UNION ALL
+                    SELECT value FROM "CrcV2_CollateralLockedBatch"
+                    WHERE "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '15 minutes')
+                ) inflows
+            ),
+            recent_outflows AS (
+                SELECT COALESCE(SUM(value), 0) as total
+                FROM (
+                    SELECT value FROM "CrcV2_GroupRedeemCollateralReturn"
+                    WHERE "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '15 minutes')
+                    UNION ALL
+                    SELECT value FROM "CrcV2_GroupRedeemCollateralBurn"
+                    WHERE "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '15 minutes')
+                ) outflows
             )
             SELECT
                 COALESCE(c.total_balance, 0) as current_total,
                 COALESCE(p.total_balance, 0) as previous_total,
-                c."timestamp"
+                c."timestamp",
+                (SELECT total FROM recent_inflows) - (SELECT total FROM recent_outflows) as net_flow_15m
             FROM current_tvl c
             CROSS JOIN previous_tvl p
             """;
@@ -800,19 +845,25 @@ public class LiquidityRepository
             var timestamp = reader.IsDBNull(2)
                 ? DateTimeOffset.UtcNow
                 : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(2));
+            var netFlow15m = reader.GetDecimal(3);
 
             // Convert to CRC (divide by 1e18)
             var currentCrc = currentTotal / 1_000_000_000_000_000_000m;
             var previousCrc = previousTotal / 1_000_000_000_000_000_000m;
-            var changeCrc = currentCrc - previousCrc;
-            var changePct = previousCrc > 0 ? (double)(changeCrc / previousCrc * 100) : 0;
+            var change1hCrc = currentCrc - previousCrc;
+            var change1hPct = previousCrc > 0 ? (double)(change1hCrc / previousCrc * 100) : 0;
+
+            var change15mCrc = netFlow15m / 1_000_000_000_000_000_000m;
+            var change15mPct = currentCrc > 0 ? (double)(change15mCrc / currentCrc * 100) : 0;
 
             return new TvlSnapshot
             {
                 CurrentTotalCrc = currentCrc,
                 PreviousTotalCrc = previousCrc,
-                Change1hCrc = changeCrc,
-                Change1hPct = changePct,
+                Change1hCrc = change1hCrc,
+                Change1hPct = change1hPct,
+                Change15mCrc = change15mCrc,
+                Change15mPct = change15mPct,
                 Timestamp = timestamp
             };
         }
@@ -831,6 +882,8 @@ public record TvlSnapshot
     public decimal PreviousTotalCrc { get; init; }
     public decimal Change1hCrc { get; init; }
     public double Change1hPct { get; init; }
+    public decimal Change15mCrc { get; init; }
+    public double Change15mPct { get; init; }
     public DateTimeOffset Timestamp { get; init; }
 }
 

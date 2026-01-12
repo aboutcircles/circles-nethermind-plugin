@@ -971,9 +971,23 @@ circles:suspicious_account_ratio:gauge
 
 ### Liquidity Alert Rules (`docker/observability/prometheus-alerts-liquidity.yml`)
 
-**Alert Strategy**: Uses **aggregate TVL monitoring** instead of per-token z-scores to reduce noise. With 600+ personal tokens in Balancer, per-token alerts generated ~4 critical/hour from normal volatility. Aggregate TVL drops indicate coordinated activity worth investigating.
+**Alert Strategy**: Uses **aggregate TVL monitoring** with two detection windows:
 
-#### Primary Alerts (Aggregate TVL)
+- **15-minute window**: Fast detection of active attacks (higher thresholds)
+- **1-hour window**: Detection of coordinated drains (lower thresholds)
+
+With 600+ personal tokens in Balancer, per-token alerts generated ~4 critical/hour from normal volatility. Aggregate TVL drops indicate coordinated activity worth investigating.
+
+#### Rapid Drain Alerts (15-minute window)
+
+| Alert                      | Severity | Condition                 | Description           |
+|----------------------------|----------|---------------------------|-----------------------|
+| `BalancerRapidDrain`       | critical | TVL change < -10% in 15m  | Fast attack detection |
+| `GroupTreasuryRapidDrain`  | critical | TVL change < -15% in 15m  | Fast treasury drain   |
+
+**Detection Timeline**: With 5-minute collection + 2-minute `for` clause = **~7-12 minutes** to alert.
+
+#### Primary Alerts (1-hour window)
 
 | Alert | Severity | Condition | Description |
 |-------|----------|-----------|-------------|

@@ -2,10 +2,36 @@ groups:
   - name: circles-liquidity-alerts
     rules:
       # ============================================================================
-      # Aggregate TVL Alerts (Primary - Low Noise)
+      # Rapid Drain Alerts (15-minute window - Fast Detection)
       # ============================================================================
-      # These alerts use aggregate TVL metrics to catch real attacks without
-      # generating noise from individual token volatility.
+      # These alerts detect fast attacks within 15 minutes using raw event data.
+      # Higher thresholds than 1h alerts to reduce noise from short-term volatility.
+
+      # Rapid Balancer drain - fast attack detection
+      - alert: BalancerRapidDrain
+        expr: circles_balancer_tvl_change_pct_15m < -10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAPID DRAIN: Balancer TVL dropped {{ $value | printf \"%.1f\" }}% in 15 minutes"
+          description: "Fast outflow detected from Balancer vaults. This may indicate an active attack. Investigate immediately!"
+
+      # Rapid Group Treasury drain
+      - alert: GroupTreasuryRapidDrain
+        expr: circles_group_treasury_tvl_change_pct_15m < -15
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAPID DRAIN: Group Treasury TVL dropped {{ $value | printf \"%.1f\" }}% in 15 minutes"
+          description: "Fast outflow detected from group treasuries. This may indicate an active attack. Investigate immediately!"
+
+      # ============================================================================
+      # Aggregate TVL Alerts (1-hour window - Primary Monitoring)
+      # ============================================================================
+      # These alerts use aggregate TVL metrics to catch coordinated attacks
+      # without generating noise from individual token volatility.
 
       # Balancer TVL Warning - moderate drop
       - alert: BalancerTvlDropWarning
