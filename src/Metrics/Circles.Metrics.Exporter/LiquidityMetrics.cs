@@ -81,7 +81,51 @@ public static class LiquidityMetrics
     public static readonly Gauge GroupTreasuryZScore = Prometheus.Metrics
         .CreateGauge("circles_group_treasury_zscore",
             "Z-score of treasury change vs historical",
-            new GaugeConfiguration { LabelNames = new[] { "group_address" } });
+            new GaugeConfiguration { LabelNames = new[] { "group_address", "group_name" } });
+
+    public static readonly Gauge GroupTreasuryAnomaly = Prometheus.Metrics
+        .CreateGauge("circles_group_treasury_anomaly",
+            "1 if anomaly detected in group treasury, 0 otherwise",
+            new GaugeConfiguration { LabelNames = new[] { "group_address", "group_name", "severity" } });
+
+    public static readonly Counter GroupTreasuryDrainEvents = Prometheus.Metrics
+        .CreateCounter("circles_group_treasury_drain_events_total",
+            "Cumulative count of group treasury drain anomalies detected",
+            new CounterConfiguration { LabelNames = new[] { "group_address", "group_name", "severity" } });
+
+    // ===========================================
+    // Sybil Attack Detection Metrics
+    // ===========================================
+
+    public static readonly Gauge SybilWithdrawalCount = Prometheus.Metrics
+        .CreateGauge("circles_sybil_withdrawal_count_1h",
+            "Number of withdrawals from vault in last hour",
+            new GaugeConfiguration { LabelNames = new[] { "vault" } });
+
+    public static readonly Gauge SybilUniqueRecipients = Prometheus.Metrics
+        .CreateGauge("circles_sybil_unique_recipients_1h",
+            "Number of unique withdrawal recipients in last hour",
+            new GaugeConfiguration { LabelNames = new[] { "vault" } });
+
+    public static readonly Gauge SybilTotalWithdrawn = Prometheus.Metrics
+        .CreateGauge("circles_sybil_total_withdrawn_1h",
+            "Total amount withdrawn in last hour (in CRC)",
+            new GaugeConfiguration { LabelNames = new[] { "vault" } });
+
+    public static readonly Gauge SybilAvgWithdrawalSize = Prometheus.Metrics
+        .CreateGauge("circles_sybil_avg_withdrawal_size_1h",
+            "Average withdrawal size in last hour (in CRC)",
+            new GaugeConfiguration { LabelNames = new[] { "vault" } });
+
+    public static readonly Gauge SybilAnomaly = Prometheus.Metrics
+        .CreateGauge("circles_sybil_anomaly",
+            "1 if sybil-style attack pattern detected, 0 otherwise",
+            new GaugeConfiguration { LabelNames = new[] { "vault", "severity" } });
+
+    public static readonly Counter SybilAlertEvents = Prometheus.Metrics
+        .CreateCounter("circles_sybil_alert_events_total",
+            "Cumulative count of sybil attack pattern alerts",
+            new CounterConfiguration { LabelNames = new[] { "vault", "severity" } });
 
     // ===========================================
     // Whale Transfer Tracking Metrics
