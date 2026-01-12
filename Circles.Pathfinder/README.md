@@ -108,3 +108,65 @@ public class FlowRequest
 ### Response Format
 - Remains unchanged
 - Virtual sink paths are automatically transformed to use actual sink address
+
+
+## 5. Group Minting Along a Path (Router Integration)
+
+### Overview
+
+The pathfinder supports minting group tokens as part of a transitive transfer path. This is implemented via a special `BaseGroupMintRouter` contract that acts as an intermediary between avatars and groups.
+
+### How Group Minting Works
+
+When a path includes group token acquisition, the flow is:
+
+1. **Avatar → Router**: Source sends collateral (personal CRC) to the router
+2. **Router → Group**: Router deposits collateral to the group's treasury
+3. **Group → Avatar**: Group mints group tokens to the recipient
+
+The router is necessary because `operateFlowMatrix` requires operator approval for transfers, and the router pre-approves all human CRCs.
+
+### Edge Ordering Constraint (Critical)
+
+**Contract Requirement**: The `operateFlowMatrix` smart contract processes edges sequentially. Groups can only transfer tokens they have received, so:
+
+> All collateral edges (Router → Group) MUST appear before the group's outbound mint edge (Group → Avatar)
+
+**Example of correct ordering**:
+
+```text
+1. Avatar1 → Router (Token A, 50 CRC)
+2. Avatar2 → Router (Token B, 30 CRC)
+3. Router → GroupX (Token A, 50 CRC)  ← collateral deposited
+4. Router → GroupX (Token B, 30 CRC)  ← collateral deposited
+5. GroupX → Sink (GroupX token, 80 CRC)  ← mint AFTER all collateral
+```
+
+**Example of incorrect ordering (causes ERC1155InsufficientBalance revert)**:
+
+```text
+1. Avatar1 → Router (Token A, 50 CRC)
+2. Router → GroupX (Token A, 50 CRC)
+3. GroupX → Sink (GroupX token, 80 CRC)  ← FAIL: only 50 CRC received!
+4. Avatar2 → Router (Token B, 30 CRC)   ← too late
+5. Router → GroupX (Token B, 30 CRC)
+```
+
+### Sorting and Validation
+
+The pathfinder enforces correct ordering via two methods in `V2Pathfinder.cs`:
+
+1. **`SortEdgesForMintDependencies()`**: Reorders edges after router insertion to ensure:
+   - All Avatar → Router edges come first
+   - For each group: all Router → Group edges before Group → Avatar edges
+   - Other edges last
+
+2. **`ValidateMintEdgeOrdering()`**: Runtime validation that throws `InvalidOperationException` if:
+   - A Router → Group edge appears after a Group → Avatar edge for the same group
+   - Cumulative outbound flow exceeds cumulative inbound flow at any point
+
+### Router Configuration
+
+The production router is: `0xdc287474114cc0551a81ddc2eb51783fbf34802f`
+
+Configure via environment variable: `V2_BASE_GROUP_ROUTER`
