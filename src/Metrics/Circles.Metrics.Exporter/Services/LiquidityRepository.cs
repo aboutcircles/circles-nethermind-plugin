@@ -202,18 +202,19 @@ public class LiquidityRepository
     #region Z-Score Anomaly Detection
 
     /// <summary>
-    /// Calculate z-scores for each token based on 30-day historical changes.
-    /// Z-score = (current_change - mean) / std_dev
+    /// Calculate z-scores and multi-factor drain detection data for each token.
+    /// Returns z-score, balance percentage, rate acceleration for comprehensive anomaly detection.
     /// Limited to top 100 tokens by balance to avoid cardinality explosion.
     /// </summary>
     public async Task<List<TokenZScore>> GetBalancerVaultZScoresAsync(CancellationToken ct)
     {
         // Join through ERC20WrapperDeployed to get token names
         // For humans (who have no name), fall back to their short name from CrcV2_RegisterShortName
+        // Extended to include balance percentage and rate acceleration for multi-factor detection
         const string sql = """
             WITH top_tokens AS (
                 -- Limit to top 100 tokens by current balance to avoid metric cardinality explosion
-                SELECT "tokenAddress"
+                SELECT "tokenAddress", value as current_balance
                 FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
                 WHERE "timestamp" = (SELECT MAX("timestamp") FROM "V_CrcV2_Erc20BalancerVaultBalance_1h")
                 ORDER BY value DESC
@@ -223,6 +224,7 @@ public class LiquidityRepository
                 SELECT
                     b."tokenAddress",
                     b."timestamp",
+                    b.value,
                     b.value - LAG(b.value) OVER (PARTITION BY b."tokenAddress" ORDER BY b."timestamp") as change
                 FROM "V_CrcV2_Erc20BalancerVaultBalance_1h" b
                 WHERE b."timestamp" > NOW() - interval '30 days'
@@ -232,7 +234,9 @@ public class LiquidityRepository
                 SELECT
                     "tokenAddress",
                     AVG(change) as mean_change,
-                    STDDEV(change) as stddev_change
+                    STDDEV(change) as stddev_change,
+                    -- Average daily withdrawal (negative changes only, summed per day, then averaged)
+                    ABS(AVG(CASE WHEN change < 0 THEN change ELSE 0 END) * 24) as avg_daily_withdrawal
                 FROM hourly_changes
                 WHERE change IS NOT NULL
                 GROUP BY "tokenAddress"
@@ -240,6 +244,7 @@ public class LiquidityRepository
             latest AS (
                 SELECT DISTINCT ON ("tokenAddress")
                     "tokenAddress",
+                    value as current_balance,
                     change as latest_change
                 FROM hourly_changes
                 WHERE change IS NOT NULL
@@ -250,13 +255,27 @@ public class LiquidityRepository
                 a.name as "avatarName",
                 sn."shortName" as "shortNameNumeric",
                 l.latest_change,
+                l.current_balance,
                 s.mean_change,
                 s.stddev_change,
+                s.avg_daily_withdrawal,
                 CASE
                     WHEN s.stddev_change > 0
                     THEN (l.latest_change - s.mean_change) / s.stddev_change
                     ELSE 0
-                END as z_score
+                END as z_score,
+                -- Balance percentage: what % of current balance is this change?
+                CASE
+                    WHEN l.current_balance > 0
+                    THEN ABS(l.latest_change / l.current_balance) * 100
+                    ELSE 0
+                END as balance_percentage,
+                -- Rate acceleration: how many times larger is this withdrawal vs avg daily?
+                CASE
+                    WHEN s.avg_daily_withdrawal > 0 AND l.latest_change < 0
+                    THEN ABS(l.latest_change) / s.avg_daily_withdrawal
+                    ELSE 0
+                END as rate_acceleration
             FROM latest l
             JOIN stats s USING ("tokenAddress")
             LEFT JOIN "CrcV2_ERC20WrapperDeployed" w ON w."erc20Wrapper" = l."tokenAddress"
@@ -279,6 +298,10 @@ public class LiquidityRepository
         await using var cmd = new NpgsqlCommand(sql, conn);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
+        // Column indices:
+        // 0: tokenAddress, 1: avatarName, 2: shortNameNumeric, 3: latest_change,
+        // 4: current_balance, 5: mean_change, 6: stddev_change, 7: avg_daily_withdrawal,
+        // 8: z_score, 9: balance_percentage, 10: rate_acceleration
         while (await reader.ReadAsync(ct))
         {
             var tokenAddress = reader.GetString(0);
@@ -300,14 +323,22 @@ public class LiquidityRepository
                 tokenName = tokenAddress.Length > 10 ? tokenAddress[..10] + "..." : tokenAddress;
             }
 
+            var latestChange = reader.GetDecimal(3);
+            var currentBalance = reader.GetDecimal(4);
+
             results.Add(new TokenZScore
             {
                 TokenAddress = tokenAddress,
                 TokenName = tokenName,
-                LatestChange = reader.GetDecimal(3),
-                MeanChange = reader.GetDouble(4),
-                StdDevChange = reader.GetDouble(5),
-                ZScore = reader.GetDouble(6)
+                LatestChange = latestChange,
+                LatestChangeCrc = latestChange / 1_000_000_000_000_000_000m, // Convert from wei to CRC
+                CurrentBalanceCrc = currentBalance / 1_000_000_000_000_000_000m,
+                MeanChange = reader.GetDouble(5),
+                StdDevChange = reader.GetDouble(6),
+                // Skip index 7 (avg_daily_withdrawal) - used in SQL calculation only
+                ZScore = reader.GetDouble(8),
+                BalancePercentage = reader.GetDouble(9),
+                RateAcceleration = reader.GetDouble(10)
             });
         }
 
@@ -486,7 +517,16 @@ public record TokenZScore
 {
     public required string TokenAddress { get; init; }
     public required string TokenName { get; init; }
+    /// <summary>Raw change in wei (18 decimals)</summary>
     public decimal LatestChange { get; init; }
+    /// <summary>Change in CRC (human-readable)</summary>
+    public decimal LatestChangeCrc { get; init; }
+    /// <summary>Current balance in CRC</summary>
+    public decimal CurrentBalanceCrc { get; init; }
+    /// <summary>Percentage of balance that this change represents</summary>
+    public double BalancePercentage { get; init; }
+    /// <summary>How many times larger this withdrawal is vs average daily withdrawal</summary>
+    public double RateAcceleration { get; init; }
     public double MeanChange { get; init; }
     public double StdDevChange { get; init; }
     public double ZScore { get; init; }
