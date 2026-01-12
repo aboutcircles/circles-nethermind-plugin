@@ -20,12 +20,24 @@ public class LiquidityCollectorService : BackgroundService
     private readonly decimal _minAbsoluteAmountCrc;
     private readonly double _rateAccelerationFactor;
 
+    // Sybil detection thresholds (configurable)
+    private readonly int _sybilMinUniqueRecipients;
+    private readonly decimal _sybilMinTotalWithdrawnCrc;
+    private readonly decimal _sybilMaxAvgWithdrawalCrc;
+    private readonly double _sybilRecipientMultiplier;
+
     // Default thresholds
     private const double DefaultZScoreWarningThreshold = -3.0;
     private const double DefaultZScoreCriticalThreshold = -4.0;
     private const double DefaultMinBalancePercentage = 10.0; // 10% of balance
     private const decimal DefaultMinAbsoluteAmountCrc = 100m; // 100 CRC minimum
     private const double DefaultRateAccelerationFactor = 3.0; // 3x average daily withdrawal
+
+    // Sybil detection defaults
+    private const int DefaultSybilMinUniqueRecipients = 10; // Many unique recipients
+    private const decimal DefaultSybilMinTotalWithdrawnCrc = 500m; // Material total amount
+    private const decimal DefaultSybilMaxAvgWithdrawalCrc = 50m; // Small avg withdrawal size
+    private const double DefaultSybilRecipientMultiplier = 3.0; // 3x normal recipient count
 
     public LiquidityCollectorService(
         LiquidityRepository repository,
@@ -46,9 +58,18 @@ public class LiquidityCollectorService : BackgroundService
         _minAbsoluteAmountCrc = configuration.GetValue<decimal>("Metrics:DrainDetection:MinAbsoluteAmountCrc", DefaultMinAbsoluteAmountCrc);
         _rateAccelerationFactor = configuration.GetValue<double>("Metrics:DrainDetection:RateAccelerationFactor", DefaultRateAccelerationFactor);
 
+        // Sybil detection thresholds
+        _sybilMinUniqueRecipients = configuration.GetValue<int>("Metrics:SybilDetection:MinUniqueRecipients", DefaultSybilMinUniqueRecipients);
+        _sybilMinTotalWithdrawnCrc = configuration.GetValue<decimal>("Metrics:SybilDetection:MinTotalWithdrawnCrc", DefaultSybilMinTotalWithdrawnCrc);
+        _sybilMaxAvgWithdrawalCrc = configuration.GetValue<decimal>("Metrics:SybilDetection:MaxAvgWithdrawalCrc", DefaultSybilMaxAvgWithdrawalCrc);
+        _sybilRecipientMultiplier = configuration.GetValue<double>("Metrics:SybilDetection:RecipientMultiplier", DefaultSybilRecipientMultiplier);
+
         _logger.LogInformation(
             "Drain detection configured: ZScoreCritical={Critical}, ZScoreWarning={Warning}, MinBalance%={MinPct}, MinAmount={MinAmt}CRC, RateAccel={Rate}x",
             _zScoreCriticalThreshold, _zScoreWarningThreshold, _minBalancePercentage, _minAbsoluteAmountCrc, _rateAccelerationFactor);
+        _logger.LogInformation(
+            "Sybil detection configured: MinRecipients={MinRec}, MinTotal={MinTotal}CRC, MaxAvg={MaxAvg}CRC, RecipientMult={Mult}x",
+            _sybilMinUniqueRecipients, _sybilMinTotalWithdrawnCrc, _sybilMaxAvgWithdrawalCrc, _sybilRecipientMultiplier);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -89,6 +110,8 @@ public class LiquidityCollectorService : BackgroundService
             CollectBalancerVaultMetricsAsync(ct),
             CollectGroupTreasuryMetricsAsync(ct),
             CollectDrainDetectionMetricsAsync(ct),
+            CollectGroupTreasuryDrainDetectionAsync(ct),
+            CollectSybilDetectionMetricsAsync(ct),
             CollectWhaleTransferMetricsAsync(ct)
         );
     }
@@ -297,6 +320,224 @@ public class LiquidityCollectorService : BackgroundService
         None,
         Warning,
         Critical
+    }
+
+    /// <summary>
+    /// Collects group treasury drain detection metrics using the same multi-factor approach.
+    /// </summary>
+    private async Task CollectGroupTreasuryDrainDetectionAsync(CancellationToken ct)
+    {
+        try
+        {
+            var zScores = await _repository.GetGroupTreasuryZScoresAsync(ct);
+
+            foreach (var score in zScores)
+            {
+                // Set z-score metric
+                LiquidityMetrics.GroupTreasuryZScore
+                    .WithLabels(score.GroupAddress, score.GroupName)
+                    .Set(score.ZScore);
+
+                // Multi-factor drain detection (reuse same logic)
+                var severity = EvaluateGroupTreasurySeverity(score);
+
+                switch (severity)
+                {
+                    case DrainSeverity.Critical:
+                        SetGroupAnomalyMetrics(score, "critical");
+                        _logger.LogWarning(
+                            "CRITICAL group treasury drain for {GroupName} ({Group}): z-score={ZScore:F2}, " +
+                            "withdrawal={Change:F2}CRC ({Pct:F1}% of treasury), rate={Rate:F1}x avg",
+                            score.GroupName, score.GroupAddress, score.ZScore,
+                            Math.Abs(score.LatestChangeCrc), score.BalancePercentage, score.RateAcceleration);
+                        break;
+
+                    case DrainSeverity.Warning:
+                        SetGroupAnomalyMetrics(score, "warning");
+                        _logger.LogWarning(
+                            "Unusual group treasury outflow for {GroupName} ({Group}): z-score={ZScore:F2}, " +
+                            "withdrawal={Change:F2}CRC ({Pct:F1}% of treasury)",
+                            score.GroupName, score.GroupAddress, score.ZScore,
+                            Math.Abs(score.LatestChangeCrc), score.BalancePercentage);
+                        break;
+
+                    default:
+                        ClearGroupAnomalyMetrics(score);
+                        break;
+                }
+            }
+
+            _logger.LogDebug("Collected group treasury drain detection for {GroupCount} groups", zScores.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect group treasury drain detection metrics");
+            LiquidityMetrics.LiquidityCollectionErrors.WithLabels("group_treasury_drain").Inc();
+        }
+    }
+
+    private DrainSeverity EvaluateGroupTreasurySeverity(GroupTreasuryZScore score)
+    {
+        if (score.LatestChange >= 0)
+            return DrainSeverity.None;
+
+        var absChangeCrc = Math.Abs(score.LatestChangeCrc);
+
+        if (score.ZScore < _zScoreCriticalThreshold &&
+            score.BalancePercentage >= _minBalancePercentage &&
+            absChangeCrc >= _minAbsoluteAmountCrc)
+        {
+            if (score.RateAcceleration >= _rateAccelerationFactor ||
+                score.ZScore < _zScoreCriticalThreshold * 1.5)
+            {
+                return DrainSeverity.Critical;
+            }
+        }
+
+        if (score.ZScore < _zScoreWarningThreshold)
+            return DrainSeverity.Warning;
+
+        return DrainSeverity.None;
+    }
+
+    private void SetGroupAnomalyMetrics(GroupTreasuryZScore score, string severity)
+    {
+        var isCritical = severity == "critical";
+        LiquidityMetrics.GroupTreasuryAnomaly
+            .WithLabels(score.GroupAddress, score.GroupName, "critical")
+            .Set(isCritical ? 1 : 0);
+        LiquidityMetrics.GroupTreasuryAnomaly
+            .WithLabels(score.GroupAddress, score.GroupName, "warning")
+            .Set(isCritical ? 0 : 1);
+        LiquidityMetrics.GroupTreasuryDrainEvents
+            .WithLabels(score.GroupAddress, score.GroupName, severity)
+            .Inc();
+    }
+
+    private void ClearGroupAnomalyMetrics(GroupTreasuryZScore score)
+    {
+        LiquidityMetrics.GroupTreasuryAnomaly
+            .WithLabels(score.GroupAddress, score.GroupName, "warning")
+            .Set(0);
+        LiquidityMetrics.GroupTreasuryAnomaly
+            .WithLabels(score.GroupAddress, score.GroupName, "critical")
+            .Set(0);
+    }
+
+    /// <summary>
+    /// Detects sybil-style coordinated attacks: many small withdrawals to many unique recipients.
+    /// </summary>
+    private async Task CollectSybilDetectionMetricsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var sybilMetrics = await _repository.GetHourlySybilMetricsAsync(ct);
+
+            foreach (var metric in sybilMetrics)
+            {
+                // Set observability metrics
+                LiquidityMetrics.SybilWithdrawalCount
+                    .WithLabels(metric.VaultAddress)
+                    .Set(metric.WithdrawalCount);
+                LiquidityMetrics.SybilUniqueRecipients
+                    .WithLabels(metric.VaultAddress)
+                    .Set(metric.UniqueRecipients);
+                LiquidityMetrics.SybilTotalWithdrawn
+                    .WithLabels(metric.VaultAddress)
+                    .Set((double)metric.TotalWithdrawnCrc);
+                LiquidityMetrics.SybilAvgWithdrawalSize
+                    .WithLabels(metric.VaultAddress)
+                    .Set((double)metric.AvgWithdrawalCrc);
+
+                // Evaluate sybil attack pattern
+                var severity = EvaluateSybilSeverity(metric);
+
+                switch (severity)
+                {
+                    case DrainSeverity.Critical:
+                        SetSybilAnomalyMetrics(metric, "critical");
+                        _logger.LogWarning(
+                            "CRITICAL sybil attack pattern on vault {Vault}: {Recipients} unique recipients, " +
+                            "{Total:F2}CRC total ({Avg:F2}CRC avg), {Mult:F1}x baseline recipients",
+                            metric.VaultAddress, metric.UniqueRecipients, metric.TotalWithdrawnCrc,
+                            metric.AvgWithdrawalCrc,
+                            metric.BaselineHourlyRecipients > 0
+                                ? metric.UniqueRecipients / metric.BaselineHourlyRecipients
+                                : 0);
+                        break;
+
+                    case DrainSeverity.Warning:
+                        SetSybilAnomalyMetrics(metric, "warning");
+                        _logger.LogWarning(
+                            "Unusual withdrawal pattern on vault {Vault}: {Recipients} unique recipients, " +
+                            "{Total:F2}CRC total",
+                            metric.VaultAddress, metric.UniqueRecipients, metric.TotalWithdrawnCrc);
+                        break;
+
+                    default:
+                        ClearSybilAnomalyMetrics(metric);
+                        break;
+                }
+            }
+
+            _logger.LogDebug("Collected sybil detection metrics for {VaultCount} vaults", sybilMetrics.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect sybil detection metrics");
+            LiquidityMetrics.LiquidityCollectionErrors.WithLabels("sybil_detection").Inc();
+        }
+    }
+
+    private DrainSeverity EvaluateSybilSeverity(SybilDetectionResult metric)
+    {
+        // Calculate recipient multiplier vs baseline
+        var recipientMultiplier = metric.BaselineHourlyRecipients > 0
+            ? metric.UniqueRecipients / metric.BaselineHourlyRecipients
+            : 0;
+
+        // Critical: Many unique recipients + material total + small avg size + spike vs baseline
+        if (metric.UniqueRecipients >= _sybilMinUniqueRecipients &&
+            metric.TotalWithdrawnCrc >= _sybilMinTotalWithdrawnCrc &&
+            metric.AvgWithdrawalCrc <= _sybilMaxAvgWithdrawalCrc &&
+            recipientMultiplier >= _sybilRecipientMultiplier)
+        {
+            return DrainSeverity.Critical;
+        }
+
+        // Warning: Elevated recipients or unusual pattern
+        if ((metric.UniqueRecipients >= _sybilMinUniqueRecipients / 2 &&
+             metric.TotalWithdrawnCrc >= _sybilMinTotalWithdrawnCrc / 2) ||
+            recipientMultiplier >= _sybilRecipientMultiplier)
+        {
+            return DrainSeverity.Warning;
+        }
+
+        return DrainSeverity.None;
+    }
+
+    private void SetSybilAnomalyMetrics(SybilDetectionResult metric, string severity)
+    {
+        var isCritical = severity == "critical";
+        LiquidityMetrics.SybilAnomaly
+            .WithLabels(metric.VaultAddress, "critical")
+            .Set(isCritical ? 1 : 0);
+        LiquidityMetrics.SybilAnomaly
+            .WithLabels(metric.VaultAddress, "warning")
+            .Set(isCritical ? 0 : 1);
+        LiquidityMetrics.SybilAlertEvents
+            .WithLabels(metric.VaultAddress, severity)
+            .Inc();
+    }
+
+    private void ClearSybilAnomalyMetrics(SybilDetectionResult metric)
+    {
+        LiquidityMetrics.SybilAnomaly
+            .WithLabels(metric.VaultAddress, "warning")
+            .Set(0);
+        LiquidityMetrics.SybilAnomaly
+            .WithLabels(metric.VaultAddress, "critical")
+            .Set(0);
     }
 
     /// <summary>

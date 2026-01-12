@@ -449,6 +449,88 @@ public class LiquidityRepository
 
     #endregion
 
+    #region Sybil Detection
+
+    /// <summary>
+    /// Get hourly withdrawal patterns for sybil attack detection.
+    /// Detects coordinated small withdrawals to many unique recipients.
+    /// </summary>
+    public async Task<List<SybilDetectionResult>> GetHourlySybilMetricsAsync(CancellationToken ct)
+    {
+        var sql = $"""
+            WITH hourly_withdrawals AS (
+                SELECT
+                    "from" as vault,
+                    "to" as recipient,
+                    amount / 1e18 as amount_crc,
+                    "timestamp"
+                FROM "CrcV2_Erc20WrapperTransfer"
+                WHERE "from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}')
+                  AND "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '1 hour')
+            ),
+            vault_stats AS (
+                SELECT
+                    vault,
+                    COUNT(*) as withdrawal_count,
+                    COUNT(DISTINCT recipient) as unique_recipients,
+                    SUM(amount_crc) as total_withdrawn_crc,
+                    AVG(amount_crc) as avg_withdrawal_crc
+                FROM hourly_withdrawals
+                GROUP BY vault
+            ),
+            historical_stats AS (
+                -- Get 7-day baseline for comparison
+                SELECT
+                    "from" as vault,
+                    COUNT(*) / (7.0 * 24) as avg_hourly_withdrawals,
+                    COUNT(DISTINCT "to") / (7.0 * 24) as avg_hourly_recipients,
+                    SUM(amount / 1e18) / (7.0 * 24) as avg_hourly_volume
+                FROM "CrcV2_Erc20WrapperTransfer"
+                WHERE "from" IN ('{BalancerV2VaultAddress}', '{BalancerV3VaultAddress}')
+                  AND "timestamp" > EXTRACT(EPOCH FROM NOW() - interval '7 days')
+                  AND "timestamp" <= EXTRACT(EPOCH FROM NOW() - interval '1 hour')
+                GROUP BY "from"
+            )
+            SELECT
+                v.vault,
+                v.withdrawal_count,
+                v.unique_recipients,
+                v.total_withdrawn_crc,
+                v.avg_withdrawal_crc,
+                COALESCE(h.avg_hourly_withdrawals, 0) as baseline_withdrawals,
+                COALESCE(h.avg_hourly_recipients, 0) as baseline_recipients,
+                COALESCE(h.avg_hourly_volume, 0) as baseline_volume
+            FROM vault_stats v
+            LEFT JOIN historical_stats h ON v.vault = h.vault
+            """;
+
+        var results = new List<SybilDetectionResult>();
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            results.Add(new SybilDetectionResult
+            {
+                VaultAddress = reader.GetString(0),
+                WithdrawalCount = reader.GetInt64(1),
+                UniqueRecipients = reader.GetInt64(2),
+                TotalWithdrawnCrc = reader.GetDecimal(3),
+                AvgWithdrawalCrc = reader.GetDecimal(4),
+                BaselineHourlyWithdrawals = reader.GetDouble(5),
+                BaselineHourlyRecipients = reader.GetDouble(6),
+                BaselineHourlyVolume = reader.GetDouble(7)
+            });
+        }
+
+        return results;
+    }
+
+    #endregion
+
     #region Group Treasury
 
     /// <summary>
@@ -487,6 +569,123 @@ public class LiquidityRepository
                 Symbol = reader.IsDBNull(2) ? "" : reader.GetString(2),
                 MemberCount = reader.GetInt64(3),
                 TreasuryTotal = reader.GetDecimal(4)
+            });
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Get group treasury z-scores for anomaly detection.
+    /// Monitors group vault balance changes for unusual outflows.
+    /// </summary>
+    public async Task<List<GroupTreasuryZScore>> GetGroupTreasuryZScoresAsync(CancellationToken ct)
+    {
+        const string sql = """
+            WITH group_vaults AS (
+                -- Get all group vaults with their group info
+                SELECT
+                    cv.vault,
+                    cv."group" as group_address,
+                    g.name as group_name
+                FROM "CrcV2_CreateVault" cv
+                JOIN "V_CrcV2_Groups" g ON g."group" = cv."group"
+            ),
+            vault_balances AS (
+                -- Get hourly balance snapshots for group vaults
+                SELECT
+                    gv.group_address,
+                    gv.group_name,
+                    b."timestamp",
+                    SUM(b.balance) as total_balance
+                FROM group_vaults gv
+                JOIN "V_CrcV2_GroupVaultBalancesByToken_1h" b ON b.vault = gv.vault
+                WHERE b."timestamp" > NOW() - interval '30 days'
+                GROUP BY gv.group_address, gv.group_name, b."timestamp"
+            ),
+            hourly_changes AS (
+                SELECT
+                    group_address,
+                    group_name,
+                    "timestamp",
+                    total_balance,
+                    total_balance - LAG(total_balance) OVER (PARTITION BY group_address ORDER BY "timestamp") as change
+                FROM vault_balances
+            ),
+            stats AS (
+                SELECT
+                    group_address,
+                    group_name,
+                    AVG(change) as mean_change,
+                    STDDEV(change) as stddev_change,
+                    ABS(AVG(CASE WHEN change < 0 THEN change ELSE 0 END) * 24) as avg_daily_withdrawal
+                FROM hourly_changes
+                WHERE change IS NOT NULL
+                GROUP BY group_address, group_name
+                HAVING STDDEV(change) > 0
+            ),
+            latest AS (
+                SELECT DISTINCT ON (group_address)
+                    group_address,
+                    group_name,
+                    total_balance as current_balance,
+                    change as latest_change
+                FROM hourly_changes
+                WHERE change IS NOT NULL
+                ORDER BY group_address, "timestamp" DESC
+            )
+            SELECT
+                l.group_address,
+                l.group_name,
+                l.latest_change,
+                l.current_balance,
+                s.mean_change,
+                s.stddev_change,
+                s.avg_daily_withdrawal,
+                CASE
+                    WHEN s.stddev_change > 0
+                    THEN (l.latest_change - s.mean_change) / s.stddev_change
+                    ELSE 0
+                END as z_score,
+                CASE
+                    WHEN l.current_balance > 0
+                    THEN ABS(l.latest_change / l.current_balance) * 100
+                    ELSE 0
+                END as balance_percentage,
+                CASE
+                    WHEN s.avg_daily_withdrawal > 0 AND l.latest_change < 0
+                    THEN ABS(l.latest_change) / s.avg_daily_withdrawal
+                    ELSE 0
+                END as rate_acceleration
+            FROM latest l
+            JOIN stats s USING (group_address)
+            ORDER BY z_score ASC
+            """;
+
+        var results = new List<GroupTreasuryZScore>();
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            var latestChange = reader.GetDecimal(2);
+            var currentBalance = reader.GetDecimal(3);
+
+            results.Add(new GroupTreasuryZScore
+            {
+                GroupAddress = reader.GetString(0),
+                GroupName = reader.IsDBNull(1) ? "Unknown" : reader.GetString(1),
+                LatestChange = latestChange,
+                LatestChangeCrc = latestChange / 1_000_000_000_000_000_000m,
+                CurrentBalanceCrc = currentBalance / 1_000_000_000_000_000_000m,
+                MeanChange = reader.GetDouble(4),
+                StdDevChange = reader.GetDouble(5),
+                ZScore = reader.GetDouble(7),
+                BalancePercentage = reader.GetDouble(8),
+                RateAcceleration = reader.GetDouble(9)
             });
         }
 
@@ -557,6 +756,32 @@ public record GroupTreasury
     public required string Symbol { get; init; }
     public long MemberCount { get; init; }
     public decimal TreasuryTotal { get; init; }
+}
+
+public record SybilDetectionResult
+{
+    public required string VaultAddress { get; init; }
+    public long WithdrawalCount { get; init; }
+    public long UniqueRecipients { get; init; }
+    public decimal TotalWithdrawnCrc { get; init; }
+    public decimal AvgWithdrawalCrc { get; init; }
+    public double BaselineHourlyWithdrawals { get; init; }
+    public double BaselineHourlyRecipients { get; init; }
+    public double BaselineHourlyVolume { get; init; }
+}
+
+public record GroupTreasuryZScore
+{
+    public required string GroupAddress { get; init; }
+    public required string GroupName { get; init; }
+    public decimal LatestChange { get; init; }
+    public decimal LatestChangeCrc { get; init; }
+    public decimal CurrentBalanceCrc { get; init; }
+    public double MeanChange { get; init; }
+    public double StdDevChange { get; init; }
+    public double ZScore { get; init; }
+    public double BalancePercentage { get; init; }
+    public double RateAcceleration { get; init; }
 }
 
 #endregion
