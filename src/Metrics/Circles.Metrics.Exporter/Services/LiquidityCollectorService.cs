@@ -109,6 +109,7 @@ public class LiquidityCollectorService : BackgroundService
         await Task.WhenAll(
             CollectBalancerVaultMetricsAsync(ct),
             CollectGroupTreasuryMetricsAsync(ct),
+            CollectAggregateTvlMetricsAsync(ct),
             CollectDrainDetectionMetricsAsync(ct),
             CollectGroupTreasuryDrainDetectionAsync(ct),
             CollectSybilDetectionMetricsAsync(ct),
@@ -181,6 +182,39 @@ public class LiquidityCollectorService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to collect group treasury metrics");
             LiquidityMetrics.LiquidityCollectionErrors.WithLabels("group_treasury").Inc();
+        }
+    }
+
+    /// <summary>
+    /// Collects aggregate TVL metrics for Balancer and Group Treasuries.
+    /// These are the primary metrics used for alerting (simpler, less noisy than per-token).
+    /// </summary>
+    private async Task CollectAggregateTvlMetricsAsync(CancellationToken ct)
+    {
+        try
+        {
+            // Collect Balancer TVL
+            var balancerTvl = await _repository.GetBalancerTvlAsync(ct);
+            LiquidityMetrics.BalancerTvlTotal.Set((double)balancerTvl.CurrentTotalCrc);
+            LiquidityMetrics.BalancerTvlChange1h.Set((double)balancerTvl.Change1hCrc);
+            LiquidityMetrics.BalancerTvlChangePct1h.Set(balancerTvl.Change1hPct);
+
+            _logger.LogDebug("Balancer TVL: {Total:F2} CRC, 1h change: {Change:F2} CRC ({Pct:F2}%)",
+                balancerTvl.CurrentTotalCrc, balancerTvl.Change1hCrc, balancerTvl.Change1hPct);
+
+            // Collect Group Treasury TVL
+            var treasuryTvl = await _repository.GetGroupTreasuryTvlAsync(ct);
+            LiquidityMetrics.GroupTreasuryTvlTotal.Set((double)treasuryTvl.CurrentTotalCrc);
+            LiquidityMetrics.GroupTreasuryTvlChange1h.Set((double)treasuryTvl.Change1hCrc);
+            LiquidityMetrics.GroupTreasuryTvlChangePct1h.Set(treasuryTvl.Change1hPct);
+
+            _logger.LogDebug("Group Treasury TVL: {Total:F2} CRC, 1h change: {Change:F2} CRC ({Pct:F2}%)",
+                treasuryTvl.CurrentTotalCrc, treasuryTvl.Change1hCrc, treasuryTvl.Change1hPct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect aggregate TVL metrics");
+            LiquidityMetrics.LiquidityCollectionErrors.WithLabels("aggregate_tvl").Inc();
         }
     }
 

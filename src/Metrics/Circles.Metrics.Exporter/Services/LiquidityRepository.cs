@@ -693,9 +693,146 @@ public class LiquidityRepository
     }
 
     #endregion
+
+    #region Aggregate TVL
+
+    /// <summary>
+    /// Get aggregate Balancer TVL with hourly change.
+    /// Returns total value locked and the change from 1 hour ago.
+    /// </summary>
+    public async Task<TvlSnapshot> GetBalancerTvlAsync(CancellationToken ct)
+    {
+        const string sql = """
+            WITH current_tvl AS (
+                SELECT
+                    SUM(value) as total_balance,
+                    MAX("timestamp") as "timestamp"
+                FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
+                WHERE "timestamp" = (SELECT MAX("timestamp") FROM "V_CrcV2_Erc20BalancerVaultBalance_1h")
+            ),
+            previous_tvl AS (
+                SELECT SUM(value) as total_balance
+                FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
+                WHERE "timestamp" = (
+                    SELECT MAX("timestamp") - interval '1 hour'
+                    FROM "V_CrcV2_Erc20BalancerVaultBalance_1h"
+                )
+            )
+            SELECT
+                COALESCE(c.total_balance, 0) as current_total,
+                COALESCE(p.total_balance, 0) as previous_total,
+                c."timestamp"
+            FROM current_tvl c
+            CROSS JOIN previous_tvl p
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        if (await reader.ReadAsync(ct))
+        {
+            var currentTotal = reader.GetDecimal(0);
+            var previousTotal = reader.GetDecimal(1);
+            var timestamp = reader.IsDBNull(2) ? DateTimeOffset.UtcNow : reader.GetFieldValue<DateTimeOffset>(2);
+
+            // Convert to CRC (divide by 1e18)
+            var currentCrc = currentTotal / 1_000_000_000_000_000_000m;
+            var previousCrc = previousTotal / 1_000_000_000_000_000_000m;
+            var changeCrc = currentCrc - previousCrc;
+            var changePct = previousCrc > 0 ? (double)(changeCrc / previousCrc * 100) : 0;
+
+            return new TvlSnapshot
+            {
+                CurrentTotalCrc = currentCrc,
+                PreviousTotalCrc = previousCrc,
+                Change1hCrc = changeCrc,
+                Change1hPct = changePct,
+                Timestamp = timestamp
+            };
+        }
+
+        return new TvlSnapshot();
+    }
+
+    /// <summary>
+    /// Get aggregate Group Treasury TVL with hourly change.
+    /// Uses the new hourly view for time-series data.
+    /// </summary>
+    public async Task<TvlSnapshot> GetGroupTreasuryTvlAsync(CancellationToken ct)
+    {
+        const string sql = """
+            WITH current_tvl AS (
+                SELECT
+                    SUM(balance) as total_balance,
+                    MAX("timestamp") as "timestamp"
+                FROM "V_CrcV2_GroupVaultBalancesByToken_1h"
+                WHERE "timestamp" = (SELECT MAX("timestamp") FROM "V_CrcV2_GroupVaultBalancesByToken_1h")
+            ),
+            previous_tvl AS (
+                SELECT SUM(balance) as total_balance
+                FROM "V_CrcV2_GroupVaultBalancesByToken_1h"
+                WHERE "timestamp" = (
+                    SELECT MAX("timestamp") - 3600  -- 1 hour in unix seconds
+                    FROM "V_CrcV2_GroupVaultBalancesByToken_1h"
+                )
+            )
+            SELECT
+                COALESCE(c.total_balance, 0) as current_total,
+                COALESCE(p.total_balance, 0) as previous_total,
+                c."timestamp"
+            FROM current_tvl c
+            CROSS JOIN previous_tvl p
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        if (await reader.ReadAsync(ct))
+        {
+            var currentTotal = reader.GetDecimal(0);
+            var previousTotal = reader.GetDecimal(1);
+            var timestamp = reader.IsDBNull(2)
+                ? DateTimeOffset.UtcNow
+                : DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(2));
+
+            // Convert to CRC (divide by 1e18)
+            var currentCrc = currentTotal / 1_000_000_000_000_000_000m;
+            var previousCrc = previousTotal / 1_000_000_000_000_000_000m;
+            var changeCrc = currentCrc - previousCrc;
+            var changePct = previousCrc > 0 ? (double)(changeCrc / previousCrc * 100) : 0;
+
+            return new TvlSnapshot
+            {
+                CurrentTotalCrc = currentCrc,
+                PreviousTotalCrc = previousCrc,
+                Change1hCrc = changeCrc,
+                Change1hPct = changePct,
+                Timestamp = timestamp
+            };
+        }
+
+        return new TvlSnapshot();
+    }
+
+    #endregion
 }
 
 #region DTOs
+
+public record TvlSnapshot
+{
+    public decimal CurrentTotalCrc { get; init; }
+    public decimal PreviousTotalCrc { get; init; }
+    public decimal Change1hCrc { get; init; }
+    public double Change1hPct { get; init; }
+    public DateTimeOffset Timestamp { get; init; }
+}
 
 public record BalancerVaultBalance
 {

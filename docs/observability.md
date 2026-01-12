@@ -309,42 +309,64 @@ Organic Account = (Has Profile) AND (Has Incoming Trust) AND (Recent Activity)
 
 ### 10. Circles Liquidity Monitoring (`circles-liquidity.json`)
 
-**Purpose**: Monitor Balancer vault liquidity, detect drains via statistical anomaly detection, and track whale transfers.
+**Purpose**: Monitor Balancer vault liquidity and group treasuries, detect drains via aggregate TVL changes, and track whale transfers.
 
 **Source Code**: `src/Metrics/Circles.Metrics.Exporter/Services/LiquidityCollectorService.cs`
 
 **Collection Interval**: 5 minutes (configurable via `Metrics:LiquidityCollectionIntervalSeconds`)
 
+**Alert Strategy**: Uses **aggregate TVL monitoring** instead of per-token z-scores to reduce noise while catching real attacks. Individual token volatility is expected; aggregate drops indicate coordinated activity.
+
 **Sections**:
 
 #### Overview Row
+
 | Panel | Metric | Description |
 |-------|--------|-------------|
-| Balancer TVL (CRC) | `circles_balancer_vault_balance_total` | Total value locked across all tokens |
+| Balancer TVL (CRC) | `circles_balancer_tvl_total` | Total value locked across all tokens |
+| Group Treasury TVL | `circles_group_treasury_tvl_total` | Total collateral across all groups |
 | Active Tokens | `circles_balancer_vault_tokens_count` | Distinct tokens with liquidity |
-| Active Warnings | `circles_balancer_vault_anomaly{severity="warning"}` | Tokens with z-score < -2.0 |
-| Critical Alerts | `circles_balancer_vault_anomaly{severity="critical"}` | Tokens with z-score < -3.0 |
+| TVL Change (1h) | `circles_balancer_tvl_change_pct_1h` | Percentage change in total TVL |
 | Whale Transfers (1h) | `circles_whale_transfer_total` | Large transfers (>100 CRC) in last hour |
 
 #### Balancer Pool Liquidity
+
 | Panel | Metric | Description |
 |-------|--------|-------------|
 | Top 10 Tokens by Balance | `circles_balancer_vault_balance` | Per-token balance in vault |
 | Token Balances Over Time | `circles_balancer_vault_balance` | Historical balance trends |
-| Balancer Vault TVL Over Time | `circles_balancer_vault_balance_total` | Aggregate TVL history |
+| Balancer Vault TVL Over Time | `circles_balancer_tvl_total` | Aggregate TVL history |
 
-#### Drain Detection (Z-Score Anomalies)
+#### TVL Change Monitoring (Primary Alert Source)
+
+| Panel | Metric | Description |
+|-------|--------|-------------|
+| TVL Change % (1 hour) | `circles_balancer_tvl_change_pct_1h`, `circles_group_treasury_tvl_change_pct_1h` | Percentage change in aggregate TVL |
+
+**TVL Alert Thresholds**:
+
+| Alert | Threshold | Severity |
+|-------|-----------|----------|
+| Balancer TVL Warning | -5% in 1h | warning |
+| Balancer TVL Critical | -10% in 1h | critical |
+| Group Treasury Warning | -10% in 1h | warning |
+| Group Treasury Critical | -20% in 1h | critical |
+
+#### Z-Score Analysis (Dashboard Only, No Alerts)
+
+Per-token z-scores are still collected for investigation but don't trigger alerts (too noisy with 600+ tokens).
+
 | Panel | Metric | Description |
 |-------|--------|-------------|
 | Z-Score by Token | `circles_balancer_vault_zscore_1h` | Statistical anomaly indicator |
 | Hourly Balance Change | `circles_balancer_vault_change_1h` | Per-token hourly delta |
-| Drain Events by Severity | `circles_balancer_vault_drain_events_total` | Cumulative anomaly count |
 
-**Z-Score Interpretation**:
+**Z-Score Interpretation** (for manual investigation):
+
 - `z > -1.0`: Normal activity
 - `-2.0 < z < -1.0`: Slightly elevated outflow
-- `-3.0 < z < -2.0`: **Warning** - unusual outflow (2+ std devs)
-- `z < -3.0`: **Critical** - severe drain (3+ std devs, ~0.1% probability under normal conditions)
+- `-3.0 < z < -2.0`: Unusual outflow (2+ std devs)
+- `z < -3.0`: Severe anomaly (3+ std devs)
 
 #### Whale Transfers
 | Panel | Metric | Description |
@@ -659,6 +681,39 @@ Liquidity metrics are collected by `LiquidityCollectorService` every 5 minutes f
 
 **Source Code**: `src/Metrics/Circles.Metrics.Exporter/Services/LiquidityCollectorService.cs`
 
+### Token Architecture: Balancer vs Group Treasuries
+
+Circles liquidity exists in two separate systems:
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        PERSONAL TOKENS                               │
+│  (Minted daily by humans, ERC1155 internally, can be ERC20-wrapped) │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │
+           ┌───────────────┴───────────────┐
+           ▼                               ▼
+┌─────────────────────────┐    ┌─────────────────────────────────────┐
+│     BALANCER VAULTS     │    │          GROUP TREASURIES           │
+│  (Liquidity Provision)  │    │     (Collateral for Group Tokens)   │
+├─────────────────────────┤    ├─────────────────────────────────────┤
+│ • ~600 personal tokens  │    │ • 42 groups                         │
+│ • ERC20-wrapped         │    │ • Personal tokens locked as         │
+│ • V2 vault (compromised)│    │   collateral when minting group     │
+│ • V3 vault (active)     │    │   tokens                            │
+│                         │    │ • Redeemable by burning group token │
+├─────────────────────────┤    ├─────────────────────────────────────┤
+│ Events:                 │    │ Events:                             │
+│ • Erc20WrapperTransfer  │    │ • CollateralLockedSingle/Batch      │
+│   (to/from vault)       │    │ • GroupRedeemCollateralReturn/Burn  │
+├─────────────────────────┤    ├─────────────────────────────────────┤
+│ Metric:                 │    │ Metric:                             │
+│ circles_balancer_tvl_*  │    │ circles_group_treasury_tvl_*        │
+└─────────────────────────┘    └─────────────────────────────────────┘
+```
+
+**Key Difference**: Group tokens are NOT in Balancer. When you lock personal tokens as collateral in a group treasury, you receive group tokens. The collateral stays in the treasury vault until redeemed.
+
 ### Balancer Vault Metrics
 
 | Metric | Labels | Source Table | Purpose |
@@ -916,19 +971,28 @@ circles:suspicious_account_ratio:gauge
 
 ### Liquidity Alert Rules (`docker/observability/prometheus-alerts-liquidity.yml`)
 
+**Alert Strategy**: Uses **aggregate TVL monitoring** instead of per-token z-scores to reduce noise. With 600+ personal tokens in Balancer, per-token alerts generated ~4 critical/hour from normal volatility. Aggregate TVL drops indicate coordinated activity worth investigating.
+
+#### Primary Alerts (Aggregate TVL)
+
 | Alert | Severity | Condition | Description |
 |-------|----------|-----------|-------------|
-| `BalancerPoolAnomalyWarning` | warning | z-score < -2.0 for 5m | Unusual outflow detected |
-| `BalancerPoolDrainCritical` | critical | z-score < -3.0 for 5m | Severe drain - possible attack |
-| `DrainAnomalyDetected` | critical | Anomaly flag = 1 for 2m | Collector flagged critical drain |
-| `WhaleActivitySpike` | warning | >10 whale transfers/hour for 10m | High large transfer activity |
-| `LargeWithdrawal` | warning | Single transfer >1000 CRC | Large withdrawal from vault |
-| `WhaleNetOutflow` | warning | Withdrawals > 2x deposits for 15m | Imbalanced whale activity |
-| `GroupTreasuryDepleting` | warning | Treasury z-score < -2.0 for 15m | Unusual collateral outflow |
-| `GroupTreasuryLow` | warning | <1 CRC with >10 members for 1h | Underfunded group |
-| `LowBalancerLiquidity` | info | Balance < 1 CRC for 1h | Low token liquidity |
-| `SignificantBalanceDrop` | warning | >20% drop in 1 hour for 5m | Rapid balance decrease |
-| `TotalTvlDrop` | warning | >10% TVL drop in 1 hour for 10m | Significant TVL decrease |
+| `BalancerTvlDropWarning` | warning | TVL change < -5% in 1h | Moderate aggregate outflow |
+| `BalancerTvlDropCritical` | critical | TVL change < -10% in 1h | Significant outflow - possible attack |
+| `GroupTreasuryTvlDropWarning` | warning | TVL change < -10% in 1h | Moderate treasury outflow |
+| `GroupTreasuryTvlDropCritical` | critical | TVL change < -20% in 1h | Severe treasury outflow - investigate |
+
+#### Informational Alerts
+
+| Alert | Severity | Condition | Description |
+|-------|----------|-----------|-------------|
+| `WhaleActivitySpike` | info | >20 whale transfers/hour for 15m | High large transfer activity |
+| `GroupTreasuryLow` | info | <1 CRC with >10 members for 1h | Underfunded group |
+
+#### Collection Health Alerts
+
+| Alert | Severity | Condition | Description |
+|-------|----------|-----------|-------------|
 | `LiquidityCollectionStale` | warning | No collection for 10m | Collector may be stuck |
 | `LiquidityCollectionErrors` | warning | >10 errors/hour for 5m | Check DB connectivity |
 | `LiquidityCollectionSlow` | warning | >60s collection time for 15m | Database performance issue |

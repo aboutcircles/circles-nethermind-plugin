@@ -268,17 +268,20 @@
           "unit": "none"
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "critical" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "warning" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] }
-        ]
+          { "matcher": { "id": "byName", "options": "Balancer TVL Change %" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Group Treasury TVL Change %" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] }
+        ],
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": -10 }, { "color": "orange", "value": -5 }, { "color": "green", "value": 0 }] },
+        "unit": "percent"
       },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
       "id": 22,
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (severity) (circles_balancer_vault_drain_events_total)", "legendFormat": "{{severity}}", "refId": "A" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_balancer_tvl_change_pct_1h", "legendFormat": "Balancer TVL Change %", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "circles_group_treasury_tvl_change_pct_1h", "legendFormat": "Group Treasury TVL Change %", "refId": "B" }
       ],
-      "title": "Drain Events by Severity",
+      "title": "TVL Change % (1 hour)",
       "type": "timeseries"
     },
     {
