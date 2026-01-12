@@ -54,6 +54,26 @@ public static class LiquidityMetrics
             "Percentage change in total group treasury TVL over last hour");
 
     // ===========================================
+    // Rapid Drain Detection (15m window)
+    // ===========================================
+
+    public static readonly Gauge BalancerTvlChange15m = Prometheus.Metrics
+        .CreateGauge("circles_balancer_tvl_change_15m",
+            "Absolute change in Balancer TVL over last 15 minutes (in CRC)");
+
+    public static readonly Gauge BalancerTvlChangePct15m = Prometheus.Metrics
+        .CreateGauge("circles_balancer_tvl_change_pct_15m",
+            "Percentage change in Balancer TVL over last 15 minutes");
+
+    public static readonly Gauge GroupTreasuryTvlChange15m = Prometheus.Metrics
+        .CreateGauge("circles_group_treasury_tvl_change_15m",
+            "Absolute change in total group treasury TVL over last 15 minutes (in CRC)");
+
+    public static readonly Gauge GroupTreasuryTvlChangePct15m = Prometheus.Metrics
+        .CreateGauge("circles_group_treasury_tvl_change_pct_15m",
+            "Percentage change in total group treasury TVL over last 15 minutes");
+
+    // ===========================================
     // Group Treasury Liquidity Metrics
     // ===========================================
 
