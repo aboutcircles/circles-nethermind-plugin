@@ -2,141 +2,79 @@ groups:
   - name: circles-liquidity-alerts
     rules:
       # ============================================================================
-      # Z-Score Based Anomaly Detection
+      # Aggregate TVL Alerts (Primary - Low Noise)
       # ============================================================================
+      # These alerts use aggregate TVL metrics to catch real attacks without
+      # generating noise from individual token volatility.
 
-      # Statistical anomaly - unusual outflow (z-score based)
-      # A z-score below -2.0 means the outflow is 2+ standard deviations below normal
-      - alert: BalancerPoolAnomalyWarning
-        expr: circles_balancer_vault_zscore_1h < -2.0
+      # Balancer TVL Warning - moderate drop
+      - alert: BalancerTvlDropWarning
+        expr: circles_balancer_tvl_change_pct_1h < -5
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Unusual outflow detected: {{ $labels.token_address }}"
-          description: "Z-score {{ $value | printf \"%.2f\" }} indicates 2+ std devs below normal hourly change. This may indicate unusual withdrawals."
+          summary: "Balancer TVL dropped {{ $value | printf \"%.1f\" }}% in 1 hour"
+          description: "Total value locked in Balancer vaults decreased by {{ $value | printf \"%.1f\" }}%. Current TVL: {{ $externalLabels.circles_balancer_tvl_total | printf \"%.0f\" }} CRC"
 
-      # Statistical anomaly - critical drain
-      # A z-score below -3.0 is a severe anomaly (0.1% probability if normal)
-      - alert: BalancerPoolDrainCritical
-        expr: circles_balancer_vault_zscore_1h < -3.0
+      # Balancer TVL Critical - significant drop (possible attack)
+      - alert: BalancerTvlDropCritical
+        expr: circles_balancer_tvl_change_pct_1h < -10
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "CRITICAL: Pool draining {{ $labels.token_address }}"
-          description: "Z-score {{ $value | printf \"%.2f\" }} indicates 3+ std devs - possible attack or coordinated withdrawal. Investigate immediately!"
+          summary: "CRITICAL: Balancer TVL dropped {{ $value | printf \"%.1f\" }}% in 1 hour"
+          description: "Total value locked in Balancer vaults decreased significantly. This may indicate a coordinated drain or attack. Investigate immediately!"
 
-      # Anomaly flag metric (from collector)
-      - alert: DrainAnomalyDetected
-        expr: circles_balancer_vault_anomaly{severity="critical"} == 1
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Drain anomaly flagged: {{ $labels.token_address }}"
-          description: "The liquidity collector has flagged a critical drain anomaly for this token."
-
-      # ============================================================================
-      # Whale Activity Monitoring
-      # ============================================================================
-
-      # Whale activity spike - many large transfers in short period
-      - alert: WhaleActivitySpike
-        expr: increase(circles_whale_transfer_total[1h]) > 10
+      # Group Treasury TVL Warning
+      - alert: GroupTreasuryTvlDropWarning
+        expr: circles_group_treasury_tvl_change_pct_1h < -10
         for: 10m
         labels:
           severity: warning
         annotations:
+          summary: "Group Treasury TVL dropped {{ $value | printf \"%.1f\" }}% in 1 hour"
+          description: "Total collateral across all group treasuries decreased by {{ $value | printf \"%.1f\" }}%."
+
+      # Group Treasury TVL Critical
+      - alert: GroupTreasuryTvlDropCritical
+        expr: circles_group_treasury_tvl_change_pct_1h < -20
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL: Group Treasury TVL dropped {{ $value | printf \"%.1f\" }}% in 1 hour"
+          description: "Total collateral across all group treasuries decreased significantly. This may indicate a coordinated redemption or attack."
+
+      # ============================================================================
+      # Whale Activity Monitoring (Informational)
+      # ============================================================================
+      # Whale activity is kept for visibility but not as primary alerts
+
+      # Whale activity spike - many large transfers in short period
+      - alert: WhaleActivitySpike
+        expr: increase(circles_whale_transfer_total[1h]) > 20
+        for: 15m
+        labels:
+          severity: info
+        annotations:
           summary: "High whale activity on {{ $labels.token_address }}"
-          description: "{{ $value | printf \"%.0f\" }} whale transfers (>100 tokens each) in last hour. Direction: {{ $labels.direction }}"
-
-      # Large single withdrawal from Balancer vault
-      - alert: LargeWithdrawal
-        expr: circles_whale_transfer_last{direction="withdrawal"} > 1e21
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Large withdrawal: {{ $labels.token_address }}"
-          description: "Single transfer of {{ $value | printf \"%.2e\" }} wei (>1000 tokens) from Balancer vault by {{ $labels.from }}"
-
-      # Whale outflow exceeds inflow significantly
-      - alert: WhaleNetOutflow
-        expr: |
-          sum by (token_address) (increase(circles_whale_transfer_volume{direction="withdrawal"}[1h]))
-          >
-          sum by (token_address) (increase(circles_whale_transfer_volume{direction="deposit"}[1h])) * 2
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Whale net outflow for {{ $labels.token_address }}"
-          description: "Whale withdrawals exceed deposits by more than 2x in the last hour."
+          description: "{{ $value | printf \"%.0f\" }} whale transfers (>100 CRC each) in last hour. Direction: {{ $labels.direction }}"
 
       # ============================================================================
-      # Group Treasury Monitoring
+      # Low Balance Alerts (Informational)
       # ============================================================================
-
-      # Group treasury depletion (using z-score when available, or percentage drop)
-      - alert: GroupTreasuryDepleting
-        expr: circles_group_treasury_zscore < -2.0
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Group treasury depleting: {{ $labels.group_name }}"
-          description: "Z-score {{ $value | printf \"%.2f\" }} indicates unusual collateral outflow from group {{ $labels.group_address }}"
 
       # Low treasury balance (absolute threshold)
       - alert: GroupTreasuryLow
         expr: circles_group_treasury_total < 1e18 and circles_group_member_count > 10
         for: 1h
         labels:
-          severity: warning
-        annotations:
-          summary: "Low treasury for group {{ $labels.group_name }}"
-          description: "Group {{ $labels.group_address }} has {{ $value | printf \"%.2e\" }} wei in treasury with {{ $labels.group_member_count }} members"
-
-      # ============================================================================
-      # Balancer Vault Health
-      # ============================================================================
-
-      # Low liquidity for a token
-      - alert: LowBalancerLiquidity
-        expr: circles_balancer_vault_balance < 1e18 and circles_balancer_vault_balance > 0
-        for: 1h
-        labels:
           severity: info
         annotations:
-          summary: "Low liquidity for {{ $labels.token_name }}"
-          description: "Token {{ $labels.token_address }} has only {{ $value | printf \"%.2e\" }} wei in Balancer vault"
-
-      # Significant hourly drop (>20% of balance)
-      - alert: SignificantBalanceDrop
-        expr: |
-          circles_balancer_vault_change_1h < 0
-          and
-          abs(circles_balancer_vault_change_1h) > circles_balancer_vault_balance * 0.2
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Significant balance drop: {{ $labels.token_address }}"
-          description: "Balance dropped by {{ $value | printf \"%.2e\" }} wei (>20% of current balance) in the last hour"
-
-      # Total TVL drop
-      - alert: TotalTvlDrop
-        expr: |
-          (circles_balancer_vault_balance_total - circles_balancer_vault_balance_total offset 1h)
-          / circles_balancer_vault_balance_total offset 1h
-          < -0.1
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Total Balancer TVL dropped >10%"
-          description: "Total value locked in Balancer vault decreased by {{ $value | printf \"%.1f\" }}% in the last hour"
+          summary: "Low treasury for group {{ $labels.group_name }}"
+          description: "Group {{ $labels.group_address }} has {{ $value | printf \"%.2e\" }} wei in treasury with over 10 members"
 
       # ============================================================================
       # Liquidity Collection Health

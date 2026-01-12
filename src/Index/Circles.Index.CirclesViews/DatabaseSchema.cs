@@ -34,6 +34,7 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "Groups"),
         ("V_CrcV2", "GroupMemberships"),
         ("V_CrcV2", "GroupVaultBalancesByToken"),
+        ("V_CrcV2", "GroupVaultBalancesByToken_1h"),
         ("V_CrcV1", "TotalSupply"),
         ("V_CrcV2", "TotalSupply"),
         ("V_Crc", "Stats"),

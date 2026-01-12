@@ -26,6 +26,34 @@ public static class LiquidityMetrics
             "Number of distinct tokens with liquidity in Balancer vault");
 
     // ===========================================
+    // Aggregate TVL Metrics (for alerting)
+    // ===========================================
+
+    public static readonly Gauge BalancerTvlTotal = Prometheus.Metrics
+        .CreateGauge("circles_balancer_tvl_total",
+            "Total value locked in Balancer vaults (in CRC, 18 decimals converted)");
+
+    public static readonly Gauge BalancerTvlChange1h = Prometheus.Metrics
+        .CreateGauge("circles_balancer_tvl_change_1h",
+            "Absolute change in Balancer TVL over last hour (in CRC)");
+
+    public static readonly Gauge BalancerTvlChangePct1h = Prometheus.Metrics
+        .CreateGauge("circles_balancer_tvl_change_pct_1h",
+            "Percentage change in Balancer TVL over last hour");
+
+    public static readonly Gauge GroupTreasuryTvlTotal = Prometheus.Metrics
+        .CreateGauge("circles_group_treasury_tvl_total",
+            "Total value locked across all group treasuries (in CRC)");
+
+    public static readonly Gauge GroupTreasuryTvlChange1h = Prometheus.Metrics
+        .CreateGauge("circles_group_treasury_tvl_change_1h",
+            "Absolute change in total group treasury TVL over last hour (in CRC)");
+
+    public static readonly Gauge GroupTreasuryTvlChangePct1h = Prometheus.Metrics
+        .CreateGauge("circles_group_treasury_tvl_change_pct_1h",
+            "Percentage change in total group treasury TVL over last hour");
+
+    // ===========================================
     // Group Treasury Liquidity Metrics
     // ===========================================
 
