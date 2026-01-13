@@ -92,6 +92,23 @@ public class V2Pathfinder
         var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
 
         /* --------------------------------------------------------------------
+         * 2a. Optional quantization for invitation module (96 CRC chunks)
+         *     Only sink-bound transfers are quantized; intermediates pass through.
+         * ------------------------------------------------------------------ */
+        if (request.QuantizedMode == true)
+        {
+            // 96 CRC in 6-decimal precision = 96 * 10^12
+            const long InvitationQuanta = 96_000_000_000_000L;
+            int numberOfInvites = request.NumberOfInvites ?? 1;
+
+            simplePaths = PathUtils.QuantizeSinkBoundFlows(
+                simplePaths,
+                effSink,
+                InvitationQuanta,
+                numberOfInvites);
+        }
+
+        /* --------------------------------------------------------------------
          * 2b. Optional pruning to fit a transfer-step budget
          *      We keep the biggest-flow paths first and count "steps" after
          *      collapsing balance nodes (avatar→avatar per token).
@@ -187,6 +204,15 @@ public class V2Pathfinder
          * 6c. Validate the edge ordering - throw if mint dependencies violated
          * ------------------------------------------------------------------ */
         ValidateMintEdgeOrdering(sortedEdges, capacityGraph);
+
+        /* --------------------------------------------------------------------
+         * 6d. Validate quantization if requested - all sink transfers must be 96 CRC multiples
+         * ------------------------------------------------------------------ */
+        if (request.QuantizedMode == true)
+        {
+            const long InvitationQuanta = 96_000_000_000_000L;
+            ValidateQuantizedSinkTransfers(sortedEdges, sinkId, InvitationQuanta);
+        }
 
         /* --------------------------------------------------------------------
          * 7. Build DTOs
@@ -833,6 +859,33 @@ public class V2Pathfinder
                         $"Cumulative inbound: {inbound}, cumulative outbound required: {groupOutboundFlow[groupId]}. " +
                         "Ensure all Router → Group edges precede Group → Avatar edges.");
                 }
+            }
+        }
+    }
+
+    /* ------------------------------------------------------------------------
+     * Validate that all sink-bound transfers are exact multiples of quantaSize.
+     * Used in quantized mode (invitation module) to ensure each transfer
+     * delivers exactly 96 CRC chunks.
+     * --------------------------------------------------------------------- */
+    private static void ValidateQuantizedSinkTransfers(List<FlowEdge> edges, int sinkId, long quantaSize)
+    {
+        foreach (var edge in edges)
+        {
+            bool edgeGoesToSink = edge.To == sinkId;
+            if (!edgeGoesToSink || edge.Flow <= 0)
+            {
+                continue;
+            }
+
+            bool isQuantized = edge.Flow % quantaSize == 0;
+            if (!isQuantized)
+            {
+                string fromAddr = AddressIdPool.StringOf(edge.From);
+                throw new InvalidOperationException(
+                    $"Quantization violation: Transfer from {fromAddr} to sink has flow {edge.Flow}, " +
+                    $"which is not a multiple of {quantaSize} (96 CRC). " +
+                    "All sink-bound transfers must be exact 96 CRC multiples in quantized mode.");
             }
         }
     }
