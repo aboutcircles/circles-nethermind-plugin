@@ -97,6 +97,7 @@ scrape_configs:
         - http://invitation-app:3000/health/ready
         - http://auth-service:3001/health/ready
         - http://profile-pinning:3000/health/ready
+        - http://profile-pinning:3000/health/backfill
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -208,6 +209,7 @@ scrape_configs:
         - https://staging.circlesubi.network/chain-rpc/health
         # Profile Pinning service
         - https://staging.circlesubi.network/profiles/health/live
+        - https://staging.circlesubi.network/profiles/health/backfill
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
