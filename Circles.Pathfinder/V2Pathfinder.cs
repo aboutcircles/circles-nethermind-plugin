@@ -98,8 +98,8 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
         if (request.QuantizedMode == true)
         {
-            // 96 CRC in 6-decimal precision = 96 * 10^12
-            const long InvitationQuanta = 96_000_000_000_000L;
+            // 96 CRC in 6-decimal precision = 96 * 10^6
+            const long InvitationQuanta = 96_000_000L;
 
             simplePaths = PathUtils.QuantizeSinkBoundFlows(
                 simplePaths,

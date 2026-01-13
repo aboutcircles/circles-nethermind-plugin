@@ -6,13 +6,14 @@ namespace Circles.Pathfinder.Tests;
 /// <summary>
 /// Unit tests for the quantized mode feature in PathUtils.QuantizeSinkBoundFlows.
 /// Quantized mode ensures all sink-bound transfers are exact multiples of 96 CRC
-/// (96 × 10^12 in 6-decimal precision) for the invitation module.
+/// (96 × 10^6 in 6-decimal precision) for the invitation module.
 /// </summary>
 [TestFixture]
 public class QuantizedModeTests
 {
     // 96 CRC in 6-decimal precision (pathfinder internal format)
-    private const long Quanta96CRC = 96_000_000_000_000L;
+    // Internal balances: 1 CRC = 10^6 units
+    private const long Quanta96CRC = 96_000_000L;
 
     // Test node IDs
     private const int Source = 1;
@@ -51,7 +52,7 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_NonMultiple_RoundsDown()
     {
         // Path with 100 CRC should round down to 96 CRC
-        long flow100CRC = 100_000_000_000_000L;
+        long flow100CRC = 100_000_000L;
         var path = CreatePath(Source, Sink, Token1, flow100CRC);
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -65,7 +66,7 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_LessThanQuanta_ExcludesPath()
     {
         // Path with 50 CRC (less than 96) should be excluded entirely
-        long flow50CRC = 50_000_000_000_000L;
+        long flow50CRC = 50_000_000L;
         var path = CreatePath(Source, Sink, Token1, flow50CRC);
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -78,9 +79,9 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_MultiplePaths_EachQuantized()
     {
         // Multiple paths: 100, 200, 50 CRC → returns paths with 96, 192 (50 excluded)
-        long flow100CRC = 100_000_000_000_000L;
-        long flow200CRC = 200_000_000_000_000L;
-        long flow50CRC = 50_000_000_000_000L;
+        long flow100CRC = 100_000_000L;
+        long flow200CRC = 200_000_000L;
+        long flow50CRC = 50_000_000L;
 
         var path1 = CreatePath(Source, Sink, Token1, flow100CRC);
         var path2 = CreatePath(Source, Sink, Token2, flow200CRC);
@@ -88,19 +89,19 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>> { path1, path2, path3 };
 
         // Set targetFlow high enough to include all valid paths
-        long targetFlow = 1000_000_000_000_000L;
+        long targetFlow = 1000_000_000L;
         var result = PathUtils.QuantizeSinkBoundFlows(paths, Sink, Quanta96CRC, targetFlow);
 
         Assert.That(result, Has.Count.EqualTo(2));
         Assert.That(result[0][0].Flow, Is.EqualTo(Quanta96CRC));
-        Assert.That(result[1][0].Flow, Is.EqualTo(192_000_000_000_000L)); // 2 × 96 CRC
+        Assert.That(result[1][0].Flow, Is.EqualTo(192_000_000L)); // 2 × 96 CRC
     }
 
     [Test]
     public void QuantizeSinkBoundFlows_TargetFlowLimitsResults()
     {
         // With targetFlow = 96 CRC, only 1 invite should be returned
-        long flow200CRC = 200_000_000_000_000L;
+        long flow200CRC = 200_000_000L;
         var path = CreatePath(Source, Sink, Token1, flow200CRC);
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -114,7 +115,7 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_TargetFlow192_ReturnsTwoInvites()
     {
         // With targetFlow = 192 CRC, up to 2 invites should be returned
-        long flow300CRC = 300_000_000_000_000L;
+        long flow300CRC = 300_000_000L;
         var path = CreatePath(Source, Sink, Token1, flow300CRC);
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -130,7 +131,7 @@ public class QuantizedModeTests
     {
         // Multi-hop path: Source → Intermediate → Sink
         // All edges in the path should have the same quantized flow
-        long flow150CRC = 150_000_000_000_000L;
+        long flow150CRC = 150_000_000L;
 
         var edge1 = new SimpleEdge(Source, Intermediate, Token1, long.MaxValue) { Flow = flow150CRC };
         var edge2 = new SimpleEdge(Intermediate, Sink, Token1, long.MaxValue) { Flow = flow150CRC };
@@ -184,9 +185,9 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_MaxTargetFlow_ReturnsAllPossible()
     {
         // Simulate discovery mode with max uint256-like targetFlow
-        long flow100CRC = 100_000_000_000_000L;
-        long flow200CRC = 200_000_000_000_000L;
-        long flow300CRC = 300_000_000_000_000L;
+        long flow100CRC = 100_000_000L;
+        long flow200CRC = 200_000_000L;
+        long flow300CRC = 300_000_000L;
 
         var path1 = CreatePath(Source, Sink, Token1, flow100CRC);
         var path2 = CreatePath(Source, Sink, Token2, flow200CRC);
@@ -217,7 +218,7 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_PartiallyMeetsTarget()
     {
         // Request 3 invites but only 2 possible
-        long flow200CRC = 200_000_000_000_000L;
+        long flow200CRC = 200_000_000L;
         var path = CreatePath(Source, Sink, Token1, flow200CRC);
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -232,7 +233,7 @@ public class QuantizedModeTests
     public void QuantizeSinkBoundFlows_StopsAtTargetAcrossMultiplePaths()
     {
         // Two paths each with 192 CRC capacity, but only request 288 CRC (3 invites)
-        long flow192CRC = 192_000_000_000_000L;
+        long flow192CRC = 192_000_000L;
         var path1 = CreatePath(Source, Sink, Token1, flow192CRC);
         var path2 = CreatePath(Source, Sink, Token2, flow192CRC);
         var paths = new List<List<SimpleEdge>> { path1, path2 };
