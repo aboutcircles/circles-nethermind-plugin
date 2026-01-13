@@ -13,6 +13,14 @@ public class FlowRequest
     public List<SimulatedBalance>? SimulatedBalances { get; set; }
     public List<SimulatedTrust>? SimulatedTrusts { get; set; }
     public int? MaxTransfers { get; set; }
+
+    /// <summary>
+    /// When true, enforces 96 CRC quantization for sink-bound transfers (invitation module).
+    /// Each sink-bound transfer will be exactly N × 96 CRC.
+    /// The number of invites is derived from targetFlow: invites = targetFlow / 96 CRC.
+    /// Use max uint256 targetFlow to discover all possible invites.
+    /// </summary>
+    public bool? QuantizedMode { get; set; }
 }
 
 public class SimulatedBalance

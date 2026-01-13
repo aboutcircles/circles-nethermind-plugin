@@ -7,6 +7,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="Circles.Pathfinder.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Google.OrTools" Version="9.12.4544" />
         <PackageReference Include="Npgsql" Version="9.0.3" />
     </ItemGroup>

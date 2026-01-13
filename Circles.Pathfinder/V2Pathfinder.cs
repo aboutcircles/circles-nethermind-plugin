@@ -92,6 +92,23 @@ public class V2Pathfinder
         var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
 
         /* --------------------------------------------------------------------
+         * 2a. Optional quantization for invitation module (96 CRC chunks)
+         *     Only sink-bound transfers are quantized; intermediates pass through.
+         *     Number of invites is derived from targetFlow: invites = targetFlow / 96 CRC.
+         * ------------------------------------------------------------------ */
+        if (request.QuantizedMode == true)
+        {
+            // 96 CRC in 6-decimal precision = 96 * 10^12
+            const long InvitationQuanta = 96_000_000_000_000L;
+
+            simplePaths = PathUtils.QuantizeSinkBoundFlows(
+                simplePaths,
+                effSink,
+                InvitationQuanta,
+                tgt); // targetFlow determines how many invites to find
+        }
+
+        /* --------------------------------------------------------------------
          * 2b. Optional pruning to fit a transfer-step budget
          *      We keep the biggest-flow paths first and count "steps" after
          *      collapsing balance nodes (avatar→avatar per token).

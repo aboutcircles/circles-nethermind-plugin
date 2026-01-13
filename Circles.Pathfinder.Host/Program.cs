@@ -203,6 +203,7 @@ app.MapGet("/findPath", async (
     bool? withWrap,
     string? simulatedBalances,
     int? maxTransfers,
+    bool? quantizedMode,
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -270,7 +271,8 @@ app.MapGet("/findPath", async (
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
             SimulatedBalances = sim,
-            MaxTransfers = maxTransfers
+            MaxTransfers = maxTransfers,
+            QuantizedMode = quantizedMode
         };
 
         using var h = await pool.Rent(request, balanceGraph, trustGraph);
