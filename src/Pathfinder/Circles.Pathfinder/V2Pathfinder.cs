@@ -238,11 +238,18 @@ public class V2Pathfinder
             transfer.Add(step);
         }
 
+        /* --------------------------------------------------------------------
+         * 8. Calculate maxFlow by summing transfers TO the sink.
+         *    We sum sink-bound transfers (not source-outbound) because after
+         *    path collapsing, multi-hop paths may no longer have the original
+         *    source in the 'from' field. The total reaching the sink correctly
+         *    represents the achievable flow.
+         * ------------------------------------------------------------------ */
         UInt256 maxFlowWei = 0;
         foreach (var t in transfer)
         {
-            bool fromIsSource = AddressIdPool.IdOf(t.From) == sourceId;
-            if (fromIsSource)
+            bool toIsSink = AddressIdPool.IdOf(t.To) == sinkId;
+            if (toIsSink)
                 maxFlowWei += UInt256.Parse(t.Value);
         }
 

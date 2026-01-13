@@ -577,6 +577,34 @@ run_test "trust" "circlesV2_findPath (simulated consented flow on source)" "curl
 # This should allow transfer if source->sink direct edge exists
 run_test "trust" "circlesV2_findPath (consented flow with mutual trust)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_2\",\"targetFlow\":\"1000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"1000000000000000000\",\"IsWrapped\":false}],\"simulatedConsentedAvatars\":[\"$TEST_ADDR_1\",\"$TEST_ADDR_2\"],\"simulatedTrusts\":[{\"Truster\":\"$TEST_ADDR_1\",\"Trustee\":\"$TEST_ADDR_2\"}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
+# Quantized Mode Tests (Invitation Module)
+# quantizedMode ensures all sink-bound transfers are exact multiples of 96 CRC for invitations.
+# 96 CRC = 96000000000000000000 wei (96 * 10^18)
+
+# Test 1: Without quantizedMode - baseline comparison (returns any valid flow)
+run_test "trust" "circlesV2_findPath (no quantizedMode - baseline)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"192000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"500000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 2: With quantizedMode, request 1 invite (96 CRC) - should return exactly 96 CRC
+run_test "trust" "circlesV2_findPath (quantizedMode=true, 1 invite)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"96000000000000000000\",\"quantizedMode\":true,\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"500000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 3: With quantizedMode, request 2 invites (192 CRC) - should return exactly 192 CRC
+run_test "trust" "circlesV2_findPath (quantizedMode=true, 2 invites)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"192000000000000000000\",\"quantizedMode\":true,\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"500000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 4: With quantizedMode, request 5 invites (480 CRC) - should return up to 5 invites worth
+run_test "trust" "circlesV2_findPath (quantizedMode=true, 5 invites)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"480000000000000000000\",\"quantizedMode\":true,\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"500000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 5: With quantizedMode, max discovery - find all possible invites
+run_test "trust" "circlesV2_findPath (quantizedMode=true, max invites discovery)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"115792089237316195423570985008687907853269984665640564039457584007913129639935\",\"quantizedMode\":true,\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"500000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 6: With quantizedMode, insufficient balance for 1 invite - should return empty
+run_test "trust" "circlesV2_findPath (quantizedMode=true, insufficient for invite)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"96000000000000000000\",\"quantizedMode\":true,\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"50000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 7: With quantizedMode, partial balance (100 CRC, enough for 1 but not 2) - should return 96 CRC
+run_test "trust" "circlesV2_findPath (quantizedMode=true, partial balance rounds down)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"192000000000000000000\",\"quantizedMode\":true,\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"100000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Test 8: Without quantizedMode but same params - compare behavior
+run_test "trust" "circlesV2_findPath (no quantizedMode, same params as test 7)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"192000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"100000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
 ######################################################################
 # SDK Enablement Methods
 ######################################################################
