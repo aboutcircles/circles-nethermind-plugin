@@ -831,3 +831,166 @@ groups:
         annotations:
           summary: "Auth RPC calls failing"
           description: "ERC-1271 signature verification RPC calls are failing. Smart wallet auth may be impacted."
+
+  # ============================================================================
+  # Profile Pinning Service
+  # ============================================================================
+
+  - name: circles-profile-pinning-alerts
+    rules:
+      # Service availability
+      - alert: ProfilePinningServiceDown
+        expr: up{job="profile-pinning"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Profile Pinning service is down"
+          description: "The Profile Pinning service has been unreachable for more than 3 minutes."
+
+      - alert: ProfilePinningNotReady
+        expr: probe_success{job="blackbox-ready", service="profile-pinning"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning service not ready"
+          description: "The /ready endpoint for Profile Pinning service has been failing for more than 5 minutes."
+
+      - alert: ProfilePinningNotAlive
+        expr: probe_success{job="blackbox-live", service="profile-pinning"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Profile Pinning service not responding"
+          description: "The /live endpoint for Profile Pinning service is not responding for more than 3 minutes."
+
+      # Authority and sync status
+      - alert: ProfilePinningDegraded
+        expr: profile_pinning_is_authoritative == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning service degraded"
+          description: "Profile Pinning service is not authoritative - may be syncing or experienced errors."
+
+      - alert: ProfilePinningBlockLag
+        expr: profile_pinning_chain_tip_block - profile_pinning_last_processed_block > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning service lagging behind chain"
+          description: "Profile Pinning is {{ $value }} blocks behind the chain tip."
+
+      - alert: ProfilePinningBlockLagCritical
+        expr: profile_pinning_chain_tip_block - profile_pinning_last_processed_block > 1000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Profile Pinning service severely lagging"
+          description: "Profile Pinning is {{ $value }} blocks behind the chain - reorg or sync issue."
+
+      # HTTP error rates
+      - alert: ProfilePinningHighErrorRate
+        expr: |
+          (
+            sum(rate(profile_pinning_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(profile_pinning_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in Profile Pinning service"
+          description: "Profile Pinning service error rate is {{ $value | printf \"%.1f\" }}% (>5%)."
+
+      # Request latency
+      - alert: ProfilePinningHighLatency
+        expr: histogram_quantile(0.95, rate(profile_pinning_http_request_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency in Profile Pinning service"
+          description: "95th percentile latency is {{ $value | printf \"%.2f\" }}s."
+
+      # GC (Garbage Collection) alerts
+      - alert: ProfilePinningGCStalled
+        expr: (time() - profile_pinning_gc_last_run_timestamp) > 7200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning GC stalled"
+          description: "GC has not run in over 2 hours."
+
+      - alert: ProfilePinningGCErrors
+        expr: increase(profile_pinning_gc_errors_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning GC errors"
+          description: "Multiple GC errors in the last hour."
+
+      # IPFS/Filebase operations
+      - alert: ProfilePinningIpfsFetchErrors
+        expr: increase(profile_pinning_ipfs_fetch_errors_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning IPFS fetch errors"
+          description: "Multiple IPFS fetch errors in the last hour."
+
+      - alert: ProfilePinningFilebasePinErrors
+        expr: increase(profile_pinning_filebase_pin_errors_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning Filebase pin errors"
+          description: "Multiple Filebase pinning errors in the last hour."
+
+      # Inventory anomalies
+      - alert: ProfilePinningHotSetEmpty
+        expr: profile_pinning_hot_set_size == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning hot set empty"
+          description: "No profiles in hot set - may indicate sync or data issue."
+
+      - alert: ProfilePinningEphemeralBacklog
+        expr: profile_pinning_ephemeral_profiles_count > 10000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large ephemeral profile backlog"
+          description: "{{ $value }} ephemeral profiles pending. GC may be overwhelmed."
+
+      # Node.js runtime
+      - alert: ProfilePinningHighMemory
+        expr: process_resident_memory_bytes{job="profile-pinning"} > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning high memory usage"
+          description: "Profile Pinning service memory usage is {{ $value | humanize }}."
+
+      - alert: ProfilePinningEventLoopLag
+        expr: nodejs_eventloop_lag_seconds{job="profile-pinning"} > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Profile Pinning event loop lag"
+          description: "Node.js event loop lag is {{ $value | printf \"%.2f\" }}s."

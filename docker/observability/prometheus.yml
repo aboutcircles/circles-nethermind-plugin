@@ -77,6 +77,12 @@ scrape_configs:
     static_configs:
       - targets: ['auth-service:3001']
 
+  # Profile Pinning Service
+  - job_name: 'profile-pinning'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['profile-pinning:3000']
+
   # Blackbox exporter - probe /ready endpoints for service health
   - job_name: 'blackbox-ready'
     scrape_interval: 30s
@@ -90,6 +96,7 @@ scrape_configs:
         - http://cache-service:3001/ready
         - http://invitation-app:3000/health/ready
         - http://auth-service:3001/health/ready
+        - http://profile-pinning:3000/health/ready
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -123,6 +130,7 @@ scrape_configs:
         - http://cache-service:3001/live
         - http://invitation-app:3000/health/live
         - http://auth-service:3001/health/live
+        - http://profile-pinning:3000/health/live
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -198,6 +206,8 @@ scrape_configs:
         - https://staging.circlesubi.network/pathfinder/live
         # Chain RPC (Nethermind health)
         - https://staging.circlesubi.network/chain-rpc/health
+        # Profile Pinning service
+        - https://staging.circlesubi.network/profiles/health/live
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
