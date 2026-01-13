@@ -42,17 +42,12 @@ public class FlowRequest
 
     /// <summary>
     /// When true, enforces 96 CRC quantization for sink-bound transfers (invitation module).
-    /// Each transfer to the sink will be exactly 96 CRC.
+    /// Each sink-bound transfer will be exactly N × 96 CRC.
+    /// The number of invites is derived from targetFlow: invites = targetFlow / 96 CRC.
+    /// Use max uint256 targetFlow to discover all possible invites.
     /// </summary>
     [JsonPropertyName("quantizedMode")]
     public bool? QuantizedMode { get; set; }
-
-    /// <summary>
-    /// Number of invitations to fund (default: 1). Only used when quantizedMode=true.
-    /// Target flow = numberOfInvites × 96 CRC.
-    /// </summary>
-    [JsonPropertyName("numberOfInvites")]
-    public int? NumberOfInvites { get; set; }
 }
 
 public class SimulatedBalance

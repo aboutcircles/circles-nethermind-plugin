@@ -24,7 +24,7 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>>();
         var sink = Node(99);
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Is.Empty);
     }
@@ -44,7 +44,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         // Non-sink-bound paths are excluded (they don't contribute to invitations)
         Assert.That(result, Is.Empty);
@@ -66,7 +66,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(Quanta96CRC));
@@ -87,7 +87,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 2);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 2 * Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(twoQuanta));
@@ -110,7 +110,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(Quanta96CRC), "Should round down to 96 CRC");
@@ -131,7 +131,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 3);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 3 * Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(2 * Quanta96CRC), "Should round down to 192 CRC");
@@ -154,7 +154,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Is.Empty, "Path with < 96 CRC should be excluded");
     }
@@ -174,7 +174,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Is.Empty, "Path with 95.999 CRC should be excluded");
     }
@@ -200,7 +200,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         // All edges in path should have the same quantized flow
@@ -237,7 +237,7 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>> { path1, path2, path3 };
 
         // Request 3 invites (3 × 96 = 288 CRC)
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 3);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 3 * Quanta96CRC);
 
         // path1 provides 1 quanta, path2 provides 2 quanta, path3 excluded
         Assert.That(result, Has.Count.EqualTo(2));
@@ -267,7 +267,7 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>> { path1, path2 };
 
         // Only request 2 invites (192 CRC)
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 2);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 2 * Quanta96CRC);
 
         // Should only use first path (which can provide 2 quanta)
         Assert.That(result, Has.Count.EqualTo(1));
@@ -291,7 +291,7 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>> { path };
 
         // Request only 1 invite
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(Quanta96CRC));
@@ -311,7 +311,7 @@ public class QuantizedModeTests
         };
         var paths = new List<List<SimpleEdge>> { path };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 3);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 3 * Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(3 * Quanta96CRC));
@@ -332,7 +332,7 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>> { path };
 
         // Request 5 invites, but only 2 are available
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 5);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 5 * Quanta96CRC);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0][0].Flow, Is.EqualTo(2 * Quanta96CRC), "Should get 2 invites (all available)");
@@ -354,7 +354,7 @@ public class QuantizedModeTests
         var paths = new List<List<SimpleEdge>> { path };
 
         // Request 0 invites
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 0);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 0L);
 
         Assert.That(result, Is.Empty);
     }
@@ -367,7 +367,7 @@ public class QuantizedModeTests
         var emptyPath = new List<SimpleEdge>();
         var paths = new List<List<SimpleEdge>> { emptyPath };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         Assert.That(result, Is.Empty);
     }
@@ -394,7 +394,7 @@ public class QuantizedModeTests
 
         var paths = new List<List<SimpleEdge>> { pathToSink, pathToOther };
 
-        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, 1);
+        var result = PathUtils.QuantizeSinkBoundFlows(paths, sink, Quanta96CRC, Quanta96CRC);
 
         // Only sink-bound path should be in result (non-sink paths are excluded)
         Assert.That(result, Has.Count.EqualTo(1));

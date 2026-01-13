@@ -155,17 +155,16 @@ internal static class PathUtils
     /// <param name="paths">List of paths from ExtractFlowPaths</param>
     /// <param name="sink">The sink node ID</param>
     /// <param name="quantaSize">The quantization unit (e.g., 96 CRC in 6-decimal precision)</param>
-    /// <param name="targetInvites">Target number of invitations (each = 1 quanta)</param>
+    /// <param name="targetFlow">Target flow amount - determines max invites (targetFlow / quantaSize)</param>
     /// <returns>List of quantized paths, may have fewer paths than input</returns>
     public static List<List<SimpleEdge>> QuantizeSinkBoundFlows(
         List<List<SimpleEdge>> paths,
         int sink,
         long quantaSize,
-        int targetInvites)
+        long targetFlow)
     {
         var result = new List<List<SimpleEdge>>();
         long totalQuantizedFlow = 0;
-        long targetFlow = quantaSize * targetInvites;
 
         foreach (var path in paths)
         {
