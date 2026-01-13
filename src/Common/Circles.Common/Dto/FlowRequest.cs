@@ -39,7 +39,20 @@ public class FlowRequest
 
     [JsonPropertyName("maxTransfers")]
     public int? MaxTransfers { get; set; }
-    public bool? EnableGroupMinting { get; set; }
+
+    /// <summary>
+    /// When true, enforces 96 CRC quantization for sink-bound transfers (invitation module).
+    /// Each transfer to the sink will be exactly 96 CRC.
+    /// </summary>
+    [JsonPropertyName("quantizedMode")]
+    public bool? QuantizedMode { get; set; }
+
+    /// <summary>
+    /// Number of invitations to fund (default: 1). Only used when quantizedMode=true.
+    /// Target flow = numberOfInvites × 96 CRC.
+    /// </summary>
+    [JsonPropertyName("numberOfInvites")]
+    public int? NumberOfInvites { get; set; }
 }
 
 public class SimulatedBalance
