@@ -202,30 +202,9 @@ services:
       retries: 3
       start_period: 60s
 
-  profile-service:
-    container_name: profile-service
-    image: jaensen/circles-profile-pinning-service:0.5.0-rc1
-    depends_on:
-      nethermind-gnosis:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - circles-gnosis
-    expose:
-      - 3000 # Caddy proxies externally
-    volumes:
-      - ../.state/profile-service:/data
-    env_file:
-      - ../.env
-    environment:
-      - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
-      - IPFS_MAX_PARALLELISM=192
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+  # NOTE: profile-service removed - now deployed separately via Ansible
+  # See: aboutcircles-infrastructure/indexer_ansible/roles/profile_pinning_service
+  # Container name: profile-pinning, routes via /profiles/* in Caddy
 
   postgres-gnosis:
     container_name: postgres-gnosis
