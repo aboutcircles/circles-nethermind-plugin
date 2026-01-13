@@ -94,18 +94,18 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 2a. Optional quantization for invitation module (96 CRC chunks)
          *     Only sink-bound transfers are quantized; intermediates pass through.
+         *     Number of invites is derived from targetFlow: invites = targetFlow / 96 CRC.
          * ------------------------------------------------------------------ */
         if (request.QuantizedMode == true)
         {
             // 96 CRC in 6-decimal precision = 96 * 10^12
             const long InvitationQuanta = 96_000_000_000_000L;
-            int numberOfInvites = request.NumberOfInvites ?? 1;
 
             simplePaths = PathUtils.QuantizeSinkBoundFlows(
                 simplePaths,
                 effSink,
                 InvitationQuanta,
-                numberOfInvites);
+                tgt); // targetFlow determines how many invites to find
         }
 
         /* --------------------------------------------------------------------
