@@ -10,8 +10,8 @@ namespace Circles.Pathfinder.Tests;
 [TestFixture]
 public class QuantizedModeTests
 {
-    // 96 CRC in 6-decimal precision = 96 * 10^12
-    private const long Quanta96CRC = 96_000_000_000_000L;
+    // 96 CRC in 6-decimal precision = 96 * 10^6
+    private const long Quanta96CRC = 96_000_000L;
 
     // Test addresses (just need unique IDs)
     private static int Node(int i) => AddressIdPool.IdOf($"0x{i:X40}");
@@ -40,7 +40,7 @@ public class QuantizedModeTests
         // Path that doesn't end at sink - irrelevant for invitation flow
         var path = new List<SimpleEdge>
         {
-            new(source, other, token, 1000) { Flow = 200_000_000_000_000L }
+            new(source, other, token, 1000) { Flow = 200_000_000L }  // 200 CRC
         };
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -103,7 +103,7 @@ public class QuantizedModeTests
         var token = Node(100);
 
         // Path with 100 CRC (more than 1 quanta, less than 2)
-        long hundredCRC = 100_000_000_000_000L;
+        long hundredCRC = 100_000_000L;
         var path = new List<SimpleEdge>
         {
             new(source, sink, token, 1000) { Flow = hundredCRC }
@@ -124,7 +124,7 @@ public class QuantizedModeTests
         var token = Node(100);
 
         // Path with 250 CRC (between 2 and 3 quanta)
-        long flow250CRC = 250_000_000_000_000L;
+        long flow250CRC = 250_000_000L;
         var path = new List<SimpleEdge>
         {
             new(source, sink, token, 1000) { Flow = flow250CRC }
@@ -147,7 +147,7 @@ public class QuantizedModeTests
         var token = Node(100);
 
         // Path with only 50 CRC (less than 1 quanta)
-        long fiftyCRC = 50_000_000_000_000L;
+        long fiftyCRC = 50_000_000L;
         var path = new List<SimpleEdge>
         {
             new(source, sink, token, 1000) { Flow = fiftyCRC }
@@ -191,7 +191,7 @@ public class QuantizedModeTests
         var token = Node(100);
 
         // Multi-hop path: A → B → C → Sink with 100 CRC
-        long flow = 100_000_000_000_000L;
+        long flow = 100_000_000L;
         var path = new List<SimpleEdge>
         {
             new(a, b, token, 1000) { Flow = flow },
@@ -221,17 +221,17 @@ public class QuantizedModeTests
         // Three paths with different flows
         var path1 = new List<SimpleEdge>
         {
-            new(source, mid1, token, 1000) { Flow = 100_000_000_000_000L }, // 100 CRC → 96
-            new(mid1, sink, token, 1000) { Flow = 100_000_000_000_000L }
+            new(source, mid1, token, 1000) { Flow = 100_000_000L }, // 100 CRC → 96
+            new(mid1, sink, token, 1000) { Flow = 100_000_000L }
         };
         var path2 = new List<SimpleEdge>
         {
-            new(source, mid2, token, 1000) { Flow = 200_000_000_000_000L }, // 200 CRC → 192
-            new(mid2, sink, token, 1000) { Flow = 200_000_000_000_000L }
+            new(source, mid2, token, 1000) { Flow = 200_000_000L }, // 200 CRC → 192
+            new(mid2, sink, token, 1000) { Flow = 200_000_000L }
         };
         var path3 = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 50_000_000_000_000L } // 50 CRC → excluded
+            new(source, sink, token, 1000) { Flow = 50_000_000L } // 50 CRC → excluded
         };
 
         var paths = new List<List<SimpleEdge>> { path1, path2, path3 };
@@ -257,11 +257,11 @@ public class QuantizedModeTests
         // Two paths, each with enough for 2 invites
         var path1 = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 200_000_000_000_000L } // 200 CRC
+            new(source, sink, token, 1000) { Flow = 200_000_000L } // 200 CRC
         };
         var path2 = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 200_000_000_000_000L } // 200 CRC
+            new(source, sink, token, 1000) { Flow = 200_000_000L } // 200 CRC
         };
 
         var paths = new List<List<SimpleEdge>> { path1, path2 };
@@ -286,7 +286,7 @@ public class QuantizedModeTests
         // Path with enough for 5 invites
         var path = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 500_000_000_000_000L }
+            new(source, sink, token, 1000) { Flow = 500_000_000L }
         };
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -327,7 +327,7 @@ public class QuantizedModeTests
         // Path with only 2 invites worth
         var path = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 200_000_000_000_000L }
+            new(source, sink, token, 1000) { Flow = 200_000_000L }
         };
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -349,7 +349,7 @@ public class QuantizedModeTests
 
         var path = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 200_000_000_000_000L }
+            new(source, sink, token, 1000) { Flow = 200_000_000L }
         };
         var paths = new List<List<SimpleEdge>> { path };
 
@@ -383,13 +383,13 @@ public class QuantizedModeTests
         // Path 1 ends at sink
         var pathToSink = new List<SimpleEdge>
         {
-            new(source, sink, token, 1000) { Flow = 100_000_000_000_000L }
+            new(source, sink, token, 1000) { Flow = 100_000_000L }
         };
 
         // Path 2 ends at other node (not sink) - irrelevant for invitation flow
         var pathToOther = new List<SimpleEdge>
         {
-            new(source, other, token, 1000) { Flow = 100_000_000_000_000L }
+            new(source, other, token, 1000) { Flow = 100_000_000L }
         };
 
         var paths = new List<List<SimpleEdge>> { pathToSink, pathToOther };
