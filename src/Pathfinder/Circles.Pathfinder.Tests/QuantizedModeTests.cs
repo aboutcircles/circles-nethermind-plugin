@@ -403,4 +403,13 @@ public class QuantizedModeTests
         Assert.That(result[0][0].To, Is.EqualTo(sink));
         Assert.That(result[0][0].Flow, Is.EqualTo(Quanta96CRC));
     }
+
+    // ─────────────────────── Per-Token Aggregation Tests ───────────────────────
+    // NOTE: These test the OLD per-path quantization behavior.
+    // The NEW V2Pathfinder.QuantizeSinkBoundEdgesByToken aggregates by token type
+    // AFTER path collapsing, allowing multiple small paths of the same token
+    // to combine into valid quanta (e.g., 60 + 36 = 96 CRC).
+    //
+    // The new behavior is tested via integration tests with simulated data.
+    // See: scripts/test-rpc.sh for quantizedMode tests
 }

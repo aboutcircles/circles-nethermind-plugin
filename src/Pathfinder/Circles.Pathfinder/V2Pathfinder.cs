@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Edges;
@@ -92,21 +93,10 @@ public class V2Pathfinder
         var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
 
         /* --------------------------------------------------------------------
-         * 2a. Optional quantization for invitation module (96 CRC chunks)
-         *     Only sink-bound transfers are quantized; intermediates pass through.
-         *     Number of invites is derived from targetFlow: invites = targetFlow / 96 CRC.
+         * 2a. NOTE: Quantization for invitation module moved to step 6d (after aggregation)
+         *     Old per-path quantization filtered paths individually, missing cases where
+         *     multiple paths deliver the same token type that together form valid quanta.
          * ------------------------------------------------------------------ */
-        if (request.QuantizedMode == true)
-        {
-            // 96 CRC in 6-decimal precision = 96 * 10^6
-            const long InvitationQuanta = 96_000_000L;
-
-            simplePaths = PathUtils.QuantizeSinkBoundFlows(
-                simplePaths,
-                effSink,
-                InvitationQuanta,
-                tgt); // targetFlow determines how many invites to find
-        }
 
         /* --------------------------------------------------------------------
          * 2b. Optional pruning to fit a transfer-step budget
@@ -206,11 +196,16 @@ public class V2Pathfinder
         ValidateMintEdgeOrdering(sortedEdges, capacityGraph);
 
         /* --------------------------------------------------------------------
-         * 6d. Validate quantization if requested - all sink transfers must be 96 CRC multiples
+         * 6d. Apply quantization if requested - aggregate sink transfers by token
+         *     and round down to 96 CRC multiples. This allows multiple small
+         *     transfers of the same token to combine into valid quanta.
          * ------------------------------------------------------------------ */
         if (request.QuantizedMode == true)
         {
             const long InvitationQuanta = 96_000_000L;
+            sortedEdges = QuantizeSinkBoundEdgesByToken(sortedEdges, sinkId, InvitationQuanta, tgt);
+
+            // Safety validation - ensure quantization produced valid results
             ValidateQuantizedSinkTransfers(sortedEdges, sinkId, InvitationQuanta);
         }
 
@@ -871,28 +866,157 @@ public class V2Pathfinder
     }
 
     /* ------------------------------------------------------------------------
-     * Validate that all sink-bound transfers are exact multiples of quantaSize.
-     * Used in quantized mode (invitation module) to ensure each transfer
-     * delivers exactly 96 CRC chunks.
+     * Quantize sink-bound edges by token type for the invitation module.
+     *
+     * Algorithm:
+     * 1. Separate edges into sink-bound and non-sink-bound
+     * 2. Group sink-bound edges by token type
+     * 3. For each token type:
+     *    - Sum total flow to sink
+     *    - Calculate quantized amount: floor(total / quantaSize) * quantaSize
+     *    - Proportionally scale each edge's flow to fit the quantized total
+     * 4. Return non-sink-bound edges + quantized sink-bound edges
+     *
+     * This allows multiple small transfers of the same token to combine into
+     * valid 96 CRC quanta (e.g., 60 CRC + 36 CRC = 96 CRC quantum).
+     * --------------------------------------------------------------------- */
+    private static List<FlowEdge> QuantizeSinkBoundEdgesByToken(
+        List<FlowEdge> edges,
+        int sinkId,
+        long quantaSize,
+        long targetFlow)
+    {
+        // Separate sink-bound from other edges
+        var sinkBound = new List<FlowEdge>();
+        var nonSinkBound = new List<FlowEdge>();
+
+        foreach (var edge in edges)
+        {
+            if (edge.To == sinkId && edge.Flow > 0)
+                sinkBound.Add(edge);
+            else
+                nonSinkBound.Add(edge);
+        }
+
+        // If no sink-bound edges, nothing to quantize
+        if (sinkBound.Count == 0)
+            return edges;
+
+        // Group sink-bound edges by token type
+        var byToken = new Dictionary<int, List<FlowEdge>>();
+        foreach (var edge in sinkBound)
+        {
+            if (!byToken.TryGetValue(edge.Token, out var list))
+            {
+                list = new List<FlowEdge>();
+                byToken[edge.Token] = list;
+            }
+            list.Add(edge);
+        }
+
+        // Calculate how many quanta we need (based on target flow)
+        long targetQuanta = targetFlow / quantaSize;
+        long quantaRemaining = targetQuanta;
+
+        // Process each token type and quantize
+        var quantizedSinkBound = new List<FlowEdge>();
+
+        // Sort token groups by total flow descending (prefer larger flows first)
+        var tokenGroups = byToken
+            .Select(kvp => (Token: kvp.Key, Edges: kvp.Value, Total: kvp.Value.Sum(e => e.Flow)))
+            .OrderByDescending(g => g.Total)
+            .ToList();
+
+        foreach (var group in tokenGroups)
+        {
+            if (quantaRemaining <= 0)
+                break;
+
+            long totalFlow = group.Total;
+
+            // How many full quanta can this token type provide?
+            long availableQuanta = totalFlow / quantaSize;
+
+            if (availableQuanta <= 0)
+                continue; // This token type can't provide even 1 quantum
+
+            // Take only what we need (up to what's available)
+            long quantaToUse = Math.Min(availableQuanta, quantaRemaining);
+            long quantizedTotal = quantaToUse * quantaSize;
+
+            // Proportionally scale each edge's flow
+            // Use integer math to avoid floating point issues
+            long allocated = 0;
+
+            for (int i = 0; i < group.Edges.Count; i++)
+            {
+                var edge = group.Edges[i];
+                long scaledFlow;
+
+                if (i == group.Edges.Count - 1)
+                {
+                    // Last edge gets remainder to ensure exact total
+                    scaledFlow = quantizedTotal - allocated;
+                }
+                else
+                {
+                    // Proportional allocation: edge.Flow / totalFlow * quantizedTotal
+                    scaledFlow = (edge.Flow * quantizedTotal) / totalFlow;
+                }
+
+                if (scaledFlow > 0)
+                {
+                    var quantizedEdge = new FlowEdge(edge.From, edge.To, edge.Token, edge.InitialCapacity)
+                    {
+                        Flow = scaledFlow,
+                        CurrentCapacity = edge.CurrentCapacity
+                    };
+                    quantizedSinkBound.Add(quantizedEdge);
+                    allocated += scaledFlow;
+                }
+            }
+
+            quantaRemaining -= quantaToUse;
+        }
+
+        // Combine non-sink-bound edges with quantized sink-bound edges
+        var result = new List<FlowEdge>(nonSinkBound.Count + quantizedSinkBound.Count);
+        result.AddRange(nonSinkBound);
+        result.AddRange(quantizedSinkBound);
+
+        return result;
+    }
+
+    /* ------------------------------------------------------------------------
+     * Validate that the TOTAL flow per token type to sink is a multiple of quantaSize.
+     * Individual edges may have non-quantized flows, but their sum per token must be.
+     * Used as a safety check after quantization to ensure correctness.
      * --------------------------------------------------------------------- */
     private static void ValidateQuantizedSinkTransfers(List<FlowEdge> edges, int sinkId, long quantaSize)
     {
+        // Group sink-bound edges by token and sum flows
+        var flowByToken = new Dictionary<int, long>();
+
         foreach (var edge in edges)
         {
-            bool edgeGoesToSink = edge.To == sinkId;
-            if (!edgeGoesToSink || edge.Flow <= 0)
-            {
+            if (edge.To != sinkId || edge.Flow <= 0)
                 continue;
-            }
 
-            bool isQuantized = edge.Flow % quantaSize == 0;
+            flowByToken.TryGetValue(edge.Token, out long current);
+            flowByToken[edge.Token] = current + edge.Flow;
+        }
+
+        // Validate each token type's total is a multiple of quantaSize
+        foreach (var (token, totalFlow) in flowByToken)
+        {
+            bool isQuantized = totalFlow % quantaSize == 0;
             if (!isQuantized)
             {
-                string fromAddr = AddressIdPool.StringOf(edge.From);
+                string tokenAddr = AddressIdPool.StringOf(token);
                 throw new InvalidOperationException(
-                    $"Quantization violation: Transfer from {fromAddr} to sink has flow {edge.Flow}, " +
+                    $"Quantization violation: Total flow of token {tokenAddr} to sink is {totalFlow}, " +
                     $"which is not a multiple of {quantaSize} (96 CRC). " +
-                    "All sink-bound transfers must be exact 96 CRC multiples in quantized mode.");
+                    "Total per token type must be exact 96 CRC multiples in quantized mode.");
             }
         }
     }
