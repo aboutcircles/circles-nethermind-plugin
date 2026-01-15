@@ -1,5 +1,8 @@
 name: Smart Deploy to Staging
 
+# Kill switch: Set repository variable DEPLOYMENTS_ENABLED=false to disable automated deploys
+# Manual workflow_dispatch always allowed
+
 # Reusable workflow - called by branch-specific workflows
 # Direct push trigger for feature branches only
 on:
@@ -61,11 +64,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check-killswitch:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Check deployment kill switch
+        id: check
+        env:
+          DEPLOYMENTS_ENABLED: ${{ vars.DEPLOYMENTS_ENABLED }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          ENABLED="${DEPLOYMENTS_ENABLED:-true}"
+          if [ "$ENABLED" = "false" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "::notice::Deployments disabled via DEPLOYMENTS_ENABLED=false"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+          else
+            echo "proceed=true" >> $GITHUB_OUTPUT
+          fi
+
   # Wait for CI tests to pass before deploying
   # Only runs when called from dev/main workflows (workflow_call), not on direct push (feature branches)
   wait-for-tests:
+    needs: check-killswitch
+    if: needs.check-killswitch.outputs.proceed == 'true' && github.event_name == 'workflow_call' && !inputs.skip_tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_call' && !inputs.skip_tests
     steps:
       - name: Wait for CI build and test
         uses: lewagon/wait-on-check-action@v1.3.4
@@ -78,9 +101,9 @@ jobs:
           allowed-conclusions: success
 
   detect-changes:
-    needs: [wait-for-tests]
+    needs: [check-killswitch, wait-for-tests]
     # Run even if wait-for-tests was skipped (workflow_dispatch)
-    if: always() && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped')
+    if: always() && needs.check-killswitch.outputs.proceed == 'true' && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
