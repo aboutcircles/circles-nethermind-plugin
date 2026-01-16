@@ -55,6 +55,21 @@ services:
     ports:
       - 5432:5432
 
+  trust-missing-avatars:
+    build:
+      context: .
+      dockerfile: trust-missing-avatars.Dockerfile
+    depends_on:
+      - circles-spaceneth
+      - db2
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      - RPC_URL=http://localhost:8545
+
   blockscout:
     depends_on:
       - db

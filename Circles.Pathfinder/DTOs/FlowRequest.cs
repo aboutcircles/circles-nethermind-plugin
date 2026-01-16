@@ -13,6 +13,7 @@ public class FlowRequest
     public List<SimulatedBalance>? SimulatedBalances { get; set; }
     public List<SimulatedTrust>? SimulatedTrusts { get; set; }
     public int? MaxTransfers { get; set; }
+    public bool? EnableGroupMinting { get; set; }
 }
 
 public class SimulatedBalance

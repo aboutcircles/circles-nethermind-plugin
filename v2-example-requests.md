@@ -9,36 +9,17 @@ curl -X POST --data '{
 ````
 
 ```shell
-# Find all incoming and outgoing trust relations of a Circles V2 avatar:
+# Query PaymentReceived events from the CrcV2 PaymentGateway
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,
   "method": "circles_query",
   "params": [
     {
-      "Namespace": "V_CrcV2",
-      "Table": "TrustRelations",
+      "Namespace": "CrcV2_PaymentGateway",
+      "Table": "PaymentReceived",
       "Columns": [],
-      "Filter": [
-        {
-          "Type": "Conjunction",
-          "ConjunctionType": "Or",
-          "Predicates": [
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "Equals",
-                "Column": "truster",
-                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
-              },
-              {
-                "Type": "FilterPredicate",
-                "FilterType": "Equals",
-                "Column": "trustee",
-                "Value": "0xae3a29a9ff24d0e936a5579bae5c4179c4dff565"
-              }
-          ]
-        }
-      ],
+      "Filter": [],
       "Order": []
     }
   ]
@@ -49,7 +30,14 @@ curl -X POST --data '{
 # Calculate a path between two addresses with a target flow.
 curl 'http://localhost:8545/' \
  -H 'Content-Type: application/json' \
- --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999"}]}'
+ --data-raw '{"jsonrpc":"2.0","id":0,"method":"circlesV2_findPath","params":[{"Source":"0x749c930256b47049cb65adcd7c25e72d5de44b3b","Sink":"0xde374ece6fa50e781e81aac78e811b33d16912c7","TargetFlow":"99999999999999999999999999999999999","EnableGroupMinting":true}]}'
+```
+
+```shell
+# Check the health status of the Circles service.
+curl 'http://localhost:8545/' \
+ -H 'Content-Type: application/json' \
+ --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_health","params":[]}'
 ```
 
 ```shell

@@ -32,7 +32,7 @@ public class NetworkStateUpdaterService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var loadGraph = new LoadGraph(_settings);
-        var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
+        var graphFactory = new GraphFactory(_settings, loadGraph);
         
         long lastBlock = 0;
 
@@ -72,7 +72,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 _networkState.BalanceGraph,
                 _networkState.AccountTrusts,
                 loadGraph,
-                _settings.BaseGroupRouter
+                _settings
             );
             var snap = new CapacityGraphSnapshot(lastBlock, cap);
             _pool.UpdateSnapshot(snap);
