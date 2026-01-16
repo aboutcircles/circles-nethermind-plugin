@@ -177,7 +177,6 @@ services:
       - DATABASE_URL=Host=postgres-gnosis;Port=5432;Database=postgres;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - RPC_URL=http://nethermind-gnosis:8545
       - ROUTER_ADDRESS=0xdc287474114cc0551a81ddc2eb51783fbf34802f
-      - PATHFINDER_ENABLE_GROUP_MINTING=false
 
 networks:
   circles-gnosis:

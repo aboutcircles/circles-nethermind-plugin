@@ -4,14 +4,14 @@ This manual describes the procedure for a rolling update of a Nethermind node wi
 
 #### Prerequisites
 *   Access to the node's hosting environment (e.g., Docker, Kubernetes).
-*   Access to the Postgres database used by the plugin.
-*   `curl` and `watch` installed on your local machine or a management server.
+*   Access to the Postgres database used by the plugin (see `DATABASE_URL` in `.env`).
+*   `curl`, `jq' and `watch` installed on your local machine or a management server.
 
 ---
 
 ### Step-by-Step Procedure
 
-#### 1. Remove the node from the Load Balancer
+#### 1. Remove the first node from the Load Balancer
 Ensure no traffic is routed to the node during the maintenance window to prevent request failures.
 
 #### 2. Stop the Nethermind node
@@ -41,7 +41,11 @@ GROUP BY t.table_name;
 **Important:** Copy the output of the query and execute the resulting `DELETE` statements. This ensures that the plugin's `StateMachine` correctly detects the new state and triggers the necessary re-indexing.
 
 #### 4. Update the image version
-Update your deployment configuration (e.g., `docker-compose.yml` or K8s manifest) to point to the latest version of the `circles-nethermind-plugin` image.
+Update your deployment configuration (e.g., `docker-compose.yml` or K8s manifest) to point to the latest release of the `circles-nethermind-plugin`.
+
+You can find all image versions on [https://hub.docker.com/u/jaensen](https://hub.docker.com/u/jaensen):
+* [jaensen/nethermind-circlesubi](https://hub.docker.com/r/jaensen/nethermind-circlesubi/tags)
+* [jaensen/pathfinder-host](https://hub.docker.com/r/jaensen/pathfinder-host/tags)
 
 #### 5. Start the node again
 Restart the Nethermind node:

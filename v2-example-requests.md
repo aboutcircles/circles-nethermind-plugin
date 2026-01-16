@@ -9,7 +9,7 @@ curl -X POST --data '{
 ````
 
 ```shell
-# Find all incoming and outgoing trust relations of a Circles V2 avatar:
+# Query PaymentReceived events from the CrcV2 PaymentGateway
 curl -X POST --data '{
   "jsonrpc": "2.0",
   "id": 1,

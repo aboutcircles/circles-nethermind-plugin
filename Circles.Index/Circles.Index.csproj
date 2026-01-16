@@ -36,7 +36,6 @@
       <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
-      <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.TokenOffers\Circles.Index.CirclesV2.TokenOffers.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj" />
