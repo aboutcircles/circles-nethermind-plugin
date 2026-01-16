@@ -16,7 +16,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -28,13 +28,13 @@
       "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
       "id": 1,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "probe_success{job=\"blackbox-profile-pinning-ready\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-ready\", service=\"profile-pinning\"}", "refId": "A" }],
       "title": "Ready",
       "description": "Profile Pinning /health/ready - UP when DB connected.",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -46,13 +46,13 @@
       "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value" },
-      "targets": [{ "expr": "probe_success{job=\"blackbox-profile-pinning-live\"}", "refId": "A" }],
+      "targets": [{ "expr": "probe_success{job=\"blackbox-live\", service=\"profile-pinning\"}", "refId": "A" }],
       "title": "Live",
       "description": "Profile Pinning /health/live - basic liveness check.",
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -70,7 +70,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -86,7 +86,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
@@ -102,7 +102,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -118,7 +118,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -143,7 +143,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -159,7 +159,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -175,7 +175,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -191,7 +191,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -207,7 +207,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -223,7 +223,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -247,7 +247,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 30, "pointSize": 5, "showPoints": "never", "stacking": { "mode": "normal" } },
@@ -272,7 +272,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -292,7 +292,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80, "stacking": { "mode": "normal" } },
@@ -325,7 +325,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -345,7 +345,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -365,7 +365,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80, "stacking": { "mode": "normal" } },
@@ -398,7 +398,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -416,7 +416,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -434,7 +434,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80, "stacking": { "mode": "normal" } },
@@ -465,7 +465,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -485,7 +485,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
@@ -503,7 +503,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "P1809F7CD0C75ACF3" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 },
