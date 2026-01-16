@@ -141,17 +141,13 @@ jobs:
               - 'docker/pathfinder-host.Dockerfile'
               - 'docker/rpc-host.Dockerfile'
               - 'docker/cache-service.Dockerfile'
-            # OBSERVABILITY: Metrics exporter + monitoring configs (excluding grafana/)
+            # OBSERVABILITY: Metrics exporter source only (configs moved to infrastructure repo)
             observability_src:
               - 'src/Metrics/**'
             observability_docker:
-              - 'docker/observability/*.yml'
-              - 'docker/docker-compose.observability.yml'
               - 'docker/metrics-exporter.Dockerfile'
-            # GRAFANA: Dashboards and provisioning
-            grafana:
-              - 'docker/observability/grafana/**'
-              - 'docker/docker-compose.grafana.yml'
+            # GRAFANA: Dashboards now managed in infrastructure repo
+            # grafana path filter removed - dashboards deployed from infrastructure repo
             # TEST ENVIRONMENT: Integration testing service
             test_environment:
               - 'circles-test-environment/**'
@@ -176,7 +172,7 @@ jobs:
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
           FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
-          FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
+          # Note: Grafana dashboards are now managed in infrastructure repo
           FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
         run: |
           # Handle workflow_dispatch (manual trigger from UI)
@@ -208,21 +204,19 @@ jobs:
               echo "::notice::Gnosis docker files changed - will deploy gnosis"
             fi
 
-            # OBSERVABILITY: src/Metrics + docker/observability/*.yml (not grafana/)
+            # OBSERVABILITY: src/Metrics + docker/metrics-exporter.Dockerfile only
+            # Note: Observability configs and Grafana dashboards are now in infrastructure repo
             if [ "$FILTER_OBS_SRC" == "true" ]; then
               OBS="true"
               echo "::notice::Metrics source changed - will deploy observability"
             fi
             if [ "$FILTER_OBS_DOCKER" == "true" ]; then
               OBS="true"
-              echo "::notice::Observability docker files changed - will deploy observability"
+              echo "::notice::Metrics exporter Dockerfile changed - will deploy observability"
             fi
 
-            # GRAFANA: docker/observability/grafana/**
-            if [ "$FILTER_GRAFANA" == "true" ]; then
-              GRAFANA="true"
-              echo "::notice::Grafana files changed - will deploy grafana"
-            fi
+            # GRAFANA: Dashboards now managed in infrastructure repo
+            # Manual trigger via workflow_dispatch still available if needed
 
             # TEST ENVIRONMENT: submodule or compose file changed
             if [ "$FILTER_TEST_ENV" == "true" ]; then
@@ -248,7 +242,6 @@ jobs:
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
           FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
-          FILTER_GRAFANA: ${{ steps.filter.outputs.grafana }}
           FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
           DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
@@ -260,8 +253,8 @@ jobs:
           echo "| Component | Source Changed | Docker Changed | Will Deploy |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|----------------|----------------|-------------|" >> $GITHUB_STEP_SUMMARY
           echo "| Gnosis (Index/Pathfinder/Rpc/Cache) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Observability (Metrics) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Grafana | - | $FILTER_GRAFANA | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability (Metrics Exporter) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | (managed in infrastructure repo) | - | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
           echo "| Test Environment | $FILTER_TEST_ENV | - | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
 
   build-images:
