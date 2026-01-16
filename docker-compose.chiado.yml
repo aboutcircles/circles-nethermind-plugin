@@ -56,6 +56,22 @@ services:
     volumes:
       - ./.state/postgres-chiado:/var/lib/postgresql/data
 
+  trust-missing-avatars:
+    build:
+      context: .
+      dockerfile: trust-missing-avatars.Dockerfile
+    depends_on:
+      - nethermind-chiado
+      - postgres-chiado
+    restart: unless-stopped
+    networks:
+      - circles-chiado
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=Host=postgres-chiado;Port=5432;Database=postgres;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - RPC_URL=http://nethermind-chiado:8545
+
   consensus-chiado:
     container_name: consensus-chiado
     image: sigp/lighthouse:v5.0.0

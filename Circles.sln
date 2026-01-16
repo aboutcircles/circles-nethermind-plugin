@@ -22,7 +22,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{B30CB7
 		.dockerignore = .dockerignore
 		x64.debug.Dockerfile = x64.debug.Dockerfile
 		.env.example = .env.example
-		Readme.md = Readme.md
 		.gitmodules = .gitmodules
 		.gitignore = .gitignore
 		v2-example-requests.md = v2-example-requests.md
@@ -81,6 +80,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.OIC", "Circles.Index.CirclesV2.OIC\Circles.Index.CirclesV2.OIC.csproj", "{EC9D0C21-9AC9-4462-B123-684FF9D76411}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.PaymentGateway", "Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj", "{CFD35784-7CE5-49BD-9452-40F9A65149FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.TrustMissingAvatars", "Circles.Index.TrustMissingAvatars\Circles.Index.TrustMissingAvatars.csproj", "{D1896720-D7A0-466D-8973-58C0B700F174}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

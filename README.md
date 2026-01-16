@@ -202,6 +202,7 @@ These are copy/paste-friendly and cover all RPC methods:
 
 - **RPC reference**: [`docs/rpc-reference.md`](docs/rpc-reference.md)
 - **Query DSL**: [`docs/query-dsl.md`](docs/query-dsl.md)
+- **Update node and backfill**: [`docs/update-node-and-backfill.md`](docs/update-node-and-backfill.md)
 - **Schema browser**: [`all_tables.html`](all_tables.html) (static snapshot) and `circles_tables()` (live)
 - **Pathfinder deep dives**:
   - [`Circles.Pathfinder/README.md`](Circles.Pathfinder/README.md)
@@ -225,6 +226,28 @@ dotnet test
 
 - `x64.Dockerfile` / `arm64.Dockerfile`: Nethermind + plugin
 - `pathfinder-host.Dockerfile`: Pathfinder host API
+- `trust-missing-avatars.Dockerfile`: Trust missing avatars helper
+
+---
+
+## Service: Trust Missing Avatars
+
+The `trust-missing-avatars` service (C#) automates the process of calling `enableCRCForRouting` on the Router contract for avatars that are trusted by a base group but not yet trusted by the Router.
+
+### Configuration (Environment Variables)
+
+These variables can be set in your `.env` file:
+
+| Variable | Description | Default |
+|---|---|---|
+| `DATABASE_URL` | Postgres connection string. | (Mandatory) |
+| `RPC_URL` | JSON-RPC endpoint for the blockchain node. | (Mandatory) |
+| `PRIVATE_KEY` | Hex-encoded private key (with or without `0x`) for sending transactions. | (Mandatory) |
+| `ROUTER_ADDRESS` | Address of the Circles Router contract. | (Mandatory) |
+| `HUB_ADDRESS` | Address of the Circles Hub contract. | `0xc12C...13e8` |
+| `BATCH_SIZE` | Number of avatars per transaction (max 200). | `50` |
+| `CHECK_HUMANS` | If `true`, calls `isHuman` on the Hub before trusting. | `true` |
+| `HUMAN_CHECK_CONCURRENCY` | Parallelism for the human check (max 200). | `25` |
 
 ---
 
