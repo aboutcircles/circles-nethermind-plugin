@@ -136,5 +136,8 @@ public class Settings
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
+    public readonly bool EnableGroupMinting =
+        Environment.GetEnvironmentVariable("PATHFINDER_ENABLE_GROUP_MINTING")?.ToLowerInvariant() != "false";
+
     #endregion
 }

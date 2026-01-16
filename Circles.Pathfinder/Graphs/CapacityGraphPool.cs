@@ -9,7 +9,7 @@ public sealed class CapacityGraphPool(Settings settings, LoadGraph loadGraph)
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
-    private readonly GraphFactory _gf = new(settings.BaseGroupRouter, loadGraph);
+    private readonly GraphFactory _gf = new(settings, loadGraph);
 
 
     /* ------------------------------------------------------------------ */
@@ -65,9 +65,9 @@ public sealed class CapacityGraphPool(Settings settings, LoadGraph loadGraph)
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         LoadGraph loadGraph,
-        string routerAddress)
+        Settings settings)
     {
-        var gf = new GraphFactory(routerAddress, loadGraph);
+        var gf = new GraphFactory(settings, loadGraph);
         return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts));
     }
 
@@ -84,12 +84,14 @@ public sealed class CapacityGraphPool(Settings settings, LoadGraph loadGraph)
         bool hasWrap = r.WithWrap == true;
         bool hasSimulatedBalances = r.SimulatedBalances?.Any() ?? false;
         bool hasSimulatedTrusts = r.SimulatedTrusts?.Any() ?? false;
+        bool hasGroupMintingOverride = r.EnableGroupMinting != null;
 
         bool needsFiltering = hasIncludeFilters
                               || hasExcludeFilters
                               || hasWrap
                               || hasSimulatedBalances
-                              || hasSimulatedTrusts;
+                              || hasSimulatedTrusts
+                              || hasGroupMintingOverride;
 
         return needsFiltering;
     }

@@ -111,6 +111,7 @@ app.MapGet("/findMaxFlow", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
+    bool? enableGroupMinting,
     string? simulatedBalances, // NEW: JSON array as query param
     NetworkState state,
     SemaphoreSlim sem,
@@ -169,6 +170,7 @@ app.MapGet("/findMaxFlow", async (
             ExcludedFromTokens = excludedFromTokens?.ToList(),
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
+            EnableGroupMinting = enableGroupMinting,
             SimulatedBalances = sim // NEW
         };
 
@@ -201,6 +203,7 @@ app.MapGet("/findPath", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
+    bool? enableGroupMinting,
     string? simulatedBalances,
     int? maxTransfers,
     NetworkState state,
@@ -269,6 +272,7 @@ app.MapGet("/findPath", async (
             ExcludedFromTokens = excludedFromTokens?.ToList(),
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
+            EnableGroupMinting = enableGroupMinting,
             SimulatedBalances = sim,
             MaxTransfers = maxTransfers
         };
