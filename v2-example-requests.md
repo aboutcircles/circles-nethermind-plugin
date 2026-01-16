@@ -34,7 +34,7 @@ curl 'http://localhost:8545/' \
 ```
 
 ```shell
-# Calculate a path between two addresses with a target flow.
+# Check the health status of the Circles service.
 curl 'http://localhost:8545/' \
  -H 'Content-Type: application/json' \
  --data-raw '{"jsonrpc":"2.0","id":0,"method":"circles_health","params":[]}'

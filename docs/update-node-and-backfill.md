@@ -5,7 +5,7 @@ This manual describes the procedure for a rolling update of a Nethermind node wi
 #### Prerequisites
 *   Access to the node's hosting environment (e.g., Docker, Kubernetes).
 *   Access to the Postgres database used by the plugin (see `DATABASE_URL` in `.env`).
-*   `curl`, `jq' and `watch` installed on your local machine or a management server.
+*   `curl`, `jq` and `watch` installed on your local machine or a management server.
 
 ---
 

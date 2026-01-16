@@ -176,6 +176,7 @@ services:
     environment:
       - DATABASE_URL=Host=postgres-gnosis;Port=5432;Database=postgres;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - RPC_URL=http://nethermind-gnosis:8545
+      - PRIVATE_KEY=<EOA_private_key>
       - ROUTER_ADDRESS=0xdc287474114cc0551a81ddc2eb51783fbf34802f
 
 networks:
