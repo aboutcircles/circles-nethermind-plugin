@@ -529,7 +529,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "06. Profile Pinning Service",
+  "title": "Profile Pinning Service",
   "uid": "profile-pinning",
   "version": 1,
   "refresh": "5s",

@@ -478,7 +478,7 @@
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "08. Market API",
+  "title": "Circles Market API",
   "uid": "market-api",
   "version": 1,
   "refresh": "5s",
