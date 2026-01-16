@@ -12,6 +12,7 @@ alerting:
 rule_files:
   - /etc/prometheus/prometheus-alerts.yml
   - /etc/prometheus/prometheus-alerts-liquidity.yml
+  - /etc/prometheus/prometheus-alerts-market.yml
   - /etc/prometheus/prometheus-recording-rules.yml
 
 scrape_configs:
@@ -83,6 +84,17 @@ scrape_configs:
     static_configs:
       - targets: ['profile-pinning:3000']
 
+  # Market API (Circles Marketplace)
+  - job_name: 'market-api'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['market-api:5084']
+
+  - job_name: 'market-codedispenser'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['market-adapter-codedispenser:5680']
+
   # Blackbox exporter - probe /ready endpoints for service health
   - job_name: 'blackbox-ready'
     scrape_interval: 30s
@@ -98,6 +110,8 @@ scrape_configs:
         - http://auth-service:3001/health/ready
         - http://profile-pinning:3000/health/ready
         - http://profile-pinning:3000/health/backfill
+        - http://market-api:5084/health
+        - http://market-adapter-codedispenser:5680/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -132,6 +146,8 @@ scrape_configs:
         - http://invitation-app:3000/health/live
         - http://auth-service:3001/health/live
         - http://profile-pinning:3000/health/live
+        - http://market-api:5084/health
+        - http://market-adapter-codedispenser:5680/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -210,6 +226,8 @@ scrape_configs:
         # Profile Pinning service
         - https://staging.circlesubi.network/profiles/health/live
         - https://staging.circlesubi.network/profiles/health/backfill
+        # Market API (Circles Marketplace)
+        - https://staging.circlesubi.network/market/health
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
