@@ -38,9 +38,9 @@ cd "$DOCKER_DIR"
 
 # Array of core images to build
 # test-environment is optional and built via docker compose (requires submodule)
+# Note: caddy Dockerfile moved to aboutcircles-infrastructure repo
 IMAGES=(
   "cache-service:cache-service.Dockerfile"
-  "caddy:caddy.Dockerfile"
   "index:Index.Dockerfile"
   "metrics-exporter:metrics-exporter.Dockerfile"
   "pathfinder-host:pathfinder-host.Dockerfile"
@@ -63,12 +63,13 @@ for arg in "$@"; do
       echo ""
       echo "Images:"
       echo "  cache             Build cache service (cache-service.Dockerfile)"
-      echo "  caddy             Build caddy service (caddy.Dockerfile)"
       echo "  index             Build Nethermind plugin (Index.Dockerfile)"
       echo "  metrics-exporter  Build metrics exporter (metrics-exporter.Dockerfile)"
       echo "  pathfinder        Build Pathfinder host (pathfinder-host.Dockerfile)"
       echo "  rpc               Build RPC host (rpc-host.Dockerfile)"
       echo "  test-environment  Build test environment (requires submodule init)"
+      echo ""
+      echo "Note: Caddy is built from aboutcircles-infrastructure repo"
       echo ""
       echo "Platform detection:"
       echo "  - Uses DOCKER_DEFAULT_PLATFORM if set (e.g., export DOCKER_DEFAULT_PLATFORM=linux/arm64)"

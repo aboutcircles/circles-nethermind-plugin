@@ -27,8 +27,9 @@ make all                    # Build, test, and pack
 This repository contains the core indexer services. For staging/production deployment:
 
 - **Deployment orchestration** is handled by [aboutcircles-infrastructure](https://github.com/aboutcircles/aboutcircles-infrastructure)
-- **Caddy reverse proxy configuration** (routing rules, rate limits) is managed as an Ansible template in the infrastructure repo
-- Only `docker/caddy.Dockerfile` remains here (builds the custom Caddy image with rate-limit plugin)
+- **Caddy** (Dockerfile, Caddyfile template, and routing config) is fully managed in the infrastructure repo
+- **Observability** (Prometheus, Grafana dashboards, alerts) is managed in the infrastructure repo
+- This repo only contains the **metrics-exporter source** (`src/Metrics/`) since it's tightly coupled to the database schema
 
 See the infrastructure repo's [DEPLOYMENT_ARCHITECTURE.md](https://github.com/aboutcircles/aboutcircles-infrastructure/blob/main/docs/DEPLOYMENT_ARCHITECTURE.md) for the full architecture.
 
