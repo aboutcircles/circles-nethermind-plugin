@@ -48,9 +48,12 @@ You can find all image versions on [https://hub.docker.com/u/jaensen](https://hu
 * [jaensen/pathfinder-host](https://hub.docker.com/r/jaensen/pathfinder-host/tags)
 
 #### 5. Start the node again
-Restart the Nethermind node:
+Restart the Nethermind node
 ```bash
 docker start <nethermind-container-name>
+
+# If you updated the image in docker-compose, recreate the container with:
+docker comppose up -d
 ```
 
 #### 6. Let it sync and backfill
