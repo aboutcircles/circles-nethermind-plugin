@@ -267,13 +267,13 @@ groups:
           description: "Multiple errors collecting KPI metrics: {{ $labels.metric }}"
 
       - alert: KpiCollectionStale
-        expr: (time() - circles_kpi_last_collection_timestamp) > 300
-        for: 5m
+        expr: (time() - circles_kpi_last_collection_timestamp) > 600
+        for: 10m
         labels:
           severity: warning
         annotations:
           summary: "KPI collection stale"
-          description: "No KPI metrics collected in the last 5 minutes"
+          description: "No KPI metrics collected in the last 10 minutes"
 
   - name: circles-health-alerts
     rules:
