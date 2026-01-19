@@ -28,7 +28,10 @@ import { mnemonicToEntropy, validateMnemonic } from 'bip39';
 import Safe from '@safe-global/protocol-kit';
 
 const SEED_PHRASE = process.env.CIRCLES_SEED_PHRASE;
-const RPC_URL = process.env.CIRCLES_RPC_URL || 'https://rpc.gnosischain.com';
+// RPC URL - must be explicitly set (no production fallback)
+// Local: http://localhost:8545 or http://nethermind-gnosis:8545
+// Production: https://rpc.gnosischain.com
+const RPC_URL = process.env.CIRCLES_RPC_URL || 'http://localhost:8545';
 const HUB_V2_ADDRESS = process.env.CIRCLES_HUB_ADDRESS || '0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8';
 const TRANSFER_AMOUNT = process.env.CIRCLES_AMOUNT || '1';
 const RECIPIENT = process.env.CIRCLES_RECIPIENT;
@@ -50,9 +53,8 @@ async function findSafeForOwner(provider, ownerAddress) {
   // A simpler approach: check if the owner has deployed a Safe via the Safe factory
 
   // Use Circles RPC to find the avatar
-  const circlesRpc = process.env.CIRCLES_RPC_URL?.includes('aboutcircles')
-    ? process.env.CIRCLES_RPC_URL
-    : 'https://rpc.aboutcircles.com';
+  // Requires CIRCLES_INDEXER_RPC_URL to be set (no production fallback)
+  const circlesRpc = process.env.CIRCLES_INDEXER_RPC_URL || 'http://localhost:8080';
 
   try {
     const response = await fetch(circlesRpc, {

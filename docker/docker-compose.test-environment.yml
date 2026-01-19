@@ -26,6 +26,8 @@ services:
       - ConnectionStrings__Postgres=Host=postgres-gnosis;Port=5432;Database=postgres;Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD}
       - GnosisRpcUrl=${GNOSIS_RPC_URL:-http://nethermind-gnosis:8545}
       - CirclesRpcUrl=${CIRCLES_RPC_URL:-http://rpc:8080}
+      # Anvil fork URL - intentionally defaults to production for forking mainnet state
+      # Override with ANVIL_FORK_RPC_URL if using a different provider
       - AnvilForkRpcUrl=${ANVIL_FORK_RPC_URL:-https://rpc.gnosischain.com}
       - MaxConcurrentSessions=${TEST_ENV_MAX_SESSIONS:-10}
       - PublicBaseUrl=${TEST_ENV_PUBLIC_BASE_URL:-}
