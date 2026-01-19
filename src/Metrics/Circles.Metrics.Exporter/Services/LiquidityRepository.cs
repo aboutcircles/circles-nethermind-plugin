@@ -23,8 +23,8 @@ public class LiquidityRepository
     // Combined list for queries
     private static readonly string[] BalancerVaultAddresses = { BalancerV2VaultAddress, BalancerV3VaultAddress };
 
-    // Whale threshold: 1000 tokens (1e21 wei for 18-decimal tokens)
-    private const decimal WhaleThreshold = 1_000_000_000_000_000_000_000m; // 1e21
+    // Whale threshold: 5000 tokens (5e21 wei for 18-decimal tokens)
+    private const decimal WhaleThreshold = 5_000_000_000_000_000_000_000m; // 5e21
 
     public LiquidityRepository(
         string connectionString,
@@ -333,12 +333,12 @@ public class LiquidityRepository
                 LatestChange = latestChange,
                 LatestChangeCrc = latestChange / 1_000_000_000_000_000_000m, // Convert from wei to CRC
                 CurrentBalanceCrc = currentBalance / 1_000_000_000_000_000_000m,
-                MeanChange = reader.GetDouble(5),
-                StdDevChange = reader.GetDouble(6),
+                MeanChange = SafeGetDouble(reader, 5),
+                StdDevChange = SafeGetDouble(reader, 6),
                 // Skip index 7 (avg_daily_withdrawal) - used in SQL calculation only
-                ZScore = reader.GetDouble(8),
-                BalancePercentage = reader.GetDouble(9),
-                RateAcceleration = reader.GetDouble(10)
+                ZScore = SafeGetDouble(reader, 8),
+                BalancePercentage = SafeGetDouble(reader, 9),
+                RateAcceleration = SafeGetDouble(reader, 10)
             });
         }
 
@@ -681,11 +681,11 @@ public class LiquidityRepository
                 LatestChange = latestChange,
                 LatestChangeCrc = latestChange / 1_000_000_000_000_000_000m,
                 CurrentBalanceCrc = currentBalance / 1_000_000_000_000_000_000m,
-                MeanChange = reader.GetDouble(4),
-                StdDevChange = reader.GetDouble(5),
-                ZScore = reader.GetDouble(7),
-                BalancePercentage = reader.GetDouble(8),
-                RateAcceleration = reader.GetDouble(9)
+                MeanChange = SafeGetDouble(reader, 4),
+                StdDevChange = SafeGetDouble(reader, 5),
+                ZScore = SafeGetDouble(reader, 7),
+                BalancePercentage = SafeGetDouble(reader, 8),
+                RateAcceleration = SafeGetDouble(reader, 9)
             });
         }
 
@@ -869,6 +869,26 @@ public class LiquidityRepository
         }
 
         return new TvlSnapshot();
+    }
+
+    #endregion
+
+    #region Helpers
+
+    /// <summary>
+    /// Safely read a double from the reader, returning NaN on overflow.
+    /// PostgreSQL can return values that exceed Double.MaxValue in statistical calculations.
+    /// </summary>
+    private static double SafeGetDouble(NpgsqlDataReader reader, int ordinal)
+    {
+        try
+        {
+            return reader.GetDouble(ordinal);
+        }
+        catch (OverflowException)
+        {
+            return double.NaN;
+        }
     }
 
     #endregion
