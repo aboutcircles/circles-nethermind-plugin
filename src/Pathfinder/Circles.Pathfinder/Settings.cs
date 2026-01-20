@@ -29,4 +29,12 @@ public class Settings
         Environment.GetEnvironmentVariable("PATHFINDER_GROUP_TIMEOUT_SECONDS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("PATHFINDER_GROUP_TIMEOUT_SECONDS")!)
         : 60;
+
+    /// <summary>
+    /// Enable debug logging for pathfinder operations (default: false).
+    /// When enabled, logs detailed information about edge filtering,
+    /// consented flow validation, and other internal operations.
+    /// </summary>
+    public static bool DebugLogging { get; } =
+        Environment.GetEnvironmentVariable("PATHFINDER_DEBUG_LOGGING")?.ToLowerInvariant() is "true" or "1";
 }

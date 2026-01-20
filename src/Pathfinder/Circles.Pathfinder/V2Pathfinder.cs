@@ -261,10 +261,28 @@ public class V2Pathfinder
 
     /* ------------------------------------------------------------------------
      * Post-process: Insert Router node between Avatar → Group transfers.
-     * The router itself is not part of the capacity graph during pathfinding,
-     * but the contract requires all Avatar→Group transfers to route through it.
-     * This method splits any Avatar→Group edge into Avatar→Router→Group.
-     * Group→Avatar minting transfers are left as-is (direct edge).
+     *
+     * Mirrors Hub.sol:904-912 _effectPathTransfers() which routes group mints:
+     *
+     *   if (mintGroups.get(to)) {
+     *       _groupMint(
+     *           _flowVertices[_coordinates[index + 1]], // sender = "from" of flow edge
+     *           to,                                      // receiver = group
+     *           _flow.streams[index].circles,
+     *           _flow.streams[index].ids[...]
+     *       );
+     *   }
+     *
+     * The Router is the intermediary that holds collateral tokens before
+     * depositing them to groups. The contract's operateFlowMatrix expects
+     * all Avatar→Group transfers to go through the Router.
+     *
+     * IMPORTANT: This MUST run BEFORE ValidateConsentedFlow because:
+     * 1. Without router insertion, edges are Avatar→Group
+     * 2. ValidateConsentedFlow would incorrectly check consent for Avatar→Group
+     * 3. After insertion, edges become Avatar→Router→Group
+     * 4. Router edges are skipped in ValidateConsentedFlow (router has no consent)
+     * 5. This matches Hub.sol:723 where _groupMint uses Router as _sender
      * --------------------------------------------------------------------- */
     private List<FlowEdge> InsertRouterInTransfers(List<FlowEdge> transfers, CapacityGraph capacityGraph)
     {
@@ -309,12 +327,29 @@ public class V2Pathfinder
 
     /* ------------------------------------------------------------------------
      * Validate consented flow rules on transfer edges.
-     * Contract logic (from Hub.sol isPermittedFlow):
-     * - If From does NOT have consented flow → standard trust is sufficient
-     * - If From HAS consented flow → requires:
-     *   1. From trusts To
-     *   2. To also has consented flow enabled
-     * Note: "To trusts TokenOwner" is already enforced by graph construction.
+     *
+     * Mirrors Hub.sol:668-676 isPermittedFlow() function:
+     *
+     *   function isPermittedFlow(address _from, address _to, address _circlesAvatar)
+     *       returns (bool) {
+     *       if (!advancedUsageFlags[_from]) return isTrusted(_to, _circlesAvatar);
+     *       return isTrusted(_from, _to) && advancedUsageFlags[_to];
+     *   }
+     *
+     * Translation:
+     * - If From does NOT have consented flow (advancedUsageFlags[_from] == false)
+     *   → standard trust is sufficient (only checks "To trusts TokenOwner")
+     * - If From HAS consented flow (advancedUsageFlags[_from] == true) → requires:
+     *   1. From trusts To (isTrusted(_from, _to))
+     *   2. To also has consented flow enabled (advancedUsageFlags[_to])
+     *
+     * IMPORTANT: Router edges are SKIPPED because in the contract's _groupMint
+     * (Hub.sol:723), path-based mints use the Router as the _sender parameter:
+     *
+     *   isPermittedFlow(_sender, _group, collateralAvatar)
+     *
+     * The Router doesn't have consented flow enabled, so standard trust applies.
+     * See also: InsertRouterInTransfers which must run BEFORE this validation.
      * --------------------------------------------------------------------- */
     private List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
     {
@@ -356,6 +391,11 @@ public class V2Pathfinder
             if (!fromTrustsTo)
             {
                 // Invalid - From has consented flow but doesn't trust To
+                if (Settings.DebugLogging)
+                {
+                    Console.WriteLine($"[ValidateConsentedFlow] Filtered edge {AddressIdPool.StringOf(edge.From)[..10]}→{AddressIdPool.StringOf(edge.To)[..10]}: " +
+                                      $"consented avatar doesn't trust recipient");
+                }
                 continue;
             }
 
@@ -363,6 +403,11 @@ public class V2Pathfinder
             if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
             {
                 // Invalid - To doesn't have consented flow enabled
+                if (Settings.DebugLogging)
+                {
+                    Console.WriteLine($"[ValidateConsentedFlow] Filtered edge {AddressIdPool.StringOf(edge.From)[..10]}→{AddressIdPool.StringOf(edge.To)[..10]}: " +
+                                      $"recipient doesn't have consented flow enabled");
+                }
                 continue;
             }
 

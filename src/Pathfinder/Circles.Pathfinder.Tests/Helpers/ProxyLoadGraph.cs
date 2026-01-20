@@ -18,6 +18,26 @@ public class ProxyLoadGraph : ILoadGraph
     private readonly TestEnvironmentClient _client;
     private readonly Settings _settings;
 
+    /// <summary>
+    /// Maximum rows to fetch for balance queries.
+    /// Configurable via PATHFINDER_MAX_BALANCE_ROWS environment variable.
+    /// Default: 1,000,000 rows.
+    /// </summary>
+    private static readonly int MaxBalanceRows =
+        int.TryParse(Environment.GetEnvironmentVariable("PATHFINDER_MAX_BALANCE_ROWS"), out var balRows)
+            ? balRows
+            : 1_000_000;
+
+    /// <summary>
+    /// Maximum rows to fetch for trust queries.
+    /// Configurable via PATHFINDER_MAX_TRUST_ROWS environment variable.
+    /// Default: 2,000,000 rows.
+    /// </summary>
+    private static readonly int MaxTrustRows =
+        int.TryParse(Environment.GetEnvironmentVariable("PATHFINDER_MAX_TRUST_ROWS"), out var trustRows)
+            ? trustRows
+            : 2_000_000;
+
     // SQL queries embedded as constants (same as in LoadGraph but we can't use embedded resources from test assembly)
     private const string BalanceQuery = """
         with static_token_transfers as (
@@ -190,10 +210,10 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
     {
-        var response = _client.ExecuteQueryAsync(BalanceQuery, maxRows: 1_000_000).GetAwaiter().GetResult();
+        var response = _client.ExecuteQueryAsync(BalanceQuery, maxRows: MaxBalanceRows).GetAwaiter().GetResult();
         var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
 
-        Console.WriteLine($"ProxyLoadGraph: Balance query returned {response.RowCount} rows{(response.Truncated ? " (TRUNCATED!)" : "")}");
+        Console.WriteLine($"ProxyLoadGraph: Balance query returned {response.RowCount} rows (max: {MaxBalanceRows}){(response.Truncated ? " (TRUNCATED! Consider increasing PATHFINDER_MAX_BALANCE_ROWS)" : "")}");
 
         foreach (var row in response.Rows)
         {
@@ -233,10 +253,10 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
     {
-        var response = _client.ExecuteQueryAsync(TrustQuery, maxRows: 2_000_000).GetAwaiter().GetResult();
+        var response = _client.ExecuteQueryAsync(TrustQuery, maxRows: MaxTrustRows).GetAwaiter().GetResult();
         var results = new List<(string Truster, string Trustee, int Limit)>();
 
-        Console.WriteLine($"ProxyLoadGraph: Trust query returned {response.RowCount} rows{(response.Truncated ? " (TRUNCATED!)" : "")}");
+        Console.WriteLine($"ProxyLoadGraph: Trust query returned {response.RowCount} rows (max: {MaxTrustRows}){(response.Truncated ? " (TRUNCATED! Consider increasing PATHFINDER_MAX_TRUST_ROWS)" : "")}");
 
         foreach (var row in response.Rows)
         {

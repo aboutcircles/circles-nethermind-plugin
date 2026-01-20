@@ -134,15 +134,30 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
         // STEP 1f: Add simulated consented avatars (for testing)
         if (request?.SimulatedConsentedAvatars != null && request.SimulatedConsentedAvatars.Count > 0)
         {
+            int addedCount = 0;
             foreach (var avatar in request.SimulatedConsentedAvatars)
             {
-                if (!string.IsNullOrWhiteSpace(avatar))
+                if (string.IsNullOrWhiteSpace(avatar))
+                    continue;
+
+                var normalized = avatar.Trim().ToLowerInvariant();
+
+                // Validate address format (must be 0x + 40 hex chars)
+                if (!IsValidEthereumAddress(normalized))
                 {
-                    var avatarId = AddressIdPool.IdOf(avatar.ToLowerInvariant());
-                    capacityGraph.ConsentedAvatars.Add(avatarId);
+                    Console.WriteLine($"Warning: Invalid address format for simulated consented avatar: '{avatar}' (skipped)");
+                    continue;
                 }
+
+                var avatarId = AddressIdPool.IdOf(normalized);
+                capacityGraph.ConsentedAvatars.Add(avatarId);
+                addedCount++;
             }
-            Console.WriteLine($"Added {request.SimulatedConsentedAvatars.Count} simulated consented avatars");
+
+            if (addedCount > 0)
+            {
+                Console.WriteLine($"Added {addedCount} simulated consented avatars");
+            }
         }
 
         var mergedTrust = simulatedTrust.Count == 0 ? trustLookup : MergeTrust(trustLookup, simulatedTrust);
@@ -695,6 +710,32 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
                 capacityGraph.AddAvatar(tokenId);
             }
         }
+    }
+
+    /// <summary>
+    /// Validates that a string is a valid Ethereum address format.
+    /// Expects: 0x followed by exactly 40 hexadecimal characters.
+    /// </summary>
+    private static bool IsValidEthereumAddress(string address)
+    {
+        if (string.IsNullOrEmpty(address))
+            return false;
+
+        if (!address.StartsWith("0x") || address.Length != 42)
+            return false;
+
+        // Check remaining 40 characters are valid hex
+        for (int i = 2; i < address.Length; i++)
+        {
+            char c = address[i];
+            bool isHex = (c >= '0' && c <= '9') ||
+                         (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+            if (!isHex)
+                return false;
+        }
+
+        return true;
     }
 
     private (int address, HashSet<int> trustedTokens) CreateVirtualSink(
