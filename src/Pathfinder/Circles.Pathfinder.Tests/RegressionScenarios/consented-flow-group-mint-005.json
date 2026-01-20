@@ -1,0 +1,16 @@
+{
+  "id": "consented-flow-group-mint-005",
+  "name": "Consented flow avatar minting group tokens (isPermittedFlow bug)",
+  "category": "consented-flow",
+  "block": 43677011,
+  "source": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
+  "sink": "0x6fae976eb90127b895ceddf8311864cda42ac6ac",
+  "description": "Bug reproduction: Consented flow avatar sends tokens to mint group tokens. Before fix, ValidateConsentedFlow ran BEFORE InsertRouterInTransfers, causing Avatar→Group edges to be filtered (consented flow check failed because Avatar doesn't directly trust Group). After fix, InsertRouterInTransfers runs first, creating Avatar→Router→Group edges which bypass consent validation. This caused 'isPermittedFlow' failures on-chain.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "discoveredAt": "2026-01-20",
+  "fixedIn": "Pipeline reorder: InsertRouterInTransfers before ValidateConsentedFlow",
+  "tags": ["consented-flow", "group-minting", "router", "regression", "isPermittedFlow", "bug-fix"]
+}

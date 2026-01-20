@@ -176,7 +176,8 @@ public class ScenarioTests
             ToTokens = scenario.ToTokens?.ToList(),
             ExcludedFromTokens = scenario.ExcludedTokens?.ToList(),
             MaxTransfers = scenario.MaxTransfers,
-            WithWrap = scenario.WithWrap ?? false
+            WithWrap = scenario.WithWrap ?? false,
+            SimulatedConsentedAvatars = scenario.SimulatedConsentedAvatars?.ToList()
         };
     }
 
@@ -334,7 +335,8 @@ public class ScenarioE2ETests
             ToTokens = scenario.ToTokens?.ToList(),
             ExcludedFromTokens = scenario.ExcludedTokens?.ToList(),
             MaxTransfers = scenario.MaxTransfers,
-            WithWrap = scenario.WithWrap ?? false
+            WithWrap = scenario.WithWrap ?? false,
+            SimulatedConsentedAvatars = scenario.SimulatedConsentedAvatars?.ToList()
         };
 
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);

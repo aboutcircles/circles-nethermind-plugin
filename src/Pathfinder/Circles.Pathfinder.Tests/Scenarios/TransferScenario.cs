@@ -123,6 +123,14 @@ public record TransferScenario
     [JsonPropertyName("withWrap")]
     public bool? WithWrap { get; init; }
 
+    /// <summary>
+    /// Addresses to simulate as having consented flow enabled.
+    /// Useful for testing consented flow scenarios at blocks where
+    /// the feature wasn't yet enabled or for specific avatars.
+    /// </summary>
+    [JsonPropertyName("simulatedConsentedAvatars")]
+    public string[]? SimulatedConsentedAvatars { get; init; }
+
     // ============================================================
     // Metadata
     // ============================================================

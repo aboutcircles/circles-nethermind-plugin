@@ -1,0 +1,14 @@
+{
+  "id": "consented-flow-router-007",
+  "name": "Non-consented avatar to group (baseline)",
+  "category": "consented-flow",
+  "block": 43193632,
+  "source": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
+  "description": "Baseline test: Non-consented avatar sending to group. Should find path because consent validation only affects avatars with consented flow enabled. This verifies the fix doesn't break normal (non-consented) group minting behavior. Same addresses as original mint-path-bug-001.",
+  "shouldFindPath": true,
+  "minFlow": "10000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "tags": ["consented-flow", "group-minting", "router", "baseline", "positive"]
+}

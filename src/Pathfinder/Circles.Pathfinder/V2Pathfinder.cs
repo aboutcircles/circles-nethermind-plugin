@@ -174,29 +174,35 @@ public class V2Pathfinder
         var aggregated = collapsed.AggregateIdenticalEdges();
 
         /* --------------------------------------------------------------------
-         * 5b. Validate consented flow - filter edges that violate consent rules
+         * 5b. Insert Router between Avatar → Group transfers.
+         *     This MUST happen BEFORE ValidateConsentedFlow so that router edges
+         *     exist when validation runs - allowing the router-skip logic to work.
+         *     Without this order, consented flow avatars sending to groups would
+         *     have their Avatar→Group edge incorrectly filtered because the router
+         *     edges (Avatar→Router, Router→Group) don't exist yet.
          * ------------------------------------------------------------------ */
-        var validatedEdges = ValidateConsentedFlow(aggregated.Edges, capacityGraph);
+        var processedEdges = InsertRouterInTransfers(aggregated.Edges, capacityGraph);
 
         /* --------------------------------------------------------------------
-         * 6. Post-process to insert Router between Avatar → Group transfers
+         * 5c. Validate consented flow - filter edges that violate consent rules.
+         *     Router edges are skipped by this validation (lines 332-337).
          * ------------------------------------------------------------------ */
-        var processedEdges = InsertRouterInTransfers(validatedEdges, capacityGraph);
+        var validatedEdges = ValidateConsentedFlow(processedEdges, capacityGraph);
 
         /* --------------------------------------------------------------------
-         * 6b. Sort edges to ensure mint dependencies are satisfied.
-         *     All collateral edges (Router→Group) must precede the group's
-         *     outbound mint edge (Group→Avatar) for contract execution to succeed.
+         * 6. Sort edges to ensure mint dependencies are satisfied.
+         *    All collateral edges (Router→Group) must precede the group's
+         *    outbound mint edge (Group→Avatar) for contract execution to succeed.
          * ------------------------------------------------------------------ */
-        var sortedEdges = SortEdgesForMintDependencies(processedEdges, capacityGraph);
+        var sortedEdges = SortEdgesForMintDependencies(validatedEdges, capacityGraph);
 
         /* --------------------------------------------------------------------
-         * 6c. Validate the edge ordering - throw if mint dependencies violated
+         * 6a. Validate the edge ordering - throw if mint dependencies violated
          * ------------------------------------------------------------------ */
         ValidateMintEdgeOrdering(sortedEdges, capacityGraph);
 
         /* --------------------------------------------------------------------
-         * 6d. Apply quantization if requested - aggregate sink transfers by token
+         * 6b. Apply quantization if requested - aggregate sink transfers by token
          *     and round down to 96 CRC multiples. This allows multiple small
          *     transfers of the same token to combine into valid quanta.
          * ------------------------------------------------------------------ */
