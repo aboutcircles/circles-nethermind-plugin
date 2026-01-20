@@ -174,9 +174,11 @@ public class ProxyLoadGraph : ILoadGraph
         WHERE g."mint" = LOWER('0xCDFc5135AEC0aFbf102C108e7f5C8A88C6112842')
         """;
 
-    private const string ConsentedFlowQuery = """
+    // Note: Uses {0} placeholder for block number since raw table doesn't respect circles.max_block_number
+    private const string ConsentedFlowQueryTemplate = """
         SELECT DISTINCT ON (avatar) avatar, flag
         FROM "CrcV2_SetAdvancedUsageFlag"
+        WHERE "blockNumber" <= {0}
         ORDER BY avatar, "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
         """;
 
@@ -188,10 +190,10 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
     {
-        var response = _client.ExecuteQueryAsync(BalanceQuery, maxRows: 100000).GetAwaiter().GetResult();
+        var response = _client.ExecuteQueryAsync(BalanceQuery, maxRows: 1_000_000).GetAwaiter().GetResult();
         var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
 
-        Console.WriteLine($"ProxyLoadGraph: Balance query returned {response.RowCount} rows");
+        Console.WriteLine($"ProxyLoadGraph: Balance query returned {response.RowCount} rows{(response.Truncated ? " (TRUNCATED!)" : "")}");
 
         foreach (var row in response.Rows)
         {
@@ -231,10 +233,10 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
     {
-        var response = _client.ExecuteQueryAsync(TrustQuery, maxRows: 500000).GetAwaiter().GetResult();
+        var response = _client.ExecuteQueryAsync(TrustQuery, maxRows: 2_000_000).GetAwaiter().GetResult();
         var results = new List<(string Truster, string Trustee, int Limit)>();
 
-        Console.WriteLine($"ProxyLoadGraph: Trust query returned {response.RowCount} rows");
+        Console.WriteLine($"ProxyLoadGraph: Trust query returned {response.RowCount} rows{(response.Truncated ? " (TRUNCATED!)" : "")}");
 
         foreach (var row in response.Rows)
         {
@@ -277,7 +279,9 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
     {
-        var response = _client.ExecuteQueryAsync(ConsentedFlowQuery, maxRows: 10000).GetAwaiter().GetResult();
+        // Use block filter to get consented flow state at the session's block
+        var query = string.Format(ConsentedFlowQueryTemplate, _client.BlockNumber);
+        var response = _client.ExecuteQueryAsync(query, maxRows: 10000).GetAwaiter().GetResult();
         var results = new List<(string Avatar, bool HasConsentedFlow)>();
 
         foreach (var row in response.Rows)
