@@ -216,20 +216,33 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
         }
 
         // STEP 2b: Create a virtual sink if needed
-        if (sourceId != null && sourceEqualsSink && toTokensFilter.Count > 0)
+        // In quantizedMode with source==sink, we also need a virtual sink even without explicit toTokens
+        bool isQuantizedSwapMode = (request?.QuantizedMode ?? false) && sourceEqualsSink;
+        bool needsVirtualSink = sourceId != null && sourceEqualsSink && (toTokensFilter.Count > 0 || isQuantizedSwapMode);
+
+        if (needsVirtualSink)
         {
             var wrappedTokensInSim = simulated
                 .Where(x => x.IsWrapped)
                 .Select(x => x.TokenId)
                 .ToHashSet();
 
+            // If quantizedMode but no toTokens specified, use all tokens trusted by source
+            var effectiveToTokensFilter = toTokensFilter;
+            if (isQuantizedSwapMode && toTokensFilter.Count == 0 &&
+                mergedTrust.TryGetValue(sourceId!.Value, out var trustedBySource))
+            {
+                effectiveToTokensFilter = trustedBySource.ToHashSet();
+            }
+
             (virtualSinkAddress, virtualSinkTrustedTokens) = CreateVirtualSink(
                 capacityGraph,
-                sourceId.Value,
-                toTokensFilter,
+                sourceId!.Value,
+                effectiveToTokensFilter,
                 balanceGraph,
                 wrappedTokensInSim,
-                mergedTrust);
+                mergedTrust,
+                isQuantizedSwapMode);
         }
 
         // STEP 3: Add pooled H→TokenPool edges from snapshot balances (applying filters)
@@ -744,7 +757,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
         HashSet<int> toTokensFilter,
         BalanceGraph balanceGraph,
         HashSet<int> wrappedTokensInSim,
-        IReadOnlyDictionary<int, HashSet<int>> mergedTrust)
+        IReadOnlyDictionary<int, HashSet<int>> mergedTrust,
+        bool quantizedMode = false)
     {
         var virtualSinkAddress = sourceAddress + VirtualSinkSuffix;
         var virtualSinkAddressId = AddressIdPool.IdOf(virtualSinkAddress);
@@ -766,14 +780,18 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
             sourceTrustedTokens = trustedBySource;
         }
 
-        // Collect tokens trusted by virtual sink (must be in toTokensFilter AND trusted by source)
+        // Collect tokens trusted by virtual sink
+        // In regular swap mode: must be in toTokensFilter AND trusted by source
+        // In quantizedMode: accept ALL specified tokens (bypass trust check)
+        //   because untrusted tokens can still route through intermediaries
         var virtualSinkTrustedTokens = new HashSet<int>();
         foreach (var token in toTokensFilter)
         {
-            // Check if source actually trusts this token
-            if (!sourceTrustedTokens.Contains(token))
+            // In quantizedMode: accept all specified tokens (trust validation happens post-path)
+            // In regular mode: require source trust
+            if (!quantizedMode && !sourceTrustedTokens.Contains(token))
             {
-                // Source doesn't trust this token, so virtual sink can't receive it
+                // Source doesn't trust this token and we're not in quantized mode
                 continue;
             }
 

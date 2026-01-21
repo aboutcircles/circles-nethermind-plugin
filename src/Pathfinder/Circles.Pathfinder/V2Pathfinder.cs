@@ -213,6 +213,10 @@ public class V2Pathfinder
 
             // Safety validation - ensure quantization produced valid results
             ValidateQuantizedSinkTransfers(sortedEdges, sinkId, InvitationQuanta);
+
+            // Add self-loop aggregation: Sink → Sink edges showing total per token type
+            // This provides a summary of what tokens the sink receives in the quantized flow
+            sortedEdges = AddSinkSelfLoopAggregation(sortedEdges, sinkId);
         }
 
         /* --------------------------------------------------------------------
@@ -1070,5 +1074,49 @@ public class V2Pathfinder
                     "Total per token type must be exact 96 CRC multiples in quantized mode.");
             }
         }
+    }
+
+    /* ------------------------------------------------------------------------
+     * Add self-loop aggregation edges for quantizedMode responses.
+     *
+     * In quantizedMode, the response includes Sink → Sink edges that aggregate
+     * the total flow per token type. This provides a convenient summary showing
+     * what tokens and how much of each the sink receives in the quantized flow.
+     *
+     * Example output edge: { From: sink, To: sink, Token: tokenOwner, Flow: total }
+     * This allows clients to easily determine which tokens were delivered.
+     * --------------------------------------------------------------------- */
+    private static List<FlowEdge> AddSinkSelfLoopAggregation(List<FlowEdge> edges, int sinkId)
+    {
+        // Group sink-bound edges by token, sum flows
+        var tokenFlows = new Dictionary<int, long>();
+
+        foreach (var edge in edges)
+        {
+            if (edge.To != sinkId || edge.Flow <= 0)
+                continue;
+
+            tokenFlows.TryGetValue(edge.Token, out long current);
+            tokenFlows[edge.Token] = current + edge.Flow;
+        }
+
+        // No sink-bound edges means nothing to aggregate
+        if (tokenFlows.Count == 0)
+            return edges;
+
+        // Append self-loop for each token: {Sink → Sink, tokenOwner, total}
+        var result = new List<FlowEdge>(edges.Count + tokenFlows.Count);
+        result.AddRange(edges);
+
+        foreach (var (token, total) in tokenFlows)
+        {
+            result.Add(new FlowEdge(sinkId, sinkId, token, total)
+            {
+                Flow = total,
+                CurrentCapacity = 0
+            });
+        }
+
+        return result;
     }
 }
