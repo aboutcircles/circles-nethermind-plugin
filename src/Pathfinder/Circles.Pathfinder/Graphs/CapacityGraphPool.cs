@@ -4,11 +4,11 @@ using Circles.Common.Dto;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool(Circles.Common.Settings settings, LoadGraph loadGraph)
+public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph)
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
-    private readonly GraphFactory _gf = new(settings, loadGraph);
+    private readonly GraphFactory _gf = new(routerAddress, loadGraph);
 
 
     /* ------------------------------------------------------------------ */
@@ -64,9 +64,9 @@ public sealed class CapacityGraphPool(Circles.Common.Settings settings, LoadGrap
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         LoadGraph loadGraph,
-        Settings settings)
+        string routerAddress)
     {
-        var gf = new GraphFactory(settings, loadGraph);
+        var gf = new GraphFactory(routerAddress, loadGraph);
         return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts));
     }
 
@@ -83,14 +83,16 @@ public sealed class CapacityGraphPool(Circles.Common.Settings settings, LoadGrap
         bool hasWrap = r.WithWrap == true;
         bool hasSimulatedBalances = r.SimulatedBalances?.Any() ?? false;
         bool hasSimulatedTrusts = r.SimulatedTrusts?.Any() ?? false;
-        bool hasGroupMintingOverride = r.EnableGroupMinting != null;
+        bool hasSimulatedConsentedAvatars = r.SimulatedConsentedAvatars?.Any() ?? false;
+        bool hasQuantizedMode = r.QuantizedMode == true;
 
         bool needsFiltering = hasIncludeFilters
                               || hasExcludeFilters
                               || hasWrap
                               || hasSimulatedBalances
                               || hasSimulatedTrusts
-                              || hasGroupMintingOverride;
+                              || hasSimulatedConsentedAvatars
+                              || hasQuantizedMode;
 
         return needsFiltering;
     }

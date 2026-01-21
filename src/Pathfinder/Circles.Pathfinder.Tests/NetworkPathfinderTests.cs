@@ -193,7 +193,7 @@ public class NetworkPathfinderTests
             Console.WriteLine($"{ConsoleColors.Cyan}Loading network graphs from database...{ConsoleColors.Reset}");
 
             var loadGraph = new LoadGraph(settings);
-            _graphFactory = new GraphFactory(settings, loadGraph);
+            _graphFactory = new GraphFactory(settings.BaseGroupRouter, loadGraph);
 
             // Load the graphs
             if (_graphFactory != null)

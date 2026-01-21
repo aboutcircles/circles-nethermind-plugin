@@ -48,7 +48,7 @@ builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<LoadGraph>(provider => new LoadGraph(settings));
 builder.Services.AddSingleton<CapacityGraphPool>(provider =>
     new CapacityGraphPool(
-        provider.GetRequiredService<Circles.Common.Settings>(),
+        settings.RouterAddress,
         provider.GetRequiredService<LoadGraph>()));
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
