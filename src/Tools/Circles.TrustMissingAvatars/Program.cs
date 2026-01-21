@@ -11,7 +11,7 @@ using Nethereum.Web3.Accounts;
 using Npgsql;
 using Nethereum.Contracts.ContractHandlers;
 
-namespace Circles.Index.TrustMissingAvatars;
+namespace Circles.TrustMissingAvatars;
 
 public readonly record struct MissingRow(string Group, string Avatar);
 

@@ -58,6 +58,7 @@ env:
   IMAGE_PATHFINDER: pathfinder-host
   IMAGE_RPC: rpc-host
   IMAGE_TEST_ENV: test-environment
+  IMAGE_TRUST_TOOL: trust-missing-avatars
 
 concurrency:
   group: smart-deploy-${{ github.ref_name }}
@@ -315,6 +316,17 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:dev
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache-dev
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache-dev,mode=max
+
+      - name: Build & push trust-missing-avatars
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/trust-missing-avatars.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:dev
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev,mode=max
 
   build-test-environment:
     needs: detect-changes

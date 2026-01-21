@@ -10,6 +10,7 @@ env:
   IMAGE_INDEX: nethermind-plugin
   IMAGE_PATHFINDER: pathfinder-host
   IMAGE_RPC: rpc-host
+  IMAGE_TRUST_TOOL: trust-missing-avatars
 
 jobs:
   build-and-push-release:
@@ -76,3 +77,16 @@ jobs:
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:latest
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache,mode=max
+
+      - name: Build & push trust-missing-avatars (release)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/trust-missing-avatars.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:${{ github.event.release.tag_name }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache,mode=max
