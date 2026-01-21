@@ -323,8 +323,8 @@ public class LiquidityRepository
                 tokenName = tokenAddress.Length > 10 ? tokenAddress[..10] + "..." : tokenAddress;
             }
 
-            var latestChange = reader.GetDecimal(3);
-            var currentBalance = reader.GetDecimal(4);
+            var latestChange = SafeGetDecimal(reader, 3);
+            var currentBalance = SafeGetDecimal(reader, 4);
 
             results.Add(new TokenZScore
             {
@@ -600,7 +600,7 @@ public class LiquidityRepository
                     SUM(b.balance) as total_balance
                 FROM group_vaults gv
                 JOIN "V_CrcV2_GroupVaultBalancesByToken_1h" b ON b.vault = gv.vault
-                WHERE b."timestamp" > NOW() - interval '30 days'
+                WHERE b."timestamp" > EXTRACT(EPOCH FROM NOW() - interval '30 days')
                 GROUP BY gv.group_address, gv.group_name, b."timestamp"
             ),
             hourly_changes AS (
@@ -671,8 +671,8 @@ public class LiquidityRepository
 
         while (await reader.ReadAsync(ct))
         {
-            var latestChange = reader.GetDecimal(2);
-            var currentBalance = reader.GetDecimal(3);
+            var latestChange = SafeGetDecimal(reader, 2);
+            var currentBalance = SafeGetDecimal(reader, 3);
 
             results.Add(new GroupTreasuryZScore
             {
@@ -888,6 +888,22 @@ public class LiquidityRepository
         catch (OverflowException)
         {
             return double.NaN;
+        }
+    }
+
+    /// <summary>
+    /// Safely read a decimal from the reader, returning 0 on overflow.
+    /// PostgreSQL numeric can exceed decimal.MaxValue (~79 octillion) with large wei values.
+    /// </summary>
+    private static decimal SafeGetDecimal(NpgsqlDataReader reader, int ordinal)
+    {
+        try
+        {
+            return reader.GetDecimal(ordinal);
+        }
+        catch (OverflowException)
+        {
+            return 0m;
         }
     }
 
