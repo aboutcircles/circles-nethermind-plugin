@@ -1,5 +1,6 @@
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Tests.Helpers;
 
 namespace Circles.Pathfinder.Tests;
 
@@ -1069,50 +1070,4 @@ public class QuantizedModeInvitationFlowTests
     }
 }
 
-/// <summary>
-/// Mock ILoadGraph for unit testing GraphFactory.
-/// </summary>
-internal class MockLoadGraph : Circles.Pathfinder.Data.ILoadGraph
-{
-    private readonly List<(string Truster, string Trustee, int Limit)> _trusts = new();
-    private readonly List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> _balances = new();
-
-    public void AddTrust(int trusterId, int trusteeId)
-    {
-        _trusts.Add((AddressIdPool.StringOf(trusterId), AddressIdPool.StringOf(trusteeId), 100));
-    }
-
-    public void AddBalance(int holderId, int tokenId, long amount, bool isWrapped = false, bool isStatic = false)
-    {
-        // V2BalanceGraph expects amounts in WEI (18 decimals) and truncates by 10^12
-        // So we need to multiply our truncated amount by 10^12 to get back to WEI
-        // e.g., 200_000_000 (200 CRC truncated) → "200000000000000000000" WEI
-        var weiAmount = new Nethermind.Int256.UInt256((ulong)amount) * new Nethermind.Int256.UInt256(1_000_000_000_000);
-        _balances.Add((weiAmount.ToString(), holderId, tokenId, isWrapped, isStatic));
-    }
-
-    public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
-    {
-        return _trusts;
-    }
-
-    public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
-    {
-        return _balances;
-    }
-
-    public IEnumerable<string> LoadGroups()
-    {
-        return Enumerable.Empty<string>();
-    }
-
-    public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
-    {
-        return Enumerable.Empty<(string, string)>();
-    }
-
-    public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
-    {
-        return Enumerable.Empty<(string, bool)>();
-    }
-}
+// MockLoadGraph is now in Helpers/MockLoadGraph.cs with extended functionality
