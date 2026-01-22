@@ -14,14 +14,20 @@
 -- Requires periodic REFRESH MATERIALIZED VIEW CONCURRENTLY to update data.
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS "V_TrustScores_Current" AS
-WITH avatar_stats AS (
+WITH unique_avatars AS (
+    -- Deduplicate avatars (V_Crc_Avatars may have duplicates from v1+v2)
+    SELECT DISTINCT ON (LOWER("avatar")) "avatar", "timestamp"
+    FROM "V_Crc_Avatars"
+    ORDER BY LOWER("avatar"), "timestamp" DESC
+),
+avatar_stats AS (
     SELECT
         a."avatar",
         COALESCE(in_deg.cnt, 0) as in_degree,
         COALESCE(out_deg.cnt, 0) as out_degree,
         COALESCE(mutual.cnt, 0) as mutual_count,
         GREATEST(0, (EXTRACT(EPOCH FROM NOW()) - a."timestamp") / 86400)::int as age_days
-    FROM "V_Crc_Avatars" a
+    FROM unique_avatars a
     LEFT JOIN (
         SELECT "trustee" as avatar, COUNT(*) as cnt
         FROM "V_CrcV2_TrustRelations"
