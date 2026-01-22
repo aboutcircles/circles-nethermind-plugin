@@ -284,6 +284,38 @@ services:
       retries: 30
       start_period: 1s
 
+  # Refreshes V_TrustScores_Current materialized view every 15 minutes
+  trust-scores-refresh:
+    container_name: trust-scores-refresh
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      postgres-gnosis:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Trust scores refresh cron started"
+        sleep 60
+        while true; do
+          echo "[$(date)] Refreshing V_TrustScores_Current materialized view..."
+          psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres -c "REFRESH MATERIALIZED VIEW \"V_TrustScores_Current\";" 2>&1 || echo "[$(date)] Refresh failed (view may not exist yet)"
+          echo "[$(date)] Refresh complete, sleeping for 15 minutes..."
+          sleep 900
+        done
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "sleep"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
 networks:
   circles-gnosis:
     name: circles-gnosis
