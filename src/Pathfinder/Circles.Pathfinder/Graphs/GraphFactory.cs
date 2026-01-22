@@ -215,6 +215,74 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
             throw new ArgumentException($"Router cannot be sink. '{request!.Sink}' is the router.");
         }
 
+        // STEP 2a: Filter ToTokens to only include tokens the sink actually trusts
+        // This fixes Issue 3: Multiple ToTokens where sink doesn't trust all of them
+        // Previously, flow would go to intermediaries for untrusted tokens, resulting in maxFlow=0
+        // NOTE: Only apply in invitation mode (source ≠ sink), not swap mode where virtual sink handles routing
+        if (!sourceEqualsSink && toTokensFilter.Count > 0 && sinkId.HasValue &&
+            mergedTrust.TryGetValue(sinkId.Value, out var sinkTrustedTokens))
+        {
+            var originalCount = toTokensFilter.Count;
+            var effectiveToTokens = toTokensFilter.Intersect(sinkTrustedTokens).ToHashSet();
+
+            if (effectiveToTokens.Count < originalCount)
+            {
+                var skippedCount = originalCount - effectiveToTokens.Count;
+                Console.WriteLine($"[quantizedMode] Filtered {skippedCount} ToTokens not trusted by sink (kept {effectiveToTokens.Count} of {originalCount})");
+            }
+
+            toTokensFilter = effectiveToTokens;
+        }
+        else if (!sourceEqualsSink && toTokensFilter.Count > 0 && sinkId.HasValue)
+        {
+            // Sink doesn't trust ANY tokens - clear the filter (will result in no path)
+            Console.WriteLine($"[quantizedMode] Warning: Sink trusts no tokens, clearing ToTokens filter");
+            toTokensFilter = new HashSet<int>();
+        }
+
+        // STEP 2a2: Auto-discover tokens for quantizedMode when no ToTokens specified
+        // This fixes Issue 2: Without ToTokens, flow spreads across many tokens, each < 96 CRC
+        // Solution: Find tokens where source has 96+ CRC balance AND sink trusts the token
+        const long QuantizedMinBalance = 96_000_000L; // 96 CRC in truncated form
+        bool isQuantizedInvitationMode = (request?.QuantizedMode ?? false) && !sourceEqualsSink;
+
+        if (isQuantizedInvitationMode && toTokensFilter.Count == 0 && sourceId.HasValue && sinkId.HasValue &&
+            mergedTrust.TryGetValue(sinkId.Value, out var sinkTrusts))
+        {
+            // Find source's token balances that: (1) sink trusts AND (2) have 96+ CRC
+            var candidateTokens = new List<(int Token, long Balance)>();
+
+            foreach (var balanceNode in balanceGraph.BalanceNodes.Values)
+            {
+                // Only consider source's balances
+                if (balanceNode.Holder != sourceId.Value)
+                    continue;
+
+                // Check if sink trusts this token AND balance is sufficient
+                if (sinkTrusts.Contains(balanceNode.Token) && balanceNode.Amount >= QuantizedMinBalance)
+                {
+                    candidateTokens.Add((balanceNode.Token, balanceNode.Amount));
+                }
+            }
+
+            if (candidateTokens.Count > 0)
+            {
+                // Sort by balance descending, pick tokens with highest balances
+                // This focuses flow through tokens most likely to deliver 96+ CRC
+                var autoDiscoveredTokens = candidateTokens
+                    .OrderByDescending(t => t.Balance)
+                    .Select(t => t.Token)
+                    .ToHashSet();
+
+                toTokensFilter = autoDiscoveredTokens;
+                Console.WriteLine($"[quantizedMode] Auto-discovered {autoDiscoveredTokens.Count} tokens with 96+ CRC liquidity for invitation flow");
+            }
+            else
+            {
+                Console.WriteLine($"[quantizedMode] Warning: No tokens found with 96+ CRC where source has balance and sink trusts");
+            }
+        }
+
         // STEP 2b: Create a virtual sink if needed
         // In quantizedMode with source==sink, we also need a virtual sink even without explicit toTokens
         bool isQuantizedSwapMode = (request?.QuantizedMode ?? false) && sourceEqualsSink;

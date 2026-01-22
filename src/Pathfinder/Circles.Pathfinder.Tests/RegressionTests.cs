@@ -5,6 +5,7 @@ using Circles.Common.TestUtils;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Tests.Helpers;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -59,7 +60,8 @@ public class RegressionTests
             var json = File.ReadAllText(file);
             var scenario = JsonSerializer.Deserialize<RegressionScenario>(json);
 
-            if (scenario != null)
+            // Skip negative tests (shouldFindPath=false) - they are handled by ScenarioTests
+            if (scenario != null && scenario.ShouldFindPath)
             {
                 yield return new TestCaseData(scenario)
                     .SetName($"Regression_{scenario.Name?.Replace(" ", "_")}");
@@ -67,8 +69,78 @@ public class RegressionTests
         }
     }
 
+    /// <summary>
+    /// Unit test that runs using embedded subgraph data (no external dependencies).
+    /// Runs in &lt;100ms per scenario vs ~20s for integration tests.
+    /// </summary>
     [Test]
     [TestCaseSource(nameof(LoadScenarios))]
+    [Category("Unit")]
+    public void RegressionScenario_UnitTest_EdgeOrderingIsCorrect(RegressionScenario scenario)
+    {
+        // Skip if no embedded subgraph available
+        if (scenario.Subgraph == null)
+        {
+            Assert.Ignore($"Fixture '{scenario.Name}' has no embedded subgraph - skipping unit test");
+            return;
+        }
+
+        // Use embedded subgraph data
+        var loadGraph = new FixtureLoadGraph(scenario.Subgraph);
+        var factory = new GraphFactory(RouterAddress, loadGraph);
+
+        var trustGraph = factory.V2TrustGraph();
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = scenario.Source,
+            Sink = scenario.Sink
+        };
+
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+
+        var targetFlow = UInt256.Parse(scenario.MinFlow ?? "1000000000000000000");
+
+        // Compute path - this should not throw
+        MaxFlowResponse? response = null;
+        Assert.DoesNotThrow(() =>
+        {
+            response = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, targetFlow);
+        }, "Pathfinder should compute path without exception");
+
+        if (scenario.ShouldFindPath)
+        {
+            Assert.That(response?.Transfers, Is.Not.Null.And.Not.Empty,
+                $"Scenario '{scenario.Name}' should find a path but no transfers returned");
+
+            // Verify edge ordering (same logic as integration test)
+            VerifyEdgeOrdering(response!, capacityGraph, scenario.Name!);
+        }
+        else if (response?.Transfers != null && response.Transfers.Count > 0)
+        {
+            // Negative test - should not have found a path
+            Assert.Fail($"Scenario '{scenario.Name}' should NOT find a path but found {response.Transfers.Count} steps");
+        }
+
+        // Validate against expected path properties if specified
+        if (scenario.ExpectedPath != null && response?.Transfers != null)
+        {
+            ValidateExpectedPath(response, scenario.ExpectedPath, capacityGraph, scenario.Name!);
+        }
+
+        TestContext.Out.WriteLine($"Unit test '{scenario.Name}' passed with {response?.Transfers?.Count ?? 0} steps");
+    }
+
+    /// <summary>
+    /// Integration test that runs using full database at the scenario's block.
+    /// Requires TEST_ENV_URL to be set.
+    /// </summary>
+    [Test]
+    [TestCaseSource(nameof(LoadScenarios))]
+    [Category("Integration")]
     public async Task RegressionScenario_EdgeOrderingIsCorrect(RegressionScenario scenario)
     {
         // Check if TEST_ENV_URL is set
@@ -109,7 +181,14 @@ public class RegressionTests
             ttl: "10m");
 
         var settings = new Settings();
-        var loadGraph = new LoadGraph(session.PostgresConnectionString!, settings);
+
+        // Use direct DB connection if available, otherwise use query proxy API
+        ILoadGraph loadGraph = session.IsDirectConnectionAvailable
+            ? new LoadGraph(session.PostgresConnectionString!, settings)
+            : new ProxyLoadGraph(session, settings);
+
+        TestContext.Out.WriteLine($"Using {(session.IsDirectConnectionAvailable ? "direct DB" : "query proxy")} for data loading");
+
         var factory = new GraphFactory(RouterAddress, loadGraph);
 
         var trustGraph = factory.V2TrustGraph();
@@ -167,6 +246,97 @@ public class RegressionTests
     }
 
     /// <summary>
+    /// Verifies that edge ordering is correct: collateral must be deposited before minting.
+    /// </summary>
+    private static void VerifyEdgeOrdering(MaxFlowResponse response, CapacityGraph capacityGraph, string scenarioName)
+    {
+        var groupsWithCollateral = new HashSet<string>();
+        var routerAddr = RouterAddress.ToLowerInvariant();
+
+        foreach (var step in response.Transfers!)
+        {
+            var from = step.From?.ToLowerInvariant() ?? "";
+            var to = step.To?.ToLowerInvariant() ?? "";
+
+            // Track when Router deposits collateral to a group
+            if (from == routerAddr && capacityGraph.IsGroup(AddressIdPool.IdOf(to)))
+            {
+                groupsWithCollateral.Add(to);
+            }
+
+            // Check: if a group is minting to an avatar (not Router), collateral must already be deposited
+            var fromId = AddressIdPool.IdOf(from);
+            if (capacityGraph.IsGroup(fromId) && !capacityGraph.IsGroup(AddressIdPool.IdOf(to)) && to != routerAddr)
+            {
+                Assert.That(groupsWithCollateral.Contains(from), Is.True,
+                    $"Scenario '{scenarioName}': Group {from} minted before receiving collateral");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Validates the path result against expected properties.
+    /// </summary>
+    private static void ValidateExpectedPath(
+        MaxFlowResponse response,
+        ExpectedPath expectedPath,
+        CapacityGraph capacityGraph,
+        string scenarioName)
+    {
+        var transfers = response.Transfers!;
+
+        if (expectedPath.MinHops.HasValue)
+        {
+            Assert.That(transfers.Count, Is.GreaterThanOrEqualTo(expectedPath.MinHops.Value),
+                $"Scenario '{scenarioName}': Expected at least {expectedPath.MinHops.Value} hops but got {transfers.Count}");
+        }
+
+        if (expectedPath.MaxHops.HasValue)
+        {
+            Assert.That(transfers.Count, Is.LessThanOrEqualTo(expectedPath.MaxHops.Value),
+                $"Scenario '{scenarioName}': Expected at most {expectedPath.MaxHops.Value} hops but got {transfers.Count}");
+        }
+
+        if (expectedPath.RouterInvolved.HasValue)
+        {
+            var routerAddr = RouterAddress.ToLowerInvariant();
+            var routerFound = transfers.Any(t =>
+                t.From?.ToLowerInvariant() == routerAddr ||
+                t.To?.ToLowerInvariant() == routerAddr);
+
+            if (expectedPath.RouterInvolved.Value)
+            {
+                Assert.That(routerFound, Is.True,
+                    $"Scenario '{scenarioName}': Expected Router to be involved but it wasn't");
+            }
+            else
+            {
+                Assert.That(routerFound, Is.False,
+                    $"Scenario '{scenarioName}': Expected Router NOT to be involved but it was");
+            }
+        }
+
+        if (expectedPath.GroupsMinted != null && expectedPath.GroupsMinted.Count > 0)
+        {
+            var mintedGroups = new HashSet<string>();
+            foreach (var step in transfers)
+            {
+                var fromId = AddressIdPool.IdOf(step.From?.ToLowerInvariant() ?? "");
+                if (capacityGraph.IsGroup(fromId))
+                {
+                    mintedGroups.Add(step.From!.ToLowerInvariant());
+                }
+            }
+
+            foreach (var expectedGroup in expectedPath.GroupsMinted)
+            {
+                Assert.That(mintedGroups.Contains(expectedGroup.ToLowerInvariant()), Is.True,
+                    $"Scenario '{scenarioName}': Expected group {expectedGroup} to mint but it didn't");
+            }
+        }
+    }
+
+    /// <summary>
     /// Tests that we have at least one regression scenario defined.
     /// </summary>
     [Test]
@@ -194,8 +364,14 @@ public class RegressionTests
 /// </summary>
 public class RegressionScenario
 {
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
     [JsonPropertyName("name")]
     public string? Name { get; set; }
+
+    [JsonPropertyName("category")]
+    public string? Category { get; set; }
 
     [JsonPropertyName("block")]
     public long Block { get; set; }
@@ -220,4 +396,54 @@ public class RegressionScenario
 
     [JsonPropertyName("fixedIn")]
     public string? FixedIn { get; set; }
+
+    /// <summary>
+    /// Whether the pathfinder should find a path. Defaults to true.
+    /// Scenarios with shouldFindPath=false are negative tests (handled by ScenarioTests).
+    /// </summary>
+    [JsonPropertyName("shouldFindPath")]
+    public bool ShouldFindPath { get; set; } = true;
+
+    /// <summary>
+    /// Whether to execute the transfer on Anvil (E2E). Defaults to true.
+    /// </summary>
+    [JsonPropertyName("runOnAnvil")]
+    public bool RunOnAnvil { get; set; } = true;
+
+    /// <summary>
+    /// Tags for filtering/grouping scenarios.
+    /// </summary>
+    [JsonPropertyName("tags")]
+    public List<string>? Tags { get; set; }
+
+    /// <summary>
+    /// Original block reference for validation (when subgraph was extracted).
+    /// </summary>
+    [JsonPropertyName("originalBlock")]
+    public long? OriginalBlock { get; set; }
+
+    /// <summary>
+    /// Transaction hash for on-chain verified scenarios.
+    /// </summary>
+    [JsonPropertyName("transactionHash")]
+    public string? TransactionHash { get; set; }
+
+    /// <summary>
+    /// Embedded subgraph data for unit testing without external dependencies.
+    /// When present, tests can run offline using FixtureLoadGraph.
+    /// </summary>
+    [JsonPropertyName("subgraph")]
+    public Helpers.FixtureSubgraph? Subgraph { get; set; }
+
+    /// <summary>
+    /// Documentation for recreating the scenario if the block becomes unavailable.
+    /// </summary>
+    [JsonPropertyName("scenarioRequirements")]
+    public Helpers.ScenarioRequirements? ScenarioRequirements { get; set; }
+
+    /// <summary>
+    /// Expected properties of the path result for validation.
+    /// </summary>
+    [JsonPropertyName("expectedPath")]
+    public Helpers.ExpectedPath? ExpectedPath { get; set; }
 }

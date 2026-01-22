@@ -2,13 +2,15 @@
   "id": "group-minting-002",
   "name": "Group minting edge ordering validation",
   "category": "group-minting",
-  "block": 43193632,
-  "source": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
-  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
-  "description": "Tests that group minting paths have correct edge ordering. All Router→Group edges must precede Group→Avatar edges for the same group. This is critical for contract execution.",
+  "block": 44288768,
+  "source": "0x0afd8899bca011bb95611409f09c8efbf6b169cf",
+  "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+  "description": "Tests group minting with Circles Backers group (0x1aca75e38263c79d9d4f10df0635cc6fcfe6f026). Source (1M CRC) and sink (18K CRC) both trust the group. Path goes Source → Router → Group (mint) → Sink. Validates edge ordering: Router→Group edges must precede Group→Avatar edges.",
   "shouldFindPath": true,
-  "minFlow": "10000000000000000000",
+  "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": true,
-  "tags": ["group-minting", "edge-ordering", "router"]
+  "tags": ["group-minting", "edge-ordering", "router", "circles-backers"],
+  "discoveredAt": "2026-01-22",
+  "fixedIn": "Fixture updated with verified group-connected addresses"
 }

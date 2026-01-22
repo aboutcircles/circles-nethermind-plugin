@@ -739,6 +739,337 @@ public class QuantizedModeSelfLoopTests
 }
 
 /// <summary>
+/// Tests for quantizedMode invitation flow fixes (source ≠ sink).
+/// Issue 2: Auto-discover tokens with 96+ CRC liquidity when no ToTokens specified
+/// Issue 3: Filter ToTokens to only sink-trusted tokens
+/// </summary>
+[TestFixture]
+public class QuantizedModeInvitationFlowTests
+{
+    private const long Quanta96CRC = 96_000_000L;
+    private static int Node(int i) => AddressIdPool.IdOf($"0x{i:X40}");
+
+    // ─────────────────────── Issue 3: ToTokens Filtering ───────────────────────
+
+    [Test]
+    public void CreateCapacityGraph_MultipleToTokens_FiltersSinkUntrustedTokens()
+    {
+        // Arrange: Source ≠ Sink (invitation flow)
+        // ToTokens includes tokenA (sink trusts) and tokenB (sink doesn't trust)
+        // Fix: Only tokenA should be effective, tokenB silently skipped
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);  // Sink trusts this
+        var tokenB = Node(11);  // Sink does NOT trust this
+
+        var mockLoadGraph = new MockLoadGraph();
+        // Source holds both tokens
+        mockLoadGraph.AddBalance(source, tokenA, 200_000_000L);
+        mockLoadGraph.AddBalance(source, tokenB, 200_000_000L);
+        // Sink only trusts tokenA
+        mockLoadGraph.AddTrust(sink, tokenA);
+        // Source trusts sink (for routing)
+        mockLoadGraph.AddTrust(source, sink);
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),  // source ≠ sink
+            QuantizedMode = true,
+            ToTokens = new List<string>
+            {
+                AddressIdPool.StringOf(tokenA),
+                AddressIdPool.StringOf(tokenB)  // Sink doesn't trust this - should be filtered
+            }
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: Graph should have edges for tokenA but NOT for tokenB to sink
+        // We verify by checking that tokenB doesn't have a pool-to-sink edge
+        var tokenBPoolId = AddressIdPool.TokenPoolIdOf(tokenB);
+        var sinkEdges = capacityGraph.Edges.Where(e => e.To == sink).ToList();
+
+        // There should be edges to sink (for trusted tokens)
+        // But no edges with tokenB as the token
+        var tokenBEdgesToSink = sinkEdges.Where(e => e.Token == tokenB).ToList();
+        Assert.That(tokenBEdgesToSink, Is.Empty,
+            "Untrusted tokenB should have been filtered from ToTokens - no edges to sink");
+    }
+
+    [Test]
+    public void CreateCapacityGraph_AllToTokensUntrusted_EmptyFilter()
+    {
+        // Arrange: ToTokens contains only tokens sink doesn't trust
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+        var tokenB = Node(11);
+
+        var mockLoadGraph = new MockLoadGraph();
+        mockLoadGraph.AddBalance(source, tokenA, 200_000_000L);
+        // Sink trusts nothing that's in ToTokens
+        mockLoadGraph.AddTrust(sink, Node(99));  // Trusts something else
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            ToTokens = new List<string>
+            {
+                AddressIdPool.StringOf(tokenA),
+                AddressIdPool.StringOf(tokenB)
+            }
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: No edges should reach sink (all ToTokens were filtered)
+        var sinkEdges = capacityGraph.Edges.Where(e => e.To == sink).ToList();
+        Assert.That(sinkEdges, Is.Empty,
+            "When all ToTokens are filtered (sink trusts none), no edges should reach sink");
+    }
+
+    // ─────────────────────── Issue 2: Auto-Discovery ───────────────────────
+
+    [Test]
+    public void CreateCapacityGraph_QuantizedInvitation_NoToTokens_AutoDiscoversHighLiquidityToken()
+    {
+        // Arrange: Source ≠ Sink, quantizedMode, no ToTokens
+        // Source has 100 CRC of tokenA (enough for 1 invite)
+        // Sink trusts tokenA
+        // Fix: Should auto-discover tokenA as effective ToTokens
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+
+        var mockLoadGraph = new MockLoadGraph();
+        // Source holds tokenA with 100 CRC (> 96 CRC threshold)
+        mockLoadGraph.AddBalance(source, tokenA, 100_000_000L);
+        // Sink trusts tokenA
+        mockLoadGraph.AddTrust(sink, tokenA);
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),  // source ≠ sink (invitation flow)
+            QuantizedMode = true,
+            // No ToTokens - should auto-discover
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: Edges should be added for tokenA (auto-discovered)
+        // The token pool should have edges going to sink
+        var tokenAPoolId = AddressIdPool.TokenPoolIdOf(tokenA);
+        var poolToSinkEdge = capacityGraph.Edges.FirstOrDefault(
+            e => e.From == tokenAPoolId && e.To == sink && e.Token == tokenA);
+
+        Assert.That(poolToSinkEdge, Is.Not.Null,
+            "Auto-discovered tokenA should have pool→sink edge for invitation flow");
+    }
+
+    [Test]
+    public void CreateCapacityGraph_QuantizedInvitation_NoToTokens_IgnoresLowLiquidityToken()
+    {
+        // Arrange: Source has tokenA with only 50 CRC (< 96 CRC threshold)
+        // Even though sink trusts it, it should not be auto-discovered
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenLow = Node(10);   // 50 CRC - below threshold
+        var tokenHigh = Node(11);  // 100 CRC - above threshold
+
+        var mockLoadGraph = new MockLoadGraph();
+        // Source holds tokenLow with only 50 CRC (< 96 CRC)
+        mockLoadGraph.AddBalance(source, tokenLow, 50_000_000L);
+        // Source holds tokenHigh with 100 CRC (> 96 CRC)
+        mockLoadGraph.AddBalance(source, tokenHigh, 100_000_000L);
+        // Sink trusts both
+        mockLoadGraph.AddTrust(sink, tokenLow);
+        mockLoadGraph.AddTrust(sink, tokenHigh);
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            // No ToTokens
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: Only tokenHigh should have sink edges (tokenLow is below threshold)
+        var tokenHighPoolId = AddressIdPool.TokenPoolIdOf(tokenHigh);
+        var tokenLowPoolId = AddressIdPool.TokenPoolIdOf(tokenLow);
+
+        var highPoolToSinkEdge = capacityGraph.Edges.FirstOrDefault(
+            e => e.From == tokenHighPoolId && e.To == sink && e.Token == tokenHigh);
+        var lowPoolToSinkEdge = capacityGraph.Edges.FirstOrDefault(
+            e => e.From == tokenLowPoolId && e.To == sink && e.Token == tokenLow);
+
+        Assert.That(highPoolToSinkEdge, Is.Not.Null,
+            "High liquidity tokenHigh should be auto-discovered");
+        Assert.That(lowPoolToSinkEdge, Is.Null,
+            "Low liquidity tokenLow should NOT be auto-discovered (below 96 CRC threshold)");
+    }
+
+    [Test]
+    public void CreateCapacityGraph_QuantizedInvitation_NoToTokens_MultipleHighLiquidityTokens()
+    {
+        // Arrange: Source has multiple tokens with 96+ CRC
+        // All should be auto-discovered
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+        var tokenB = Node(11);
+        var tokenC = Node(12);
+
+        var mockLoadGraph = new MockLoadGraph();
+        mockLoadGraph.AddBalance(source, tokenA, 200_000_000L);  // 200 CRC
+        mockLoadGraph.AddBalance(source, tokenB, 100_000_000L);  // 100 CRC
+        mockLoadGraph.AddBalance(source, tokenC, 50_000_000L);   // 50 CRC (too low)
+        // Sink trusts all
+        mockLoadGraph.AddTrust(sink, tokenA);
+        mockLoadGraph.AddTrust(sink, tokenB);
+        mockLoadGraph.AddTrust(sink, tokenC);
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: tokenA and tokenB should have sink edges, tokenC should not
+        var tokenAPool = AddressIdPool.TokenPoolIdOf(tokenA);
+        var tokenBPool = AddressIdPool.TokenPoolIdOf(tokenB);
+        var tokenCPool = AddressIdPool.TokenPoolIdOf(tokenC);
+
+        var hasTokenAEdge = capacityGraph.Edges.Any(e => e.From == tokenAPool && e.To == sink);
+        var hasTokenBEdge = capacityGraph.Edges.Any(e => e.From == tokenBPool && e.To == sink);
+        var hasTokenCEdge = capacityGraph.Edges.Any(e => e.From == tokenCPool && e.To == sink);
+
+        Assert.That(hasTokenAEdge, Is.True, "tokenA (200 CRC) should be auto-discovered");
+        Assert.That(hasTokenBEdge, Is.True, "tokenB (100 CRC) should be auto-discovered");
+        Assert.That(hasTokenCEdge, Is.False, "tokenC (50 CRC) should NOT be auto-discovered");
+    }
+
+    [Test]
+    public void CreateCapacityGraph_QuantizedInvitation_NoToTokens_SinkDoesNotTrust_NoAutoDiscovery()
+    {
+        // Arrange: Source has 200 CRC of tokenA, but sink doesn't trust it
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+
+        var mockLoadGraph = new MockLoadGraph();
+        mockLoadGraph.AddBalance(source, tokenA, 200_000_000L);
+        // Sink does NOT trust tokenA
+        mockLoadGraph.AddTrust(sink, Node(99));  // Trusts something else
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: No edges to sink for tokenA (sink doesn't trust it)
+        var tokenAPool = AddressIdPool.TokenPoolIdOf(tokenA);
+        var hasTokenAEdge = capacityGraph.Edges.Any(e => e.From == tokenAPool && e.To == sink);
+
+        Assert.That(hasTokenAEdge, Is.False,
+            "tokenA should not have sink edge (sink doesn't trust it)");
+    }
+
+    [Test]
+    public void CreateCapacityGraph_NonQuantizedInvitation_NoAutoDiscovery()
+    {
+        // Arrange: Same setup but NOT quantizedMode
+        // Auto-discovery should NOT happen
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+
+        var mockLoadGraph = new MockLoadGraph();
+        mockLoadGraph.AddBalance(source, tokenA, 200_000_000L);
+        mockLoadGraph.AddTrust(sink, tokenA);
+
+        var factory = new GraphFactory("0x0000000000000000000000000000000000000000", mockLoadGraph);
+
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = false,  // NOT quantized mode
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+        // Assert: In non-quantized mode without ToTokens, normal behavior applies
+        // All trusted tokens can flow to sink (no filtering)
+        var tokenAPool = AddressIdPool.TokenPoolIdOf(tokenA);
+        var hasTokenAEdge = capacityGraph.Edges.Any(e => e.From == tokenAPool && e.To == sink);
+
+        // Should have edge because sink trusts tokenA (normal behavior)
+        Assert.That(hasTokenAEdge, Is.True,
+            "Non-quantized mode should allow all trusted tokens (no auto-discovery filtering)");
+    }
+}
+
+/// <summary>
 /// Mock ILoadGraph for unit testing GraphFactory.
 /// </summary>
 internal class MockLoadGraph : Circles.Pathfinder.Data.ILoadGraph
@@ -753,7 +1084,11 @@ internal class MockLoadGraph : Circles.Pathfinder.Data.ILoadGraph
 
     public void AddBalance(int holderId, int tokenId, long amount, bool isWrapped = false, bool isStatic = false)
     {
-        _balances.Add((amount.ToString(), holderId, tokenId, isWrapped, isStatic));
+        // V2BalanceGraph expects amounts in WEI (18 decimals) and truncates by 10^12
+        // So we need to multiply our truncated amount by 10^12 to get back to WEI
+        // e.g., 200_000_000 (200 CRC truncated) → "200000000000000000000" WEI
+        var weiAmount = new Nethermind.Int256.UInt256((ulong)amount) * new Nethermind.Int256.UInt256(1_000_000_000_000);
+        _balances.Add((weiAmount.ToString(), holderId, tokenId, isWrapped, isStatic));
     }
 
     public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()

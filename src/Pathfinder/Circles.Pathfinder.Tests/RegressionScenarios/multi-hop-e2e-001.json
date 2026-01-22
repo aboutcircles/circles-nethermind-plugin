@@ -2,10 +2,10 @@
   "id": "multi-hop-e2e-001",
   "name": "Multi-hop transitive transfer on Anvil",
   "category": "direct-transfer",
-  "block": 43193632,
-  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
-  "description": "Tests a multi-hop transitive transfer requiring intermediary addresses. Validates that the path execution works correctly on-chain with multiple transfer steps.",
+  "block": 44288768,
+  "source": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+  "sink": "0x00a87ca5b9095fc53549b6e4aab3100c204a3fbd",
+  "description": "Tests a 2+ hop transitive transfer. Source (registered block 36531351, 258K CRC) transfers to sink (registered block 40631325) via intermediary 0x861043f68af47890b55f3f58e6bf4628b67218ec. No direct trust exists between source and sink.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
@@ -15,5 +15,7 @@
   "excludedTokens": [],
   "maxTransfers": 10,
   "withWrap": false,
-  "tags": ["positive-test", "e2e", "multi-hop", "transitive"]
+  "tags": ["positive-test", "e2e", "multi-hop", "transitive"],
+  "discoveredAt": "2026-01-22",
+  "fixedIn": "Fixture updated with verified connected addresses"
 }

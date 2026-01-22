@@ -2,15 +2,16 @@
   "id": "consented-flow-group-mint-005",
   "name": "Consented flow avatar minting group tokens (isPermittedFlow bug)",
   "category": "consented-flow",
-  "block": 43677011,
-  "source": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
-  "sink": "0x04cd1e34baa4d2818aa43ab26e4051d1ebaa90e6",
-  "description": "Bug reproduction: Consented flow avatar sends tokens to recipient via group minting. Before fix, ValidateConsentedFlow ran BEFORE InsertRouterInTransfers, causing Avatar→Group edges to be filtered (consented flow check failed because Avatar doesn't directly trust Group). After fix, InsertRouterInTransfers runs first, creating Avatar→Router→Group edges which bypass consent validation. Tests that consented flow avatars can still participate in group token transfers.",
+  "block": 44288768,
+  "source": "0x0afd8899bca011bb95611409f09c8efbf6b169cf",
+  "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+  "description": "Bug reproduction: Consented flow avatar sends tokens to recipient via group minting (Circles Backers group). Source has simulated consented flow enabled. Before fix, ValidateConsentedFlow ran BEFORE InsertRouterInTransfers, causing Avatar→Group edges to be filtered. After fix, InsertRouterInTransfers runs first, creating Avatar→Router→Group edges. Tests that consented flow avatars can participate in group token transfers.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": true,
+  "simulatedConsentedAvatars": ["0x0afd8899bca011bb95611409f09c8efbf6b169cf"],
   "discoveredAt": "2026-01-20",
   "fixedIn": "Pipeline reorder: InsertRouterInTransfers before ValidateConsentedFlow",
-  "tags": ["consented-flow", "group-minting", "router", "regression", "isPermittedFlow", "bug-fix"]
+  "tags": ["consented-flow", "group-minting", "router", "regression", "isPermittedFlow", "bug-fix", "circles-backers"]
 }

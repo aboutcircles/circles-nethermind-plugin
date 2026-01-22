@@ -2,13 +2,13 @@
   "id": "group-multi-token-001",
   "name": "Group minting with high token diversity (640 tokens)",
   "category": "group-minting",
-  "block": 43193632,
+  "block": 44288768,
   "source": "0x00855e5295f9f791f7ea5e50afe23e069c4c39fe",
-  "sink": "0x1158a69fa271c469f6b24455812b992e187e47b0",
-  "description": "User with 640 different token types sending to a group they trust. Tests edge ordering with many potential collateral tokens. Discovered via query on staging.",
+  "sink": "0x601d89f574e336597936d8c9c9997f2f72abc0b0",
+  "description": "User with many different token types sending to a human that trusts Gnosis group (0x1158a69fa271c469f6b24455812b992e187e47b0). Tests edge ordering with high collateral diversity. Path goes Source → Group (mint) → Sink.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": true,
-  "tags": ["group-minting", "multi-collateral", "edge-ordering", "discovered", "high-diversity"]
+  "tags": ["group-minting", "multi-collateral", "edge-ordering", "discovered", "high-diversity", "gnosis-group"]
 }

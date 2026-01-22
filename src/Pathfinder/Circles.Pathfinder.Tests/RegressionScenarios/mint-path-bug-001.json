@@ -2,15 +2,15 @@
   "id": "mint-path-bug-001",
   "name": "Original November 2025 Edge Ordering Bug",
   "category": "group-minting",
-  "block": 43193632,
-  "source": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
-  "sink": "0xb3129372e52b910b6994eaef77bbc1892ea48779",
-  "description": "GNO token offer failure. Dictionary iteration order caused edges to be returned in arbitrary order. User sent 13.63 + 27 + 14 CRC as collateral to mint 54.61 CRC of group tokens. Edge order: Router→Group(13.63), Group→Sink(54.61), Router→Group(27), Router→Group(14). Contract failed with ERC1155InsufficientBalance because group only had 13.63 when trying to transfer 54.61.",
+  "block": 44288768,
+  "source": "0x97fd8f7829a019946329f6d2e763a72741047518",
+  "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+  "description": "Reproduces the edge ordering bug. Dictionary iteration caused edges to be returned in arbitrary order. Without SortEdgesForMintDependencies, Router→Group (collateral) edges could follow Group→Avatar (mint) edges, causing ERC1155InsufficientBalance. Source (1.1M CRC) trusts MetriTestSupergroup (0x86533d1ada8ffbe7b6f7244f9a1b707f7f3e239b, 250 trusters). Both source and sink trust the group.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": true,
   "discoveredAt": "2025-11-17T23:18:00+01:00",
   "fixedIn": "SortEdgesForMintDependencies()",
-  "tags": ["regression", "edge-ordering", "multi-collateral"]
+  "tags": ["regression", "edge-ordering", "multi-collateral", "metritest"]
 }
