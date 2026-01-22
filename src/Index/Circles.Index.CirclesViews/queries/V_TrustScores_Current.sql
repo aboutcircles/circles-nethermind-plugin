@@ -81,7 +81,8 @@ SELECT
     out_degree,
     mutual_count,
     age_days
-FROM scores;
+FROM scores
+WITH NO DATA;
 
 -- Create indexes for efficient querying (only if they don't exist)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_trust_current_avatar ON "V_TrustScores_Current"(avatar);
