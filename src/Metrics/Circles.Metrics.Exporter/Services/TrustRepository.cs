@@ -4,7 +4,7 @@ namespace Circles.Metrics.Exporter.Services;
 
 /// <summary>
 /// Repository for querying trust score metrics from the analytics database.
-/// Queries the trust_scores_current table which contains pre-computed trust scores.
+/// Queries the V_TrustScores_Current table which contains pre-computed trust scores.
 /// </summary>
 public class TrustRepository
 {
@@ -46,7 +46,7 @@ public class TrustRepository
                 COALESCE(MIN(trust_score), 0) as min,
                 COALESCE(MAX(trust_score), 0) as max,
                 COUNT(*) as total_count
-            FROM trust_scores_current
+            FROM "V_TrustScores_Current"
             WHERE trust_score IS NOT NULL
             """;
 
@@ -82,7 +82,7 @@ public class TrustRepository
     {
         const string sql = """
             SELECT trust_level, COUNT(*) as count
-            FROM trust_scores_current
+            FROM "V_TrustScores_Current"
             GROUP BY trust_level
             """;
 
@@ -128,7 +128,7 @@ public class TrustRepository
                 COALESCE(AVG(confidence), 0) as avg,
                 COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY confidence), 0) as median,
                 COUNT(*) FILTER (WHERE confidence < 0.5) as low_confidence_count
-            FROM trust_scores_current
+            FROM "V_TrustScores_Current"
             WHERE confidence IS NOT NULL
             """;
 
@@ -261,7 +261,7 @@ public class TrustRepository
                 SELECT c.avatar,
                        c.trust_score as current_score,
                        h.trust_score as previous_score
-                FROM trust_scores_current c
+                FROM "V_TrustScores_Current" c
                 JOIN trust_scores_history h ON c.avatar = h.avatar
                 WHERE h.snapshot_date = (
                     SELECT MAX(snapshot_date) FROM trust_scores_history
@@ -290,7 +290,7 @@ public class TrustRepository
                 SELECT c.avatar,
                        c.trust_score as current_score,
                        h.trust_score as previous_score
-                FROM trust_scores_current c
+                FROM "V_TrustScores_Current" c
                 JOIN trust_scores_history h ON c.avatar = h.avatar
                 WHERE h.snapshot_date = (
                     SELECT MAX(snapshot_date) FROM trust_scores_history
@@ -315,7 +315,7 @@ public class TrustRepository
     {
         // New accounts (registered in window) with LOW or VERY_LOW trust
         var sql = $"""
-            SELECT COUNT(*) FROM trust_scores_current t
+            SELECT COUNT(*) FROM "V_TrustScores_Current" t
             JOIN "CrcV2_RegisterHuman" r ON LOWER(t.avatar) = LOWER(r."avatar")
             WHERE r."timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             AND t.trust_level IN ('LOW', 'VERY_LOW')
@@ -335,7 +335,7 @@ public class TrustRepository
     {
         // Accounts where penalty was applied (check JSON details)
         const string sql = """
-            SELECT COUNT(*) FROM trust_scores_current
+            SELECT COUNT(*) FROM "V_TrustScores_Current"
             WHERE details::jsonb->>'penalty_applied' = 'true'
             OR (details::jsonb->'penalties') IS NOT NULL
             """;
@@ -371,7 +371,7 @@ public class TrustRepository
                     ELSE '0-10'
                 END as bucket,
                 COUNT(*) as count
-            FROM trust_scores_current
+            FROM "V_TrustScores_Current"
             WHERE trust_score IS NOT NULL
             GROUP BY bucket
             ORDER BY bucket
@@ -437,7 +437,7 @@ public class TrustRepository
                     COALESCE(s.trust_score, 50) as score,
                     COALESCE(s.trust_level, 'MEDIUM') as level
                 FROM transfers t
-                LEFT JOIN trust_scores_current s ON LOWER(t."from") = LOWER(s.avatar)
+                LEFT JOIN "V_TrustScores_Current" s ON LOWER(t."from") = LOWER(s.avatar)
             )
             SELECT
                 COALESCE(SUM(amount) FILTER (WHERE level IN ('HIGH', 'VERY_HIGH')), 0) as high_trust_volume,
@@ -473,7 +473,7 @@ public class TrustRepository
     public async Task<DateTimeOffset> GetLastComputeTimeAsync(CancellationToken ct = default)
     {
         const string sql = """
-            SELECT MAX(computed_at) FROM trust_scores_current
+            SELECT MAX(computed_at) FROM "V_TrustScores_Current"
             """;
 
         await using var conn = new NpgsqlConnection(_connectionString);

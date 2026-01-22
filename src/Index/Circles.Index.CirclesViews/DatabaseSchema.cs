@@ -56,7 +56,10 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV2", "GroupWrapUnWrap_1d"),
 
         ("V_CrcV2", "AffiliateMembersCount_1h"),
-        ("V_CrcV2", "AffiliateMembersCount_1d")
+        ("V_CrcV2", "AffiliateMembersCount_1d"),
+
+        // Trust score materialized view (depends on V_Crc_Avatars and V_CrcV2_TrustRelations)
+        ("V_TrustScores", "Current")
     };
 
     public ISchemaPropertyMap SchemaPropertyMap { get; } = new SchemaPropertyMap();
