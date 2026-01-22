@@ -1,0 +1,15 @@
+{
+  "name": "circles-plugin-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for Circles Nethermind Plugin testing",
+  "type": "module",
+  "scripts": {
+    "payment-gateway": "node payment-gateway-test.mjs",
+    "check-safe": "node payment-gateway-test.mjs check-safe",
+    "register-safe": "node payment-gateway-test.mjs register-safe",
+    "deploy-gateway": "node payment-gateway-test.mjs deploy-gateway"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0"
+  }
+}

@@ -18,6 +18,7 @@ Each JSON file defines a transfer scenario that is:
 | `self-conversion` | Token conversion where source equals sink |
 | `wrapped-tokens` | Transfers using wrapped ERC20 tokens |
 | `consented-flow` | Transfers with consented flow validation |
+| `payment-gateway` | Payment gateway transfers with group trust (tests router + edge ordering) |
 
 ## Usage
 
@@ -92,3 +93,8 @@ dotnet test --filter "Category=E2E"
 
 ### Wrapped Token Scenarios
 - **wrapped-token-001.json** - Transfer with wrapped tokens enabled
+
+### Payment Gateway Scenarios
+- **payment-gateway-group-mint-001.json** - On-chain verified routed transfer to payment gateway with group trust (block 44288768)
+- **payment-gateway-consented-001.json** - Routed transfer with CONSENTED FLOW ENABLED, tests isPermittedFlow fix (block 44289365)
+- To create new fixtures, run: `cd scripts && node payment-gateway-test.mjs`

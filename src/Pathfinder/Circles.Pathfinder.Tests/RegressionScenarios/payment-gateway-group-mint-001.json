@@ -1,0 +1,24 @@
+{
+  "id": "payment-gateway-group-mint-001",
+  "name": "Payment Gateway Group Mint Test",
+  "category": "payment-gateway",
+  "block": 44288768,
+  "source": "0x4b6F72008e7ACa33De36B6565eF30264626B21dB",
+  "sink": "0x1f6db4d3cd8a506307952897a5b6d3bdedffbd1e",
+  "description": "Routed transfer to payment gateway (0x1f6db4d3cd8a506307952897a5b6d3bdedffbd1e) that trusts groups 4Birthday and MunichBazis. Tests that router insertion happens BEFORE consent validation (isPermittedFlow fix) and that edge ordering places collateral deposits before mint operations (ERC1155InsufficientBalance fix). Successfully executed on-chain at block 44288768.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "discoveredAt": "2026-01-22T08:56:15.843Z",
+  "fixedIn": "Pipeline reorder + SortEdgesForMintDependencies",
+  "tags": [
+    "payment-gateway",
+    "group-minting",
+    "router",
+    "regression",
+    "isPermittedFlow",
+    "edge-ordering",
+    "on-chain-verified"
+  ]
+}
