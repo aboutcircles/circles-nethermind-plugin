@@ -225,6 +225,7 @@ app.MapGet("/findPath", async (
     string[]? simulatedConsentedAvatars, // Addresses with consented flow enabled (for testing)
     int? maxTransfers,
     bool? quantizedMode, // When true, enforces 96 CRC quantization for sink-bound transfers (invites = targetFlow / 96 CRC)
+    bool? debugShowIntermediateSteps, // When true, includes all transformation stages in response
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
@@ -294,7 +295,8 @@ app.MapGet("/findPath", async (
             SimulatedBalances = sim,
             SimulatedConsentedAvatars = simulatedConsentedAvatars?.ToList(),
             MaxTransfers = maxTransfers,
-            QuantizedMode = quantizedMode
+            QuantizedMode = quantizedMode,
+            DebugShowIntermediateSteps = debugShowIntermediateSteps
         };
 
         using var h = await pool.Rent(request, balanceGraph, trustGraph);

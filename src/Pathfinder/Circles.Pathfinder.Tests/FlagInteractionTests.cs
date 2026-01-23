@@ -774,4 +774,163 @@ public class FlagInteractionTests
         Assert.That(capacityGraph.IsGroup(group), Is.True);
         Assert.That(capacityGraph.ConsentedAvatars.Contains(source), Is.True);
     }
+
+    // ─────────────────────── DEBUG FLAG ───────────────────────
+
+    [Test]
+    public void D001_DebugShowIntermediateSteps_ReturnsAllStages()
+    {
+        // Arrange: Basic transfer to test debug output
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 100_000_000);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            DebugShowIntermediateSteps = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: Debug object should be present with all stages
+        Assert.That(result.Debug, Is.Not.Null);
+        Assert.That(result.Debug!.RawPaths, Is.Not.Null, "RawPaths should be present");
+        Assert.That(result.Debug.Collapsed, Is.Not.Null, "Collapsed should be present");
+        Assert.That(result.Debug.RouterInserted, Is.Not.Null, "RouterInserted should be present");
+        Assert.That(result.Debug.Sorted, Is.Not.Null, "Sorted should be present");
+
+        // RawPaths should show token pool (tpool-0x...) references
+        Assert.That(result.Debug.RawPaths!.Count, Is.GreaterThan(0), "RawPaths should have edges");
+        Assert.That(result.Debug.RawPaths.Any(e => e.From.StartsWith("tpool-") || e.To.StartsWith("tpool-")),
+            Is.True, "RawPaths should contain token pool references");
+    }
+
+    [Test]
+    public void D002_DebugShowIntermediateSteps_False_NoDebugOutput()
+    {
+        // Arrange: Basic transfer with debug flag off
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 100_000_000);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            DebugShowIntermediateSteps = false
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: Debug should be null when flag is false
+        Assert.That(result.Debug, Is.Null);
+    }
+
+    [Test]
+    public void D003_DebugShowIntermediateSteps_GroupMinting_ShowsRouter()
+    {
+        // Arrange: Group minting path to verify router insertion in debug output
+        var source = Node(1);
+        var sink = Node(2);
+        var group = Node(100);
+        var tokenA = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 100_000_000);
+        mock.AddGroup(group);
+        mock.AddGroupTrust(group, tokenA);
+        mock.AddTrust(sink, group);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            DebugShowIntermediateSteps = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: RouterInserted stage should show router
+        Assert.That(result.Debug, Is.Not.Null);
+        Assert.That(result.Debug!.RouterInserted, Is.Not.Null);
+        Assert.That(result.Debug.RouterInserted!.Any(e =>
+            e.From == RouterAddress || e.To == RouterAddress),
+            Is.True, "RouterInserted should contain router address");
+
+        // Collapsed stage should NOT have router (it's inserted later)
+        Assert.That(result.Debug.Collapsed, Is.Not.Null);
+        Assert.That(result.Debug.Collapsed!.All(e =>
+            e.From != RouterAddress && e.To != RouterAddress),
+            Is.True, "Collapsed stage should not have router yet");
+    }
+
+    [Test]
+    public void D004_DebugShowIntermediateSteps_Null_NoDebugOutput()
+    {
+        // Arrange: Default behavior when flag is not set (null)
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 100_000_000);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink)
+            // DebugShowIntermediateSteps not set (null)
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: Debug should be null by default
+        Assert.That(result.Debug, Is.Null);
+    }
 }

@@ -99,7 +99,19 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
 
         /* --------------------------------------------------------------------
-         * 2b. Optional pruning to fit a transfer-step budget
+         * 2b. CAPTURE: Stage 1 - Raw paths from solver (before pruning/collapsing)
+         *     Shows Avatar → TokenPool → Avatar paths with token pools visible.
+         * ------------------------------------------------------------------ */
+        bool wantDebug = request.DebugShowIntermediateSteps == true;
+        DebugPipelineStages? debugStages = wantDebug ? new DebugPipelineStages() : null;
+
+        if (wantDebug)
+        {
+            debugStages!.RawPaths = ConvertSimplePathsToTransferSteps(simplePaths);
+        }
+
+        /* --------------------------------------------------------------------
+         * 2c. Optional pruning to fit a transfer-step budget
          *      We keep the biggest-flow paths first and count "steps" after
          *      collapsing balance nodes (avatar→avatar per token).
          * ------------------------------------------------------------------ */
@@ -174,6 +186,14 @@ public class V2Pathfinder
         var aggregated = collapsed.AggregateIdenticalEdges();
 
         /* --------------------------------------------------------------------
+         * 5a. CAPTURE: Stage 2 - Collapsed edges (token pools removed)
+         * ------------------------------------------------------------------ */
+        if (wantDebug)
+        {
+            debugStages!.Collapsed = ConvertFlowEdgesToTransferSteps(aggregated.Edges);
+        }
+
+        /* --------------------------------------------------------------------
          * 5b. Insert Router between Avatar → Group transfers.
          *     This MUST happen BEFORE ValidateConsentedFlow so that router edges
          *     exist when validation runs - allowing the router-skip logic to work.
@@ -188,6 +208,14 @@ public class V2Pathfinder
          *     Router edges are skipped by this validation (lines 332-337).
          * ------------------------------------------------------------------ */
         var validatedEdges = ValidateConsentedFlow(processedEdges, capacityGraph);
+
+        /* --------------------------------------------------------------------
+         * 5d. CAPTURE: Stage 3 - Router inserted (Avatar→Group → Avatar→Router→Group)
+         * ------------------------------------------------------------------ */
+        if (wantDebug)
+        {
+            debugStages!.RouterInserted = ConvertFlowEdgesToTransferSteps(validatedEdges);
+        }
 
         /* --------------------------------------------------------------------
          * 6. Sort edges to ensure mint dependencies are satisfied.
@@ -217,6 +245,14 @@ public class V2Pathfinder
             // Add self-loop aggregation: Sink → Sink edges showing total per token type
             // This provides a summary of what tokens the sink receives in the quantized flow
             sortedEdges = AddSinkSelfLoopAggregation(sortedEdges, sinkId);
+        }
+
+        /* --------------------------------------------------------------------
+         * 6c. CAPTURE: Stage 4 - Sorted edges (final execution order)
+         * ------------------------------------------------------------------ */
+        if (wantDebug)
+        {
+            debugStages!.Sorted = ConvertFlowEdgesToTransferSteps(sortedEdges);
         }
 
         /* --------------------------------------------------------------------
@@ -260,7 +296,8 @@ public class V2Pathfinder
 
         return new MaxFlowResponse(
             maxFlowWei.ToString(CultureInfo.InvariantCulture),
-            transfer);
+            transfer,
+            debugStages);
     }
 
     /* ------------------------------------------------------------------------
@@ -1114,6 +1151,67 @@ public class V2Pathfinder
             {
                 Flow = total,
                 CurrentCapacity = 0
+            });
+        }
+
+        return result;
+    }
+
+    /* ------------------------------------------------------------------------
+     * DEBUG HELPERS: Convert internal edge representations to TransferPathStep
+     * for debug output showing all transformation stages.
+     * --------------------------------------------------------------------- */
+
+    /// <summary>
+    /// Convert raw paths (List of SimpleEdge lists) to TransferPathStep list.
+    /// Flattens all paths and shows edges with token pools visible.
+    /// </summary>
+    private static List<TransferPathStep> ConvertSimplePathsToTransferSteps(IReadOnlyList<List<SimpleEdge>> paths)
+    {
+        var result = new List<TransferPathStep>();
+
+        foreach (var path in paths)
+        {
+            foreach (var edge in path)
+            {
+                if (edge.Flow <= 0)
+                    continue;
+
+                result.Add(new TransferPathStep
+                {
+                    From = AddressIdPool.StringOf(edge.From),
+                    To = AddressIdPool.StringOf(edge.To),
+                    TokenOwner = AddressIdPool.StringOf(edge.Token),
+                    Value = CirclesConverter
+                        .BlowUpToUInt256(edge.Flow)
+                        .ToString(CultureInfo.InvariantCulture)
+                });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Convert FlowEdge list to TransferPathStep list.
+    /// </summary>
+    private static List<TransferPathStep> ConvertFlowEdgesToTransferSteps(IReadOnlyList<FlowEdge> edges)
+    {
+        var result = new List<TransferPathStep>(edges.Count);
+
+        foreach (var edge in edges)
+        {
+            if (edge.Flow <= 0)
+                continue;
+
+            result.Add(new TransferPathStep
+            {
+                From = AddressIdPool.StringOf(edge.From),
+                To = AddressIdPool.StringOf(edge.To),
+                TokenOwner = AddressIdPool.StringOf(edge.Token),
+                Value = CirclesConverter
+                    .BlowUpToUInt256(edge.Flow)
+                    .ToString(CultureInfo.InvariantCulture)
             });
         }
 

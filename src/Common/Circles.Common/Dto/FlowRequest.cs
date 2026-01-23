@@ -48,6 +48,16 @@ public class FlowRequest
     /// </summary>
     [JsonPropertyName("quantizedMode")]
     public bool? QuantizedMode { get; set; }
+
+    /// <summary>
+    /// When true, includes debug information showing all transformation stages:
+    /// - rawPaths: Direct output from MaxFlowSolver with token pools (tpool-0x...)
+    /// - collapsed: Token pools removed, showing Avatar→Avatar flows
+    /// - routerInserted: Avatar→Group splits to Avatar→Router→Group
+    /// - sorted: Final ordering for mint dependencies
+    /// </summary>
+    [JsonPropertyName("debugShowIntermediateSteps")]
+    public bool? DebugShowIntermediateSteps { get; set; }
 }
 
 public class SimulatedBalance
