@@ -1597,6 +1597,8 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     protected virtual void ClearCaches()
     {
+        _state.BlockRingBuffer.Clear();
+
         _caches.V1Avatars.Seed(new Dictionary<string, (string, string?)>());
         _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
         _caches.V1AvatarToCidMap.Seed(new Dictionary<string, string>());
