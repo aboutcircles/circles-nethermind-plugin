@@ -1825,6 +1825,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         foreach (var evt in events)
         {
             var blockNumber = evt.TryGetProperty("blockNumber", out var bn) ? bn.GetInt64() : 0;
+            var timestamp = evt.TryGetProperty("timestamp", out var ts) ? ts.GetInt64() : 0;
             var transactionHash = evt.TryGetProperty("transactionHash", out var th) ? th.GetString() ?? "" : "";
             var transactionIndex = evt.TryGetProperty("transactionIndex", out var ti) ? ti.GetInt32() : 0;
             var logIndex = evt.TryGetProperty("logIndex", out var li) ? li.GetInt32() : 0;
@@ -1832,6 +1833,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             var enriched = new EnrichedTransaction
             {
                 BlockNumber = blockNumber,
+                Timestamp = timestamp,
                 TransactionHash = transactionHash,
                 TransactionIndex = transactionIndex,
                 LogIndex = logIndex,
