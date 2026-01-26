@@ -6,17 +6,14 @@ namespace Circles.Metrics.Exporter.Services;
 /// Background service that periodically collects trust score metrics and updates Prometheus gauges.
 /// Queries pre-computed trust scores from the analytics database (trust_scores_current table).
 /// Runs on 300-second interval since trust scores are computed periodically, not in real-time.
+///
+/// Optimization: Uses batched queries to reduce database round-trips from ~25 to ~6 per cycle.
 /// </summary>
 public class TrustCollectorService : BackgroundService
 {
     private readonly TrustRepository _repository;
     private readonly ILogger<TrustCollectorService> _logger;
     private readonly TimeSpan _collectionInterval;
-
-    // Time windows for metrics
-    private static readonly TimeSpan Window24H = TimeSpan.FromHours(24);
-    private static readonly TimeSpan Window7D = TimeSpan.FromDays(7);
-    private static readonly TimeSpan Window30D = TimeSpan.FromDays(30);
 
     public TrustCollectorService(
         TrustRepository repository,
@@ -64,28 +61,27 @@ public class TrustCollectorService : BackgroundService
 
     private async Task CollectAllTrustMetricsAsync(CancellationToken ct)
     {
-        // Run independent collections in parallel
+        // Run batched collections in parallel (optimized: 25 queries → 6 queries)
         await Task.WhenAll(
-            CollectScoreDistributionAsync(ct),
-            CollectTrustLevelDistributionAsync(ct),
-            CollectConfidenceMetricsAsync(ct),
-            CollectNetworkHealthMetricsAsync(ct),
-            CollectAnomalyDetectionMetricsAsync(ct),
-            CollectScoreBucketsAsync(ct),
-            CollectEconomicCorrelationMetricsAsync(ct),
-            CollectTimestampMetricsAsync(ct)
+            CollectScoreDistributionBatchedAsync(ct),    // Score dist + level counts + score buckets
+            CollectConfidenceMetricsAsync(ct),          // Single query, different table
+            CollectNetworkHealthBatchedAsync(ct),       // Velocity + churn + reciprocity + density + degrees
+            CollectAnomalyDetectionBatchedAsync(ct),    // Drops + spikes + low trust new + penalized
+            CollectEconomicCorrelationBatchedAsync(ct), // Volume metrics for both windows
+            CollectTimestampMetricsAsync(ct)            // Small queries, different table
         );
     }
 
     /// <summary>
-    /// Collects score distribution metrics (avg, median, stddev, percentiles).
+    /// Collects score distribution, level counts, and buckets in a single query.
     /// </summary>
-    private async Task CollectScoreDistributionAsync(CancellationToken ct)
+    private async Task CollectScoreDistributionBatchedAsync(CancellationToken ct)
     {
         try
         {
-            var dist = await _repository.GetScoreDistributionAsync(ct);
+            var dist = await _repository.GetScoreDistributionBatchedAsync(ct);
 
+            // Score distribution stats
             TrustMetrics.ScoreAvg.Set(dist.Avg);
             TrustMetrics.ScoreMedian.Set(dist.Median);
             TrustMetrics.ScoreStdDev.Set(dist.StdDev);
@@ -99,41 +95,52 @@ public class TrustCollectorService : BackgroundService
             TrustMetrics.ScorePercentile.WithLabels("p90").Set(dist.P90);
             TrustMetrics.ScorePercentile.WithLabels("p99").Set(dist.P99);
 
-            _logger.LogDebug("Trust score distribution: avg={Avg:F1}, median={Median:F1}, stddev={StdDev:F2}, count={Count}",
+            // Trust level counts
+            var levelCounts = new Dictionary<string, long>
+            {
+                ["VERY_HIGH"] = dist.LevelVeryHigh,
+                ["HIGH"] = dist.LevelHigh,
+                ["MEDIUM"] = dist.LevelMedium,
+                ["LOW"] = dist.LevelLow,
+                ["VERY_LOW"] = dist.LevelVeryLow,
+                ["UNKNOWN"] = dist.LevelUnknown
+            };
+            var totalLevelCount = levelCounts.Values.Sum();
+
+            foreach (var (level, count) in levelCounts)
+            {
+                TrustMetrics.LevelCount.WithLabels(level).Set(count);
+                var percentage = totalLevelCount > 0 ? (count * 100.0 / totalLevelCount) : 0;
+                TrustMetrics.LevelPercentage.WithLabels(level).Set(percentage);
+            }
+
+            // Score buckets
+            var buckets = new Dictionary<string, long>
+            {
+                ["90-100"] = dist.Bucket90_100,
+                ["80-90"] = dist.Bucket80_90,
+                ["70-80"] = dist.Bucket70_80,
+                ["60-70"] = dist.Bucket60_70,
+                ["50-60"] = dist.Bucket50_60,
+                ["40-50"] = dist.Bucket40_50,
+                ["30-40"] = dist.Bucket30_40,
+                ["20-30"] = dist.Bucket20_30,
+                ["10-20"] = dist.Bucket10_20,
+                ["0-10"] = dist.Bucket0_10
+            };
+
+            foreach (var (bucket, count) in buckets)
+            {
+                TrustMetrics.ScoreBucketCount.WithLabels(bucket).Set(count);
+            }
+
+            _logger.LogDebug("Trust score distribution (batched): avg={Avg:F1}, median={Median:F1}, stddev={StdDev:F2}, count={Count}",
                 dist.Avg, dist.Median, dist.StdDev, dist.TotalCount);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to collect trust score distribution metrics");
             TrustMetrics.CollectionErrors.WithLabels("score_distribution").Inc();
-        }
-    }
-
-    /// <summary>
-    /// Collects trust level distribution (count and percentage at each level).
-    /// </summary>
-    private async Task CollectTrustLevelDistributionAsync(CancellationToken ct)
-    {
-        try
-        {
-            var levelCounts = await _repository.GetTrustLevelCountsAsync(ct);
-            var totalCount = levelCounts.Values.Sum();
-
-            foreach (var (level, count) in levelCounts)
-            {
-                TrustMetrics.LevelCount.WithLabels(level).Set(count);
-
-                var percentage = totalCount > 0 ? (count * 100.0 / totalCount) : 0;
-                TrustMetrics.LevelPercentage.WithLabels(level).Set(percentage);
-            }
-
-            _logger.LogDebug("Trust level distribution collected: {Levels}",
-                string.Join(", ", levelCounts.Select(kv => $"{kv.Key}={kv.Value}")));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect trust level distribution metrics");
-            TrustMetrics.CollectionErrors.WithLabels("level_distribution").Inc();
         }
     }
 
@@ -161,205 +168,125 @@ public class TrustCollectorService : BackgroundService
     }
 
     /// <summary>
-    /// Collects network health metrics (velocity, churn, reciprocity, density, degrees).
+    /// Collects network health metrics in a single query.
     /// </summary>
-    private async Task CollectNetworkHealthMetricsAsync(CancellationToken ct)
+    private async Task CollectNetworkHealthBatchedAsync(CancellationToken ct)
     {
-        // Trust velocity and churn by window
         try
         {
-            var velocity24h = await _repository.GetTrustVelocityAsync(Window24H, ct);
-            var velocity7d = await _repository.GetTrustVelocityAsync(Window7D, ct);
-            var velocity30d = await _repository.GetTrustVelocityAsync(Window30D, ct);
+            var health = await _repository.GetNetworkHealthBatchedAsync(ct);
 
-            TrustMetrics.TrustVelocity.WithLabels("24h").Set(velocity24h);
-            TrustMetrics.TrustVelocity.WithLabels("7d").Set(velocity7d);
-            TrustMetrics.TrustVelocity.WithLabels("30d").Set(velocity30d);
+            // Velocity
+            TrustMetrics.TrustVelocity.WithLabels("24h").Set(health.Velocity24h);
+            TrustMetrics.TrustVelocity.WithLabels("7d").Set(health.Velocity7d);
+            TrustMetrics.TrustVelocity.WithLabels("30d").Set(health.Velocity30d);
 
-            var churn24h = await _repository.GetTrustChurnAsync(Window24H, ct);
-            var churn7d = await _repository.GetTrustChurnAsync(Window7D, ct);
-            var churn30d = await _repository.GetTrustChurnAsync(Window30D, ct);
-
-            TrustMetrics.TrustChurn.WithLabels("24h").Set(churn24h);
-            TrustMetrics.TrustChurn.WithLabels("7d").Set(churn7d);
-            TrustMetrics.TrustChurn.WithLabels("30d").Set(churn30d);
+            // Churn
+            TrustMetrics.TrustChurn.WithLabels("24h").Set(health.Churn24h);
+            TrustMetrics.TrustChurn.WithLabels("7d").Set(health.Churn7d);
+            TrustMetrics.TrustChurn.WithLabels("30d").Set(health.Churn30d);
 
             // Net change
-            TrustMetrics.TrustNetChange.WithLabels("24h").Set(velocity24h - churn24h);
-            TrustMetrics.TrustNetChange.WithLabels("7d").Set(velocity7d - churn7d);
-            TrustMetrics.TrustNetChange.WithLabels("30d").Set(velocity30d - churn30d);
+            TrustMetrics.TrustNetChange.WithLabels("24h").Set(health.Velocity24h - health.Churn24h);
+            TrustMetrics.TrustNetChange.WithLabels("7d").Set(health.Velocity7d - health.Churn7d);
+            TrustMetrics.TrustNetChange.WithLabels("30d").Set(health.Velocity30d - health.Churn30d);
 
-            _logger.LogDebug("Trust velocity: 24h={V24h}, 7d={V7d}, 30d={V30d}",
-                velocity24h, velocity7d, velocity30d);
+            // Graph metrics
+            TrustMetrics.TrustReciprocityRate.Set(health.ReciprocityRate);
+            TrustMetrics.TrustGraphDensity.Set(health.GraphDensity);
+            TrustMetrics.AvgOutDegree.Set(health.AvgOutDegree);
+            TrustMetrics.AvgInDegree.Set(health.AvgInDegree);
+
+            _logger.LogDebug("Trust network health: vel_24h={V24h}, vel_7d={V7d}, vel_30d={V30d}, reciprocity={Reciprocity:F1}%",
+                health.Velocity24h, health.Velocity7d, health.Velocity30d, health.ReciprocityRate);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to collect trust velocity/churn metrics");
-            TrustMetrics.CollectionErrors.WithLabels("velocity_churn").Inc();
-        }
-
-        // Reciprocity rate
-        try
-        {
-            var reciprocity = await _repository.GetTrustReciprocityRateAsync(ct);
-            TrustMetrics.TrustReciprocityRate.Set(reciprocity);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect trust reciprocity rate");
-            TrustMetrics.CollectionErrors.WithLabels("reciprocity").Inc();
-        }
-
-        // Graph density
-        try
-        {
-            var density = await _repository.GetTrustGraphDensityAsync(ct);
-            TrustMetrics.TrustGraphDensity.Set(density);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect trust graph density");
-            TrustMetrics.CollectionErrors.WithLabels("density").Inc();
-        }
-
-        // Average degrees
-        try
-        {
-            var avgOut = await _repository.GetAvgOutDegreeAsync(ct);
-            var avgIn = await _repository.GetAvgInDegreeAsync(ct);
-
-            TrustMetrics.AvgOutDegree.Set(avgOut);
-            TrustMetrics.AvgInDegree.Set(avgIn);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect trust degree metrics");
-            TrustMetrics.CollectionErrors.WithLabels("degrees").Inc();
+            _logger.LogWarning(ex, "Failed to collect network health metrics");
+            TrustMetrics.CollectionErrors.WithLabels("network_health").Inc();
         }
     }
 
     /// <summary>
-    /// Collects anomaly detection metrics (score drops, spikes, low trust new accounts).
+    /// Collects anomaly detection metrics in optimized queries.
     /// </summary>
-    private async Task CollectAnomalyDetectionMetricsAsync(CancellationToken ct)
+    private async Task CollectAnomalyDetectionBatchedAsync(CancellationToken ct)
     {
-        // Score drops
         try
         {
-            var drops24h = await _repository.GetScoreDropsAsync(Window24H, 20, ct);
-            var drops7d = await _repository.GetScoreDropsAsync(Window7D, 20, ct);
+            var anomaly = await _repository.GetAnomalyDetectionBatchedAsync(20, 30, ct);
 
-            TrustMetrics.ScoreDrops.WithLabels("24h").Set(drops24h);
-            TrustMetrics.ScoreDrops.WithLabels("7d").Set(drops7d);
+            // Score drops
+            TrustMetrics.ScoreDrops.WithLabels("24h").Set(anomaly.ScoreDrops24h);
+            TrustMetrics.ScoreDrops.WithLabels("7d").Set(anomaly.ScoreDrops7d);
 
-            if (drops24h > 0)
+            if (anomaly.ScoreDrops24h > 0)
             {
-                _logger.LogInformation("Detected {Count} significant trust score drops in last 24h", drops24h);
+                _logger.LogInformation("Detected {Count} significant trust score drops in last 24h", anomaly.ScoreDrops24h);
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect score drops metrics");
-            TrustMetrics.CollectionErrors.WithLabels("score_drops").Inc();
-        }
 
-        // Score spikes (suspicious increases)
-        try
-        {
-            var spikes24h = await _repository.GetScoreSpikesAsync(Window24H, 30, ct);
-            var spikes7d = await _repository.GetScoreSpikesAsync(Window7D, 30, ct);
+            // Score spikes
+            TrustMetrics.ScoreSpikes.WithLabels("24h").Set(anomaly.ScoreSpikes24h);
+            TrustMetrics.ScoreSpikes.WithLabels("7d").Set(anomaly.ScoreSpikes7d);
 
-            TrustMetrics.ScoreSpikes.WithLabels("24h").Set(spikes24h);
-            TrustMetrics.ScoreSpikes.WithLabels("7d").Set(spikes7d);
-
-            if (spikes24h > 10)
+            if (anomaly.ScoreSpikes24h > 10)
             {
-                _logger.LogWarning("Detected {Count} suspicious trust score spikes in last 24h", spikes24h);
+                _logger.LogWarning("Detected {Count} suspicious trust score spikes in last 24h", anomaly.ScoreSpikes24h);
             }
+
+            // Low trust new accounts
+            TrustMetrics.LowTrustNewAccounts.WithLabels("24h").Set(anomaly.LowTrustNew24h);
+            TrustMetrics.LowTrustNewAccounts.WithLabels("7d").Set(anomaly.LowTrustNew7d);
+
+            // Penalized accounts
+            TrustMetrics.PenalizedAccounts.Set(anomaly.PenalizedAccounts);
+
+            _logger.LogDebug("Trust anomaly detection: drops_24h={Drops}, spikes_24h={Spikes}, penalized={Penalized}",
+                anomaly.ScoreDrops24h, anomaly.ScoreSpikes24h, anomaly.PenalizedAccounts);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to collect score spikes metrics");
-            TrustMetrics.CollectionErrors.WithLabels("score_spikes").Inc();
-        }
-
-        // Low trust new accounts
-        try
-        {
-            var lowTrust24h = await _repository.GetLowTrustNewAccountsAsync(Window24H, ct);
-            var lowTrust7d = await _repository.GetLowTrustNewAccountsAsync(Window7D, ct);
-
-            TrustMetrics.LowTrustNewAccounts.WithLabels("24h").Set(lowTrust24h);
-            TrustMetrics.LowTrustNewAccounts.WithLabels("7d").Set(lowTrust7d);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect low trust new accounts metrics");
-            TrustMetrics.CollectionErrors.WithLabels("low_trust_new").Inc();
-        }
-
-        // Penalized accounts
-        try
-        {
-            var penalized = await _repository.GetPenalizedAccountsAsync(ct);
-            TrustMetrics.PenalizedAccounts.Set(penalized);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to collect penalized accounts metrics");
-            TrustMetrics.CollectionErrors.WithLabels("penalized").Inc();
+            _logger.LogWarning(ex, "Failed to collect anomaly detection metrics");
+            TrustMetrics.CollectionErrors.WithLabels("anomaly_detection").Inc();
         }
     }
 
     /// <summary>
-    /// Collects score bucket distribution (histogram-like).
+    /// Collects economic-trust correlation metrics in a single query.
     /// </summary>
-    private async Task CollectScoreBucketsAsync(CancellationToken ct)
+    private async Task CollectEconomicCorrelationBatchedAsync(CancellationToken ct)
     {
         try
         {
-            var buckets = await _repository.GetScoreBucketsAsync(ct);
+            var metrics = await _repository.GetEconomicCorrelationBatchedAsync(ct);
 
-            foreach (var (bucket, count) in buckets)
-            {
-                TrustMetrics.ScoreBucketCount.WithLabels(bucket).Set(count);
-            }
+            // 24h window
+            TrustMetrics.HighTrustVolume.WithLabels("24h").Set(metrics.HighTrustVolume24h);
+            TrustMetrics.LowTrustVolume.WithLabels("24h").Set(metrics.LowTrustVolume24h);
+            TrustMetrics.TrustWeightedVolume.WithLabels("24h").Set(metrics.WeightedVolume24h);
+
+            var highTrustShare24h = metrics.TotalVolume24h > 0
+                ? (metrics.HighTrustVolume24h / metrics.TotalVolume24h) * 100
+                : 0;
+            TrustMetrics.HighTrustVolumeShare.WithLabels("24h").Set(highTrustShare24h);
+
+            // 7d window
+            TrustMetrics.HighTrustVolume.WithLabels("7d").Set(metrics.HighTrustVolume7d);
+            TrustMetrics.LowTrustVolume.WithLabels("7d").Set(metrics.LowTrustVolume7d);
+            TrustMetrics.TrustWeightedVolume.WithLabels("7d").Set(metrics.WeightedVolume7d);
+
+            var highTrustShare7d = metrics.TotalVolume7d > 0
+                ? (metrics.HighTrustVolume7d / metrics.TotalVolume7d) * 100
+                : 0;
+            TrustMetrics.HighTrustVolumeShare.WithLabels("7d").Set(highTrustShare7d);
+
+            _logger.LogDebug("Trust-volume correlation: 24h_high={High24h:F0}, 24h_share={Share24h:F1}%, 7d_high={High7d:F0}",
+                metrics.HighTrustVolume24h, highTrustShare24h, metrics.HighTrustVolume7d);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to collect score bucket metrics");
-            TrustMetrics.CollectionErrors.WithLabels("score_buckets").Inc();
-        }
-    }
-
-    /// <summary>
-    /// Collects economic-trust correlation metrics (volume by trust level).
-    /// </summary>
-    private async Task CollectEconomicCorrelationMetricsAsync(CancellationToken ct)
-    {
-        foreach (var (window, label) in new[] { (Window24H, "24h"), (Window7D, "7d") })
-        {
-            try
-            {
-                var metrics = await _repository.GetTrustVolumeMetricsAsync(window, ct);
-
-                TrustMetrics.HighTrustVolume.WithLabels(label).Set(metrics.HighTrustVolume);
-                TrustMetrics.LowTrustVolume.WithLabels(label).Set(metrics.LowTrustVolume);
-                TrustMetrics.TrustWeightedVolume.WithLabels(label).Set(metrics.TrustWeightedVolume);
-
-                var highTrustShare = metrics.TotalVolume > 0
-                    ? (metrics.HighTrustVolume / metrics.TotalVolume) * 100
-                    : 0;
-                TrustMetrics.HighTrustVolumeShare.WithLabels(label).Set(highTrustShare);
-
-                _logger.LogDebug("Trust-volume correlation ({Window}): high={High:F0}, low={Low:F0}, share={Share:F1}%",
-                    label, metrics.HighTrustVolume, metrics.LowTrustVolume, highTrustShare);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to collect trust volume metrics for window {Window}", label);
-                TrustMetrics.CollectionErrors.WithLabels($"volume_{label}").Inc();
-            }
+            _logger.LogWarning(ex, "Failed to collect trust volume metrics");
+            TrustMetrics.CollectionErrors.WithLabels("economic_correlation").Inc();
         }
     }
 

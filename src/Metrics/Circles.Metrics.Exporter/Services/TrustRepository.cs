@@ -525,4 +525,436 @@ public class TrustRepository
 
         return (T)Convert.ChangeType(result, typeof(T));
     }
+
+    // ===========================================
+    // BATCHED QUERIES (Optimized for fewer round-trips)
+    // ===========================================
+
+    /// <summary>
+    /// Batched result combining score distribution, level counts, and score buckets.
+    /// Replaces 3 separate queries with a single table scan.
+    /// </summary>
+    public record ScoreDistributionBatched(
+        // Score stats
+        double Avg, double Median, double StdDev, double P75, double P90, double P99,
+        double Min, double Max, long TotalCount,
+        // Level counts
+        long LevelVeryHigh, long LevelHigh, long LevelMedium, long LevelLow, long LevelVeryLow, long LevelUnknown,
+        // Score buckets
+        long Bucket90_100, long Bucket80_90, long Bucket70_80, long Bucket60_70, long Bucket50_60,
+        long Bucket40_50, long Bucket30_40, long Bucket20_30, long Bucket10_20, long Bucket0_10
+    );
+
+    /// <summary>
+    /// Gets all score distribution metrics in a single query.
+    /// Combines: GetScoreDistributionAsync + GetTrustLevelCountsAsync + GetScoreBucketsAsync
+    /// </summary>
+    public async Task<ScoreDistributionBatched> GetScoreDistributionBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT
+                -- Score distribution stats
+                COALESCE(AVG(trust_score), 0) as avg,
+                COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trust_score), 0) as median,
+                COALESCE(STDDEV(trust_score), 0) as stddev,
+                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY trust_score), 0) as p75,
+                COALESCE(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY trust_score), 0) as p90,
+                COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY trust_score), 0) as p99,
+                COALESCE(MIN(trust_score), 0) as min,
+                COALESCE(MAX(trust_score), 0) as max,
+                COUNT(*) as total_count,
+                -- Trust level counts using FILTER
+                COUNT(*) FILTER (WHERE trust_level = 'VERY_HIGH') as level_very_high,
+                COUNT(*) FILTER (WHERE trust_level = 'HIGH') as level_high,
+                COUNT(*) FILTER (WHERE trust_level = 'MEDIUM') as level_medium,
+                COUNT(*) FILTER (WHERE trust_level = 'LOW') as level_low,
+                COUNT(*) FILTER (WHERE trust_level = 'VERY_LOW') as level_very_low,
+                COUNT(*) FILTER (WHERE trust_level NOT IN ('VERY_HIGH', 'HIGH', 'MEDIUM', 'LOW', 'VERY_LOW') OR trust_level IS NULL) as level_unknown,
+                -- Score buckets
+                COUNT(*) FILTER (WHERE trust_score >= 90) as bucket_90_100,
+                COUNT(*) FILTER (WHERE trust_score >= 80 AND trust_score < 90) as bucket_80_90,
+                COUNT(*) FILTER (WHERE trust_score >= 70 AND trust_score < 80) as bucket_70_80,
+                COUNT(*) FILTER (WHERE trust_score >= 60 AND trust_score < 70) as bucket_60_70,
+                COUNT(*) FILTER (WHERE trust_score >= 50 AND trust_score < 60) as bucket_50_60,
+                COUNT(*) FILTER (WHERE trust_score >= 40 AND trust_score < 50) as bucket_40_50,
+                COUNT(*) FILTER (WHERE trust_score >= 30 AND trust_score < 40) as bucket_30_40,
+                COUNT(*) FILTER (WHERE trust_score >= 20 AND trust_score < 30) as bucket_20_30,
+                COUNT(*) FILTER (WHERE trust_score >= 10 AND trust_score < 20) as bucket_10_20,
+                COUNT(*) FILTER (WHERE trust_score >= 0 AND trust_score < 10) as bucket_0_10
+            FROM "V_TrustScores_Current"
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn) { CommandTimeout = 60 };
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        if (await reader.ReadAsync(ct))
+        {
+            return new ScoreDistributionBatched(
+                reader.GetDouble(0), reader.GetDouble(1), reader.GetDouble(2),
+                reader.GetDouble(3), reader.GetDouble(4), reader.GetDouble(5),
+                reader.GetDouble(6), reader.GetDouble(7), reader.GetInt64(8),
+                reader.GetInt64(9), reader.GetInt64(10), reader.GetInt64(11),
+                reader.GetInt64(12), reader.GetInt64(13), reader.GetInt64(14),
+                reader.GetInt64(15), reader.GetInt64(16), reader.GetInt64(17),
+                reader.GetInt64(18), reader.GetInt64(19), reader.GetInt64(20),
+                reader.GetInt64(21), reader.GetInt64(22), reader.GetInt64(23),
+                reader.GetInt64(24)
+            );
+        }
+
+        return new ScoreDistributionBatched(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Batched result for network health metrics.
+    /// </summary>
+    public record NetworkHealthBatched(
+        long Velocity24h, long Velocity7d, long Velocity30d,
+        long Churn24h, long Churn7d, long Churn30d,
+        double ReciprocityRate, double GraphDensity,
+        double AvgOutDegree, double AvgInDegree
+    );
+
+    /// <summary>
+    /// Gets all network health metrics in a single query.
+    /// Combines: GetTrustVelocityAsync (x3) + GetTrustChurnAsync (x3) + reciprocity + density + degrees
+    /// </summary>
+    public async Task<NetworkHealthBatched> GetNetworkHealthBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            WITH
+            now_ts AS (SELECT EXTRACT(EPOCH FROM NOW())::bigint as ts),
+            velocity AS (
+                SELECT
+                    COUNT(*) FILTER (WHERE "timestamp" > (SELECT ts FROM now_ts) - 86400
+                        AND "expiryTime" > (SELECT ts FROM now_ts) + 86400) as vel_24h,
+                    COUNT(*) FILTER (WHERE "timestamp" > (SELECT ts FROM now_ts) - 604800
+                        AND "expiryTime" > (SELECT ts FROM now_ts) + 86400) as vel_7d,
+                    COUNT(*) FILTER (WHERE "timestamp" > (SELECT ts FROM now_ts) - 2592000
+                        AND "expiryTime" > (SELECT ts FROM now_ts) + 86400) as vel_30d
+                FROM "CrcV2_Trust"
+            ),
+            churn AS (
+                SELECT
+                    COUNT(*) FILTER (WHERE "timestamp" > (SELECT ts FROM now_ts) - 86400
+                        AND "expiryTime" <= (SELECT ts FROM now_ts)) as churn_24h,
+                    COUNT(*) FILTER (WHERE "timestamp" > (SELECT ts FROM now_ts) - 604800
+                        AND "expiryTime" <= (SELECT ts FROM now_ts)) as churn_7d,
+                    COUNT(*) FILTER (WHERE "timestamp" > (SELECT ts FROM now_ts) - 2592000
+                        AND "expiryTime" <= (SELECT ts FROM now_ts)) as churn_30d
+                FROM "CrcV2_Trust"
+            ),
+            trusts AS (
+                SELECT "truster", "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            ),
+            reciprocity AS (
+                SELECT
+                    CASE WHEN COUNT(*) = 0 THEN 0
+                    ELSE (COUNT(*) FILTER (WHERE EXISTS (
+                        SELECT 1 FROM trusts t2
+                        WHERE t2."truster" = t1."trustee" AND t2."trustee" = t1."truster"
+                    ))::float / COUNT(*)::float) * 100
+                    END as rate
+                FROM trusts t1
+            ),
+            graph_stats AS (
+                SELECT
+                    COUNT(DISTINCT avatar) as node_count,
+                    (SELECT COUNT(*) FROM trusts) as edge_count
+                FROM (
+                    SELECT "truster" as avatar FROM trusts
+                    UNION
+                    SELECT "trustee" as avatar FROM trusts
+                ) nodes
+            ),
+            density AS (
+                SELECT
+                    CASE WHEN node_count < 2 THEN 0
+                    ELSE edge_count::float / (node_count * (node_count - 1))::float
+                    END as density
+                FROM graph_stats
+            ),
+            out_degrees AS (
+                SELECT COALESCE(AVG(out_degree), 0) as avg FROM (
+                    SELECT "truster", COUNT(*) as out_degree
+                    FROM trusts GROUP BY "truster"
+                ) d
+            ),
+            in_degrees AS (
+                SELECT COALESCE(AVG(in_degree), 0) as avg FROM (
+                    SELECT "trustee", COUNT(*) as in_degree
+                    FROM trusts GROUP BY "trustee"
+                ) d
+            )
+            SELECT
+                v.vel_24h, v.vel_7d, v.vel_30d,
+                c.churn_24h, c.churn_7d, c.churn_30d,
+                r.rate, d.density,
+                o.avg, i.avg
+            FROM velocity v, churn c, reciprocity r, density d, out_degrees o, in_degrees i
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn) { CommandTimeout = 120 };
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        if (await reader.ReadAsync(ct))
+        {
+            return new NetworkHealthBatched(
+                reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2),
+                reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5),
+                reader.GetDouble(6), reader.GetDouble(7),
+                reader.GetDouble(8), reader.GetDouble(9)
+            );
+        }
+
+        return new NetworkHealthBatched(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Batched result for anomaly detection metrics.
+    /// </summary>
+    public record AnomalyDetectionBatched(
+        long ScoreDrops24h, long ScoreDrops7d,
+        long ScoreSpikes24h, long ScoreSpikes7d,
+        long LowTrustNew24h, long LowTrustNew7d,
+        long PenalizedAccounts
+    );
+
+    /// <summary>
+    /// Gets all anomaly detection metrics in a single query.
+    /// Combines: GetScoreDropsAsync (x2) + GetScoreSpikesAsync (x2) + GetLowTrustNewAccountsAsync (x2) + GetPenalizedAccountsAsync
+    /// Note: History table queries are still separate due to potential table non-existence.
+    /// </summary>
+    public async Task<AnomalyDetectionBatched> GetAnomalyDetectionBatchedAsync(
+        int dropThreshold = 20, int spikeThreshold = 30, CancellationToken ct = default)
+    {
+        // Check if history table exists first
+        bool historyExists = await CheckTableExistsAsync("trust_scores_history", ct);
+
+        long drops24h = 0, drops7d = 0, spikes24h = 0, spikes7d = 0;
+
+        if (historyExists)
+        {
+            // Query historical comparisons in one batch
+            var historySql = $"""
+                WITH
+                now_ts AS (SELECT NOW() as ts),
+                snapshot_24h AS (
+                    SELECT MAX(snapshot_date) as dt FROM trust_scores_history
+                    WHERE snapshot_date < (SELECT ts FROM now_ts) - INTERVAL '1 day'
+                ),
+                snapshot_7d AS (
+                    SELECT MAX(snapshot_date) as dt FROM trust_scores_history
+                    WHERE snapshot_date < (SELECT ts FROM now_ts) - INTERVAL '7 days'
+                ),
+                changes_24h AS (
+                    SELECT
+                        COUNT(*) FILTER (WHERE (h.trust_score - c.trust_score) > {dropThreshold}) as drops,
+                        COUNT(*) FILTER (WHERE (c.trust_score - h.trust_score) > {spikeThreshold}) as spikes
+                    FROM "V_TrustScores_Current" c
+                    JOIN trust_scores_history h ON c.avatar = h.avatar
+                    WHERE h.snapshot_date = (SELECT dt FROM snapshot_24h)
+                ),
+                changes_7d AS (
+                    SELECT
+                        COUNT(*) FILTER (WHERE (h.trust_score - c.trust_score) > {dropThreshold}) as drops,
+                        COUNT(*) FILTER (WHERE (c.trust_score - h.trust_score) > {spikeThreshold}) as spikes
+                    FROM "V_TrustScores_Current" c
+                    JOIN trust_scores_history h ON c.avatar = h.avatar
+                    WHERE h.snapshot_date = (SELECT dt FROM snapshot_7d)
+                )
+                SELECT
+                    COALESCE(c24.drops, 0), COALESCE(c7.drops, 0),
+                    COALESCE(c24.spikes, 0), COALESCE(c7.spikes, 0)
+                FROM changes_24h c24, changes_7d c7
+                """;
+
+            try
+            {
+                await using var conn = new NpgsqlConnection(_connectionString);
+                await conn.OpenAsync(ct);
+                await using var cmd = new NpgsqlCommand(historySql, conn) { CommandTimeout = 60 };
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                if (await reader.ReadAsync(ct))
+                {
+                    drops24h = reader.GetInt64(0);
+                    drops7d = reader.GetInt64(1);
+                    spikes24h = reader.GetInt64(2);
+                    spikes7d = reader.GetInt64(3);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to query trust score history for anomaly detection");
+            }
+        }
+
+        // Query low trust new accounts and penalized in one batch
+        var sql = """
+            WITH now_ts AS (SELECT EXTRACT(EPOCH FROM NOW())::bigint as ts)
+            SELECT
+                COUNT(*) FILTER (WHERE r."timestamp" > (SELECT ts FROM now_ts) - 86400) as low_new_24h,
+                COUNT(*) FILTER (WHERE r."timestamp" > (SELECT ts FROM now_ts) - 604800) as low_new_7d
+            FROM "V_TrustScores_Current" t
+            JOIN "CrcV2_RegisterHuman" r ON LOWER(t.avatar) = LOWER(r."avatar")
+            WHERE t.trust_level IN ('LOW', 'VERY_LOW')
+            """;
+
+        const string penalizedSql = """
+            SELECT COUNT(*) FROM "V_TrustScores_Current"
+            WHERE details::jsonb->>'penalty_applied' = 'true'
+            OR (details::jsonb->'penalties') IS NOT NULL
+            """;
+
+        long lowNew24h = 0, lowNew7d = 0, penalized = 0;
+
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+
+            await using var cmd = new NpgsqlCommand(sql, conn) { CommandTimeout = 60 };
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (await reader.ReadAsync(ct))
+            {
+                lowNew24h = reader.GetInt64(0);
+                lowNew7d = reader.GetInt64(1);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query low trust new accounts");
+        }
+
+        try
+        {
+            penalized = await ExecuteScalarAsync<long>(penalizedSql, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query penalized accounts");
+        }
+
+        return new AnomalyDetectionBatched(
+            drops24h, drops7d, spikes24h, spikes7d,
+            lowNew24h, lowNew7d, penalized
+        );
+    }
+
+    /// <summary>
+    /// Batched result for economic-trust correlation metrics.
+    /// </summary>
+    public record EconomicCorrelationBatched(
+        double HighTrustVolume24h, double LowTrustVolume24h, double WeightedVolume24h, double TotalVolume24h,
+        double HighTrustVolume7d, double LowTrustVolume7d, double WeightedVolume7d, double TotalVolume7d
+    );
+
+    /// <summary>
+    /// Gets all economic-trust correlation metrics in a single query.
+    /// Combines: GetTrustVolumeMetricsAsync (x2 windows)
+    /// </summary>
+    public async Task<EconomicCorrelationBatched> GetEconomicCorrelationBatchedAsync(CancellationToken ct = default)
+    {
+        const string sql = """
+            WITH
+            now_ts AS (SELECT EXTRACT(EPOCH FROM NOW())::bigint as ts),
+            transfers_24h AS (
+                SELECT
+                    "from",
+                    ("value"::float8) / 1e18 as amount
+                FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > (SELECT ts FROM now_ts) - 86400
+            ),
+            transfers_7d AS (
+                SELECT
+                    "from",
+                    ("value"::float8) / 1e18 as amount
+                FROM "CrcV2_TransferSingle"
+                WHERE "timestamp" > (SELECT ts FROM now_ts) - 604800
+            ),
+            scored_24h AS (
+                SELECT
+                    t.amount,
+                    COALESCE(s.trust_score, 50) as score,
+                    COALESCE(s.trust_level, 'MEDIUM') as level
+                FROM transfers_24h t
+                LEFT JOIN "V_TrustScores_Current" s ON LOWER(t."from") = LOWER(s.avatar)
+            ),
+            scored_7d AS (
+                SELECT
+                    t.amount,
+                    COALESCE(s.trust_score, 50) as score,
+                    COALESCE(s.trust_level, 'MEDIUM') as level
+                FROM transfers_7d t
+                LEFT JOIN "V_TrustScores_Current" s ON LOWER(t."from") = LOWER(s.avatar)
+            ),
+            metrics_24h AS (
+                SELECT
+                    COALESCE(SUM(amount) FILTER (WHERE level IN ('HIGH', 'VERY_HIGH')), 0) as high_volume,
+                    COALESCE(SUM(amount) FILTER (WHERE level IN ('LOW', 'VERY_LOW')), 0) as low_volume,
+                    COALESCE(SUM(amount * score / 100.0), 0) as weighted_volume,
+                    COALESCE(SUM(amount), 0) as total_volume
+                FROM scored_24h
+            ),
+            metrics_7d AS (
+                SELECT
+                    COALESCE(SUM(amount) FILTER (WHERE level IN ('HIGH', 'VERY_HIGH')), 0) as high_volume,
+                    COALESCE(SUM(amount) FILTER (WHERE level IN ('LOW', 'VERY_LOW')), 0) as low_volume,
+                    COALESCE(SUM(amount * score / 100.0), 0) as weighted_volume,
+                    COALESCE(SUM(amount), 0) as total_volume
+                FROM scored_7d
+            )
+            SELECT
+                m24.high_volume, m24.low_volume, m24.weighted_volume, m24.total_volume,
+                m7.high_volume, m7.low_volume, m7.weighted_volume, m7.total_volume
+            FROM metrics_24h m24, metrics_7d m7
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn) { CommandTimeout = 120 };
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        if (await reader.ReadAsync(ct))
+        {
+            return new EconomicCorrelationBatched(
+                reader.GetDouble(0), reader.GetDouble(1), reader.GetDouble(2), reader.GetDouble(3),
+                reader.GetDouble(4), reader.GetDouble(5), reader.GetDouble(6), reader.GetDouble(7)
+            );
+        }
+
+        return new EconomicCorrelationBatched(0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// Checks if a table exists in the database.
+    /// </summary>
+    private async Task<bool> CheckTableExistsAsync(string tableName, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_name = @tableName
+            )
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("tableName", tableName);
+
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result is true;
+    }
 }
