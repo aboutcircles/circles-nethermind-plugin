@@ -96,15 +96,6 @@ public class DatabaseSchema : IDatabaseSchema
                 "idx_CrcV2_UpdateMetadataDigest_avatar_cursor_desc",
                 "create index if not exists \"idx_CrcV2_UpdateMetadataDigest_avatar_cursor_desc\" on \"CrcV2_UpdateMetadataDigest\" (avatar, \"blockNumber\" desc, \"transactionIndex\" desc, \"logIndex\" desc);"
             },
-            // Metrics-exporter optimization indexes (LOWER() JOIN optimization)
-            {
-                "idx_registerhuman_avatar_lower",
-                "CREATE INDEX IF NOT EXISTS idx_registerhuman_avatar_lower ON public.\"CrcV2_RegisterHuman\" (LOWER(\"avatar\"));"
-            },
-            {
-                "idx_trust_current_avatar_lower",
-                "CREATE INDEX IF NOT EXISTS idx_trust_current_avatar_lower ON public.\"V_TrustScores_Current\" (LOWER(avatar));"
-            },
             // Metrics-exporter optimization: composite indexes for time-window queries
             {
                 "idx_crcv2_trust_timestamp_expiry",

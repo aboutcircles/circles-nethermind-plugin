@@ -36,6 +36,9 @@ builder.Services.AddSingleton(sp =>
 
 builder.Services.AddHostedService<TrustCollectorService>();
 
+// Trust score history snapshot service (runs daily for anomaly detection)
+builder.Services.AddHostedService<TrustHistorySnapshotService>();
+
 // Health checks
 builder.Services.AddHealthChecks();
 
@@ -52,7 +55,7 @@ app.MapMetrics();
 app.MapGet("/", () => Results.Ok(new
 {
     Service = "Circles Metrics Exporter",
-    Version = "1.2.0",
+    Version = "1.3.0",
     Endpoints = new[]
     {
         "/metrics - Prometheus metrics (KPIs + Liquidity + Trust Scores)",
@@ -65,7 +68,8 @@ app.MapGet("/", () => Results.Ok(new
         "Liquidity monitoring (Balancer vault, group treasuries)",
         "Drain detection (z-score anomaly detection)",
         "Whale transfer tracking",
-        "Trust score monitoring (distribution, anomalies, network health)"
+        "Trust score monitoring (distribution, anomalies, network health)",
+        "Trust score history snapshots (daily, 90-day retention)"
     }
 }));
 

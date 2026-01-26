@@ -957,4 +957,84 @@ public class TrustRepository
         var result = await cmd.ExecuteScalarAsync(ct);
         return result is true;
     }
+
+    // ===========================================
+    // History Snapshot
+    // ===========================================
+
+    /// <summary>
+    /// Creates a snapshot of current trust scores in the history table.
+    /// Should be called once daily to enable anomaly detection metrics.
+    /// Uses INSERT ... ON CONFLICT to handle duplicate snapshots gracefully.
+    /// </summary>
+    public async Task<int> CreateHistorySnapshotAsync(CancellationToken ct = default)
+    {
+        // Check if history table exists (created by DatabaseSchema)
+        if (!await CheckTableExistsAsync("trust_scores_history", ct))
+        {
+            _logger.LogWarning("trust_scores_history table does not exist. Skipping snapshot.");
+            return 0;
+        }
+
+        // Check if we already have a snapshot today (within last 23 hours)
+        const string checkSql = """
+            SELECT COUNT(*) FROM trust_scores_history
+            WHERE snapshot_date > NOW() - INTERVAL '23 hours'
+            """;
+
+        var recentCount = await ExecuteScalarAsync<long>(checkSql, ct);
+        if (recentCount > 0)
+        {
+            _logger.LogDebug("Recent snapshot already exists ({Count} records in last 23h). Skipping.", recentCount);
+            return 0;
+        }
+
+        // Insert snapshot from current scores
+        const string insertSql = """
+            INSERT INTO trust_scores_history (avatar, trust_score, trust_level, confidence, snapshot_date)
+            SELECT avatar, trust_score, trust_level, confidence, NOW()
+            FROM "V_TrustScores_Current"
+            WHERE avatar IS NOT NULL
+            ON CONFLICT (avatar, snapshot_date) DO NOTHING
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(insertSql, conn) { CommandTimeout = 300 };
+        var rowsAffected = await cmd.ExecuteNonQueryAsync(ct);
+
+        _logger.LogInformation("Created trust score history snapshot: {RowsAffected} records", rowsAffected);
+        return rowsAffected;
+    }
+
+    /// <summary>
+    /// Cleans up old history records beyond the retention period.
+    /// Default retention: 90 days.
+    /// </summary>
+    public async Task<int> CleanupOldHistoryAsync(int retentionDays = 90, CancellationToken ct = default)
+    {
+        if (!await CheckTableExistsAsync("trust_scores_history", ct))
+        {
+            return 0;
+        }
+
+        var sql = $"""
+            DELETE FROM trust_scores_history
+            WHERE snapshot_date < NOW() - INTERVAL '{retentionDays} days'
+            """;
+
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new NpgsqlCommand(sql, conn) { CommandTimeout = 120 };
+        var rowsDeleted = await cmd.ExecuteNonQueryAsync(ct);
+
+        if (rowsDeleted > 0)
+        {
+            _logger.LogInformation("Cleaned up {RowsDeleted} old history records (>{Days} days)", rowsDeleted, retentionDays);
+        }
+
+        return rowsDeleted;
+    }
 }
