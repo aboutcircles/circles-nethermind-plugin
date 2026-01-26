@@ -93,11 +93,7 @@ public class RegressionTests
         var balanceGraph = factory.V2BalanceGraph();
         var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
 
-        var request = new FlowRequest
-        {
-            Source = scenario.Source,
-            Sink = scenario.Sink
-        };
+        var request = BuildFlowRequest(scenario);
 
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
         var pathfinder = new V2Pathfinder();
@@ -195,11 +191,7 @@ public class RegressionTests
         var balanceGraph = factory.V2BalanceGraph();
         var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
 
-        var request = new FlowRequest
-        {
-            Source = scenario.Source,
-            Sink = scenario.Sink
-        };
+        var request = BuildFlowRequest(scenario);
 
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
         var pathfinder = new V2Pathfinder();
@@ -334,6 +326,42 @@ public class RegressionTests
                     $"Scenario '{scenarioName}': Expected group {expectedGroup} to mint but it didn't");
             }
         }
+
+        // Validate maxFlow assertions
+        if (expectedPath.MaxFlow != null)
+        {
+            Assert.That(response.MaxFlow, Is.EqualTo(expectedPath.MaxFlow),
+                $"Scenario '{scenarioName}': Expected maxFlow {expectedPath.MaxFlow} but got {response.MaxFlow}");
+        }
+
+        if (expectedPath.MaxFlowNotEqual != null)
+        {
+            Assert.That(response.MaxFlow, Is.Not.EqualTo(expectedPath.MaxFlowNotEqual),
+                $"Scenario '{scenarioName}': maxFlow should NOT be {expectedPath.MaxFlowNotEqual} (this was the bug)");
+        }
+    }
+
+    /// <summary>
+    /// Builds a FlowRequest from the scenario, applying all optional fields.
+    /// </summary>
+    private static FlowRequest BuildFlowRequest(RegressionScenario scenario)
+    {
+        return new FlowRequest
+        {
+            Source = scenario.Source,
+            Sink = scenario.Sink,
+            FromTokens = scenario.FromTokens,
+            ToTokens = scenario.ToTokens,
+            ExcludedFromTokens = scenario.ExcludedFromTokens,
+            ExcludedToTokens = scenario.ExcludedToTokens,
+            SimulatedBalances = scenario.SimulatedBalances,
+            SimulatedTrusts = scenario.SimulatedTrusts,
+            SimulatedConsentedAvatars = scenario.SimulatedConsentedAvatars,
+            MaxTransfers = scenario.MaxTransfers,
+            QuantizedMode = scenario.QuantizedMode,
+            DebugShowIntermediateSteps = scenario.DebugShowIntermediateSteps,
+            WithWrap = scenario.WithWrap
+        };
     }
 
     /// <summary>
@@ -446,4 +474,72 @@ public class RegressionScenario
     /// </summary>
     [JsonPropertyName("expectedPath")]
     public Helpers.ExpectedPath? ExpectedPath { get; set; }
+
+    // === FlowRequest parameters (optional) ===
+
+    /// <summary>
+    /// Limit which tokens can be used as source tokens.
+    /// </summary>
+    [JsonPropertyName("fromTokens")]
+    public List<string>? FromTokens { get; set; }
+
+    /// <summary>
+    /// Limit which tokens can be received by the sink.
+    /// </summary>
+    [JsonPropertyName("toTokens")]
+    public List<string>? ToTokens { get; set; }
+
+    /// <summary>
+    /// Exclude specific tokens from being used as source.
+    /// </summary>
+    [JsonPropertyName("excludedFromTokens")]
+    public List<string>? ExcludedFromTokens { get; set; }
+
+    /// <summary>
+    /// Exclude specific tokens from being received.
+    /// </summary>
+    [JsonPropertyName("excludedToTokens")]
+    public List<string>? ExcludedToTokens { get; set; }
+
+    /// <summary>
+    /// Simulated balances to inject into the graph (for testing hypothetical scenarios).
+    /// </summary>
+    [JsonPropertyName("simulatedBalances")]
+    public List<Circles.Common.Dto.SimulatedBalance>? SimulatedBalances { get; set; }
+
+    /// <summary>
+    /// Simulated trust relationships to inject into the graph.
+    /// </summary>
+    [JsonPropertyName("simulatedTrusts")]
+    public List<Circles.Common.Dto.SimulatedTrust>? SimulatedTrusts { get; set; }
+
+    /// <summary>
+    /// Simulated consented avatars (for testing consented flow paths).
+    /// </summary>
+    [JsonPropertyName("simulatedConsentedAvatars")]
+    public List<string>? SimulatedConsentedAvatars { get; set; }
+
+    /// <summary>
+    /// Maximum number of transfer steps allowed.
+    /// </summary>
+    [JsonPropertyName("maxTransfers")]
+    public int? MaxTransfers { get; set; }
+
+    /// <summary>
+    /// Enable 96 CRC quantization for invitation module testing.
+    /// </summary>
+    [JsonPropertyName("quantizedMode")]
+    public bool? QuantizedMode { get; set; }
+
+    /// <summary>
+    /// Include debug information showing all transformation stages.
+    /// </summary>
+    [JsonPropertyName("debugShowIntermediateSteps")]
+    public bool? DebugShowIntermediateSteps { get; set; }
+
+    /// <summary>
+    /// Include wrapped token paths.
+    /// </summary>
+    [JsonPropertyName("withWrap")]
+    public bool? WithWrap { get; set; }
 }

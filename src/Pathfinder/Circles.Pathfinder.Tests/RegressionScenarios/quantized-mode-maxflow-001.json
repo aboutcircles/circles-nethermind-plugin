@@ -1,0 +1,19 @@
+{
+  "id": "quantized-mode-maxflow-001",
+  "name": "QuantizedMode maxFlow should not double-count self-loop edges",
+  "category": "quantized-mode",
+  "block": 44289365,
+  "source": "0xc7d3df890952a327af94d5ba6fdc1bf145188a1b",
+  "sink": "0x00738aca013B7B2e6cfE1690F0021C3182Fa40B5",
+  "description": "Regression test for bug where self-loop aggregation edges were counted in maxFlow, causing 192 CRC instead of 96 CRC",
+  "minFlow": "96000000000000000000",
+  "shouldFindPath": true,
+  "quantizedMode": true,
+  "withWrap": true,
+  "toTokens": ["0xc7d3df890952a327af94d5ba6fdc1bf145188a1b"],
+  "tags": ["quantized-mode", "maxflow", "regression", "invitation"],
+  "expectedPath": {
+    "maxFlow": "96000000000000000000",
+    "maxFlowNotEqual": "192000000000000000000"
+  }
+}

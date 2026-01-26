@@ -146,4 +146,16 @@ public class ExpectedPath
 
     [JsonPropertyName("groupsMinted")]
     public List<string>? GroupsMinted { get; set; }
+
+    /// <summary>
+    /// Expected exact maxFlow value (as string in WEI).
+    /// </summary>
+    [JsonPropertyName("maxFlow")]
+    public string? MaxFlow { get; set; }
+
+    /// <summary>
+    /// Value that maxFlow should NOT equal (for regression tests catching known bugs).
+    /// </summary>
+    [JsonPropertyName("maxFlowNotEqual")]
+    public string? MaxFlowNotEqual { get; set; }
 }
