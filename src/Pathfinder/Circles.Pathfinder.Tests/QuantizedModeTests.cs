@@ -737,6 +737,38 @@ public class QuantizedModeSelfLoopTests
         // Assert: No sink-bound edges means no self-loops to add
         Assert.That(tokenFlows.Count, Is.EqualTo(0));
     }
+
+    [Test]
+    public void MaxFlowCalculation_ExcludesSelfLoopAggregationEdges()
+    {
+        // Arrange: Self-loop edges (Sink→Sink) should NOT be counted in maxFlow
+        // This was the bug: AddSinkSelfLoopAggregation adds Sink→Sink edges for display,
+        // but maxFlow calculation was including them, causing double-counting.
+        var source = Node(1);
+        var sink = Node(99);
+        var token = Node(100);
+
+        var edges = new List<FlowEdge>
+        {
+            // Real transfer: source → sink (96 CRC)
+            new(source, sink, token, long.MaxValue) { Flow = Quanta96CRC },
+            // Self-loop aggregation edge: sink → sink (display only, should NOT count)
+            new(sink, sink, token, long.MaxValue) { Flow = Quanta96CRC }
+        };
+
+        // Act: Calculate maxFlow, excluding self-loops (from == sink && to == sink)
+        long maxFlow = 0;
+        foreach (var e in edges)
+        {
+            bool toIsSink = e.To == sink;
+            bool isSelfLoop = e.From == sink && e.To == sink;
+            if (toIsSink && !isSelfLoop)
+                maxFlow += e.Flow;
+        }
+
+        // Assert: maxFlow should be 96 CRC, NOT 192 CRC (which was the bug)
+        Assert.That(maxFlow, Is.EqualTo(Quanta96CRC), "Self-loop edges must be excluded from maxFlow");
+    }
 }
 
 /// <summary>

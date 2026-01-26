@@ -285,12 +285,19 @@ public class V2Pathfinder
          *    path collapsing, multi-hop paths may no longer have the original
          *    source in the 'from' field. The total reaching the sink correctly
          *    represents the achievable flow.
+         *
+         *    NOTE: We exclude self-loop aggregation edges (Sink→Sink) which are
+         *    added by AddSinkSelfLoopAggregation() for display purposes only.
+         *    Including them would double-count the flow.
          * ------------------------------------------------------------------ */
         UInt256 maxFlowWei = 0;
         foreach (var t in transfer)
         {
-            bool toIsSink = AddressIdPool.IdOf(t.To) == sinkId;
-            if (toIsSink)
+            var toId = AddressIdPool.IdOf(t.To);
+            var fromId = AddressIdPool.IdOf(t.From);
+            bool toIsSink = toId == sinkId;
+            bool isSelfLoop = fromId == sinkId && toId == sinkId; // Skip aggregation edges
+            if (toIsSink && !isSelfLoop)
                 maxFlowWei += UInt256.Parse(t.Value);
         }
 
