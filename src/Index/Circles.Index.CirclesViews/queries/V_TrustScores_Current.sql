@@ -16,9 +16,9 @@
 CREATE MATERIALIZED VIEW IF NOT EXISTS "V_TrustScores_Current" AS
 WITH unique_avatars AS (
     -- Deduplicate avatars (V_Crc_Avatars may have duplicates from v1+v2)
-    SELECT DISTINCT ON (LOWER("avatar")) "avatar", "timestamp"
+    SELECT DISTINCT ON ("avatar") "avatar", "timestamp"
     FROM "V_Crc_Avatars"
-    ORDER BY LOWER("avatar"), "timestamp" DESC
+    ORDER BY "avatar", "timestamp" DESC
 ),
 avatar_stats AS (
     SELECT
@@ -32,19 +32,19 @@ avatar_stats AS (
         SELECT "trustee" as avatar, COUNT(*) as cnt
         FROM "V_CrcV2_TrustRelations"
         GROUP BY "trustee"
-    ) in_deg ON LOWER(a."avatar") = LOWER(in_deg.avatar)
+    ) in_deg ON a."avatar" = in_deg.avatar
     LEFT JOIN (
         SELECT "truster" as avatar, COUNT(*) as cnt
         FROM "V_CrcV2_TrustRelations"
         GROUP BY "truster"
-    ) out_deg ON LOWER(a."avatar") = LOWER(out_deg.avatar)
+    ) out_deg ON a."avatar" = out_deg.avatar
     LEFT JOIN (
         SELECT t1."truster" as avatar, COUNT(*) as cnt
         FROM "V_CrcV2_TrustRelations" t1
         JOIN "V_CrcV2_TrustRelations" t2
             ON t1."truster" = t2."trustee" AND t1."trustee" = t2."truster"
         GROUP BY t1."truster"
-    ) mutual ON LOWER(a."avatar") = LOWER(mutual.avatar)
+    ) mutual ON a."avatar" = mutual.avatar
 ),
 network_avg AS (
     SELECT GREATEST(1, AVG(in_degree + out_degree)) as avg_degree FROM avatar_stats

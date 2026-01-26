@@ -191,7 +191,7 @@ public class Settings
             .ToArray()
         ?? [
             "0x0956c08ad2dcc6f4a1e0cc5ffa3a08d2a6d85f29",
-            "0x8F8B74fa13eaaff4176D061a0F98ad5c8E19c903"
+            "0x8f8b74fa13eaaff4176d061a0f98ad5c8e19c903"
         ];
 
     public readonly string AffiliateGroupRegistry =

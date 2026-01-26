@@ -316,7 +316,7 @@ public class TrustRepository
         // New accounts (registered in window) with LOW or VERY_LOW trust
         var sql = $"""
             SELECT COUNT(*) FROM "V_TrustScores_Current" t
-            JOIN "CrcV2_RegisterHuman" r ON LOWER(t.avatar) = LOWER(r."avatar")
+            JOIN "CrcV2_RegisterHuman" r ON t.avatar = r."avatar"
             WHERE r."timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             AND t.trust_level IN ('LOW', 'VERY_LOW')
             """;
@@ -437,7 +437,7 @@ public class TrustRepository
                     COALESCE(s.trust_score, 50) as score,
                     COALESCE(s.trust_level, 'MEDIUM') as level
                 FROM transfers t
-                LEFT JOIN "V_TrustScores_Current" s ON LOWER(t."from") = LOWER(s.avatar)
+                LEFT JOIN "V_TrustScores_Current" s ON t."from" = s.avatar
             )
             SELECT
                 COALESCE(SUM(amount) FILTER (WHERE level IN ('HIGH', 'VERY_HIGH')), 0) as high_trust_volume,
@@ -804,7 +804,7 @@ public class TrustRepository
                 COUNT(*) FILTER (WHERE r."timestamp" > (SELECT ts FROM now_ts) - 86400) as low_new_24h,
                 COUNT(*) FILTER (WHERE r."timestamp" > (SELECT ts FROM now_ts) - 604800) as low_new_7d
             FROM "V_TrustScores_Current" t
-            JOIN "CrcV2_RegisterHuman" r ON LOWER(t.avatar) = LOWER(r."avatar")
+            JOIN "CrcV2_RegisterHuman" r ON t.avatar = r."avatar"
             WHERE t.trust_level IN ('LOW', 'VERY_LOW')
             """;
 
@@ -887,7 +887,7 @@ public class TrustRepository
                     COALESCE(s.trust_score, 50) as score,
                     COALESCE(s.trust_level, 'MEDIUM') as level
                 FROM transfers_24h t
-                LEFT JOIN "V_TrustScores_Current" s ON LOWER(t."from") = LOWER(s.avatar)
+                LEFT JOIN "V_TrustScores_Current" s ON t."from" = s.avatar
             ),
             scored_7d AS (
                 SELECT
@@ -895,7 +895,7 @@ public class TrustRepository
                     COALESCE(s.trust_score, 50) as score,
                     COALESCE(s.trust_level, 'MEDIUM') as level
                 FROM transfers_7d t
-                LEFT JOIN "V_TrustScores_Current" s ON LOWER(t."from") = LOWER(s.avatar)
+                LEFT JOIN "V_TrustScores_Current" s ON t."from" = s.avatar
             ),
             metrics_24h AS (
                 SELECT

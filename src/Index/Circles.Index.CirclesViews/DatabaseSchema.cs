@@ -95,6 +95,43 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 "idx_CrcV2_UpdateMetadataDigest_avatar_cursor_desc",
                 "create index if not exists \"idx_CrcV2_UpdateMetadataDigest_avatar_cursor_desc\" on \"CrcV2_UpdateMetadataDigest\" (avatar, \"blockNumber\" desc, \"transactionIndex\" desc, \"logIndex\" desc);"
+            },
+            // Metrics-exporter optimization indexes (LOWER() JOIN optimization)
+            {
+                "idx_registerhuman_avatar_lower",
+                "CREATE INDEX IF NOT EXISTS idx_registerhuman_avatar_lower ON public.\"CrcV2_RegisterHuman\" (LOWER(\"avatar\"));"
+            },
+            {
+                "idx_trust_current_avatar_lower",
+                "CREATE INDEX IF NOT EXISTS idx_trust_current_avatar_lower ON public.\"V_TrustScores_Current\" (LOWER(avatar));"
+            },
+            // Metrics-exporter optimization: composite indexes for time-window queries
+            {
+                "idx_crcv2_trust_timestamp_expiry",
+                "CREATE INDEX IF NOT EXISTS idx_crcv2_trust_timestamp_expiry ON public.\"CrcV2_Trust\" (\"timestamp\", \"expiryTime\");"
+            },
+            {
+                "idx_crcv2_trust_truster_trustee",
+                "CREATE INDEX IF NOT EXISTS idx_crcv2_trust_truster_trustee ON public.\"CrcV2_Trust\" (\"truster\", \"trustee\");"
+            },
+            // Trust scores history table for anomaly detection metrics
+            {
+                "trust_scores_history_table",
+                """
+                CREATE TABLE IF NOT EXISTS trust_scores_history (
+                    id SERIAL PRIMARY KEY,
+                    avatar VARCHAR(42) NOT NULL,
+                    trust_score INTEGER,
+                    trust_level VARCHAR(20),
+                    confidence INTEGER,
+                    snapshot_date TIMESTAMP NOT NULL DEFAULT NOW(),
+                    CONSTRAINT uq_avatar_snapshot UNIQUE (avatar, snapshot_date)
+                );
+                """
+            },
+            {
+                "idx_history_avatar_snapshot",
+                "CREATE INDEX IF NOT EXISTS idx_history_avatar_snapshot ON trust_scores_history(avatar, snapshot_date DESC);"
             }
         };
 
