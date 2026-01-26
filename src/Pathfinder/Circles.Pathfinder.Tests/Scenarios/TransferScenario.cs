@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Circles.Common.Dto;
 
 namespace Circles.Pathfinder.Tests.Scenarios;
 
@@ -106,10 +107,22 @@ public record TransferScenario
     public string[]? ToTokens { get; init; }
 
     /// <summary>
-    /// Tokens to exclude from path computation.
+    /// Tokens to exclude from path computation (legacy, maps to ExcludedFromTokens).
     /// </summary>
     [JsonPropertyName("excludedTokens")]
     public string[]? ExcludedTokens { get; init; }
+
+    /// <summary>
+    /// Tokens to exclude from source-side path computation.
+    /// </summary>
+    [JsonPropertyName("excludedFromTokens")]
+    public string[]? ExcludedFromTokens { get; init; }
+
+    /// <summary>
+    /// Tokens to exclude from sink-side path computation.
+    /// </summary>
+    [JsonPropertyName("excludedToTokens")]
+    public string[]? ExcludedToTokens { get; init; }
 
     /// <summary>
     /// Maximum number of transfer steps allowed.
@@ -130,6 +143,43 @@ public record TransferScenario
     /// </summary>
     [JsonPropertyName("simulatedConsentedAvatars")]
     public string[]? SimulatedConsentedAvatars { get; init; }
+
+    // ============================================================
+    // Simulation Features (Pathfinder-only, cannot execute on Anvil)
+    // ============================================================
+
+    /// <summary>
+    /// Simulated token balances to inject into the capacity graph.
+    /// These balances exist only in pathfinder memory, not on-chain.
+    /// Scenarios with simulated balances should set runOnAnvil=false.
+    /// </summary>
+    [JsonPropertyName("simulatedBalances")]
+    public SimulatedBalance[]? SimulatedBalances { get; init; }
+
+    /// <summary>
+    /// Simulated trust relationships to inject into the trust graph.
+    /// These trusts exist only in pathfinder memory, not on-chain.
+    /// Scenarios with simulated trusts should set runOnAnvil=false.
+    /// </summary>
+    [JsonPropertyName("simulatedTrusts")]
+    public SimulatedTrust[]? SimulatedTrusts { get; init; }
+
+    // ============================================================
+    // Advanced Request Options
+    // ============================================================
+
+    /// <summary>
+    /// When true, enforces 96 CRC quantization for sink-bound transfers.
+    /// Used for invitation module scenarios.
+    /// </summary>
+    [JsonPropertyName("quantizedMode")]
+    public bool? QuantizedMode { get; init; }
+
+    /// <summary>
+    /// When true, includes debug information showing all transformation stages.
+    /// </summary>
+    [JsonPropertyName("debugShowIntermediateSteps")]
+    public bool? DebugShowIntermediateSteps { get; init; }
 
     // ============================================================
     // Metadata

@@ -1,0 +1,20 @@
+{
+  "id": "simulated-balance-001",
+  "name": "Transfer with simulated balance injection",
+  "category": "simulation",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+  "description": "Tests simulatedBalances feature. Source has natural tokens but we inject additional balance to increase capacity.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "runOnAnvil": false,
+  "simulatedBalances": [
+    {
+      "Holder": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "Token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "Amount": "500000000000000000000"
+    }
+  ],
+  "tags": ["simulation", "simulatedBalances", "capacity-boost"]
+}

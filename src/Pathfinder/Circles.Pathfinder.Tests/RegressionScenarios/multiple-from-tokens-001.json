@@ -1,0 +1,17 @@
+{
+  "id": "multiple-from-tokens-001",
+  "name": "Transfer with multiple allowed fromTokens",
+  "category": "filter",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
+  "description": "Tests fromTokens filter with multiple allowed tokens. Path must only use tokens in the whitelist.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "runOnAnvil": true,
+  "fromTokens": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "0x04fFdBdB42303f09D8D772EA466da39c01A808c8"
+  ],
+  "tags": ["filter", "fromTokens", "multiple-tokens"]
+}

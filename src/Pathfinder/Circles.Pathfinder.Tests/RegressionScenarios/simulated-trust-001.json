@@ -1,0 +1,19 @@
+{
+  "id": "simulated-trust-001",
+  "name": "Transfer with simulated trust injection",
+  "category": "simulation",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x211d4db9d1d2290fcc62b66574e2bbafba734c98",
+  "description": "Tests simulatedTrusts feature. Sink may not trust source directly, but we inject that trust relationship.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "runOnAnvil": false,
+  "simulatedTrusts": [
+    {
+      "Truster": "0x211d4db9d1d2290fcc62b66574e2bbafba734c98",
+      "Trustee": "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+    }
+  ],
+  "tags": ["simulation", "simulatedTrusts", "trust-injection"]
+}

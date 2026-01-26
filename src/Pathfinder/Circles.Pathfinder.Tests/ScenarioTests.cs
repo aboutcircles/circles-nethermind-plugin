@@ -166,18 +166,27 @@ public class ScenarioTests
         }
     }
 
-    private static FlowRequest BuildFlowRequest(TransferScenario scenario)
+    internal static FlowRequest BuildFlowRequest(TransferScenario scenario)
     {
+        // Prefer explicit ExcludedFromTokens, fall back to legacy ExcludedTokens
+        var excludedFrom = scenario.ExcludedFromTokens?.ToList()
+                           ?? scenario.ExcludedTokens?.ToList();
+
         return new FlowRequest
         {
             Source = scenario.Source,
             Sink = scenario.Sink,
             FromTokens = scenario.FromTokens?.ToList(),
             ToTokens = scenario.ToTokens?.ToList(),
-            ExcludedFromTokens = scenario.ExcludedTokens?.ToList(),
+            ExcludedFromTokens = excludedFrom,
+            ExcludedToTokens = scenario.ExcludedToTokens?.ToList(),
             MaxTransfers = scenario.MaxTransfers,
             WithWrap = scenario.WithWrap ?? false,
-            SimulatedConsentedAvatars = scenario.SimulatedConsentedAvatars?.ToList()
+            SimulatedConsentedAvatars = scenario.SimulatedConsentedAvatars?.ToList(),
+            SimulatedBalances = scenario.SimulatedBalances?.ToList(),
+            SimulatedTrusts = scenario.SimulatedTrusts?.ToList(),
+            QuantizedMode = scenario.QuantizedMode,
+            DebugShowIntermediateSteps = scenario.DebugShowIntermediateSteps
         };
     }
 
@@ -327,18 +336,7 @@ public class ScenarioE2ETests
         var balanceGraph = factory.V2BalanceGraph();
         var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
 
-        var request = new FlowRequest
-        {
-            Source = scenario.Source,
-            Sink = scenario.Sink,
-            FromTokens = scenario.FromTokens?.ToList(),
-            ToTokens = scenario.ToTokens?.ToList(),
-            ExcludedFromTokens = scenario.ExcludedTokens?.ToList(),
-            MaxTransfers = scenario.MaxTransfers,
-            WithWrap = scenario.WithWrap ?? false,
-            SimulatedConsentedAvatars = scenario.SimulatedConsentedAvatars?.ToList()
-        };
-
+        var request = ScenarioTests.BuildFlowRequest(scenario);
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
         var pathfinder = new V2Pathfinder();
 

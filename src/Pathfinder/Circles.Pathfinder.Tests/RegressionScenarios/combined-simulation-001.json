@@ -1,0 +1,26 @@
+{
+  "id": "combined-simulation-001",
+  "name": "Transfer with combined simulated balance and trust",
+  "category": "simulation",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "Tests simulatedBalances + simulatedTrusts together. Creates a fully simulated path overlay on the real graph.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "runOnAnvil": false,
+  "simulatedBalances": [
+    {
+      "Holder": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "Token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "Amount": "200000000000000000000"
+    }
+  ],
+  "simulatedTrusts": [
+    {
+      "Truster": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+      "Trustee": "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+    }
+  ],
+  "tags": ["simulation", "simulatedBalances", "simulatedTrusts", "combined"]
+}
