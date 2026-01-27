@@ -76,6 +76,9 @@ builder.Services.Configure<BrotliCompressionProviderOptions>(o => { o.Level = Co
 
 builder.Services.Configure<GzipCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
 
+// Add configurable CORS (reads CORS_ALLOWED_ORIGINS from environment)
+builder.Services.AddConfigurableCors();
+
 builder.Services
     .AddHealthChecks()
     // liveness – always healthy as long as the process answers HTTP
@@ -94,6 +97,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseHttpMetrics();
 app.UseResponseCompression();
 app.MapMetrics();
@@ -421,3 +425,31 @@ app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpCo
 });
 
 app.Run();
+
+/// <summary>
+/// CORS configuration helper. Reads CORS_ALLOWED_ORIGINS from environment (comma-separated list or "*" for all).
+/// </summary>
+static class CorsConfiguration
+{
+    public static void AddConfigurableCors(this IServiceCollection services)
+    {
+        var corsOrigins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "*";
+
+        services.AddCors(options => options.AddDefaultPolicy(policy =>
+        {
+            if (corsOrigins == "*")
+            {
+                policy.AllowAnyOrigin()
+                      .AllowAnyMethod()
+                      .AllowAnyHeader();
+            }
+            else
+            {
+                policy.WithOrigins(corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                      .AllowAnyMethod()
+                      .AllowAnyHeader()
+                      .AllowCredentials();
+            }
+        }));
+    }
+}
