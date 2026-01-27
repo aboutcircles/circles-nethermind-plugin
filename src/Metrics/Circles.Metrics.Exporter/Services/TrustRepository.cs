@@ -482,6 +482,12 @@ public class TrustRepository
         await using var cmd = new NpgsqlCommand(sql, conn);
         var result = await cmd.ExecuteScalarAsync(ct);
 
+        // computed_at is bigint (Unix epoch seconds), not DateTime
+        if (result is long epochSeconds)
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(epochSeconds);
+        }
+        // Fallback for DateTime if schema changes
         if (result is DateTime dt)
         {
             return new DateTimeOffset(dt, TimeSpan.Zero);
