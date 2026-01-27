@@ -16,11 +16,17 @@ All tests run by default. When `TEST_ENV_URL` is not set, integration/E2E tests 
 
 ### CI Security Model
 
-**Why don't integration tests run on PRs?**
+Integration tests run on both PRs and pushes. The test environment:
+- Exposes only public blockchain data (indexed from Gnosis Chain)
+- Has no authentication (URL is public)
+- Rate-limits sessions (10 concurrent, 10min TTL)
+- Returns sanitized error messages (no internal URLs or credentials)
 
-Integration tests require access to `staging.circlesubi.network/test-env`, which provides block-filtered PostgreSQL, Anvil forks, and RPC proxy. If these ran on PRs from forks, malicious actors could exfiltrate credentials or access internal staging infrastructure.
-
-By running only on push to dev/main (trusted code), credentials stay protected while still catching regressions before release.
+**What the test-env exposes** (by design):
+- Read-only access to indexed Circles data (trusts, balances, events)
+- Ephemeral Anvil forks at specific blocks (auto-cleanup after TTL)
+- No write access to production databases
+- No access to production RPC nodes
 
 ---
 

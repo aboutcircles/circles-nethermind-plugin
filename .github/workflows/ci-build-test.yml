@@ -66,8 +66,7 @@ jobs:
   # These tests validate database queries and business logic against real blockchain state
   snapshot-tests:
     runs-on: ubuntu-latest
-    # Only run on push to dev/main, not on PRs (to avoid exposing test-env to forks)
-    if: github.event_name == 'push'
+    # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     needs: build-and-test
 
     steps:
@@ -108,7 +107,7 @@ jobs:
   # Regression tests specifically for known bug scenarios
   regression-tests:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
     needs: build-and-test
 
     steps:
