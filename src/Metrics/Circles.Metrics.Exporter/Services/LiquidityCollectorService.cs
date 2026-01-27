@@ -78,7 +78,8 @@ public class LiquidityCollectorService : BackgroundService
             _collectionInterval.TotalSeconds);
 
         // Wait for app startup
-        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+        // Offset from KPI (5s) and Trust (30s) to prevent query pileup
+        await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {

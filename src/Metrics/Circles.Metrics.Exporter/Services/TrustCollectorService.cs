@@ -34,7 +34,8 @@ public class TrustCollectorService : BackgroundService
             _collectionInterval.TotalSeconds);
 
         // Wait for app startup and database to be ready
-        await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+        // Offset from KPI (5s) and Liquidity (60s) to prevent query pileup
+        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
