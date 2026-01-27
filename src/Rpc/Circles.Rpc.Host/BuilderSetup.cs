@@ -8,6 +8,22 @@ using Npgsql;
 
 namespace Circles.Rpc.Host;
 
+public static class CorsConfiguration
+{
+    public static void AddConfigurableCors(this IServiceCollection services)
+    {
+        var corsOrigins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "*";
+        services.AddCors(options => options.AddDefaultPolicy(policy =>
+        {
+            if (corsOrigins == "*")
+                policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+            else
+                policy.WithOrigins(corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                      .AllowAnyMethod().AllowAnyHeader().AllowCredentials();
+        }));
+    }
+}
+
 public static class BuilderSetup
 {
     public static WebApplicationBuilder ConfigureBuilder(string[] args)
@@ -101,6 +117,8 @@ public static class BuilderSetup
         builder.Services.Configure<BrotliCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
 
         builder.Services.Configure<GzipCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
+
+        builder.Services.AddConfigurableCors();
 
         builder.Services
             .AddHealthChecks()

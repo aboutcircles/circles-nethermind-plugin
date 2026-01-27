@@ -21,6 +21,7 @@ app.UseWebSockets(new WebSocketOptions
     KeepAliveInterval = TimeSpan.FromSeconds(30)
 });
 
+app.UseCors();
 app.UseHttpMetrics();
 app.UseResponseCompression();
 app.MapMetrics();

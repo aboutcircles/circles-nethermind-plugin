@@ -31,6 +31,7 @@ services:
       - AnvilForkRpcUrl=${ANVIL_FORK_RPC_URL:-https://rpc.gnosischain.com}
       - MaxConcurrentSessions=${TEST_ENV_MAX_SESSIONS:-10}
       - PublicBaseUrl=${TEST_ENV_PUBLIC_BASE_URL:-}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
     networks:
       - circles-gnosis
     restart: unless-stopped

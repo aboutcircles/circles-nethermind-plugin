@@ -134,6 +134,7 @@ services:
       - PG_NOTIFY_CHANNEL=circles_index_events
       - ROLLBACK_CAPACITY=12
       - MAX_CATCHUP_LAG=100
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/3001'"]
       interval: 10s
@@ -159,6 +160,7 @@ services:
       - NETHERMIND_RPC_URL=http://nethermind-gnosis:8545
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=pathfinder;
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=pathfinder;
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
       interval: 30s
@@ -195,6 +197,7 @@ services:
       # Uncomment to enable cache service usage:
       - CACHE_SERVICE_URL=http://cache-service:3001
       - USE_CACHE_SERVICE=true
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
       interval: 30s

@@ -3,6 +3,17 @@ using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Services;
 using Prometheus;
 
+static void AddConfigurableCors(IServiceCollection services)
+{
+    var origins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "*";
+    services.AddCors(o => o.AddDefaultPolicy(p =>
+    {
+        if (origins == "*") p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        else p.WithOrigins(origins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+              .AllowAnyMethod().AllowAnyHeader().AllowCredentials();
+    }));
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure host options to ignore background service exceptions
@@ -41,6 +52,8 @@ builder.Services.AddHealthChecks();
 // Add controllers for API endpoints
 builder.Services.AddControllers();
 
+AddConfigurableCors(builder.Services);
+
 // Add logging - use simple console format
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options =>
@@ -66,6 +79,7 @@ logger.LogInformation("HTTP Port: {Port}", settings.Port);
 logger.LogInformation("=======================================");
 
 // Configure middleware
+app.UseCors();
 app.UseRouting();
 
 // Enable Prometheus metrics collection and HTTP metrics

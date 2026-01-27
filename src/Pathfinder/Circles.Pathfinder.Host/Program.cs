@@ -77,7 +77,16 @@ builder.Services.Configure<BrotliCompressionProviderOptions>(o => { o.Level = Co
 builder.Services.Configure<GzipCompressionProviderOptions>(o => { o.Level = CompressionLevel.Fastest; });
 
 // Add configurable CORS (reads CORS_ALLOWED_ORIGINS from environment)
-builder.Services.AddConfigurableCors();
+// CORS: read allowed origins from environment
+var corsOrigins = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS") ?? "*";
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+{
+    if (corsOrigins == "*")
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    else
+        policy.WithOrigins(corsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+              .AllowAnyMethod().AllowAnyHeader().AllowCredentials();
+}));
 
 builder.Services
     .AddHealthChecks()
