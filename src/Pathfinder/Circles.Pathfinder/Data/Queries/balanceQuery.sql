@@ -71,10 +71,10 @@ demurraged_wrapped_token_transfers as (
     from demurraged_wrapped_token_transfers t1
              inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."to"
 ), demurraged_wrapped_sum as (
-    select floor(crc_demurrage(1675209600::bigint, max("timestamp"), sum(diff))) AS demurraged_balance
+    select sum(diff) AS inflationary_balance
          , account
          , "tokenAddress"
-         , max("timestamp") AS "timestamp"
+         , max("timestamp") AS "lastActivity"
          , true as "isWrapped"
          , 'demurraged' as "circlesType"
     from (
@@ -92,21 +92,24 @@ all_transfers as (
     select "static_balance" as balance
          , "account"
          , "tokenAddress"
+         , "timestamp" as "lastActivity"
          , "isWrapped"
          , "circlesType"
     from static_sum
     union all
-    select "demurraged_balance" as balance
+    select "inflationary_balance" as balance
          , "account"
          , "tokenAddress"
+         , "lastActivity"
          , "isWrapped"
          , "circlesType"
     from demurraged_wrapped_sum
     union all
     select
-        "demurragedTotalBalance" as balance
+        "totalBalance" as balance
          ,"account"
          ,"tokenAddress"
+         ,"lastActivity"
          ,false AS "isWrapped"
          ,'demurraged' AS "circlesType"
     from "V_CrcV2_BalancesByAccountAndToken"
@@ -115,6 +118,7 @@ all_transfers as (
 select balance::text
      , account
      , "tokenAddress"
+     , "lastActivity"
      , "isWrapped"
      , "circlesType"
 from all_transfers

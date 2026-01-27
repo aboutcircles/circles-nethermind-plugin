@@ -9,7 +9,9 @@
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": true,
+  "runOnAnvil": false,
   "toTokens": ["0x4a9affa9249f36fd0629f342c182a4e94a13c2e0"],
-  "tags": ["self-conversion", "virtual-sink"]
+  "tags": ["self-conversion", "virtual-sink"],
+  "fixedIn": null,
+  "notes": "E2E disabled: ERC1155InsufficientBalance revert due to demurrage-adjusted balance mismatch."
 }

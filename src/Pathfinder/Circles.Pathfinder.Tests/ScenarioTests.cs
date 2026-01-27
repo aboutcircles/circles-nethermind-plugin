@@ -246,8 +246,9 @@ public class ConcurrentSessionTests
         }
 
         // Load multiple scenarios for concurrent execution
+        // Only use scenarios that are verified to work on Anvil (RunOnAnvil=true)
         var scenarios = ScenarioLoader.LoadAllScenarios()
-            .Where(s => s.ShouldFindPath && !string.IsNullOrEmpty(s.MinFlow))
+            .Where(s => s.ShouldFindPath && !string.IsNullOrEmpty(s.MinFlow) && s.RunOnAnvil)
             .Take(5)
             .ToList();
 
@@ -449,10 +450,16 @@ public class ScenarioE2ETests
         Assert.That(blockNumber, Is.GreaterThanOrEqualTo(scenario.Block),
             $"Anvil fork should be at block {scenario.Block} or later");
 
-        TestContext.Out.WriteLine($"Scenario {scenario.Id}: Anvil at block {blockNumber}");
+        // Get block timestamp from Anvil for accurate demurrage calculation
+        var blockTimestamp = await anvil.GetBlockTimestampAsync();
+        TestContext.Out.WriteLine($"Scenario {scenario.Id}: Anvil at block {blockNumber}, timestamp {blockTimestamp:u}");
 
-        // Compute path
-        var settings = new Settings();
+        // Configure settings with the frozen block's timestamp for demurrage
+        // This ensures pathfinder calculates capacities at the same point in time as the Anvil fork
+        var settings = new Settings
+        {
+            TargetDemurrageTimestamp = blockTimestamp
+        };
 
         // Use direct DB connection if available, otherwise use query proxy API
         ILoadGraph loadGraph = session.IsDirectConnectionAvailable

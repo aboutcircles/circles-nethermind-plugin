@@ -25,6 +25,10 @@ namespace Circles.Pathfinder.Data
         private readonly string _connectionString;
         private readonly Settings _settings;
 
+        // Demurrage constants (same as CirclesConverter)
+        private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
+        private const ulong SecondsPerDay = 86_400;
+
         public LoadGraph(string connectionString, Settings settings)
         {
             _connectionString = connectionString;
@@ -91,25 +95,45 @@ namespace Circles.Pathfinder.Data
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
+            // Calculate target day for demurrage (configurable for testing, defaults to NOW)
+            var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
+            var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
+
             while (reader.Read())
             {
                 var balance = reader.GetString(0);
                 var account = reader.GetString(1);
                 var tokenAddress = reader.GetString(2);
-                var isWrapped = reader.GetBoolean(3);
-                var type = reader.GetString(4);
+                var lastActivity = reader.GetInt64(3);
+                var isWrapped = reader.GetBoolean(4);
+                var type = reader.GetString(5);
 
                 if (type == "static")
                 {
-                    // Convert to Circles
+                    // Convert static (inflationary) Circles to demurraged Circles at target day
                     var staticAttoCircles = BigInteger.Parse(balance);
-                    var demurragedAttoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                    var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(staticAttoCircles, targetDay);
                     if (demurragedAttoCircles == 0)
                     {
                         continue;
                     }
 
                     balance = demurragedAttoCircles.ToString(CultureInfo.InvariantCulture);
+                }
+                else if (type == "demurraged")
+                {
+                    // Apply demurrage from lastActivity to target timestamp
+                    var inflationaryBalance = BigInteger.Parse(balance);
+                    var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
+                    var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
+
+                    if (daysDelta > 0)
+                    {
+                        // Apply demurrage: balance * gamma^daysDelta
+                        var demurragedBalance = CirclesConverter.InflationaryToDemurrage(inflationaryBalance, daysDelta);
+                        balance = demurragedBalance.ToString(CultureInfo.InvariantCulture);
+                    }
+                    // If no delta, balance stays as-is (already in correct form)
                 }
 
                 if (balance == "0")

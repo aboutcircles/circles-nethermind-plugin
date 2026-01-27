@@ -67,6 +67,18 @@ public class AnvilExecutionHelper : IDisposable
     }
 
     /// <summary>
+    /// Gets the timestamp of the current block from Anvil.
+    /// </summary>
+    public async Task<DateTimeOffset> GetBlockTimestampAsync()
+    {
+        var blockNumber = await CallRpcAsync<string>("eth_blockNumber");
+        var block = await CallRpcAsync<JsonElement>("eth_getBlockByNumber", blockNumber, false);
+        var timestampHex = block.GetProperty("timestamp").GetString();
+        var timestamp = Convert.ToInt64(timestampHex, 16);
+        return DateTimeOffset.FromUnixTimeSeconds(timestamp);
+    }
+
+    /// <summary>
     /// Gets the balance of an ERC1155 token for an account.
     /// </summary>
     public async Task<BigInteger> GetErc1155BalanceAsync(string tokenContract, string account, BigInteger tokenId)

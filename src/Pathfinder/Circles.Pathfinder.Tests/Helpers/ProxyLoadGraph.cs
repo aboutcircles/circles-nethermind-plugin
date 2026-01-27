@@ -18,6 +18,10 @@ public class ProxyLoadGraph : ILoadGraph
     private readonly TestEnvironmentClient _client;
     private readonly Settings _settings;
 
+    // Demurrage constants (same as CirclesConverter)
+    private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
+    private const ulong SecondsPerDay = 86_400;
+
     /// <summary>
     /// Maximum rows to fetch for balance queries.
     /// Configurable via PATHFINDER_MAX_BALANCE_ROWS environment variable.
@@ -113,10 +117,10 @@ public class ProxyLoadGraph : ILoadGraph
             from demurraged_wrapped_token_transfers t1
                      inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."to"
         ), demurraged_wrapped_sum as (
-            select floor(crc_demurrage(1675209600::bigint, max("timestamp"), sum(diff))) AS demurraged_balance
+            select sum(diff) AS inflationary_balance
                  , account
                  , "tokenAddress"
-                 , max("timestamp") AS "timestamp"
+                 , max("timestamp") AS "lastActivity"
                  , true as "isWrapped"
                  , 'demurraged' as "circlesType"
             from (
@@ -134,21 +138,24 @@ public class ProxyLoadGraph : ILoadGraph
             select "static_balance" as balance
                  , "account"
                  , "tokenAddress"
+                 , "timestamp" as "lastActivity"
                  , "isWrapped"
                  , "circlesType"
             from static_sum
             union all
-            select "demurraged_balance" as balance
+            select "inflationary_balance" as balance
                  , "account"
                  , "tokenAddress"
+                 , "lastActivity"
                  , "isWrapped"
                  , "circlesType"
             from demurraged_wrapped_sum
             union all
             select
-                "demurragedTotalBalance" as balance
+                "totalBalance" as balance
                  ,"account"
                  ,"tokenAddress"
+                 ,"lastActivity"
                  ,false AS "isWrapped"
                  ,'demurraged' AS "circlesType"
             from "V_CrcV2_BalancesByAccountAndToken"
@@ -157,6 +164,7 @@ public class ProxyLoadGraph : ILoadGraph
         select balance::text
              , account
              , "tokenAddress"
+             , "lastActivity"
              , "isWrapped"
              , "circlesType"
         from all_transfers
@@ -215,25 +223,45 @@ public class ProxyLoadGraph : ILoadGraph
 
         Console.WriteLine($"ProxyLoadGraph: Balance query returned {response.RowCount} rows (max: {MaxBalanceRows}){(response.Truncated ? " (TRUNCATED! Consider increasing PATHFINDER_MAX_BALANCE_ROWS)" : "")}");
 
+        // Calculate target day for demurrage (configurable for testing, defaults to NOW)
+        var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
+        var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
+
         foreach (var row in response.Rows)
         {
             var balance = GetString(row[0]);
             var account = GetString(row[1]);
             var tokenAddress = GetString(row[2]);
-            var isWrapped = GetBool(row[3]);
-            var type = GetString(row[4]);
+            var lastActivity = GetInt64(row[3]);
+            var isWrapped = GetBool(row[4]);
+            var type = GetString(row[5]);
 
             if (type == "static")
             {
-                // Convert to Circles (same logic as LoadGraph)
+                // Convert static (inflationary) Circles to demurraged Circles at target day
                 var staticAttoCircles = BigInteger.Parse(balance);
-                var demurragedAttoCircles = CirclesConverter.AttoStaticCirclesToAttoCircles(staticAttoCircles);
+                var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(staticAttoCircles, targetDay);
                 if (demurragedAttoCircles == 0)
                 {
                     continue;
                 }
 
                 balance = demurragedAttoCircles.ToString(CultureInfo.InvariantCulture);
+            }
+            else if (type == "demurraged")
+            {
+                // Apply demurrage from lastActivity to target timestamp
+                var inflationaryBalance = BigInteger.Parse(balance);
+                var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
+                var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
+
+                if (daysDelta > 0)
+                {
+                    // Apply demurrage: balance * gamma^daysDelta
+                    var demurragedBalance = CirclesConverter.InflationaryToDemurrage(inflationaryBalance, daysDelta);
+                    balance = demurragedBalance.ToString(CultureInfo.InvariantCulture);
+                }
+                // If no delta, balance stays as-is (already in correct form)
             }
 
             if (balance == "0")
@@ -339,6 +367,26 @@ public class ProxyLoadGraph : ILoadGraph
 
         if (value is bool b2) return b2;
         return bool.TryParse(value?.ToString(), out var result) && result;
+    }
+
+    private static long GetInt64(object? value)
+    {
+        if (value is JsonElement je)
+        {
+            if (je.ValueKind == JsonValueKind.Number)
+            {
+                return je.GetInt64();
+            }
+
+            if (je.ValueKind == JsonValueKind.String && long.TryParse(je.GetString(), out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        if (value is long l) return l;
+        if (value is int i) return i;
+        return long.TryParse(value?.ToString(), out var result) ? result : 0;
     }
 
     private static byte[] GetBytes(object? value)

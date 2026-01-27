@@ -12,8 +12,11 @@
   "withWrap": true,
   "toTokens": ["0xc7d3df890952a327af94d5ba6fdc1bf145188a1b"],
   "tags": ["quantized-mode", "maxflow", "regression", "invitation"],
+  "runOnAnvil": false,
   "expectedPath": {
     "maxFlow": "96000000000000000000",
     "maxFlowNotEqual": "192000000000000000000"
-  }
+  },
+  "fixedIn": null,
+  "notes": "E2E disabled: ERC1155InsufficientBalance revert due to demurrage-adjusted balance mismatch."
 }

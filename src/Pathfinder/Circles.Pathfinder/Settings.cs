@@ -37,4 +37,11 @@ public class Settings
     /// </summary>
     public static bool DebugLogging { get; } =
         Environment.GetEnvironmentVariable("PATHFINDER_DEBUG_LOGGING")?.ToLowerInvariant() is "true" or "1";
+
+    /// <summary>
+    /// Target timestamp for demurrage calculations (default: null = use current time).
+    /// When set, demurrage is calculated relative to this timestamp instead of NOW.
+    /// Used for testing against frozen blocks where the block timestamp differs from current time.
+    /// </summary>
+    public DateTimeOffset? TargetDemurrageTimestamp { get; set; }
 }
