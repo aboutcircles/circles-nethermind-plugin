@@ -1,0 +1,22 @@
+{
+  "id": "v1-migration-001",
+  "name": "V1 to V2 migration path - wrapped V1 tokens",
+  "category": "v1-migration",
+  "block": 44289365,
+  "source": "0x26994472d896ac2124f8e83b42bf00e0f6362ea2",
+  "sink": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+  "description": "Tests transfer path for a V1 user (hasV1=true) sending to a V2 group. V1 tokens must be wrapped before they can flow through V2 trust paths. Validates the pathfinder correctly handles V1→V2 bridging via wrapped tokens.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": true,
+  "tags": ["v1-migration", "v1-to-v2", "wrapped-tokens", "future-work"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Source 0x26994472... is a V1 user. Sink is the largest V2 group (1,552+ members). Tests V1/V2 token bridging through wrapped tokens. Part of future work for comprehensive V1→V2 migration testing."
+}

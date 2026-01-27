@@ -1,0 +1,22 @@
+{
+  "id": "demurrage-edge-case-001",
+  "name": "Demurrage decay - stale balance adjustment",
+  "category": "demurrage",
+  "block": 44289365,
+  "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Tests pathfinder handling of demurrage-adjusted balances. Circles V2 tokens have a 7% annual demurrage rate causing balances to decay over time. This scenario verifies the pathfinder correctly calculates capacity with time-decayed balances rather than raw stored values.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 15,
+  "withWrap": true,
+  "tags": ["demurrage", "time-decay", "balance-adjustment", "future-work"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Demurrage causes ~7%/year token decay. The pathfinder must use demurrage-adjusted balances when computing capacity. At block 44289365, balances are already decayed from their original mint amounts. This tests that path computation uses realistic capacity values."
+}

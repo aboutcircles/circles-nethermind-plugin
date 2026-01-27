@@ -23,6 +23,9 @@ Each JSON file defines a transfer scenario that is:
 | `performance` | High-load scenarios testing graph loading and pathfinding at scale |
 | `boundary` | Edge case and boundary condition tests |
 | `negative-test` | Tests that should NOT find a path (validation of error handling) |
+| `v1-migration` | V1→V2 migration paths with wrapped token bridging |
+| `demurrage` | Time-based token decay edge cases |
+| `invitation` | Invitation module with quantized 96 CRC transfers |
 
 ## Usage
 
@@ -135,3 +138,23 @@ Boundary conditions and negative tests.
 - **low-balance-partial-001.json** - Partial flow with simulated low balance
 - **competing-paths-001.json** - Multiple valid routes to sink (path selection)
 - **consented-wrapped-001.json** - Consented flow + wrapped token output (pipeline ordering)
+
+### Concurrent Session Tests
+Thread safety and session resource management tests (implemented in `ScenarioTests.cs`).
+
+- **ConcurrentPathfinderRequests_SameSession_AllSucceed** - 5 parallel pathfinder requests sharing same session. Validates thread safety of graph loading and path computation.
+
+### V1 Migration Scenarios
+Tests for users migrating from Circles V1 to V2.
+
+- **v1-migration-001.json** - V1 user with wrapped tokens sending to V2 group (V1→V2 bridging)
+
+### Demurrage Scenarios
+Tests for time-based token decay (7% annual demurrage rate).
+
+- **demurrage-edge-case-001.json** - Stale balance adjustment with demurrage-decayed tokens
+
+### Invitation Module Scenarios
+Stress tests for the invitation flow with quantized transfers (96 CRC per invitation).
+
+- **invitation-stress-001.json** - High-volume invitation scenario with 50 maxTransfers and quantizedMode

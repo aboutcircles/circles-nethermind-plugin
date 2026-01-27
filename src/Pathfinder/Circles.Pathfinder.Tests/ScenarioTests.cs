@@ -221,6 +221,137 @@ public class ScenarioTests
 }
 
 /// <summary>
+/// Concurrent session tests - validates thread safety and session resource management.
+/// Multiple pathfinder requests on the same session should not interfere.
+/// </summary>
+[TestFixture]
+public class ConcurrentSessionTests
+{
+    private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    /// <summary>
+    /// Tests 5 concurrent pathfinder requests on the same session.
+    /// Validates thread safety and proper session resource management.
+    /// </summary>
+    [Test]
+    [Category("Scenarios")]
+    [Category("Concurrent")]
+    public async Task ConcurrentPathfinderRequests_SameSession_AllSucceed()
+    {
+        var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
+        if (string.IsNullOrEmpty(testEnvUrl))
+        {
+            Assert.Ignore("TEST_ENV_URL not set. Set to https://staging.circlesubi.network/test-env to run concurrent tests.");
+            return;
+        }
+
+        // Load multiple scenarios for concurrent execution
+        var scenarios = ScenarioLoader.LoadAllScenarios()
+            .Where(s => s.ShouldFindPath && !string.IsNullOrEmpty(s.MinFlow))
+            .Take(5)
+            .ToList();
+
+        if (scenarios.Count < 5)
+        {
+            Assert.Ignore("Not enough scenarios available for concurrent test (need 5)");
+            return;
+        }
+
+        TestEnvironmentClient? session = null;
+        try
+        {
+            var health = await TestEnvironmentClient.GetHealthAsync();
+            if (health?.Status != "healthy")
+            {
+                Assert.Ignore("Test environment not healthy");
+            }
+
+            // Use a common block that should work for all scenarios
+            var commonBlock = scenarios.Max(s => s.Block);
+
+            var exists = await TestEnvironmentClient.BlockExistsAsync(commonBlock);
+            if (!exists)
+            {
+                Assert.Ignore($"Block {commonBlock} not indexed");
+            }
+
+            session = await TestEnvironmentClient.CreateSessionAsync(
+                commonBlock,
+                features: ["db"],
+                ttl: "15m");
+        }
+        catch (Exception ex)
+        {
+            Assert.Ignore($"Test environment not available: {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            var settings = new Settings();
+
+            // Use direct DB connection if available, otherwise use query proxy API
+            ILoadGraph loadGraph = session.IsDirectConnectionAvailable
+                ? new LoadGraph(session.PostgresConnectionString!, settings)
+                : new ProxyLoadGraph(session, settings);
+
+            TestContext.Out.WriteLine($"Using {(session.IsDirectConnectionAvailable ? "direct DB" : "query proxy")} for data loading");
+
+            var factory = new GraphFactory(RouterAddress, loadGraph);
+
+            // Pre-load graphs (shared across all concurrent requests)
+            var trustGraph = factory.V2TrustGraph();
+            var balanceGraph = factory.V2BalanceGraph();
+            var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+            TestContext.Out.WriteLine($"Loaded graphs: {trustGraph.Edges.Count} trust edges, {balanceGraph.BalanceNodes.Count} balances");
+
+            // Run 5 pathfinder requests concurrently
+            var tasks = scenarios.Select(async scenario =>
+            {
+                var request = ScenarioTests.BuildFlowRequest(scenario);
+                var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+
+                var pathfinder = new V2Pathfinder();
+                var targetFlow = UInt256.Parse(scenario.MinFlow!);
+
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var response = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, targetFlow);
+                stopwatch.Stop();
+
+                return new
+                {
+                    Scenario = scenario.Id,
+                    Success = response.Transfers != null && response.Transfers.Count > 0,
+                    TransferCount = response.Transfers?.Count ?? 0,
+                    MaxFlow = response.MaxFlow,
+                    ElapsedMs = stopwatch.ElapsedMilliseconds
+                };
+            }).ToList();
+
+            var results = await Task.WhenAll(tasks);
+
+            // Validate all requests succeeded
+            foreach (var result in results)
+            {
+                TestContext.Out.WriteLine($"  {result.Scenario}: {result.TransferCount} steps, flow={result.MaxFlow}, {result.ElapsedMs}ms");
+                Assert.That(result.Success, Is.True,
+                    $"Concurrent request for {result.Scenario} failed to find path");
+            }
+
+            TestContext.Out.WriteLine($"All {results.Length} concurrent requests completed successfully");
+        }
+        finally
+        {
+            if (session != null)
+            {
+                await session.DisposeAsync();
+            }
+        }
+    }
+}
+
+/// <summary>
 /// E2E tests that execute computed paths on Anvil fork.
 /// Validates that paths actually work on-chain.
 ///

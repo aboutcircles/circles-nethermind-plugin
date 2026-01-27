@@ -1,0 +1,23 @@
+{
+  "id": "invitation-stress-001",
+  "name": "Invitation flow stress - multiple quantized transfers",
+  "category": "invitation",
+  "block": 44289365,
+  "source": "0xc7d3df890952a327af94d5ba6fdc1bf145188a1b",
+  "sink": "0x00738aca013B7B2e6cfE1690F0021C3182Fa40B5",
+  "description": "Stress test for invitation module scenarios with quantizedMode enabled. The invitation system requires exactly 96 CRC per invitation (quantized transfers). Tests high-volume invitation flow handling with multiple concurrent quantized transfers.",
+  "shouldFindPath": true,
+  "minFlow": "96000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": ["0xc7d3df890952a327af94d5ba6fdc1bf145188a1b"],
+  "excludedTokens": [],
+  "maxTransfers": 50,
+  "withWrap": true,
+  "quantizedMode": true,
+  "tags": ["invitation", "quantized-mode", "stress-test", "high-volume", "future-work"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Invitation module requires 96 CRC quantization. This tests pathfinder scaling with high maxTransfers (50) to simulate invitation batching. QuantizedMode ensures each transfer unit is exactly 96 CRC."
+}
