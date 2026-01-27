@@ -440,6 +440,29 @@ Create files in `src/Pathfinder/Circles.Pathfinder.Tests/RegressionScenarios/`:
 - `wrapped-tokens` - Involves wrapped/demurraged tokens
 - `consented-flow` - Uses operator approvals (ApprovalForAll)
 - `no-path` - Expected to return no valid path (negative test)
+- `performance` - High-load scenarios (large graphs, many edges)
+- `boundary` - Edge cases and boundary condition tests
+- `negative-test` - Tests that verify correct error handling
+- `production-discrepancy` - Cases where prod differs from staging (tracking issues)
+
+### Key Regression Scenarios (Jan 2026)
+
+| Scenario | Category | Tests |
+|----------|----------|-------|
+| `high-trust-avatar-001` | performance | Group with 1500+ members, graph loading at scale |
+| `high-trust-consented-001` | consented-flow | Large group with consented flow enabled |
+| `deep-nesting-5hop-001` | direct-transfer | 5+ intermediary hops, deep graph traversal |
+| `deep-nesting-consented-001` | consented-flow | Deep path with consented source |
+| `group-to-group-001` | group-minting | Group treasury to group transfer |
+| `group-to-group-consented-001` | consented-flow | Group-to-group with consented intermediary |
+| `multi-group-collateral-001` | group-minting | Path through multiple groups |
+| `multi-group-consented-001` | consented-flow | **CRITICAL** - Multi-group + consented (isPermittedFlow bug scenario) |
+| `competing-paths-001` | direct-transfer | Multiple valid routes, path selection |
+| `consented-wrapped-001` | consented-flow | Consented flow with wrapped token output |
+| `filter-zero-overlap-001` | negative-test | Token filter with no valid intersection |
+| `max-transfers-boundary-001` | boundary | High maxTransfers (100) boundary test |
+| `low-balance-partial-001` | direct-transfer | Partial flow with simulated low balance |
+| `prod-discrepancy-*` | production-discrepancy | Tracking prod vs staging graph differences |
 
 ---
 
