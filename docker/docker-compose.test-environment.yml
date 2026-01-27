@@ -40,8 +40,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    depends_on:
-      - postgres-gnosis
+    # Note: postgres-gnosis runs in a separate compose project (circles-gnosis)
+    # The application handles connection retries via its own health/retry logic
 
 networks:
   circles-gnosis:

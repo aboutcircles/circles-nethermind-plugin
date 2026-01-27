@@ -1,0 +1,21 @@
+{
+  "id": "high-trust-avatar-001",
+  "name": "High trust count avatar (group with 1500+ members)",
+  "category": "performance",
+  "source": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+  "sink": "0x00a87ca5b9095fc53549b6e4aab3100c204a3fbd",
+  "description": "Tests graph loading and pathfinding performance with a group that has 1,552+ incoming trust edges (members). Verifies the pathfinder handles large edge count without timeout or memory issues. Source is the largest group on the network.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": true,
+  "tags": ["performance", "high-trust", "stress-test", "graph-loading"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Avatar 0xdc287474... has 5,620 outgoing trusts, making it one of the most connected nodes. This tests OR-Tools scaling with dense graphs."
+}

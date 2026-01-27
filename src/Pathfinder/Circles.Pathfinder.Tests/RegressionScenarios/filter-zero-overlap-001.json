@@ -1,0 +1,21 @@
+{
+  "id": "filter-zero-overlap-001",
+  "name": "Token filter with no valid intersection",
+  "category": "negative-test",
+  "source": "0x97fd8f7829a019946329f6d2e763a72741047518",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Negative test: fromTokens and toTokens have zero intersection with actual token paths. Should gracefully return no-path without infinite loop or crash. Tests filter edge case handling.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": ["0x0000000000000000000000000000000000000001"],
+  "toTokens": ["0x0000000000000000000000000000000000000002"],
+  "excludedTokens": [],
+  "maxTransfers": 10,
+  "withWrap": false,
+  "tags": ["negative-test", "filter", "edge-case", "no-path"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Invalid token addresses that don't exist on the network. Pathfinder should quickly determine no valid path exists."
+}

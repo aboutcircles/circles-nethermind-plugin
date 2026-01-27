@@ -1,0 +1,34 @@
+{
+  "id": "prod-discrepancy-partial-flow-001",
+  "name": "Production discrepancy: Partial flow vs full flow",
+  "category": "production-discrepancy",
+  "source": "0x5f2b632167e4c4497ed8938aa53c39cb08c634f5",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Non-V1 user where production finds a partial path (~0.0047 CRC) but staging finds a full 1 CRC path. Demonstrates production has SOME trust edges but is missing many others needed for full flow.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "maxFlow": "1000000000000000000",
+  "maxFlowNotEqual": "4732000000000000",
+  "withWrap": true,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "discoveredAt": "2026-01-26T14:00:00+01:00",
+  "fixedIn": null,
+  "tags": [
+    "production-discrepancy",
+    "partial-flow",
+    "graph-completeness",
+    "regression"
+  ],
+  "notes": "Production finds a 5-transfer path with maxFlow of 0.00473 CRC. Staging finds a 16-transfer path with maxFlow of 1 CRC. The partial flow indicates production has some edges but is missing trust relationships needed for optimal routing.",
+  "prodResult": {
+    "maxFlow": "4732000000000000",
+    "transferCount": 5,
+    "description": "Finds limited path: 0x5f2b63... -> 0xf3d6b8... -> gateway (4.324e15) + separate branch (4.08e14)"
+  },
+  "stagingResult": {
+    "maxFlow": "1000000000000000000",
+    "transferCount": 16,
+    "description": "Complex multi-hop path utilizing full trust network"
+  }
+}

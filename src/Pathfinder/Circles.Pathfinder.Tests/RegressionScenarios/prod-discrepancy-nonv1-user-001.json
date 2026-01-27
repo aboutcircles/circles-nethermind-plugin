@@ -1,0 +1,34 @@
+{
+  "id": "prod-discrepancy-nonv1-user-001",
+  "name": "Production discrepancy: Non-V1 user (13 hops on staging)",
+  "category": "production-discrepancy",
+  "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Non-V1 user attempting to transfer to payment gateway. Production returns maxFlow:0 while staging finds a 13-hop path. This proves V1 token filtering is NOT the cause - the issue is incomplete trust graph on production.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "maxFlow": "1000000000000000000",
+  "maxFlowNotEqual": "0",
+  "withWrap": true,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "discoveredAt": "2026-01-26T14:00:00+01:00",
+  "fixedIn": null,
+  "tags": [
+    "production-discrepancy",
+    "non-v1-user",
+    "multi-hop",
+    "graph-completeness",
+    "regression"
+  ],
+  "notes": "Critical test case: hasV1=false on both prod and staging. Staging finds a complex 13-hop path. Production returns maxFlow:0. This definitively proves the issue is NOT V1 token filtering but rather incomplete trust graph loading.",
+  "prodResult": {
+    "maxFlow": "0",
+    "transferCount": 0
+  },
+  "stagingResult": {
+    "maxFlow": "1000000000000000000",
+    "transferCount": 13,
+    "description": "Complex multi-hop path through trust network"
+  }
+}

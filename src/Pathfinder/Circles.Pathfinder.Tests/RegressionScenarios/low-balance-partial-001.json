@@ -1,0 +1,29 @@
+{
+  "id": "low-balance-partial-001",
+  "name": "Low balance partial transfer",
+  "category": "direct-transfer",
+  "source": "0x97fd8f7829a019946329f6d2e763a72741047518",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Tests partial flow calculation when source has limited balance. Uses simulated balance injection to restrict available tokens. Validates multi-path aggregation and accurate partial flow reporting when full target cannot be met.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "maxFlow": "500000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 10,
+  "withWrap": true,
+  "simulatedBalances": [
+    {
+      "Holder": "0x97fd8f7829a019946329f6d2e763a72741047518",
+      "Token": "0x97fd8f7829a019946329f6d2e763a72741047518",
+      "Amount": "500000000000000000"
+    }
+  ],
+  "tags": ["partial-flow", "low-balance", "edge-case", "simulation"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Uses simulated balance to test partial flow behavior. Source is limited to 0.5 CRC of their own token. Target of 1 CRC should result in partial flow."
+}

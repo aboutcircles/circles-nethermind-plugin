@@ -1,0 +1,21 @@
+{
+  "id": "max-transfers-boundary-001",
+  "name": "High maxTransfers boundary test",
+  "category": "boundary",
+  "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Tests algorithm termination with high maxTransfers value (100). Uses known 13-hop path scenario. Validates the pathfinder terminates reasonably and doesn't have memory blowup with large depth limits.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 100,
+  "withWrap": true,
+  "tags": ["boundary", "performance", "termination", "depth-limit"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Based on prod-discrepancy-nonv1-user-001 scenario which has 13 hops. High maxTransfers shouldn't significantly impact performance when optimal path is found early."
+}

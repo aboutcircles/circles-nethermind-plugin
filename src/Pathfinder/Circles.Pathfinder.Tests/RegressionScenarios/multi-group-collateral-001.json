@@ -1,0 +1,21 @@
+{
+  "id": "multi-group-collateral-001",
+  "name": "Path through multiple groups",
+  "category": "group-minting",
+  "source": "0x97fd8f7829a019946329f6d2e763a72741047518",
+  "sink": "0x7e09438a61ba64b2866b5fefb350146f93db7959",
+  "description": "Tests a transfer path that routes through multiple groups. Source is MetriTestSupergroup (1.1M CRC). Sink is a different group (1,108 members). Path should involve group collateralization from one group, then minting into another. Validates edge ordering with multiple collateral/mint sequences.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": false,
+  "tags": ["multi-group", "collateral", "edge-ordering", "complex-path"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Complex multi-group paths are highest risk for edge ordering bugs. Each group requires proper collateralize-then-mint sequence."
+}

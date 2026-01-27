@@ -1,0 +1,22 @@
+{
+  "id": "consented-wrapped-001",
+  "name": "Consented flow with wrapped token output",
+  "category": "consented-flow",
+  "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Tests consented flow with wrapped token output. Validates pipeline ordering - wrapping must occur AFTER consent validation. Uses known-good path from prod-discrepancy-nonv1-user-001 with consented source.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": true,
+  "simulatedConsentedAvatars": ["0x94773e9b5d5fec05ff23844958e0a306834e9b94"],
+  "tags": ["consented-flow", "wrapped-tokens", "multi-hop", "pipeline-ordering"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Pipeline ordering is critical: consent validation, then path execution, then wrapping. Incorrect order causes revert."
+}

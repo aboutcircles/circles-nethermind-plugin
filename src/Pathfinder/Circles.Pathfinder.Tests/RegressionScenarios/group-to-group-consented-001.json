@@ -1,0 +1,22 @@
+{
+  "id": "group-to-group-consented-001",
+  "name": "Group to group with consented intermediary",
+  "category": "consented-flow",
+  "source": "0x7e09438a61ba64b2866b5fefb350146f93db7959",
+  "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+  "description": "Tests group-to-group transfer where an intermediary avatar has consented flow enabled. Validates consent propagation through group operations - the consented avatar must be properly inserted in the router path even when source and sink are groups.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 15,
+  "withWrap": false,
+  "simulatedConsentedAvatars": ["0x97fd8f7829a019946329f6d2e763a72741047518"],
+  "tags": ["consented-flow", "group-to-group", "router-insertion", "isPermittedFlow"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Group-to-group with consented intermediary tests router insertion in complex organizational payment flows."
+}

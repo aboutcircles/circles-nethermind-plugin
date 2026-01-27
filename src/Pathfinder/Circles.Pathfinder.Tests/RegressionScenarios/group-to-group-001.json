@@ -1,0 +1,21 @@
+{
+  "id": "group-to-group-001",
+  "name": "Group treasury to group transfer",
+  "category": "group-minting",
+  "source": "0x7e09438a61ba64b2866b5fefb350146f93db7959",
+  "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+  "description": "Tests transfer from one group's treasury to another group. Source is a group with 1,108 members (~33M CRC treasury). Sink is a different group with 1,035 members. Validates group-as-source handling and collateral mechanics between groups.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 15,
+  "withWrap": false,
+  "tags": ["group-to-group", "treasury", "collateral", "edge-ordering"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Group-to-group transfers are rare but important for organization payments. Tests proper handling of group treasuries as source."
+}
