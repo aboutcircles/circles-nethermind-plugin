@@ -62,6 +62,7 @@ services:
       - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
       - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
       - IPFS_MAX_PARALLELISM=192
+      - REINDEX_FROM_BLOCK=${REINDEX_FROM_BLOCK:-}
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8545'"]
       interval: 60s
