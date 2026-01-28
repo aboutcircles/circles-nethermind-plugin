@@ -312,12 +312,11 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 ));
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine(
-                $"Warning: Failed to parse transfer calldata at block {block.Number}, " +
-                $"tx {transaction.Hash}: {ex.Message}");
-            // Return any results collected before the error, plus continue indexing other events
+            // Expected for transactions that have TransferSingle/TransferBatch events but
+            // aren't calling Circles Hub (selector collisions, other ERC-1155 contracts).
+            // Silently skip - the transfer events are still indexed from logs.
         }
 
         return results;
