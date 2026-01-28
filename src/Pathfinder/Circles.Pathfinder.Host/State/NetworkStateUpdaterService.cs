@@ -5,6 +5,7 @@ using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Prometheus;
 
 namespace Circles.Pathfinder.Host.State;
 
@@ -106,6 +107,15 @@ public class NetworkStateUpdaterService : BackgroundService
                     swBalanceGraph.ElapsedMilliseconds,
                     swTotal.ElapsedMilliseconds);
 
+                // Record metrics for successful update
+                GraphUpdateMetrics.UpdateDuration.WithLabels("trust").Observe(swTrustGraph.Elapsed.TotalSeconds);
+                GraphUpdateMetrics.UpdateDuration.WithLabels("balance").Observe(swBalanceGraph.Elapsed.TotalSeconds);
+                GraphUpdateMetrics.UpdateDuration.WithLabels("total").Observe(swTotal.Elapsed.TotalSeconds);
+                GraphUpdateMetrics.UpdateTotal.WithLabels("success").Inc();
+                GraphUpdateMetrics.LastUpdateTimestamp.Set(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                GraphUpdateMetrics.LastProcessedBlock.Set(lastBlock);
+                GraphUpdateMetrics.ConsecutiveErrors.Set(0);
+
                 // Reset error counter on success
                 consecutiveErrors = 0;
             }
@@ -117,6 +127,8 @@ public class NetworkStateUpdaterService : BackgroundService
             catch (Exception ex)
             {
                 consecutiveErrors++;
+                GraphUpdateMetrics.UpdateTotal.WithLabels("failure").Inc();
+                GraphUpdateMetrics.ConsecutiveErrors.Set(consecutiveErrors);
                 _log.LogError(ex, "Error updating network state (attempt {Attempt}/{MaxAttempts})", consecutiveErrors, maxConsecutiveErrors);
 
                 if (consecutiveErrors >= maxConsecutiveErrors)
