@@ -287,7 +287,9 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
 
         try
         {
-            parsedData = TransferCalldataParser.ParseCalldata(transaction.Data.ToArray());
+            // Use CalldataUnwrapper to handle ERC-4337 and Safe wrapper contracts
+            // before parsing the inner Hub calldata for transfer data
+            parsedData = CalldataUnwrapper.UnwrapAndParse(transaction.Data.ToArray());
         }
         catch (Exception ex)
         {
