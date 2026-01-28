@@ -283,40 +283,41 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         int startingLogIndex)
     {
         var results = new List<TransferData>();
-        IEnumerable<(string From, string To, byte[] Data)> parsedData;
 
         try
         {
             // Use CalldataUnwrapper to handle ERC-4337 and Safe wrapper contracts
-            // before parsing the inner Hub calldata for transfer data
-            parsedData = CalldataUnwrapper.UnwrapAndParse(transaction.Data.ToArray());
+            // before parsing the inner Hub calldata for transfer data.
+            // Note: UnwrapAndParse uses yield return, so exceptions are thrown during
+            // enumeration, not during the initial call. The try-catch must wrap the foreach.
+            var parsedData = CalldataUnwrapper.UnwrapAndParse(transaction.Data.ToArray());
+
+            int logIndex = startingLogIndex;
+            foreach (var (from, to, data) in parsedData)
+            {
+                // Skip empty data - transfers are still auditable via TransferSingle/TransferBatch
+                if (data.Length == 0)
+                    continue;
+
+                results.Add(new TransferData(
+                    block.Number,
+                    (long)block.Timestamp,
+                    transactionIndex,
+                    logIndex--,  // negative index for synthetic events
+                    transaction.Hash!.ToString(true),
+                    "",  // emitter - empty for calldata-derived events
+                    from,
+                    to,
+                    data
+                ));
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine(
                 $"Warning: Failed to parse transfer calldata at block {block.Number}, " +
                 $"tx {transaction.Hash}: {ex.Message}");
-            return results;
-        }
-
-        int logIndex = startingLogIndex;
-        foreach (var (from, to, data) in parsedData)
-        {
-            // Skip empty data - transfers are still auditable via TransferSingle/TransferBatch
-            if (data.Length == 0)
-                continue;
-
-            results.Add(new TransferData(
-                block.Number,
-                (long)block.Timestamp,
-                transactionIndex,
-                logIndex--,  // negative index for synthetic events
-                transaction.Hash!.ToString(true),
-                "",  // emitter - empty for calldata-derived events
-                from,
-                to,
-                data
-            ));
+            // Return any results collected before the error, plus continue indexing other events
         }
 
         return results;
