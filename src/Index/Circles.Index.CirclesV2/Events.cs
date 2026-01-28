@@ -270,3 +270,20 @@ public record SetAdvancedUsageFlag(
     string Emitter,
     string Avatar,
     byte[] Flag) : IIndexedEventV2;
+
+/// <summary>
+/// Virtual event extracted from transaction calldata for ERC-1155 transfers.
+/// Captures the 'data' bytes parameter not emitted in actual transfer events.
+/// Only created when data.Length > 0.
+/// </summary>
+public record TransferData(
+    long BlockNumber,
+    long Timestamp,
+    int TransactionIndex,
+    int LogIndex,           // negative for virtual event
+    string TransactionHash,
+    string Emitter,         // Hub address or empty
+    string From,            // sender address
+    string To,              // recipient address
+    byte[] Data             // extracted data bytes (non-empty)
+) : IIndexedEventV2;

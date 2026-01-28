@@ -24,4 +24,5 @@ namespace Circles.Index.CirclesV2;
 [JsonDerivedType(typeof(GroupMint), "CrcV2_GroupMint")]
 [JsonDerivedType(typeof(FlowEdgesScopeSingleStarted), "CrcV2_FlowEdgesScopeSingleStarted")]
 [JsonDerivedType(typeof(FlowEdgesScopeLastEnded), "CrcV2_FlowEdgesScopeLastEnded")]
+[JsonDerivedType(typeof(TransferData), "CrcV2_TransferData")]
 public interface IIndexedEventV2 : IIndexEvent;

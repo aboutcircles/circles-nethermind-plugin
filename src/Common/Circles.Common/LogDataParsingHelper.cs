@@ -1,4 +1,3 @@
-using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Circles.Common;
@@ -144,8 +143,8 @@ public static class LogDataParsingHelper
         {
             // For each element, read 32 bytes => last 20 bytes is the address
             var chunk = data.Slice(arrayStart + i * 32, 32);
-            var addressBytes = chunk.Slice(12, 20);
-            result[i] = new Address(addressBytes.ToArray()).ToLowerHex();
+            // Use ParseAddressFromTopic which doesn't require Nethermind.Core.Address
+            result[i] = ParseAddressFromTopic(chunk);
         }
 
         return result;

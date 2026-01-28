@@ -165,6 +165,23 @@ public class DatabaseSchema : BaseDatabaseSchema
             new("events", ValueTypes.Json, false)
         ]);
 
+    /// <summary>
+    /// Virtual event for transfer data extracted from calldata.
+    /// Uses Keccak.Zero since this is a synthetic event, not from actual logs.
+    /// </summary>
+    public static readonly EventSchema TransferData = new("CrcV2", "TransferData",
+        new byte[32],  // synthetic event - no actual topic
+        [
+            new("blockNumber", ValueTypes.Int, true, true),
+            new("timestamp", ValueTypes.Int, true),
+            new("transactionIndex", ValueTypes.Int, true, true),
+            new("logIndex", ValueTypes.Int, true, true),
+            new("transactionHash", ValueTypes.String, true),
+            new("from", ValueTypes.Address, true),
+            new("to", ValueTypes.Address, true),
+            new("data", ValueTypes.Bytes, false)  // bytea storage for raw bytes
+        ]);
+
     // Constructor that uses the shared helper AddMappings<>() 
     // to register each event's table and property map in one pass.
     public DatabaseSchema()
@@ -438,6 +455,18 @@ public class DatabaseSchema : BaseDatabaseSchema
             [
                 ("avatar", e => e.Avatar),
                 ("flag", e => e.Flag)
+            ]
+        );
+
+        AddMappings<TransferData>(
+            ns: "CrcV2",
+            table: "TransferData",
+            eventSchema: TransferData,
+            databaseFieldMap:
+            [
+                ("from", e => e.From),
+                ("to", e => e.To),
+                ("data", e => e.Data)
             ]
         );
     }

@@ -249,6 +249,75 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
                 );
             }
         }
+
+        // Extract transfer data from calldata for ERC-1155 transfers
+        // The 'data' bytes parameter is not emitted in events, only available in calldata
+        if (!transaction.Data.IsEmpty && transaction.Data.Length > 4)
+        {
+            var hasTransferEvents = eventsv2.Any(e =>
+                e is TransferSingle or TransferBatch);
+
+            if (hasTransferEvents)
+            {
+                var transferDataEvents = ParseTransferDataFromCalldata(
+                    block, transactionIndex, transaction, syntheticLogIndex);
+
+                foreach (var transferData in transferDataEvents)
+                {
+                    syntheticLogIndex--;
+                    yield return transferData;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extracts TransferData events from transaction calldata.
+    /// Handles safeTransferFrom, safeBatchTransferFrom, and operateFlowMatrix calls.
+    /// Returns a list because iterators can't use ref parameters.
+    /// </summary>
+    private static List<TransferData> ParseTransferDataFromCalldata(
+        Block block,
+        int transactionIndex,
+        Transaction transaction,
+        int startingLogIndex)
+    {
+        var results = new List<TransferData>();
+        IEnumerable<(string From, string To, byte[] Data)> parsedData;
+
+        try
+        {
+            parsedData = TransferCalldataParser.ParseCalldata(transaction.Data.ToArray());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"Warning: Failed to parse transfer calldata at block {block.Number}, " +
+                $"tx {transaction.Hash}: {ex.Message}");
+            return results;
+        }
+
+        int logIndex = startingLogIndex;
+        foreach (var (from, to, data) in parsedData)
+        {
+            // Skip empty data - transfers are still auditable via TransferSingle/TransferBatch
+            if (data.Length == 0)
+                continue;
+
+            results.Add(new TransferData(
+                block.Number,
+                (long)block.Timestamp,
+                transactionIndex,
+                logIndex--,  // negative index for synthetic events
+                transaction.Hash!.ToString(true),
+                "",  // emitter - empty for calldata-derived events
+                from,
+                to,
+                data
+            ));
+        }
+
+        return results;
     }
 
     public IEnumerable<IIndexEvent> ParseLog(
