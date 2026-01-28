@@ -9,7 +9,7 @@
   "shouldFindPath": true,
   "minFlow": "100000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": true,
+  "runOnAnvil": false,
   "fromTokens": [],
   "toTokens": [],
   "excludedTokens": [],

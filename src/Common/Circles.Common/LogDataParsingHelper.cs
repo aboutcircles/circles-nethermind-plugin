@@ -22,6 +22,13 @@ public static class LogDataParsingHelper
 
         // Interpret the next 32 bytes as a big-endian UInt256
         UInt256 offsetVal = new UInt256(data.Slice(offsetOfOffset, 32), isBigEndian: true);
+
+        // Guard against overflow - offsets larger than int.MaxValue are invalid
+        if (offsetVal > int.MaxValue)
+        {
+            throw new OverflowException($"Offset value {offsetVal} exceeds int.MaxValue.");
+        }
+
         return (int)offsetVal;
     }
 
@@ -39,6 +46,13 @@ public static class LogDataParsingHelper
         }
 
         UInt256 lengthVal = new UInt256(data.Slice(offset, 32), isBigEndian: true);
+
+        // Guard against overflow - array lengths larger than int.MaxValue are invalid
+        if (lengthVal > int.MaxValue)
+        {
+            throw new OverflowException($"Array length {lengthVal} exceeds int.MaxValue.");
+        }
+
         int length = (int)lengthVal;
         int arrayStart = offset + 32;
         int totalNeeded = arrayStart + (length * 32);
@@ -71,6 +85,13 @@ public static class LogDataParsingHelper
         }
 
         UInt256 lengthVal = new UInt256(data.Slice(offset, 32), isBigEndian: true);
+
+        // Guard against overflow - lengths larger than int.MaxValue are invalid
+        if (lengthVal > int.MaxValue)
+        {
+            throw new OverflowException($"Bytes length {lengthVal} exceeds int.MaxValue.");
+        }
+
         int length = (int)lengthVal;
         int dataStart = offset + 32;
         int totalNeeded = dataStart + length;
@@ -128,6 +149,13 @@ public static class LogDataParsingHelper
 
         // 1) Read the array length
         UInt256 lengthVal = new UInt256(data.Slice(offset, 32), isBigEndian: true);
+
+        // Guard against overflow - array lengths larger than int.MaxValue are invalid
+        if (lengthVal > int.MaxValue)
+        {
+            throw new OverflowException($"Address array length {lengthVal} exceeds int.MaxValue.");
+        }
+
         int length = (int)lengthVal;
 
         // 2) Calculate total needed

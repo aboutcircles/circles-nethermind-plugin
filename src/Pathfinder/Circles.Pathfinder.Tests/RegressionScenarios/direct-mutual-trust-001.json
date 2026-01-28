@@ -9,6 +9,8 @@
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": true,
-  "tags": ["mutual-trust", "direct-transfer", "discovered"]
+  "runOnAnvil": false,
+  "tags": ["mutual-trust", "direct-transfer", "discovered"],
+  "fixedIn": null,
+  "notes": "E2E disabled: CirclesErrorAddressUintArgs(0x000b7b9b19317ad64d1859f5945b6ae44bfbba3b, 0, 0) - source address invalid or unregistered at block."
 }

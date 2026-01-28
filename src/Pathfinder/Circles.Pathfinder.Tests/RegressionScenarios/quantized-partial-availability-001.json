@@ -1,0 +1,17 @@
+{
+  "id": "quantized-partial-availability-001",
+  "name": "Quantized mode returns partial when request exceeds availability",
+  "category": "quantized-mode",
+  "block": 44289365,
+  "source": "0xc7d3df890952a327af94d5ba6fdc1bf145188a1b",
+  "sink": "0x00738aca013B7B2e6cfE1690F0021C3182Fa40B5",
+  "description": "When requesting more invites than available, should return the maximum possible. If user has 288 CRC (3 invites worth) but requests 5 invites (480 CRC), should return 288 CRC (3 invites).",
+  "shouldFindPath": true,
+  "minFlow": "96000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "quantizedMode": true,
+  "withWrap": true,
+  "toTokens": ["0xc7d3df890952a327af94d5ba6fdc1bf145188a1b"],
+  "tags": ["quantized-mode", "partial-flow", "invitation", "boundary"]
+}

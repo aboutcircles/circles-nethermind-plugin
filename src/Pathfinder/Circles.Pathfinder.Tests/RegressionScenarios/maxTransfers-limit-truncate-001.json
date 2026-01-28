@@ -1,0 +1,16 @@
+{
+  "id": "maxTransfers-limit-truncate-001",
+  "name": "maxTransfers truncates multi-hop path to direct only",
+  "category": "max-transfers",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "When a multi-hop path exists but maxTransfers=1, only direct transfers should be included. Tests that the pruning algorithm correctly limits path complexity.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "maxTransfers": 1,
+  "withWrap": false,
+  "tags": ["max-transfers", "truncation", "greedy-pruning"]
+}

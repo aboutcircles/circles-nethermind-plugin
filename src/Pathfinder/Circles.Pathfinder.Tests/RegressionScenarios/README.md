@@ -63,7 +63,7 @@ dotnet test --filter "Category=E2E"
   "fromTokens": ["0x..."],
   "toTokens": ["0x..."],
   "excludedTokens": ["0x..."],
-  "maxTransfers": 10,
+  "maxTransfers": 10,  // null or 0 = no limit, >0 = max transfers
   "withWrap": false,
 
   "discoveredAt": "2025-11-17T23:18:00+01:00",

@@ -335,6 +335,56 @@ SELECT * FROM "System_BackfillProgress";
 **Cause:** Process killed or crashed mid-reindex.
 **Fix:** Just restart with `REINDEX_FROM_BLOCK` still set. The deletion is idempotent.
 
+## Synthetic Events (Calldata-Derived)
+
+Some events are **synthetic** - they're not emitted by smart contracts but derived from transaction calldata or computed during indexing. These events **cannot** be backfilled using the standard log-based backfill tool.
+
+### Synthetic Event Tables
+
+| Table                  | Source                      | Backfill Method       |
+| ---------------------- | --------------------------- | --------------------- |
+| `CrcV2_TransferData`   | Transaction calldata        | `REINDEX_FROM_BLOCK`  |
+| `CrcV2_TransferSummary`| Computed from transfer events | `REINDEX_FROM_BLOCK` |
+
+### Backfilling CrcV2_TransferData
+
+The `TransferData` event extracts the `data` bytes parameter from ERC-1155 transfer function calls. This data is passed in calldata but **not emitted** in `TransferSingle`/`TransferBatch` events.
+
+**Use `REINDEX_FROM_BLOCK` for historical data:**
+
+```bash
+# 1. Stop the indexer
+./scripts/docker-run.sh gnosis stop nethermind-gnosis
+
+# 2. Set reindex block in .env (V2 launch block for full coverage)
+echo "REINDEX_FROM_BLOCK=36501311" >> docker/.env
+
+# 3. Start - this will reprocess all blocks and extract transfer data
+./scripts/docker-run.sh gnosis up -d nethermind-gnosis
+
+# 4. Monitor progress
+./scripts/docker-run.sh gnosis logs -f nethermind-gnosis
+
+# 5. IMPORTANT: Remove env var after completion
+# Edit docker/.env and remove REINDEX_FROM_BLOCK line
+```
+
+**What gets extracted:**
+- `safeTransferFrom(address,address,uint256,uint256,bytes)` - data parameter
+- `safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)` - data parameter
+- `operateFlowMatrix(address[],FlowEdge[],Stream[],bytes)` - data from each stream
+
+**Verification:**
+```sql
+-- Check TransferData was populated
+SELECT COUNT(*) FROM "CrcV2_TransferData";
+
+-- View sample records
+SELECT "transactionHash", "from", "to", LENGTH("data") as data_length
+FROM "CrcV2_TransferData"
+LIMIT 10;
+```
+
 ## Related Documentation
 
 - [Indexer State Machine Flow](indexer-flow.md) - How the indexer processes blocks

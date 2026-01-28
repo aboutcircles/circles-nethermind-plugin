@@ -1,0 +1,17 @@
+{
+  "id": "flag-quantized-maxtransfers-001",
+  "name": "Combined quantizedMode + maxTransfers flag interaction",
+  "category": "flag-interaction",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "Tests the interaction between quantizedMode and maxTransfers flags. maxTransfers should prune paths BEFORE quantization, then quantization aggregates the remaining paths. A low maxTransfers may prevent finding enough paths to meet the 96 CRC threshold.",
+  "shouldFindPath": true,
+  "minFlow": "96000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "quantizedMode": true,
+  "maxTransfers": 5,
+  "withWrap": false,
+  "tags": ["flag-interaction", "quantized-mode", "max-transfers", "invitation"]
+}

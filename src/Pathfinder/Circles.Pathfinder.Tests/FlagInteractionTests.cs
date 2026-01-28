@@ -933,4 +933,332 @@ public class FlagInteractionTests
         // Assert: Debug should be null by default
         Assert.That(result.Debug, Is.Null);
     }
+
+    // ─────────────────────── COMBINED FLAG INTERACTIONS ───────────────────────
+
+    [Test]
+    public void QF001_QuantizedMode_WithFromTokens_FiltersCorrectly()
+    {
+        // Arrange: QuantizedMode + FromTokens filter
+        // Only tokenA should be used (in FromTokens), tokenB excluded
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10); // Included in FromTokens
+        var tokenB = Node(11); // Not in FromTokens
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 100_000_000); // 100 CRC
+        mock.AddBalance(source, tokenB, 200_000_000); // 200 CRC (ignored)
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, tokenA);
+        mock.AddTrust(sink, tokenB);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            FromTokens = new List<string> { AddressIdPool.StringOf(tokenA) } // Only tokenA
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Should find path using only tokenA (100 CRC -> 96 CRC after quantization)
+        AssertMaxFlowPositive(result.MaxFlow);
+        // Max flow should be 96 CRC (1 quantum from tokenA), not 192 (if tokenB were included)
+        var maxFlowWei = UInt256.Parse(result.MaxFlow!);
+        Assert.That(maxFlowWei, Is.EqualTo(UInt256.Parse("96000000000000000000")),
+            "FromTokens filter should restrict to tokenA only");
+    }
+
+    [Test]
+    public void QF002_QuantizedMode_WithExcludedFromTokens_RespectsExclusion()
+    {
+        // Arrange: QuantizedMode + ExcludedFromTokens
+        // tokenA is excluded, should only use tokenB
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10); // Excluded
+        var tokenB = Node(11); // Available
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 200_000_000); // 200 CRC (excluded)
+        mock.AddBalance(source, tokenB, 100_000_000); // 100 CRC
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, tokenA);
+        mock.AddTrust(sink, tokenB);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            ExcludedFromTokens = new List<string> { AddressIdPool.StringOf(tokenA) }
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Should use tokenB (100 -> 96 CRC), not tokenA (excluded)
+        AssertMaxFlowPositive(result.MaxFlow);
+        var maxFlowWei = UInt256.Parse(result.MaxFlow!);
+        Assert.That(maxFlowWei, Is.EqualTo(UInt256.Parse("96000000000000000000")),
+            "ExcludedFromTokens should exclude tokenA, leaving only tokenB (96 CRC)");
+    }
+
+    [Test]
+    public void QF003_QuantizedMode_WithMaxTransfers_TruncatesBeforeQuantization()
+    {
+        // Arrange: QuantizedMode + MaxTransfers
+        // MaxTransfers pruning happens BEFORE quantization
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 200_000_000); // 200 CRC
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            MaxTransfers = 1 // Single transfer allowed
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("192000000000000000000"));
+
+        // Assert: Should find quantized path within maxTransfers limit
+        // 200 CRC with 1 transfer -> quantized to 192 CRC (2 invites)
+        AssertMaxFlowPositive(result.MaxFlow);
+        Assert.That(result.Transfers?.Count, Is.LessThanOrEqualTo(2),
+            "MaxTransfers should limit steps (allowing for self-loop aggregation edge)");
+    }
+
+    [Test]
+    public void QF004_QuantizedMode_WithExcludedToTokens_FiltersAtSink()
+    {
+        // Arrange: QuantizedMode + ExcludedToTokens
+        // tokenA excluded at sink, should only accept tokenB
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10); // Excluded at sink
+        var tokenB = Node(11); // Allowed at sink
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 200_000_000);
+        mock.AddBalance(source, tokenB, 100_000_000);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, tokenA);
+        mock.AddTrust(sink, tokenB);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            ExcludedToTokens = new List<string> { AddressIdPool.StringOf(tokenA) }
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Should use tokenB only (tokenA excluded at sink)
+        AssertMaxFlowPositive(result.MaxFlow);
+    }
+
+    [Test]
+    public void WC001_WithWrap_ConsentedFlow_BothWorkTogether()
+    {
+        // Arrange: WithWrap + ConsentedFlow (via simulated consented avatars)
+        var source = Node(1);
+        var sink = Node(2);
+        var wrappedToken = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
+        // Consented flow requirements: source trusts sink, sink has consented flow
+        mock.AddConsentedAvatar(source);
+        mock.AddConsentedAvatar(sink);
+        mock.AddTrust(source, sink);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, wrappedToken);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            WithWrap = true,
+            SimulatedConsentedAvatars = new List<string>
+            {
+                AddressIdPool.StringOf(source),
+                AddressIdPool.StringOf(sink)
+            }
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: Both wrapped tokens and consented flow should work
+        Assert.That(capacityGraph.ConsentedAvatars.Contains(source), Is.True);
+        Assert.That(capacityGraph.ConsentedAvatars.Contains(sink), Is.True);
+        AssertMaxFlowPositive(result.MaxFlow);
+    }
+
+    [Test]
+    public void WC002_WithWrap_ConsentedFlow_ViolationFiltersEdge()
+    {
+        // Arrange: Wrapped token path with consented flow violation
+        // Source has consented flow but sink doesn't -> violation
+        var source = Node(1);
+        var sink = Node(2);
+        var wrappedToken = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
+        mock.AddConsentedAvatar(source);  // Source has consented flow
+        // Sink does NOT have consented flow (violation)
+        mock.AddTrust(source, sink);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, wrappedToken);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            WithWrap = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: Edge should be filtered due to consented flow violation
+        AssertMaxFlowZero(result.MaxFlow, "Consented flow violation should filter the edge");
+    }
+
+    [Test]
+    public void WC003_WithWrap_GroupMinting_WorksTogether()
+    {
+        // Arrange: Wrapped tokens used as collateral for group minting
+        var source = Node(1);
+        var sink = Node(2);
+        var group = Node(100);
+        var wrappedToken = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
+        mock.AddGroup(group);
+        mock.AddGroupTrust(group, wrappedToken);
+        mock.AddTrust(sink, group);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            WithWrap = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
+
+        // Assert: Should find path through group using wrapped token
+        Assert.That(capacityGraph.IsGroup(group), Is.True);
+        AssertMaxFlowPositive(result.MaxFlow);
+    }
+
+    [Test]
+    public void AllFlags_QuantizedModeWithAllFilters_WorksTogether()
+    {
+        // Arrange: Kitchen sink test - all flags active
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+        var tokenB = Node(11);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 200_000_000);
+        mock.AddBalance(source, tokenB, 50_000_000); // Below threshold
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, tokenA);
+        mock.AddTrust(sink, tokenB);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            MaxTransfers = 5,
+            FromTokens = new List<string> { AddressIdPool.StringOf(tokenA), AddressIdPool.StringOf(tokenB) },
+            ExcludedToTokens = new List<string> { AddressIdPool.StringOf(tokenB) },
+            DebugShowIntermediateSteps = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("192000000000000000000"));
+
+        // Assert: All flags should work together
+        AssertMaxFlowPositive(result.MaxFlow);
+        Assert.That(result.Debug, Is.Not.Null, "Debug should be present");
+        Assert.That(result.Transfers?.Count, Is.LessThanOrEqualTo(6), "MaxTransfers should limit steps");
+    }
 }

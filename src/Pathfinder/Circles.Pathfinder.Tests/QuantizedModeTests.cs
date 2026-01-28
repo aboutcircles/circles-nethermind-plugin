@@ -1,6 +1,8 @@
+using Circles.Common.Dto;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Tests.Helpers;
+using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Tests;
 
@@ -1099,6 +1101,408 @@ public class QuantizedModeInvitationFlowTests
         // Should have edge because sink trusts tokenA (normal behavior)
         Assert.That(hasTokenAEdge, Is.True,
             "Non-quantized mode should allow all trusted tokens (no auto-discovery filtering)");
+    }
+}
+
+/// <summary>
+/// Tests for V2Pathfinder.QuantizeSinkBoundEdgesByToken - the NEW aggregation behavior.
+/// This method aggregates multiple sink-bound edges by token type AFTER path collapsing,
+/// allowing multiple small transfers of the same token to combine into valid 96 CRC quanta.
+///
+/// Key difference from PathUtils.QuantizeSinkBoundFlows:
+/// - Old: Per-path quantization (60 CRC + 36 CRC = 0 invitations - each individually < 96)
+/// - New: Per-token aggregation (60 CRC + 36 CRC = 1 invitation - combined = 96)
+/// </summary>
+[TestFixture]
+[Category("Unit")]
+public class QuantizedAggregationTests
+{
+    private const long Quanta96CRC = 96_000_000L;
+    private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    private static int Node(int i) => AddressIdPool.IdOf($"0x{i:X40}");
+
+    // Helper to parse MaxFlow from response
+    private static UInt256 ParseMaxFlow(string? maxFlowStr) =>
+        string.IsNullOrEmpty(maxFlowStr) ? UInt256.Zero : UInt256.Parse(maxFlowStr);
+
+    // Helper to count sink-bound transfers
+    private static int CountSinkTransfers(MaxFlowResponse response, string sink)
+    {
+        if (response.Transfers == null) return 0;
+        return response.Transfers.Count(t => t.To?.ToLowerInvariant() == sink.ToLowerInvariant()
+                                              && t.From?.ToLowerInvariant() != sink.ToLowerInvariant());
+    }
+
+    // ─────────────────────── Per-Token Aggregation Tests ───────────────────────
+
+    [Test]
+    public void QuantizedMode_TwoSmallPathsSameToken_WithExplicitToTokens_CombineToOneQuantum()
+    {
+        // Arrange: Two separate paths, same token, each < 96 CRC but sum = 96 CRC
+        // With explicit ToTokens to bypass auto-discovery (which requires 96+ at source)
+        // Source sends 60 CRC of tokenA → Sink (direct)
+        // Source sends 40 CRC of tokenA → Mid → Sink (via intermediate who also has tokenA)
+        // Together: 60 + 40 = 100 CRC = 1 full quantum (96 CRC quantized)
+        var source = Node(1);
+        var mid = Node(2);
+        var sink = Node(3);
+        var tokenA = Node(10);
+
+        var mock = new MockLoadGraph();
+        // Source has 100 CRC of tokenA (needs 96+ for auto-discovery, but we use explicit ToTokens)
+        mock.AddBalance(source, tokenA, 100_000_000);
+
+        // Trust relationships allowing direct and indirect flow
+        mock.AddTrust(mid, source);      // Mid trusts source (can receive from source)
+        mock.AddTrust(mid, tokenA);      // Mid trusts tokenA
+        mock.AddTrust(sink, mid);        // Sink trusts mid
+        mock.AddTrust(sink, tokenA);     // Sink trusts tokenA
+        mock.AddTrust(sink, source);     // Sink trusts source (direct path)
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+            ToTokens = new List<string> { AddressIdPool.StringOf(tokenA) } // Explicit ToTokens
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        // Request exactly 1 invite (96 CRC)
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Should find flow of 96 CRC (1 quantum)
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+
+        Assert.That(maxFlow, Is.GreaterThan(UInt256.Zero),
+            "Should find 96 CRC quantum from source's 100 CRC balance");
+        Assert.That(maxFlow, Is.EqualTo(UInt256.Parse("96000000000000000000")),
+            "Flow should be exactly 96 CRC (1 quantum)");
+    }
+
+    [Test]
+    public void QuantizedMode_MultiplePathsDifferentTokens_AggregatesSeparately()
+    {
+        // Arrange: Multiple tokens, each should aggregate separately
+        // TokenA: 60 CRC (< 96, excluded)
+        // TokenB: 100 CRC (> 96, quantized to 96)
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+        var tokenB = Node(11);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 60_000_000);  // < 96 CRC
+        mock.AddBalance(source, tokenB, 100_000_000); // > 96 CRC
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, tokenA);
+        mock.AddTrust(sink, tokenB);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Only tokenB should contribute (tokenA < 96)
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        Assert.That(maxFlow, Is.GreaterThan(UInt256.Zero),
+            "TokenB (100 CRC) should provide 1 quantum");
+    }
+
+    [Test]
+    public void QuantizedMode_RequestFiveInvites_OnlyThreeAvailable()
+    {
+        // Arrange: Request more invites than available
+        // Source has 300 CRC = 3 full invites
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 300_000_000); // 300 CRC = 3 invites
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act: Request 5 invites (480 CRC)
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("480000000000000000000"));
+
+        // Assert: Should get 3 invites (288 CRC), not 5
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        var maxFlowInCrcUnits = maxFlow / UInt256.Parse("1000000000000"); // Convert to 6-decimal
+
+        // Should be 288 CRC (3 invites) - the maximum available
+        Assert.That((long)maxFlowInCrcUnits, Is.EqualTo(288_000_000L),
+            "Should get only 3 invites (288 CRC) when requesting 5 but only 3 available");
+    }
+
+    [Test]
+    public void QuantizedMode_NoTokensMeetThreshold_ZeroFlow()
+    {
+        // Arrange: All tokens < 96 CRC threshold
+        var source = Node(1);
+        var sink = Node(2);
+        var tokenA = Node(10);
+        var tokenB = Node(11);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, tokenA, 50_000_000); // 50 CRC < 96
+        mock.AddBalance(source, tokenB, 40_000_000); // 40 CRC < 96
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, tokenA);
+        mock.AddTrust(sink, tokenB);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Zero flow when no token meets threshold (each token checked separately)
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        Assert.That(maxFlow, Is.EqualTo(UInt256.Zero),
+            "No invitations available when each token individually < 96 CRC (no aggregation across tokens)");
+    }
+
+    // ─────────────────────── Quantized Mode + Group Minting ───────────────────────
+
+    [Test]
+    public void QuantizedMode_WithGroupMinting_EdgeOrderingPreserved()
+    {
+        // Arrange: Quantized mode with group minting
+        // Must preserve: Router→Group edges before Group→Sink edges
+        var source = Node(1);
+        var sink = Node(2);
+        var group = Node(100);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 200_000_000); // 200 CRC = 2 invites
+        mock.AddGroup(group);
+        mock.AddGroupTrust(group, token);
+        mock.AddTrust(sink, group);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("192000000000000000000"));
+
+        // Assert: Flow should be positive and edge ordering must be correct
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        Assert.That(maxFlow, Is.GreaterThan(UInt256.Zero),
+            "Should find path through group");
+
+        // Verify edge ordering (collateral before minting)
+        bool routerToGroupSeen = false;
+        bool groupOutboundAfterInbound = true;
+
+        foreach (var transfer in result.Transfers!)
+        {
+            if (transfer.From == RouterAddress && capacityGraph.IsGroup(AddressIdPool.IdOf(transfer.To!)))
+            {
+                routerToGroupSeen = true;
+            }
+
+            if (capacityGraph.IsGroup(AddressIdPool.IdOf(transfer.From!)) && transfer.To != RouterAddress)
+            {
+                // Group outbound should only happen after we've seen inbound
+                if (!routerToGroupSeen)
+                {
+                    groupOutboundAfterInbound = false;
+                }
+            }
+        }
+
+        Assert.That(groupOutboundAfterInbound, Is.True,
+            "Group minting edges must follow correct order in quantized mode");
+    }
+
+    // ─────────────────────── Quantized Mode + Consented Flow ───────────────────────
+
+    [Test]
+    public void QuantizedMode_WithConsentedFlow_ValidatesCorrectly()
+    {
+        // Arrange: Consented avatar in quantized mode
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 200_000_000);
+        mock.AddConsentedAvatar(source);
+        // Consented flow requires: source trusts sink AND sink has consented flow
+        mock.AddTrust(source, sink);
+        mock.AddConsentedAvatar(sink);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Consented flow validation should work with quantized mode
+        Assert.That(capacityGraph.ConsentedAvatars.Contains(source), Is.True);
+        // If all consented flow rules are met, path should be found
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        Assert.That(maxFlow, Is.GreaterThan(UInt256.Zero),
+            "Quantized mode + consented flow should work when all rules are met");
+    }
+
+    [Test]
+    public void QuantizedMode_ConsentedViolation_NoPath()
+    {
+        // Arrange: Consented avatar but sink doesn't have consented flow
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 200_000_000);
+        mock.AddConsentedAvatar(source);  // Source has consented flow
+        mock.AddTrust(source, sink);       // Source trusts sink
+        // BUT: sink does NOT have consented flow (violation)
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: Consented flow violation should filter the edge
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        Assert.That(maxFlow, Is.EqualTo(UInt256.Zero),
+            "Consented flow violation should result in no path");
+    }
+
+    // ─────────────────────── Self-Loop Aggregation ───────────────────────
+
+    [Test]
+    public void QuantizedMode_SelfLoopAggregation_NotCountedInMaxFlow()
+    {
+        // Arrange: Verify that Sink→Sink self-loops are added but not double-counted
+        var source = Node(1);
+        var sink = Node(2);
+        var token = Node(10);
+
+        var mock = new MockLoadGraph();
+        mock.AddBalance(source, token, 100_000_000);
+        mock.AddTrust(sink, source);
+        mock.AddTrust(sink, token);
+
+        var factory = new GraphFactory(RouterAddress, mock);
+        var balanceGraph = factory.V2BalanceGraph();
+        var trustGraph = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true
+        };
+
+        // Act
+        var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+        var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
+
+        // Assert: MaxFlow should be exactly 96 CRC (1 quantum), not double-counted
+        var maxFlow = ParseMaxFlow(result.MaxFlow);
+        var maxFlowInCrcUnits = maxFlow / UInt256.Parse("1000000000000");
+
+        Assert.That((long)maxFlowInCrcUnits, Is.EqualTo(Quanta96CRC),
+            "MaxFlow should be exactly 96 CRC, self-loop aggregation edges should not double-count");
+
+        // Self-loop edges should exist in transfers
+        var sinkAddr = AddressIdPool.StringOf(sink);
+        var selfLoops = result.Transfers?.Count(t =>
+            t.From?.ToLowerInvariant() == sinkAddr.ToLowerInvariant() &&
+            t.To?.ToLowerInvariant() == sinkAddr.ToLowerInvariant()) ?? 0;
+
+        Assert.That(selfLoops, Is.GreaterThan(0),
+            "Self-loop aggregation edges should be present in quantized mode");
     }
 }
 

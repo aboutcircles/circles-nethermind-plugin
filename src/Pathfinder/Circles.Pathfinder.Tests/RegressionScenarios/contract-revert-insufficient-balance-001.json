@@ -8,7 +8,7 @@
   "description": "This test validates that attempting a transfer larger than the source's available balance causes an ERC1155InsufficientBalance revert when executed on Anvil. The pathfinder may find a path at the database level, but contract execution should fail.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000000000000000",
-  "expectedRevertReason": "ERC1155InsufficientBalance",
+  "expectedRevertReason": "0xc14c0700",
   "runOnAnvil": true,
   "fromTokens": [],
   "toTokens": [],

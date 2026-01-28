@@ -1,0 +1,17 @@
+{
+  "id": "quantized-aggregation-combine-001",
+  "name": "Quantized mode combines multiple small paths of same token into quanta",
+  "category": "quantized-mode",
+  "block": 44289365,
+  "source": "0xc7d3df890952a327af94d5ba6fdc1bf145188a1b",
+  "sink": "0x00738aca013B7B2e6cfE1690F0021C3182Fa40B5",
+  "description": "Tests per-token aggregation in quantized mode. Multiple paths of the same token that individually are < 96 CRC should combine if their sum >= 96 CRC. This tests the V2Pathfinder.QuantizeSinkBoundEdgesByToken method.",
+  "shouldFindPath": true,
+  "minFlow": "96000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "quantizedMode": true,
+  "withWrap": true,
+  "toTokens": ["0xc7d3df890952a327af94d5ba6fdc1bf145188a1b"],
+  "tags": ["quantized-mode", "aggregation", "per-token", "invitation"]
+}

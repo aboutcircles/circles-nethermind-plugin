@@ -102,8 +102,25 @@ public class FlowRequest
     public List<string>? FromTokens { get; set; }
     public List<string>? ToTokens { get; set; }
     public bool? WithWrap { get; set; }
+    public int? MaxTransfers { get; set; }
 }
 ```
+
+### MaxTransfers Behavior
+
+The `MaxTransfers` parameter limits the number of transfers in the computed path.
+
+**Semantics:**
+- `null` → No limit (default behavior)
+- `0` → Treated as "no limit" (same as null)
+- `> 0` → Limits path to at most N transfers
+
+**Implementation detail (V2Pathfinder.cs:118):**
+```csharp
+bool hasStepCap = request.MaxTransfers.HasValue && request.MaxTransfers.Value > 0;
+```
+
+This means `maxTransfers=0` is functionally equivalent to omitting the parameter - it does NOT prevent paths from being found.
 
 ### Response Format
 - Remains unchanged

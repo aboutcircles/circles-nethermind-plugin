@@ -119,8 +119,12 @@ public static class CalldataUnwrapper
             if (opsOffset + 32 > params_.Length)
                 return [];
 
-            // Parse array length
-            int opsLength = (int)new UInt256(params_.Slice(opsOffset, 32), true);
+            // Parse array length with overflow protection
+            var opsLengthVal = new UInt256(params_.Slice(opsOffset, 32), true);
+            if (opsLengthVal > int.MaxValue)
+                return [];
+
+            int opsLength = (int)opsLengthVal;
 
             // Sanity check - don't process unreasonably large arrays
             if (opsLength > 100 || opsLength < 0)
@@ -290,7 +294,13 @@ public static class CalldataUnwrapper
                 break;
 
             var dataLenSpan = transactions.AsSpan(pos + 53, 32);
-            int dataLen = (int)new UInt256(dataLenSpan, true);
+            var dataLenVal = new UInt256(dataLenSpan, true);
+
+            // Guard against overflow
+            if (dataLenVal > int.MaxValue)
+                break;
+
+            int dataLen = (int)dataLenVal;
 
             // Sanity check
             if (dataLen < 0 || dataLen > transactions.Length)

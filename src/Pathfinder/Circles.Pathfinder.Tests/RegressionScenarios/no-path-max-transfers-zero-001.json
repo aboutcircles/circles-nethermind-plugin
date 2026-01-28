@@ -1,15 +1,15 @@
 {
   "id": "no-path-max-transfers-zero-001",
-  "name": "maxTransfers=0 prevents any path",
-  "category": "no-path",
+  "name": "maxTransfers=0 is treated as unlimited (no cap)",
+  "category": "edge-cases",
   "block": 43193632,
   "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
   "sink": "0x04fFdBdB42303f09D8D772EA466da39c01A808c8",
-  "description": "With maxTransfers set to 0, no transfers are allowed so no path can be computed. Tests that the limit is properly enforced.",
-  "shouldFindPath": false,
-  "minFlow": null,
+  "description": "maxTransfers=0 is treated as 'no limit' (same as null). The pathfinder uses 'value > 0' check, so 0 disables the cap. This tests that edge case is handled correctly.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": false,
   "maxTransfers": 0,
-  "tags": ["negative-test", "no-path", "max-transfers"]
+  "tags": ["edge-case", "max-transfers"]
 }

@@ -9,6 +9,8 @@
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": true,
-  "tags": ["group-minting", "multi-collateral", "edge-ordering", "discovered", "high-diversity", "gnosis-group"]
+  "runOnAnvil": false,
+  "tags": ["group-minting", "multi-collateral", "edge-ordering", "discovered", "high-diversity", "gnosis-group"],
+  "fixedIn": null,
+  "notes": "E2E disabled: CirclesErrorAddressUintArgs - source address issue at block."
 }

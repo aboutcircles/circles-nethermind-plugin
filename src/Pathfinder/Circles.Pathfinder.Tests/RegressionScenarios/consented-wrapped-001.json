@@ -2,6 +2,7 @@
   "id": "consented-wrapped-001",
   "name": "Consented flow with wrapped token output",
   "category": "consented-flow",
+  "block": 44289365,
   "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
   "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
   "description": "Tests consented flow with wrapped token output. Validates pipeline ordering - wrapping must occur AFTER consent validation. Uses known-good path from prod-discrepancy-nonv1-user-001 with consented source.",

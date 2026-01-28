@@ -2,6 +2,7 @@
   "id": "low-balance-partial-001",
   "name": "Low balance partial transfer",
   "category": "direct-transfer",
+  "block": 44289365,
   "source": "0x97fd8f7829a019946329f6d2e763a72741047518",
   "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
   "description": "Tests partial flow calculation when source has limited balance. Uses simulated balance injection to restrict available tokens. Validates multi-path aggregation and accurate partial flow reporting when full target cannot be met.",

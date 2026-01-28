@@ -1,0 +1,20 @@
+{
+  "id": "quantized-consented-001",
+  "name": "Quantized mode with consented flow validation",
+  "category": "quantized-mode",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "Tests that quantized mode works correctly with consented flow avatars. Consented flow validation should filter edges where the consented avatar doesn't trust the recipient or recipient doesn't have consented flow. Uses simulated consented avatars.",
+  "shouldFindPath": true,
+  "minFlow": "96000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "quantizedMode": true,
+  "withWrap": false,
+  "simulatedConsentedAvatars": [
+    "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+    "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e"
+  ],
+  "tags": ["quantized-mode", "consented-flow", "invitation", "simulation"]
+}
