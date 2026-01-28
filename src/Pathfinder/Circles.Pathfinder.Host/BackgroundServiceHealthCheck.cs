@@ -39,9 +39,10 @@ public sealed class BackgroundServiceHealthCheck : IHealthCheck
             var errorMessage = $"NetworkStateUpdaterService data is stale (last update: {lastUpdateTime:u}, age: {timeSinceLastUpdate:hh\\:mm\\:ss}). " +
                               "Background service may have failed or network connectivity issues.";
 
-            _log.LogWarning("Health check failed: {ErrorMessage}", errorMessage);
+            _log.LogError("Health check UNHEALTHY: {ErrorMessage}", errorMessage);
 
-            return Task.FromResult(HealthCheckResult.Degraded(
+            // Return Unhealthy (not Degraded) so load balancers remove this instance
+            return Task.FromResult(HealthCheckResult.Unhealthy(
                 errorMessage,
                 data: new Dictionary<string, object>
                 {

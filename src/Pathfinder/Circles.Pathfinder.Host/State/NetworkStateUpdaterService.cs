@@ -121,8 +121,10 @@ public class NetworkStateUpdaterService : BackgroundService
 
                 if (consecutiveErrors >= maxConsecutiveErrors)
                 {
-                    _log.LogCritical("Too many consecutive errors ({Count}), giving up", consecutiveErrors);
-                    break;
+                    _log.LogCritical("Too many consecutive errors ({Count}), crashing service to trigger container restart", consecutiveErrors);
+                    throw new InvalidOperationException(
+                        $"NetworkStateUpdaterService unrecoverable after {consecutiveErrors} consecutive failures. " +
+                        $"Last error: {ex.Message}");
                 }
 
                 // Wait before retrying with exponential backoff
