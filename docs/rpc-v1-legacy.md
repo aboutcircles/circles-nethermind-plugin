@@ -18,7 +18,7 @@ Query the total Circles V1 holdings of an address.
 **Request:**
 
 ```bash
-curl -X POST https://chiado-rpc.aboutcircles.com/ \
+curl -X POST https://rpc.aboutcircles.com/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -47,7 +47,7 @@ Query all V1 trust relations of an address.
 **Request:**
 
 ```bash
-curl -X POST https://chiado-rpc.aboutcircles.com/ \
+curl -X POST https://rpc.aboutcircles.com/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -92,7 +92,7 @@ Query the 10 most recent Circles V1 transfers from or to an address using `circl
 **Request:**
 
 ```bash
-curl -X POST https://chiado-rpc.aboutcircles.com/ \
+curl -X POST https://rpc.aboutcircles.com/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",

@@ -26,17 +26,13 @@ case "$NETWORK" in
     COMPOSE_FILE="docker-compose.gnosis.yml"
     POSTGRES_SERVICE="postgres-gnosis"
     ;;
-  chiado)
-    COMPOSE_FILE="docker-compose.chiado.yml"
-    POSTGRES_SERVICE="postgres-chiado"
-    ;;
   spaceneth)
     COMPOSE_FILE="docker-compose.spaceneth.yml"
     POSTGRES_SERVICE="postgres-spaceneth"
     ;;
   *)
     echo -e "${RED}Error: Unknown network '$NETWORK'${NC}"
-    echo -e "${YELLOW}Supported networks: gnosis, chiado, spaceneth${NC}"
+    echo -e "${YELLOW}Supported networks: gnosis, spaceneth${NC}"
     exit 1
     ;;
 esac

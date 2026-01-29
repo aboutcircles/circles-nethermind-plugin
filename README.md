@@ -144,10 +144,9 @@ For a detailed description of the available RPC methods, see the [Circles RPC me
 
 ### Run a node
 
-The repository contains a docker-compose file to start a Nethermind node with the Circles plugin installed. There are
-configurations for Gnosis Chain and Chiado.
+The repository contains a docker-compose file to start a Nethermind node with the Circles plugin installed on Gnosis Chain.
 
-The quickstart configurations use [lighthouse](https://github.com/sigp/lighthouse) as consensus engine and spin up a
+The quickstart configuration uses [lighthouse](https://github.com/sigp/lighthouse) as consensus engine and spins up a
 postgres database to store the indexed data.
 
 #### 1. Clone the repository
@@ -159,19 +158,11 @@ cd circles-nethermind-plugin
 
 #### 2. Create a jwtsecret
 
-For the use with Gnosis Chain and Chiado, a shared secret is required to authenticate requests between the execution and
-consensus engine.
+A shared secret is required to authenticate requests between the execution and consensus engine.
 
 ```bash
-# Gnosis Chain
 mkdir -p ./.state/jwtsecret-gnosis
 openssl rand -hex 32 > ./.state/jwtsecret-gnosis/jwt.hex
-```
-
-```bash
-# Chiado
-mkdir -p ./.state/jwtsecret-chiado
-openssl rand -hex 32 > ./.state/jwtsecret-chiado/jwt.hex
 ```
 
 #### 3. Set up the .env file
@@ -189,16 +180,8 @@ The default values should work for most setups. You may want to change:
 
 #### 4. Run node
 
-Choose if your want to run your node on Gnosis Chain or Chiado.
-
 ```bash
-# Gnosis chain
 docker compose -f docker/docker-compose.gnosis.yml up -d
-```
-
-```bash
-# Chiado
-docker compose -f docker/docker-compose.chiado.yml up -d
 ```
 
 That's it! The node must be fully synced before you can start querying the Circles events.
@@ -218,10 +201,10 @@ at the same RPC endpoint.
 ##### Volumes
 
 - `./.state` - Directory containing all host mapped docker volumes
-  - `./.state/consensus-chiado|consensus-chiado` - Lighthouse consensus engine data
-  - `./.state/nethermind-chiado|nethermind-gnosis` - Nethermind data
-  - `./.state/postgres-chiado|postgres-gnosis` - Postgres data
-  - `./.state/jwtsecret-chiado|jwtsecret-gnosis` - Shared secret between execution and consensus engine
+  - `./.state/consensus-gnosis` - Lighthouse consensus engine data
+  - `./.state/nethermind-gnosis` - Nethermind data
+  - `./.state/postgres-gnosis` - Postgres data
+  - `./.state/jwtsecret-gnosis` - Shared secret between execution and consensus engine
 
 ## Circles RPC methods
 

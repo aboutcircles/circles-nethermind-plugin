@@ -147,7 +147,6 @@ clean-cache:
 	@echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
 	@sleep 5
 	rm -rf .state/nethermind-gnosis/circles
-	rm -rf .state/nethermind-chiado/circles
 	@echo "Cache cleared successfully"
 
 # Build all Docker images

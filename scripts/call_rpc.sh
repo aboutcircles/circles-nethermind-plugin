@@ -6,22 +6,18 @@ DEFAULT_URL="https://rpc.aboutcircles.com/"
 # Ask user for RPC endpoint
 echo "Choose RPC endpoint:"
 echo "1) Remote mainnet (rpc.aboutcircles.com)"
-echo "2) Remote testnet (chiado-rpc.aboutcircles.com)"
-echo "3) Local (localhost:8081)"
-echo "4) Staging (staging.circlesubi.network)"
-printf "Enter choice (1-4): "
+echo "2) Local (localhost:8081)"
+echo "3) Staging (staging.circlesubi.network)"
+printf "Enter choice (1-3): "
 read choice
 case $choice in
   1)
     RPC_URL="$DEFAULT_URL"
     ;;
   2)
-    RPC_URL="https://chiado-rpc.aboutcircles.com/"
-    ;;
-  3)
     RPC_URL="http://localhost:8081/"
     ;;
-  4)
+  3)
     RPC_URL="https://staging.circlesubi.network/"
     ;;
   *)

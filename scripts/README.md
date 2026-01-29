@@ -661,14 +661,13 @@ Starts PostgreSQL database using Docker Compose for different networks.
 **Networks:**
 
 - `gnosis` - Gnosis mainnet (default)
-- `chiado` - Chiado testnet
 - `spaceneth` - Spaceneth testnet
 
 **Examples:**
 
 ```bash
 ./scripts/run-postgres.sh              # Start Gnosis PostgreSQL
-./scripts/run-postgres.sh chiado       # Start Chiado PostgreSQL
+./scripts/run-postgres.sh spaceneth    # Start Spaceneth PostgreSQL
 ```
 
 **When to use:**
