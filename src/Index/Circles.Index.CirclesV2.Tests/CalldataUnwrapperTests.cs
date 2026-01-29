@@ -250,6 +250,95 @@ public class CalldataUnwrapperTests
         Assert.That(results[0].Data, Is.EqualTo(new byte[] { 0x42 }));
     }
 
+    // ─────────────────────── Safe4337Module executeUserOpWithErrorString Unwrapping ───────────────────────
+
+    [Test]
+    public void UnwrapAndParse_ExecuteUserOpWithErrorString_ExtractsData()
+    {
+        // executeUserOpWithErrorString(to, value, data, operation) wrapping a safeTransferFrom
+        var innerCalldata = BuildSafeTransferFromCalldata(
+            Alice, Bob, 123, 1000, new byte[] { 0xde, 0xad });
+
+        var calldata = BuildExecuteUserOpWithErrorStringCalldata(innerCalldata);
+
+        var results = CalldataUnwrapper.UnwrapAndParse(calldata).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(results[0].From, Is.EqualTo(Alice));
+            Assert.That(results[0].To, Is.EqualTo(Bob));
+            Assert.That(results[0].Data, Is.EqualTo(new byte[] { 0xde, 0xad }));
+        });
+    }
+
+    [Test]
+    public void UnwrapAndParse_ExecuteUserOpWithErrorString_EmptyInnerData_ReturnsEmpty()
+    {
+        var calldata = BuildExecuteUserOpWithErrorStringCalldata(Array.Empty<byte>());
+
+        var results = CalldataUnwrapper.UnwrapAndParse(calldata).ToList();
+
+        Assert.That(results, Is.Empty);
+    }
+
+    [Test]
+    public void UnwrapAndParse_ExecuteUserOpWithErrorString_WithNestedMultiSend_ExtractsAllData()
+    {
+        // executeUserOpWithErrorString → multiSend → [safeTransfer1, safeTransfer2]
+        var transfer1 = BuildSafeTransferFromCalldata(Alice, Bob, 1, 100, new byte[] { 0x01 });
+        var transfer2 = BuildSafeTransferFromCalldata(Bob, Charlie, 2, 200, new byte[] { 0x02 });
+
+        var multiSend = BuildMultiSendCalldata(new[]
+        {
+            (Operation: (byte)0, To: Alice, Value: 0UL, Data: transfer1),
+            (Operation: (byte)0, To: Bob, Value: 0UL, Data: transfer2)
+        });
+
+        var calldata = BuildExecuteUserOpWithErrorStringCalldata(multiSend);
+
+        var results = CalldataUnwrapper.UnwrapAndParse(calldata).ToList();
+
+        Assert.That(results, Has.Count.EqualTo(2));
+        Assert.That(results[0].Data, Is.EqualTo(new byte[] { 0x01 }));
+        Assert.That(results[1].Data, Is.EqualTo(new byte[] { 0x02 }));
+    }
+
+    // ─────────────────────── Full ERC-4337 + Safe4337Module Chain ───────────────────────
+
+    [Test]
+    public void UnwrapAndParse_HandleOps_WithExecuteUserOpWithErrorString_ExtractsData()
+    {
+        // Full chain: handleOps → UserOp.callData [executeUserOpWithErrorString] → multiSend → [operateFlowMatrix]
+        // This is the actual call path for Safe accounts using 4337 module
+
+        var operateFlowMatrix = BuildOperateFlowMatrixCalldata(
+            flowVertices: new[] { Alice, Bob },
+            streams: new[]
+            {
+                new StreamData(0, new ulong[] { 0 }, new byte[] { 0x74, 0x78, 0x64, 0x61, 0x74, 0x61 }) // "txdata"
+            },
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x01 }
+        );
+
+        var multiSend = BuildMultiSendCalldata(new[]
+        {
+            // First TX: some other call (e.g., withdraw)
+            (Operation: (byte)0, To: Alice, Value: 0UL, Data: new byte[] { 0xde, 0x0e, 0x9a, 0x3e, 0x00 }),
+            // Second TX: operateFlowMatrix with data
+            (Operation: (byte)0, To: Bob, Value: 0UL, Data: operateFlowMatrix)
+        });
+
+        var executeUserOp = BuildExecuteUserOpWithErrorStringCalldata(multiSend);
+        var handleOps = BuildHandleOpsCalldata(new[] { executeUserOp });
+
+        var results = CalldataUnwrapper.UnwrapAndParse(handleOps).ToList();
+
+        // Should find the operateFlowMatrix data
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].Data, Is.EqualTo(new byte[] { 0x74, 0x78, 0x64, 0x61, 0x74, 0x61 }));
+    }
+
     // ─────────────────────── Edge Cases ───────────────────────
 
     [Test]
@@ -469,6 +558,39 @@ public class CalldataUnwrapperTests
     }
 
     /// <summary>
+    /// Builds ABI-encoded calldata for Safe4337Module.executeUserOpWithErrorString
+    /// Selector: 0x541d63c8
+    /// executeUserOpWithErrorString(address to, uint256 value, bytes data, uint8 operation)
+    /// </summary>
+    private static byte[] BuildExecuteUserOpWithErrorStringCalldata(byte[] innerData)
+    {
+        using var ms = new MemoryStream();
+
+        // Selector
+        ms.Write(new byte[] { 0x54, 0x1d, 0x63, 0xc8 });
+
+        // to (address) - offset 0
+        ms.Write(PadAddress(Alice)); // target address (doesn't matter for unwrapping)
+
+        // value (uint256) - offset 32
+        ms.Write(PadUint256(0));
+
+        // data (bytes) - offset 64: pointer to data location
+        // Points to: 128 (4 params * 32 = 128)
+        ms.Write(PadUint256(128));
+
+        // operation (uint8) - offset 96
+        ms.Write(PadUint256(0)); // CALL
+
+        // Inner data (at offset 128)
+        ms.Write(PadUint256((ulong)innerData.Length));
+        ms.Write(innerData);
+        ms.Write(new byte[Padding32(innerData.Length)]);
+
+        return ms.ToArray();
+    }
+
+    /// <summary>
     /// Builds calldata for ERC-4337 EntryPoint.handleOps(PackedUserOperation[] ops, address beneficiary)
     /// Selector: 0x765e827f
     ///
@@ -476,6 +598,10 @@ public class CalldataUnwrapperTests
     ///   address sender, uint256 nonce, bytes initCode, bytes callData,
     ///   bytes32 accountGasLimits, uint256 preVerificationGas,
     ///   bytes32 gasFees, bytes paymasterAndData, bytes signature
+    ///
+    /// ABI encoding of dynamic struct arrays:
+    /// - Array offset points to: [length][offset0][offset1]...[struct0][struct1]...
+    /// - Each offset is RELATIVE to the array data start (after the length field)
     /// </summary>
     private static byte[] BuildHandleOpsCalldata(byte[][] userOpCallDatas)
     {
@@ -491,11 +617,11 @@ public class CalldataUnwrapperTests
         // ops array
         ms.Write(PadUint256((ulong)userOpCallDatas.Length)); // array length
 
-        // Calculate struct offsets
-        // After length + offset pointers: 32 + (N * 32)
-        int baseOffset = 32 + userOpCallDatas.Length * 32;
+        // Calculate struct offsets - these are RELATIVE to array data start (after length field)
+        // After offset pointers: N * 32 bytes
+        int offsetPointersSize = userOpCallDatas.Length * 32;
         var structOffsets = new List<int>();
-        int currentOffset = baseOffset;
+        int currentOffset = offsetPointersSize; // Start after all offset pointers
 
         foreach (var callData in userOpCallDatas)
         {
@@ -510,7 +636,7 @@ public class CalldataUnwrapperTests
             currentOffset += structSize;
         }
 
-        // Write offset pointers
+        // Write offset pointers (relative to array data start, NOT including length)
         foreach (var offset in structOffsets)
         {
             ms.Write(PadUint256((ulong)offset));

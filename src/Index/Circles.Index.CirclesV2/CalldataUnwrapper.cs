@@ -11,6 +11,7 @@ namespace Circles.Index.CirclesV2;
 /// - ERC-4337 handleOps (0x765e827f) - Account Abstraction entry point
 /// - Safe execTransaction (0x6a761202) - Gnosis Safe transaction execution
 /// - Safe multiSend (0x8d80ff0a) - Batched Safe transactions
+/// - Safe4337Module executeUserOpWithErrorString (0x541d63c8) - Safe 4337 module execution
 /// </summary>
 public static class CalldataUnwrapper
 {
@@ -27,6 +28,10 @@ public static class CalldataUnwrapper
     // MultiSend.multiSend selector
     // multiSend(bytes transactions)
     private static readonly byte[] MultiSendSelector = [0x8d, 0x80, 0xff, 0x0a];
+
+    // Safe4337Module.executeUserOpWithErrorString selector
+    // executeUserOpWithErrorString(address to, uint256 value, bytes data, uint8 operation)
+    private static readonly byte[] ExecuteUserOpSelector = [0x54, 0x1d, 0x63, 0xc8];
 
     /// <summary>
     /// Maximum recursion depth to prevent infinite loops from malformed data.
@@ -71,6 +76,15 @@ public static class CalldataUnwrapper
         else if (selector.SequenceEqual(MultiSendSelector))
         {
             foreach (var inner in UnwrapMultiSend(calldata))
+            {
+                foreach (var result in UnwrapAndParse(inner, depth + 1))
+                    yield return result;
+            }
+        }
+        else if (selector.SequenceEqual(ExecuteUserOpSelector))
+        {
+            var inner = UnwrapExecuteUserOp(calldata);
+            if (inner != null && inner.Length > 0)
             {
                 foreach (var result in UnwrapAndParse(inner, depth + 1))
                     yield return result;
@@ -140,7 +154,8 @@ public static class CalldataUnwrapper
                     break;
 
                 int structOffset = LogDataParsingHelper.ParseOffset(params_, elementOffsetPosition);
-                int absoluteStructOffset = opsOffset + structOffset;
+                // Element offset is relative to array data start (after length), not array start
+                int absoluteStructOffset = arrayDataStart + structOffset;
 
                 var innerCalldata = ExtractCallDataFromUserOp(params_, absoluteStructOffset);
                 if (innerCalldata != null && innerCalldata.Length > 0)
@@ -315,6 +330,37 @@ public static class CalldataUnwrapper
                 yield return innerData;
 
             pos += 85 + dataLen;
+        }
+    }
+
+    /// <summary>
+    /// Unwraps Safe4337Module.executeUserOpWithErrorString calldata.
+    ///
+    /// executeUserOpWithErrorString(address to, uint256 value, bytes data, uint8 operation)
+    ///
+    /// This is used by the Safe 4337 module to execute calls within the account abstraction flow.
+    /// </summary>
+    private static byte[]? UnwrapExecuteUserOp(byte[] calldata)
+    {
+        var data = calldata.AsSpan();
+        // Minimum: selector(4) + to(32) + value(32) + dataOffset(32) + operation(32) = 132 bytes
+        if (data.Length < 132)
+            return null;
+
+        var params_ = data.Slice(4);
+
+        try
+        {
+            // data is the 3rd parameter (offset at position 64)
+            int dataOffset = LogDataParsingHelper.ParseOffset(params_, 64);
+            if (dataOffset < 0 || dataOffset + 32 > params_.Length)
+                return null;
+
+            return LogDataParsingHelper.ParseBytes(params_, dataOffset);
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 }
