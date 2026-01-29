@@ -126,9 +126,9 @@ public class TransferCalldataParserTests
                     data: new byte[] { 0xca, 0xfe, 0xba, 0xbe }
                 )
             },
-            // Packed coordinates: each flow edge = 4 bytes (2 bytes source, 2 bytes target)
-            // Edge 0: source=0 (Alice), target=1 (Bob)
-            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x01 }  // source=0, target=1
+            // Packed coordinates: each flow edge = 6 bytes (circlesId, sender, receiver)
+            // Edge 0: circlesId=0, sender=0 (Alice), receiver=1 (Bob)
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }
         );
 
         var results = TransferCalldataParser.ParseCalldata(calldata).ToList();
@@ -162,11 +162,11 @@ public class TransferCalldataParserTests
                     data: new byte[] { 0x02 }
                 )
             },
-            // Edge 0: Alice -> Bob, Edge 1: Bob -> Charlie
+            // Edge 0: Alice -> Bob, Edge 1: Bob -> Charlie (6 bytes each: circlesId, sender, receiver)
             packedCoordinates: new byte[]
             {
-                0x00, 0x00, 0x00, 0x01,  // edge 0: source=0, target=1
-                0x00, 0x01, 0x00, 0x02   // edge 1: source=1, target=2
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // edge 0: circlesId=0, sender=0, receiver=1
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x02   // edge 1: circlesId=0, sender=1, receiver=2
             }
         );
 
@@ -198,7 +198,7 @@ public class TransferCalldataParserTests
                     data: Array.Empty<byte>()  // Empty data should be skipped
                 )
             },
-            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x01 }
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }  // 6-byte triplet
         );
 
         var results = TransferCalldataParser.ParseCalldata(calldata).ToList();
@@ -307,9 +307,9 @@ public class TransferCalldataParserTests
             },
             packedCoordinates: new byte[]
             {
-                0x00, 0x00, 0x00, 0x01,  // edge 0: A(0) -> B(1)
-                0x00, 0x01, 0x00, 0x02,  // edge 1: B(1) -> C(2)
-                0x00, 0x02, 0x00, 0x03   // edge 2: C(2) -> D(3)
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // edge 0: circlesId=0, A(0) -> B(1)
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x02,  // edge 1: circlesId=0, B(1) -> C(2)
+                0x00, 0x00, 0x00, 0x02, 0x00, 0x03   // edge 2: circlesId=0, C(2) -> D(3)
             }
         );
 
@@ -351,8 +351,8 @@ public class TransferCalldataParserTests
             },
             packedCoordinates: new byte[]
             {
-                0x00, 0x00, 0x00, 0x01,  // edge 0: A -> B
-                0x00, 0x01, 0x00, 0x02   // edge 1: B -> C
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // edge 0: circlesId=0, A -> B
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x02   // edge 1: circlesId=0, B -> C
             }
         );
 
@@ -496,8 +496,8 @@ public class TransferCalldataParserTests
             },
             packedCoordinates: new byte[]
             {
-                0x00, 0x00, 0x00, 0x01,
-                0x00, 0x01, 0x00, 0x02
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x01,  // edge 0: circlesId=0, A -> B
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x02   // edge 1: circlesId=0, B -> C
             }
         );
 

@@ -224,31 +224,35 @@ public static class TransferCalldataParser
     /// Derives the 'to' address from a flow edge ID by looking up the packed coordinate
     /// and then indexing into flow vertices.
     ///
-    /// Flow edges encode: sourceCoord (2 bytes) + targetCoord (2 bytes) = 4 bytes per edge
-    /// The flowEdgeId is the index into the packed coordinates array
-    /// We want the target coordinate (second 2 bytes of the 4-byte entry)
+    /// Each flow edge is a triplet of 3 uint16 coordinates = 6 bytes:
+    ///   - bytes [0:2]: Circles identifier coordinate (token)
+    ///   - bytes [2:4]: sender coordinate (from)
+    ///   - bytes [4:6]: receiver coordinate (to)
+    ///
+    /// The flowEdgeId indexes these 6-byte triplets.
+    /// We want the receiver coordinate (third uint16 in the triplet).
     /// </summary>
     private static string DeriveToAddress(UInt256 flowEdgeId, byte[] packedCoordinates, string[] flowVertices)
     {
-        // Each flow edge entry is 4 bytes: 2 bytes source coord + 2 bytes target coord
-        // flowEdgeId indexes these 4-byte entries
-        int byteOffset = (int)flowEdgeId * 4;
+        // Each flow edge triplet is 6 bytes: circlesId (2) + sender (2) + receiver (2)
+        // flowEdgeId indexes these 6-byte triplets
+        int byteOffset = (int)flowEdgeId * 6;
 
-        if (byteOffset + 4 > packedCoordinates.Length)
+        if (byteOffset + 6 > packedCoordinates.Length)
         {
             // Fall back to first vertex if we can't derive
             return flowVertices.Length > 0 ? flowVertices[0] : "";
         }
 
-        // Target coordinate is at bytes [byteOffset + 2, byteOffset + 4) (big-endian uint16)
-        ushort targetCoord = (ushort)((packedCoordinates[byteOffset + 2] << 8) | packedCoordinates[byteOffset + 3]);
+        // Receiver coordinate is at bytes [byteOffset + 4, byteOffset + 6) (big-endian uint16)
+        ushort receiverCoord = (ushort)((packedCoordinates[byteOffset + 4] << 8) | packedCoordinates[byteOffset + 5]);
 
-        if (targetCoord >= flowVertices.Length)
+        if (receiverCoord >= flowVertices.Length)
         {
             return flowVertices.Length > 0 ? flowVertices[0] : "";
         }
 
-        return flowVertices[targetCoord];
+        return flowVertices[receiverCoord];
     }
 
     /// <summary>
