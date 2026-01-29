@@ -11,6 +11,371 @@ public class CalldataUnwrapperTests
     private const string Bob = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     private const string Charlie = "0xcccccccccccccccccccccccccccccccccccccccc";
 
+    // ─────────────────────── Real Transaction Test ───────────────────────
+
+    [Test]
+    public void UnwrapAndParse_RealTx_0x0dd3e318_ManualDebug()
+    {
+        // Manually trace through the handleOps unwrapping
+        var fullCalldata = HexToBytes("0x765e827f000000000000000000000000000000000000000000000000000000000000004000000000000000000000000079c02f38dba39da361b4a0484c40351d50d55a9400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000f48554937f18885c7f15c432c596b5843648231d000000000000000000000000000000000000019c09d66edb000000000000000000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000662f20000000000000000000000000004b40300000000000000000000000000000000000000000000000000000000000144300000000000000000000000000000010e0000000000000000000000000000010e00000000000000000000000000000000000000000000000000000000000006200000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004a4541d63c800000000000000000000000038869bf66a61cf6bdb996a6ae40d5853fd43b52600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000003e48d80ff0a0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000039200548c20e6c24e4876e20dadbeab75362e2f5a4bc100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024de0e9a3e0000000000000000000000000000000000000000000000000de0b6b3a764000000c12c1e50abb450d6205ea2c3fa861b3b834d13e8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c40d22d9b5000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000000030000000000000000000000007b8a5a4673fcd082b742304032ea49d6bc6e01f5000000000000000000000000c19bc204eb1c1d5b3fe500e5e5dfabab625f286c000000000000000000000000f48554937f18885c7f15c432c596b5843648231d000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000de0b6b3a7640000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020743fbf4da2637e923af08e3e9f67248c1b09be381fa4873455e085a271cfb97c000000000000000000000000000000000000000000000000000000000000000600010002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b56a6b7f6012ee5bef1cdf95df25e5045c7727c739000000000000000000000000000927c000000000000000000000000000004e200000000000000000000000000000000000000000000000000000000069b248360000000000000000000000000000000000000000000000000000000000001234da7739798409c9eaa25c6b950882b177adf1863377fe66fa48f0b9569080e4a92532ee41a55608be95728320a9646508c3af7bad120223d6b15ed7d59bb492901c000000000000000000000000000000000000000000000000000000000000000000000000000001ad0000000000000000000000000000000000000000000000007ccff4a0d4e537ed2c595134219f83a73e49e65d0000000000000000000000000000000000000000000000000000000000000041000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e0a885c9a1ba5c55f80113117b82d56283e8b3bb91188b88ab2bffe7f8025a381d583ad8cdcab577f9f34b457af97aa3a59a047834aecfc57bfcfc0bbd35085f450000000000000000000000000000000000000000000000000000000000000025a830944f5d0adea2ab734f152e86146a46a22ed25b801b8f74b292be4b7cb9821d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000034226f726967696e223a2268747470733a2f2f6170702e676e6f7369732e696f222c2263726f73734f726967696e223a66616c736500000000000000000000000000000000000000000000000000000000000000");
+
+        var params_ = fullCalldata.AsSpan().Slice(4);
+        Console.WriteLine($"params_.Length = {params_.Length}");
+
+        // First param: offset to ops array (should be 0x40 = 64)
+        var opsOffsetBytes = params_.Slice(0, 32).ToArray();
+        int opsOffset = (int)new Nethermind.Int256.UInt256(opsOffsetBytes, true);
+        Console.WriteLine($"opsOffset = {opsOffset} (0x{opsOffset:X})");
+
+        // Array length at opsOffset
+        var opsLengthBytes = params_.Slice(opsOffset, 32).ToArray();
+        int opsLength = (int)new Nethermind.Int256.UInt256(opsLengthBytes, true);
+        Console.WriteLine($"opsLength = {opsLength}");
+
+        int arrayDataStart = opsOffset + 32;
+        Console.WriteLine($"arrayDataStart = {arrayDataStart}");
+
+        // First element offset (relative to array data start)
+        var elementOffsetBytes = params_.Slice(arrayDataStart, 32).ToArray();
+        int structOffset = (int)new Nethermind.Int256.UInt256(elementOffsetBytes, true);
+        Console.WriteLine($"structOffset (relative) = {structOffset} (0x{structOffset:X})");
+
+        int absoluteStructOffset = arrayDataStart + structOffset;
+        Console.WriteLine($"absoluteStructOffset = {absoluteStructOffset}");
+
+        // Now look at the UserOp struct at absoluteStructOffset
+        // Offset 96 should have callData offset
+        var callDataOffsetBytes = params_.Slice(absoluteStructOffset + 96, 32).ToArray();
+        int callDataOffsetInStruct = (int)new Nethermind.Int256.UInt256(callDataOffsetBytes, true);
+        Console.WriteLine($"callDataOffsetInStruct = {callDataOffsetInStruct} (0x{callDataOffsetInStruct:X})");
+
+        int callDataAbsolute = absoluteStructOffset + callDataOffsetInStruct;
+        Console.WriteLine($"callDataAbsolute = {callDataAbsolute}");
+
+        // Read callData length
+        var callDataLengthBytes = params_.Slice(callDataAbsolute, 32).ToArray();
+        int callDataLength = (int)new Nethermind.Int256.UInt256(callDataLengthBytes, true);
+        Console.WriteLine($"callDataLength = {callDataLength}");
+
+        // Read callData
+        if (callDataAbsolute + 32 + callDataLength <= params_.Length)
+        {
+            var innerCalldata = params_.Slice(callDataAbsolute + 32, callDataLength).ToArray();
+            Console.WriteLine($"innerCalldata selector = {BitConverter.ToString(innerCalldata[..4])}");
+            // Should be 541d63c8 (executeUserOpWithErrorString)
+        }
+        else
+        {
+            Console.WriteLine($"ERROR: callData would exceed bounds! callDataAbsolute={callDataAbsolute}, callDataLength={callDataLength}, params_.Length={params_.Length}");
+        }
+
+        // Now manually call ExtractCallDataFromUserOp like the code does
+        var extractedCalldata = ExtractCallDataFromUserOpManual(params_, absoluteStructOffset);
+        if (extractedCalldata != null)
+        {
+            Console.WriteLine($"ExtractCallDataFromUserOp returned {extractedCalldata.Length} bytes");
+            Console.WriteLine($"Extracted selector: {BitConverter.ToString(extractedCalldata[..4])}");
+        }
+        else
+        {
+            Console.WriteLine("ExtractCallDataFromUserOp returned null!");
+        }
+
+        // Now let's verify what LogDataParsingHelper.ParseOffset returns
+        Console.WriteLine($"\n--- Testing LogDataParsingHelper.ParseOffset ---");
+        int testOffset = Circles.Common.LogDataParsingHelper.ParseOffset(params_, absoluteStructOffset + 96);
+        Console.WriteLine($"ParseOffset(params_, {absoluteStructOffset + 96}) = {testOffset}");
+
+        // And what ParseBytes returns
+        int callDataPos = absoluteStructOffset + testOffset;
+        Console.WriteLine($"callDataPos = absoluteStructOffset + testOffset = {absoluteStructOffset} + {testOffset} = {callDataPos}");
+
+        try
+        {
+            var parsedBytes = Circles.Common.LogDataParsingHelper.ParseBytes(params_, callDataPos);
+            Console.WriteLine($"ParseBytes returned {parsedBytes.Length} bytes, selector: {BitConverter.ToString(parsedBytes[..Math.Min(4, parsedBytes.Length)])}");
+
+            // Debug the executeUserOpWithErrorString calldata
+            Console.WriteLine($"\n--- Debugging executeUserOpWithErrorString calldata ---");
+            Console.WriteLine($"parsedBytes.Length = {parsedBytes.Length}");
+            Console.WriteLine($"Selector: {BitConverter.ToString(parsedBytes[..4])}");
+
+            // executeUserOpWithErrorString(address to, uint256 value, bytes data, uint8 operation)
+            // Minimum: selector(4) + to(32) + value(32) + dataOffset(32) + operation(32) = 132 bytes
+            var execParams = parsedBytes.AsSpan().Slice(4);
+            Console.WriteLine($"execParams.Length = {execParams.Length}");
+
+            // data is the 3rd parameter (offset at position 64)
+            var dataOffsetBytes = execParams.Slice(64, 32).ToArray();
+            int dataOffset = (int)new Nethermind.Int256.UInt256(dataOffsetBytes, true);
+            Console.WriteLine($"dataOffset = {dataOffset} (0x{dataOffset:X})");
+
+            if (dataOffset + 32 <= execParams.Length)
+            {
+                var dataLengthBytes = execParams.Slice(dataOffset, 32).ToArray();
+                int dataLength = (int)new Nethermind.Int256.UInt256(dataLengthBytes, true);
+                Console.WriteLine($"dataLength = {dataLength}");
+
+                if (dataOffset + 32 + dataLength <= execParams.Length)
+                {
+                    var innerData = execParams.Slice(dataOffset + 32, dataLength).ToArray();
+                    Console.WriteLine($"innerData.Length = {innerData.Length}");
+                    Console.WriteLine($"innerData selector = {BitConverter.ToString(innerData[..4])}");
+
+                    // This should be multiSend (8d80ff0a)
+                    Console.WriteLine($"\n--- Debugging multiSend calldata ---");
+
+                    // multiSend(bytes transactions)
+                    var multiSendParams = innerData.AsSpan().Slice(4);
+                    Console.WriteLine($"multiSendParams.Length = {multiSendParams.Length}");
+
+                    // First param: offset to transactions bytes
+                    var txOffsetBytes = multiSendParams.Slice(0, 32).ToArray();
+                    int txOffset = (int)new Nethermind.Int256.UInt256(txOffsetBytes, true);
+                    Console.WriteLine($"txOffset = {txOffset}");
+
+                    // transactions length
+                    var txLengthBytes = multiSendParams.Slice(txOffset, 32).ToArray();
+                    int txLength = (int)new Nethermind.Int256.UInt256(txLengthBytes, true);
+                    Console.WriteLine($"txLength = {txLength}");
+
+                    // transactions data
+                    var transactions = multiSendParams.Slice(txOffset + 32, txLength).ToArray();
+                    Console.WriteLine($"transactions.Length = {transactions.Length}");
+
+                    // Parse packed transactions
+                    // Format: [op(1)][to(20)][value(32)][dataLen(32)][data(var)]...
+                    int pos = 0;
+                    int txCount = 0;
+                    while (pos + 85 <= transactions.Length)
+                    {
+                        byte op = transactions[pos];
+                        var to = BitConverter.ToString(transactions[(pos + 1)..(pos + 21)]).Replace("-", "").ToLower();
+                        var dataLenBytes = transactions.AsSpan().Slice(pos + 53, 32).ToArray();
+                        int dataLen = (int)new Nethermind.Int256.UInt256(dataLenBytes, true);
+
+                        Console.WriteLine($"  TX {txCount}: op={op}, to=0x{to}, dataLen={dataLen}");
+
+                        if (pos + 85 + dataLen <= transactions.Length)
+                        {
+                            var txData = transactions.AsSpan().Slice(pos + 85, dataLen).ToArray();
+                            if (txData.Length >= 4)
+                            {
+                                Console.WriteLine($"    selector: {BitConverter.ToString(txData[..4])}");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"    ERROR: txData would exceed bounds");
+                            break;
+                        }
+
+                        pos += 85 + dataLen;
+                        txCount++;
+                        if (txCount > 10) break; // Safety limit
+                    }
+                    Console.WriteLine($"Found {txCount} transactions in multiSend");
+
+                    // Test LogDataParsingHelper on multiSend
+                    Console.WriteLine($"\n--- Testing LogDataParsingHelper on multiSend ---");
+                    try
+                    {
+                        int parsedTxOffset = Circles.Common.LogDataParsingHelper.ParseOffset(multiSendParams, 0);
+                        Console.WriteLine($"LogDataParsingHelper.ParseOffset = {parsedTxOffset}");
+
+                        var parsedTransactions = Circles.Common.LogDataParsingHelper.ParseBytes(multiSendParams, parsedTxOffset);
+                        Console.WriteLine($"LogDataParsingHelper.ParseBytes returned {parsedTransactions.Length} bytes");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"LogDataParsingHelper exception: {ex.Message}");
+                    }
+
+                    // Test operateFlowMatrix directly - TX1 starts at pos 85+36 = 121
+                    Console.WriteLine($"\n--- Testing operateFlowMatrix parsing ---");
+                    int tx1Start = 85 + 36; // TX0 header (85) + TX0 data (36)
+                    int tx1DataStart = tx1Start + 85; // TX1 header (85)
+                    var opFlowTx = transactions.AsSpan().Slice(tx1DataStart, 708).ToArray();
+                    Console.WriteLine($"operateFlowMatrix calldata length: {opFlowTx.Length}");
+                    Console.WriteLine($"operateFlowMatrix selector: {BitConverter.ToString(opFlowTx[..4])}");
+
+                    // Manual parse of operateFlowMatrix
+                    var opParams = opFlowTx.AsSpan().Slice(4);
+                    Console.WriteLine($"opParams.Length = {opParams.Length}");
+
+                    try
+                    {
+                        int verticesOffset = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, 0);
+                        int flowOffset = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, 32);
+                        int streamsOffset = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, 64);
+                        int packedCoordOffset = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, 96);
+                        Console.WriteLine($"verticesOffset={verticesOffset}, flowOffset={flowOffset}, streamsOffset={streamsOffset}, packedCoordOffset={packedCoordOffset}");
+
+                        var flowVertices = Circles.Common.LogDataParsingHelper.ParseAddressArray(opParams, verticesOffset);
+                        Console.WriteLine($"flowVertices.Length = {flowVertices.Length}");
+                        foreach (var v in flowVertices)
+                            Console.WriteLine($"  vertex: {v}");
+
+                        var packedCoords = Circles.Common.LogDataParsingHelper.ParseBytes(opParams, packedCoordOffset);
+                        Console.WriteLine($"packedCoords.Length = {packedCoords.Length}");
+
+                        var streamsLen = (int)new Nethermind.Int256.UInt256(opParams.Slice(streamsOffset, 32), true);
+                        Console.WriteLine($"streamsLen = {streamsLen}");
+
+                        int streamsArrayDataStart = streamsOffset + 32;
+                        for (int si = 0; si < streamsLen; si++)
+                        {
+                            int structOffsetRel = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, streamsArrayDataStart + si * 32);
+                            int structAbsOffset = streamsOffset + structOffsetRel;
+                            Console.WriteLine($"  Stream {si}: structOffsetRel={structOffsetRel}, structAbsOffset={structAbsOffset}");
+
+                            // Parse stream
+                            var sourceCoordWord = opParams.Slice(structAbsOffset, 32).ToArray();
+                            ushort sourceCoord = (ushort)new Nethermind.Int256.UInt256(sourceCoordWord, true);
+                            Console.WriteLine($"    sourceCoord = {sourceCoord}");
+
+                            int flowEdgeIdsOff = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, structAbsOffset + 32);
+                            int dataOff = Circles.Common.LogDataParsingHelper.ParseOffset(opParams, structAbsOffset + 64);
+                            Console.WriteLine($"    flowEdgeIdsOff={flowEdgeIdsOff}, dataOff={dataOff}");
+
+                            var streamData = Circles.Common.LogDataParsingHelper.ParseBytes(opParams, structAbsOffset + dataOff);
+                            Console.WriteLine($"    streamData.Length = {streamData.Length}");
+                            if (streamData.Length > 0)
+                                Console.WriteLine($"    streamData = {BitConverter.ToString(streamData).Replace("-", "").ToLower()}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Exception during operateFlowMatrix parsing: {ex.Message}");
+                        Console.WriteLine(ex.StackTrace);
+                    }
+
+                    var opFlowResults = CalldataUnwrapper.UnwrapAndParse(opFlowTx).ToList();
+                    Console.WriteLine($"operateFlowMatrix UnwrapAndParse returned {opFlowResults.Count} results");
+                    foreach (var r in opFlowResults)
+                    {
+                        Console.WriteLine($"  From: {r.From}");
+                        Console.WriteLine($"  To: {r.To}");
+                        Console.WriteLine($"  Data: {BitConverter.ToString(r.Data).Replace("-", "").ToLower()}");
+                    }
+
+                    // Now test UnwrapAndParse on multiSend
+                    Console.WriteLine($"\n--- Testing UnwrapAndParse on multiSend ---");
+                    var multiSendResults = CalldataUnwrapper.UnwrapAndParse(innerData).ToList();
+                    Console.WriteLine($"multiSend UnwrapAndParse returned {multiSendResults.Count} results");
+                }
+                else
+                {
+                    Console.WriteLine($"ERROR: innerData would exceed bounds");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"ERROR: dataOffset exceeds bounds");
+            }
+
+            // Now test if UnwrapAndParse works on this inner calldata
+            Console.WriteLine($"\n--- Testing CalldataUnwrapper.UnwrapAndParse on inner calldata ---");
+            var innerResults = CalldataUnwrapper.UnwrapAndParse(parsedBytes).ToList();
+            Console.WriteLine($"UnwrapAndParse on inner (executeUserOpWithErrorString) returned {innerResults.Count} results");
+            foreach (var r in innerResults)
+            {
+                Console.WriteLine($"  Data: {BitConverter.ToString(r.Data).Replace("-", "").ToLower()[..Math.Min(40, r.Data.Length * 2)]}...");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ParseBytes/UnwrapAndParse threw: {ex.Message}");
+        }
+
+        // Finally test the full path
+        Console.WriteLine($"\n--- Testing full CalldataUnwrapper.UnwrapAndParse ---");
+        var fullResults = CalldataUnwrapper.UnwrapAndParse(fullCalldata).ToList();
+        Console.WriteLine($"Full UnwrapAndParse returned {fullResults.Count} results");
+
+        Assert.Pass("Debug output complete");
+    }
+
+    private static byte[]? ExtractCallDataFromUserOpManual(ReadOnlySpan<byte> params_, int structOffset)
+    {
+        // Need at least: sender(32) + nonce(32) + initCodeOff(32) + callDataOff(32) = 128 bytes
+        if (structOffset + 128 > params_.Length)
+        {
+            Console.WriteLine($"ExtractCallData: structOffset + 128 = {structOffset + 128} > params_.Length = {params_.Length}");
+            return null;
+        }
+
+        // callData offset is at position 96 within the struct (4th field)
+        var callDataOffsetBytes = params_.Slice(structOffset + 96, 32).ToArray();
+        int callDataOffsetInStruct = (int)new Nethermind.Int256.UInt256(callDataOffsetBytes, true);
+        Console.WriteLine($"ExtractCallData: callDataOffsetInStruct = {callDataOffsetInStruct}");
+
+        int callDataAbsolute = structOffset + callDataOffsetInStruct;
+        Console.WriteLine($"ExtractCallData: callDataAbsolute = {callDataAbsolute}");
+
+        if (callDataAbsolute < 0 || callDataAbsolute + 32 > params_.Length)
+        {
+            Console.WriteLine($"ExtractCallData: bounds check failed - callDataAbsolute={callDataAbsolute}, params_.Length={params_.Length}");
+            return null;
+        }
+
+        // Read length
+        var lengthBytes = params_.Slice(callDataAbsolute, 32).ToArray();
+        int length = (int)new Nethermind.Int256.UInt256(lengthBytes, true);
+        Console.WriteLine($"ExtractCallData: length = {length}");
+
+        if (callDataAbsolute + 32 + length > params_.Length)
+        {
+            Console.WriteLine($"ExtractCallData: data bounds check failed");
+            return null;
+        }
+
+        return params_.Slice(callDataAbsolute + 32, length).ToArray();
+    }
+
+    [Test]
+    public void UnwrapAndParse_RealTx_0x0dd3e318_Debug()
+    {
+        // Test each layer separately to find where it breaks
+
+        // Full calldata
+        var fullCalldata = HexToBytes("0x765e827f000000000000000000000000000000000000000000000000000000000000004000000000000000000000000079c02f38dba39da361b4a0484c40351d50d55a9400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000f48554937f18885c7f15c432c596b5843648231d000000000000000000000000000000000000019c09d66edb000000000000000000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000662f20000000000000000000000000004b40300000000000000000000000000000000000000000000000000000000000144300000000000000000000000000000010e0000000000000000000000000000010e00000000000000000000000000000000000000000000000000000000000006200000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004a4541d63c800000000000000000000000038869bf66a61cf6bdb996a6ae40d5853fd43b52600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000003e48d80ff0a0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000039200548c20e6c24e4876e20dadbeab75362e2f5a4bc100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024de0e9a3e0000000000000000000000000000000000000000000000000de0b6b3a764000000c12c1e50abb450d6205ea2c3fa861b3b834d13e8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c40d22d9b5000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000000030000000000000000000000007b8a5a4673fcd082b742304032ea49d6bc6e01f5000000000000000000000000c19bc204eb1c1d5b3fe500e5e5dfabab625f286c000000000000000000000000f48554937f18885c7f15c432c596b5843648231d000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000de0b6b3a7640000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020743fbf4da2637e923af08e3e9f67248c1b09be381fa4873455e085a271cfb97c000000000000000000000000000000000000000000000000000000000000000600010002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b56a6b7f6012ee5bef1cdf95df25e5045c7727c739000000000000000000000000000927c000000000000000000000000000004e200000000000000000000000000000000000000000000000000000000069b248360000000000000000000000000000000000000000000000000000000000001234da7739798409c9eaa25c6b950882b177adf1863377fe66fa48f0b9569080e4a92532ee41a55608be95728320a9646508c3af7bad120223d6b15ed7d59bb492901c000000000000000000000000000000000000000000000000000000000000000000000000000001ad0000000000000000000000000000000000000000000000007ccff4a0d4e537ed2c595134219f83a73e49e65d0000000000000000000000000000000000000000000000000000000000000041000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e0a885c9a1ba5c55f80113117b82d56283e8b3bb91188b88ab2bffe7f8025a381d583ad8cdcab577f9f34b457af97aa3a59a047834aecfc57bfcfc0bbd35085f450000000000000000000000000000000000000000000000000000000000000025a830944f5d0adea2ab734f152e86146a46a22ed25b801b8f74b292be4b7cb9821d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000034226f726967696e223a2268747470733a2f2f6170702e676e6f7369732e696f222c2263726f73734f726967696e223a66616c736500000000000000000000000000000000000000000000000000000000000000");
+
+        // Check selector
+        Console.WriteLine($"Full calldata length: {fullCalldata.Length}");
+        Console.WriteLine($"Selector: {BitConverter.ToString(fullCalldata[..4])}");
+        Assert.That(fullCalldata[..4], Is.EqualTo(new byte[] { 0x76, 0x5e, 0x82, 0x7f }), "Should be handleOps selector");
+
+        // Try to unwrap - this should give us executeUserOpWithErrorString calldata
+        var results = CalldataUnwrapper.UnwrapAndParse(fullCalldata).ToList();
+        Console.WriteLine($"UnwrapAndParse returned {results.Count} results");
+        foreach (var r in results)
+        {
+            Console.WriteLine($"  From: {r.From}, To: {r.To}, Data: {BitConverter.ToString(r.Data).Replace("-", "").ToLower()}");
+        }
+
+        Assert.That(results.Count, Is.GreaterThan(0), "Should find TransferData");
+    }
+
+    [Test]
+    public void UnwrapAndParse_RealTx_0x0dd3e318_ExtractsData()
+    {
+        // Real tx: https://gnosis.blockscout.com/tx/0x0dd3e3185882e95e71b659c2b5124a0fdd4cf7016ecc5ad4a6288315f0eed049
+        // handleOps → executeUserOpWithErrorString → multiSend → operateFlowMatrix
+        // Expected data: 743fbf4da2637e923af08e3e9f67248c1b09be381fa4873455e085a271cfb97c
+        var calldata = HexToBytes("0x765e827f000000000000000000000000000000000000000000000000000000000000004000000000000000000000000079c02f38dba39da361b4a0484c40351d50d55a9400000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000f48554937f18885c7f15c432c596b5843648231d000000000000000000000000000000000000019c09d66edb000000000000000000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000662f20000000000000000000000000004b40300000000000000000000000000000000000000000000000000000000000144300000000000000000000000000000010e0000000000000000000000000000010e00000000000000000000000000000000000000000000000000000000000006200000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004a4541d63c800000000000000000000000038869bf66a61cf6bdb996a6ae40d5853fd43b52600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000003e48d80ff0a0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000039200548c20e6c24e4876e20dadbeab75362e2f5a4bc100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024de0e9a3e0000000000000000000000000000000000000000000000000de0b6b3a764000000c12c1e50abb450d6205ea2c3fa861b3b834d13e8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c40d22d9b5000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000028000000000000000000000000000000000000000000000000000000000000000030000000000000000000000007b8a5a4673fcd082b742304032ea49d6bc6e01f5000000000000000000000000c19bc204eb1c1d5b3fe500e5e5dfabab625f286c000000000000000000000000f48554937f18885c7f15c432c596b5843648231d000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000de0b6b3a7640000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020743fbf4da2637e923af08e3e9f67248c1b09be381fa4873455e085a271cfb97c000000000000000000000000000000000000000000000000000000000000000600010002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b56a6b7f6012ee5bef1cdf95df25e5045c7727c739000000000000000000000000000927c000000000000000000000000000004e200000000000000000000000000000000000000000000000000000000069b248360000000000000000000000000000000000000000000000000000000000001234da7739798409c9eaa25c6b950882b177adf1863377fe66fa48f0b9569080e4a92532ee41a55608be95728320a9646508c3af7bad120223d6b15ed7d59bb492901c000000000000000000000000000000000000000000000000000000000000000000000000000001ad0000000000000000000000000000000000000000000000007ccff4a0d4e537ed2c595134219f83a73e49e65d0000000000000000000000000000000000000000000000000000000000000041000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e0a885c9a1ba5c55f80113117b82d56283e8b3bb91188b88ab2bffe7f8025a381d583ad8cdcab577f9f34b457af97aa3a59a047834aecfc57bfcfc0bbd35085f450000000000000000000000000000000000000000000000000000000000000025a830944f5d0adea2ab734f152e86146a46a22ed25b801b8f74b292be4b7cb9821d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000034226f726967696e223a2268747470733a2f2f6170702e676e6f7369732e696f222c2263726f73734f726967696e223a66616c736500000000000000000000000000000000000000000000000000000000000000");
+
+        var results = CalldataUnwrapper.UnwrapAndParse(calldata).ToList();
+
+        // Should find operateFlowMatrix with data
+        Assert.That(results, Has.Count.GreaterThanOrEqualTo(1), "Should extract at least one TransferData");
+
+        // Check for expected data bytes
+        var expectedData = HexToBytes("743fbf4da2637e923af08e3e9f67248c1b09be381fa4873455e085a271cfb97c");
+        var hasExpectedData = results.Any(r => r.Data.SequenceEqual(expectedData));
+        Assert.That(hasExpectedData, Is.True, $"Should contain expected data. Found {results.Count} results: {string.Join(", ", results.Select(r => BitConverter.ToString(r.Data).Replace("-", "").ToLower()))}");
+    }
+
     // ─────────────────────── Direct Hub Calls (Passthrough) ───────────────────────
 
     [Test]
@@ -762,7 +1127,8 @@ public class CalldataUnwrapperTests
             return;
 
         int[] structOffsets = new int[streams.Length];
-        int currentOffset = 32 + streams.Length * 32;
+        // Offsets are relative to array data start (after length field), NOT including the length
+        int currentOffset = streams.Length * 32;
 
         for (int i = 0; i < streams.Length; i++)
         {

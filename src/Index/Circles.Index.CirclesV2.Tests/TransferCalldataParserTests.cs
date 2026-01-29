@@ -765,7 +765,7 @@ public class TransferCalldataParserTests
 
     /// <summary>
     /// Writes the streams array in ABI encoding format.
-    /// The parser expects offsets relative to array start (including length field).
+    /// Offsets are relative to array data start (after the length field), per ABI spec.
     /// </summary>
     private static void WriteStreamsArray(MemoryStream ms, StreamData[] streams)
     {
@@ -775,12 +775,12 @@ public class TransferCalldataParserTests
         if (streams.Length == 0)
             return;
 
-        // Calculate struct offsets - relative to array start (after the length field)
-        // The parser does: structAbsoluteOffset = streamsOffset + structOffsetRelative
-        // Where streamsOffset points to the length field
-        // So offsets should be: 32 (length) + N*32 (offset pointers) + accumulated struct sizes
+        // Calculate struct offsets - relative to array data start (AFTER the length field)
+        // The parser does: structAbsoluteOffset = streamsArrayDataStart + structOffsetRelative
+        // Where streamsArrayDataStart = streamsOffset + 32
+        // So offsets should be: N*32 (offset pointers) + accumulated struct sizes
         int[] structOffsets = new int[streams.Length];
-        int currentOffset = 32 + streams.Length * 32; // length field + offset pointers
+        int currentOffset = streams.Length * 32; // offset pointers only (no length field)
 
         for (int i = 0; i < streams.Length; i++)
         {

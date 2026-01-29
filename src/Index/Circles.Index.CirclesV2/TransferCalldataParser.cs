@@ -153,9 +153,9 @@ public static class TransferCalldataParser
 
         for (int i = 0; i < streamsArrayLength; i++)
         {
-            // Each array element is an offset to the struct data (relative to array start)
+            // Each array element is an offset to the struct data (relative to array data start, after length)
             int structOffsetRelative = LogDataParsingHelper.ParseOffset(params_, streamsArrayDataStart + i * 32);
-            int structAbsoluteOffset = streamsOffset + structOffsetRelative;
+            int structAbsoluteOffset = streamsArrayDataStart + structOffsetRelative;
 
             var streamResult = ParseStream(params_, structAbsoluteOffset, flowVertices, packedCoordinates);
             if (streamResult.HasValue)
