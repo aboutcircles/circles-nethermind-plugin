@@ -331,25 +331,6 @@ public class TrustRepository
         }
     }
 
-    public async Task<long> GetPenalizedAccountsAsync(CancellationToken ct = default)
-    {
-        // Accounts where penalty was applied (check JSON details)
-        const string sql = """
-            SELECT COUNT(*) FROM "V_TrustScores_Current"
-            WHERE details::jsonb->>'penalty_applied' = 'true'
-            OR (details::jsonb->'penalties') IS NOT NULL
-            """;
-
-        try
-        {
-            return await ExecuteScalarAsync<long>(sql, ct);
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
     // ===========================================
     // Score Buckets
     // ===========================================
@@ -729,13 +710,12 @@ public class TrustRepository
     public record AnomalyDetectionBatched(
         long ScoreDrops24h, long ScoreDrops7d,
         long ScoreSpikes24h, long ScoreSpikes7d,
-        long LowTrustNew24h, long LowTrustNew7d,
-        long PenalizedAccounts
+        long LowTrustNew24h, long LowTrustNew7d
     );
 
     /// <summary>
     /// Gets all anomaly detection metrics in a single query.
-    /// Combines: GetScoreDropsAsync (x2) + GetScoreSpikesAsync (x2) + GetLowTrustNewAccountsAsync (x2) + GetPenalizedAccountsAsync
+    /// Combines: GetScoreDropsAsync (x2) + GetScoreSpikesAsync (x2) + GetLowTrustNewAccountsAsync (x2)
     /// Note: History table queries are still separate due to potential table non-existence.
     /// </summary>
     public async Task<AnomalyDetectionBatched> GetAnomalyDetectionBatchedAsync(
@@ -803,7 +783,7 @@ public class TrustRepository
             }
         }
 
-        // Query low trust new accounts and penalized in one batch
+        // Query low trust new accounts
         var sql = """
             WITH now_ts AS (SELECT EXTRACT(EPOCH FROM NOW())::bigint as ts)
             SELECT
@@ -814,13 +794,7 @@ public class TrustRepository
             WHERE t.trust_level IN ('LOW', 'VERY_LOW')
             """;
 
-        const string penalizedSql = """
-            SELECT COUNT(*) FROM "V_TrustScores_Current"
-            WHERE details::jsonb->>'penalty_applied' = 'true'
-            OR (details::jsonb->'penalties') IS NOT NULL
-            """;
-
-        long lowNew24h = 0, lowNew7d = 0, penalized = 0;
+        long lowNew24h = 0, lowNew7d = 0;
 
         try
         {
@@ -841,18 +815,9 @@ public class TrustRepository
             _logger.LogWarning(ex, "Failed to query low trust new accounts");
         }
 
-        try
-        {
-            penalized = await ExecuteScalarAsync<long>(penalizedSql, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to query penalized accounts");
-        }
-
         return new AnomalyDetectionBatched(
             drops24h, drops7d, spikes24h, spikes7d,
-            lowNew24h, lowNew7d, penalized
+            lowNew24h, lowNew7d
         );
     }
 

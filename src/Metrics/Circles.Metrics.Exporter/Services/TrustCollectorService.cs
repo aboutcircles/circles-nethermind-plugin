@@ -67,7 +67,7 @@ public class TrustCollectorService : BackgroundService
             CollectScoreDistributionBatchedAsync(ct),    // Score dist + level counts + score buckets
             CollectConfidenceMetricsAsync(ct),          // Single query, different table
             CollectNetworkHealthBatchedAsync(ct),       // Velocity + churn + reciprocity + density + degrees
-            CollectAnomalyDetectionBatchedAsync(ct),    // Drops + spikes + low trust new + penalized
+            CollectAnomalyDetectionBatchedAsync(ct),    // Drops + spikes + low trust new accounts
             CollectEconomicCorrelationBatchedAsync(ct), // Volume metrics for both windows
             CollectTimestampMetricsAsync(ct)            // Small queries, different table
         );
@@ -239,11 +239,8 @@ public class TrustCollectorService : BackgroundService
             TrustMetrics.LowTrustNewAccounts.WithLabels("24h").Set(anomaly.LowTrustNew24h);
             TrustMetrics.LowTrustNewAccounts.WithLabels("7d").Set(anomaly.LowTrustNew7d);
 
-            // Penalized accounts
-            TrustMetrics.PenalizedAccounts.Set(anomaly.PenalizedAccounts);
-
-            _logger.LogDebug("Trust anomaly detection: drops_24h={Drops}, spikes_24h={Spikes}, penalized={Penalized}",
-                anomaly.ScoreDrops24h, anomaly.ScoreSpikes24h, anomaly.PenalizedAccounts);
+            _logger.LogDebug("Trust anomaly detection: drops_24h={Drops}, spikes_24h={Spikes}, low_new_24h={LowNew}",
+                anomaly.ScoreDrops24h, anomaly.ScoreSpikes24h, anomaly.LowTrustNew24h);
         }
         catch (Exception ex)
         {

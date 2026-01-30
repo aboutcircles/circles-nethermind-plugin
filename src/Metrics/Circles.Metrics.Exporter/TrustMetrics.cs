@@ -121,10 +121,6 @@ public static class TrustMetrics
             "New accounts scoring LOW or VERY_LOW in time window",
             new GaugeConfiguration { LabelNames = new[] { "window" } });
 
-    public static readonly Gauge PenalizedAccounts = Prometheus.Metrics
-        .CreateGauge("circles_trust_penalized_accounts",
-            "Number of accounts with penalty applied to their score");
-
     // ===========================================
     // Score Buckets (histogram-like distribution)
     // ===========================================
