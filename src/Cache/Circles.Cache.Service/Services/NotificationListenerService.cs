@@ -108,9 +108,22 @@ public class NotificationListenerService : BackgroundService
             _settings.PgNotifyChannel);
 
         // Keep connection alive and wait for notifications
+        // Use 5-minute timeout cycle to send keepalive queries, preventing idle_session_timeout (10min)
         while (!ct.IsCancellationRequested)
         {
-            await conn.WaitAsync(ct);
+            try
+            {
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(TimeSpan.FromMinutes(5));
+                await conn.WaitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Timeout reached, not shutdown - send keepalive query to reset PostgreSQL's idle timer
+                await using var keepalive = new NpgsqlCommand("SELECT 1", conn);
+                await keepalive.ExecuteNonQueryAsync(ct);
+                _logger.LogDebug("Sent keepalive query to prevent idle_session_timeout");
+            }
         }
     }
 
