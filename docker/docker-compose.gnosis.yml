@@ -131,8 +131,9 @@ services:
       - 3001
     environment:
       - PORT=3001
-      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;
-      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;
+      # Keepalive=300 (5min) prevents idle_session_timeout (10min) from killing LISTEN/NOTIFY connections
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;Tcp Keepalive=true;Keepalive=300;
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;Tcp Keepalive=true;Keepalive=300;
       - PG_NOTIFY_CHANNEL=circles_index_events
       - ROLLBACK_CAPACITY=12
       - MAX_CATCHUP_LAG=100
