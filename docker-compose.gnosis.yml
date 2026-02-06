@@ -71,6 +71,8 @@ services:
       --Network.DiscoveryPort=30303
       --Network.MaxActivePeers=100
       --HealthChecks.Enabled=false
+      --Sync.AncientReceiptsBarrier=0
+      --Sync.AncientBodiesBarrier=0
     env_file:
       - .env
     environment:
