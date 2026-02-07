@@ -151,7 +151,7 @@ public class Settings
             .ToArray()
         ??
         [
-            "0x00738aca013B7B2e6cfE1690F0021C3182Fa40B5"
+            "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5"
         ];
 
     public readonly string[] InvitationAtScaleReferralsModuleAddresses =
@@ -159,7 +159,7 @@ public class Settings
             .Select(x => x.Trim().ToLowerInvariant())
             .ToArray()
         ?? [
-            "0x12105a9B291aF2ABb0591001155A75949b062CE5"
+            "0x12105a9b291af2abb0591001155a75949b062ce5"
         ];
 
     public readonly string[] InvitationAtScaleQuotaGrantModuleAddresses =
