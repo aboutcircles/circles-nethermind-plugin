@@ -57,6 +57,7 @@ public class Plugin : INethermindPlugin
             new CirclesV2.InvitationEscrow.DatabaseSchema(),
             new CirclesV2.PaymentGateway.DatabaseSchema(),
             new CirclesV2.OIC.DatabaseSchema(),
+            new CirclesV2.InvitationAtScale.DatabaseSchema(),
             new Circles.Index.Safe.DatabaseSchema(),
             new CirclesViews.DatabaseSchema()
         };
@@ -96,7 +97,12 @@ public class Plugin : INethermindPlugin
             new CirclesV2.InvitationEscrow.LogParser(new(settings.InvitationEscrowContract)),
             new CirclesV2.PaymentGateway.LogParser(settings.PaymentGatewayFactoryAddresses.Select(o => new Address(o))
                 .ToImmutableHashSet()),
-            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress))
+            new CirclesV2.OIC.LogParser(new(settings.OICContractAddress)),
+            new CirclesV2.InvitationAtScale.LogParser(
+                settings.InvitationAtScaleInvitationFarmAddresses.Select(o => new Address(o)).ToImmutableHashSet(),
+                settings.InvitationAtScaleInvitationModuleAddresses.Select(o => new Address(o)).ToImmutableHashSet(),
+                settings.InvitationAtScaleReferralsModuleAddresses.Select(o => new Address(o)).ToImmutableHashSet(),
+                settings.InvitationAtScaleQuotaGrantModuleAddresses.Select(o => new Address(o)).ToImmutableHashSet())
         };
 
         _indexerContext = new Context(
@@ -221,6 +227,10 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Token offer factory: " + string.Join(", ", settings.CirclesTokenOfferFactoryAddress));
         pluginLogger.Info(" * V2 Invitation escrow: " + settings.InvitationEscrowContract);
         pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
+        pluginLogger.Info(" * V2 Invitation-at-scale farms: " + string.Join(", ", settings.InvitationAtScaleInvitationFarmAddresses));
+        pluginLogger.Info(" * V2 Invitation-at-scale invitation modules: " + string.Join(", ", settings.InvitationAtScaleInvitationModuleAddresses));
+        pluginLogger.Info(" * V2 Invitation-at-scale referrals modules: " + string.Join(", ", settings.InvitationAtScaleReferralsModuleAddresses));
+        pluginLogger.Info(" * V2 Invitation-at-scale quota grant modules: " + string.Join(", ", settings.InvitationAtScaleQuotaGrantModuleAddresses));
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ", settings.SafeProxyFactoryAddresses));
         // pluginLogger.Info("Start index from: " + settings.StartBlock);

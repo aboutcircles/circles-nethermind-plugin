@@ -136,6 +136,38 @@ public class Settings
         Environment.GetEnvironmentVariable("BASE_GROUP_DEPLOYER")?.ToLowerInvariant()
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
+    public readonly string[] InvitationAtScaleInvitationFarmAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_FARM_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ??
+        [
+            "0xd28b7c4f148b1f1e190840a1f7a796c5525d8902"
+        ];
+
+    public readonly string[] InvitationAtScaleInvitationModuleAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_MODULE_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ??
+        [
+            "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5"
+        ];
+
+    public readonly string[] InvitationAtScaleReferralsModuleAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_REFERRALS_MODULE_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ?? [
+            "0x12105a9b291af2abb0591001155a75949b062ce5"
+        ];
+
+    public readonly string[] InvitationAtScaleQuotaGrantModuleAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_QUOTA_GRANT_MODULE_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ?? [];
+
     public readonly bool EnableGroupMinting =
         Environment.GetEnvironmentVariable("PATHFINDER_ENABLE_GROUP_MINTING")?.ToLowerInvariant() != "false";
 
