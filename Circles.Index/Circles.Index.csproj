@@ -33,6 +33,7 @@
       <ProjectReference Include="..\Circles.Index.CirclesV2.BaseGroupDeployer\Circles.Index.CirclesV2.BaseGroupDeployer.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.CMGroupDeployer\Circles.Index.CirclesV2.CMGroupDeployer.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.InvitationEscrow\Circles.Index.CirclesV2.InvitationEscrow.csproj" />
+      <ProjectReference Include="..\Circles.Index.CirclesV2.InvitationAtScale\Circles.Index.CirclesV2.InvitationAtScale.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.LBP\Circles.Index.CirclesV2.LBP.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.NameRegistry\Circles.Index.CirclesV2.NameRegistry.csproj" />
       <ProjectReference Include="..\Circles.Index.CirclesV2.StandardTreasury\Circles.Index.CirclesV2.StandardTreasury.csproj" />

@@ -1,5 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
+# 
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{1A7AB239-847B-437F-8A00-BE2B172105CC}"
 	ProjectSection(SolutionItems) = preProject
 		.github\workflows\docker-build-push-release.yml = .github\workflows\docker-build-push-release.yml
@@ -82,6 +83,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.PaymentGateway", "Circles.Index.CirclesV2.PaymentGateway\Circles.Index.CirclesV2.PaymentGateway.csproj", "{CFD35784-7CE5-49BD-9452-40F9A65149FD}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.TrustMissingAvatars", "Circles.Index.TrustMissingAvatars\Circles.Index.TrustMissingAvatars.csproj", "{D1896720-D7A0-466D-8973-58C0B700F174}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesV2.InvitationAtScale", "Circles.Index.CirclesV2.InvitationAtScale\Circles.Index.CirclesV2.InvitationAtScale.csproj", "{39031196-EA72-4BC8-B0AD-35081E629E63}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -201,6 +204,10 @@ Global
 		{D1896720-D7A0-466D-8973-58C0B700F174}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D1896720-D7A0-466D-8973-58C0B700F174}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D1896720-D7A0-466D-8973-58C0B700F174}.Release|Any CPU.Build.0 = Release|Any CPU
+		{39031196-EA72-4BC8-B0AD-35081E629E63}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{39031196-EA72-4BC8-B0AD-35081E629E63}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{39031196-EA72-4BC8-B0AD-35081E629E63}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{39031196-EA72-4BC8-B0AD-35081E629E63}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2B7D2126-6D6F-4A5B-81A1-3E5F1A9645F6} = {64189094-62E5-48CA-BD66-1A7B82263BA8}
