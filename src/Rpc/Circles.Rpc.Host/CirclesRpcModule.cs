@@ -2739,9 +2739,14 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
         await using var reader = await command.ExecuteReaderAsync();
 
+        // Detect numeric columns upfront to avoid decimal overflow on large values
+        // (e.g. tokenId stores Ethereum addresses as uint256 which exceeds decimal.MaxValue)
+        var numericColumns = new HashSet<int>();
         for (int i = 0; i < reader.FieldCount; i++)
         {
             columnNames.Add(reader.GetName(i));
+            if (reader.GetDataTypeName(i) == "numeric")
+                numericColumns.Add(i);
         }
 
         // Find column indices for cursor generation
@@ -2758,8 +2763,19 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             var row = new object?[columnNames.Count];
             for (int i = 0; i < columnNames.Count; i++)
             {
-                var value = reader.GetValue(i);
-                row[i] = value is DBNull ? null : value;
+                if (reader.IsDBNull(i))
+                {
+                    row[i] = null;
+                }
+                else if (numericColumns.Contains(i))
+                {
+                    // Read as BigInteger to avoid OverflowException, serialize as string
+                    row[i] = reader.GetFieldValue<BigInteger>(i).ToString();
+                }
+                else
+                {
+                    row[i] = reader.GetValue(i);
+                }
             }
 
             // Track cursor values if available
