@@ -74,6 +74,30 @@ public class DatabaseSchema : BaseDatabaseSchema
         "event FarmGrown(address indexed maintainer, uint256 indexed numberOfBots, uint256 indexed totalNumberOfBots)"
     );
 
+    // ============================================
+    // InvitationQuotaGrantModule Events
+    // ============================================
+
+    public static readonly EventSchema QuotaPermissionGranted = EventSchema.FromSolidity(
+        Namespace,
+        "event QuotaPermissionGranted(address indexed grantee)"
+    );
+
+    public static readonly EventSchema QuotaPermissionRevoked = EventSchema.FromSolidity(
+        Namespace,
+        "event QuotaPermissionRevoked(address indexed grantee)"
+    );
+
+    public static readonly EventSchema InviterQuotaSet = EventSchema.FromSolidity(
+        Namespace,
+        "event InviterQuotaSet(address indexed grantee, address indexed inviter, uint256 indexed quota)"
+    );
+
+    public static readonly EventSchema InviterExtraQuotaAdded = EventSchema.FromSolidity(
+        Namespace,
+        "event InviterExtraQuotaAdded(address indexed inviter, uint256 indexed extraQuota)"
+    );
+
     public DatabaseSchema()
     {
         // ============================================
@@ -213,6 +237,57 @@ public class DatabaseSchema : BaseDatabaseSchema
                 ("maintainer", e => e.Maintainer),
                 ("numberOfBots", e => (BigInteger)e.NumberOfBots),
                 ("totalNumberOfBots", e => (BigInteger)e.TotalNumberOfBots)
+            ]
+        );
+
+        // ============================================
+        // InvitationQuotaGrantModule Mappings
+        // ============================================
+
+        AddMappings<Events.QuotaPermissionGranted>(
+            ns: Namespace,
+            table: nameof(QuotaPermissionGranted),
+            eventSchema: QuotaPermissionGranted,
+            databaseFieldMap:
+            [
+                ("emitter", e => e.Emitter),
+                ("grantee", e => e.Grantee)
+            ]
+        );
+
+        AddMappings<Events.QuotaPermissionRevoked>(
+            ns: Namespace,
+            table: nameof(QuotaPermissionRevoked),
+            eventSchema: QuotaPermissionRevoked,
+            databaseFieldMap:
+            [
+                ("emitter", e => e.Emitter),
+                ("grantee", e => e.Grantee)
+            ]
+        );
+
+        AddMappings<Events.InviterQuotaSet>(
+            ns: Namespace,
+            table: nameof(InviterQuotaSet),
+            eventSchema: InviterQuotaSet,
+            databaseFieldMap:
+            [
+                ("emitter", e => e.Emitter),
+                ("grantee", e => e.Grantee),
+                ("inviter", e => e.Inviter),
+                ("quota", e => (BigInteger)e.Quota)
+            ]
+        );
+
+        AddMappings<Events.InviterExtraQuotaAdded>(
+            ns: Namespace,
+            table: nameof(InviterExtraQuotaAdded),
+            eventSchema: InviterExtraQuotaAdded,
+            databaseFieldMap:
+            [
+                ("emitter", e => e.Emitter),
+                ("inviter", e => e.Inviter),
+                ("extraQuota", e => (BigInteger)e.ExtraQuota)
             ]
         );
     }

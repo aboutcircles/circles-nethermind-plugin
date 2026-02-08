@@ -96,9 +96,10 @@ public class Plugin : INethermindPlugin
                 .ToImmutableHashSet()),
             new CirclesV2.OIC.LogParser(new(settings.OICContractAddress)),
             new CirclesV2.InvitationsAtScale.LogParser(
-                new(settings.InvitationModuleAddress),
-                new(settings.ReferralsModuleAddress),
-                new(settings.InvitationFarmAddress))
+                settings.InvitationAtScaleInvitationFarmAddresses.Select(a => new Address(a)).ToImmutableHashSet(),
+                settings.InvitationAtScaleInvitationModuleAddresses.Select(a => new Address(a)).ToImmutableHashSet(),
+                settings.InvitationAtScaleReferralsModuleAddresses.Select(a => new Address(a)).ToImmutableHashSet(),
+                settings.InvitationAtScaleQuotaGrantModuleAddresses.Select(a => new Address(a)).ToImmutableHashSet())
         };
 
         _indexerContext = new Context(
@@ -225,9 +226,10 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Invitation escrow: " + string.Join(", ", settings.InvitationEscrowContract));
         pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
-        pluginLogger.Info(" * V2 Invitation Module: " + settings.InvitationModuleAddress);
-        pluginLogger.Info(" * V2 Referrals Module: " + settings.ReferralsModuleAddress);
-        pluginLogger.Info(" * V2 Invitation Farm: " + settings.InvitationFarmAddress);
+        pluginLogger.Info(" * V2 Invitation Farms: " + string.Join(", ", settings.InvitationAtScaleInvitationFarmAddresses));
+        pluginLogger.Info(" * V2 Invitation Modules: " + string.Join(", ", settings.InvitationAtScaleInvitationModuleAddresses));
+        pluginLogger.Info(" * V2 Referrals Modules: " + string.Join(", ", settings.InvitationAtScaleReferralsModuleAddresses));
+        pluginLogger.Info(" * V2 Quota Grant Modules: " + string.Join(", ", settings.InvitationAtScaleQuotaGrantModuleAddresses));
         pluginLogger.Info(" * Safe Proxy Factory addresses: " + string.Join(", ", settings.SafeProxyFactoryAddresses));
         pluginLogger.Debug("Start index from: " + settings.StartBlock);
 

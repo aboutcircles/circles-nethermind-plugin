@@ -166,4 +166,63 @@ public static class Events
         UInt256 NumberOfBots,
         UInt256 TotalNumberOfBots
     ) : IIndexEvent;
+
+    // ============================================
+    // InvitationQuotaGrantModule Events
+    // ============================================
+
+    /// <summary>
+    /// Emitted when a grantee is given permission to set inviter quotas.
+    /// </summary>
+    public record QuotaPermissionGranted(
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
+        string TransactionHash,
+        string Emitter,
+        string Grantee
+    ) : IIndexEvent;
+
+    /// <summary>
+    /// Emitted when a grantee's quota-setting permission is revoked.
+    /// </summary>
+    public record QuotaPermissionRevoked(
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
+        string TransactionHash,
+        string Emitter,
+        string Grantee
+    ) : IIndexEvent;
+
+    /// <summary>
+    /// Emitted when a grantee sets an inviter's quota.
+    /// </summary>
+    public record InviterQuotaSet(
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
+        string TransactionHash,
+        string Emitter,
+        string Grantee,
+        string Inviter,
+        UInt256 Quota
+    ) : IIndexEvent;
+
+    /// <summary>
+    /// Emitted when extra quota is added to an inviter.
+    /// </summary>
+    public record InviterExtraQuotaAdded(
+        long BlockNumber,
+        long Timestamp,
+        int TransactionIndex,
+        int LogIndex,
+        string TransactionHash,
+        string Emitter,
+        string Inviter,
+        UInt256 ExtraQuota
+    ) : IIndexEvent;
 }

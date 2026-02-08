@@ -211,17 +211,37 @@ public class Settings
         ?? "0xd0b5bd9962197beac4cba24244ec3587f19bd06d";
 
     // Invitations at Scale contracts
-    public readonly string InvitationModuleAddress =
-        Environment.GetEnvironmentVariable("V2_INVITATION_MODULE_ADDRESS")?.ToLowerInvariant()
-        ?? "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5";
+    public readonly string[] InvitationAtScaleInvitationFarmAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_FARM_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ??
+        [
+            "0xd28b7c4f148b1f1e190840a1f7a796c5525d8902"
+        ];
 
-    public readonly string ReferralsModuleAddress =
-        Environment.GetEnvironmentVariable("V2_REFERRALS_MODULE_ADDRESS")?.ToLowerInvariant()
-        ?? "0x12105a9b291af2abb0591001155a75949b062ce5";
+    public readonly string[] InvitationAtScaleInvitationModuleAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_MODULE_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ??
+        [
+            "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5"
+        ];
 
-    public readonly string InvitationFarmAddress =
-        Environment.GetEnvironmentVariable("V2_INVITATION_FARM_ADDRESS")?.ToLowerInvariant()
-        ?? "0xd28b7c4f148b1f1e190840a1f7a796c5525d8902";
+    public readonly string[] InvitationAtScaleReferralsModuleAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_REFERRALS_MODULE_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ?? [
+            "0x12105a9b291af2abb0591001155a75949b062ce5"
+        ];
+
+    public readonly string[] InvitationAtScaleQuotaGrantModuleAddresses =
+        Environment.GetEnvironmentVariable("V2_INVITATION_AT_SCALE_QUOTA_GRANT_MODULE_ADDRESSES")?.Split(',')
+            .Select(x => x.Trim().ToLowerInvariant())
+            .ToArray()
+        ?? [];
 
     #endregion
 }

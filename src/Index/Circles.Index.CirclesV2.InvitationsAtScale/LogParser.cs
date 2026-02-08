@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Circles.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -7,36 +8,82 @@ namespace Circles.Index.CirclesV2.InvitationsAtScale;
 
 /// <summary>
 /// Parses logs emitted by the Invitations at Scale contracts:
-/// - InvitationModule
-/// - ReferralsModule
-/// - InvitationFarm
+/// - InvitationFarm (admin, maintainer, seeder, quota, module updates, bots, invites, farm growth)
+/// - InvitationModule (human registration)
+/// - ReferralsModule (account creation/claiming)
+/// - InvitationQuotaGrantModule (quota permissions, quota setting)
 /// </summary>
 public class LogParser(
-    Address invitationModuleAddress,
-    Address referralsModuleAddress,
-    Address invitationFarmAddress) : ILogParser
+    ImmutableHashSet<Address> farmAddresses,
+    ImmutableHashSet<Address> invitationModuleAddresses,
+    ImmutableHashSet<Address> referralsModuleAddresses,
+    ImmutableHashSet<Address> quotaGrantModuleAddresses) : ILogParser
 {
-    // InvitationModule topics
-    private readonly Hash256 _registerHumanTopic = new(DatabaseSchema.RegisterHuman.Topic);
+    // InvitationFarm topics
+    private static readonly Hash256 _adminSet = new(DatabaseSchema.AdminSet.Topic);
+    private static readonly Hash256 _maintainerSet = new(DatabaseSchema.MaintainerSet.Topic);
+    private static readonly Hash256 _seederSet = new(DatabaseSchema.SeederSet.Topic);
+    private static readonly Hash256 _inviterQuotaUpdated = new(DatabaseSchema.InviterQuotaUpdated.Topic);
+    private static readonly Hash256 _invitationModuleUpdated = new(DatabaseSchema.InvitationModuleUpdated.Topic);
+    private static readonly Hash256 _botCreated = new(DatabaseSchema.BotCreated.Topic);
+    private static readonly Hash256 _invitesClaimed = new(DatabaseSchema.InvitesClaimed.Topic);
+    private static readonly Hash256 _farmGrown = new(DatabaseSchema.FarmGrown.Topic);
+
+    // InvitationModule topic
+    private static readonly Hash256 _registerHuman = new(DatabaseSchema.RegisterHuman.Topic);
 
     // ReferralsModule topics
-    private readonly Hash256 _accountCreatedTopic = new(DatabaseSchema.AccountCreated.Topic);
-    private readonly Hash256 _accountClaimedTopic = new(DatabaseSchema.AccountClaimed.Topic);
+    private static readonly Hash256 _accountCreated = new(DatabaseSchema.AccountCreated.Topic);
+    private static readonly Hash256 _accountClaimed = new(DatabaseSchema.AccountClaimed.Topic);
 
-    // InvitationFarm topics
-    private readonly Hash256 _adminSetTopic = new(DatabaseSchema.AdminSet.Topic);
-    private readonly Hash256 _maintainerSetTopic = new(DatabaseSchema.MaintainerSet.Topic);
-    private readonly Hash256 _seederSetTopic = new(DatabaseSchema.SeederSet.Topic);
-    private readonly Hash256 _inviterQuotaUpdatedTopic = new(DatabaseSchema.InviterQuotaUpdated.Topic);
-    private readonly Hash256 _invitationModuleUpdatedTopic = new(DatabaseSchema.InvitationModuleUpdated.Topic);
-    private readonly Hash256 _botCreatedTopic = new(DatabaseSchema.BotCreated.Topic);
-    private readonly Hash256 _invitesClaimedTopic = new(DatabaseSchema.InvitesClaimed.Topic);
-    private readonly Hash256 _farmGrownTopic = new(DatabaseSchema.FarmGrown.Topic);
+    // InvitationQuotaGrantModule topics
+    private static readonly Hash256 _quotaPermissionGranted = new(DatabaseSchema.QuotaPermissionGranted.Topic);
+    private static readonly Hash256 _quotaPermissionRevoked = new(DatabaseSchema.QuotaPermissionRevoked.Topic);
+    private static readonly Hash256 _inviterQuotaSet = new(DatabaseSchema.InviterQuotaSet.Topic);
+    private static readonly Hash256 _inviterExtraQuotaAdded = new(DatabaseSchema.InviterExtraQuotaAdded.Topic);
 
-    public IRollbackCache[] Caches { get; } = [];
+    // Caches for dynamic address discovery
+    public static readonly RollbackCache<Address, object?> Farms = new("InvitationsAtScale_Farms");
+    public static readonly RollbackCache<Address, object?> InvitationModules = new("InvitationsAtScale_InvitationModules");
+    public static readonly RollbackCache<Address, object?> ReferralsModules = new("InvitationsAtScale_ReferralsModules");
+    public static readonly RollbackCache<Address, object?> QuotaGrantModules = new("InvitationsAtScale_QuotaGrantModules");
+
+    public IRollbackCache[] Caches { get; } = [Farms, InvitationModules, ReferralsModules, QuotaGrantModules];
 
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
+        // Farm emitters
+        var farmSeeds = new Dictionary<Address, object?>();
+        foreach (var address in farmAddresses) farmSeeds[address] = null;
+        SeedEmitterAddresses(database, farmSeeds, nameof(Events.AdminSet));
+        SeedEmitterAddresses(database, farmSeeds, nameof(Events.InvitationModuleUpdated));
+        Farms.Seed(farmSeeds);
+
+        // Invitation module emitters
+        var moduleSeeds = new Dictionary<Address, object?>();
+        foreach (var address in invitationModuleAddresses) moduleSeeds[address] = null;
+        SeedEmitterAddresses(database, moduleSeeds, nameof(Events.RegisterHuman));
+        SeedAddressesFromField(database, moduleSeeds, nameof(Events.InvitationModuleUpdated), "module");
+        InvitationModules.Seed(moduleSeeds);
+
+        // Referrals module emitters
+        var referralsSeeds = new Dictionary<Address, object?>();
+        foreach (var address in referralsModuleAddresses) referralsSeeds[address] = null;
+        SeedEmitterAddresses(database, referralsSeeds, nameof(Events.AccountCreated));
+        ReferralsModules.Seed(referralsSeeds);
+
+        // Quota grant module emitters
+        var quotaSeeds = new Dictionary<Address, object?>();
+        foreach (var address in quotaGrantModuleAddresses) quotaSeeds[address] = null;
+        SeedEmitterAddresses(database, quotaSeeds, nameof(Events.QuotaPermissionGranted));
+        SeedEmitterAddresses(database, quotaSeeds, nameof(Events.InviterQuotaSet));
+        QuotaGrantModules.Seed(quotaSeeds);
+
+        logger.Info($" * Cached {farmSeeds.Count} InvitationsAtScale farms");
+        logger.Info($" * Cached {moduleSeeds.Count} InvitationsAtScale invitation modules");
+        logger.Info($" * Cached {referralsSeeds.Count} InvitationsAtScale referrals modules");
+        logger.Info($" * Cached {quotaSeeds.Count} InvitationsAtScale quota grant modules");
+
         return Task.CompletedTask;
     }
 
@@ -62,297 +109,290 @@ public class LogParser(
             yield break;
         }
 
-        bool isFromInvitationModule = log.Address == invitationModuleAddress;
-        bool isFromReferralsModule = log.Address == referralsModuleAddress;
-        bool isFromInvitationFarm = log.Address == invitationFarmAddress;
-
-        if (!isFromInvitationModule && !isFromReferralsModule && !isFromInvitationFarm)
-        {
-            yield break;
-        }
-
         var topic = log.Topics[0];
 
-        // InvitationModule events
-        if (isFromInvitationModule)
+        if (Farms.ContainsKey(log.Address))
         {
-            if (topic == _registerHumanTopic)
+            if (topic == _adminSet)
             {
-                yield return ParseRegisterHuman(block, receipt, log, logIndex);
+                yield return ParseAdminSet(block, receipt, log, logIndex);
+                yield break;
+            }
+
+            if (topic == _maintainerSet)
+            {
+                yield return ParseMaintainerSet(block, receipt, log, logIndex);
+                yield break;
+            }
+
+            if (topic == _seederSet)
+            {
+                yield return ParseSeederSet(block, receipt, log, logIndex);
+                yield break;
+            }
+
+            if (topic == _inviterQuotaUpdated)
+            {
+                yield return ParseInviterQuotaUpdated(block, receipt, log, logIndex);
+                yield break;
+            }
+
+            if (topic == _invitationModuleUpdated)
+            {
+                var evt = ParseInvitationModuleUpdated(block, receipt, log, logIndex);
+                InvitationModules.Add(block.Number, new Address(evt.Module), null);
+                yield return evt;
+                yield break;
+            }
+
+            if (topic == _botCreated)
+            {
+                yield return ParseBotCreated(block, receipt, log, logIndex);
+                yield break;
+            }
+
+            if (topic == _invitesClaimed)
+            {
+                yield return ParseInvitesClaimed(block, receipt, log, logIndex);
+                yield break;
+            }
+
+            if (topic == _farmGrown)
+            {
+                yield return ParseFarmGrown(block, receipt, log, logIndex);
                 yield break;
             }
         }
 
-        // ReferralsModule events
-        if (isFromReferralsModule)
+        if (InvitationModules.ContainsKey(log.Address) && topic == _registerHuman)
         {
-            if (topic == _accountCreatedTopic)
+            yield return ParseRegisterHuman(block, receipt, log, logIndex);
+            yield break;
+        }
+
+        if (ReferralsModules.ContainsKey(log.Address))
+        {
+            if (topic == _accountCreated)
             {
                 yield return ParseAccountCreated(block, receipt, log, logIndex);
                 yield break;
             }
 
-            if (topic == _accountClaimedTopic)
+            if (topic == _accountClaimed)
             {
                 yield return ParseAccountClaimed(block, receipt, log, logIndex);
                 yield break;
             }
         }
 
-        // InvitationFarm events
-        if (isFromInvitationFarm)
+        if (QuotaGrantModules.ContainsKey(log.Address))
         {
-            if (topic == _adminSetTopic)
+            if (topic == _quotaPermissionGranted)
             {
-                yield return ParseAdminSet(block, receipt, log, logIndex);
+                yield return ParseQuotaPermissionGranted(block, receipt, log, logIndex);
                 yield break;
             }
 
-            if (topic == _maintainerSetTopic)
+            if (topic == _quotaPermissionRevoked)
             {
-                yield return ParseMaintainerSet(block, receipt, log, logIndex);
+                yield return ParseQuotaPermissionRevoked(block, receipt, log, logIndex);
                 yield break;
             }
 
-            if (topic == _seederSetTopic)
+            if (topic == _inviterQuotaSet)
             {
-                yield return ParseSeederSet(block, receipt, log, logIndex);
+                yield return ParseInviterQuotaSet(block, receipt, log, logIndex);
                 yield break;
             }
 
-            if (topic == _inviterQuotaUpdatedTopic)
+            if (topic == _inviterExtraQuotaAdded)
             {
-                yield return ParseInviterQuotaUpdated(block, receipt, log, logIndex);
-                yield break;
-            }
-
-            if (topic == _invitationModuleUpdatedTopic)
-            {
-                yield return ParseInvitationModuleUpdated(block, receipt, log, logIndex);
-                yield break;
-            }
-
-            if (topic == _botCreatedTopic)
-            {
-                yield return ParseBotCreated(block, receipt, log, logIndex);
-                yield break;
-            }
-
-            if (topic == _invitesClaimedTopic)
-            {
-                yield return ParseInvitesClaimed(block, receipt, log, logIndex);
-                yield break;
-            }
-
-            if (topic == _farmGrownTopic)
-            {
-                yield return ParseFarmGrown(block, receipt, log, logIndex);
-                yield break;
+                yield return ParseInviterExtraQuotaAdded(block, receipt, log, logIndex);
             }
         }
     }
 
-    // ============================================
-    // InvitationModule Parsers
-    // ============================================
-
-    private Events.RegisterHuman ParseRegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static void SeedEmitterAddresses(IDatabase database, IDictionary<Address, object?> sink, string table)
     {
-        // event RegisterHuman(address indexed human, address indexed originInviter, address indexed proxyInviter)
-        string human = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-        string originInviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
-        string proxyInviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
+        var select = new Query.Select(DatabaseSchema.Namespace, table, ["emitter"], [], [], int.MaxValue, false,
+            int.MaxValue);
 
-        return new Events.RegisterHuman(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            human,
-            originInviter,
-            proxyInviter
-        );
+        ParameterizedSql sql;
+        try
+        {
+            sql = select.ToSql(database);
+        }
+        catch (InvalidOperationException)
+        {
+            // Backward compatibility: if the table doesn't exist yet, skip DB seeding
+            return;
+        }
+
+        foreach (var row in database.Select(sql).Rows)
+        {
+            if (row[0] is null) continue;
+            sink[new Address(row[0].ToString()!)] = null;
+        }
     }
 
-    // ============================================
-    // ReferralsModule Parsers
-    // ============================================
-
-    private Events.AccountCreated ParseAccountCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static void SeedAddressesFromField(IDatabase database, IDictionary<Address, object?> sink, string table,
+        string field)
     {
-        // event AccountCreated(address indexed account)
-        string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        var select = new Query.Select(DatabaseSchema.Namespace, table, [field], [], [], int.MaxValue, false,
+            int.MaxValue);
 
-        return new Events.AccountCreated(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            account
-        );
-    }
+        ParameterizedSql sql;
+        try
+        {
+            sql = select.ToSql(database);
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
 
-    private Events.AccountClaimed ParseAccountClaimed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
-    {
-        // event AccountClaimed(address indexed account)
-        string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-
-        return new Events.AccountClaimed(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            account
-        );
+        foreach (var row in database.Select(sql).Rows)
+        {
+            if (row[0] is null) continue;
+            sink[new Address(row[0].ToString()!)] = null;
+        }
     }
 
     // ============================================
     // InvitationFarm Parsers
     // ============================================
 
-    private Events.AdminSet ParseAdminSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static Events.AdminSet ParseAdminSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // event AdminSet(address indexed newAdmin)
         string newAdmin = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-
-        return new Events.AdminSet(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            newAdmin
-        );
+        return new Events.AdminSet(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), newAdmin);
     }
 
-    private Events.MaintainerSet ParseMaintainerSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static Events.MaintainerSet ParseMaintainerSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // event MaintainerSet(address indexed maintainer)
         string maintainer = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-
-        return new Events.MaintainerSet(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            maintainer
-        );
+        return new Events.MaintainerSet(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), maintainer);
     }
 
-    private Events.SeederSet ParseSeederSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static Events.SeederSet ParseSeederSet(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // event SeederSet(address indexed seeder)
         string seeder = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-
-        return new Events.SeederSet(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            seeder
-        );
+        return new Events.SeederSet(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), seeder);
     }
 
-    private Events.InviterQuotaUpdated ParseInviterQuotaUpdated(Block block, TxReceipt receipt, LogEntry log,
+    private static Events.InviterQuotaUpdated ParseInviterQuotaUpdated(Block block, TxReceipt receipt, LogEntry log,
         int logIndex)
     {
-        // event InviterQuotaUpdated(address indexed inviter, uint256 indexed quota)
         string inviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var quota = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
-
-        return new Events.InviterQuotaUpdated(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            inviter,
-            quota
-        );
+        return new Events.InviterQuotaUpdated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), inviter, quota);
     }
 
-    private Events.InvitationModuleUpdated ParseInvitationModuleUpdated(Block block, TxReceipt receipt, LogEntry log,
-        int logIndex)
+    private static Events.InvitationModuleUpdated ParseInvitationModuleUpdated(Block block, TxReceipt receipt,
+        LogEntry log, int logIndex)
     {
-        // event InvitationModuleUpdated(address indexed module, address indexed genericCallProxy)
         string module = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         string genericCallProxy = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
-
-        return new Events.InvitationModuleUpdated(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            module,
-            genericCallProxy
-        );
+        return new Events.InvitationModuleUpdated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), module, genericCallProxy);
     }
 
-    private Events.BotCreated ParseBotCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static Events.BotCreated ParseBotCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // event BotCreated(address indexed createdBot)
         string createdBot = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
-
-        return new Events.BotCreated(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            createdBot
-        );
+        return new Events.BotCreated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), createdBot);
     }
 
-    private Events.InvitesClaimed ParseInvitesClaimed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static Events.InvitesClaimed ParseInvitesClaimed(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
     {
-        // event InvitesClaimed(address indexed inviter, uint256 indexed count)
         string inviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var count = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
-
-        return new Events.InvitesClaimed(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            inviter,
-            count
-        );
+        return new Events.InvitesClaimed(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), inviter, count);
     }
 
-    private Events.FarmGrown ParseFarmGrown(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    private static Events.FarmGrown ParseFarmGrown(Block block, TxReceipt receipt, LogEntry log, int logIndex)
     {
-        // event FarmGrown(address indexed maintainer, uint256 indexed numberOfBots, uint256 indexed totalNumberOfBots)
         string maintainer = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
         var numberOfBots = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
         var totalNumberOfBots = LogDataParsingHelper.ParseSingleUInt256(log.Topics[3].Bytes);
+        return new Events.FarmGrown(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), maintainer, numberOfBots, totalNumberOfBots);
+    }
 
-        return new Events.FarmGrown(
-            block.Number,
-            (long)block.Timestamp,
-            receipt.Index,
-            logIndex,
-            receipt.TxHash!.ToString(),
-            log.Address.ToLowerHex(),
-            maintainer,
-            numberOfBots,
-            totalNumberOfBots
-        );
+    // ============================================
+    // InvitationModule Parsers
+    // ============================================
+
+    private static Events.RegisterHuman ParseRegisterHuman(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string human = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string originInviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        string proxyInviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[3].Bytes);
+        return new Events.RegisterHuman(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), human, originInviter, proxyInviter);
+    }
+
+    // ============================================
+    // ReferralsModule Parsers
+    // ============================================
+
+    private static Events.AccountCreated ParseAccountCreated(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        return new Events.AccountCreated(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), account);
+    }
+
+    private static Events.AccountClaimed ParseAccountClaimed(Block block, TxReceipt receipt, LogEntry log, int logIndex)
+    {
+        string account = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        return new Events.AccountClaimed(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), account);
+    }
+
+    // ============================================
+    // InvitationQuotaGrantModule Parsers
+    // ============================================
+
+    private static Events.QuotaPermissionGranted ParseQuotaPermissionGranted(Block block, TxReceipt receipt,
+        LogEntry log, int logIndex)
+    {
+        string grantee = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        return new Events.QuotaPermissionGranted(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), grantee);
+    }
+
+    private static Events.QuotaPermissionRevoked ParseQuotaPermissionRevoked(Block block, TxReceipt receipt,
+        LogEntry log, int logIndex)
+    {
+        string grantee = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        return new Events.QuotaPermissionRevoked(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), grantee);
+    }
+
+    private static Events.InviterQuotaSet ParseInviterQuotaSet(Block block, TxReceipt receipt, LogEntry log,
+        int logIndex)
+    {
+        string grantee = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        string inviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[2].Bytes);
+        var quota = LogDataParsingHelper.ParseSingleUInt256(log.Topics[3].Bytes);
+        return new Events.InviterQuotaSet(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), grantee, inviter, quota);
+    }
+
+    private static Events.InviterExtraQuotaAdded ParseInviterExtraQuotaAdded(Block block, TxReceipt receipt,
+        LogEntry log, int logIndex)
+    {
+        string inviter = LogDataParsingHelper.ParseAddressFromTopic(log.Topics[1].Bytes);
+        var extraQuota = LogDataParsingHelper.ParseSingleUInt256(log.Topics[2].Bytes);
+        return new Events.InviterExtraQuotaAdded(block.Number, (long)block.Timestamp, receipt.Index, logIndex,
+            receipt.TxHash!.ToString(), log.Address.ToLowerHex(), inviter, extraQuota);
     }
 }
