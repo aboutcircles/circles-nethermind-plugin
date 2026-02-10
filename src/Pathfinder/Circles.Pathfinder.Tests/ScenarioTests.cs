@@ -14,12 +14,21 @@ namespace Circles.Pathfinder.Tests;
 /// Data-driven scenario tests for the pathfinder.
 /// Loads scenarios from JSON files and validates path computation and contract execution.
 ///
+/// Uses SharedGraphCache to load graph data once per block number (4 loads for 62 scenarios)
+/// instead of once per scenario (62 loads × 760K rows each).
+///
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// </summary>
 [TestFixture]
 public class ScenarioTests
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    [OneTimeTearDown]
+    public async Task TearDown()
+    {
+        await SharedGraphCache.ClearAsync();
+    }
 
     /// <summary>
     /// Tests pathfinder computation for each scenario.
@@ -35,28 +44,23 @@ public class ScenarioTests
             return;
         }
 
-        // Check test environment availability
-        TestEnvironmentClient? session = null;
+        // Check test environment availability (only once, not per scenario)
         try
         {
-            var health = await TestEnvironmentClient.GetHealthAsync();
-            if (health?.Status != "healthy")
+            if (!SharedGraphCache.IsCached(scenario.Block))
             {
-                Assert.Ignore("Test environment not healthy");
+                var health = await TestEnvironmentClient.GetHealthAsync();
+                if (health?.Status != "healthy")
+                {
+                    Assert.Ignore("Test environment not healthy");
+                }
+
+                var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
+                if (!exists)
+                {
+                    Assert.Ignore($"Block {scenario.Block} not indexed");
+                }
             }
-
-            var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
-            if (!exists)
-            {
-                Assert.Ignore($"Block {scenario.Block} not indexed");
-            }
-
-            session = await TestEnvironmentClient.CreateSessionAsync(
-                scenario.Block,
-                features: ["db"],
-                ttl: "15m");
-
-            // No longer require direct DB - ProxyLoadGraph enables remote testing via query proxy API
         }
         catch (Exception ex)
         {
@@ -64,31 +68,17 @@ public class ScenarioTests
             return;
         }
 
-        try
-        {
-            await ExecutePathfinderTest(scenario, session);
-        }
-        finally
-        {
-            if (session != null)
-            {
-                await session.DisposeAsync();
-            }
-        }
+        ExecutePathfinderTest(scenario);
     }
 
-    private async Task ExecutePathfinderTest(TransferScenario scenario, TestEnvironmentClient session)
+    private void ExecutePathfinderTest(TransferScenario scenario)
     {
-        var settings = new Settings();
+        var isCached = SharedGraphCache.IsCached(scenario.Block);
+        TestContext.Out.WriteLine(isCached
+            ? $"Using cached graph for block {scenario.Block}"
+            : $"Loading graph for block {scenario.Block} (first scenario at this block)");
 
-        // Use direct DB connection if available, otherwise use query proxy API
-        ILoadGraph loadGraph = session.IsDirectConnectionAvailable
-            ? new LoadGraph(session.PostgresConnectionString!, settings)
-            : new ProxyLoadGraph(session, settings);
-
-        TestContext.Out.WriteLine($"Using {(session.IsDirectConnectionAvailable ? "direct DB" : "query proxy")} for data loading");
-
-        var factory = new GraphFactory(RouterAddress, loadGraph);
+        var factory = SharedGraphCache.CreateFactory(scenario.Block);
 
         var trustGraph = factory.V2TrustGraph();
         var balanceGraph = factory.V2BalanceGraph();
@@ -355,6 +345,9 @@ public class ConcurrentSessionTests
 /// <summary>
 /// E2E tests that execute computed paths on Anvil fork.
 /// Validates that paths actually work on-chain.
+///
+/// Note: E2E tests still create individual sessions because they need Anvil forks
+/// which are stateful (each Anvil test modifies the chain state via transactions).
 ///
 /// Tests run by default but gracefully skip when TEST_ENV_URL is not set.
 /// CI triggers these tests automatically on merges to main/dev branches.

@@ -130,8 +130,15 @@ public class RegressionTests
         TestContext.Out.WriteLine($"Unit test '{scenario.Name}' passed with {response?.Transfers?.Count ?? 0} steps");
     }
 
+    [OneTimeTearDown]
+    public async Task TearDown()
+    {
+        await SharedGraphCache.ClearAsync();
+    }
+
     /// <summary>
     /// Integration test that runs using full database at the scenario's block.
+    /// Uses SharedGraphCache to avoid re-loading 760K rows per scenario.
     /// Requires TEST_ENV_URL to be set.
     /// </summary>
     [Test]
@@ -148,13 +155,22 @@ public class RegressionTests
             return;
         }
 
-        // Check if test environment is available
+        // Check test environment availability (only if not already cached for this block)
         try
         {
-            var health = await TestEnvironmentClient.GetHealthAsync();
-            if (health?.Status != "healthy")
+            if (!SharedGraphCache.IsCached(scenario.Block))
             {
-                Assert.Ignore("Test environment not healthy");
+                var health = await TestEnvironmentClient.GetHealthAsync();
+                if (health?.Status != "healthy")
+                {
+                    Assert.Ignore("Test environment not healthy");
+                }
+
+                var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
+                if (!exists)
+                {
+                    Assert.Ignore($"Block {scenario.Block} not indexed");
+                }
             }
         }
         catch (Exception ex)
@@ -163,29 +179,12 @@ public class RegressionTests
             return;
         }
 
-        // Check if block exists
-        var exists = await TestEnvironmentClient.BlockExistsAsync(scenario.Block);
-        if (!exists)
-        {
-            Assert.Ignore($"Block {scenario.Block} not indexed");
-        }
+        var isCached = SharedGraphCache.IsCached(scenario.Block);
+        TestContext.Out.WriteLine(isCached
+            ? $"Using cached graph for block {scenario.Block}"
+            : $"Loading graph for block {scenario.Block} (first scenario at this block)");
 
-        // Create session at the scenario's block
-        await using var session = await TestEnvironmentClient.CreateSessionAsync(
-            scenario.Block,
-            features: ["db"],
-            ttl: "10m");
-
-        var settings = new Settings();
-
-        // Use direct DB connection if available, otherwise use query proxy API
-        ILoadGraph loadGraph = session.IsDirectConnectionAvailable
-            ? new LoadGraph(session.PostgresConnectionString!, settings)
-            : new ProxyLoadGraph(session, settings);
-
-        TestContext.Out.WriteLine($"Using {(session.IsDirectConnectionAvailable ? "direct DB" : "query proxy")} for data loading");
-
-        var factory = new GraphFactory(RouterAddress, loadGraph);
+        var factory = SharedGraphCache.CreateFactory(scenario.Block);
 
         var trustGraph = factory.V2TrustGraph();
         var balanceGraph = factory.V2BalanceGraph();
