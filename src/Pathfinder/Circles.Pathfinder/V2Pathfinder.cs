@@ -5,12 +5,21 @@ using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Int256;
 
 namespace Circles.Pathfinder;
 
 public class V2Pathfinder
 {
+    private readonly ILogger _logger;
+
+    public V2Pathfinder(ILogger<V2Pathfinder>? logger = null)
+    {
+        _logger = logger ?? NullLogger<V2Pathfinder>.Instance;
+    }
+
     public long ComputeMaxFlow(
         CapacityGraph capacityGraph,
         FlowRequest flowRequest,
@@ -92,11 +101,8 @@ public class V2Pathfinder
         var reqId = Guid.NewGuid().ToString("N")[..8];
         var totalSw = Stopwatch.StartNew();
 
-        if (Settings.DebugLogging)
-        {
-            Console.WriteLine($"[{reqId}] Graph: avatars={capacityGraph.AvatarNodes.Count}, " +
-                $"groups={capacityGraph.GroupNodes.Count}, edges={capacityGraph.Edges.Count}");
-        }
+        _logger.LogInformation("[{ReqId}] Graph: avatars={Avatars}, groups={Groups}, edges={Edges}",
+            reqId, capacityGraph.AvatarNodes.Count, capacityGraph.GroupNodes.Count, capacityGraph.Edges.Count);
 
         long tgt = CirclesConverter.TruncateToInt64(targetFlow);
         var solveSw = Stopwatch.StartNew();
@@ -104,11 +110,10 @@ public class V2Pathfinder
         solveSw.Stop();
         var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
 
-        if (Settings.DebugLogging)
         {
             long solvedFlow = solved.Where(e => e.From == sourceId && e.Flow > 0).Sum(e => e.Flow);
-            Console.WriteLine($"[{reqId}] MaxFlow: flow={solvedFlow}, edgesWithFlow={solved.Count(e => e.Flow > 0)}, " +
-                $"paths={simplePaths.Count}, solveMs={solveSw.ElapsedMilliseconds}");
+            _logger.LogInformation("[{ReqId}] MaxFlow: flow={Flow}, edgesWithFlow={EdgesWithFlow}, paths={Paths}, solveMs={SolveMs}",
+                reqId, solvedFlow, solved.Count(e => e.Flow > 0), simplePaths.Count, solveSw.ElapsedMilliseconds);
         }
 
         /* --------------------------------------------------------------------
@@ -204,11 +209,10 @@ public class V2Pathfinder
         var collapsed = CollapseBalanceNodes(flowPaths, capacityGraph);
         var aggregated = collapsed.AggregateIdenticalEdges();
 
-        if (Settings.DebugLogging)
         {
             int beforeCollapse = flowPaths.Sum(p => p.Count);
-            Console.WriteLine($"[{reqId}] Collapsed: before={beforeCollapse}, after={aggregated.Edges.Count}, " +
-                $"droppedZero={aggregated.Edges.Count(e => e.Flow <= 0)}");
+            _logger.LogInformation("[{ReqId}] Collapsed: before={Before}, after={After}, droppedZero={DroppedZero}",
+                reqId, beforeCollapse, aggregated.Edges.Count, aggregated.Edges.Count(e => e.Flow <= 0));
         }
 
         /* --------------------------------------------------------------------
@@ -235,12 +239,11 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
         var validatedEdges = ValidateConsentedFlow(processedEdges, capacityGraph);
 
-        if (Settings.DebugLogging)
         {
             int routerEdges = processedEdges.Count - aggregated.Edges.Count;
             int consentRejected = processedEdges.Count - validatedEdges.Count;
-            Console.WriteLine($"[{reqId}] Router: +{Math.Max(0, routerEdges)} edges | " +
-                $"Consent: passed={validatedEdges.Count}, rejected={consentRejected}");
+            _logger.LogInformation("[{ReqId}] Router: +{RouterEdges} edges | Consent: passed={Passed}, rejected={Rejected}",
+                reqId, Math.Max(0, routerEdges), validatedEdges.Count, consentRejected);
         }
 
         /* --------------------------------------------------------------------
@@ -263,6 +266,14 @@ public class V2Pathfinder
          * ------------------------------------------------------------------ */
         ValidateMintEdgeOrdering(sortedEdges, capacityGraph);
 
+        {
+            int groupMints = sortedEdges.Count(e => capacityGraph.IsGroup(e.From));
+            int routerNode = capacityGraph.RouterNode ?? -1;
+            int collateralEdges = sortedEdges.Count(e => e.From == routerNode && capacityGraph.IsGroup(e.To));
+            _logger.LogInformation("[{ReqId}] MintSort: groups={Groups}, collateral={Collateral}, total={Total}",
+                reqId, groupMints, collateralEdges, sortedEdges.Count);
+        }
+
         /* --------------------------------------------------------------------
          * 6b. Apply quantization if requested - aggregate sink transfers by token
          *     and round down to 96 CRC multiples. This allows multiple small
@@ -271,6 +282,7 @@ public class V2Pathfinder
         if (request.QuantizedMode == true)
         {
             const long InvitationQuanta = 96_000_000L;
+            int preQuantCount = sortedEdges.Count;
             sortedEdges = QuantizeSinkBoundEdgesByToken(sortedEdges, sinkId, InvitationQuanta, tgt);
 
             // Safety validation - ensure quantization produced valid results
@@ -279,6 +291,9 @@ public class V2Pathfinder
             // Add self-loop aggregation: Sink → Sink edges showing total per token type
             // This provides a summary of what tokens the sink receives in the quantized flow
             sortedEdges = AddSinkSelfLoopAggregation(sortedEdges, sinkId);
+
+            _logger.LogInformation("[{ReqId}] Quantized: before={Before}, after={After}, quanta={Quanta}",
+                reqId, preQuantCount, sortedEdges.Count, InvitationQuanta);
         }
 
         /* --------------------------------------------------------------------
@@ -336,10 +351,8 @@ public class V2Pathfinder
         }
 
         totalSw.Stop();
-        if (Settings.DebugLogging)
-        {
-            Console.WriteLine($"[{reqId}] Result: maxFlow={maxFlowWei}, steps={transfer.Count}, totalMs={totalSw.ElapsedMilliseconds}");
-        }
+        _logger.LogInformation("[{ReqId}] Result: maxFlow={MaxFlow}, steps={Steps}, totalMs={TotalMs}",
+            reqId, maxFlowWei, transfer.Count, totalSw.ElapsedMilliseconds);
 
         return new MaxFlowResponse(
             maxFlowWei.ToString(CultureInfo.InvariantCulture),
@@ -479,11 +492,8 @@ public class V2Pathfinder
             if (!fromTrustsTo)
             {
                 // Invalid - From has consented flow but doesn't trust To
-                if (Settings.DebugLogging)
-                {
-                    Console.WriteLine($"[ValidateConsentedFlow] Filtered edge {AddressIdPool.StringOf(edge.From)[..10]}→{AddressIdPool.StringOf(edge.To)[..10]}: " +
-                                      $"consented avatar doesn't trust recipient");
-                }
+                _logger.LogDebug("[ValidateConsentedFlow] Filtered edge {From}→{To}: consented avatar doesn't trust recipient",
+                    AddressIdPool.StringOf(edge.From)[..10], AddressIdPool.StringOf(edge.To)[..10]);
                 continue;
             }
 
@@ -491,11 +501,8 @@ public class V2Pathfinder
             if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
             {
                 // Invalid - To doesn't have consented flow enabled
-                if (Settings.DebugLogging)
-                {
-                    Console.WriteLine($"[ValidateConsentedFlow] Filtered edge {AddressIdPool.StringOf(edge.From)[..10]}→{AddressIdPool.StringOf(edge.To)[..10]}: " +
-                                      $"recipient doesn't have consented flow enabled");
-                }
+                _logger.LogDebug("[ValidateConsentedFlow] Filtered edge {From}→{To}: recipient doesn't have consented flow enabled",
+                    AddressIdPool.StringOf(edge.From)[..10], AddressIdPool.StringOf(edge.To)[..10]);
                 continue;
             }
 
@@ -606,9 +613,9 @@ public class V2Pathfinder
             }
 
             // Orphaned TokenPool edge — upstream graph construction bug or unexpected topology
-            Console.WriteLine($"[CollapseSinglePath] WARNING: Orphaned TokenPool edge at index {i}: " +
-                $"{AddressIdPool.StringOf(e.From)[..10]}→{AddressIdPool.StringOf(e.To)[..10]} " +
-                $"(token={AddressIdPool.StringOf(e.Token)[..10]}, flow={e.Flow})");
+            _logger.LogWarning("[CollapseSinglePath] Orphaned TokenPool edge at index {Index}: {From}→{To} (token={Token}, flow={Flow})",
+                i, AddressIdPool.StringOf(e.From)[..10], AddressIdPool.StringOf(e.To)[..10],
+                AddressIdPool.StringOf(e.Token)[..10], e.Flow);
             i += 1;
         }
     }
@@ -626,9 +633,8 @@ public class V2Pathfinder
             // Saturating addition to prevent overflow (9.2e18 attoCircles ≈ 9.2 CRC)
             if (existing > long.MaxValue - flow)
             {
-                Console.WriteLine($"[AddToAggregation] WARNING: Saturated flow for edge " +
-                    $"{AddressIdPool.StringOf(from)[..10]}→{AddressIdPool.StringOf(to)[..10]}: " +
-                    $"existing={existing}, flow={flow}");
+                _logger.LogWarning("[AddToAggregation] Saturated flow for edge {From}→{To}: existing={Existing}, flow={Flow}",
+                    AddressIdPool.StringOf(from)[..10], AddressIdPool.StringOf(to)[..10], existing, flow);
                 agg[key] = long.MaxValue;
             }
             else
@@ -1033,7 +1039,7 @@ public class V2Pathfinder
      * This allows multiple small transfers of the same token to combine into
      * valid 96 CRC quanta (e.g., 60 CRC + 36 CRC = 96 CRC quantum).
      * --------------------------------------------------------------------- */
-    private static List<FlowEdge> QuantizeSinkBoundEdgesByToken(
+    private List<FlowEdge> QuantizeSinkBoundEdgesByToken(
         List<FlowEdge> edges,
         int sinkId,
         long quantaSize,
@@ -1112,9 +1118,9 @@ public class V2Pathfinder
                     scaledFlow = quantizedTotal - allocated;
                     if (scaledFlow <= 0)
                     {
-                        Console.WriteLine($"[QuantizeSinkBoundEdges] WARNING: Last edge remainder is {scaledFlow} " +
-                            $"(quantizedTotal={quantizedTotal}, allocated={allocated}, edges={group.Edges.Count}) — " +
-                            "rounding consumed entire quantum");
+                        _logger.LogWarning("[QuantizeSinkBoundEdges] Last edge remainder is {ScaledFlow} " +
+                            "(quantizedTotal={QuantizedTotal}, allocated={Allocated}, edges={EdgeCount}) — rounding consumed entire quantum",
+                            scaledFlow, quantizedTotal, allocated, group.Edges.Count);
                         continue; // Skip this edge — earlier edges consumed everything
                     }
                 }

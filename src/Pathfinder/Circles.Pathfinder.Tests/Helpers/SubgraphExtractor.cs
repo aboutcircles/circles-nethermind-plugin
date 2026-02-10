@@ -4,63 +4,51 @@ using Circles.Pathfinder.Graphs;
 namespace Circles.Pathfinder.Tests.Helpers;
 
 /// <summary>
-/// Extracts a minimal subgraph around source/sink addresses using BFS expansion.
-/// The resulting FixtureSubgraph contains only trust/balance/group data within N hops
-/// of the relevant addresses, enabling fast offline unit tests.
+/// Extracts a minimal subgraph from the full graph data, targeted at reproducing
+/// a specific pathfinder result. Instead of BFS (which reaches 96% of nodes in
+/// the dense Circles trust graph), this extracts only:
 ///
-/// The subgraph must produce the same pathfinder result as the full graph for the
-/// given source/sink pair — this is validated by SubgraphEquivalenceTests.
+/// 1. Trust edges: truster is core, trustee is core or a token owner in core balances
+/// 2. Balances held by path participants
+/// 3. Groups, group trusts, and consented flags for involved addresses
+///
+/// The resulting FixtureSubgraph enables fast offline unit tests (~10-100 KB per
+/// scenario vs ~100 MB for BFS-based extraction).
+///
+/// Validated by SubgraphEquivalenceTests.
 /// </summary>
 public static class SubgraphExtractor
 {
     /// <summary>
-    /// Extracts a subgraph containing trust/balance data within <paramref name="maxHops"/>
-    /// of the source, sink, and any addresses that appeared in the computed path.
+    /// Extracts a minimal subgraph containing only the trust/balance data needed
+    /// to reproduce the pathfinder result for the given source→sink transfer.
+    ///
+    /// Trust filter: truster must be a core address AND trustee must be a token
+    /// owner present in core balances (or another core address). This gives the
+    /// solver exactly the capacity edges it needs without pulling in unrelated trust.
+    /// Validated by SubgraphEquivalenceTests.
     /// </summary>
-    /// <param name="fullData">The full cached graph data from SharedGraphCache.</param>
-    /// <param name="source">Source address (lowercase hex).</param>
-    /// <param name="sink">Sink address (lowercase hex).</param>
-    /// <param name="pathAddresses">Addresses that appeared in the computed path (from/to/token).</param>
-    /// <param name="maxHops">BFS expansion depth from seed addresses. Default: 3.</param>
     public static FixtureSubgraph Extract(
         CachedGraphData fullData,
         string source,
         string sink,
-        IEnumerable<string>? pathAddresses = null,
-        int maxHops = 3)
+        IEnumerable<string>? pathAddresses = null)
     {
-        // Step 1: Build adjacency list from trust edges for BFS
-        var adjacency = BuildTrustAdjacency(fullData.Trust);
-
-        // Step 2: Seed addresses = source + sink + path addresses
-        var seeds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { source, sink };
+        // Core addresses: source + sink + all addresses from computed path
+        var coreAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { source, sink };
         if (pathAddresses != null)
         {
             foreach (var addr in pathAddresses)
             {
-                seeds.Add(addr);
+                coreAddresses.Add(addr);
             }
         }
 
-        // Step 3: BFS expansion — find all addresses within maxHops of seeds
-        var reachable = BfsExpand(adjacency, seeds, maxHops);
-
-        // Step 4: Filter trust edges — both endpoints must be in reachable set
-        var filteredTrust = fullData.Trust
-            .Where(t =>
-            {
-                var truster = AddressIdPool.StringOf(
-                    AddressIdPool.IdOf(t.Truster));
-                var trustee = AddressIdPool.StringOf(
-                    AddressIdPool.IdOf(t.Trustee));
-                return reachable.Contains(truster) && reachable.Contains(trustee);
-            })
-            .Select(t => new[] { t.Truster, t.Trustee })
-            .ToList();
-
-        // Step 5: Filter balances — holder must be in reachable set
+        // Step 1a: Collect token owners from core balances.
+        // Capacity edges are: holder→receiver with token T, where receiver trusts T_owner.
+        // We need trust edges (receiver, T_owner) for all token owners in core balances.
         var filteredBalances = fullData.Balances
-            .Where(b => reachable.Contains(
+            .Where(b => coreAddresses.Contains(
                 AddressIdPool.StringOf(b.Account)))
             .Select(b => new BalanceEntry
             {
@@ -72,20 +60,48 @@ public static class SubgraphExtractor
             })
             .ToList();
 
-        // Step 6: Filter groups — only groups in reachable set
+        // Token owners = addresses whose personal tokens are held by core addresses
+        var tokenOwners = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var b in filteredBalances)
+        {
+            tokenOwners.Add(b.Token!);
+        }
+
+        // Step 1b: Collect trust edges where truster is core AND trustee is either
+        // core or a token owner. This gives the solver the capacity edges it needs:
+        // - core→core trust: direct transfer capacity between path participants
+        // - core→tokenOwner trust: capacity for tokens held by core addresses
+        var filteredTrust = new List<string[]>();
+
+        foreach (var (truster, trustee, _) in fullData.Trust)
+        {
+            var trusterLower = truster.ToLowerInvariant();
+
+            if (!coreAddresses.Contains(trusterLower))
+                continue;
+
+            var trusteeLower = trustee.ToLowerInvariant();
+            if (coreAddresses.Contains(trusteeLower) || tokenOwners.Contains(trusteeLower))
+            {
+                filteredTrust.Add(new[] { truster, trustee });
+            }
+        }
+
+        // Step 3: Groups that appear in the core address set
         var filteredGroups = fullData.Groups
-            .Where(g => reachable.Contains(g.ToLowerInvariant()))
+            .Where(g => coreAddresses.Contains(g.ToLowerInvariant()))
             .ToList();
 
-        // Step 7: Filter group trusts — group must be in reachable set
+        // Step 4: Group trusts for involved groups
+        var groupSet = new HashSet<string>(filteredGroups, StringComparer.OrdinalIgnoreCase);
         var filteredGroupTrusts = fullData.GroupTrusts
-            .Where(gt => reachable.Contains(gt.GroupAddress.ToLowerInvariant()))
+            .Where(gt => groupSet.Contains(gt.GroupAddress.ToLowerInvariant()))
             .Select(gt => new[] { gt.GroupAddress, gt.TrustedToken })
             .ToList();
 
-        // Step 8: Filter consented flags — avatar must be in reachable set
+        // Step 5: Consented flags for core addresses
         var filteredConsented = fullData.ConsentedFlags
-            .Where(cf => cf.HasConsentedFlow && reachable.Contains(cf.Avatar.ToLowerInvariant()))
+            .Where(cf => cf.HasConsentedFlow && coreAddresses.Contains(cf.Avatar.ToLowerInvariant()))
             .Select(cf => cf.Avatar)
             .ToList();
 
@@ -98,7 +114,7 @@ public static class SubgraphExtractor
             ConsentedAvatars = filteredConsented,
             Stats = new SubgraphStats
             {
-                AddressCount = reachable.Count,
+                AddressCount = coreAddresses.Count,
                 TrustEdges = filteredTrust.Count,
                 BalanceEntries = filteredBalances.Count,
                 GroupCount = filteredGroups.Count,
@@ -109,7 +125,7 @@ public static class SubgraphExtractor
     }
 
     /// <summary>
-    /// Extracts path addresses from a list of transfer steps (from, to, tokenAddress).
+    /// Extracts path addresses from a list of transfer steps (from, to, tokenOwner).
     /// </summary>
     public static HashSet<string> GetPathAddresses(IEnumerable<Circles.Common.Dto.TransferPathStep> transfers)
     {
@@ -121,81 +137,5 @@ public static class SubgraphExtractor
             if (!string.IsNullOrEmpty(step.TokenOwner)) addresses.Add(step.TokenOwner);
         }
         return addresses;
-    }
-
-    /// <summary>
-    /// Builds a bidirectional adjacency list from trust edges for BFS.
-    /// Uses lowercase address strings as keys.
-    /// </summary>
-    private static Dictionary<string, HashSet<string>> BuildTrustAdjacency(
-        List<(string Truster, string Trustee, int Limit)> trust)
-    {
-        var adj = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var (truster, trustee, _) in trust)
-        {
-            var a = truster.ToLowerInvariant();
-            var b = trustee.ToLowerInvariant();
-
-            if (!adj.TryGetValue(a, out var setA))
-            {
-                setA = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                adj[a] = setA;
-            }
-            setA.Add(b);
-
-            // Bidirectional for BFS (trust is directional, but for subgraph
-            // extraction we want to discover the neighborhood in both directions)
-            if (!adj.TryGetValue(b, out var setB))
-            {
-                setB = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                adj[b] = setB;
-            }
-            setB.Add(a);
-        }
-
-        return adj;
-    }
-
-    /// <summary>
-    /// BFS expansion from seed addresses up to maxHops.
-    /// Returns all reachable addresses (lowercase).
-    /// </summary>
-    private static HashSet<string> BfsExpand(
-        Dictionary<string, HashSet<string>> adjacency,
-        HashSet<string> seeds,
-        int maxHops)
-    {
-        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var frontier = new Queue<(string Address, int Depth)>();
-
-        foreach (var seed in seeds)
-        {
-            var lower = seed.ToLowerInvariant();
-            if (visited.Add(lower))
-            {
-                frontier.Enqueue((lower, 0));
-            }
-        }
-
-        while (frontier.Count > 0)
-        {
-            var (addr, depth) = frontier.Dequeue();
-
-            if (depth >= maxHops) continue;
-
-            if (adjacency.TryGetValue(addr, out var neighbors))
-            {
-                foreach (var neighbor in neighbors)
-                {
-                    if (visited.Add(neighbor))
-                    {
-                        frontier.Enqueue((neighbor, depth + 1));
-                    }
-                }
-            }
-        }
-
-        return visited;
     }
 }

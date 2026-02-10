@@ -36,9 +36,10 @@ public record TransferScenario
     /// <summary>
     /// Block number at which the test environment should be frozen.
     /// This ensures deterministic, reproducible test results.
+    /// Scenarios without a block number (0) are incomplete and will be skipped.
     /// </summary>
     [JsonPropertyName("block")]
-    public required long Block { get; init; }
+    public long Block { get; init; }
 
     /// <summary>
     /// Source address for the transfer (sender).
@@ -202,6 +203,25 @@ public record TransferScenario
     /// </summary>
     [JsonPropertyName("tags")]
     public string[]? Tags { get; init; }
+
+    /// <summary>
+    /// Free-text notes about the scenario (e.g., known issues, context).
+    /// </summary>
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+
+    /// <summary>
+    /// Embedded subgraph data for offline unit tests.
+    /// Populated by SubgraphPopulateFixtures utility.
+    /// </summary>
+    [JsonPropertyName("subgraph")]
+    public object? Subgraph { get; init; }
+
+    /// <summary>
+    /// Whether this scenario is complete enough to run (has block, source, sink).
+    /// </summary>
+    [JsonIgnore]
+    public bool IsComplete => Block > 0 && !string.IsNullOrEmpty(Source) && !string.IsNullOrEmpty(Sink);
 
     /// <summary>
     /// Returns a display name for NUnit test output.

@@ -160,7 +160,7 @@ public class SubgraphPopulateFixtures
         }
 
         var subgraph = SubgraphExtractor.Extract(
-            fullData, scenario.Source, scenario.Sink, pathAddresses, maxHops: 3);
+            fullData, scenario.Source, scenario.Sink, pathAddresses);
 
         // Read existing JSON, inject subgraph, write back
         var existingJson = await File.ReadAllTextAsync(jsonPath);

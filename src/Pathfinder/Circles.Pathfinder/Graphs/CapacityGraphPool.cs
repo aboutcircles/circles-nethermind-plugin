@@ -1,14 +1,15 @@
 using System.Collections.Concurrent;
 using Circles.Pathfinder.Data;
 using Circles.Common.Dto;
+using Microsoft.Extensions.Logging;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph)
+public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
 {
     private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
-    private readonly GraphFactory _gf = new(routerAddress, loadGraph);
+    private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger);
 
 
     /* ------------------------------------------------------------------ */

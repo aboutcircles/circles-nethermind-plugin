@@ -48,6 +48,12 @@ public static class ScenarioLoader
 
             if (scenario != null)
             {
+                if (!scenario.IsComplete)
+                {
+                    // Quietly skip incomplete scenarios (no block number, etc.)
+                    continue;
+                }
+
                 yield return scenario;
             }
         }

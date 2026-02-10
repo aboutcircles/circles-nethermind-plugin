@@ -11,7 +11,7 @@
   "expectedRevertReason": null,
   "runOnAnvil": true,
   "discoveredAt": "2026-01-22T09:48:08.000Z",
-  "fixedIn": "Pipeline reorder + SortEdgesForMintDependencies",
+  "fixedIn": "Pipeline reorder \u002B SortEdgesForMintDependencies",
   "tags": [
     "payment-gateway",
     "consented-flow",
@@ -21,5 +21,80 @@
     "on-chain-verified"
   ],
   "transactionHash": "0x72e1ec4a471a47d86d9ce7506ff9082b9f6097e4619467b9d928a86493d1cb21",
-  "notes": "Source avatar has consented flow enabled (trusts Router). This is the key test for the isPermittedFlow bug fix. Transfer uses existing group tokens rather than minting new ones."
+  "notes": "Source avatar has consented flow enabled (trusts Router). This is the key test for the isPermittedFlow bug fix. Transfer uses existing group tokens rather than minting new ones.",
+  "subgraph": {
+    "trust": [
+      [
+        "0x1f6db4d3cd8a506307952897a5b6d3bdedffbd1e",
+        "0xaa9081197e02f2fdacfc65e7606743fa2d005208"
+      ],
+      [
+        "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "0x4b6f72008e7aca33de36b6565ef30264626b21db"
+      ],
+      [
+        "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "0x88b811419a2ad503e53f0b208e24c99767927aab"
+      ],
+      [
+        "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "0xde374ece6fa50e781e81aac78e811b33d16912c7"
+      ]
+    ],
+    "balances": [
+      {
+        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "token": "0xaa9081197e02f2fdacfc65e7606743fa2d005208",
+        "amount": "996232049765279381",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "token": "0x7147a7405fcfe5cfa30c6d5363f9f357a317d082",
+        "amount": "1055",
+        "isWrapped": true,
+        "isStatic": true
+      },
+      {
+        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "token": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "amount": "5525258346261083807362",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+        "amount": "81629969712",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "token": "0x88b811419a2ad503e53f0b208e24c99767927aab",
+        "amount": "84369735196862135562",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
+        "token": "0xf5a8aaf595eabf5e858c8ec5f2243ac4a2bfc127",
+        "amount": "95219857810119968955",
+        "isWrapped": false,
+        "isStatic": false
+      }
+    ],
+    "groups": [],
+    "groupTrusts": [],
+    "consentedAvatars": [],
+    "stats": {
+      "addressCount": 3,
+      "trustEdges": 4,
+      "balanceEntries": 6,
+      "groupCount": 0,
+      "groupTrustCount": 0,
+      "consentedCount": 0
+    }
+  }
 }

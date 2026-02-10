@@ -3,6 +3,8 @@ using System.Numerics;
 using Npgsql;
 using System.Reflection;
 using Circles.Common;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Circles.Pathfinder.Data
 {
@@ -24,18 +26,21 @@ namespace Circles.Pathfinder.Data
     {
         private readonly string _connectionString;
         private readonly Settings _settings;
+        private readonly ILogger _logger;
 
         // Demurrage constants (same as CirclesConverter)
         private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
         private const ulong SecondsPerDay = 86_400;
 
-        public LoadGraph(string connectionString, Settings settings)
+        public LoadGraph(string connectionString, Settings settings, ILogger<LoadGraph>? logger = null)
         {
             _connectionString = connectionString;
             _settings = settings;
+            _logger = logger ?? NullLogger<LoadGraph>.Instance;
         }
 
-        public LoadGraph(Settings settings) : this(GetConnectionStringFromSettings(settings), settings)
+        public LoadGraph(Settings settings, ILogger<LoadGraph>? logger = null)
+            : this(GetConnectionStringFromSettings(settings), settings, logger)
         {
         }
 
@@ -122,11 +127,11 @@ namespace Circles.Pathfinder.Data
                         continue;
                     }
 
-                    if (Settings.DebugLogging && staticAttoCircles > 0)
+                    if (staticAttoCircles > 0)
                     {
                         var pctDelta = 100.0 * (1.0 - (double)demurragedAttoCircles / (double)staticAttoCircles);
-                        Console.WriteLine($"[LoadGraph] Demurrage static: acct={account[..10]}, " +
-                            $"raw={staticAttoCircles}, adj={demurragedAttoCircles}, delta={pctDelta:F2}%, targetDay={targetDay}");
+                        _logger.LogDebug("[LoadGraph] Demurrage static: acct={Account}, raw={Raw}, adj={Adjusted}, delta={Delta}%, targetDay={TargetDay}",
+                            account[..10], staticAttoCircles, demurragedAttoCircles, pctDelta.ToString("F2"), targetDay);
                     }
 
                     balance = demurragedAttoCircles.ToString(CultureInfo.InvariantCulture);
@@ -136,8 +141,8 @@ namespace Circles.Pathfinder.Data
                     // Guard: corrupted data where lastActivity predates Circles epoch
                     if (lastActivity < InflationDayZeroUnix)
                     {
-                        Console.WriteLine($"[LoadGraph] WARNING: lastActivity {lastActivity} < InflationDayZero {InflationDayZeroUnix} " +
-                            $"for account={account[..10]}, token={tokenAddress[..10]} — skipping (corrupted data)");
+                        _logger.LogWarning("[LoadGraph] lastActivity {LastActivity} < InflationDayZero {Epoch} for account={Account}, token={Token} — skipping (corrupted data)",
+                            lastActivity, InflationDayZeroUnix, account[..10], tokenAddress[..10]);
                         continue;
                     }
 
@@ -151,11 +156,11 @@ namespace Circles.Pathfinder.Data
                         // Apply demurrage: balance * gamma^daysDelta
                         var demurragedBalance = CirclesConverter.InflationaryToDemurrage(inflationaryBalance, daysDelta);
 
-                        if (Settings.DebugLogging && inflationaryBalance > 0)
+                        if (inflationaryBalance > 0)
                         {
                             var pctDelta = 100.0 * (1.0 - (double)demurragedBalance / (double)inflationaryBalance);
-                            Console.WriteLine($"[LoadGraph] Demurrage flow: acct={account[..10]}, " +
-                                $"raw={inflationaryBalance}, adj={demurragedBalance}, delta={pctDelta:F2}%, daysDiff={daysDelta}");
+                            _logger.LogDebug("[LoadGraph] Demurrage flow: acct={Account}, raw={Raw}, adj={Adjusted}, delta={Delta}%, daysDiff={DaysDiff}",
+                                account[..10], inflationaryBalance, demurragedBalance, pctDelta.ToString("F2"), daysDelta);
                         }
 
                         balance = demurragedBalance.ToString(CultureInfo.InvariantCulture);

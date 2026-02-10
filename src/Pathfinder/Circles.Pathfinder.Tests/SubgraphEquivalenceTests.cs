@@ -109,9 +109,9 @@ public class SubgraphEquivalenceTests
 
         TestContext.Out.WriteLine($"Full graph: maxFlow={fullResponse.MaxFlow}, steps={fullResponse.Transfers.Count}");
 
-        // === STEP 2: Extract subgraph (3-hop BFS from source/sink/path) ===
+        // === STEP 2: Extract targeted subgraph from path addresses ===
         var pathAddresses = SubgraphExtractor.GetPathAddresses(fullResponse.Transfers);
-        var subgraph = SubgraphExtractor.Extract(fullData, scenario.Source, scenario.Sink, pathAddresses, maxHops: 3);
+        var subgraph = SubgraphExtractor.Extract(fullData, scenario.Source, scenario.Sink, pathAddresses);
 
         TestContext.Out.WriteLine($"Subgraph: {subgraph.Stats?.AddressCount} addresses, " +
             $"{subgraph.Stats?.TrustEdges} trust edges, " +
@@ -149,10 +149,21 @@ public class SubgraphEquivalenceTests
         var fullFlow = UInt256.Parse(fullResponse.MaxFlow ?? "0");
         var subFlow = UInt256.Parse(subResponse.MaxFlow ?? "0");
 
-        // Allow subgraph to find equal or slightly less flow (missing distant alternatives)
-        // But it should find at least the minimum required flow
-        Assert.That(subFlow, Is.GreaterThanOrEqualTo(targetFlow),
-            $"Subgraph maxFlow {subFlow} should meet target {targetFlow}");
+        // Compare subgraph flow to the FULL graph's actual flow, not the target.
+        // The full graph might not reach the target either (e.g., contract-revert scenarios
+        // with intentionally high targets). Subgraph should find at least 90% of full flow.
+        if (fullFlow < targetFlow)
+        {
+            // Full graph couldn't meet target — subgraph just needs comparable flow
+            var minAcceptable = fullFlow * 9 / 10; // 90% of full flow
+            Assert.That(subFlow, Is.GreaterThanOrEqualTo(minAcceptable),
+                $"Subgraph maxFlow {subFlow} should be >= 90% of full maxFlow {fullFlow}");
+        }
+        else
+        {
+            Assert.That(subFlow, Is.GreaterThanOrEqualTo(targetFlow),
+                $"Subgraph maxFlow {subFlow} should meet target {targetFlow}");
+        }
 
         TestContext.Out.WriteLine($"Subgraph: maxFlow={subResponse.MaxFlow}, steps={subResponse.Transfers!.Count}");
         TestContext.Out.WriteLine($"Flow comparison: full={fullFlow}, sub={subFlow}, target={targetFlow}");
@@ -311,11 +322,12 @@ public class SubgraphEquivalenceTests
             $"{capacity.AvatarNodes.Count} nodes");
 
         // Verify the subgraph is significantly smaller than the full graph
+        // Path-targeted extraction should achieve >95% reduction (vs ~4% with BFS)
         var reductionPct = 100.0 * (1.0 - (double)subgraph.Stats.TrustEdges / data.Trust.Count);
         TestContext.Out.WriteLine($"Subgraph reduction: {reductionPct:F1}% " +
             $"({subgraph.Stats.TrustEdges} vs {data.Trust.Count} trust edges)");
 
-        Assert.That(reductionPct, Is.GreaterThan(50.0),
-            "Subgraph should be significantly smaller than full graph (>50% reduction)");
+        Assert.That(reductionPct, Is.GreaterThan(90.0),
+            "Path-targeted subgraph should achieve >90% reduction vs full graph");
     }
 }

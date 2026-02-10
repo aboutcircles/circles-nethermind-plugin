@@ -45,11 +45,14 @@ builder.Services.AddSingleton<Circles.Pathfinder.Settings>(provider => provider.
 builder.Services.AddSingleton(semaphore);
 builder.Services.AddSingleton<NetworkState>();
 builder.Services.AddSingleton<SnapshotCache>();
-builder.Services.AddSingleton<LoadGraph>(provider => new LoadGraph(settings));
+builder.Services.AddSingleton<LoadGraph>(provider =>
+    new LoadGraph(settings, provider.GetRequiredService<ILoggerFactory>().CreateLogger<LoadGraph>()));
 builder.Services.AddSingleton<CapacityGraphPool>(provider =>
     new CapacityGraphPool(
         settings.RouterAddress,
-        provider.GetRequiredService<LoadGraph>()));
+        provider.GetRequiredService<LoadGraph>(),
+        provider.GetRequiredService<ILoggerFactory>().CreateLogger<GraphFactory>()));
+builder.Services.AddSingleton<V2Pathfinder>();
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
@@ -146,6 +149,7 @@ app.MapGet("/findMaxFlow", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
+    V2Pathfinder pathfinder,
     ILogger<Program> log) =>
 {
     if (!UInt256.TryParse(amount, out var targetFlow))
@@ -188,7 +192,6 @@ app.MapGet("/findMaxFlow", async (
         }
 
         var trustGraph = state.AccountTrusts;
-        var pathfinder = new V2Pathfinder();
 
         var request = new FlowRequest
         {
@@ -242,6 +245,7 @@ app.MapGet("/findPath", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
+    V2Pathfinder pathfinder,
     ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
@@ -293,8 +297,6 @@ app.MapGet("/findPath", async (
             return Results.BadRequest("Graphs are not loaded yet.");
         }
 
-        var pathfinder = new V2Pathfinder();
-
         var request = new FlowRequest
         {
             Source = from.ToLowerInvariant(),
@@ -336,6 +338,7 @@ app.MapPost("/findPath", async (
     NetworkState state,
     SemaphoreSlim sem,
     CapacityGraphPool pool,
+    V2Pathfinder pathfinder,
     ILogger<Program> log) =>
 {
     // Handle JSON deserialization errors gracefully
@@ -345,7 +348,8 @@ app.MapPost("/findPath", async (
         return Results.BadRequest("Invalid request body: Unable to deserialize FlowRequest. Check JSON format.");
     }
 
-    log.LogInformation($"Deserialized request - Source: {request.Source}, Sink: {request.Sink}, TargetFlow: {request.TargetFlow}");
+    log.LogInformation("Deserialized request - Source: {Source}, Sink: {Sink}, TargetFlow: {TargetFlow}",
+        request.Source, request.Sink, request.TargetFlow);
 
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
     act?.SetTag("http.route", "/findPath");
@@ -361,7 +365,7 @@ app.MapPost("/findPath", async (
 
     if (string.IsNullOrEmpty(request.TargetFlow) || !UInt256.TryParse(request.TargetFlow, out var targetFlow))
     {
-        log.LogWarning($"Bad amount format - TargetFlow is '{request.TargetFlow}'");
+        log.LogWarning("Bad amount format - TargetFlow is {TargetFlow}", request.TargetFlow);
         return Results.BadRequest("amount must be a valid integer.");
     }
 
@@ -383,8 +387,6 @@ app.MapPost("/findPath", async (
             log.LogWarning("Graphs not ready");
             return Results.BadRequest("Graphs are not loaded yet.");
         }
-
-        var pathfinder = new V2Pathfinder();
 
         using var h = await pool.Rent(request, balanceGraph, trustGraph);
         MaxFlowResponse result =

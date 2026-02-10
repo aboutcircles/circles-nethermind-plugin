@@ -1,14 +1,17 @@
 using Circles.Common;
 using Circles.Pathfinder.Data;
 using Circles.Common.Dto;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Int256;
 
 namespace Circles.Pathfinder.Graphs;
 
-public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
+public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<GraphFactory>? logger = null)
 {
     private const string VirtualSinkSuffix = "_virtual_sink";
     private static int _createdCount;
+    private readonly ILogger _logger = logger ?? NullLogger<GraphFactory>.Instance;
 
     public static Dictionary<int, HashSet<int>> BuildTrustLookup(TrustGraph graph)
     {
@@ -99,7 +102,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
         FlowRequest? request = null)
     {
         Interlocked.Increment(ref _createdCount);
-        Console.WriteLine($"Creating capacity graph {_createdCount}...");
+        _logger.LogDebug("Creating capacity graph {Count}...", _createdCount);
 
         var capacityGraph = new CapacityGraph();
 
@@ -145,7 +148,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
                 // Validate address format (must be 0x + 40 hex chars)
                 if (!IsValidEthereumAddress(normalized))
                 {
-                    Console.WriteLine($"Warning: Invalid address format for simulated consented avatar: '{avatar}' (skipped)");
+                    _logger.LogWarning("Invalid address format for simulated consented avatar: '{Avatar}' (skipped)", avatar);
                     continue;
                 }
 
@@ -156,7 +159,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
 
             if (addedCount > 0)
             {
-                Console.WriteLine($"Added {addedCount} simulated consented avatars");
+                _logger.LogDebug("Added {Count} simulated consented avatars", addedCount);
             }
         }
 
@@ -228,7 +231,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
             if (effectiveToTokens.Count < originalCount)
             {
                 var skippedCount = originalCount - effectiveToTokens.Count;
-                Console.WriteLine($"[quantizedMode] Filtered {skippedCount} ToTokens not trusted by sink (kept {effectiveToTokens.Count} of {originalCount})");
+                _logger.LogDebug("[quantizedMode] Filtered {Skipped} ToTokens not trusted by sink (kept {Kept} of {Total})",
+                    skippedCount, effectiveToTokens.Count, originalCount);
             }
 
             toTokensFilter = effectiveToTokens;
@@ -236,7 +240,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
         else if (!sourceEqualsSink && toTokensFilter.Count > 0 && sinkId.HasValue)
         {
             // Sink doesn't trust ANY tokens - clear the filter (will result in no path)
-            Console.WriteLine($"[quantizedMode] Warning: Sink trusts no tokens, clearing ToTokens filter");
+            _logger.LogWarning("[quantizedMode] Sink trusts no tokens, clearing ToTokens filter");
             toTokensFilter = new HashSet<int>();
         }
 
@@ -275,11 +279,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
                     .ToHashSet();
 
                 toTokensFilter = autoDiscoveredTokens;
-                Console.WriteLine($"[quantizedMode] Auto-discovered {autoDiscoveredTokens.Count} tokens with 96+ CRC liquidity for invitation flow");
+                _logger.LogDebug("[quantizedMode] Auto-discovered {Count} tokens with 96+ CRC liquidity for invitation flow", autoDiscoveredTokens.Count);
             }
             else
             {
-                Console.WriteLine($"[quantizedMode] Warning: No tokens found with 96+ CRC where source has balance and sink trusts");
+                _logger.LogWarning("[quantizedMode] No tokens found with 96+ CRC where source has balance and sink trusts");
             }
         }
 
@@ -543,7 +547,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
         catch (Exception ex)
         {
             // Log but don't fail if groups/router can't be loaded
-            Console.WriteLine($"Warning: Could not load groups and router tracking: {ex.Message}");
+            _logger.LogWarning(ex, "Could not load groups and router tracking");
         }
     }
 
@@ -559,13 +563,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph)
 
             capacityGraph.ConsentedAvatars = consentedFlags;
 
-            Console.WriteLine($"Loaded {consentedFlags.Count} avatars with consented flow enabled");
+            _logger.LogDebug("Loaded {Count} avatars with consented flow enabled", consentedFlags.Count);
         }
         catch (Exception ex)
         {
             // Log but don't fail if consented flow flags can't be loaded
             // Default to empty set (no consented flow validation)
-            Console.WriteLine($"Warning: Could not load consented flow flags: {ex.Message}");
+            _logger.LogWarning(ex, "Could not load consented flow flags");
         }
     }
 

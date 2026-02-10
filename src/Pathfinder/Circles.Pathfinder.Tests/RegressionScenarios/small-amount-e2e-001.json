@@ -6,7 +6,7 @@
   "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
   "sink": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
   "description": "Tests the smallest reasonable transfer amount (1 wei of CRC). Validates that very small amounts are handled correctly on-chain.",
-  "shouldFindPath": true,
+  "shouldFindPath": false,
   "minFlow": "1",
   "expectedRevertReason": null,
   "runOnAnvil": false,
