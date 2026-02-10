@@ -76,29 +76,24 @@ public class DemurrageTests
     }
 
     /// <summary>
-    /// Verifies that AttoStaticCirclesToAttoCircles (which uses V1 epoch) produces
-    /// a DIFFERENT result than InflationaryToDemurrage with V2 day for the same input.
-    /// This is the exact bug documented in DEMURRAGE_DISCREPANCY_INVESTIGATION.md.
+    /// After the V2 epoch fix, AttoStaticCirclesToAttoCircles should now produce the
+    /// SAME result as InflationaryToDemurrage with V2 day.
     /// </summary>
     [Test]
-    public void AttoStaticCirclesToAttoCircles_UsesV1Epoch_ProducesDifferentResult()
+    public void AttoStaticCirclesToAttoCircles_UsesV2Epoch_MatchesDirect()
     {
         var balance = BigInteger.Parse("50000000000000000000"); // 50 CRC
 
-        // What CirclesConverter.AttoStaticCirclesToAttoCircles does (V1 epoch)
-        var withV1Api = CirclesConverter.AttoStaticCirclesToAttoCircles(balance);
+        // What CirclesConverter.AttoStaticCirclesToAttoCircles does (now V2 epoch)
+        var viaApi = CirclesConverter.AttoStaticCirclesToAttoCircles(balance);
 
         // What LoadGraph.cs does (V2 epoch, correct)
         var v2Day = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, V2_INFLATION_DAY_ZERO);
         var withV2Direct = CirclesConverter.InflationaryToDemurrage(balance, v2Day);
 
-        // They should NOT be equal — the V1 API applies more decay
-        Assert.That(withV1Api, Is.LessThan(withV2Direct),
-            "AttoStaticCirclesToAttoCircles (V1 epoch) should produce more decay than V2 direct");
-
-        double ratio = (double)withV1Api / (double)withV2Direct;
-        Assert.That(ratio, Is.LessThan(0.90),
-            "V1 API should produce at least 10% more decay than V2");
+        // They should now be equal — both use V2 epoch
+        Assert.That(viaApi, Is.EqualTo(withV2Direct),
+            "AttoStaticCirclesToAttoCircles should now match V2 direct calculation");
     }
 
     #endregion

@@ -48,7 +48,8 @@ public static class CirclesConverter
 
     private static readonly BigInteger BETA_64 = BigInteger.Parse("18450409579521241655"); // 1 / GAMMA
     private const long SECONDS_PER_DAY = 86_400;
-    private const uint INFLATION_DAY_ZERO_UNIX = 1_602_720_000; // 2020-10-15 00:00 UTC
+    private const uint INFLATION_DAY_ZERO_UNIX = 1_602_720_000; // 2020-10-15 00:00 UTC  (V1 Hub epoch)
+    private const uint V2_INFLATION_DAY_ZERO_UNIX = 1_675_209_600; // 2023-02-01 00:00 UTC  (V2 Hub epoch)
     private const decimal ATTO_FACTOR_DEC = 1_000_000_000_000_000_000m; // 1e18
 
     private static readonly UInt256 FactorA = UInt256.Parse("1000000000000"); // 10^12
@@ -140,7 +141,7 @@ public static class CirclesConverter
         InflationaryToDemurrage(attoStaticCircles, Today());
 
     private static ulong Today() =>
-        DayFromTimestamp(DateTimeOffset.UtcNow, INFLATION_DAY_ZERO_UNIX);
+        DayFromTimestamp(DateTimeOffset.UtcNow, V2_INFLATION_DAY_ZERO_UNIX);
 
     /// <summary>Unix timestamp → Circles day index.</summary>
     public static ulong DayFromTimestamp(DateTimeOffset ts, uint inflationDayZeroUnix)
