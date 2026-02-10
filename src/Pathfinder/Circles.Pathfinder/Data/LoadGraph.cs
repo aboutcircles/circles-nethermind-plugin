@@ -99,6 +99,10 @@ namespace Circles.Pathfinder.Data
             var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
             var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
 
+            // Safety margin: only in live mode (no frozen timestamp) to account for execution delay
+            bool applyMargin = _settings.TargetDemurrageTimestamp == null
+                               && _settings.DemurrageSafetyMargin < 1.0;
+
             while (reader.Read())
             {
                 var balance = reader.GetString(0);
@@ -118,10 +122,25 @@ namespace Circles.Pathfinder.Data
                         continue;
                     }
 
+                    if (Settings.DebugLogging && staticAttoCircles > 0)
+                    {
+                        var pctDelta = 100.0 * (1.0 - (double)demurragedAttoCircles / (double)staticAttoCircles);
+                        Console.WriteLine($"[LoadGraph] Demurrage static: acct={account[..10]}, " +
+                            $"raw={staticAttoCircles}, adj={demurragedAttoCircles}, delta={pctDelta:F2}%, targetDay={targetDay}");
+                    }
+
                     balance = demurragedAttoCircles.ToString(CultureInfo.InvariantCulture);
                 }
                 else if (type == "demurraged")
                 {
+                    // Guard: corrupted data where lastActivity predates Circles epoch
+                    if (lastActivity < InflationDayZeroUnix)
+                    {
+                        Console.WriteLine($"[LoadGraph] WARNING: lastActivity {lastActivity} < InflationDayZero {InflationDayZeroUnix} " +
+                            $"for account={account[..10]}, token={tokenAddress[..10]} — skipping (corrupted data)");
+                        continue;
+                    }
+
                     // Apply demurrage from lastActivity to target timestamp
                     var inflationaryBalance = BigInteger.Parse(balance);
                     var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
@@ -131,9 +150,25 @@ namespace Circles.Pathfinder.Data
                     {
                         // Apply demurrage: balance * gamma^daysDelta
                         var demurragedBalance = CirclesConverter.InflationaryToDemurrage(inflationaryBalance, daysDelta);
+
+                        if (Settings.DebugLogging && inflationaryBalance > 0)
+                        {
+                            var pctDelta = 100.0 * (1.0 - (double)demurragedBalance / (double)inflationaryBalance);
+                            Console.WriteLine($"[LoadGraph] Demurrage flow: acct={account[..10]}, " +
+                                $"raw={inflationaryBalance}, adj={demurragedBalance}, delta={pctDelta:F2}%, daysDiff={daysDelta}");
+                        }
+
                         balance = demurragedBalance.ToString(CultureInfo.InvariantCulture);
                     }
                     // If no delta, balance stays as-is (already in correct form)
+                }
+
+                // Apply safety margin in live mode to prevent stale-balance reverts
+                if (applyMargin && balance != "0")
+                {
+                    var raw = BigInteger.Parse(balance);
+                    var margined = (BigInteger)((double)raw * _settings.DemurrageSafetyMargin);
+                    balance = margined.ToString(CultureInfo.InvariantCulture);
                 }
 
                 if (balance == "0")

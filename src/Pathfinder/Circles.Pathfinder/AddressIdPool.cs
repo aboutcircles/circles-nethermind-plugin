@@ -57,7 +57,7 @@ public static class AddressIdPool
         id = Map.GetOrAdd(lower, newId);
         if (id == newId)
         {
-            Reverse[id] = lower;
+            Reverse.TryAdd(id, lower);
         }
 
         return id;
@@ -87,7 +87,7 @@ public static class AddressIdPool
         int id = Map.GetOrAdd(lower, newId);
         if (id == newId)
         {
-            Reverse[id] = lower;
+            Reverse.TryAdd(id, lower);
         }
 
         BalanceNodeIds.TryAdd(id, 0);

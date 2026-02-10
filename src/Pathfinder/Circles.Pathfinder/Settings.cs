@@ -44,4 +44,14 @@ public class Settings
     /// Used for testing against frozen blocks where the block timestamp differs from current time.
     /// </summary>
     public DateTimeOffset? TargetDemurrageTimestamp { get; set; }
+
+    /// <summary>
+    /// Safety margin factor applied to demurraged balances to account for the delay
+    /// between graph-build time and on-chain execution. Default 0.9995 (0.05% haircut).
+    /// Set to 1.0 to disable. Only applies when TargetDemurrageTimestamp is null (live mode).
+    /// </summary>
+    public double DemurrageSafetyMargin { get; set; } =
+        Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN") != null
+        ? double.Parse(Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN")!)
+        : 0.9995;
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using Circles.Common;
@@ -88,9 +89,27 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 2. Run max-flow and peel paths
          * ------------------------------------------------------------------ */
+        var reqId = Guid.NewGuid().ToString("N")[..8];
+        var totalSw = Stopwatch.StartNew();
+
+        if (Settings.DebugLogging)
+        {
+            Console.WriteLine($"[{reqId}] Graph: avatars={capacityGraph.AvatarNodes.Count}, " +
+                $"groups={capacityGraph.GroupNodes.Count}, edges={capacityGraph.Edges.Count}");
+        }
+
         long tgt = CirclesConverter.TruncateToInt64(targetFlow);
+        var solveSw = Stopwatch.StartNew();
         var solved = MaxFlowSolver.Solve(capacityGraph.Edges, sourceId, effSink, tgt);
+        solveSw.Stop();
         var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
+
+        if (Settings.DebugLogging)
+        {
+            long solvedFlow = solved.Where(e => e.From == sourceId && e.Flow > 0).Sum(e => e.Flow);
+            Console.WriteLine($"[{reqId}] MaxFlow: flow={solvedFlow}, edgesWithFlow={solved.Count(e => e.Flow > 0)}, " +
+                $"paths={simplePaths.Count}, solveMs={solveSw.ElapsedMilliseconds}");
+        }
 
         /* --------------------------------------------------------------------
          * 2a. NOTE: Quantization for invitation module moved to step 6d (after aggregation)
@@ -185,6 +204,13 @@ public class V2Pathfinder
         var collapsed = CollapseBalanceNodes(flowPaths, capacityGraph);
         var aggregated = collapsed.AggregateIdenticalEdges();
 
+        if (Settings.DebugLogging)
+        {
+            int beforeCollapse = flowPaths.Sum(p => p.Count);
+            Console.WriteLine($"[{reqId}] Collapsed: before={beforeCollapse}, after={aggregated.Edges.Count}, " +
+                $"droppedZero={aggregated.Edges.Count(e => e.Flow <= 0)}");
+        }
+
         /* --------------------------------------------------------------------
          * 5a. CAPTURE: Stage 2 - Collapsed edges (token pools removed)
          * ------------------------------------------------------------------ */
@@ -208,6 +234,14 @@ public class V2Pathfinder
          *     Router edges are skipped by this validation (lines 332-337).
          * ------------------------------------------------------------------ */
         var validatedEdges = ValidateConsentedFlow(processedEdges, capacityGraph);
+
+        if (Settings.DebugLogging)
+        {
+            int routerEdges = processedEdges.Count - aggregated.Edges.Count;
+            int consentRejected = processedEdges.Count - validatedEdges.Count;
+            Console.WriteLine($"[{reqId}] Router: +{Math.Max(0, routerEdges)} edges | " +
+                $"Consent: passed={validatedEdges.Count}, rejected={consentRejected}");
+        }
 
         /* --------------------------------------------------------------------
          * 5d. CAPTURE: Stage 3 - Router inserted (Avatar→Group → Avatar→Router→Group)
@@ -299,6 +333,12 @@ public class V2Pathfinder
             bool isSelfLoop = fromId == sinkId && toId == sinkId; // Skip aggregation edges
             if (toIsSink && !isSelfLoop)
                 maxFlowWei += UInt256.Parse(t.Value);
+        }
+
+        totalSw.Stop();
+        if (Settings.DebugLogging)
+        {
+            Console.WriteLine($"[{reqId}] Result: maxFlow={maxFlowWei}, steps={transfer.Count}, totalMs={totalSw.ElapsedMilliseconds}");
         }
 
         return new MaxFlowResponse(
@@ -565,7 +605,10 @@ public class V2Pathfinder
                 continue;
             }
 
-            // Shouldn't reach here in normal operation, but handle gracefully
+            // Orphaned TokenPool edge — upstream graph construction bug or unexpected topology
+            Console.WriteLine($"[CollapseSinglePath] WARNING: Orphaned TokenPool edge at index {i}: " +
+                $"{AddressIdPool.StringOf(e.From)[..10]}→{AddressIdPool.StringOf(e.To)[..10]} " +
+                $"(token={AddressIdPool.StringOf(e.Token)[..10]}, flow={e.Flow})");
             i += 1;
         }
     }
@@ -580,7 +623,18 @@ public class V2Pathfinder
         var key = (from, to, token);
         if (agg.TryGetValue(key, out long existing))
         {
-            agg[key] = existing + flow;
+            // Saturating addition to prevent overflow (9.2e18 attoCircles ≈ 9.2 CRC)
+            if (existing > long.MaxValue - flow)
+            {
+                Console.WriteLine($"[AddToAggregation] WARNING: Saturated flow for edge " +
+                    $"{AddressIdPool.StringOf(from)[..10]}→{AddressIdPool.StringOf(to)[..10]}: " +
+                    $"existing={existing}, flow={flow}");
+                agg[key] = long.MaxValue;
+            }
+            else
+            {
+                agg[key] = existing + flow;
+            }
         }
         else
         {
@@ -1056,6 +1110,13 @@ public class V2Pathfinder
                 {
                     // Last edge gets remainder to ensure exact total
                     scaledFlow = quantizedTotal - allocated;
+                    if (scaledFlow <= 0)
+                    {
+                        Console.WriteLine($"[QuantizeSinkBoundEdges] WARNING: Last edge remainder is {scaledFlow} " +
+                            $"(quantizedTotal={quantizedTotal}, allocated={allocated}, edges={group.Edges.Count}) — " +
+                            "rounding consumed entire quantum");
+                        continue; // Skip this edge — earlier edges consumed everything
+                    }
                 }
                 else
                 {
