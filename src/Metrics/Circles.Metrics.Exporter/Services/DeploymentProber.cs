@@ -272,12 +272,15 @@ public class DeploymentProber
             foreach (var ns in result.EnumerateArray())
             {
                 var nsName = ns.GetProperty("namespace").GetString()!;
-                var tableList = new List<string>();
+                if (!tables.TryGetValue(nsName, out var tableList))
+                {
+                    tableList = new List<string>();
+                    tables[nsName] = tableList;
+                }
                 foreach (var table in ns.GetProperty("tables").EnumerateArray())
                 {
                     tableList.Add(table.GetProperty("table").GetString()!);
                 }
-                tables[nsName] = tableList;
             }
             return tables;
         }
