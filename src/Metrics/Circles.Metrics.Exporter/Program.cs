@@ -39,6 +39,11 @@ builder.Services.AddHostedService<TrustCollectorService>();
 // Trust score history snapshot service (runs daily for anomaly detection)
 builder.Services.AddHostedService<TrustHistorySnapshotService>();
 
+// Deployment status monitoring (probes RPC endpoints, no DB access needed)
+builder.Services.AddHttpClient<DeploymentProber>();
+builder.Services.AddSingleton<DeploymentProber>();
+builder.Services.AddHostedService<DeploymentCollectorService>();
+
 // Health checks
 builder.Services.AddHealthChecks();
 
@@ -55,10 +60,10 @@ app.MapMetrics();
 app.MapGet("/", () => Results.Ok(new
 {
     Service = "Circles Metrics Exporter",
-    Version = "1.3.0",
+    Version = "1.4.0",
     Endpoints = new[]
     {
-        "/metrics - Prometheus metrics (KPIs + Liquidity + Trust Scores)",
+        "/metrics - Prometheus metrics (KPIs + Liquidity + Trust Scores + Deployment)",
         "/health - Health check",
         "/ready - Readiness check"
     },
@@ -69,7 +74,8 @@ app.MapGet("/", () => Results.Ok(new
         "Drain detection (z-score anomaly detection)",
         "Whale transfer tracking",
         "Trust score monitoring (distribution, anomalies, network health)",
-        "Trust score history snapshots (daily, 90-day retention)"
+        "Trust score history snapshots (daily, 90-day retention)",
+        "Deployment status monitoring (multi-env RPC probing, no DB access needed)"
     }
 }));
 
