@@ -90,6 +90,7 @@ if (!string.IsNullOrEmpty(otlpEndpoint))
         .WithTracing(tracing => tracing
             .AddSource(Tracing.Name)
             .AddAspNetCoreInstrumentation()
+            .AddNpgsql()
             .AddOtlpExporter());
 
     Console.WriteLine($"* OTLP tracing enabled → {otlpEndpoint}");

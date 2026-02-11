@@ -129,6 +129,8 @@ services:
       - circles-gnosis
     expose:
       - 3001
+    env_file:
+      - ../.env
     environment:
       - PORT=3001
       # Keepalive=300 (5min) prevents idle_session_timeout (10min) from killing LISTEN/NOTIFY connections
@@ -192,6 +194,8 @@ services:
       - circles-gnosis
     expose:
       - 8080 # Caddy proxies externally
+    env_file:
+      - ../.env
     environment:
       - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=rpc-host;
       - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=rpc-host;

@@ -5,6 +5,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Console;
 using Npgsql;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 namespace Circles.Rpc.Host;
 
@@ -106,6 +108,24 @@ public static class BuilderSetup
         });
         builder.Logging.SetMinimumLevel(LogLevel.Information);
         builder.Logging.AddFilter("Circles.Rpc.Host", LogLevel.Debug);
+
+        // ─── OpenTelemetry tracing (opt-in via OTEL_EXPORTER_OTLP_ENDPOINT) ────────
+        var otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+        if (!string.IsNullOrEmpty(otlpEndpoint))
+        {
+            builder.Services.AddOpenTelemetry()
+                .ConfigureResource(r => r.AddService(
+                    serviceName: "circles-rpc-host",
+                    serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"))
+                .WithTracing(tracing => tracing
+                    .AddSource(Tracing.Name)
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddNpgsql()
+                    .AddOtlpExporter());
+
+            Console.WriteLine($"* OTLP tracing enabled → {otlpEndpoint}");
+        }
 
         builder.Services.AddResponseCompression(options =>
         {

@@ -1,6 +1,9 @@
 using Circles.Cache.Service;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Services;
+using Npgsql;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Prometheus;
 
 static void AddConfigurableCors(IServiceCollection services)
@@ -61,6 +64,28 @@ builder.Logging.AddSimpleConsole(options =>
     options.SingleLine = true;
     options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
 });
+builder.Logging.Configure(o =>
+{
+    o.ActivityTrackingOptions = ActivityTrackingOptions.TraceId |
+                                ActivityTrackingOptions.SpanId;
+});
+
+// ─── OpenTelemetry tracing (opt-in via OTEL_EXPORTER_OTLP_ENDPOINT) ────────
+var otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+if (!string.IsNullOrEmpty(otlpEndpoint))
+{
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(r => r.AddService(
+            serviceName: "circles-cache-service",
+            serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"))
+        .WithTracing(tracing => tracing
+            .AddSource(Tracing.Name)
+            .AddAspNetCoreInstrumentation()
+            .AddNpgsql()
+            .AddOtlpExporter());
+
+    Console.WriteLine($"* OTLP tracing enabled → {otlpEndpoint}");
+}
 
 // Build the app
 var app = builder.Build();
