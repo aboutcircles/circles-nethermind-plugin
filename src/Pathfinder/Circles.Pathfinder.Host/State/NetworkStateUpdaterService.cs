@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using System.Text;
@@ -98,8 +99,14 @@ public class NetworkStateUpdaterService : BackgroundService
                     loadGraph,
                     _settings.BaseGroupRouter
                 );
+                // Extract group/consent data for caching (avoids 3 DB queries per filtered request)
+                var groupData = new CachedGroupData(
+                    new HashSet<int>(cap.GroupNodes),
+                    cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
+                    new HashSet<int>(cap.ConsentedAvatars));
+
                 var snap = new CapacityGraphSnapshot(lastBlock, cap);
-                _pool.UpdateSnapshot(snap);
+                _pool.UpdateSnapshot(snap, groupData);
 
                 _log.LogInformation(
                     "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
@@ -115,6 +122,19 @@ public class NetworkStateUpdaterService : BackgroundService
                 GraphUpdateMetrics.LastUpdateTimestamp.Set(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
                 GraphUpdateMetrics.LastProcessedBlock.Set(lastBlock);
                 GraphUpdateMetrics.ConsecutiveErrors.Set(0);
+
+                // O3: Graph size gauges
+                var bg = _networkState.BalanceGraph;
+                if (bg != null)
+                {
+                    GraphUpdateMetrics.AvatarCount.Set(bg.AvatarNodes.Count);
+                    GraphUpdateMetrics.BalanceCount.Set(bg.BalanceNodes.Count);
+                }
+                GraphUpdateMetrics.EdgeCount.Set(cap.Edges.Count);
+                GraphUpdateMetrics.GroupCount.Set(cap.GroupNodes.Count);
+
+                // O9: Address pool size
+                GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
 
                 // Reset error counter on success
                 consecutiveErrors = 0;

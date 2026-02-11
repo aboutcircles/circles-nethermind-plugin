@@ -7,6 +7,7 @@ namespace Circles.Pathfinder.Graphs;
 public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
 {
     private volatile CapacityGraphSnapshot? _current;
+    private volatile CachedGroupData? _cachedGroupData;
     private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger);
 
     /// <summary>Whether a snapshot has been loaded (used by health checks).</summary>
@@ -16,8 +17,10 @@ public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph,
     /* Snapshot                                                           */
     /* ------------------------------------------------------------------ */
 
-    public void UpdateSnapshot(CapacityGraphSnapshot snap)
+    public void UpdateSnapshot(CapacityGraphSnapshot snap, CachedGroupData? groupData = null)
     {
+        // Store cached group data before snapshot so readers see it when they see the new snapshot
+        _cachedGroupData = groupData;
         // Volatile write (field is already volatile) — old snapshot becomes
         // eligible for GC once all in-flight requests release their references.
         _current = snap;
@@ -37,8 +40,8 @@ public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph,
 
         if (RequestNeedsFiltering(r))
         {
-            // build ad-hoc filtered graph
-            var g = _gf.CreateCapacityGraph(balances, trust, r);
+            // build ad-hoc filtered graph, using cached group/consent data to skip DB queries
+            var g = _gf.CreateCapacityGraph(balances, trust, r, _cachedGroupData);
             return Task.FromResult(new CapacityGraphHandle(g));
         }
 

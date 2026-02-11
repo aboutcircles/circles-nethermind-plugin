@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using Npgsql;
@@ -27,6 +28,12 @@ namespace Circles.Pathfinder.Data
         private readonly string _connectionString;
         private readonly Settings _settings;
         private readonly ILogger _logger;
+
+        /// <summary>
+        /// Optional callback invoked after each DB query with (queryName, elapsed).
+        /// The host can wire this to a Prometheus histogram.
+        /// </summary>
+        public Action<string, TimeSpan>? OnQueryCompleted { get; set; }
 
         // Demurrage constants (same as CirclesConverter)
         private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
@@ -93,6 +100,7 @@ namespace Circles.Pathfinder.Data
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
             var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
 
+            var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
@@ -188,6 +196,8 @@ namespace Circles.Pathfinder.Data
                     type == "static"));
             }
 
+            sw.Stop();
+            OnQueryCompleted?.Invoke("balances", sw.Elapsed);
             return results;
         }
 
@@ -197,6 +207,7 @@ namespace Circles.Pathfinder.Data
             var trustQuery = LoadQueryFromResource("trustQuery.sql");
             var results = new List<(string Truster, string Trustee, int Limit)>();
 
+            var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
@@ -212,6 +223,8 @@ namespace Circles.Pathfinder.Data
                 results.Add((truster, trustee, 100)); // Assuming a default trust limit of 100 in V2
             }
 
+            sw.Stop();
+            OnQueryCompleted?.Invoke("trust", sw.Elapsed);
             return results;
         }
 
@@ -221,6 +234,7 @@ namespace Circles.Pathfinder.Data
             var groupQuery = LoadQueryFromResource("groupQuery.sql");
             var results = new List<string>();
 
+            var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
@@ -234,6 +248,8 @@ namespace Circles.Pathfinder.Data
                 results.Add(groupAddress);
             }
 
+            sw.Stop();
+            OnQueryCompleted?.Invoke("groups", sw.Elapsed);
             return results;
         }
 
@@ -243,6 +259,7 @@ namespace Circles.Pathfinder.Data
             var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
             var results = new List<(string GroupAddress, string TrustedToken)>();
 
+            var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
@@ -257,6 +274,8 @@ namespace Circles.Pathfinder.Data
                 results.Add((groupAddress, trustedToken));
             }
 
+            sw.Stop();
+            OnQueryCompleted?.Invoke("group_trusts", sw.Elapsed);
             return results;
         }
 
@@ -266,6 +285,7 @@ namespace Circles.Pathfinder.Data
             var query = LoadQueryFromResource("consentedFlowQuery.sql");
             var results = new List<(string Avatar, bool HasConsentedFlow)>();
 
+            var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
@@ -293,6 +313,8 @@ namespace Circles.Pathfinder.Data
                 results.Add((avatar, hasConsented));
             }
 
+            sw.Stop();
+            OnQueryCompleted?.Invoke("consented_flow", sw.Elapsed);
             return results;
         }
     }

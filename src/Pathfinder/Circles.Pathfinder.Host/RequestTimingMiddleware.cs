@@ -10,7 +10,11 @@ public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<Reques
         Metrics.CreateHistogram(
             "circles_http_request_duration_seconds",
             "Total HTTP request duration",
-            new HistogramConfiguration { Buckets = Constants.RequestDurationBuckets });
+            new HistogramConfiguration
+            {
+                LabelNames = new[] { "route", "status" },
+                Buckets = Constants.RequestDurationBuckets
+            });
 
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -25,7 +29,9 @@ public sealed class RequestTimingMiddleware(RequestDelegate next, ILogger<Reques
 
         var traceId = Activity.Current?.TraceId.ToString() ?? ctx.TraceIdentifier;
 
-        RequestDuration.Observe(sw.Elapsed.TotalSeconds);
+        // Use the path template for low-cardinality labels
+        var route = path.HasValue ? path.Value! : "unknown";
+        RequestDuration.WithLabels(route, statusCode.ToString()).Observe(sw.Elapsed.TotalSeconds);
 
         using (log.BeginScope("traceId:{TraceId}", traceId))
         {

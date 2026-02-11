@@ -10,7 +10,8 @@ public sealed record GraphState(
     BalanceGraph? BalanceGraph,
     IReadOnlyDictionary<int, HashSet<int>> AccountTrusts,
     long Block,
-    DateTime UpdateTime);
+    DateTime UpdateTime,
+    CachedGroupData? GroupData = null);
 
 public sealed class NetworkState
 {
@@ -33,7 +34,8 @@ public sealed class NetworkState
     internal void Replace(
         BalanceGraph? balanceGraph = null,
         Dictionary<int, HashSet<int>>? accountTrusts = null,
-        long? lastKnownBlockNumber = null)
+        long? lastKnownBlockNumber = null,
+        CachedGroupData? groupData = null)
     {
         // CAS loop for safe concurrent partial updates
         GraphState snapshot;
@@ -45,7 +47,8 @@ public sealed class NetworkState
                 balanceGraph ?? snapshot.BalanceGraph,
                 accountTrusts ?? (IReadOnlyDictionary<int, HashSet<int>>)snapshot.AccountTrusts,
                 lastKnownBlockNumber ?? snapshot.Block,
-                DateTime.UtcNow);
+                DateTime.UtcNow,
+                groupData ?? snapshot.GroupData);
         }
         while (Interlocked.CompareExchange(ref _state, updated, snapshot) != snapshot);
     }

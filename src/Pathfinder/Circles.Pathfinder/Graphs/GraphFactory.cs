@@ -99,7 +99,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
     public CapacityGraph CreateCapacityGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
-        FlowRequest? request = null)
+        FlowRequest? request = null,
+        CachedGroupData? cachedGroupData = null)
     {
         Interlocked.Increment(ref _createdCount);
         _logger.LogDebug("Creating capacity graph {Count}...", _createdCount);
@@ -129,10 +130,10 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
 
         // STEP 1d: Load groups and track router node for post-processing
-        LoadGroupsAndTrackRouter(capacityGraph);
+        LoadGroupsAndTrackRouter(capacityGraph, cachedGroupData);
 
         // STEP 1e: Load consented flow flags
-        LoadConsentedFlowFlags(capacityGraph);
+        LoadConsentedFlowFlags(capacityGraph, cachedGroupData);
 
         // STEP 1f: Add simulated consented avatars (for testing)
         if (request?.SimulatedConsentedAvatars != null && request.SimulatedConsentedAvatars.Count > 0)
@@ -511,14 +512,26 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
     }
 
     // Load groups and router — exceptions propagate to caller (CreateCapacityGraph)
-    private void LoadGroupsAndTrackRouter(CapacityGraph capacityGraph)
+    private void LoadGroupsAndTrackRouter(CapacityGraph capacityGraph, CachedGroupData? cached = null)
     {
         // Track router node ID for post-processing (inserting router between Avatar->Group transfers)
         // Note: Router node is added to graph but has no edges during graph construction
         int routerId = AddressIdPool.IdOf(routerAddress);
         capacityGraph.SetRouter(routerId);
 
-        // Load groups
+        // Use cached data if available (avoids 2 DB queries per filtered request)
+        if (cached != null)
+        {
+            foreach (var groupId in cached.GroupNodes)
+                capacityGraph.AddGroup(groupId);
+            foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
+                capacityGraph.GroupTrustedTokens[groupId] = new HashSet<int>(tokens);
+            _logger.LogDebug("Used cached group data: {GroupCount} groups, {TrustCount} group-trust entries",
+                cached.GroupNodes.Count, cached.GroupTrustedTokens.Count);
+            return;
+        }
+
+        // Load groups from DB
         var groups = loadGraph.LoadGroups().ToList();
         foreach (var groupAddress in groups)
         {
@@ -526,7 +539,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             capacityGraph.AddGroup(groupId);
         }
 
-        // Load group trust relationships
+        // Load group trust relationships from DB
         var groupTrusts = loadGraph.LoadGroupTrusts().ToList();
         foreach (var (groupAddress, trustedToken) in groupTrusts)
         {
@@ -544,8 +557,16 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
     }
 
     // Load consented flow flags — exceptions propagate to caller (CreateCapacityGraph)
-    private void LoadConsentedFlowFlags(CapacityGraph capacityGraph)
+    private void LoadConsentedFlowFlags(CapacityGraph capacityGraph, CachedGroupData? cached = null)
     {
+        // Use cached data if available (avoids 1 DB query per filtered request)
+        if (cached != null)
+        {
+            capacityGraph.ConsentedAvatars = new HashSet<int>(cached.ConsentedAvatars);
+            _logger.LogDebug("Used cached {Count} avatars with consented flow enabled", cached.ConsentedAvatars.Count);
+            return;
+        }
+
         var consentedFlags = loadGraph.LoadConsentedFlowFlags()
             .Where(x => x.HasConsentedFlow)
             .Select(x => AddressIdPool.IdOf(x.Avatar.ToLowerInvariant()))

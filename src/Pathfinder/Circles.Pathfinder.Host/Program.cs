@@ -49,7 +49,13 @@ builder.Services.AddSingleton(semaphore);
 builder.Services.AddSingleton<NetworkState>();
 builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<LoadGraph>(provider =>
-    new LoadGraph(settings, provider.GetRequiredService<ILoggerFactory>().CreateLogger<LoadGraph>()));
+{
+    var lg = new LoadGraph(settings, provider.GetRequiredService<ILoggerFactory>().CreateLogger<LoadGraph>());
+    // O4: Wire DB query duration metric
+    lg.OnQueryCompleted = (queryName, elapsed) =>
+        GraphUpdateMetrics.DbQueryDuration.WithLabels(queryName).Observe(elapsed.TotalSeconds);
+    return lg;
+});
 builder.Services.AddSingleton<CapacityGraphPool>(provider =>
     new CapacityGraphPool(
         settings.RouterAddress,
@@ -98,9 +104,10 @@ builder.Services
     .AddHealthChecks()
     // liveness – always healthy as long as the process answers HTTP
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
-    // readiness – needs the graphs and healthy background services
+    // readiness – needs the graphs, healthy background services, and DB connectivity
     .AddCheck<GraphReadinessHealthCheck>("graphs_loaded", tags: new[] { "ready" })
-    .AddCheck<BackgroundServiceHealthCheck>("background_services", tags: new[] { "ready" });
+    .AddCheck<BackgroundServiceHealthCheck>("background_services", tags: new[] { "ready" })
+    .AddCheck<DbConnectivityHealthCheck>("db_connectivity", tags: new[] { "ready" });
 
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -170,6 +177,13 @@ app.MapGet("/findMaxFlow", async (
     V2Pathfinder pathfinder,
     ILogger<Program> log) =>
 {
+    // O8: Activity span for distributed tracing (mirrors findPath)
+    using var act = Source.StartActivity("findMaxFlow", ActivityKind.Server);
+    act?.SetTag("http.route", "/findMaxFlow");
+    act?.SetTag("from", from);
+    act?.SetTag("to", to);
+    act?.SetTag("amount", amount);
+
     // S1: Validate address format
     var addrErr = ValidateAddresses((from, "from"), (to, "to"));
     if (addrErr != null) return addrErr;
@@ -239,17 +253,20 @@ app.MapGet("/findMaxFlow", async (
             var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
             var result = await Task.Run(() => pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow))
                 .WaitAsync(solverTimeout);
+            FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
             return Results.Ok(result);
         }
     }
     catch (TimeoutException)
     {
+        FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
         log.LogError("findMaxFlow solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
             settings.SolverTimeoutSeconds, from, to, amount);
         return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
+        FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
         log.LogError(ex, "findMaxFlow threw exception for request: from={From}, to={To}, amount={Amount}",
             from, to, amount);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
@@ -362,16 +379,19 @@ app.MapGet("/findPath", async (
         MaxFlowResponse result = await Task.Run(() => pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow))
             .WaitAsync(solverTimeout);
 
+        FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
         return Results.Ok(result);
     }
     catch (TimeoutException)
     {
+        FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
         log.LogError("findPath solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
             settings.SolverTimeoutSeconds, from, to, amount);
         return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
+        FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
         log.LogError(ex, "findPath threw exception for request: from={From}, to={To}, amount={Amount}",
             from, to, amount);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
@@ -457,16 +477,19 @@ app.MapPost("/findPath", async (
                 () => pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow))
             .WaitAsync(solverTimeout);
 
+        FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
         return Results.Ok(result);
     }
     catch (TimeoutException)
     {
+        FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
         log.LogError("findPath solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
             settings.SolverTimeoutSeconds, request.Source, request.Sink, request.TargetFlow);
         return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
     }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
+        FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
         log.LogError(ex, "findPath threw exception for request: from={From}, to={To}, amount={Amount}",
             request.Source, request.Sink, request.TargetFlow);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);

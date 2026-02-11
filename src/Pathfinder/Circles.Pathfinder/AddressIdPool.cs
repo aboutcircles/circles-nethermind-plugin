@@ -20,6 +20,9 @@ public static class AddressIdPool
     private static readonly ConcurrentDictionary<int, byte> BalanceNodeIds =
         new(concurrencyLevel: Environment.ProcessorCount, capacity: 1024);
 
+    /// <summary>Current number of entries in the address pool (for O9 metric).</summary>
+    public static int Count => Map.Count;
+
     public static List<string> GetAvatarSnapshot()
     {
         // Snapshot enumeration of ConcurrentDictionary is safe; we still filter out balance-node strings

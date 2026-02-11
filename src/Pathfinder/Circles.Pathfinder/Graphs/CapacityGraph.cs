@@ -3,6 +3,15 @@ using Circles.Pathfinder.Nodes;
 
 namespace Circles.Pathfinder.Graphs;
 
+/// <summary>
+/// Cached group/consent data extracted from a full capacity graph build.
+/// Passed to subsequent filtered builds to skip redundant DB queries.
+/// </summary>
+public sealed record CachedGroupData(
+    HashSet<int> GroupNodes,
+    Dictionary<int, HashSet<int>> GroupTrustedTokens,
+    HashSet<int> ConsentedAvatars);
+
 public class CapacityGraph : IGraph<CapacityEdge>
 {
     public IDictionary<int, Node> Nodes { get; } = new Dictionary<int, Node>();

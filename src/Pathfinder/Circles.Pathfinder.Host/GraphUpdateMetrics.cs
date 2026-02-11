@@ -51,4 +51,36 @@ internal static class GraphUpdateMetrics
     public static readonly Gauge LastProcessedBlock = Metrics.CreateGauge(
         "circles_graph_last_processed_block",
         "Block number of last successful graph update");
+
+    // O3: Graph size gauges — set after each successful update
+    public static readonly Gauge AvatarCount = Metrics.CreateGauge(
+        "circles_graph_avatar_count",
+        "Number of avatars in the balance graph");
+
+    public static readonly Gauge EdgeCount = Metrics.CreateGauge(
+        "circles_graph_edge_count",
+        "Number of edges in the capacity graph");
+
+    public static readonly Gauge BalanceCount = Metrics.CreateGauge(
+        "circles_graph_balance_count",
+        "Number of balance nodes in the balance graph");
+
+    public static readonly Gauge GroupCount = Metrics.CreateGauge(
+        "circles_graph_group_count",
+        "Number of group nodes in the capacity graph");
+
+    // O9: Address pool size
+    public static readonly Gauge AddressPoolSize = Metrics.CreateGauge(
+        "circles_address_pool_size",
+        "Number of entries in the AddressIdPool");
+
+    // O4: DB query duration — labeled by query name (balances, trust, groups, group_trusts, consented_flow)
+    public static readonly Histogram DbQueryDuration = Metrics.CreateHistogram(
+        "circles_db_query_duration_seconds",
+        "Duration of individual DB queries in the LoadGraph service",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "query" },
+            Buckets = Histogram.ExponentialBuckets(0.01, 2, 12) // 10ms to ~41s
+        });
 }

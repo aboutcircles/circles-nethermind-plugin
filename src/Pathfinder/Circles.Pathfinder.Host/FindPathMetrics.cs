@@ -17,4 +17,11 @@ internal class FindPathMetrics
             "circles_findpath_rejected_requests_total",
             "Number of /findPath requests rejected due to concurrency limit."
         );
+
+    // O1: Solver outcome counter — labels: status={success, error, timeout, bad_input}
+    public static readonly Counter SolverStatusTotal =
+        Metrics.CreateCounter(
+            "circles_solver_status_total",
+            "Solver outcome counts by status",
+            new CounterConfiguration { LabelNames = new[] { "status" } });
 }
