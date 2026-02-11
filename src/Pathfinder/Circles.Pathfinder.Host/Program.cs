@@ -16,6 +16,8 @@ using Microsoft.Extensions.Logging.Console;
 using Nethermind.Int256;
 using Npgsql;
 using Prometheus;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using static Circles.Pathfinder.Tracing;
 using Microsoft.AspNetCore.ResponseCompression;
 
@@ -76,6 +78,22 @@ builder.Logging.Configure(o =>
 });
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 builder.Logging.AddFilter("Circles.Pathfinder.Host", LogLevel.Debug);
+
+// ─── OpenTelemetry tracing (opt-in via OTEL_EXPORTER_OTLP_ENDPOINT) ────────
+var otlpEndpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+if (!string.IsNullOrEmpty(otlpEndpoint))
+{
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(r => r.AddService(
+            serviceName: "circles-pathfinder",
+            serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown"))
+        .WithTracing(tracing => tracing
+            .AddSource(Tracing.Name)
+            .AddAspNetCoreInstrumentation()
+            .AddOtlpExporter());
+
+    Console.WriteLine($"* OTLP tracing enabled → {otlpEndpoint}");
+}
 
 builder.Services.AddResponseCompression(options =>
 {
