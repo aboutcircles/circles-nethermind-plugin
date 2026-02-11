@@ -19,6 +19,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>Circles.Pathfinder.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
         <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
     </ItemGroup>

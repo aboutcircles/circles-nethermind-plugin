@@ -123,8 +123,10 @@ public class FlowGraph : IGraph<FlowEdge>
 
             if (aggregatedEdges.TryGetValue(key, out var existingEdge))
             {
-                // Add the flow to the existing edge
-                existingEdge.Flow += edge.Flow;
+                // Saturating addition to prevent overflow (same pattern as V2Pathfinder.AddToAggregation)
+                existingEdge.Flow = existingEdge.Flow > long.MaxValue - edge.Flow
+                    ? long.MaxValue
+                    : existingEdge.Flow + edge.Flow;
 
                 // For capacity, take the max, as that's the logical limit
                 existingEdge.CurrentCapacity = Math.Max(existingEdge.CurrentCapacity, edge.CurrentCapacity);

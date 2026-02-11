@@ -54,4 +54,13 @@ public class Settings
         Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN") != null
         ? double.Parse(Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN")!)
         : 0.9995;
+
+    /// <summary>
+    /// Timeout in seconds for the MaxFlow solver. Default 30s.
+    /// Prevents a stuck solver from blocking a semaphore slot indefinitely.
+    /// </summary>
+    public int SolverTimeoutSeconds { get; set; } =
+        Environment.GetEnvironmentVariable("PATHFINDER_SOLVER_TIMEOUT_SECONDS") != null
+        ? int.Parse(Environment.GetEnvironmentVariable("PATHFINDER_SOLVER_TIMEOUT_SECONDS")!)
+        : 30;
 }

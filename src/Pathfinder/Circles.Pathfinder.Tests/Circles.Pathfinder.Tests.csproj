@@ -32,6 +32,7 @@
         <ProjectReference Include="..\..\Common\Circles.Common.TestUtils\Circles.Common.TestUtils.csproj" />
         <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
         <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+        <ProjectReference Include="..\Circles.Pathfinder.Host\Circles.Pathfinder.Host.csproj" />
     </ItemGroup>
 
     <ItemGroup>

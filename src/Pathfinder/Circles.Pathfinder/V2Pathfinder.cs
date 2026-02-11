@@ -768,13 +768,16 @@ public class V2Pathfinder
                 }
 
                 // Compare flow/delta without floating point: a/b > c/d  <=>  a*d > c*b
+                // Use Math.BigMul (returns Int128) to prevent overflow for large flows
                 long a = metas[i].Flow;
                 long b = delta;
                 long c = bestFlow;
                 long d = bestDelta;
 
-                bool betterRatio = a * d > c * b;
-                bool tieBreakFewerSteps = a * d == c * b && delta < bestDelta;
+                var ad = Math.BigMul(a, d);
+                var cb = Math.BigMul(c, b);
+                bool betterRatio = ad > cb;
+                bool tieBreakFewerSteps = ad == cb && delta < bestDelta;
                 bool better = betterRatio || tieBreakFewerSteps;
 
                 if (better)

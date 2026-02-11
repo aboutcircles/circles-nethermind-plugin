@@ -1,5 +1,7 @@
+using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Tests.Helpers;
 
 namespace Circles.Pathfinder.Tests;
 
@@ -330,6 +332,119 @@ public class ArithmeticSafetyTests
 
     #endregion
 
+    #region FlowGraph AggregateIdenticalEdges Overflow (B1)
+
+    /// <summary>
+    /// When FlowGraph.AggregateIdenticalEdges encounters edges whose flows
+    /// sum to more than long.MaxValue, it should saturate rather than overflow.
+    /// </summary>
+    [Test]
+    public void FlowGraph_AggregateIdenticalEdges_NearOverflow_Saturates()
+    {
+        int source = AddressIdPool.IdOf("0xb100000000000000000000000000000000000001");
+        int sink = AddressIdPool.IdOf("0xb100000000000000000000000000000000000002");
+        int token = AddressIdPool.IdOf("0xb100000000000000000000000000000000000003");
+
+        var flowGraph = new FlowGraph();
+        flowGraph.AddAvatar(source);
+        flowGraph.AddAvatar(sink);
+
+        // Add 3 edges with the same (from,to,token) key, each with flow near long.MaxValue/2
+        // Their sum (3 * MaxValue/2) would overflow without saturating addition
+        long bigFlow = long.MaxValue / 2;
+        for (int i = 0; i < 3; i++)
+        {
+            flowGraph.Edges.Add(new FlowEdge(source, sink, token, bigFlow) { Flow = bigFlow });
+        }
+
+        var aggregated = flowGraph.AggregateIdenticalEdges();
+
+        // Should have exactly 1 aggregated edge
+        Assert.That(aggregated.Edges.Count, Is.EqualTo(1));
+
+        // Flow should be saturated at long.MaxValue, not negative (overflow)
+        Assert.That(aggregated.Edges[0].Flow, Is.EqualTo(long.MaxValue));
+    }
+
+    /// <summary>
+    /// Normal-range flows should aggregate exactly without false saturation.
+    /// </summary>
+    [Test]
+    public void FlowGraph_AggregateIdenticalEdges_NormalRange_ExactSum()
+    {
+        int source = AddressIdPool.IdOf("0xb110000000000000000000000000000000000001");
+        int sink = AddressIdPool.IdOf("0xb110000000000000000000000000000000000002");
+        int token = AddressIdPool.IdOf("0xb110000000000000000000000000000000000003");
+
+        var flowGraph = new FlowGraph();
+        flowGraph.AddAvatar(source);
+        flowGraph.AddAvatar(sink);
+
+        flowGraph.Edges.Add(new FlowEdge(source, sink, token, 100) { Flow = 100 });
+        flowGraph.Edges.Add(new FlowEdge(source, sink, token, 200) { Flow = 200 });
+        flowGraph.Edges.Add(new FlowEdge(source, sink, token, 300) { Flow = 300 });
+
+        var aggregated = flowGraph.AggregateIdenticalEdges();
+
+        Assert.That(aggregated.Edges.Count, Is.EqualTo(1));
+        Assert.That(aggregated.Edges[0].Flow, Is.EqualTo(600));
+    }
+
+    #endregion
+
+    #region PrunePathsByStepLimit Overflow (B5)
+
+    /// <summary>
+    /// Verify that Math.BigMul handles large flow*delta comparisons without overflow.
+    /// This tests the same comparison logic used in PrunePathsByStepLimit:
+    ///   a/b > c/d  <=>  a*d > c*b  (using Int128 via Math.BigMul)
+    /// </summary>
+    [Test]
+    public void PruneComparison_LargeFlows_NoBigMulOverflow()
+    {
+        // Values that would overflow long multiplication
+        long a = long.MaxValue - 1;
+        long d = 3;
+        long c = long.MaxValue / 2;
+        long b = 2;
+
+        // Old code: a * d would overflow
+        // New code: Math.BigMul returns Int128
+        var ad = Math.BigMul(a, d);
+        var cb = Math.BigMul(c, b);
+
+        // Verify the comparison is meaningful (no overflow)
+        Assert.That(ad, Is.GreaterThan(cb),
+            "Math.BigMul comparison should work correctly for near-MaxValue flows");
+
+        // Verify that plain long multiplication WOULD overflow
+        Assert.That(() =>
+        {
+            checked
+            {
+                _ = a * d;
+            }
+        }, Throws.TypeOf<OverflowException>(),
+            "Plain long multiplication should overflow for these values");
+    }
+
+    /// <summary>
+    /// Normal-range flows should still compare correctly with BigMul.
+    /// </summary>
+    [Test]
+    public void PruneComparison_NormalFlows_CorrectOrdering()
+    {
+        // flow=100, delta=2 vs flow=60, delta=1 → 100/2=50 vs 60/1=60 → second is better
+        long a = 100, b = 2, c = 60, d = 1;
+        var ad = Math.BigMul(a, d);
+        var cb = Math.BigMul(c, b);
+
+        Assert.That(ad < cb, Is.True,
+            "100/2 < 60/1 should hold");
+    }
+
+    #endregion
+
     #region Demurrage Guard (A5)
 
     /// <summary>
@@ -353,6 +468,174 @@ public class ArithmeticSafetyTests
             ulong rawDay = (ulong)(lastActivity - InflationDayZeroUnix) / 86_400;
             Assert.That(rawDay, Is.GreaterThan(1_000_000UL),
                 "Unchecked cast produces nonsensical day value (millions of days in the future)");
+        }
+    }
+
+    #endregion
+
+    #region NetworkState Atomic Swap (B3)
+
+    /// <summary>
+    /// Concurrent writer + reader should never see mismatched state.
+    /// The writer alternates between two known states; the reader asserts
+    /// that trust and balance always come from the same cycle.
+    /// </summary>
+    [Test]
+    public void NetworkState_ConcurrentWriterReader_NeverMismatched()
+    {
+        var ns = new Circles.Pathfinder.Host.State.NetworkState();
+
+        // Two distinct states
+        var trustA = new Dictionary<int, HashSet<int>> { [1] = new() { 10 } };
+        var balA = new BalanceGraph();
+        balA.AddAvatar(1);
+
+        var trustB = new Dictionary<int, HashSet<int>> { [2] = new() { 20 } };
+        var balB = new BalanceGraph();
+        balB.AddAvatar(2);
+
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        int mismatchCount = 0;
+
+        // Writer: alternate between state A and B
+        var writer = Task.Run(() =>
+        {
+            bool useA = true;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                if (useA)
+                {
+                    ns.Replace(balanceGraph: balA, accountTrusts: trustA, lastKnownBlockNumber: 100);
+                }
+                else
+                {
+                    ns.Replace(balanceGraph: balB, accountTrusts: trustB, lastKnownBlockNumber: 200);
+                }
+                useA = !useA;
+            }
+        });
+
+        // Reader: read snapshot and check consistency
+        var reader = Task.Run(() =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var snap = ns.Current;
+                if (snap.BalanceGraph is null) continue;
+
+                bool isA = snap.BalanceGraph.AvatarNodes.ContainsKey(1);
+                bool trustIsA = snap.AccountTrusts.ContainsKey(1);
+
+                // Both should agree on which state we're in
+                if (isA != trustIsA) Interlocked.Increment(ref mismatchCount);
+            }
+        });
+
+        Task.WhenAll(writer, reader).Wait();
+
+        Assert.That(mismatchCount, Is.EqualTo(0),
+            "Reader should never see mismatched balance/trust state");
+    }
+
+    #endregion
+
+    #region GraphFactory Exception Propagation (B2)
+
+    /// <summary>
+    /// When LoadGroups throws an exception, CreateCapacityGraph should
+    /// propagate it rather than silently building a graph without groups.
+    /// </summary>
+    [Test]
+    public void GraphFactory_LoadGroupsThrows_ExceptionPropagates()
+    {
+        var throwingLoadGraph = new ThrowingLoadGraph(throwOnGroups: true);
+        var gf = new GraphFactory(RouterAddr, throwingLoadGraph);
+
+        // Set up minimal trust/balance data
+        throwingLoadGraph.AddTrust(Addr1, Addr2);
+        throwingLoadGraph.AddBalance(Addr1, TokenAddr, "1000000000000000000");
+
+        var trustGraph = gf.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+        var balanceGraph = gf.V2BalanceGraph();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            gf.CreateCapacityGraph(balanceGraph, trustLookup));
+    }
+
+    /// <summary>
+    /// When LoadConsentedFlowFlags throws, CreateCapacityGraph should propagate.
+    /// </summary>
+    [Test]
+    public void GraphFactory_LoadConsentedFlowFlagsThrows_ExceptionPropagates()
+    {
+        var throwingLoadGraph = new ThrowingLoadGraph(throwOnConsentedFlags: true);
+        var gf = new GraphFactory(RouterAddr, throwingLoadGraph);
+
+        throwingLoadGraph.AddTrust(Addr1, Addr2);
+        throwingLoadGraph.AddBalance(Addr1, TokenAddr, "1000000000000000000");
+
+        var trustGraph = gf.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+        var balanceGraph = gf.V2BalanceGraph();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            gf.CreateCapacityGraph(balanceGraph, trustLookup));
+    }
+
+    /// <summary>
+    /// Mock ILoadGraph that throws on specific methods to test exception propagation.
+    /// </summary>
+    private class ThrowingLoadGraph : ILoadGraph
+    {
+        private readonly bool _throwOnGroups;
+        private readonly bool _throwOnConsentedFlags;
+        private readonly List<(string Truster, string Trustee, int Limit)> _trusts = new();
+        private readonly List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> _balances = new();
+
+        public ThrowingLoadGraph(bool throwOnGroups = false, bool throwOnConsentedFlags = false)
+        {
+            _throwOnGroups = throwOnGroups;
+            _throwOnConsentedFlags = throwOnConsentedFlags;
+        }
+
+        public void AddTrust(string truster, string trustee)
+        {
+            _trusts.Add((truster.ToLowerInvariant(), trustee.ToLowerInvariant(), 100));
+        }
+
+        public void AddBalance(string holder, string token, string amountWei)
+        {
+            var holderId = AddressIdPool.IdOf(holder.ToLowerInvariant());
+            var tokenId = AddressIdPool.IdOf(token.ToLowerInvariant());
+            _balances.Add((amountWei, holderId, tokenId, false, false));
+        }
+
+        public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
+            => _balances;
+
+        public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
+            => _trusts;
+
+        public IEnumerable<string> LoadGroups()
+        {
+            if (_throwOnGroups)
+                throw new InvalidOperationException("Simulated DB failure in LoadGroups");
+            return Enumerable.Empty<string>();
+        }
+
+        public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
+        {
+            if (_throwOnGroups)
+                throw new InvalidOperationException("Simulated DB failure in LoadGroupTrusts");
+            return Enumerable.Empty<(string, string)>();
+        }
+
+        public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
+        {
+            if (_throwOnConsentedFlags)
+                throw new InvalidOperationException("Simulated DB failure in LoadConsentedFlowFlags");
+            return Enumerable.Empty<(string, bool)>();
         }
     }
 

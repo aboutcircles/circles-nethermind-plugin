@@ -510,67 +510,50 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         return list;
     }
 
-    // Load groups and router
+    // Load groups and router — exceptions propagate to caller (CreateCapacityGraph)
     private void LoadGroupsAndTrackRouter(CapacityGraph capacityGraph)
     {
-        try
+        // Track router node ID for post-processing (inserting router between Avatar->Group transfers)
+        // Note: Router node is added to graph but has no edges during graph construction
+        int routerId = AddressIdPool.IdOf(routerAddress);
+        capacityGraph.SetRouter(routerId);
+
+        // Load groups
+        var groups = loadGraph.LoadGroups().ToList();
+        foreach (var groupAddress in groups)
         {
-            // Track router node ID for post-processing (inserting router between Avatar->Group transfers)
-            // Note: Router node is added to graph but has no edges during graph construction
-            int routerId = AddressIdPool.IdOf(routerAddress);
-            capacityGraph.SetRouter(routerId);
-
-            // Load groups
-            var groups = loadGraph.LoadGroups().ToList();
-            foreach (var groupAddress in groups)
-            {
-                int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
-                capacityGraph.AddGroup(groupId);
-            }
-
-            // Load group trust relationships
-            var groupTrusts = loadGraph.LoadGroupTrusts().ToList();
-            foreach (var (groupAddress, trustedToken) in groupTrusts)
-            {
-                int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
-                int tokenId = AddressIdPool.IdOf(trustedToken.ToLowerInvariant());
-
-                if (!capacityGraph.GroupTrustedTokens.TryGetValue(groupId, out var trustedSet))
-                {
-                    trustedSet = new HashSet<int>();
-                    capacityGraph.GroupTrustedTokens[groupId] = trustedSet;
-                }
-
-                trustedSet.Add(tokenId);
-            }
+            int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+            capacityGraph.AddGroup(groupId);
         }
-        catch (Exception ex)
+
+        // Load group trust relationships
+        var groupTrusts = loadGraph.LoadGroupTrusts().ToList();
+        foreach (var (groupAddress, trustedToken) in groupTrusts)
         {
-            // Log but don't fail if groups/router can't be loaded
-            _logger.LogWarning(ex, "Could not load groups and router tracking");
+            int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
+            int tokenId = AddressIdPool.IdOf(trustedToken.ToLowerInvariant());
+
+            if (!capacityGraph.GroupTrustedTokens.TryGetValue(groupId, out var trustedSet))
+            {
+                trustedSet = new HashSet<int>();
+                capacityGraph.GroupTrustedTokens[groupId] = trustedSet;
+            }
+
+            trustedSet.Add(tokenId);
         }
     }
 
-    // Load consented flow flags
+    // Load consented flow flags — exceptions propagate to caller (CreateCapacityGraph)
     private void LoadConsentedFlowFlags(CapacityGraph capacityGraph)
     {
-        try
-        {
-            var consentedFlags = loadGraph.LoadConsentedFlowFlags()
-                .Where(x => x.HasConsentedFlow)
-                .Select(x => AddressIdPool.IdOf(x.Avatar.ToLowerInvariant()))
-                .ToHashSet();
+        var consentedFlags = loadGraph.LoadConsentedFlowFlags()
+            .Where(x => x.HasConsentedFlow)
+            .Select(x => AddressIdPool.IdOf(x.Avatar.ToLowerInvariant()))
+            .ToHashSet();
 
-            capacityGraph.ConsentedAvatars = consentedFlags;
+        capacityGraph.ConsentedAvatars = consentedFlags;
 
-            _logger.LogDebug("Loaded {Count} avatars with consented flow enabled", consentedFlags.Count);
-        }
-        catch (Exception ex)
-        {
-            // Log but don't fail if consented flow flags can't be loaded
-            // Default to empty set (no consented flow validation)
-            _logger.LogWarning(ex, "Could not load consented flow flags");
-        }
+        _logger.LogDebug("Loaded {Count} avatars with consented flow enabled", consentedFlags.Count);
     }
 
     private void AddHolderToTokenEdges_Pooled(
@@ -801,7 +784,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
     /// Validates that a string is a valid Ethereum address format.
     /// Expects: 0x followed by exactly 40 hexadecimal characters.
     /// </summary>
-    private static bool IsValidEthereumAddress(string address)
+    public static bool IsValidEthereumAddress(string address)
     {
         if (string.IsNullOrEmpty(address))
             return false;

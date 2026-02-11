@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Circles.Pathfinder.Data;
 using Circles.Common.Dto;
 using Microsoft.Extensions.Logging;
@@ -7,10 +6,11 @@ namespace Circles.Pathfinder.Graphs;
 
 public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
 {
-    private readonly ConcurrentDictionary<CapacityGraphSnapshot, int> _ref = new();
     private volatile CapacityGraphSnapshot? _current;
     private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger);
 
+    /// <summary>Whether a snapshot has been loaded (used by health checks).</summary>
+    public bool HasCurrentSnapshot => _current is not null;
 
     /* ------------------------------------------------------------------ */
     /* Snapshot                                                           */
@@ -18,12 +18,9 @@ public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph,
 
     public void UpdateSnapshot(CapacityGraphSnapshot snap)
     {
-        var old = _current;
+        // Volatile write (field is already volatile) — old snapshot becomes
+        // eligible for GC once all in-flight requests release their references.
         _current = snap;
-
-        _ref.TryAdd(snap, 0);
-        if (old != null && _ref.TryGetValue(old, out var cnt) && cnt == 0)
-            _ref.TryRemove(old, out _);
     }
 
     /* ------------------------------------------------------------------ */
@@ -34,27 +31,19 @@ public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph,
         BalanceGraph balances,
         IReadOnlyDictionary<int, HashSet<int>> trust)
     {
-        if (_current == null)
+        var snap = _current;
+        if (snap == null)
             throw new InvalidOperationException("No capacity graph available yet.");
 
         if (RequestNeedsFiltering(r))
         {
             // build ad-hoc filtered graph
             var g = _gf.CreateCapacityGraph(balances, trust, r);
-            return Task.FromResult(new CapacityGraphHandle(g, null, this));
+            return Task.FromResult(new CapacityGraphHandle(g));
         }
 
-        var snap = _current;
-        _ref.AddOrUpdate(snap, _ => 1, (_, c) => c + 1);
-        return Task.FromResult(new CapacityGraphHandle(snap.Base, snap, this));
-    }
-
-    internal void Release(CapacityGraphSnapshot snap)
-    {
-        if (!_ref.TryGetValue(snap, out _)) return;
-        var nc = _ref.AddOrUpdate(snap, _ => 0, (_, x) => x - 1);
-        if (nc == 0 && snap != _current)
-            _ref.TryRemove(snap, out _);
+        // Return the shared snapshot — GC keeps it alive while referenced
+        return Task.FromResult(new CapacityGraphHandle(snap.Base));
     }
 
     /* ------------------------------------------------------------------ */
@@ -105,15 +94,16 @@ public sealed class CapacityGraphSnapshot(long block, CapacityGraph @base)
     public CapacityGraph Base { get; } = @base;
 }
 
-public readonly struct CapacityGraphHandle(
-    CapacityGraph g,
-    CapacityGraphSnapshot? s,
-    CapacityGraphPool pool) : IDisposable
+/// <summary>
+/// Lightweight handle returned by Rent. No-op Dispose — GC manages lifetime.
+/// </summary>
+public readonly struct CapacityGraphHandle(CapacityGraph g) : IDisposable
 {
     public CapacityGraph Graph { get; } = g;
 
     public void Dispose()
     {
-        if (s != null) pool.Release(s);
+        // No-op: CapacityGraph is immutable after construction,
+        // GC reclaims when no longer referenced.
     }
 }

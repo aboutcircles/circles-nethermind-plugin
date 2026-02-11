@@ -454,7 +454,8 @@ public class PropertyBasedTests
                 AddressIdPool.IdOf(t.From!),
                 AddressIdPool.IdOf(t.To!),
                 AddressIdPool.IdOf(t.TokenOwner!),
-                long.Parse(t.Value!)) { Flow = long.Parse(t.Value!) }).ToList();
+                long.Parse(t.Value!))
+            { Flow = long.Parse(t.Value!) }).ToList();
 
             Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(flowEdges, graph));
         }

@@ -35,6 +35,9 @@ var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxCo
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
+// S2: Limit request body to 1 MB to prevent abuse via large simulatedBalances arrays
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 1_048_576);
+
 // Use default background service exception behavior to prevent silent failures
 // Host will stop on background service exceptions, ensuring proper error handling
 
@@ -134,6 +137,21 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
     }
 });
 
+// ─── Shared validation ───────────────────────────────────────────────────────
+const int MaxArrayEntries = 1000;
+
+static IResult? ValidateAddresses(params (string? addr, string name)[] pairs)
+{
+    foreach (var (addr, name) in pairs)
+    {
+        if (!string.IsNullOrWhiteSpace(addr) && !GraphFactory.IsValidEthereumAddress(addr.Trim().ToLowerInvariant()))
+            return Results.BadRequest($"Invalid Ethereum address for '{name}': {addr}");
+    }
+    return null;
+}
+
+var sharedCaseInsensitiveJson = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findMaxFlow", async (
     string from,
@@ -152,6 +170,10 @@ app.MapGet("/findMaxFlow", async (
     V2Pathfinder pathfinder,
     ILogger<Program> log) =>
 {
+    // S1: Validate address format
+    var addrErr = ValidateAddresses((from, "from"), (to, "to"));
+    if (addrErr != null) return addrErr;
+
     if (!UInt256.TryParse(amount, out var targetFlow))
     {
         log.LogWarning("Bad amount format");
@@ -165,7 +187,11 @@ app.MapGet("/findMaxFlow", async (
         {
             sim = JsonSerializer.Deserialize<List<SimulatedBalance>>(
                 simulatedBalances,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                sharedCaseInsensitiveJson);
+
+            // S2: Cap array sizes
+            if (sim != null && sim.Count > MaxArrayEntries)
+                return Results.BadRequest($"simulatedBalances exceeds maximum of {MaxArrayEntries} entries.");
         }
         catch (Exception ex)
         {
@@ -209,13 +235,22 @@ app.MapGet("/findMaxFlow", async (
 
         using (var h = await pool.Rent(request, balanceGraph, trustGraph))
         {
-            var result = pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow);
+            // S4: Solver timeout prevents stuck requests from blocking semaphore forever
+            var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
+            var result = await Task.Run(() => pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow))
+                .WaitAsync(solverTimeout);
             return Results.Ok(result);
         }
     }
+    catch (TimeoutException)
+    {
+        log.LogError("findMaxFlow solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
+            settings.SolverTimeoutSeconds, from, to, amount);
+        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+    }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findMaxFlow threw non-fatal exception for request: from={From}, to={To}, amount={Amount}",
+        log.LogError(ex, "findMaxFlow threw exception for request: from={From}, to={To}, amount={Amount}",
             from, to, amount);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
@@ -256,6 +291,10 @@ app.MapGet("/findPath", async (
 
     using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
 
+    // S1: Validate address format
+    var addrErr2 = ValidateAddresses((from, "from"), (to, "to"));
+    if (addrErr2 != null) return addrErr2;
+
     if (!UInt256.TryParse(amount, out var targetFlow))
     {
         log.LogWarning("Bad amount format");
@@ -269,7 +308,11 @@ app.MapGet("/findPath", async (
         {
             sim = JsonSerializer.Deserialize<List<SimulatedBalance>>(
                 simulatedBalances,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                sharedCaseInsensitiveJson);
+
+            // S2: Cap array sizes
+            if (sim != null && sim.Count > MaxArrayEntries)
+                return Results.BadRequest($"simulatedBalances exceeds maximum of {MaxArrayEntries} entries.");
         }
         catch (Exception ex)
         {
@@ -315,13 +358,21 @@ app.MapGet("/findPath", async (
         };
 
         using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        MaxFlowResponse result = pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+        var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
+        MaxFlowResponse result = await Task.Run(() => pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow))
+            .WaitAsync(solverTimeout);
 
         return Results.Ok(result);
     }
+    catch (TimeoutException)
+    {
+        log.LogError("findPath solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
+            settings.SolverTimeoutSeconds, from, to, amount);
+        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+    }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findPath threw non-fatal exception for request: from={From}, to={To}, amount={Amount}",
+        log.LogError(ex, "findPath threw exception for request: from={From}, to={To}, amount={Amount}",
             from, to, amount);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
@@ -347,6 +398,18 @@ app.MapPost("/findPath", async (
         log.LogWarning("Invalid JSON request body - could not deserialize FlowRequest");
         return Results.BadRequest("Invalid request body: Unable to deserialize FlowRequest. Check JSON format.");
     }
+
+    // S1: Validate address format
+    var addrErr3 = ValidateAddresses((request.Source, "source"), (request.Sink, "sink"));
+    if (addrErr3 != null) return addrErr3;
+
+    // S2: Cap array sizes
+    if (request.SimulatedBalances?.Count > MaxArrayEntries)
+        return Results.BadRequest($"simulatedBalances exceeds maximum of {MaxArrayEntries} entries.");
+    if (request.SimulatedTrusts?.Count > MaxArrayEntries)
+        return Results.BadRequest($"simulatedTrusts exceeds maximum of {MaxArrayEntries} entries.");
+    if (request.SimulatedConsentedAvatars?.Count > MaxArrayEntries)
+        return Results.BadRequest($"simulatedConsentedAvatars exceeds maximum of {MaxArrayEntries} entries.");
 
     log.LogInformation("Deserialized request - Source: {Source}, Sink: {Sink}, TargetFlow: {TargetFlow}",
         request.Source, request.Sink, request.TargetFlow);
@@ -389,14 +452,22 @@ app.MapPost("/findPath", async (
         }
 
         using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        MaxFlowResponse result =
-            pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow);
+        var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
+        MaxFlowResponse result = await Task.Run(
+                () => pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow))
+            .WaitAsync(solverTimeout);
 
         return Results.Ok(result);
     }
+    catch (TimeoutException)
+    {
+        log.LogError("findPath solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
+            settings.SolverTimeoutSeconds, request.Source, request.Sink, request.TargetFlow);
+        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+    }
     catch (Exception ex) when (ex is not OutOfMemoryException)
     {
-        log.LogWarning(ex, "findPath threw non-fatal exception for request: from={From}, to={To}, amount={Amount}",
+        log.LogError(ex, "findPath threw exception for request: from={From}, to={To}, amount={Amount}",
             request.Source, request.Sink, request.TargetFlow);
         return Results.StatusCode(StatusCodes.Status500InternalServerError);
     }
