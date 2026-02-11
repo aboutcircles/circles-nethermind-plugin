@@ -1926,280 +1926,280 @@
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x628cf25932cd5d3d919ff139557775d8b046b9bf",
-        "amount": "929491994931761221",
+        "amount": "929307334624104780",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8f0b0b0f1f7d5f90dd84701d9dbee533b9c40ec1",
-        "amount": "909217061345331822",
+        "amount": "909036429018006786",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5c154527cc33b9a5da8f259a0745454f155e7d55",
-        "amount": "822969726947",
+        "amount": "822806229204",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x38189d04129b5b7acb95853b75320c24ba942bda",
-        "amount": "102526942024",
+        "amount": "102506573203",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e",
-        "amount": "834324449550",
+        "amount": "834158695987",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x465707f3ca802229fe28a640646d9a73bf84a23f",
-        "amount": "1038854425218921413879",
+        "amount": "1038648038096905086169",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x09bac2605f2e2e7d5191b2d5c917ae0d9d8febf5",
-        "amount": "106006339675426688660",
+        "amount": "105985279608847594995",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xd1dcb238f0102d296e28ce982b7fa03e299944dd",
-        "amount": "100006078627333633186",
+        "amount": "99986210620564846080",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6622ba0df7bdb7b80b66c1d6281104a8f43c6e5e",
-        "amount": "10980113945651680902",
+        "amount": "10977932548468743706",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb2408d2abdfffccbd48e8ef519241e29984d5a67",
-        "amount": "109735914561",
+        "amount": "109714113548",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9f86df4d03c7d486067b3ab9653c67cbd4a3a7e6",
-        "amount": "107433858136114237422",
+        "amount": "107412514467309871052",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8fcd1f9da187f908bb8b9ca9d9b75ce92208e69d",
-        "amount": "10947379198322032276",
+        "amount": "10945204304485596082",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf7cf4b209e152f3ab57d91f240330069dfbebce6",
-        "amount": "11049583946809285480",
+        "amount": "11047388748160755675",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3cc25af7f1e533fb7fe97f911a88c0e8cbbc0d86",
-        "amount": "1103749442200432753261",
+        "amount": "1103530162515740772160",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf622f87cd7f9eff7910c5628ecac582ca425ce56",
-        "amount": "101736291454194206670",
+        "amount": "101716079709518410853",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9c7950eb5ced8d28cbff1ac03b72659f8ce493b0",
-        "amount": "109502857753",
+        "amount": "109481103040",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7e145f212cc02bf59164234f43a0bbf6d6ee218e",
-        "amount": "113143658056",
+        "amount": "113121180032",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1c67d859bd4a4e449d790b65fd6e28f982ae84b0",
-        "amount": "917906045827",
+        "amount": "917723687277",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xd50664d2ff2c6e781a3a8ba2a21acde633ef7a6b",
-        "amount": "114121605087734321547",
+        "amount": "114098932777676078370",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8f9c32d7672517013211f30953d828b583dfa075",
-        "amount": "114452153272118849347",
+        "amount": "114429415292716753234",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0x3bde6fb422b30726a78d9903b839536d554945ba",
-        "amount": "117198402405314660856",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb8c7273a41d3a1aad38cd69991956a9a7d9ab47b",
-        "amount": "1172126318108159671410",
+        "amount": "1171893454126872823866",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x41c2deb5169a78f42eb58ed27d345f49c0f31763",
-        "amount": "117205545198559176265",
+        "amount": "117182260208313514412",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0x3bde6fb422b30726a78d9903b839536d554945ba",
+        "amount": "117749060787560914160",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x742993ea0af6558f7e3b33e36efe6abe8f9abad9",
-        "amount": "1177375813092739682",
+        "amount": "1177141906204828378",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x1d05d960d3b6ce8514ba8baf49488b2ebb5134dc",
-        "amount": "113884027747",
+        "amount": "113861402636",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x008c3a081e7991e4d4280f56dc7af615356f13b0",
-        "amount": "114169813542",
+        "amount": "114147131654",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd2dedd0a2deb1d32958599abe9601fdc410da47b",
-        "amount": "117756422421",
+        "amount": "117733027989",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb9ebe89e075264d30cd8b230c3094fc250a6844a",
-        "amount": "11870711497",
+        "amount": "11868353167",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7e2d69e593de6f1506f9562e1aeae7e539464174",
-        "amount": "120870486245191486145",
+        "amount": "120846473148469486609",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1571c07dce9b8cc575c44ecd91cf22596aab065d",
-        "amount": "119852083645329768819",
+        "amount": "119828272872606721414",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x63dfbd73aa4501f44da17c31611ac9c0fd6bf65d",
-        "amount": "115877793614319094934",
+        "amount": "115854772405813753606",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf6cc2f6f3406c2c36390876da484f4702cc3f29e",
-        "amount": "1217102037434617153419",
+        "amount": "1216860238217509901517",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf787a3f9d27360c1940c6b7bbe5bea8c32d2cef9",
-        "amount": "12114801690908724038",
+        "amount": "12112394867590569248",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x752fb76f9f1a3c5c1f953ccdccc0924dd738c804",
-        "amount": "119861093351",
+        "amount": "119837280789",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5d5b74f309a0f0a53730d0a1f214beee5572e6e0",
-        "amount": "120566338515",
+        "amount": "120542385843",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xbe2e0ec7fe306a44e68708cda5abc0a7b13f5881",
-        "amount": "121318322215",
+        "amount": "121294220148",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x159e6881e6ec370b46f2fe9fe75cbdfd8f7877b4",
-        "amount": "990658441159",
+        "amount": "990461629036",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf1d630d33f6a05de75a6027e7051bc54b0339681",
-        "amount": "122675690476072644775",
+        "amount": "122651318743052027416",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8bf7cb50d2b1d83a1a4f81b8260a3ae0e6bd7d89",
-        "amount": "1161281",
+        "amount": "1161051",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xd1e4393b2afdeee0bfe9b87ca52b520cae162d64",
-        "amount": "123808388325391409390",
+        "amount": "123783791561564203591",
         "isWrapped": true,
         "isStatic": false
       },
@@ -2211,324 +2211,324 @@
         "isStatic": false
       },
       {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2",
-        "amount": "1245839704270333981562",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x35c087b284eed1f0bf65cc479a09e52bcfd0a423",
-        "amount": "115003910898818342784",
+        "amount": "114981063302836810073",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xbc4b817682e5c71d566d88a60e916acbdf106a5d",
-        "amount": "127457721651367432032",
+        "amount": "127432399881818401691",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6255e51fc3029413283c6ef4773098466c64dfdd",
-        "amount": "126598996525",
+        "amount": "126573845357",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb188af71fd635adb5b1b58070db639420d07d6ea",
-        "amount": "129098833126526020253",
+        "amount": "129073185320656554953",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2",
+        "amount": "1304569166634121246679",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x88b811419a2ad503e53f0b208e24c99767927aab",
-        "amount": "131069899755205875727",
+        "amount": "131043860361488372973",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x0b4c10b1f8c4ee2902c1cad00b3fa555c4afff05",
-        "amount": "12932491411431245640",
+        "amount": "12929922139338725361",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0x548c20e6c24e4876e20dadbeab75362e2f5a4bc1",
-        "amount": "13296847670707362105766",
-        "isWrapped": true,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x71785fda3a692d6e193f0e216168f6abb46e5f92",
-        "amount": "1343356659935423297946",
+        "amount": "1343089777966058714013",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x27518eb5cfba88675b85c3f1ae54d5ffc74a3521",
-        "amount": "136053979379165112926",
+        "amount": "136026949808359735329",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xeb614ef61367687704cd4628a68a02f3b10ce68c",
-        "amount": "130174002940",
+        "amount": "130148141532",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe98fb20af18d9c4db36cd358d3a5e00f8fc354dc",
-        "amount": "10987552886173384781",
+        "amount": "10985370011111075987",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x878158bd0c782b2d7aaf13bfe81425b95d474e3f",
-        "amount": "136893929514195515205",
+        "amount": "136866733072183934084",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x79dea8a71fd4afde828cba6d43bf607969dcb292",
-        "amount": "137389701852870915641",
+        "amount": "137362406916764617680",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7b7a90ae1dfae19e8268e8d8c812c738c342c78c",
-        "amount": "13751238691",
+        "amount": "13748506760",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xf4af029b8b911ce010b58a56bce46831f4265418",
-        "amount": "130885902331",
+        "amount": "130859899492",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3d039767c664b390479caf1a80f2389f04611b94",
-        "amount": "138953864830",
+        "amount": "138926259145",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xff442b43cce48095a0bfc33fc16fc5db06852e31",
-        "amount": "138887325265096763613",
+        "amount": "138859732799155283575",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6f7bba4d6bcc7c55dd8f64d5a4eb582c00ba3829",
-        "amount": "138800923667219282742",
+        "amount": "138773348366509706857",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf48554937f18885c7f15c432c596b5843648231d",
-        "amount": "139334529898526751692",
+        "amount": "139306848587339002869",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x837a27955b9a1e5e67d9dfc830aaffb6bbe3401e",
-        "amount": "139334466219",
+        "amount": "139306784921",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0x548c20e6c24e4876e20dadbeab75362e2f5a4bc1",
+        "amount": "14000335644183615250560",
+        "isWrapped": true,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd6c14da5b7a538e00527769af2cbe1f1ec0d9967",
-        "amount": "140280269603636892098",
+        "amount": "140252400404241540835",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8dd07bde1f1a4a03fb7930c26ab223124f9964ac",
-        "amount": "1414645159587459119972",
+        "amount": "1414364114875058672163",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xeaa64cfb56c438075c1f34877b4bdfea17754d8b",
-        "amount": "142075020848712264434",
+        "amount": "142046795089691989520",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc01192c5ab7c33676ec5a1715cdb12b7a7bbb719",
-        "amount": "142215021588065317650",
+        "amount": "142186768015379360805",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xcb4ea86889888ea2da2c86dfa5c6f4bce55e4e11",
-        "amount": "139458561098188301807",
+        "amount": "139430855145971245170",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xeba6041b055abf86a5fb1e5ef47123599d4e9057",
-        "amount": "142507023818356308481",
+        "amount": "142478712234173775106",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf1ea6a6b32ce7d24dc3e56dda287775af92c52d6",
-        "amount": "142703139051",
+        "amount": "142674788505",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x19e6b0fbb3221d1da2b0e887c07e10a008487261",
-        "amount": "142801252869790973214",
+        "amount": "142772882831713779476",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x00669941c3411ebedd88986c989a1647be68db5c",
-        "amount": "142766925285036976395",
+        "amount": "142738562066752095383",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8b9549752f2281041ab9ee38c8bd54b322b5bbd4",
-        "amount": "1439864316209711951426",
+        "amount": "1439578261258120532313",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x370eb0f68cfd9f2b26b1cace93dc619954cb5daf",
-        "amount": "11578878004",
+        "amount": "11576577651",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5fa6b9d71ba38bdc007c4a236e3f127aa070b6ee",
-        "amount": "144453757067750810379",
+        "amount": "144425058729983826168",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x46b0d1fb35623de8c917d00d7b9c655ecdc6999a",
-        "amount": "144559091030471276835",
+        "amount": "144530371766217492642",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x588a8d94e2201a2d61e52ee045b5da078265198a",
-        "amount": "144065721205572025829",
+        "amount": "144037099958110372253",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3c80a9066c76bb2349120a7b0702218e665d39c8",
-        "amount": "1450209165410548860000",
+        "amount": "1449921055268545363962",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x311792463f34c857342b3f79cbd019ee6df4a256",
-        "amount": "14507158355750423296",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0x15b1818724e7ba721c09ae6f49339d33292e1a75",
-        "amount": "1474153707795276907194",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0xbf7e22c064cab3b43997e4c6527fce7911d49d7a",
-        "amount": "1453311160887520878880",
+        "amount": "14504276247738949508",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xed1afb38731ce824d51e01ef733b0031b69fead9",
-        "amount": "1496146510714159688665",
+        "amount": "1455838259779428926781",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0xbf7e22c064cab3b43997e4c6527fce7911d49d7a",
+        "amount": "1453022434478306637723",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0x15b1818724e7ba721c09ae6f49339d33292e1a75",
+        "amount": "1499703829444256255033",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xeb9784f6a6e3d03466974cb3a5a77c79afba14e7",
-        "amount": "1505903655215880300092",
+        "amount": "1505604480361455073022",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x86b0cef2333847e69aa97a35a3eab67aac552bd1",
-        "amount": "150723638795684536169",
+        "amount": "150693694833108341269",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x66dbc980461028215d8932806ecc3871c13350d0",
-        "amount": "150536593000575923352",
+        "amount": "150506686198012142693",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0e90a90a5c1c1ce838f6c4b62ebfa38186babc28",
-        "amount": "151387504343286235300",
+        "amount": "151357428491875138016",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8c0b0548abb0f9af41785340f242d227b73c8356",
-        "amount": "151494388903042224822",
+        "amount": "151464291817090329028",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x07c5ca0533fc13c66b8944ffe17c6b76d25edf04",
-        "amount": "151512801249450339174",
+        "amount": "151482700505554565503",
         "isWrapped": true,
         "isStatic": false
       },
@@ -2542,3570 +2542,3570 @@
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9218709b8d917663b23fa0e663f73a1e35a5c0ab",
-        "amount": "154447700439687549982",
+        "amount": "154417016625264687335",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe1baa0879a60032cfc2c020b0c06feef2f1fcecf",
-        "amount": "154497762838615460619",
+        "amount": "154467069078396358247",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x557daf8f74c6b457191d916d67d340e43b6226cd",
-        "amount": "15470559186050883243433",
+        "amount": "15467485681131539566215",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xde41b199a18657aabe50141f085f0030603438fd",
-        "amount": "154981075341328153691",
+        "amount": "154950285562384918377",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x647d6604dbf594b1cb36d7d0cd952ce1b1872c4a",
-        "amount": "155929046329904542477",
+        "amount": "155898068219469100238",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x301c345ec29d5283556d3d60750a5d7752245a6c",
-        "amount": "156483625537",
+        "amount": "156452537250",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4477520b7f8023535eb891f45218f9ecbd0cfcfa",
-        "amount": "1567775277151751546874",
+        "amount": "1567463810386471595580",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xeef7b1f06b092625228c835dd5d5b14641d1e54a",
-        "amount": "126531415338275123924108",
+        "amount": "126506277596140737733595",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x290a29d3fbbee5aabee28302bc6d7fabfa605f2a",
-        "amount": "157906459224184041",
+        "amount": "157875088265100721",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa8a086ffcbe81d096c39835190fb78c5fb8a3aec",
-        "amount": "157868462107028217263",
+        "amount": "157837098696755842367",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4e2564e5df6c1fb10c1a018538de36e4d5844de5",
-        "amount": "1573771325",
+        "amount": "1573458667",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7cd8c7a036c18cf14c4c2eb1bb4316478097b71f",
-        "amount": "15819590102",
+        "amount": "15816447256",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x03aa3edb3c751521ccbf59caa2065878d14267d0",
-        "amount": "160500031499651029002",
+        "amount": "160468145280773189267",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x3826746ce338ce7e812679611cb423bd179b6611",
         "token": "0x7147a7405fcfe5cfa30c6d5363f9f357a317d082",
-        "amount": "1298512694592",
+        "amount": "1298254721684",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
-        "token": "0x39510556a953a0e94009e30e383d480efd947b6f",
-        "amount": "161906701290908094058",
+        "token": "0xf0aedfedfdd98cdae6c6052455a3c95f4d698fd0",
+        "amount": "162398242303742757625",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
-        "token": "0xf0aedfedfdd98cdae6c6052455a3c95f4d698fd0",
-        "amount": "162430512047313440228",
+        "token": "0x39510556a953a0e94009e30e383d480efd947b6f",
+        "amount": "163957339186814741297",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6695385d857fcb0c6a78f8a430989bd29fd4cfa2",
-        "amount": "164140577636000157918",
+        "amount": "164107968157133806884",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x02b50e87c577084b9659a625870b4a6e8a8e9238",
-        "amount": "164690424401978219155",
+        "amount": "164657705686159292896",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x37417ad34728fd8c255be73264609e66078094dd",
-        "amount": "161779036537",
+        "amount": "161746896220",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb94571f1cb180ce15836bf4e8ed91a65b30b9a0f",
-        "amount": "164747877377651669337",
+        "amount": "164715147247765466016",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x051e8680774a0611d4729ad04c26026f9f90667b",
-        "amount": "165250436358",
+        "amount": "165217606386",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc164522ebc7e6a8b4b08878cf9e330cfebf4850a",
-        "amount": "1553265819996611352",
+        "amount": "1552957235796040732",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xcbecd9ea3d42582aad5e7f0fff118067334ff961",
-        "amount": "165924304401505616528",
+        "amount": "165891340553225554242",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xcd150b4c77529d4284f96a8c114421fbc6d62c4e",
-        "amount": "166492168830583228349",
+        "amount": "166459092165817653110",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x48a789c87ac48a1ecda9d213eb181ea099e71e9c",
-        "amount": "166705015324464233942",
+        "amount": "166671896373913242613",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc0aa0b6a86f1880b6a76096fa2483ac49d4f9619",
-        "amount": "1344314953322400025",
+        "amount": "1344047880970813077",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x57c3293d997e36ceb3d67368691d1083e0f6bd3d",
-        "amount": "167567012951067377833",
+        "amount": "167533722749179316788",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa3897f19cfb5f086114e011b530686cfe715691f",
-        "amount": "1674673435925039597627",
+        "amount": "1674340731917271687431",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x72aa26bdbebdc3811bb15f6b4e05011779ebcad3",
-        "amount": "168211352973911925622",
+        "amount": "168177934762285746748",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x8ed4d2e12743bb00a85633ad7ca87c6a7f212c94",
-        "amount": "1683253303647691366631",
+        "amount": "1682918895094836510562",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x011b83dd6b4ee81dcd6fd5ecd74f2771d544f618",
-        "amount": "16782722015441804709",
+        "amount": "16779387825768754829",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xab823d80545b84d0da4659b7f772521e7d642c57",
-        "amount": "169905915166766854875",
+        "amount": "169872160299873517366",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x57233c7bcdd8a5e1ca58efc2aa7bce6c5f2be051",
-        "amount": "1624850735948144394634",
+        "amount": "1624527930116107070981",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb7a5ad1bd3df5b5a646a4e71588b8d2e74338cea",
-        "amount": "1705510435381923946962",
+        "amount": "1705171605049413102541",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3dc6d3301c3c12593be88fa01de9afd13f26d287",
-        "amount": "170704116819281316520",
+        "amount": "170670203375268940970",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x326d35e139a8482f6d6b31567e8518be0be8ad13",
-        "amount": "1712951782398",
+        "amount": "1712611473708",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1bb824308ef36481ad0a6167b3215ca427a9344b",
-        "amount": "1712231127348407860857",
+        "amount": "1711890961829523209907",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7da2339fd24acabe3d656053fe51ad9d550d8d6d",
-        "amount": "1728131814026634617418",
+        "amount": "1727788489550265705889",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x291f4e424574df2afdcabeaf191dc9cee9973729",
-        "amount": "172815648609731316152",
+        "amount": "172781315671939352462",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd5dee31a064e3a32444efaceae290302a7f3feb3",
-        "amount": "171348487670523839710",
+        "amount": "171314446210648730430",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x633b5d0e4d5ba46e5e60f8bd08b369e1590e10ad",
-        "amount": "173444492751315796773",
+        "amount": "173410034882321320174",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x624b2d6e7914741d6b0e90ec20e8808c31df3c36",
-        "amount": "173824668248591142453",
+        "amount": "173790134850894242272",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6b6bf29b96b25bc0a275bfbb2692f1322f61cfc9",
-        "amount": "174635133349575550591",
+        "amount": "174600438938404937194",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x351f3c7d929386d425eced42e8e9fbfbc93f231e",
-        "amount": "174698701631499110262",
+        "amount": "174663994591345610297",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x13285c44f9b70c807085621b9e1dd66c9daf23a8",
-        "amount": "177177945370157056881",
+        "amount": "177142745783629804126",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2de3d843eab457bac4a3a8a104182fdab80f4405",
-        "amount": "176858697368",
+        "amount": "176823561206",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x26994472d896ac2124f8e83b42bf00e0f6362ea2",
-        "amount": "1801384597119847375561",
+        "amount": "1801026719660196799194",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x07a66cdc7dcba62bf7a7a28f207e21a30a7d641e",
-        "amount": "179265553751",
+        "amount": "179229939424",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x115f874734f1c7ee946b3428868dc7443736ee36",
-        "amount": "147642085083",
+        "amount": "147612753327",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x47684687ecc5c5375ac3144d91dd0274182f1632",
-        "amount": "175738568586",
+        "amount": "175703654958",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9546357b4d49b9eb1818f7225e7e25992499416a",
-        "amount": "175738568586",
+        "amount": "175703654958",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb2bd88f6ea51b7e98c9623e26536cf48a65125e7",
-        "amount": "176656394375",
+        "amount": "176621298404",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x152b51b7ad773dc2d81f658d6c802098c72c4389",
-        "amount": "1861637233676",
+        "amount": "1861267385946",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x198cee4d13fa710f0bd5a1681554c27acf1bb708",
-        "amount": "183354082755404831580",
+        "amount": "183317656168068634767",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x891a804c0f17ecf4af30d2e647c8657c09b5b15b",
-        "amount": "18559842651615721374",
+        "amount": "18556155404955405479",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1d05d960d3b6ce8514ba8baf49488b2ebb5134dc",
-        "amount": "1885994972256977471",
+        "amount": "1885620285424046712",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc749ef3014d112059493747a3403b1a8826f6e27",
-        "amount": "19125406222946711578",
+        "amount": "19121606616907669755",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc1f30136d9f7d3c4141c6196616ffa3810a8090e",
-        "amount": "18136085393745507299",
+        "amount": "18132482334088454093",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5ab6e91413d2d7cfe451d5f23a3a66d6c38c1706",
-        "amount": "192807016064973796948",
+        "amount": "192768711482364140055",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa8433cec43ef57a8baa40c36c71fc1a6775d41b5",
-        "amount": "1926252667089156182308",
+        "amount": "1925869982340854678514",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x235a8e249220be3023d56103247c2a13067e3aeb",
-        "amount": "19441009355314904529",
+        "amount": "19437147049035475239",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x14aab8d72b68c79cbb7873d003585a7c3ef98633",
-        "amount": "192886876252",
+        "amount": "192848555803",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xd2dedd0a2deb1d32958599abe9601fdc410da47b",
-        "amount": "19348764679",
+        "amount": "19344920699",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x77dd97aa5ec24fbc4b51cf9cc3d65666276bccb8",
-        "amount": "19985244621885291",
+        "amount": "19981274193478603",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6095450df3728947700896fd046f72b73f0477a9",
-        "amount": "19136999309133934406",
+        "amount": "19133197399919745628",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x8428261fa2e03fb25fbb48c2b661c6d7cf8d31b7",
-        "amount": "203580352252405569840",
+        "amount": "203539907352734867714",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4f344e848caf833a85d0d9f8b8bed43ffbf25f7c",
-        "amount": "192483631449",
+        "amount": "192445391112",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x98a9750213fa2f19717fad42e9a0879ba7b92546",
-        "amount": "194914482236",
+        "amount": "194875758967",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1d05d960d3b6ce8514ba8baf49488b2ebb5134dc",
-        "amount": "2061045540325123779523",
+        "amount": "2060636077547242642724",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xff5114400306dd19c20d19eee170a7cdb039b071",
-        "amount": "20784236369270098050",
+        "amount": "20780107206777810662",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa2effab90ffe4bbdf080f68e4358c91bdf28a643",
-        "amount": "210431770294366165839",
+        "amount": "210389964237234818538",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x51558edf6c91a21df5af8f4dc4abfd4d25f94fd8",
-        "amount": "205887843645",
+        "amount": "205846940321",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x3826746ce338ce7e812679611cb423bd179b6611",
         "token": "0x3826746ce338ce7e812679611cb423bd179b6611",
-        "amount": "2124800029138308519979",
+        "amount": "2124377899384390735482",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x8014c2ce75fbc8156ec9ec08cc14708b07d322dd",
-        "amount": "208600351770545542592",
+        "amount": "208558909557653737400",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xedaff32d206261a89b07819bc6254b7f51fc18d2",
-        "amount": "212997247693838507135",
+        "amount": "212954931958465221889",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa4504259c247584deadf263324077e849068f29f",
-        "amount": "193615027716740845468",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0x9215106f0328cf46897d2502c6e235e3bb378294",
-        "amount": "21468863918816748244",
+        "amount": "193576562608079303382",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x93656f198e2164a2913dd034fa9c26d9443621c0",
-        "amount": "214439731237796997311",
+        "amount": "214397128927115404779",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc39c3956368785c86c31857a476cf1bebef1941e",
-        "amount": "215418782345967394464",
+        "amount": "215375985529168662750",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x65905be98ec1c9e43f40cdc37a35f54ad17335d9",
-        "amount": "214404565996",
+        "amount": "214361970671",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe5ff95b729ca9538cb9d2661142ec6d8ed4c8c53",
-        "amount": "21677060723071437395584",
+        "amount": "21672754184958106361459",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
-        "amount": "218013966990",
+        "amount": "217970654594",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0x9215106f0328cf46897d2502c6e235e3bb378294",
+        "amount": "22044626486899799230",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x38ba28dbba7491be541a02b548cf80af9a9a3720",
-        "amount": "2209539663247313702204",
+        "amount": "2209100698440495422371",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x43322adf67d969219d014d60c860966269f4f93e",
-        "amount": "216486736433",
+        "amount": "216443727448",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0d8bfa3e583f28ebcf8004fdcd09fc808b8675f6",
-        "amount": "222340771236657739359",
+        "amount": "222296599242229593864",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe18113aa9b70c036b307d0fe279b437e674ca37c",
-        "amount": "216788422574",
+        "amount": "216745353653",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0ea83de5cfdf088aa38279bbce54565b54a46525",
-        "amount": "232004547205370183447",
+        "amount": "231958455327980984186",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6ff840eeeffec0c35f52bb6031a9ae34524a05b6",
-        "amount": "220829384533",
+        "amount": "220785512803",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xbab9a85f4044125ab04d494f353805d0a123b697",
-        "amount": "232439242985368976325",
+        "amount": "232393064747842294199",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x342ea25b5bbb874f3b89070024da7077fa05f287",
-        "amount": "237682396740618729105",
+        "amount": "237635176856266884675",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc244ddd51dbb724c11b4190a14cbf5a83b575dcb",
-        "amount": "241788463777147611343",
+        "amount": "241740428148705061685",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x098902d9a7354706b8b55bf83161e4c5b8b85918",
-        "amount": "2430455414483765952632",
+        "amount": "2429972560788380674450",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xabee08bc33b27845e30f357222f1a0e700b4b033",
-        "amount": "243633562579",
+        "amount": "243585160389",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9a6168a8509c7b7b227e6d0592a00d78216a0560",
-        "amount": "249652538158547858",
+        "amount": "249602940190243727",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe72599db9d77b2ec4eaca3bbec6027daf61558fa",
-        "amount": "23255775079228221557",
+        "amount": "23251154901104756865",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x49af5823767e3f328e3767a00178ac5998a7ee67",
-        "amount": "249950333901562560774",
+        "amount": "249900676770776317421",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x12d00219ab1d36bc8811cc016dcd4815681b2c30",
-        "amount": "252701564736908581557",
+        "amount": "252651361024618399408",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7bc77ff67979a657485c8a5c2ec578aefa273d9d",
-        "amount": "254419918302983642021",
+        "amount": "254369373208841970922",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x0e8c9e403f19090970bd1f5d03d99d1f09fc88b1",
-        "amount": "245562983318",
+        "amount": "245514197813",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6a821eb3ce8c410245771d9cc0c2f46a4264668f",
-        "amount": "2506389298891423323",
+        "amount": "2505891359563743497",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc0d871bd13ebdf5c4ff059d8243fb38210608bd6",
-        "amount": "206586339898",
+        "amount": "206545297805",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf24ceaa2d85a3b4a90e1fbe9dd7902f7d790543f",
-        "amount": "245230790358",
+        "amount": "245182070850",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x81db46c7a98bc010a8aff2b01a2fbfc6241b8980",
-        "amount": "254875418837993680299",
+        "amount": "254824783250475636656",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xdc8ce73bb09c6348c0b08987cb08893f44833caa",
-        "amount": "2595881617624200508096",
+        "amount": "2595365899037312218931",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1eba7ba5f3db41e3ad7ef932abba6a13d57de428",
-        "amount": "2633098699532252664128",
+        "amount": "2632575587102455894208",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
-        "amount": "264942835075563772724",
+        "amount": "264890199414683212783",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7eeec22367782ab8b1bfc841f81938ff1a4a3766",
-        "amount": "213638459020",
+        "amount": "213596015897",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xfbde8cb7c064891258cac718b5aecbe3674ba7d4",
-        "amount": "250584789363",
+        "amount": "250535006187",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x09c24767a7f9f7b1d021189b68f7a5aea3cee458",
-        "amount": "2669772638384689268107",
+        "amount": "2669242240017123919952",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8bb7e19679eb72ca2bbc8b6e03b437f7688c42de",
-        "amount": "2640250272474291986",
+        "amount": "2639725739255863463",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0cda23400719f6d9e6e07456b3762e433df678e2",
-        "amount": "267561606815652599118",
+        "amount": "267508450888650497911",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6a3b08242e0a41f67450257989d777f62e57e201",
-        "amount": "268678056695",
+        "amount": "268624678965",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xff685ec9bfc5153333094a0e4931e939bf5fd5aa",
-        "amount": "270189753035796271451",
+        "amount": "270136074980263506057",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x17625ef97f97e7896c4c93ecb26780fa3c668a72",
-        "amount": "273969360428630176122",
+        "amount": "273914931486088391896",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa18b90fa61fc8f533d75f5118cbdcc4fe0d6e708",
-        "amount": "259877393959",
+        "amount": "259825764639",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x3bde6fb422b30726a78d9903b839536d554945ba",
-        "amount": "267194842837",
+        "amount": "267141759774",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf6c2d214639e1b659246f461a77a96eee52bdbea",
-        "amount": "27943970469765345777",
+        "amount": "27938418897280347448",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x47e60601e3b09edde6a7f724cd393be6e075bf87",
-        "amount": "27607562213753030765",
+        "amount": "27602077474820545130",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb448c7a987ef68e9a1d8b3e6ad36af37e3392e6e",
-        "amount": "27938648807528168914",
+        "amount": "27933098292287118159",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9f21d3c38633a7df3d75296f17085195f7ac317d",
-        "amount": "27734472212701870191",
+        "amount": "27728962260814804682",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa742379754a4a2ab86ea8683a8b94549d81eb0de",
-        "amount": "27778820668643516485",
+        "amount": "27773301906137787312",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0ab411bc557d4ba373748aa6d3de0a1bfbe26b2e",
-        "amount": "27823470931891389195",
+        "amount": "27817943298807545039",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5d5667fa985c2bab1c9c027622562f306c503a14",
-        "amount": "265044430172",
+        "amount": "264991774327",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3cb406def33aed0abd6d02a75fedca8e2e8d1a2e",
-        "amount": "265897676191",
+        "amount": "265844850834",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7fcd220b1e60cf45aa21f842dd7d8a1a1eba510f",
-        "amount": "27646356889",
+        "amount": "27640864443",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb0c01f8c17f847aed24bcad09b4fb94d7989e65d",
-        "amount": "28244335086687588584",
+        "amount": "28238723841367458371",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x33d96e153f80516a062281e7f8356756b97ae377",
-        "amount": "282735928208368174480",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0xeee98aba733627978fcd4321cd89deb0caf6502e",
-        "amount": "283129779486",
+        "amount": "282679757629414108599",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3a33aebc18d1656a35834f2d764acd8b7d5d47c0",
-        "amount": "27851424109886877414",
+        "amount": "27845890923401307618",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xb5560541dabc8b858d869b789aecb58a774d81ac",
-        "amount": "272907560318",
+        "amount": "272853342321",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd9b44948a3fd05108beb6cd9484369e842a621e2",
-        "amount": "286645514462957557902",
+        "amount": "286588567174355083628",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x14aab8d72b68c79cbb7873d003585a7c3ef98633",
-        "amount": "2871269620538822",
+        "amount": "2870699191170539",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2b25443afe5cdd224795919b0de64c53492d1ff2",
-        "amount": "288402354102",
+        "amount": "288345057786",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x211d4db9d1d2290fcc62b66574e2bbafba734c98",
-        "amount": "291957646360",
+        "amount": "291899643721",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x81f5c609269b5be123282f282a88282b41f3005e",
-        "amount": "2764606035623494881",
+        "amount": "2764056796895382362",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4a9affa9249f36fd0629f342c182a4e94a13c2e0",
-        "amount": "29517519392362864620",
+        "amount": "29511655206074042567",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5a93a816ef446b122396514262c12548bd21ded1",
-        "amount": "29517518479584253677",
+        "amount": "29511654293476771518",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc8e958d98fdc56c7209631a4f61fb19fc0bb25fb",
-        "amount": "285749151200",
+        "amount": "285692381991",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9fbee47312a0022d28721bd816e62feff61113cf",
-        "amount": "30097700008590426003",
+        "amount": "30091720558983928201",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe6c272924f8e367d3d87583ae191e3c7b1c08bcb",
-        "amount": "3073714884402436062424",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
-        "amount": "3082017579965147750092",
+        "amount": "3073104235640212342730",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xcadd4ea3bcc361fc4af2387937d7417be8d7dfc2",
-        "amount": "30704716037",
+        "amount": "30698615992",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+        "amount": "3087867960540527671461",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6333b8de61ead2a58b72e489ca810b9ce56dfe2f",
-        "amount": "308125034593609343305",
+        "amount": "308063820011886254185",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "amount": "304226016364",
+        "amount": "304165576392",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x742b7dbb0f1d330a83497df79075ebc778e6e698",
-        "amount": "299614286212",
+        "amount": "299554762444",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x19674f4be5b0321160391d573acf329cec016498",
-        "amount": "307521188349",
+        "amount": "307460093733",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x09948ed3a023a79fcac7881a96af958b399f346d",
-        "amount": "31320971985798129",
+        "amount": "31314749511204983",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x0d8bfa3e583f28ebcf8004fdcd09fc808b8675f6",
-        "amount": "312465502740",
+        "amount": "312403425846",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x33cb98cff402aab0f5bfd122cdca144345e061d0",
-        "amount": "297867857422",
+        "amount": "297808680613",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "amount": "316909512177132946808",
+        "amount": "316846552400892831567",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x55c2fce2bbc98658300d84725831cf73f40225f2",
-        "amount": "303219801637",
+        "amount": "303159561569",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x4a9affa9249f36fd0629f342c182a4e94a13c2e0",
-        "amount": "313602103934",
+        "amount": "313539801234",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc814a3b9019dbd0410ad90cdf97fb492d34600d5",
-        "amount": "319053939198874137348",
+        "amount": "318990553393624906665",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2cbcca2d1df0073c73de414d735ca7a138938785",
-        "amount": "317466909603",
+        "amount": "317403839090",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x527cfc8c95f6d6caa08d470a679e113173c01080",
-        "amount": "324291101418906956545",
+        "amount": "324226675157158830524",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x428fce210302022f8fb6d9a1e409fdc0076dc8a2",
-        "amount": "313148815617",
+        "amount": "313086602970",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x25e529d121dcdfbebc3383c61a61d182d5bb76b6",
-        "amount": "325780459744906722146",
+        "amount": "325715737595331493324",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4865aecd5a9b49eeebb6981500dc134cc03572cf",
-        "amount": "315480894166",
+        "amount": "315418218210",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7cc8cedeffac4d948bebffaf04adf125ea44f5c6",
-        "amount": "338384924960455043999",
+        "amount": "338317698707092757876",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5198d513a6dbba16637b353ce06197f750addb4b",
-        "amount": "272348273791",
+        "amount": "272294166907",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x68d300764059babd26b75da1141f05a9ffb6fbc0",
-        "amount": "32427136381",
+        "amount": "32420694147",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c",
-        "amount": "329904073202",
+        "amount": "329838531823",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9cf94f4b734974a366ce9fb327a3625bbe829edf",
-        "amount": "341650652345297229152",
+        "amount": "341582777296434933057",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb11ccda5726d7023364b00b77e53d8146c7ac983",
-        "amount": "348688793372",
+        "amount": "348619520070",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xfc3403860d4dc8c9098d7129f72c12de18059800",
-        "amount": "351206818892342795124",
+        "amount": "351137045339067103661",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x18f8259fad59aee5e7041a901f1423bd8749dd2b",
-        "amount": "33222543539",
+        "amount": "33215943283",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x465707f3ca802229fe28a640646d9a73bf84a23f",
-        "amount": "339885930966",
+        "amount": "339818406511",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x871e40b8b86d100e66d62011f560d82776be6b4b",
-        "amount": "336830166784",
+        "amount": "336763249412",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf872bb493b924649d32d6af112c2e9bf950c7fa4",
-        "amount": "357047784534963724706",
+        "amount": "356976850568775971226",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf36ebf844f9a1adba34d9d42093afd2c5b9b63fb",
-        "amount": "35610263708517095698",
+        "amount": "35603189088952863165",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5756634907559ae331fe8547b75e44a192ca53b6",
-        "amount": "366804227151264268504",
+        "amount": "366731354892218715064",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb3346a4858b45e86165d484f0efec96d83d02483",
-        "amount": "372199477802",
+        "amount": "372125533679",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x5a47121aa8e40529feafd3c387161db2f2eecb1a",
-        "amount": "35925",
+        "amount": "35918",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xb817524ccd6ad5f1ae708862f63f69718964a995",
-        "amount": "357225784695",
+        "amount": "357154815366",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc175a0c71f1eda836ebbf3ab0e32fc8865fdee91",
-        "amount": "378594526824",
+        "amount": "378519312210",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x86533d1ada8ffbe7b6f7244f9a1b707f7f3e239b",
-        "amount": "374553960360",
+        "amount": "374479548477",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x11faf528a530afec4d509dbe85a61239c786a4c6",
-        "amount": "374603516815",
+        "amount": "374529095086",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb245c5b7c1cc78be55c99a4ee2e72d633144a1b2",
-        "amount": "3825359783926252079",
+        "amount": "3824599807381593124",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xd738a60f125e4eb671c3b7082cac69477b06ef2b",
-        "amount": "367154766545",
+        "amount": "367081824645",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd85a9896598079c179058e51b706d41030246d7c",
-        "amount": "381709937276",
+        "amount": "381634103730",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd9f2d5d3698f7099bf1237faff7212cecb7541fc",
-        "amount": "37757283308735315829",
+        "amount": "37749782145099609274",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd3a5e2e06f36fda6ee4b09d87620f89bdf7b20f3",
-        "amount": "38570454512658928022",
+        "amount": "38562791797933472794",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xd14ce9cfc6384590c6b77436dca212a6bcb2575f",
-        "amount": "386381946543",
+        "amount": "386305184818",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xddaa2e8b53a8a62a9e142565d830db997d528487",
-        "amount": "3874391692654969792684",
+        "amount": "3873621975039489144326",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1a82b6688b44b0943e12fc9e43894937d22f42ba",
-        "amount": "3157335809898019887",
+        "amount": "3156708548334488864",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x4d9145def1647eff0136205ab3034f5297b524ac",
-        "amount": "396288042258",
+        "amount": "396209312509",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf99c4224f27411ed0c0a59529d6358f3b97ed8db",
-        "amount": "393050669178440281433",
+        "amount": "392972582591475765042",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xdde7f81cbc0470f27f661657d4dad5f2d7a2a361",
-        "amount": "3720184784176761098",
+        "amount": "3719445702538047980",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x08e67f0f22c67dabfa7876ce78908eb448336b45",
-        "amount": "381645961126",
+        "amount": "381570140289",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x31ad9e0b98a73612f2b57a4104b209699c09a46a",
-        "amount": "40317669981940654178",
+        "amount": "40309660151427371922",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x49f4c60ef0cf30b88c2ba9958cac329726b4c6f2",
-        "amount": "4053053313385063116",
+        "amount": "4052248101424251565",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x8536a3a23f71c0875067de10790398e8b74ad2bf",
-        "amount": "40018758394083818465",
+        "amount": "40010807947735302222",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4024a088b3ee37fbc71a6fc43c325d4b11bef5cb",
-        "amount": "406502585401440931215",
+        "amount": "406421826349299896178",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xed1067bc2a09dd6a146eccd3577f27eb5be93646",
-        "amount": "4076209090563543064",
+        "amount": "4075399278290990134",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x44057a3af7f746bd4f957fe0b22b1f82423c2b4a",
-        "amount": "390406535442",
+        "amount": "390328974159",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x856c2e91a4e7022ccc9efedc39c407f406712506",
-        "amount": "395906526076",
+        "amount": "395827872122",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x09543432cc631bb52a9b65ac0f19f031bfd2ab18",
-        "amount": "394135039572",
+        "amount": "394056737556",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf1091ed8a6f72a27f97969818ba29031aa6e58bf",
-        "amount": "398422344323",
+        "amount": "398343190556",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3d12046d3d2de60b6de71ad30e289080ff52052d",
-        "amount": "419814374036",
+        "amount": "419730970358",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x9a105060c0bba4dac7ae3da6cdc6563ae062b60a",
-        "amount": "403969749440",
+        "amount": "403889493581",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xfb023bb4ce3a0e47e734c71dda708811dfa3a233",
-        "amount": "4232449961971861543338",
+        "amount": "4231609109639211174611",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x36ebd10be91c955fca8aff07c5679beec51eebcd",
-        "amount": "414585443262",
+        "amount": "414503078404",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x47684687ecc5c5375ac3144d91dd0274182f1632",
-        "amount": "401087979464",
+        "amount": "401008296121",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4a7d98035d74a9c96981ffad7e73c74bc7af92bb",
-        "amount": "41759931886891018871",
+        "amount": "41751635525102005883",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x74e1f1ab9fde6e39f2f3a204fd0ce71c43cf1ff7",
-        "amount": "404222250281",
+        "amount": "404141944258",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xcb4d4b2213131b9c89b395281d29686e26d693ba",
-        "amount": "427446787163734575383",
+        "amount": "427361867169097927284",
         "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
-        "token": "0x65c4a6c51ab4b3392d83b322a5be0f16f54857d3",
-        "amount": "427447059037",
-        "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7087c0338aa7cd34ba918a7fc14b39b18b7a85ab",
-        "amount": "432187943668421957649",
+        "amount": "432102081757745605350",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1a5a62ae01ead54e2ead4f58d9b24643aedc5c90",
-        "amount": "353244281253984925",
+        "amount": "353174102922154290",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf517deee668f21969afdd42a024bce3d7c39acb2",
-        "amount": "44132267762661378072",
+        "amount": "44123500093668997153",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2e6dc31144471192956a839f1d9eb02da6e33dd4",
-        "amount": "442999694370",
+        "amount": "442911684510",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3bde6fb422b30726a78d9903b839536d554945ba",
-        "amount": "4437074084115204114",
+        "amount": "4436192579519215326",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x002d2e47a953f771a2dec9af4f8902447ccf8bac",
-        "amount": "4268165618741786410959",
+        "amount": "4267317670851343992353",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4f0850d937d22798e0e5d6dde4c297cee638fca6",
-        "amount": "438011806702",
+        "amount": "437924787776",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x15b1818724e7ba721c09ae6f49339d33292e1a75",
-        "amount": "44654124567",
+        "amount": "44645253222",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xe0ed85f76d9c552478929fab44693e03f0899f23",
-        "amount": "365220480483",
+        "amount": "365147922864",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x05613f2200c870ac5306befac8c055d15ba4d74b",
-        "amount": "446909486666",
+        "amount": "446820700056",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd460db4cfa021c42edeb7e555d904400dab65ecc",
-        "amount": "435425525762",
+        "amount": "435339020648",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x575580d722629dc03db2f9a0d2f30a2344e75519",
-        "amount": "41790294859798222084",
+        "amount": "41781992465858368659",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0xeee98aba733627978fcd4321cd89deb0caf6502e",
+        "amount": "4598439538851276302",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x383d478a07d6f64e9313b0264d7936c9535b3313",
-        "amount": "446526490881",
+        "amount": "446437780360",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x9740b3fbf5883622a40221c0e3bccc3124bb7a59",
-        "amount": "447321583913",
+        "amount": "447232715433",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x198babf27f48a626f1361a818f291f1ec9b21539",
-        "amount": "4630139011436439657",
+        "amount": "4629219151019129971",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xfbde8cb7c064891258cac718b5aecbe3674ba7d4",
-        "amount": "454333899339",
+        "amount": "454243637735",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xdca5c0961fdfa47e17de5150871972347eade203",
-        "amount": "47338356686012259794",
+        "amount": "47328952069773223624",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x698a697cd59da17c946e095cb00bb5844ee007ff",
-        "amount": "472613484548",
+        "amount": "472519591377",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x00a87ca5b9095fc53549b6e4aab3100c204a3fbd",
         "token": "0x00a87ca5b9095fc53549b6e4aab3100c204a3fbd",
-        "amount": "45783022358037660842",
+        "amount": "45773926736945520477",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x2170c9e9a320c733df21070cc0e511567089393a",
-        "amount": "478975427256",
+        "amount": "478880270170",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb8bf2a21e7836a60f7ec648e8f4d886e3a42f513",
-        "amount": "457453307752",
+        "amount": "457362426422",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xd3b56fb9ebc83cc62c7dc613c27b286ae0cbf006",
-        "amount": "475156117967108293303",
+        "amount": "475061719655549851081",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7b106c5ba16424a4f0cf9a6d010358844797d4d9",
-        "amount": "443320304019576568129",
+        "amount": "443232230465229699305",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe8a40a84ffe3f345653194663c279ec2206da59b",
-        "amount": "488086251430721215885",
+        "amount": "487989284315519010265",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x974efc0c47acb0edff9f3bfd435d98357103f21e",
-        "amount": "489116997333665362081",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
-        "amount": "494144837630387233849",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "token": "0x0202ad5b682c0858c167be39b910de61a844a254",
-        "amount": "496803389632430906627",
+        "amount": "489019825442244973683",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x60d6fc76105dd3a616b3e2a8072f6c3df7d71e5b",
-        "amount": "497325809589",
+        "amount": "497227006869",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0x0202ad5b682c0858c167be39b910de61a844a254",
+        "amount": "499142927205088744505",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x93e49046f6fb1480807c28aa6ae627015db01fb4",
-        "amount": "497907536706364197504",
+        "amount": "497808618416143303260",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3826746ce338ce7e812679611cb423bd179b6611",
-        "amount": "491560341881775753962",
+        "amount": "491462684576001691793",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa0f8904ec48a2775b8a88b40e9c171f05f7d7673",
-        "amount": "499503526488608659051",
+        "amount": "499404291126303429722",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xeed6d927047e29d762bfbaaba0816c5fd27911c5",
-        "amount": "4014400304335461012",
+        "amount": "4013602771490318952",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x3826746ce338ce7e812679611cb423bd179b6611",
         "token": "0x0f0e202d7f7411e0841701856e475838f8034acf",
-        "amount": "499602782408436776603",
+        "amount": "499503527327157320340",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "amount": "498208463424",
+        "amount": "498109485349",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb8dc0817f465411c9fc24663f78d9add65e44408",
-        "amount": "49130988968577594282",
+        "amount": "49121228213683660190",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf5fd819f214a0035d25d9a403229e9827ed28518",
-        "amount": "495388546623",
+        "amount": "495290128775",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xfdea8140093878bfca93aaa35d3d3087f4ab136d",
-        "amount": "503892721643124526236",
+        "amount": "503792614288234082029",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc91238544d43ba7600304f65a572411b132dd5b2",
-        "amount": "505664258578476916049",
+        "amount": "505563799275901832624",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x7e145f212cc02bf59164234f43a0bbf6d6ee218e",
-        "amount": "48524658338",
+        "amount": "48515018041",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8c42141d6943b3cf1cfc97769358b6aa8e528c37",
-        "amount": "490938041498",
+        "amount": "490840507824",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5d77b6b51ee48067651faee9b80987e881c3312b",
-        "amount": "483410868833",
+        "amount": "483314830567",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xd82573de98c92b7699acc9a3e4e894d86080a91c",
-        "amount": "504446209566077274707",
+        "amount": "504345992250852912751",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9e157a636762aec0cdd70bcf808f6689e7039587",
-        "amount": "51630198607940053420",
+        "amount": "51619941340086977064",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6f06b4aecdd2ebeca2bcb541c409b5285359c69f",
-        "amount": "523221137795",
+        "amount": "523117190502",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa0ea681f5685bfa6857d776b5acbf3d51bbecc9a",
-        "amount": "421434840241",
+        "amount": "421351114628",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7bd177a51925fc3f4b7e94900c5167dbe1d52c50",
-        "amount": "52497149273864758207",
+        "amount": "52486719770664238795",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1a528eeac40b5a4f10e20976e6e46f103df0ce26",
-        "amount": "507497695810",
+        "amount": "507396872262",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8f8070bdaed29c850dce67400bc30bf6266e5949",
-        "amount": "52388556027895074395",
+        "amount": "52378148098696611500",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xdd838f3329f602313002cd912e038d5d4685baaf",
-        "amount": "529919574958",
+        "amount": "529814296901",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x677e74290e2ca9291c60d9462e84207d1e7f127c",
-        "amount": "53493913378993730079",
+        "amount": "53483285850670544038",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc3a1428c04c426cdf513c6fc8e09f55ddaf50cd7",
-        "amount": "512439059389",
+        "amount": "512337254150",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2cfb8e64c43c51767911d4f4674cd84d21316062",
-        "amount": "542699287105",
+        "amount": "542591470128",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3c03528933ac6d6ed21ae2f587cd8483be854911",
-        "amount": "532173888471",
+        "amount": "532068162553",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x05a84b2a46a57b298e65fb59b5e9c36da5809b23",
-        "amount": "535192088210",
+        "amount": "535085762673",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x13285c44f9b70c807085621b9e1dd66c9daf23a8",
-        "amount": "546741300384",
+        "amount": "546632680388",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
-        "amount": "550099914489320859686",
+        "amount": "549990627244239381054",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xcbbeaddc0c54872de5979e4db2ca409d594d0cbf",
-        "amount": "525253850799",
+        "amount": "525149499671",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x009626daded5e90aecee30ad3ebf2b3e510fe256",
-        "amount": "551703526656",
+        "amount": "551593920824",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x83c41db112e38ca74711ea2f55f68ffc55ecb60a",
-        "amount": "532041343877",
+        "amount": "531935644292",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8b8837883abd62a088ec6079f8c3f3bfea2ee3a2",
-        "amount": "553263092415758475156",
+        "amount": "553153176748471907032",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe483defc86085a3752372f0ac07b1e76d8bfa3f6",
-        "amount": "553810602430070735034",
+        "amount": "553700577990069351540",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3a91df8d30899ed14946232c0a28468a69cb8de5",
-        "amount": "555852613948347591769",
+        "amount": "555742183826019454416",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x891271dda1b9f363eb3a33ebec20608024de4346",
-        "amount": "55623509483938381208",
+        "amount": "55612458873034530327",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x38772e51ef93640bbe24f2988338d408dede8aa0",
-        "amount": "55471706591971484386",
+        "amount": "55460686139443269439",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xbd5f8831bc1cc6a03c25950fcbe239dab521a66a",
-        "amount": "549266900355",
+        "amount": "549157778603",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x49a395602d3cc3061f08da488b0c73f10d690ca6",
-        "amount": "554983888009265974592",
+        "amount": "554873630474975232580",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x57928fb15ffb7303b65edc326dc4dc38150008e1",
-        "amount": "545684752971",
+        "amount": "545576342877",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
+        "token": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
+        "amount": "558528364463",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x17c0c579955f34c24b16bf29877492f05280bccb",
-        "amount": "551302226697974729339",
-        "isWrapped": false,
-        "isStatic": false
-      },
-      {
-        "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
-        "token": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
-        "amount": "558636231018",
+        "amount": "551192700591941720477",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc3a1428c04c426cdf513c6fc8e09f55ddaf50cd7",
-        "amount": "560746536392379032924",
+        "amount": "560635134004308867368",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x013d8f8227dce534876bba8b3441cd93a7a241f9",
-        "amount": "531288778251",
+        "amount": "531183228177",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x861043f68af47890b55f3f58e6bf4628b67218ec",
-        "amount": "567151514226",
+        "amount": "567038839374",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2ce85e0d3b5b875441ba84d4865ac99578688202",
-        "amount": "542493451045",
+        "amount": "542385674960",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3cb406def33aed0abd6d02a75fedca8e2e8d1a2e",
-        "amount": "540407885839",
+        "amount": "540300524090",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf96131552f5e3ed60f359511ccf6c57662f7f937",
-        "amount": "539899196874",
+        "amount": "539791936185",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc2831f9a42f19f8fc355538d6e4b63549f3e8ad5",
-        "amount": "564365846267",
+        "amount": "564253724838",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xc51b02a479a41b79fda4e3eb51cdc55986929aa5",
-        "amount": "550044370601",
+        "amount": "549935094391",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x60fd0a65571446161ff1516cbf4f38e42664790c",
-        "amount": "551510391184",
+        "amount": "551400823722",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x301c345ec29d5283556d3d60750a5d7752245a6c",
-        "amount": "549946992097",
+        "amount": "549837735233",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "amount": "557677417419",
+        "amount": "557566624767",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x071fd576af3bf23d338d572ff132116fbd16696c",
-        "amount": "5815075344212211985",
+        "amount": "5813920074873731619",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3db449e7625ac9436ee8168fdd58702b24c30708",
-        "amount": "556192141973",
+        "amount": "556081644398",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xda1dd647ce3f3a72b977dfe55d1e15fc35fb7e79",
-        "amount": "5863416189207098022",
+        "amount": "5862251316090039892",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x0cda23400719f6d9e6e07456b3762e433df678e2",
-        "amount": "596196530013",
+        "amount": "596078084846",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x351258b4942dc7442c5d7d4b94aaef299b1148ea",
-        "amount": "56519088212976279614",
+        "amount": "56507859679245189277",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x57e55a706edda5c0ae64ea0a27dd36bdfb5be1dc",
-        "amount": "599070544533716778526",
+        "amount": "598951528391926736197",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x0f0e202d7f7411e0841701856e475838f8034acf",
-        "amount": "59864538381674832469",
+        "amount": "59852645214078394510",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xbcaaab068caf7da7764fa280590d5f5b2fc75d73",
-        "amount": "6026648652822189390535",
+        "amount": "6025451350639453406944",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1aca75e38263c79d9d4f10df0635cc6fcfe6f026",
-        "amount": "576326649200",
+        "amount": "576212151542",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5508685eaff1d298c8713eac817cb3f3ce705721",
-        "amount": "60257190417716984985",
+        "amount": "60245219242729227002",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa6247834b41771022498f63cae8820ffee208265",
-        "amount": "615184454993127843020",
+        "amount": "615062237533113213241",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xaf1197e21654d1b7b769424717387f213fc462e9",
-        "amount": "587524995436",
+        "amount": "587408273026",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd5772c7f3bb4ff06f956f19a69d4f08c2d22cda6",
-        "amount": "616799832865604991547",
+        "amount": "616677294481713083042",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
-        "amount": "62122288861",
+        "amount": "62109947151",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xdf5235b7b561536b13f16b10eeed9561d4868133",
-        "amount": "62193168439433704692",
+        "amount": "62180812647580975685",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7147a7405fcfe5cfa30c6d5363f9f357a317d082",
-        "amount": "501357581068496497549128",
+        "amount": "501257977364891933974877",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xaf2eb520993741fba0da9ff72bac5dc72692fc62",
-        "amount": "62512586714383050954",
+        "amount": "62500167464343220974",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x597400c5982ad5890e799ff43f081c59695a57bd",
-        "amount": "62577508689720431859",
+        "amount": "62565076541762163812",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x283012398819c84fc11c9d6b8b832152a13ab8ec",
-        "amount": "595524303782",
+        "amount": "595405992165",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x036f2d51dbc9d318c67a84211011d368bce67782",
-        "amount": "630828919890572178376",
+        "amount": "630703594376139829218",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5c7364b4d8984d22d35a0e3cae8a498d24090791",
-        "amount": "6357891151728020059838",
+        "amount": "6356628042263359792823",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x13285c44f9b70c807085621b9e1dd66c9daf23a8",
-        "amount": "61437661319",
+        "amount": "61425455622",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xfdea8140093878bfca93aaa35d3d3087f4ab136d",
-        "amount": "641001864393933650",
+        "amount": "640874517841050184",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x357166f38408be5ddbc9188854f78681ea91ec32",
-        "amount": "617095975532760170689",
+        "amount": "616973378314799410328",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa4166526086eea037d236497e0406f3ec8874d13",
-        "amount": "65191870843",
+        "amount": "65178919305",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x57928fb15ffb7303b65edc326dc4dc38150008e1",
-        "amount": "628448807590",
+        "amount": "628323954928",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5cce15bc5585c8eece1745a98340c9b2a15176a1",
-        "amount": "65791314249361238356",
+        "amount": "65778243621107682967",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xbb9298d43d4bbe3db47cd96f24d186d57a672e73",
-        "amount": "649633931472",
+        "amount": "649504870004",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xda1dd647ce3f3a72b977dfe55d1e15fc35fb7e79",
-        "amount": "633124808610",
+        "amount": "632999026976",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0180f81014d10543a6002e796d1f0ee5787e84cf",
-        "amount": "662770198019",
+        "amount": "662638526795",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf4b6efd979adc206921537328a7328fdab99e85b",
-        "amount": "636490080560",
+        "amount": "636363630355",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xaa48906af8fd2ead13847b809c0debfa46573084",
-        "amount": "66978546307752054041",
+        "amount": "66965239814490131223",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
-        "amount": "672920542924612294458",
+        "amount": "672786855151976962676",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x074cb8c409f4ce87c883a7646be94f3587306765",
-        "amount": "661583370345826453555",
+        "amount": "661451934906495516168",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x94e81ae86641958449bb9c8814052f579b5a7329",
-        "amount": "67546471483325090310",
+        "amount": "67533052161509270313",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x16aa9e1f35474aa313539866d423309428b3a8bd",
-        "amount": "67111197080346172474",
+        "amount": "67097864233621700588",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xb783d9cb66404d1061c2998596a0174990986866",
-        "amount": "544689866585",
+        "amount": "544581654143",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "amount": "676234568334",
+        "amount": "676100222171",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3ad95690608add017003f34c8292954e7b053b53",
-        "amount": "649342526756",
+        "amount": "649213523181",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xbcc8def88d4d3df1bb9a7c22cfef23ae94310495",
-        "amount": "65639502266",
+        "amount": "65626461798",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7656bc21a681783250b071f3c6ca023aec923711",
-        "amount": "675296212946255200550",
+        "amount": "675162053204028437296",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x9c7950eb5ced8d28cbff1ac03b72659f8ce493b0",
-        "amount": "657852103227",
+        "amount": "657721409071",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xa5e024eda0070f2e1785a7f200d28621c7a67374",
-        "amount": "685476948357",
+        "amount": "685340766029",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xacd15149672a80272005e425b94b3f57bfdb2144",
-        "amount": "677779847810",
+        "amount": "677645194649",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x60d3be9f084b4e6d81587b517b202da5ae59cc62",
-        "amount": "653363082352",
+        "amount": "653233280021",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xada8b5957e7eedc043abda0b31fa1295944b6611",
-        "amount": "62790056442457004485",
+        "amount": "62777582068063623462",
+        "isWrapped": false,
+        "isStatic": false
+      },
+      {
+        "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+        "token": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+        "amount": "691018837026793022376",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x323c33a438d177efc57c22d861e1861e2c2ab68e",
-        "amount": "691889539324205395609",
+        "amount": "691752083019156463073",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x8b908ca811b6ca2bcecaafb6769508a981e279bb",
-        "amount": "6926785377562303537",
+        "amount": "6925409247024477122",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x3efdfa7849713f8770ede17ff20af0080ffd1b9d",
-        "amount": "665574344729",
+        "amount": "665442116411",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6d7214960f94254918f7cce981e9c548c2d05502",
-        "amount": "687993891645",
+        "amount": "687857209280",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb7b179b9d2afc33df00ca5dd7e32e907c6de58a1",
-        "amount": "687861047108",
+        "amount": "687724391136",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x715ef7b829be008a1200efb8ea6a6d2487fb9f25",
-        "amount": "68806382214",
+        "amount": "68792712588",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x90ad5ae18916d30f0812d360a38a5f77c390419a",
-        "amount": "699965976099",
+        "amount": "699826915264",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4ce6d711cb0d0bd7361898d503df6aa794365373",
-        "amount": "707713297417976285308",
+        "amount": "707572697438690447318",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc164522ebc7e6a8b4b08878cf9e330cfebf4850a",
-        "amount": "672125707554181597795",
+        "amount": "671992177689892804029",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x6fc6bd76ea1a9670413ac03a2787f3fbb472c7d8",
-        "amount": "691469570463125815264",
+        "amount": "691332197592446964400",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x444da203110ee8f4ba7527262e26bc3d67732d48",
-        "amount": "701186348339",
+        "amount": "701047045056",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9795924dc0a89320a48995af7a4a804b95382b48",
-        "amount": "694759577263257650118",
+        "amount": "694621550773536121313",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2cf372cc8b71f00cbbb89a158a8b4295e4c79f61",
-        "amount": "67726367771457129154",
+        "amount": "67712912710007085464",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xed34eeda86b4c1e4e1bbb47612f922a76aef46e3",
-        "amount": "707488243453",
+        "amount": "707347688185",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc175a0c71f1eda836ebbf3ab0e32fc8865fdee91",
-        "amount": "71948162963399698986",
+        "amount": "71933869166378765485",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x29c36a05b5f85a287090fcab952d156d12ff9741",
-        "amount": "683703139687",
+        "amount": "683567309757",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4f21a0724c1abc3df4f157e245d5272c6d9c4735",
-        "amount": "693680962655",
+        "amount": "693543150452",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb2715ce6c33c4e82d9cc83455b953c55325fec44",
-        "amount": "722986846836041481595",
+        "amount": "722843212491371192030",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6e894fb9439449ad5416107dcec6b72e02a22547",
-        "amount": "5808749096283566365232",
+        "amount": "5807595083768055087767",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x9003bf7ae9930f1ef878b9f0598b81e831dfa8bd",
-        "amount": "665236706373531955137",
+        "amount": "665104545133270480420",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x2cbcca2d1df0073c73de414d735ca7a138938785",
-        "amount": "731598004414",
+        "amount": "731452659308",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
-        "amount": "738180536912",
+        "amount": "738033884067",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x77179cffcc73b073db64116a46c651c7d117550a",
-        "amount": "736821149738044868466",
+        "amount": "736674766960204604285",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x64a3c98836c38a69313ab2987bc517665a1eb1b7",
-        "amount": "742475259479",
+        "amount": "742327753411",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4a90714a10d6701f9b1885588e7989f5a7ec28b1",
-        "amount": "736755527405",
+        "amount": "736609157665",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf63dbe122d10d9f1bd806059c64c0b19df1e04f2",
-        "amount": "746021265848",
+        "amount": "745873055301",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc9245d96a67d1f1a41007a7b80489345b104428f",
-        "amount": "718871793072",
+        "amount": "718728976257",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc6f39bba06d170634851135779f0459fae3fb404",
-        "amount": "760593220431427725",
+        "amount": "760442114904051363",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc71904ba3fceedad5844def8d5c6c0012b87cb5f",
-        "amount": "727805812111",
+        "amount": "727661220392",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x8f4d858bb931653dbfe71d5fc7453bb058922fef",
-        "amount": "73417987333",
+        "amount": "73403401529",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x8dd07bde1f1a4a03fb7930c26ab223124f9964ac",
-        "amount": "75822218012",
+        "amount": "75807154564",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc7f85489b8a999aea0d8e5d9056e472e6583404b",
-        "amount": "753177107549",
+        "amount": "753027475366",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0a64149149ed211be5d400129e754c2ec6c1e686",
-        "amount": "76388152098182519901",
+        "amount": "76372976217438336644",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x73729b9a3ce02c792ba1cf7622e13d74ea185c5a",
-        "amount": "761139559624",
+        "amount": "760988345556",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xfac23490afb667efdb41c13a1c274c47a7b3d425",
-        "amount": "736775940209",
+        "amount": "736629566413",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xad10bf03496dff67ba114fa416925bea680767a3",
-        "amount": "77200315343118200759",
+        "amount": "77184978111533456380",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb188af71fd635adb5b1b58070db639420d07d6ea",
-        "amount": "76143885395",
+        "amount": "76128758042",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x1bb824308ef36481ad0a6167b3215ca427a9344b",
-        "amount": "748926809550",
+        "amount": "748778021765",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x635df011e03049de23b90a09dd907d19e799d9d1",
-        "amount": "776568874415",
+        "amount": "776414595036",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x311792463f34c857342b3f79cbd019ee6df4a256",
-        "amount": "74978339392",
+        "amount": "74963443596",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2a8a55650f0b9c85f7c659b6c26eae4cb95d600f",
-        "amount": "78249743043353534817",
+        "amount": "78234197324075464069",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x0d8bfa3e583f28ebcf8004fdcd09fc808b8675f6",
-        "amount": "751312052268",
+        "amount": "751162790612",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x38a2d45d34f0993dd4f6ebb13d3868650329cce8",
-        "amount": "751446396772",
+        "amount": "751297108426",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xebfbf7a3006104fb1d3b68529a7b1b584acf4203",
-        "amount": "785668954869",
+        "amount": "785512867595",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6a5f8aaf34487de8275c0b46cd92cd84b645a850",
-        "amount": "787555983639715388040",
+        "amount": "787399521474329813430",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x071fd576af3bf23d338d572ff132116fbd16696c",
-        "amount": "747755567245",
+        "amount": "747607012149",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf712d3b31de494b5c0ea51a6a407460ca66b12e8",
-        "amount": "746294008742",
+        "amount": "746145744011",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x689df922ca11ca2a61fbc504a9d0f7260d7c922a",
-        "amount": "79248514173965332994",
+        "amount": "79232770030832874248",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x41d0ee93d5802a5505c18f80cc0a3690956e82c0",
-        "amount": "748763501186",
+        "amount": "748614745845",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1d7522430847f3345d888e833fc0e75c7cd1252d",
-        "amount": "795751867135",
+        "amount": "795593776710",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4ad4682b1faf070614011aad4c62efffb9f96fa6",
-        "amount": "791442352901",
+        "amount": "791285118639",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x84e630e8cff86c4860d2c8a1ca2c537eadf01bfa",
-        "amount": "80076696466938292901",
+        "amount": "80060787790493175308",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x19fbcfc540f25aaa2c25bb560ac1522f691a7531",
-        "amount": "80380998664727119116",
+        "amount": "80365029533175587895",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x465707f3ca802229fe28a640646d9a73bf84a23f",
-        "amount": "802276144081",
+        "amount": "802116757491",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x11fc3cb5818c6703d9b49a20285178273fedca49",
-        "amount": "771660763999",
+        "amount": "771507459705",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1a5a62ae01ead54e2ead4f58d9b24643aedc5c90",
-        "amount": "649671737349848154",
+        "amount": "649542668370718834",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x45331b534eee26834302f94156696f8696e3d52f",
-        "amount": "809664488739843183733",
+        "amount": "809503634322156487046",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x948f7b1ff398fa2994e4980ecdbe2c040e7273bc",
-        "amount": "813989382003",
+        "amount": "813827668367",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa44a98e05a5563b569688ca2de03181c3f4032a8",
-        "amount": "807031139249",
+        "amount": "806870807993",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7b7a90ae1dfae19e8268e8d8c812c738c342c78c",
-        "amount": "81830417956718932879",
+        "amount": "81814160871947963726",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3380d3d144d4e948877f7603beae05924403f5d9",
-        "amount": "81761869423311886912",
+        "amount": "81745625956940363223",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x687b97415e7a6f9c572d9290a1377553d18c9a26",
-        "amount": "77488399621822878",
+        "amount": "77473005157113129",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xb909190d990d99ecb3936d88e4fed86c997ca0c8",
-        "amount": "820801223432458923",
+        "amount": "820638156502060078",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2cabc867a6c4a32846677e74b3f75df055e01f21",
-        "amount": "659954011160",
+        "amount": "659822899423",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb6f3a27840b611b98ca44015d02f65bd802cd075",
-        "amount": "779670818555",
+        "amount": "779515922920",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x9539f038af9c7cdecd99a5a863f443f8aa219764",
-        "amount": "82559676020",
+        "amount": "82543274055",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7190fce1e52ed32917d616b9064c977a7bdd76a3",
-        "amount": "787522419259",
+        "amount": "787365963762",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3c80a9066c76bb2349120a7b0702218e665d39c8",
-        "amount": "82504969811396846867",
+        "amount": "82488578714763813001",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc3e12d39be3e5ff9f7bd5ca17636301ee0598730",
-        "amount": "80910304334",
+        "amount": "80894230046",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xe5047fa8ef17b9fe3a3cb60bc0b568bd94f36237",
-        "amount": "796254453084",
+        "amount": "796096262811",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6b69683c8897e3d18e74b1ba117b49f80423da5d",
-        "amount": "832260708171197001570",
+        "amount": "832095364607982620612",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xee7ce0a68a72af0a65a041c29f975f22690daa57",
-        "amount": "829824570743",
+        "amount": "829659711162",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x2762b964912ca520c1fa77ce75c5bbd07268718e",
-        "amount": "795908194298",
+        "amount": "795750072816",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7147a7405fcfe5cfa30c6d5363f9f357a317d082",
-        "amount": "6728621231331191244773",
+        "amount": "6727284469666264267082",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x295ba5c775969c6310fa040a02c1bec066a84967",
-        "amount": "8401366703953666689895",
+        "amount": "8399697621305568617510",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe186d1ccc21398a6b88d0a5c3d249c0737799427",
-        "amount": "838757923029",
+        "amount": "838591288677",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xbcc8def88d4d3df1bb9a7c22cfef23ae94310495",
-        "amount": "825479532783",
+        "amount": "825315536422",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xad07889049998ac76c6c4036e3c97b296ab1c23f",
-        "amount": "844802199029757045369",
+        "amount": "844634363873744619752",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1d352786bc3f242e6f71c4b9bebc49459fbfe06d",
-        "amount": "84587528730119619488",
+        "amount": "84570723895689228641",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x355f000ebfb2f9760355a8f2e2f81ceeb2feaadd",
-        "amount": "804652870054",
+        "amount": "804493011284",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xeef7b1f06b092625228c835dd5d5b14641d1e54a",
-        "amount": "683096505798",
+        "amount": "682960796388",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x009626daded5e90aecee30ad3ebf2b3e510fe256",
-        "amount": "852375134984112389484",
+        "amount": "852205795328124903351",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xed1afb38731ce824d51e01ef733b0031b69fead9",
-        "amount": "855410722770",
+        "amount": "855240780039",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x0292c6d49cf04ca14c37786170efbc4fdced137a",
-        "amount": "83997999746598039233",
+        "amount": "83981312032706677319",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
-        "amount": "825582057339",
+        "amount": "825418040610",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x97d2eeb65da0c37dc0f43ff4691e521673efadfd",
-        "amount": "815480644316",
+        "amount": "815318634414",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xcbc2d5ab05619d9e65260110943f1b5d6871bc63",
-        "amount": "8244671195014358266",
+        "amount": "8243033242748282731",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x60fd0a65571446161ff1516cbf4f38e42664790c",
-        "amount": "863495659366",
+        "amount": "863324110418",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc0aa0b6a86f1880b6a76096fa2483ac49d4f9619",
-        "amount": "694894774419",
+        "amount": "694756721070",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf712d3b31de494b5c0ea51a6a407460ca66b12e8",
-        "amount": "825599816053",
+        "amount": "825435795796",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe0b39687ce639ef545aa5301aad282de1d3d17c6",
-        "amount": "849291085378",
+        "amount": "849122358424",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3d864bca629dd2e59ac1447c3047e25c1b82e1db",
-        "amount": "829904258254",
+        "amount": "829739382841",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x0cf9847554329c3d307e8ed965ee6711f50a3d3e",
-        "amount": "828021631260",
+        "amount": "827857129866",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x89d6e227a3fdb9ee2ca0b51255fa18e9abac41a4",
-        "amount": "836088882390",
+        "amount": "835922778291",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7ed714dbd121dfc566852e3eb4299ce53ee4ddef",
-        "amount": "847738298161",
+        "amount": "847569879696",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7d2ec03a058457053ea77e30a72fc1130e5f5c3c",
-        "amount": "876097108233511586682",
+        "amount": "875923055780746573128",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x215d8d81b4c0f830714d29b1ca1ec8aec6175556",
-        "amount": "8698897397824637347",
+        "amount": "8697169205351207771",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xd14ce9cfc6384590c6b77436dca212a6bcb2575f",
-        "amount": "886026706074759328247",
+        "amount": "885850680928735773897",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6e2d5dc9ccc8878833f22184b50954e6ffcd4c30",
-        "amount": "885702272690164600975",
+        "amount": "885526311998669907485",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x82455481d042552f893664528b7a16ce8637088a",
-        "amount": "836137597508",
+        "amount": "835971483731",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xaa9081197e02f2fdacfc65e7606743fa2d005208",
-        "amount": "846225585023",
+        "amount": "846057467086",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe29dd39e7e51fcbdf730abcfc6b2dd57ae2227b7",
-        "amount": "877380287992334801459",
+        "amount": "877205980612824496043",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xb2408d2abdfffccbd48e8ef519241e29984d5a67",
-        "amount": "857258731083",
+        "amount": "857088421213",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1e3438ea622c927a30f2977fdf1b36577bf9f6ef",
-        "amount": "841709381922",
+        "amount": "841542161209",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1849bac8f4276108e193e26e14b596e15aa7210d",
-        "amount": "89628009319705844247",
+        "amount": "89610203103121024363",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x1248d4388a179e61deab16b66a0a25a011c01dcd",
-        "amount": "885263826603",
+        "amount": "885087953016",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xfb4179cf1f15eff34600ed43323ff96636adde22",
-        "amount": "9005923918371319937932",
+        "amount": "9004134729555746501011",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x42cedde51198d1773590311e2a340dc06b24cb37",
-        "amount": "867271076951",
+        "amount": "867098777948",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3096f87513e3deac39b333fa3b387b0bebd4e100",
-        "amount": "864408834545",
+        "amount": "864237104179",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe5b9b298ea08603aa59642bca1287adb7cca2d34",
-        "amount": "892652800875538214642",
+        "amount": "892475459336569756656",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x4d88a5956698d9bc1e8e4268b8990e34bce0d771",
-        "amount": "893879151141",
+        "amount": "893701565965",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7f981e73907b8f08d34280fd92f5eab1e78fa7d3",
-        "amount": "8961464112",
+        "amount": "8959683756",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x6e4d027fd576398f2082aa80a52fcf34d774f7ce",
-        "amount": "871995708589",
+        "amount": "871822470953",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x79925094801e6a88a5769d5516f9a5e35303bd7b",
-        "amount": "904062522676",
+        "amount": "903882914391",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xdb5134d892a047b8224e67d06a53ca26320b62ac",
-        "amount": "9157982994934560010",
+        "amount": "9156163596847671457",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa4882fbc59425c7924309447e3f726edb2ec6011",
-        "amount": "918598303349505322244",
+        "amount": "918415807269674470435",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xf8adee63bfd1efbfa6e9c2de1668594a14624b55",
-        "amount": "917704964192",
+        "amount": "917522645590",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7bc77ff67979a657485c8a5c2ec578aefa273d9d",
-        "amount": "905826786904122675936",
+        "amount": "905646828115811173674",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6b2c9e086875877f3415ea5c194409444fce6177",
-        "amount": "91619957410445983198",
+        "amount": "91601755457535000831",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x323c33a438d177efc57c22d861e1861e2c2ab68e",
-        "amount": "919189600035",
+        "amount": "919006986484",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xa31e3b340c29e3dbc86033cbc831254386ca0433",
-        "amount": "883729520000",
+        "amount": "883553951231",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x917ecb71e734ae96bcf0eab05480328d7e391c64",
-        "amount": "890412129465",
+        "amount": "890235233076",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb604ccd343cdf254e100f206d903d6975ea2950b",
-        "amount": "928140637302",
+        "amount": "927956245466",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7bfb003620e0b8091023ea38759a2f20faed65e7",
-        "amount": "907674421114",
+        "amount": "907494095260",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x8d5ef3cde97183fff013b8a0c887e39b067aff7e",
-        "amount": "903913876187",
+        "amount": "903734297433",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xfe805549e0d3360c6715ef5b96a1007c886caf66",
-        "amount": "928725450581",
+        "amount": "928540942561",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xf48554937f18885c7f15c432c596b5843648231d",
-        "amount": "918698189355",
+        "amount": "918515673431",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe009e21a77431a5a9f6bdcca1fe97ae8b18bcc3d",
-        "amount": "889719356781",
+        "amount": "889542598024",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7394850f6c02cb7253bea9f8a956bd78bacd555f",
-        "amount": "906550190265",
+        "amount": "906370087760",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe95beebc7e01485faac7fd575b069c3430ea4816",
-        "amount": "752818921271",
+        "amount": "752669360248",
         "isWrapped": true,
         "isStatic": true
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x8e7280dc3b4e14e03cd10f3870c24b517892637a",
-        "amount": "922561416139",
+        "amount": "922378132715",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1248d4388a179e61deab16b66a0a25a011c01dcd",
-        "amount": "939666679868431893482",
+        "amount": "939479998176555945642",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc19bc204eb1c1d5b3fe500e5e5dfabab625f286c",
-        "amount": "94299852339379872258159",
+        "amount": "94024588808387835956852",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe0ed85f76d9c552478929fab44693e03f0899f23",
-        "amount": "758219490574",
+        "amount": "758068856630",
         "isWrapped": true,
         "isStatic": true
       },
       {
+        "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
+        "token": "0x65c4a6c51ab4b3392d83b322a5be0f16f54857d3",
+        "amount": "94437290098778980200",
+        "isWrapped": true,
+        "isStatic": false
+      },
+      {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c",
-        "amount": "944572629522126245238",
+        "amount": "944384973175086683300",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x4c17667710150464b4f52768d79cb67d020c3e32",
-        "amount": "95216077047641397679",
+        "amount": "95197160660865255850",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0xb3deff2808193d9ca301d9227d74ed9edbc344bc",
-        "amount": "905389880727",
+        "amount": "905210008738",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x071fd576af3bf23d338d572ff132116fbd16696c",
-        "amount": "942665944967",
+        "amount": "942478667417",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6b050eb17408d3da80eaa2eda1331d646dcf5075",
-        "amount": "941853355944",
+        "amount": "941666239829",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x174b7e5d5e87545a8a1cb00b3bb08ec3bbd0a405",
-        "amount": "941580318886",
+        "amount": "941393257016",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x57928fb15ffb7303b65edc326dc4dc38150008e1",
-        "amount": "95668142361044446201",
+        "amount": "95649136163360508508",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x5c9c9b24fab95d650b9a01bbaafcd5a1a80b9d38",
-        "amount": "94306927210",
+        "amount": "94288191443",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x712a7f1c6824bed92399d942c68d2efe4185456a",
-        "amount": "8915561302691271958",
+        "amount": "8913790066035053420",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x6849955ba803d32b8140ea92a7042eae2560756f",
-        "amount": "918714601412",
+        "amount": "918532082227",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x974a4155054bd1e3572d61c624496a3b97b6b08e",
-        "amount": "946923912752",
+        "amount": "946735789280",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x7e2031f376e7768590d521ba7e5ce5c653c9868d",
-        "amount": "96293396164657917098",
+        "amount": "96274265749056699655",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7a31058993add4a105e7684bb05741466de4a018",
-        "amount": "946706640173",
+        "amount": "946518559867",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x9539f038af9c7cdecd99a5a863f443f8aa219764",
-        "amount": "967485624603005383706",
+        "amount": "967293416177256121541",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1dd6397746fc02652b19ae3f86f580ac77727fa5",
-        "amount": "9255598257412514",
+        "amount": "9253759466297498",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6760e108b1c27cc3c2aac91cf6fd5fd7280a0835",
-        "amount": "97009936977358091441",
+        "amount": "97085392384836676708",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xdc80d7b72e6f71fee2bcfd752c9e0b7aa38ba071",
-        "amount": "965530824969",
+        "amount": "965339004899",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x311792463f34c857342b3f79cbd019ee6df4a256",
-        "amount": "960242100283",
+        "amount": "960051330914",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x283012398819c84fc11c9d6b8b832152a13ab8ec",
-        "amount": "938506113878",
+        "amount": "938319662753",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6273e5d4582eb665c084bb47a69d635f5de8077a",
-        "amount": "89245497848705421227",
+        "amount": "89227767624906232859",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x6e54667cb6db4eca6725cf5d95c72c56c6a40133",
-        "amount": "89245053888950661247",
+        "amount": "89227323753352065615",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x22fe24ee8484eee7dba7b55d11abdf09c6c15c3b",
-        "amount": "89246171393194946129",
+        "amount": "89228441035584026903",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x4955a95c630537d6c84b138b4a44f364ad2a39ce",
-        "amount": "89246641666728475668",
+        "amount": "89228911215689258126",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x0b21bdb56be9db0e2bec657f85ab8b61fdf50196",
-        "amount": "89246707898498292917",
+        "amount": "89228977434300942699",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x74adce7a656665f2d957e1aa749dd9e4bf179f68",
-        "amount": "89246749684532284232",
+        "amount": "89229019212033386572",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x5e48630f6f3b28d943a683598d5364197d937314",
-        "amount": "89247041528019344230",
+        "amount": "89229310997540487192",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x3dc0623e8a730254cbe8b3c310f3f2aadc695e09",
-        "amount": "89247452513086711641",
+        "amount": "89229721900958276774",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xb1aa5e05925464f488a7f2aa6b09e075e0755be1",
-        "amount": "89247611291404199333",
+        "amount": "89229880647731595053",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc5d00a73a2d06c9c29524411c7d120dcf54cbc3a",
-        "amount": "89247798157594911690",
+        "amount": "89230067476797976639",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe5fd791afe760c5a7ec0c7326415a47ca653d03f",
-        "amount": "89250906622056308988",
+        "amount": "89233175323706983050",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x9fdb04ee6261f5ab57bc0d3b529fd805cba0e830",
-        "amount": "89265420470138432141",
+        "amount": "89247686288352060228",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xc3f3bf788cdf9ffcecafe313b23a3155f04432c0",
-        "amount": "89265474146200402432",
+        "amount": "89247739953750315101",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c",
-        "amount": "978022500445",
+        "amount": "977828198679",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x1c43a8be1eea4875b9bfe096a8714ca38b78304b",
-        "amount": "937797192899",
+        "amount": "937610882614",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0x7e2031f376e7768590d521ba7e5ce5c653c9868d",
-        "amount": "982326489792",
+        "amount": "982131332962",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x3de9c2207c972195af0e1afe76ec691a65634a37",
-        "amount": "99078472597158049997",
+        "amount": "99058788876016089368",
         "isWrapped": true,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x2cfb8e64c43c51767911d4f4674cd84d21316062",
-        "amount": "952103127423",
+        "amount": "951913975008",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0x6665ec2ba8ccb56a75454a6abe711d99119b0d1e",
-        "amount": "947114",
+        "amount": "946926",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x42cedde51198d1773590311e2a340dc06b24cb37",
         "token": "0xc3ccd9455b301d01d69dfb0b9fc38bee39829598",
-        "amount": "996734048697061833441",
+        "amount": "996536029545646159206",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x78fdf292b3498a8f3849df1c8d31d892a10548da",
-        "amount": "952674091742",
+        "amount": "952484825893",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x1c22ebac5a46640dda259322d8307a6fb59b7a94",
-        "amount": "955899865736",
+        "amount": "955709959030",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x67819414abe5554fc1eda0c41d58f2b125789edf",
         "token": "0x7da2339fd24acabe3d656053fe51ad9d550d8d6d",
-        "amount": "958181691754",
+        "amount": "957991331722",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
         "token": "0xddaa2e8b53a8a62a9e142565d830db997d528487",
-        "amount": "946262536383",
+        "amount": "946074544306",
         "isWrapped": false,
         "isStatic": false
       }

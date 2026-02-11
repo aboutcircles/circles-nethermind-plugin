@@ -45,7 +45,7 @@
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0xaa9081197e02f2fdacfc65e7606743fa2d005208",
-        "amount": "996232049765279381",
+        "amount": "996034130344983169",
         "isWrapped": false,
         "isStatic": false
       },
@@ -59,28 +59,28 @@
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
-        "amount": "5525258346261083807362",
+        "amount": "5524160654283460271720",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "amount": "81629969712",
+        "amount": "81613752450",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0x88b811419a2ad503e53f0b208e24c99767927aab",
-        "amount": "84369735196862135562",
+        "amount": "84352973631035537117",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0xf5a8aaf595eabf5e858c8ec5f2243ac4a2bfc127",
-        "amount": "95219857810119968955",
+        "amount": "95200940672227339547",
         "isWrapped": false,
         "isStatic": false
       }
