@@ -1074,7 +1074,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 if (hasNoScale)
                 {
                     columnReaders[i] = fitsIn256BitInteger
-                        ? static (r, idx) => r.IsDBNull(idx) ? null : r.GetFieldValue<BigInteger>(idx)
+                        ? static (r, idx) => r.IsDBNull(idx) ? null : (object)r.GetFieldValue<BigInteger>(idx).ToString()
                         : static (r, idx) => r.IsDBNull(idx) ? null : r.GetValue(idx)?.ToString();
                 }
                 else
