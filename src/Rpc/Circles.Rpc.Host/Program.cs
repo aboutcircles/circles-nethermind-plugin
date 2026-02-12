@@ -181,6 +181,7 @@ app.MapPost("/", async (
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
             "circles_query" => await HandleQuery(request, rpcModule),
+            "circles_query2" => await HandleQuery2(request, rpcModule),
             // SDK Enablement Methods
             "circles_getProfileView" => await ReflectionHandler(request, rpcModule),
             "circles_getTrustNetworkSummary" => await ReflectionHandler(request, rpcModule),
@@ -855,6 +856,22 @@ static async Task<object> HandleTables(JsonRpcRequest request, CirclesRpcModule 
 
 static async Task<object> HandleQuery(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
+    var (query, cursor) = ParseQueryParameters(request);
+
+    // circles_query should match the legacy non-paginated shape:
+    // { columns: [...], rows: [...] }
+    var pagedResult = await rpcModule.Query(query, cursor);
+    return new QueryResponse(pagedResult.Columns, pagedResult.Rows);
+}
+
+static async Task<object> HandleQuery2(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    var (query, cursor) = ParseQueryParameters(request);
+    return await rpcModule.Query(query, cursor);
+}
+
+static (SelectDto Query, string? Cursor) ParseQueryParameters(JsonRpcRequest request)
+{
     var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
     if (parameters == null || parameters.Length == 0)
     {
@@ -874,7 +891,7 @@ static async Task<object> HandleQuery(JsonRpcRequest request, CirclesRpcModule r
         cursor = parameters[1].GetString();
     }
 
-    return await rpcModule.Query(query, cursor);
+    return (query, cursor);
 }
 
 public static class JsonElementExtensions
