@@ -180,7 +180,9 @@ app.MapPost("/", async (
             "circles_events" => await HandleEvents(request, rpcModule),
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
+            // TEMPORARY: legacy non-paginated format for old SDK compat — remove when SDK migrates to circles_query2
             "circles_query" => await HandleQuery(request, rpcModule),
+            // TODO: rename to circles_query once old SDK is retired
             "circles_query2" => await HandleQuery2(request, rpcModule),
             // SDK Enablement Methods
             "circles_getProfileView" => await ReflectionHandler(request, rpcModule),
@@ -854,12 +856,12 @@ static async Task<object> HandleTables(JsonRpcRequest request, CirclesRpcModule 
     return await rpcModule.GetTables();
 }
 
+// TEMPORARY: strips pagination (hasMore/nextCursor) for old SDK compat.
+// Revert to returning PagedQueryResponse directly once SDK migrates to circles_query2.
 static async Task<object> HandleQuery(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
     var (query, cursor) = ParseQueryParameters(request);
 
-    // circles_query should match the legacy non-paginated shape:
-    // { columns: [...], rows: [...] }
     var pagedResult = await rpcModule.Query(query, cursor);
     return new QueryResponse(pagedResult.Columns, pagedResult.Rows);
 }
