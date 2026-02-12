@@ -1,5 +1,3 @@
-using System.Collections.Immutable;
-using System.Globalization;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
@@ -9,10 +7,8 @@ using Circles.Common;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
 using Circles.Common.Dto;
-using Nethermind.Int256;
-using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
-using SchemaProvider = Circles.Index.DatabaseSchemaProvider.Schemas;
+using NpgsqlTypes;
 
 namespace Circles.Rpc.Host;
 
@@ -1035,6 +1031,67 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
         var joinOperator = conjunction.ConjunctionType == ConjunctionType.And ? " AND " : " OR ";
         return $"({string.Join(joinOperator, clauses)})";
+    }
+
+    private static object? NormalizeQueryCellValue(object value)
+    {
+        if (value is DBNull)
+        {
+            return null;
+        }
+
+        if (value is byte[] bytes)
+        {
+            return "0x" + Convert.ToHexString(bytes).ToLowerInvariant();
+        }
+
+        if (value is ReadOnlyMemory<byte> memory)
+        {
+            return "0x" + Convert.ToHexString(memory.Span).ToLowerInvariant();
+        }
+
+        return value;
+    }
+
+    private static Func<NpgsqlDataReader, int, object?>[] BuildQueryColumnReaders(NpgsqlDataReader reader)
+    {
+        var resultSchema = reader.GetColumnSchema();
+        var columnReaders = new Func<NpgsqlDataReader, int, object?>[resultSchema.Count];
+
+        for (int i = 0; i < resultSchema.Count; i++)
+        {
+            var col = resultSchema[i];
+
+            if (col.NpgsqlDbType == NpgsqlDbType.Numeric)
+            {
+                int precision = col.NumericPrecision ?? 0;
+                int scale = col.NumericScale ?? 0;
+
+                bool hasNoScale = scale == 0;
+                bool fitsInDecimal = precision <= 28;
+                bool fitsIn256BitInteger = precision <= 78;
+
+                if (hasNoScale)
+                {
+                    columnReaders[i] = fitsIn256BitInteger
+                        ? static (r, idx) => r.IsDBNull(idx) ? null : r.GetFieldValue<BigInteger>(idx)
+                        : static (r, idx) => r.IsDBNull(idx) ? null : r.GetValue(idx)?.ToString();
+                }
+                else
+                {
+                    columnReaders[i] = fitsInDecimal
+                        ? static (r, idx) => r.IsDBNull(idx) ? null : r.GetFieldValue<decimal>(idx)
+                        : static (r, idx) => r.IsDBNull(idx) ? null : (object?)r.GetFieldValue<double>(idx);
+                }
+            }
+            else
+            {
+                columnReaders[i] = static (r, idx) =>
+                    r.IsDBNull(idx) ? null : NormalizeQueryCellValue(r.GetValue(idx));
+            }
+        }
+
+        return columnReaders;
     }
 
     #region SDK Enablement Endpoints
@@ -2738,15 +2795,11 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         var columnNames = new List<string>();
 
         await using var reader = await command.ExecuteReaderAsync();
+        var columnReaders = BuildQueryColumnReaders(reader);
 
-        // Detect numeric columns upfront to avoid decimal overflow on large values
-        // (e.g. tokenId stores Ethereum addresses as uint256 which exceeds decimal.MaxValue)
-        var numericColumns = new HashSet<int>();
         for (int i = 0; i < reader.FieldCount; i++)
         {
             columnNames.Add(reader.GetName(i));
-            if (reader.GetDataTypeName(i) == "numeric")
-                numericColumns.Add(i);
         }
 
         // Find column indices for cursor generation
@@ -2763,19 +2816,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             var row = new object?[columnNames.Count];
             for (int i = 0; i < columnNames.Count; i++)
             {
-                if (reader.IsDBNull(i))
-                {
-                    row[i] = null;
-                }
-                else if (numericColumns.Contains(i))
-                {
-                    // Read as BigInteger to avoid OverflowException, serialize as string
-                    row[i] = reader.GetFieldValue<BigInteger>(i).ToString();
-                }
-                else
-                {
-                    row[i] = reader.GetValue(i);
-                }
+                row[i] = columnReaders[i](reader, i);
             }
 
             // Track cursor values if available
