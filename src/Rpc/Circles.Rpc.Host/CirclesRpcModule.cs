@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
@@ -910,6 +911,78 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         };
     }
 
+    private static object? ConvertJsonElementToClr(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number when element.TryGetInt32(out var intValue) => intValue,
+            JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
+            JsonValueKind.Number => element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            _ => element.Clone()
+        };
+    }
+
+    private static List<object?>? TryExtractEnumerableFilterValues(object? value)
+    {
+        if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+        {
+            return jsonElement
+                .EnumerateArray()
+                .Select(ConvertJsonElementToClr)
+                .ToList();
+        }
+
+        if (value is IEnumerable enumerable && value is not string)
+        {
+            return enumerable
+                .Cast<object?>()
+                .Select(v => v is JsonElement e ? ConvertJsonElementToClr(e) : v)
+                .ToList();
+        }
+
+        return null;
+    }
+
+    private static object? NormalizeFilterValue(object? value, bool tryNumericParse = false)
+    {
+        var normalized = value is JsonElement jsonElement
+            ? ConvertJsonElementToClr(jsonElement)
+            : value;
+
+        if (tryNumericParse && normalized is string stringValue &&
+            decimal.TryParse(stringValue, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var numericValue))
+        {
+            return numericValue;
+        }
+
+        return normalized;
+    }
+
+    private static string BuildInClause(
+        string column,
+        string parameterPrefix,
+        IReadOnlyList<object?> values,
+        List<NpgsqlParameter> parameters,
+        bool negate)
+    {
+        var placeholders = new List<string>(values.Count);
+
+        for (var i = 0; i < values.Count; i++)
+        {
+            var parameterName = $"{parameterPrefix}_{i}";
+            placeholders.Add(parameterName);
+            parameters.Add(new NpgsqlParameter(parameterName, values[i] ?? DBNull.Value));
+        }
+
+        var @operator = negate ? "NOT IN" : "IN";
+        return $"{column} {@operator} ({string.Join(", ", placeholders)})";
+    }
+
     private string BuildQueryFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters)
     {
         if (predicate.Column == null)
@@ -917,88 +990,96 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             throw new ArgumentNullException(nameof(predicate.Column), "Filter column cannot be null.");
         }
         var validatedColumn = ValidateIdentifier(predicate.Column, "Filter column");
-        var column = $"\"{validatedColumn}\"::text";
+        var column = $"\"{validatedColumn}\"";
         var paramName = $"@p{parameters.Count}";
 
         switch (predicate.FilterType)
         {
             case FilterType.Equals:
-                // Handle array values - use index-friendly patterns
-                // Arrays come in as JsonElement due to ObjectToInferredTypeConverter
-                if (predicate.Value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Array)
+                var equalsValues = TryExtractEnumerableFilterValues(predicate.Value);
+                if (equalsValues is { Count: > 0 })
                 {
-                    var arrayValues = jsonElement.EnumerateArray()
-                        .Select(e => e.GetString() ?? string.Empty)
-                        .ToArray();
-                    if (arrayValues.Length == 1)
-                    {
-                        parameters.Add(new NpgsqlParameter(paramName, arrayValues[0]));
-                        return $"{column} = {paramName}::text";
-                    }
-                    parameters.Add(new NpgsqlParameter(paramName, arrayValues));
-                    return $"{column} = ANY({paramName}::text[])";
+                    return BuildInClause(column, paramName, equalsValues, parameters, negate: false);
                 }
-                if (predicate.Value is Array arrEquals)
+
+                if (equalsValues is { Count: 0 })
                 {
-                    var arrEq = arrEquals.Cast<object>().ToArray();
-                    if (arrEq.Length == 1)
-                    {
-                        parameters.Add(new NpgsqlParameter(paramName, arrEq[0]?.ToString() ?? string.Empty));
-                        return $"{column} = {paramName}::text";
-                    }
-                    parameters.Add(new NpgsqlParameter(paramName, arrEq.Select(x => x?.ToString() ?? string.Empty).ToArray()));
-                    return $"{column} = ANY({paramName}::text[])";
+                    return "1=0 /* empty equals-array filter */";
                 }
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} = {paramName}::text";
+
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                return $"{column} = {paramName}";
 
             case FilterType.NotEquals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} != {paramName}::text";
+                var notEqualsValues = TryExtractEnumerableFilterValues(predicate.Value);
+                if (notEqualsValues is { Count: > 0 })
+                {
+                    return BuildInClause(column, paramName, notEqualsValues, parameters, negate: true);
+                }
+
+                if (notEqualsValues is { Count: 0 })
+                {
+                    return "1=1 /* empty not-equals-array filter */";
+                }
+
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                return $"{column} != {paramName}";
 
             case FilterType.GreaterThan:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} > {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                return $"{column} > {paramName}";
 
             case FilterType.GreaterThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} >= {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                return $"{column} >= {paramName}";
 
             case FilterType.LessThan:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} < {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                return $"{column} < {paramName}";
 
             case FilterType.LessThanOrEquals:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} <= {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value, true) ?? DBNull.Value));
+                return $"{column} <= {paramName}";
 
             case FilterType.Like:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} LIKE {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                return $"{column} LIKE {paramName}";
 
             case FilterType.ILike:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} ILIKE {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                return $"{column} ILIKE {paramName}";
 
             case FilterType.NotLike:
-                parameters.Add(new NpgsqlParameter(paramName, predicate.Value ?? DBNull.Value));
-                return $"{column} NOT LIKE {paramName}::text";
+                parameters.Add(new NpgsqlParameter(paramName, NormalizeFilterValue(predicate.Value) ?? DBNull.Value));
+                return $"{column} NOT LIKE {paramName}";
 
             case FilterType.In:
-                if (predicate.Value is Array arr)
+                var inValues = TryExtractEnumerableFilterValues(predicate.Value);
+                if (inValues is null)
                 {
-                    parameters.Add(new NpgsqlParameter(paramName, arr.Cast<object>().Select(x => x?.ToString() ?? string.Empty).ToArray()));
-                    return $"{column} = ANY({paramName}::text[])";
+                    throw new ArgumentException("Value must be an IEnumerable for In filter.");
                 }
-                return "";
+
+                if (inValues.Count == 0)
+                {
+                    return "1=0 /* empty 'in' filter */";
+                }
+
+                return BuildInClause(column, paramName, inValues, parameters, negate: false);
 
             case FilterType.NotIn:
-                if (predicate.Value is Array arr2)
+                var notInValues = TryExtractEnumerableFilterValues(predicate.Value);
+                if (notInValues is null)
                 {
-                    parameters.Add(new NpgsqlParameter(paramName, arr2.Cast<object>().Select(x => x?.ToString() ?? string.Empty).ToArray()));
-                    return $"{column} <> ALL({paramName}::text[])";
+                    throw new ArgumentException("Value must be an IEnumerable for NotIn filter.");
                 }
-                return "";
+
+                if (notInValues.Count == 0)
+                {
+                    return "1=0 /* empty 'not in' filter */";
+                }
+
+                return BuildInClause(column, paramName, notInValues, parameters, negate: true);
 
             case FilterType.IsNull:
                 return $"{column} IS NULL";
