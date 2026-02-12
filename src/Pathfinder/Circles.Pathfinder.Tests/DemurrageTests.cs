@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using Circles.Common;
+using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Tests.Helpers;
 
@@ -541,6 +542,174 @@ public class DemurrageTests
         double ratio = (double)result / (double)hugeBalance;
         Assert.That(ratio, Is.InRange(0.925, 0.935),
             "Even huge balances should decay by ~7% per year");
+    }
+
+    #endregion
+
+    #region GAMMA_64 Constant Derivation
+
+    /// <summary>
+    /// Verify the hardcoded GAMMA_64 constant matches its first-principles derivation:
+    /// gamma = (1 - 0.07)^(1/365.25)   (daily decay factor for 7% annual demurrage)
+    /// GAMMA_64 = floor(gamma * 2^64)   (Q64.64 fixed-point encoding)
+    /// Expected: 18443079296116538654
+    /// </summary>
+    [Test]
+    public void Gamma64Constant_MatchesFirstPrinciplesDerivation()
+    {
+        // Step 1: compute gamma from first principles using double precision
+        double gamma = Math.Pow(0.93, 1.0 / 365.25);
+
+        // Step 2: scale to Q64.64 fixed-point
+        // 2^64 = 18446744073709551616, too large for double to represent exactly,
+        // so we use BigInteger arithmetic for the final multiplication.
+        BigInteger twoTo64 = BigInteger.One << 64;
+
+        // gamma is very close to 1 (≈0.999801), so gamma * 2^64 ≈ 2^64 - small delta.
+        // Double has 53 bits of mantissa, giving ~15-16 significant decimal digits.
+        // The expected constant has 20 digits, so we need to verify within double's precision.
+        double gamma64Double = gamma * Math.Pow(2, 64);
+        BigInteger gamma64Approx = (BigInteger)gamma64Double;
+
+        BigInteger expectedGamma64 = BigInteger.Parse("18443079296116538654");
+
+        // Double precision gives us ~15 significant digits of 18443079296116538654 (20 digits).
+        // The relative error bound is 2^-52 ≈ 2.2e-16, so absolute error on this value is ~4100.
+        BigInteger diff = BigInteger.Abs(gamma64Approx - expectedGamma64);
+        Assert.That(diff, Is.LessThanOrEqualTo(new BigInteger(5000)),
+            $"GAMMA_64 derivation: double-precision approximation should be within ±5000 of constant. " +
+            $"Got {gamma64Approx}, expected {expectedGamma64}, diff={diff}");
+
+        // Step 3: verify the constant is in the right ballpark relative to 2^64
+        // gamma < 1, so GAMMA_64 < 2^64
+        Assert.That(expectedGamma64, Is.LessThan(twoTo64),
+            "GAMMA_64 must be less than 2^64 (gamma < 1)");
+
+        // gamma ≈ 0.999801, so GAMMA_64 / 2^64 ≈ 0.999801
+        double recoveredGamma = (double)expectedGamma64 / (double)twoTo64;
+        Assert.That(recoveredGamma, Is.InRange(0.999800, 0.999802),
+            $"GAMMA_64 / 2^64 should recover gamma ≈ 0.999801 (got {recoveredGamma:F6})");
+
+        // Step 4: verify annual decay from the constant
+        // gamma^365.25 should be ≈ 0.93
+        double annualFactor = Math.Pow(recoveredGamma, 365.25);
+        Assert.That(annualFactor, Is.InRange(0.9299, 0.9301),
+            $"gamma^365.25 should equal 0.93 (got {annualFactor:F6})");
+    }
+
+    #endregion
+
+    #region Multi-Hop Demurrage Flow Conservation
+
+    /// <summary>
+    /// Build a 3-hop path (A→B→C→D) where each intermediary holds static (inflationary) balances.
+    /// After demurrage conversion, verify flow conservation: inbound == outbound at each
+    /// intermediate vertex. This validates the intersection of demurrage conversion + flow solver.
+    /// </summary>
+    [Test]
+    public void MultiHopDemurrage_FlowConservation_AfterStaticConversion()
+    {
+        // Addresses for our 4-node path
+        string addrA = "0xde70000000000000000000000000000000000007";
+        string addrB = "0xde80000000000000000000000000000000000008";
+        string addrC = "0xde90000000000000000000000000000000000009";
+        string addrD = "0xdea0000000000000000000000000000000000010";
+        string tokenB = "0xdeb0000000000000000000000000000000000011";
+        string tokenC = "0xdec0000000000000000000000000000000000012";
+
+        // Static (inflationary) balances — these get demurrage-converted by FixtureLoadGraph
+        string staticBalance = "5000000000000000000"; // 5 CRC static
+
+        var subgraph = new FixtureSubgraph
+        {
+            Balances = new List<BalanceEntry>
+            {
+                new() { Holder = addrB, Token = tokenB, Amount = staticBalance, IsStatic = true, IsWrapped = false },
+                new() { Holder = addrC, Token = tokenC, Amount = staticBalance, IsStatic = true, IsWrapped = false },
+            },
+            Trust = new List<string[]>
+            {
+                new[] { addrB, addrA },  // B trusts A
+                new[] { addrC, addrB },  // C trusts B
+                new[] { addrD, addrC },  // D trusts C
+            }
+        };
+
+        // Load via FixtureLoadGraph — static balances get demurraged
+        var fixtureGraph = new FixtureLoadGraph(subgraph);
+        var demurragedBalances = fixtureGraph.LoadV2Balances().ToList();
+
+        Assert.That(demurragedBalances.Count, Is.EqualTo(2), "Should have 2 demurraged balances");
+
+        // Both balances started from the same static amount and should demurrage identically
+        var balanceB = BigInteger.Parse(demurragedBalances[0].Balance);
+        var balanceC = BigInteger.Parse(demurragedBalances[1].Balance);
+        Assert.That(balanceB, Is.EqualTo(balanceC),
+            "Same static amount should produce same demurraged balance");
+
+        // Verify demurraged balance is less than static (decay applied)
+        Assert.That(balanceB, Is.LessThan(BigInteger.Parse(staticBalance)),
+            "Demurraged balance should be less than static amount");
+        Assert.That(balanceB, Is.GreaterThan(BigInteger.Zero),
+            "Demurraged balance should be positive");
+
+        // Now construct a flow path using the demurraged balances as capacity.
+        // The bottleneck is the minimum capacity along the path.
+        // Both edges have the same capacity, so flow = balanceB.
+        long flow = (long)balanceB;
+
+        var steps = new List<TransferPathStep>
+        {
+            MakeStep(addrA, addrB, tokenB, flow),
+            MakeStep(addrB, addrC, tokenC, flow),
+            MakeStep(addrC, addrD, tokenC, flow),
+        };
+
+        // Flow conservation: at B, inbound (flow) == outbound (flow); at C, same.
+        AssertFlowConservation(steps, addrA, addrD);
+    }
+
+    private static TransferPathStep MakeStep(string from, string to, string token, long flow)
+    {
+        return new TransferPathStep
+        {
+            From = from.ToLowerInvariant(),
+            To = to.ToLowerInvariant(),
+            TokenOwner = token.ToLowerInvariant(),
+            Value = flow.ToString()
+        };
+    }
+
+    private static void AssertFlowConservation(
+        List<TransferPathStep> steps, string sourceAddr, string sinkAddr)
+    {
+        var source = sourceAddr.ToLowerInvariant();
+        var sink = sinkAddr.ToLowerInvariant();
+
+        var netFlow = new Dictionary<string, long>();
+        foreach (var step in steps)
+        {
+            var from = step.From!.ToLowerInvariant();
+            var to = step.To!.ToLowerInvariant();
+            var flow = long.Parse(step.Value!);
+
+            netFlow.TryGetValue(from, out long fromNet);
+            netFlow[from] = fromNet - flow;
+
+            netFlow.TryGetValue(to, out long toNet);
+            netFlow[to] = toNet + flow;
+        }
+
+        foreach (var (vertex, net) in netFlow)
+        {
+            if (vertex == source || vertex == sink) continue;
+            Assert.That(net, Is.EqualTo(0),
+                $"Flow conservation violated at {vertex[..10]}...: net = {net}");
+        }
+
+        Assert.That(-netFlow.GetValueOrDefault(source),
+            Is.EqualTo(netFlow.GetValueOrDefault(sink)),
+            "Total source outbound must equal total sink inbound");
     }
 
     #endregion

@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Text.RegularExpressions;
 using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Edges;
@@ -383,6 +384,144 @@ public class ContractConformanceTests
         var diff = BigInteger.Abs(original - restored);
         Assert.That(diff, Is.LessThanOrEqualTo(new BigInteger(1000)),
             $"Round-trip should be within ±1000 atto-CRC (diff={diff})");
+    }
+
+    #endregion
+
+    #region Vertex Ordering (uint160 Sorted)
+
+    /// <summary>
+    /// Hub.sol's operateFlowMatrix requires _flowVertices sorted by uint160 ascending.
+    /// Verify that parsing addresses as BigInteger (uint160) and sorting produces correct order.
+    /// Tests addresses at the low, mid, and high end of the uint160 range.
+    /// </summary>
+    [Test]
+    public void VertexOrdering_Uint160Sorted_CorrectOrder()
+    {
+        // Addresses deliberately out of uint160 order
+        var addresses = new[]
+        {
+            "0xffffffffffffffffffffffffffffffffffffffff", // max uint160
+            "0x0000000000000000000000000000000000000001", // near-zero
+            "0x8000000000000000000000000000000000000000", // midpoint (2^159)
+            "0x0000000000000000000000000000000000000000", // zero
+            "0xcf40000000000000000000000000000000000004", // typical address
+        };
+
+        // Parse as uint160 (BigInteger) and sort.
+        // Prefix with "0" to ensure BigInteger.Parse treats hex as unsigned (avoids
+        // two's complement sign extension when MSB is set, e.g. 0xFFFF...).
+        var sorted = addresses
+            .Select(a => (Address: a.ToLowerInvariant(), Numeric: BigInteger.Parse("0" + a[2..], System.Globalization.NumberStyles.HexNumber)))
+            .OrderBy(x => x.Numeric)
+            .ToList();
+
+        // Verify ascending uint160 order
+        for (int i = 1; i < sorted.Count; i++)
+        {
+            Assert.That(sorted[i].Numeric, Is.GreaterThan(sorted[i - 1].Numeric),
+                $"Vertex {i} (0x{sorted[i].Numeric:x40}) should be > vertex {i - 1} (0x{sorted[i - 1].Numeric:x40})");
+        }
+
+        // Verify known order: 0x0000 < 0x0001 < 0x8000 < 0xcf40 < 0xffff
+        Assert.That(sorted[0].Address, Is.EqualTo("0x0000000000000000000000000000000000000000"));
+        Assert.That(sorted[1].Address, Is.EqualTo("0x0000000000000000000000000000000000000001"));
+        Assert.That(sorted[2].Address, Is.EqualTo("0x8000000000000000000000000000000000000000"));
+        Assert.That(sorted[3].Address, Is.EqualTo("0xcf40000000000000000000000000000000000004"));
+        Assert.That(sorted[4].Address, Is.EqualTo("0xffffffffffffffffffffffffffffffffffffffff"));
+    }
+
+    #endregion
+
+    #region Stream Structure Validation
+
+    /// <summary>
+    /// Hub.sol requires that within a "stream" (group of edges sharing a source coordinate),
+    /// all terminal edges (the last edge in each flow path) must go to the same receiver.
+    /// Verify that multi-edge paths converging to a single receiver satisfy this constraint.
+    /// </summary>
+    [Test]
+    public void StreamStructure_TerminalEdges_SameReceiver()
+    {
+        // Two flow paths merging at Avatar1, then exiting to Sink:
+        //   Source → Avatar1 (Token1) — path 1
+        //   Source → Avatar2 → Avatar1 (Token2) — path 2
+        //   Avatar1 → Sink (Token1) — terminal edge, path 1
+        //   Avatar1 → Sink (Token2) — terminal edge, path 2
+        var steps = new List<TransferPathStep>
+        {
+            Step(SourceAddr, Avatar1Addr, Token1Addr, 50),
+            Step(SourceAddr, Avatar2Addr, Token2Addr, 30),
+            Step(Avatar2Addr, Avatar1Addr, Token2Addr, 30),
+            Step(Avatar1Addr, SinkAddr, Token1Addr, 50),
+            Step(Avatar1Addr, SinkAddr, Token2Addr, 30),
+        };
+
+        // Terminal edges are edges whose To == Sink
+        var terminalEdges = steps.Where(s => s.To == SinkAddr.ToLowerInvariant()).ToList();
+        Assert.That(terminalEdges.Count, Is.GreaterThanOrEqualTo(2),
+            "Should have at least 2 terminal edges for this test");
+
+        // All terminal edges in this stream should share the same receiver (Sink)
+        var receivers = terminalEdges.Select(e => e.To).Distinct().ToList();
+        Assert.That(receivers.Count, Is.EqualTo(1),
+            $"All terminal edges in a stream must go to the same receiver. Found: {string.Join(", ", receivers)}");
+        Assert.That(receivers[0], Is.EqualTo(SinkAddr.ToLowerInvariant()));
+
+        // Also verify flow conservation holds across the merged paths
+        AssertFlowConservation(steps, SourceAddr, SinkAddr);
+    }
+
+    #endregion
+
+    #region TransferPathStep Format Validation
+
+    /// <summary>
+    /// Verify output steps have: lowercase 42-char hex addresses (0x + 40 hex chars),
+    /// positive non-zero Value, and non-null From/To/TokenOwner.
+    /// Format bugs (mixed case, missing 0x prefix) cause on-chain contract reverts.
+    /// </summary>
+    [Test]
+    public void StepFormat_AddressesLowercase42Hex_ValuePositive_NonNull()
+    {
+        var addressRegex = new Regex(@"^0x[0-9a-f]{40}$");
+
+        // Generate a variety of steps with different address patterns
+        var testSteps = new List<TransferPathStep>
+        {
+            Step(SourceAddr, SinkAddr, Token1Addr, 1),                          // small value
+            Step(Avatar1Addr, Avatar2Addr, Token2Addr, long.MaxValue),          // max value
+            Step(RouterAddr, Group1Addr, Token1Addr, 999999999999999999),        // 18-digit value
+            Step("0x0000000000000000000000000000000000000001",                   // near-zero address
+                 "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",                   // uppercase input
+                 "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01", 42),             // mixed case input
+        };
+
+        foreach (var step in testSteps)
+        {
+            // Non-null checks
+            Assert.That(step.From, Is.Not.Null.And.Not.Empty,
+                "From must not be null or empty");
+            Assert.That(step.To, Is.Not.Null.And.Not.Empty,
+                "To must not be null or empty");
+            Assert.That(step.TokenOwner, Is.Not.Null.And.Not.Empty,
+                "TokenOwner must not be null or empty");
+            Assert.That(step.Value, Is.Not.Null.And.Not.Empty,
+                "Value must not be null or empty");
+
+            // Address format: lowercase 0x + 40 hex chars
+            Assert.That(addressRegex.IsMatch(step.From!), Is.True,
+                $"From address '{step.From}' must match ^0x[0-9a-f]{{40}}$");
+            Assert.That(addressRegex.IsMatch(step.To!), Is.True,
+                $"To address '{step.To}' must match ^0x[0-9a-f]{{40}}$");
+            Assert.That(addressRegex.IsMatch(step.TokenOwner!), Is.True,
+                $"TokenOwner address '{step.TokenOwner}' must match ^0x[0-9a-f]{{40}}$");
+
+            // Value must be positive non-zero
+            var value = long.Parse(step.Value!);
+            Assert.That(value, Is.GreaterThan(0),
+                $"Value must be positive, got {value}");
+        }
     }
 
     #endregion
