@@ -160,6 +160,9 @@ public static class BuilderSetup
         {
             options.SerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
             options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+            // Accept both camelCase and PascalCase on incoming JSON-RPC payloads
+            // without changing output casing behavior.
+            options.SerializerOptions.PropertyNameCaseInsensitive = true;
         });
 
         return builder;
