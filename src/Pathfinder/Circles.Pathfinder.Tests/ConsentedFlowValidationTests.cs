@@ -16,16 +16,17 @@ namespace Circles.Pathfinder.Tests;
 [TestFixture]
 public class ConsentedFlowValidationTests
 {
-    // Test avatar IDs
-    private const int Alice = 1;
-    private const int Bob = 2;
-    private const int Carol = 3;
-    private const int Dave = 4;
-    private const int TokenPool = -1000; // Pool nodes have negative IDs
-    private const int Router = 5;
+    // Use AddressIdPool.IdOf() to avoid collisions with BalanceNodeIds from other tests.
+    // Hardcoded small ints (1, 2, 3) can collide with IDs assigned by BalanceNodeIdOf()
+    // in other test classes because both share the same monotonic counter.
+    private static readonly int Alice = AddressIdPool.IdOf("0xcf01consent_alice");
+    private static readonly int Bob = AddressIdPool.IdOf("0xcf02consent_bob");
+    private static readonly int Carol = AddressIdPool.IdOf("0xcf03consent_carol");
+    private static readonly int Dave = AddressIdPool.IdOf("0xcf04consent_dave");
+    private static readonly int Router = AddressIdPool.IdOf("0xcf05consent_router");
 
-    private const int AliceToken = 100;
-    private const int BobToken = 101;
+    private static readonly int AliceToken = AddressIdPool.IdOf("0xcf06consent_alicetoken");
+    private static readonly int BobToken = AddressIdPool.IdOf("0xcf07consent_bobtoken");
 
     /// <summary>
     /// Standard case: From (Alice) does NOT have consented flow enabled.
@@ -195,8 +196,8 @@ public class ConsentedFlowValidationTests
             trustLookup: new Dictionary<int, HashSet<int>>()
         );
 
-        // Pool nodes have negative IDs in the AddressIdPool
-        var poolId = AddressIdPool.BalanceNodeIdOf("tpool-100");
+        // Pool nodes are tracked in AddressIdPool.BalanceNodeIds
+        var poolId = AddressIdPool.BalanceNodeIdOf("tpool-consent-test");
 
         var edges = new List<FlowEdge>
         {
@@ -539,7 +540,6 @@ public class ConsentedFlowValidationTests
 
     private static bool IsPoolNode(int nodeId)
     {
-        // Pool nodes are created with BalanceNodeIdOf which produces negative IDs
         return AddressIdPool.IsBalanceNode(nodeId);
     }
 

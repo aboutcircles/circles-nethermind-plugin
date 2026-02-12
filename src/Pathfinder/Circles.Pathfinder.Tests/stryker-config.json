@@ -1,0 +1,26 @@
+{
+  "stryker-config": {
+    "project": "Circles.Pathfinder.csproj",
+    "test-projects": ["Circles.Pathfinder.Tests.csproj"],
+    "reporters": ["html", "progress", "cleartext", "json"],
+    "thresholds": {
+      "high": 75,
+      "low": 60,
+      "break": 0
+    },
+    "concurrency": 4,
+    "mutation-level": "Standard",
+    "ignore-methods": ["*Log*", "*ToString*"],
+    "mutate": [
+      "Graphs/GraphFactory.cs",
+      "Graphs/FlowGraph.cs",
+      "Graphs/CapacityGraph.cs",
+      "V2Pathfinder.cs",
+      "MaxFlowSolver.cs",
+      "AddressIdPool.cs",
+      "!Data/**",
+      "!Tracing.cs",
+      "!Settings.cs"
+    ]
+  }
+}
