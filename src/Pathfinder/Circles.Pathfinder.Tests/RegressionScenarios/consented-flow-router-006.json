@@ -5,13 +5,14 @@
   "block": 43193632,
   "source": "0x0202ad5b682c0858c167be39b910de61a844a254",
   "sink": "0x04cd1e34baa4d2818aa43ab26e4051d1ebaa90e6",
-  "description": "Avatar with multiple collateral token types (29 tokens) sending to recipient via group minting. Tests combined fix: 1) Router edge insertion before consent validation, 2) Edge ordering for multiple collateral deposits. If source has consented flow enabled, the Avatar\u2192Group edges would be incorrectly filtered without the pipeline fix.",
-  "shouldFindPath": false,
+  "description": "Consented source + consented intermediary sending via group minting with multiple collateral tokens. Tests: 1) Path-level consent filtering preserves valid paths (both avatars consented, source trusts intermediary), 2) Router edge insertion before consent validation, 3) Edge ordering for multiple collateral deposits. Validates that consent + group minting produces correct on-chain transactions.",
+  "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": true,
   "simulatedConsentedAvatars": [
-    "0x0202ad5b682c0858c167be39b910de61a844a254"
+    "0x0202ad5b682c0858c167be39b910de61a844a254",
+    "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c"
   ],
   "tags": [
     "consented-flow",
