@@ -57,7 +57,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     }
 });
 
-app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService subscriptionService, ILogger<Program> logger) =>
+async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionService subscriptionService, ILogger<Program> logger)
 {
     var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     logger.LogInformation("Incoming WebSocket subscription request from {RemoteIp}", remoteIp);
@@ -110,7 +110,10 @@ app.Map("/ws/subscribe", async (HttpContext context, CirclesSubscriptionService 
         RpcMetrics.ActiveSubscriptions.Dec();
         logger.LogInformation("Subscription {SubscriptionId} closed for {RemoteIp}", subscriptionId, remoteIp);
     }
-}).DisableAntiforgery();
+}
+
+app.Map("/ws/subscribe", HandleSubscriptionWebSocket).DisableAntiforgery();
+app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
@@ -326,8 +329,128 @@ static async Task<SubscriptionRequest?> ReceiveSubscriptionRequestAsync(WebSocke
     }
 
     var payload = Encoding.UTF8.GetString(stream.ToArray());
-    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-    return JsonSerializer.Deserialize<SubscriptionRequest>(payload, options);
+    return ParseSubscriptionRequest(payload);
+}
+
+static SubscriptionRequest? ParseSubscriptionRequest(string payload)
+{
+    using var document = JsonDocument.Parse(payload);
+    var root = document.RootElement;
+
+    var jsonrpc = root.TryGetProperty("jsonrpc", out var jsonrpcElement)
+        ? jsonrpcElement.GetString()
+        : null;
+
+    var method = root.TryGetProperty("method", out var methodElement)
+        ? methodElement.GetString()
+        : null;
+
+    JsonElement? id = root.TryGetProperty("id", out var idElement)
+        ? idElement.Clone()
+        : null;
+
+    var parameters = ParseSubscriptionParams(method, root);
+
+    // Compatibility: accept eth_subscribe payloads for circles subscriptions
+    if (string.Equals(method, "eth_subscribe", StringComparison.OrdinalIgnoreCase) &&
+        parameters != null)
+    {
+        method = "circles_subscribe";
+    }
+
+    return new SubscriptionRequest
+    {
+        Jsonrpc = jsonrpc,
+        Method = method,
+        Params = parameters,
+        Id = id
+    };
+}
+
+static SubscriptionParams? ParseSubscriptionParams(string? method, JsonElement root)
+{
+    if (!root.TryGetProperty("params", out var paramsElement) ||
+        paramsElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+    {
+        return new SubscriptionParams();
+    }
+
+    // Native payload shape:
+    // { "method": "circles_subscribe", "params": { "address": "0x..." } }
+    if (paramsElement.ValueKind == JsonValueKind.Object)
+    {
+        var address = paramsElement.TryGetProperty("address", out var addrElement)
+            ? addrElement.GetString()
+            : null;
+
+        return new SubscriptionParams { Address = address };
+    }
+
+    // Compatibility payload shape:
+    // { "method": "eth_subscribe", "params": ["circles", "{\"address\":\"0x...\"}"] }
+    if (paramsElement.ValueKind == JsonValueKind.Array)
+    {
+        var parts = paramsElement.EnumerateArray().ToArray();
+        if (parts.Length == 0)
+        {
+            return new SubscriptionParams();
+        }
+
+        if (string.Equals(method, "eth_subscribe", StringComparison.OrdinalIgnoreCase))
+        {
+            var topic = parts[0].ValueKind == JsonValueKind.String ? parts[0].GetString() : null;
+            if (!string.Equals(topic, "circles", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (parts.Length < 2)
+            {
+                return new SubscriptionParams();
+            }
+
+            var second = parts[1];
+
+            if (second.ValueKind == JsonValueKind.Object)
+            {
+                var addr = second.TryGetProperty("address", out var addrElement)
+                    ? addrElement.GetString()
+                    : null;
+                return new SubscriptionParams { Address = addr };
+            }
+
+            if (second.ValueKind == JsonValueKind.String)
+            {
+                var raw = second.GetString();
+                if (!string.IsNullOrWhiteSpace(raw))
+                {
+                    try
+                    {
+                        using var nested = JsonDocument.Parse(raw);
+                        var nestedRoot = nested.RootElement;
+                        if (nestedRoot.ValueKind == JsonValueKind.Object)
+                        {
+                            var addr = nestedRoot.TryGetProperty("address", out var addrElement)
+                                ? addrElement.GetString()
+                                : null;
+                            return new SubscriptionParams { Address = addr };
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // Fallback: treat raw string itself as address
+                        return new SubscriptionParams { Address = raw };
+                    }
+                }
+
+                return new SubscriptionParams();
+            }
+
+            return new SubscriptionParams();
+        }
+    }
+
+    return null;
 }
 
 static async Task SendSubscriptionAckAsync(WebSocket socket, JsonElement? id, string subscriptionId, CancellationToken cancellationToken)
