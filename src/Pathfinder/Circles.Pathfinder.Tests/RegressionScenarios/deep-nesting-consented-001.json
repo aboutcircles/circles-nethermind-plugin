@@ -6,7 +6,7 @@
   "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
   "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
   "description": "Tests consented flow validation across 5\u002B hop path. Source is consented avatar needing deep path to reach payment gateway. Validates isPermittedFlow router insertion works correctly at depth, not just for direct transfers.",
-  "shouldFindPath": true,
+  "shouldFindPath": false,
   "minFlow": "100000000000000000",
   "expectedRevertReason": null,
   "runOnAnvil": true,

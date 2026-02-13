@@ -447,30 +447,19 @@ public class V2Pathfinder
     }
 
     /* ------------------------------------------------------------------------
-     * Validate consented flow rules on transfer edges.
+     * SAFETY NET: Validate consented flow rules on aggregated transfer edges.
      *
-     * Mirrors Hub.sol:668-676 isPermittedFlow() function:
+     * Mirrors Hub.sol:668-676 isPermittedFlow():
+     * - If From NOT consented → standard trust sufficient
+     * - If From consented → requires isTrusted(From, To) && advancedUsageFlags[To]
+     * Router edges skipped (router has no consent, Hub.sol:723 uses Router as sender).
      *
-     *   function isPermittedFlow(address _from, address _to, address _circlesAvatar)
-     *       returns (bool) {
-     *       if (!advancedUsageFlags[_from]) return isTrusted(_to, _circlesAvatar);
-     *       return isTrusted(_from, _to) && advancedUsageFlags[_to];
-     *   }
+     * Since path-level consent filtering in CollapseBalanceNodes should catch
+     * all violations BEFORE aggregation, this method should never filter
+     * anything. If it does, log an ERROR — the path-level filter has a gap.
      *
-     * Translation:
-     * - If From does NOT have consented flow (advancedUsageFlags[_from] == false)
-     *   → standard trust is sufficient (only checks "To trusts TokenOwner")
-     * - If From HAS consented flow (advancedUsageFlags[_from] == true) → requires:
-     *   1. From trusts To (isTrusted(_from, _to))
-     *   2. To also has consented flow enabled (advancedUsageFlags[_to])
-     *
-     * IMPORTANT: Router edges are SKIPPED because in the contract's _groupMint
-     * (Hub.sol:723), path-based mints use the Router as the _sender parameter:
-     *
-     *   isPermittedFlow(_sender, _group, collateralAvatar)
-     *
-     * The Router doesn't have consented flow enabled, so standard trust applies.
-     * See also: InsertRouterInTransfers which must run BEFORE this validation.
+     * Still removes edges for safety (better to produce reduced flow than
+     * let the contract revert).
      * --------------------------------------------------------------------- */
     private List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
     {
@@ -481,6 +470,7 @@ public class V2Pathfinder
         }
 
         var validEdges = new List<FlowEdge>(edges.Count);
+        int rejected = 0;
 
         foreach (var edge in edges)
         {
@@ -511,18 +501,20 @@ public class V2Pathfinder
                                && fromTrusts.Contains(edge.To);
             if (!fromTrustsTo)
             {
-                // Invalid - From has consented flow but doesn't trust To
-                _logger.LogDebug("[ValidateConsentedFlow] Filtered edge {From}→{To}: consented avatar doesn't trust recipient",
+                _logger.LogError("[ValidateConsentedFlow] SAFETY-NET triggered: edge {From}→{To} should have been caught by path-level filter. " +
+                    "Consented avatar doesn't trust recipient.",
                     AddressIdPool.StringOf(edge.From)[..10], AddressIdPool.StringOf(edge.To)[..10]);
+                rejected++;
                 continue;
             }
 
             // 2. To must also have consented flow enabled
             if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
             {
-                // Invalid - To doesn't have consented flow enabled
-                _logger.LogDebug("[ValidateConsentedFlow] Filtered edge {From}→{To}: recipient doesn't have consented flow enabled",
+                _logger.LogError("[ValidateConsentedFlow] SAFETY-NET triggered: edge {From}→{To} should have been caught by path-level filter. " +
+                    "Recipient doesn't have consented flow enabled.",
                     AddressIdPool.StringOf(edge.From)[..10], AddressIdPool.StringOf(edge.To)[..10]);
+                rejected++;
                 continue;
             }
 
@@ -530,11 +522,24 @@ public class V2Pathfinder
             validEdges.Add(edge);
         }
 
+        if (rejected > 0)
+        {
+            _logger.LogError("[ValidateConsentedFlow] SAFETY-NET removed {Rejected} edges — path-level consent filter has a gap!",
+                rejected);
+        }
+
         return validEdges;
     }
 
     /* ------------------------------------------------------------------------
      * Collapse balance nodes and token pools in a set of paths.
+     *
+     * IMPORTANT: Consent filtering is done here at the PATH level, BEFORE
+     * aggregation. Each solver path is an independent Source→Sink flow.
+     * Dropping an entire path preserves flow conservation by construction.
+     *
+     * Previous approach filtered individual edges AFTER aggregation, which
+     * left "holes" — intermediate vertices with unbalanced in/out flows.
      * --------------------------------------------------------------------- */
     private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow, CapacityGraph capacityGraph)
     {
@@ -560,12 +565,31 @@ public class V2Pathfinder
             collapsed.AddAvatar(a);
         }
 
-        /* ---------------- aggregate flows ----------------- */
+        /* ---- collapse per-path, consent-check, drop invalid, aggregate --- */
         var agg = new Dictionary<(int From, int To, int Token), long>();
+        int droppedPaths = 0;
 
         foreach (var path in pathsWithFlow)
         {
-            CollapseSinglePath(path, capacityGraph, agg);
+            var pathEdges = CollapseSinglePathToEdges(path, capacityGraph);
+
+            if (PathHasConsentViolation(pathEdges, capacityGraph))
+            {
+                droppedPaths++;
+                continue; // Drop entire path — preserves flow conservation
+            }
+
+            // Aggregate surviving path edges
+            foreach (var (from, to, token, flow) in pathEdges)
+            {
+                AddToAggregation(agg, from, to, token, flow);
+            }
+        }
+
+        if (droppedPaths > 0)
+        {
+            _logger.LogInformation("[CollapseBalanceNodes] Dropped {DroppedPaths}/{TotalPaths} paths due to consent violations",
+                droppedPaths, pathsWithFlow.Count);
         }
 
         /* ---------------- materialise collapsed edges ---------------------- */
@@ -589,12 +613,18 @@ public class V2Pathfinder
         return collapsed;
     }
 
-    private void CollapseSinglePath(
+    /* ------------------------------------------------------------------------
+     * Collapse a single path into a list of (From, To, Token, Flow) tuples.
+     * Like the old CollapseSinglePath but returns edges instead of aggregating
+     * into a shared dictionary — needed for per-path consent checking.
+     * --------------------------------------------------------------------- */
+    private List<(int From, int To, int Token, long Flow)> CollapseSinglePathToEdges(
         List<FlowEdge> path,
-        CapacityGraph capacityGraph,
-        Dictionary<(int From, int To, int Token), long> agg)
+        CapacityGraph capacityGraph)
     {
+        var edges = new List<(int From, int To, int Token, long Flow)>(path.Count);
         int i = 0;
+
         while (i < path.Count)
         {
             var e = path[i];
@@ -606,10 +636,7 @@ public class V2Pathfinder
                 if (hasNext && path[i + 1].From == e.To)
                 {
                     var next = path[i + 1];
-
-                    // Collapse Avatar → TokenPool → (Avatar/Group)
-                    // Result: Avatar → (Avatar/Group)
-                    AddToAggregation(agg, e.From, next.To, e.Token, Math.Min(e.Flow, next.Flow));
+                    edges.Add((e.From, next.To, e.Token, Math.Min(e.Flow, next.Flow)));
                     i += 2;
                     continue;
                 }
@@ -618,8 +645,7 @@ public class V2Pathfinder
             // Case 2: Group → Avatar (group token minting, keep as-is)
             if (capacityGraph.IsGroup(e.From))
             {
-                // Keep Group → Avatar edge with group token
-                AddToAggregation(agg, e.From, e.To, e.Token, e.Flow);
+                edges.Add((e.From, e.To, e.Token, e.Flow));
                 i += 1;
                 continue;
             }
@@ -627,17 +653,66 @@ public class V2Pathfinder
             // Case 3: Any other direct edge (keep as-is)
             if (!IsPoolNode(e.To))
             {
-                AddToAggregation(agg, e.From, e.To, e.Token, e.Flow);
+                edges.Add((e.From, e.To, e.Token, e.Flow));
                 i += 1;
                 continue;
             }
 
-            // Orphaned TokenPool edge — upstream graph construction bug or unexpected topology
-            _logger.LogWarning("[CollapseSinglePath] Orphaned TokenPool edge at index {Index}: {From}→{To} (token={Token}, flow={Flow})",
+            // Orphaned TokenPool edge
+            _logger.LogWarning("[CollapseSinglePathToEdges] Orphaned TokenPool edge at index {Index}: {From}→{To} (token={Token}, flow={Flow})",
                 i, AddressIdPool.StringOf(e.From)[..10], AddressIdPool.StringOf(e.To)[..10],
                 AddressIdPool.StringOf(e.Token)[..10], e.Flow);
             i += 1;
         }
+
+        return edges;
+    }
+
+    /* ------------------------------------------------------------------------
+     * Check if a collapsed path has any consent violation.
+     *
+     * For each edge: if From is consented → check isTrusted(From, To) AND
+     * ConsentedAvatars.Contains(To).
+     *
+     * Skip edges where From or To is a group — these become router edges
+     * after InsertRouterInTransfers, and the router bypasses consent checks.
+     * The consented-flow-router-006 scenario depends on this.
+     * --------------------------------------------------------------------- */
+    private bool PathHasConsentViolation(
+        List<(int From, int To, int Token, long Flow)> collapsedEdges,
+        CapacityGraph capacityGraph)
+    {
+        // No consent data → no violations possible
+        if (capacityGraph.TrustLookup == null || capacityGraph.ConsentedAvatars.Count == 0)
+            return false;
+
+        foreach (var (from, to, _, _) in collapsedEdges)
+        {
+            // Skip group edges — they become router edges later (router bypasses consent)
+            if (capacityGraph.IsGroup(from) || capacityGraph.IsGroup(to))
+                continue;
+
+            // Skip pool nodes (shouldn't exist after collapse, but safety check)
+            if (IsPoolNode(from) || IsPoolNode(to))
+                continue;
+
+            // If From doesn't have consented flow, standard trust is sufficient
+            if (!capacityGraph.ConsentedAvatars.Contains(from))
+                continue;
+
+            // From has consented flow — check requirements:
+            // 1. From must trust To
+            bool fromTrustsTo = capacityGraph.TrustLookup.TryGetValue(from, out var fromTrusts)
+                                && fromTrusts.Contains(to);
+            if (!fromTrustsTo)
+                return true; // Violation: consented avatar doesn't trust recipient
+
+            // 2. To must also have consented flow enabled
+            if (!capacityGraph.ConsentedAvatars.Contains(to))
+                return true; // Violation: recipient doesn't have consented flow
+        }
+
+        return false;
     }
 
     private void AddToAggregation(

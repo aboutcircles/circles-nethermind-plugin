@@ -62,13 +62,8 @@ public class OnChainRejectionPropertyTests
 
         if (!validation.IsValid)
         {
-            // Known limitation: ValidateConsentedFlow is a lossy post-hoc filter that removes
-            // edges violating consent rules, which breaks flow conservation at intermediate vertices.
-            // This is by design — the contract would reject those edges anyway.
-            // See PropertyBasedTests.RandomGraph_WithConsent_NeverCrashes for the same note.
             var errors = validation.Violations
                 .Where(v => v.Severity == "error")
-                .Where(v => !(consent && v.Rule == "FlowConservation"))
                 .Select(v => $"  [{v.Rule}] {v.Message}")
                 .ToList();
 
@@ -124,12 +119,12 @@ public class OnChainRejectionPropertyTests
         var validation = HubContractValidator.Validate(result.Transfers, sourceAddr, sinkAddr, state);
 
         var permissionViolations = validation.Violations
-            .Where(v => v.Rule == "IsPermittedFlow" && v.Severity == "error")
+            .Where(v => (v.Rule == "IsPermittedFlow" || v.Rule == "FlowConservation") && v.Severity == "error")
             .ToList();
 
         Assert.That(permissionViolations, Is.Empty,
-            $"IsPermittedFlow violations with consentRate={consentRate:F2}: " +
-            string.Join("; ", permissionViolations.Select(v => v.Message)));
+            $"Violations with consentRate={consentRate:F2}: " +
+            string.Join("; ", permissionViolations.Select(v => $"[{v.Rule}] {v.Message}")));
     }
 
     #endregion

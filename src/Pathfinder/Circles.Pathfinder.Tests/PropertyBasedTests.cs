@@ -523,12 +523,10 @@ public class PropertyBasedTests
     #region Property: Consented Flow
 
     /// <summary>
-    /// With consented flow enabled, the pathfinder should still not crash and
-    /// should produce valid (possibly reduced) results.
-    /// NOTE: Flow conservation is NOT checked here because ValidateConsentedFlow
-    /// is a lossy post-hoc filter — it removes edges that violate consent rules,
-    /// which can break conservation at intermediate vertices. This is by design:
-    /// the contract would reject those edges anyway.
+    /// With consented flow enabled, the pathfinder should still not crash,
+    /// produce valid results, and pass HubContractValidator (including flow
+    /// conservation). Path-level consent filtering drops entire paths before
+    /// aggregation, preserving flow conservation by construction.
     /// </summary>
     [Test]
     [Repeat(15)]
@@ -542,21 +540,40 @@ public class PropertyBasedTests
         var (source, sink) = PickSourceSink(graph, rng);
 
         var pathfinder = new V2Pathfinder();
+        var sourceAddr = AddressIdPool.StringOf(source);
+        var sinkAddr = AddressIdPool.StringOf(sink);
         var request = new FlowRequest
         {
-            Source = AddressIdPool.StringOf(source),
-            Sink = AddressIdPool.StringOf(sink),
+            Source = sourceAddr,
+            Sink = sinkAddr,
         };
         UInt256 target = CirclesConverter.BlowUpToUInt256(DefaultBalance);
 
-        Assert.DoesNotThrow(() =>
+        MaxFlowResponse result;
+        try
         {
-            var result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
-            if (result.Transfers.Count > 0)
-            {
-                AssertAllFlowsPositive(result.Transfers);
-            }
-        });
+            result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph — valid
+        }
+
+        if (result.Transfers.Count > 0)
+        {
+            AssertAllFlowsPositive(result.Transfers);
+
+            var state = new Validation.CapacityGraphContractState(graph);
+            var validation = Validation.HubContractValidator.Validate(result.Transfers, sourceAddr, sinkAddr, state);
+
+            var errors = validation.Violations
+                .Where(v => v.Severity == "error")
+                .Select(v => $"  [{v.Rule}] {v.Message}")
+                .ToList();
+
+            Assert.That(errors, Is.Empty,
+                $"Consent graph ({avatars} avatars) validator errors:\n{string.Join("\n", errors)}");
+        }
     }
 
     #endregion
