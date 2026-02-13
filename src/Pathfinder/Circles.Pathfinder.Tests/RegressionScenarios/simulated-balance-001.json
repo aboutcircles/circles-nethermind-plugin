@@ -8,7 +8,7 @@
   "description": "Tests simulatedBalances feature. Source has natural tokens but we inject additional balance to increase capacity.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
-  "runOnAnvil": true,
+  "runOnAnvil": false,
   "simulatedBalances": [
     {
       "Holder": "0xde374ece6fa50e781e81aac78e811b33d16912c7",

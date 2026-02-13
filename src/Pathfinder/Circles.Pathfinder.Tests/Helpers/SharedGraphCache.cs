@@ -49,21 +49,25 @@ public static class SharedGraphCache
     /// Gets (or creates) cached graph data for the given block number.
     /// Retries on transient DB errors (57P01, connection reset).
     /// Does NOT cache failures — next call will retry.
+    ///
+    /// When targetTimestamp is provided, demurrage is calculated relative to that time
+    /// instead of DateTimeOffset.UtcNow. If cached data exists with a different timestamp,
+    /// the cache entry is replaced with freshly loaded data.
     /// </summary>
-    public static CachedGraphData GetOrLoad(long blockNumber)
+    public static CachedGraphData GetOrLoad(long blockNumber, DateTimeOffset? targetTimestamp = null)
     {
-        // Fast path: already loaded
-        if (Cache.TryGetValue(blockNumber, out var cached))
+        // Fast path: already loaded with matching timestamp
+        if (Cache.TryGetValue(blockNumber, out var cached) && cached.TargetTimestamp == targetTimestamp)
             return cached;
 
         var lockObj = LoadLocks.GetOrAdd(blockNumber, _ => new object());
         lock (lockObj)
         {
             // Double-check after acquiring lock
-            if (Cache.TryGetValue(blockNumber, out cached))
+            if (Cache.TryGetValue(blockNumber, out cached) && cached.TargetTimestamp == targetTimestamp)
                 return cached;
 
-            cached = LoadWithRetry(blockNumber);
+            cached = LoadWithRetry(blockNumber, targetTimestamp);
             Cache[blockNumber] = cached;
             return cached;
         }
@@ -72,10 +76,13 @@ public static class SharedGraphCache
     /// <summary>
     /// Creates a GraphFactory backed by cached data. No network I/O.
     /// Each call returns a fresh factory that can build CapacityGraphs for different requests.
+    ///
+    /// When targetTimestamp is provided, demurrage is calculated at that point in time.
+    /// Use this for Anvil differential tests where the fork has a specific block timestamp.
     /// </summary>
-    public static GraphFactory CreateFactory(long blockNumber)
+    public static GraphFactory CreateFactory(long blockNumber, DateTimeOffset? targetTimestamp = null)
     {
-        var data = GetOrLoad(blockNumber);
+        var data = GetOrLoad(blockNumber, targetTimestamp);
         return new GraphFactory(RouterAddress, data.CreateLoadGraph());
     }
 
@@ -121,7 +128,7 @@ public static class SharedGraphCache
         LoadLocks.Clear();
     }
 
-    private static CachedGraphData LoadWithRetry(long blockNumber)
+    private static CachedGraphData LoadWithRetry(long blockNumber, DateTimeOffset? targetTimestamp)
     {
         Exception? lastException = null;
 
@@ -129,7 +136,7 @@ public static class SharedGraphCache
         {
             try
             {
-                return LoadGraphData(blockNumber);
+                return LoadGraphData(blockNumber, targetTimestamp);
             }
             catch (Exception ex) when (
                 attempt < MaxRetries &&
@@ -161,13 +168,15 @@ public static class SharedGraphCache
             lastException);
     }
 
-    private static CachedGraphData LoadGraphData(long blockNumber)
+    private static CachedGraphData LoadGraphData(long blockNumber, DateTimeOffset? targetTimestamp)
     {
-        Console.WriteLine($"[SharedGraphCache] Loading graph data for block {blockNumber}...");
+        Console.WriteLine($"[SharedGraphCache] Loading graph data for block {blockNumber}" +
+            (targetTimestamp.HasValue ? $" (demurrage at {targetTimestamp.Value:u})" : " (demurrage at UtcNow)") +
+            "...");
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         var session = GetOrCreateSession(blockNumber);
-        var settings = new Settings();
+        var settings = new Settings { TargetDemurrageTimestamp = targetTimestamp };
 
         ILoadGraph sourceLoader = session.IsDirectConnectionAvailable
             ? new LoadGraph(session.PostgresConnectionString!, settings)
@@ -191,6 +200,7 @@ public static class SharedGraphCache
         return new CachedGraphData
         {
             BlockNumber = blockNumber,
+            TargetTimestamp = targetTimestamp,
             Balances = balances,
             Trust = trust,
             Groups = groups,
@@ -239,6 +249,7 @@ public static class SharedGraphCache
 public class CachedGraphData
 {
     public long BlockNumber { get; init; }
+    public DateTimeOffset? TargetTimestamp { get; init; }
     public List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> Balances { get; init; } = [];
     public List<(string Truster, string Trustee, int Limit)> Trust { get; init; } = [];
     public List<string> Groups { get; init; } = [];

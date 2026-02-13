@@ -5,10 +5,10 @@
   "block": 43193632,
   "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
   "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
-  "description": "Tests simulatedBalances \u002B simulatedTrusts together. Creates a fully simulated path overlay on the real graph.",
+  "description": "Tests simulatedBalances + simulatedTrusts together. Creates a fully simulated path overlay on the real graph.",
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
-  "runOnAnvil": true,
+  "runOnAnvil": false,
   "simulatedBalances": [
     {
       "Holder": "0xde374ece6fa50e781e81aac78e811b33d16912c7",

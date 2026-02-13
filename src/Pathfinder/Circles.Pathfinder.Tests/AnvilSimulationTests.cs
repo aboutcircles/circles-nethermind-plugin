@@ -78,7 +78,8 @@ public class AnvilSimulationTests
         var anvilData = SharedAnvilCache.GetOrCreate(scenario.Block);
 
         // Get graph data from SharedGraphCache (reuses the Anvil session for DB queries)
-        var factory = SharedGraphCache.CreateFactory(scenario.Block);
+        // Pass the Anvil fork's block timestamp so demurrage matches on-chain state
+        var factory = SharedGraphCache.CreateFactory(scenario.Block, anvilData.BlockTimestamp);
 
         var trustGraph = factory.V2TrustGraph();
         var balanceGraph = factory.V2BalanceGraph();
