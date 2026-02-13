@@ -106,13 +106,14 @@ all_transfers as (
     from demurraged_wrapped_sum
     union all
     select
-        "totalBalance" as balance
-         ,"account"
-         ,"tokenAddress"
-         ,"lastActivity"
+        b."totalBalance" as balance
+         ,b."account"
+         ,b."tokenAddress"
+         ,b."lastActivity"
          ,false AS "isWrapped"
          ,'demurraged' AS "circlesType"
-    from "V_CrcV2_BalancesByAccountAndToken"
+    from "V_CrcV2_BalancesByAccountAndToken" b
+    inner join "V_CrcV2_Avatars" a on a.avatar = b."account"
 )
 
 select balance::text

@@ -1495,14 +1495,15 @@ public class QuantizedAggregationTests
         Assert.That((long)maxFlowInCrcUnits, Is.EqualTo(Quanta96CRC),
             "MaxFlow should be exactly 96 CRC, self-loop aggregation edges should not double-count");
 
-        // Self-loop edges should exist in transfers
+        // Self-loop edges must NOT be in transfers (they violate Hub.sol flow conservation).
+        // They remain in debug stages for visibility but are filtered from the actual transfer list.
         var sinkAddr = AddressIdPool.StringOf(sink);
         var selfLoops = result.Transfers?.Count(t =>
             t.From?.ToLowerInvariant() == sinkAddr.ToLowerInvariant() &&
             t.To?.ToLowerInvariant() == sinkAddr.ToLowerInvariant()) ?? 0;
 
-        Assert.That(selfLoops, Is.GreaterThan(0),
-            "Self-loop aggregation edges should be present in quantized mode");
+        Assert.That(selfLoops, Is.Zero,
+            "Self-loop aggregation edges must not be in transfers (display-only, break Hub.sol)");
     }
 }
 

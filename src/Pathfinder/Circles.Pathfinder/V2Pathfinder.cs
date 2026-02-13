@@ -302,6 +302,11 @@ public class V2Pathfinder
 
         /* --------------------------------------------------------------------
          * 6c. CAPTURE: Stage 4 - Sorted edges (final execution order)
+         *
+         *    NOTE: Debug output includes sink self-loop aggregation edges
+         *    (Sink→Sink) for visibility. The actual transfer list (step 7)
+         *    filters these out since they are display-only and violate
+         *    Hub.sol's flow conservation requirement.
          * ------------------------------------------------------------------ */
         if (wantDebug)
         {
@@ -316,6 +321,14 @@ public class V2Pathfinder
         foreach (var e in sortedEdges)
         {
             if (e.Flow <= 0)
+            {
+                continue;
+            }
+
+            // Skip sink self-loop edges added by AddSinkSelfLoopAggregation()
+            // These are display-only aggregation edges for quantized mode responses
+            // and should NOT be sent to the Hub contract (they violate flow conservation)
+            if (e.From == sinkId && e.To == sinkId)
             {
                 continue;
             }
@@ -359,18 +372,16 @@ public class V2Pathfinder
          *    source in the 'from' field. The total reaching the sink correctly
          *    represents the achievable flow.
          *
-         *    NOTE: We exclude self-loop aggregation edges (Sink→Sink) which are
-         *    added by AddSinkSelfLoopAggregation() for display purposes only.
-         *    Including them would double-count the flow.
+         *    NOTE: Sink self-loop aggregation edges (Sink→Sink) added by
+         *    AddSinkSelfLoopAggregation() are already filtered out in step 7
+         *    when building the transfer list, so they won't appear here.
          * ------------------------------------------------------------------ */
         UInt256 maxFlowWei = 0;
         foreach (var t in transfer)
         {
             var toId = AddressIdPool.IdOf(t.To);
-            var fromId = AddressIdPool.IdOf(t.From);
             bool toIsSink = toId == sinkId;
-            bool isSelfLoop = fromId == sinkId && toId == sinkId; // Skip aggregation edges
-            if (toIsSink && !isSelfLoop)
+            if (toIsSink)
                 maxFlowWei += UInt256.Parse(t.Value);
         }
 
