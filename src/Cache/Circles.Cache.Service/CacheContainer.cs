@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Circles.Common;
 
 namespace Circles.Cache.Service.Caches;
@@ -39,6 +40,10 @@ public class CacheContainer
     // Balance Caches (simplified - using string keys for account:token pairs)
     public RollbackCache<string, decimal> V1BalancesByAccountAndToken { get; private set; } = null!;
     public RollbackCache<string, decimal> V2BalancesByAccountAndToken { get; private set; } = null!;
+
+    // V2 last activity timestamps for demurrage calculation at query time
+    // Key: "account:tokenId" (same as V2BalancesByAccountAndToken), Value: unix timestamp
+    public ConcurrentDictionary<string, long> V2LastActivity { get; private set; } = new();
 
     // Trust Relations Caches (key: "truster:trustee", value: expiryTime)
     public RollbackCache<string, long> V1TrustRelations { get; private set; } = null!;
@@ -104,7 +109,7 @@ public class CacheContainer
 
         V1BalancesByAccountAndToken = new RollbackCache<string, decimal>("V1BalancesByAccountAndToken");
         V2BalancesByAccountAndToken = new RollbackCache<string, decimal>("V2BalancesByAccountAndToken");
-
+        V2LastActivity = new ConcurrentDictionary<string, long>();
 
         V1TrustRelations = new RollbackCache<string, long>("V1TrustRelations");
         V2TrustRelations = new RollbackCache<string, long>("V2TrustRelations");
@@ -479,7 +484,8 @@ public class CacheContainer
                 ["v2_trust_by_trustee_index"] = _v2TrustsByTrustee.Count,
                 ["total_entries"] = AllCaches.Sum(c => c.Count),
                 ["v1_indexed_addresses"] = _v1BalancesByAddress.Count,
-                ["v2_indexed_addresses"] = _v2BalancesByAddress.Count
+                ["v2_indexed_addresses"] = _v2BalancesByAddress.Count,
+                ["v2_last_activity_entries"] = V2LastActivity.Count
             };
         }
     }

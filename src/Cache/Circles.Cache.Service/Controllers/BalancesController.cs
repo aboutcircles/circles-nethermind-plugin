@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
 using Circles.Common;
+using System.Numerics;
 using System.Text.RegularExpressions;
 
 namespace Circles.Cache.Service.Controllers;
@@ -25,7 +26,34 @@ public class BalancesController : ControllerBase
         _logger = logger;
     }
 
+    private const uint V2_INFLATION_DAY_ZERO = 1_675_209_600; // 2023-02-01 00:00 UTC
+
     private string GetRemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    /// <summary>
+    /// Applies V2 demurrage to a cached balance using the stored lastActivity timestamp.
+    /// The cached balance represents the value at lastActivity; this decays it to "now".
+    /// </summary>
+    private decimal ApplyV2Demurrage(string key, decimal rawBalance)
+    {
+        if (rawBalance <= 0m)
+            return rawBalance;
+
+        if (!_caches.V2LastActivity.TryGetValue(key, out var lastActivity))
+            return rawBalance;
+
+        var storedDay = CirclesConverter.DayFromTimestamp(
+            DateTimeOffset.FromUnixTimeSeconds(lastActivity), V2_INFLATION_DAY_ZERO);
+        var todayDay = CirclesConverter.DayFromTimestamp(
+            DateTimeOffset.UtcNow, V2_INFLATION_DAY_ZERO);
+
+        if (todayDay <= storedDay)
+            return rawBalance;
+
+        var attoBalance = CirclesConverter.CirclesToAttoCircles(rawBalance);
+        var (demurraged, _) = Demurrage.ApplyDemurrage(attoBalance, storedDay, todayDay);
+        return CirclesConverter.AttoCirclesToCircles(demurraged);
+    }
 
     /// <summary>
     /// Validates that the address is a valid Ethereum address format
@@ -190,9 +218,13 @@ public class BalancesController : ControllerBase
                         tokenOwner = tokenAddress;
                     }
 
+                    // Apply demurrage for ERC1155 tokens and demurraged wrappers
+                    // Inflationary wrappers use static amounts — no demurrage needed
+                    var displayBalance = isInflationary ? balance : ApplyV2Demurrage(key, balance);
+
                     balances.Add(new TokenBalanceResponse(
                         TokenId: tokenId,
-                        Balance: balance.ToString(),
+                        Balance: displayBalance.ToString(),
                         TokenOwner: tokenOwner,
                         Version: 2,
                         TokenType: tokenType,
@@ -298,7 +330,16 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    total += balance;
+                    // Skip demurrage for inflationary wrappers (static amounts)
+                    var isHexAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+                    var isInflationary = false;
+                    if (isHexAddress)
+                    {
+                        var wrapperInfo = _caches.GetWrapperInfo(tokenId);
+                        isInflationary = wrapperInfo?.CirclesType == 1;
+                    }
+
+                    total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }
             }
 
@@ -353,15 +394,23 @@ public class BalancesController : ControllerBase
                 }
             }
 
-            // Sum V2 balances using secondary index
-            // V2 balances are already in Circles units (demurraged)
+            // Sum V2 balances using secondary index, applying demurrage at query time
             var v2Total = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: false))
             {
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    v2Total += balance;
+                    // Skip demurrage for inflationary wrappers (static amounts)
+                    var isHexAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+                    var isInflationary = false;
+                    if (isHexAddress)
+                    {
+                        var wrapperInfo = _caches.GetWrapperInfo(tokenId);
+                        isInflationary = wrapperInfo?.CirclesType == 1;
+                    }
+
+                    v2Total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }
             }
 

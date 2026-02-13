@@ -283,6 +283,7 @@ public class NotificationListenerService : BackgroundService
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
         _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
         _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
+        _caches.V2LastActivity.Clear();
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
 
@@ -782,6 +783,7 @@ public class NotificationListenerService : BackgroundService
                     ""blockNumber"",
                     ""transactionIndex"",
                     ""logIndex"",
+                    ""timestamp"",
                     'Single' as type
                 FROM ""CrcV2_TransferSingle""
                 WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
@@ -796,6 +798,7 @@ public class NotificationListenerService : BackgroundService
                     ""blockNumber"",
                     ""transactionIndex"",
                     ""logIndex"",
+                    ""timestamp"",
                     'Batch' as type
                 FROM ""CrcV2_TransferBatch""
                 WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
@@ -819,6 +822,7 @@ public class NotificationListenerService : BackgroundService
                 var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
                 var valueBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
+                var timestamp = reader.GetInt64(7);
 
                 // Convert from wei (18 decimals) to token units using CirclesConverter for proper precision
                 decimal amount;
@@ -847,7 +851,7 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance
+                // Update sender balance and last activity
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
@@ -858,9 +862,10 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[fromKey] = existingBalance;
                     }
                     currentBalances[fromKey] -= amount;
+                    _caches.V2LastActivity[fromKey] = timestamp;
                 }
 
-                // Update receiver balance
+                // Update receiver balance and last activity
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
@@ -871,6 +876,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[toKey] = existingBalance;
                     }
                     currentBalances[toKey] += amount;
+                    _caches.V2LastActivity[toKey] = timestamp;
                 }
 
                 transferCount++;
@@ -898,7 +904,7 @@ public class NotificationListenerService : BackgroundService
     {
         // Process V2 ERC20 Wrapper Transfer events incrementally
         const string sql = @"
-            SELECT ""from"", ""to"", ""tokenAddress"", amount, ""blockNumber""
+            SELECT ""from"", ""to"", ""tokenAddress"", amount, ""blockNumber"", ""timestamp""
             FROM ""CrcV2_Erc20WrapperTransfer""
             WHERE ""blockNumber"" >= @fromBlock AND ""blockNumber"" <= @toBlock
             ORDER BY ""blockNumber"", ""transactionIndex"", ""logIndex""";
@@ -920,6 +926,7 @@ public class NotificationListenerService : BackgroundService
                 var tokenAddress = reader.GetString(2);
                 var amountBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
+                var timestamp = reader.GetInt64(5);
 
                 // Convert from wei (18 decimals) to token units using CirclesConverter for proper precision
                 decimal amount;
@@ -950,7 +957,7 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance
+                // Update sender balance and last activity
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
                     var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
@@ -961,9 +968,10 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[fromKey] = existingBalance;
                     }
                     currentBalances[fromKey] -= amount;
+                    _caches.V2LastActivity[fromKey] = timestamp;
                 }
 
-                // Update receiver balance
+                // Update receiver balance and last activity
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
                     var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
@@ -974,6 +982,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[toKey] = existingBalance;
                     }
                     currentBalances[toKey] += amount;
+                    _caches.V2LastActivity[toKey] = timestamp;
                 }
 
                 transferCount++;

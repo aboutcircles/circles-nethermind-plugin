@@ -580,12 +580,13 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loading V2 balances from view...");
 
         // Load ERC1155 balances from the view
-        // Use totalBalance for storage - demurrage will be calculated at query time
+        // Use totalBalance for storage - demurrage is applied at query time using lastActivity
         const string sql = @"
             SELECT
                 account,
                 ""tokenId"",
-                ""totalBalance""
+                ""totalBalance"",
+                ""lastActivity""
             FROM ""V_CrcV2_BalancesByAccountAndToken""
             WHERE ""totalBalance"" > 0";
 
@@ -594,6 +595,7 @@ public class CacheWarmupService : BackgroundService
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         var balances = new Dictionary<string, decimal>();
+        var lastActivities = new Dictionary<string, long>();
         var count = 0;
         var lastLogTime = DateTime.UtcNow;
         const int logInterval = 50000;
@@ -603,6 +605,7 @@ public class CacheWarmupService : BackgroundService
             var account = reader.GetString(0).ToLowerInvariant();
             var tokenId = reader.GetString(1); // tokenId is already a string in the view
             var totalBalanceBig = reader.GetFieldValue<BigInteger>(2);
+            var lastActivity = reader.GetInt64(3);
 
             // Convert from atto (10^18) to decimal using CirclesConverter for proper precision
             decimal balance;
@@ -619,6 +622,7 @@ public class CacheWarmupService : BackgroundService
             {
                 var key = $"{account}:{tokenId}";
                 balances[key] = balance;
+                lastActivities[key] = lastActivity;
             }
 
             count++;
@@ -633,6 +637,13 @@ public class CacheWarmupService : BackgroundService
 
         // Seed the cache with all balances at once at the warmup target block
         _caches.V2BalancesByAccountAndToken.Seed(balances, _state.WarmupTargetBlock);
+
+        // Populate V2LastActivity for demurrage calculation at query time
+        foreach (var (key, ts) in lastActivities)
+        {
+            _caches.V2LastActivity[key] = ts;
+        }
+
         _logger.LogInformation("Loaded {Count} V2 ERC1155 balances from view", balances.Count);
     }
 
@@ -648,30 +659,13 @@ public class CacheWarmupService : BackgroundService
         // Aggregate wrapper transfers to get current balances
         // This is faster than replaying transfers one by one because it's a single SQL aggregation
         const string sql = @"
-            WITH wrapper_balances AS (
-                SELECT
-                    ""tokenAddress"",
-                    SUM(CASE WHEN ""to"" != '0x0000000000000000000000000000000000000000'
-                        THEN amount ELSE 0 END) -
-                    SUM(CASE WHEN ""from"" != '0x0000000000000000000000000000000000000000'
-                        THEN amount ELSE 0 END) as net_amount,
-                    CASE
-                        WHEN ""to"" != '0x0000000000000000000000000000000000000000' THEN ""to""
-                        ELSE ""from""
-                    END as account
-                FROM ""CrcV2_Erc20WrapperTransfer""
-                GROUP BY ""tokenAddress"",
-                    CASE
-                        WHEN ""to"" != '0x0000000000000000000000000000000000000000' THEN ""to""
-                        ELSE ""from""
-                    END
-            ),
-            account_balances AS (
+            WITH account_balances AS (
                 SELECT
                     account,
                     ""tokenAddress"",
                     SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
-                    SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) as balance
+                    SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) as balance,
+                    MAX(t.""timestamp"") as last_activity
                 FROM ""CrcV2_Erc20WrapperTransfer"" t
                 CROSS JOIN LATERAL (
                     SELECT DISTINCT x FROM (VALUES (t.""to""), (t.""from"")) AS v(x)
@@ -681,7 +675,7 @@ public class CacheWarmupService : BackgroundService
                 HAVING SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
             )
-            SELECT account, ""tokenAddress"", balance
+            SELECT account, ""tokenAddress"", balance, last_activity
             FROM account_balances";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -693,12 +687,14 @@ public class CacheWarmupService : BackgroundService
 
             // Collect wrapper balances into a dictionary first
             var wrapperBalances = new Dictionary<string, decimal>();
+            var wrapperLastActivities = new Dictionary<string, long>();
 
             while (await reader.ReadAsync(ct))
             {
                 var account = reader.GetString(0).ToLowerInvariant();
                 var tokenAddress = reader.GetString(1).ToLowerInvariant();
                 var balanceBig = reader.GetFieldValue<BigInteger>(2);
+                var lastActivity = reader.GetInt64(3);
 
                 // Convert from atto (10^18) to decimal using CirclesConverter for proper precision
                 decimal balance;
@@ -715,11 +711,19 @@ public class CacheWarmupService : BackgroundService
                 {
                     var key = $"{account}:{tokenAddress}";
                     wrapperBalances[key] = balance;
+                    wrapperLastActivities[key] = lastActivity;
                 }
             }
 
             // Merge wrapper balances into existing V2 cache by re-seeding with combined data
             MergeWrapperBalancesIntoV2Cache(wrapperBalances);
+
+            // Populate V2LastActivity for wrapper entries
+            foreach (var (key, ts) in wrapperLastActivities)
+            {
+                _caches.V2LastActivity[key] = ts;
+            }
+
             _logger.LogInformation("Loaded {Count} ERC20 wrapper balances", wrapperBalances.Count);
         }
         catch (Exception ex)
@@ -760,7 +764,7 @@ public class CacheWarmupService : BackgroundService
     private async Task LoadErc20WrapperBalancesSimpleAsync(NpgsqlConnection conn, CancellationToken ct)
     {
         const string sql = @"
-            SELECT ""from"", ""to"", ""tokenAddress"", amount
+            SELECT ""from"", ""to"", ""tokenAddress"", amount, ""timestamp""
             FROM ""CrcV2_Erc20WrapperTransfer""";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -768,6 +772,7 @@ public class CacheWarmupService : BackgroundService
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         var balances = new Dictionary<string, BigInteger>();
+        var maxTimestamps = new Dictionary<string, long>();
 
         while (await reader.ReadAsync(ct))
         {
@@ -775,17 +780,20 @@ public class CacheWarmupService : BackgroundService
             var to = reader.GetString(1).ToLowerInvariant();
             var tokenAddress = reader.GetString(2).ToLowerInvariant();
             var amount = reader.GetFieldValue<BigInteger>(3);
+            var timestamp = reader.GetInt64(4);
 
             if (from != "0x0000000000000000000000000000000000000000")
             {
                 var fromKey = $"{from}:{tokenAddress}";
                 balances[fromKey] = balances.GetValueOrDefault(fromKey, BigInteger.Zero) - amount;
+                maxTimestamps[fromKey] = Math.Max(maxTimestamps.GetValueOrDefault(fromKey, 0L), timestamp);
             }
 
             if (to != "0x0000000000000000000000000000000000000000")
             {
                 var toKey = $"{to}:{tokenAddress}";
                 balances[toKey] = balances.GetValueOrDefault(toKey, BigInteger.Zero) + amount;
+                maxTimestamps[toKey] = Math.Max(maxTimestamps.GetValueOrDefault(toKey, 0L), timestamp);
             }
         }
 
@@ -807,6 +815,16 @@ public class CacheWarmupService : BackgroundService
 
         // Merge wrapper balances into existing V2 cache
         MergeWrapperBalancesIntoV2Cache(wrapperBalances);
+
+        // Populate V2LastActivity for wrapper entries with positive balances
+        foreach (var key in wrapperBalances.Keys)
+        {
+            if (maxTimestamps.TryGetValue(key, out var ts))
+            {
+                _caches.V2LastActivity[key] = ts;
+            }
+        }
+
         _logger.LogInformation("Loaded {Count} ERC20 wrapper balances (simple method)", wrapperBalances.Count);
     }
 
@@ -1612,6 +1630,7 @@ public class CacheWarmupService : BackgroundService
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
         _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
         _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
+        _caches.V2LastActivity.Clear();
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
     }
