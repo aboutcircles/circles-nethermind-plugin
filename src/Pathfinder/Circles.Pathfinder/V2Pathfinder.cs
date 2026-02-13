@@ -285,6 +285,10 @@ public class V2Pathfinder
             int preQuantCount = sortedEdges.Count;
             sortedEdges = QuantizeSinkBoundEdgesByToken(sortedEdges, sinkId, InvitationQuanta, tgt);
 
+            // Propagate quantization reduction backwards through the edge graph
+            // to maintain flow conservation at intermediate vertices (Router, Group)
+            PropagateQuantizationBackwards(sortedEdges, sinkId, sourceId);
+
             // Safety validation - ensure quantization produced valid results
             ValidateQuantizedSinkTransfers(sortedEdges, sinkId, InvitationQuanta);
 
@@ -1249,6 +1253,108 @@ public class V2Pathfinder
         result.AddRange(quantizedSinkBound);
 
         return result;
+    }
+
+    /* ------------------------------------------------------------------------
+     * After quantizing sink-bound edges, upstream edges still carry the original
+     * (pre-quantization) flow. This creates nettedFlow mismatches at intermediate
+     * vertices (e.g., Group receives 300 collateral but only mints 288).
+     *
+     * Fix: BFS backwards from sink, at each vertex scale incoming edges to match
+     * the (now-reduced) total outflow. This preserves flow conservation everywhere.
+     * --------------------------------------------------------------------- */
+    internal static void PropagateQuantizationBackwards(List<FlowEdge> edges, int sinkId, int sourceId)
+    {
+        // Build vertex → edge index maps
+        var incomingEdges = new Dictionary<int, List<int>>();  // vertex → indices of edges going INTO it
+        var outgoingEdges = new Dictionary<int, List<int>>();  // vertex → indices of edges going OUT of it
+
+        for (int i = 0; i < edges.Count; i++)
+        {
+            var e = edges[i];
+            if (e.Flow <= 0) continue;
+
+            if (!incomingEdges.TryGetValue(e.To, out var inList))
+            {
+                inList = new List<int>();
+                incomingEdges[e.To] = inList;
+            }
+            inList.Add(i);
+
+            if (!outgoingEdges.TryGetValue(e.From, out var outList))
+            {
+                outList = new List<int>();
+                outgoingEdges[e.From] = outList;
+            }
+            outList.Add(i);
+        }
+
+        // BFS backwards from sink
+        var queue = new Queue<int>();
+        var visited = new HashSet<int>();
+
+        // Seed with vertices that have edges to the sink (excluding sink self-loops)
+        if (incomingEdges.TryGetValue(sinkId, out var sinkFeederIndices))
+        {
+            foreach (int idx in sinkFeederIndices)
+            {
+                int feeder = edges[idx].From;
+                if (feeder != sinkId)
+                    queue.Enqueue(feeder);
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            int vertex = queue.Dequeue();
+            if (!visited.Add(vertex)) continue;
+            if (vertex == sourceId) continue; // Source net flow is allowed to change
+
+            // Compute current total outflow
+            long totalOut = 0;
+            if (outgoingEdges.TryGetValue(vertex, out var outIndices))
+            {
+                foreach (int idx in outIndices)
+                    totalOut += edges[idx].Flow;
+            }
+
+            // Compute current total inflow
+            long totalIn = 0;
+            if (!incomingEdges.TryGetValue(vertex, out var inIndices) || inIndices.Count == 0)
+                continue; // No incoming edges — this is a source vertex
+
+            foreach (int idx in inIndices)
+                totalIn += edges[idx].Flow;
+
+            if (totalIn <= totalOut) continue; // Already balanced or underflow (shouldn't happen)
+
+            // Scale incoming edges to match outflow
+            long allocated = 0;
+            for (int j = 0; j < inIndices.Count; j++)
+            {
+                int idx = inIndices[j];
+                var e = edges[idx];
+                long newFlow;
+
+                if (j == inIndices.Count - 1)
+                {
+                    // Last edge gets remainder for exact conservation
+                    newFlow = totalOut - allocated;
+                }
+                else
+                {
+                    // Proportional scaling
+                    newFlow = (e.Flow * totalOut) / totalIn;
+                }
+
+                if (newFlow < 0) newFlow = 0;
+                e.Flow = newFlow;
+                allocated += newFlow;
+
+                // Enqueue the predecessor vertex
+                queue.Enqueue(e.From);
+            }
+        }
     }
 
     /* ------------------------------------------------------------------------

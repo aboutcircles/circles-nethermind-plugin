@@ -429,4 +429,114 @@ public class PipelineMethodTests
     }
 
     #endregion
+
+    #region PropagateQuantizationBackwards
+
+    [Test]
+    public void PropagateBackwards_GroupMinting_FixesConservation()
+    {
+        // Scenario: Avatar→Router→Group→Sink
+        // Group→Sink quantized from 300 to 288, upstream edges unchanged
+        var router = AddressIdPool.IdOf("0xdd10quant_router");
+        var group = AddressIdPool.IdOf("0xdd11quant_group");
+        var sink = AddressIdPool.IdOf("0xdd12quant_sink");
+        var source = AddressIdPool.IdOf("0xdd13quant_source");
+        int tokenA = AddressIdPool.IdOf("0xdd14quant_tokenA");
+        int groupToken = AddressIdPool.IdOf("0xdd15quant_grouptoken");
+
+        var edges = new List<FlowEdge>
+        {
+            new(source, router, tokenA, 300) { Flow = 300 },    // Source→Router: original flow
+            new(router, group, tokenA, 300) { Flow = 300 },      // Router→Group: original flow
+            new(group, sink, groupToken, 288) { Flow = 288 },    // Group→Sink: QUANTIZED
+        };
+
+        V2Pathfinder.PropagateQuantizationBackwards(edges, sink, source);
+
+        // All edges should now have flow=288 (propagated backwards)
+        Assert.That(edges[0].Flow, Is.EqualTo(288), "Source→Router should be reduced");
+        Assert.That(edges[1].Flow, Is.EqualTo(288), "Router→Group should be reduced");
+        Assert.That(edges[2].Flow, Is.EqualTo(288), "Group→Sink should stay at 288");
+    }
+
+    [Test]
+    public void PropagateBackwards_MultipleCollateral_ProportionalReduction()
+    {
+        // Two collateral edges feeding one group, quantized output
+        var router = AddressIdPool.IdOf("0xdd20quant2_router");
+        var group = AddressIdPool.IdOf("0xdd21quant2_group");
+        var sink = AddressIdPool.IdOf("0xdd22quant2_sink");
+        var src1 = AddressIdPool.IdOf("0xdd23quant2_src1");
+        var src2 = AddressIdPool.IdOf("0xdd24quant2_src2");
+        int tokenA = AddressIdPool.IdOf("0xdd25quant2_tokenA");
+        int tokenB = AddressIdPool.IdOf("0xdd26quant2_tokenB");
+        int groupToken = AddressIdPool.IdOf("0xdd27quant2_grouptoken");
+
+        var edges = new List<FlowEdge>
+        {
+            new(src1, router, tokenA, 150) { Flow = 150 },
+            new(src2, router, tokenB, 150) { Flow = 150 },
+            new(router, group, tokenA, 150) { Flow = 150 },
+            new(router, group, tokenB, 150) { Flow = 150 },
+            new(group, sink, groupToken, 288) { Flow = 288 },  // Quantized from 300
+        };
+
+        V2Pathfinder.PropagateQuantizationBackwards(edges, sink, src1);
+
+        // Group: inflow should match outflow (288)
+        long groupIn = edges[2].Flow + edges[3].Flow;
+        Assert.That(groupIn, Is.EqualTo(288), "Group inflow must equal outflow");
+
+        // Router: inflow should match outflow
+        long routerIn = edges[0].Flow + edges[1].Flow;
+        long routerOut = edges[2].Flow + edges[3].Flow;
+        Assert.That(routerIn, Is.EqualTo(routerOut), "Router inflow must equal outflow");
+    }
+
+    [Test]
+    public void PropagateBackwards_AlreadyBalanced_NoChange()
+    {
+        // Direct transfer, no quantization mismatch
+        var source = AddressIdPool.IdOf("0xdd30quant3_src");
+        var sink = AddressIdPool.IdOf("0xdd31quant3_sink");
+        int token = AddressIdPool.IdOf("0xdd32quant3_token");
+
+        var edges = new List<FlowEdge>
+        {
+            new(source, sink, token, 96) { Flow = 96 },
+        };
+
+        V2Pathfinder.PropagateQuantizationBackwards(edges, sink, source);
+
+        Assert.That(edges[0].Flow, Is.EqualTo(96), "Already balanced — no change");
+    }
+
+    [Test]
+    public void PropagateBackwards_DeepChain_PropagatesAllTheWay()
+    {
+        // A→B→C→D→Sink, Sink edge quantized
+        var a = AddressIdPool.IdOf("0xdd40quant4_a");
+        var b = AddressIdPool.IdOf("0xdd41quant4_b");
+        var c = AddressIdPool.IdOf("0xdd42quant4_c");
+        var d = AddressIdPool.IdOf("0xdd43quant4_d");
+        var sink = AddressIdPool.IdOf("0xdd44quant4_sink");
+        int t = AddressIdPool.IdOf("0xdd45quant4_tok");
+
+        var edges = new List<FlowEdge>
+        {
+            new(a, b, t, 200) { Flow = 200 },
+            new(b, c, t, 200) { Flow = 200 },
+            new(c, d, t, 200) { Flow = 200 },
+            new(d, sink, t, 192) { Flow = 192 },  // Quantized from 200
+        };
+
+        V2Pathfinder.PropagateQuantizationBackwards(edges, sink, a);
+
+        Assert.That(edges[0].Flow, Is.EqualTo(192), "A→B");
+        Assert.That(edges[1].Flow, Is.EqualTo(192), "B→C");
+        Assert.That(edges[2].Flow, Is.EqualTo(192), "C→D");
+        Assert.That(edges[3].Flow, Is.EqualTo(192), "D→Sink unchanged");
+    }
+
+    #endregion
 }
