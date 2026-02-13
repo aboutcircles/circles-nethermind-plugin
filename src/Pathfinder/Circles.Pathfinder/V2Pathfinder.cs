@@ -405,7 +405,7 @@ public class V2Pathfinder
      * 4. Router edges are skipped in ValidateConsentedFlow (router has no consent)
      * 5. This matches Hub.sol:723 where _groupMint uses Router as _sender
      * --------------------------------------------------------------------- */
-    private List<FlowEdge> InsertRouterInTransfers(List<FlowEdge> transfers, CapacityGraph capacityGraph)
+    internal List<FlowEdge> InsertRouterInTransfers(List<FlowEdge> transfers, CapacityGraph capacityGraph)
     {
         if (capacityGraph.RouterNode == null)
             return transfers;
@@ -618,7 +618,7 @@ public class V2Pathfinder
      * Like the old CollapseSinglePath but returns edges instead of aggregating
      * into a shared dictionary — needed for per-path consent checking.
      * --------------------------------------------------------------------- */
-    private List<(int From, int To, int Token, long Flow)> CollapseSinglePathToEdges(
+    internal List<(int From, int To, int Token, long Flow)> CollapseSinglePathToEdges(
         List<FlowEdge> path,
         CapacityGraph capacityGraph)
     {
@@ -678,7 +678,7 @@ public class V2Pathfinder
      * after InsertRouterInTransfers, and the router bypasses consent checks.
      * The consented-flow-router-006 scenario depends on this.
      * --------------------------------------------------------------------- */
-    private bool PathHasConsentViolation(
+    internal bool PathHasConsentViolation(
         List<(int From, int To, int Token, long Flow)> collapsedEdges,
         CapacityGraph capacityGraph)
     {
@@ -753,7 +753,7 @@ public class V2Pathfinder
     }
 
     // Count how many (From,To,Token) transfer steps remain after collapsing
-    private static int CountCollapsedTransferSteps(IReadOnlyList<List<SimpleEdge>> paths, CapacityGraph capacityGraph)
+    internal static int CountCollapsedTransferSteps(IReadOnlyList<List<SimpleEdge>> paths, CapacityGraph capacityGraph)
     {
         var unique = new HashSet<(int From, int To, int Token)>();
 
@@ -919,7 +919,7 @@ public class V2Pathfinder
     }
 
     // Collapse ONE peeled path into transfer triples (FromAvatar, ToAvatar, Token).
-    private static List<(int From, int To, int Token)> CollapsePathToTransfers(
+    internal static List<(int From, int To, int Token)> CollapsePathToTransfers(
         List<SimpleEdge> path,
         CapacityGraph capacityGraph)
     {
