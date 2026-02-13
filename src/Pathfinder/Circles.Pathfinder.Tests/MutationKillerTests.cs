@@ -19,13 +19,13 @@ public class MutationKillerTests
 {
     // Valid 42-char hex addresses
     private static readonly string RouterAddr = "0xf2ff000000000000000000000000000000000001";
-    private static readonly string Alice      = "0xf2aa000000000000000000000000000000000002";
-    private static readonly string Bob        = "0xf2bb000000000000000000000000000000000003";
-    private static readonly string Carol      = "0xf2cc000000000000000000000000000000000004";
-    private static readonly string TokenA     = "0xf20a000000000000000000000000000000000006";
-    private static readonly string TokenB     = "0xf20b000000000000000000000000000000000007";
-    private static readonly string TokenC     = "0xf20c000000000000000000000000000000000008";
-    private static readonly string GroupG     = "0xf299000000000000000000000000000000000009";
+    private static readonly string Alice = "0xf2aa000000000000000000000000000000000002";
+    private static readonly string Bob = "0xf2bb000000000000000000000000000000000003";
+    private static readonly string Carol = "0xf2cc000000000000000000000000000000000004";
+    private static readonly string TokenA = "0xf20a000000000000000000000000000000000006";
+    private static readonly string TokenB = "0xf20b000000000000000000000000000000000007";
+    private static readonly string TokenC = "0xf20c000000000000000000000000000000000008";
+    private static readonly string GroupG = "0xf299000000000000000000000000000000000009";
 
     #region Helpers
 

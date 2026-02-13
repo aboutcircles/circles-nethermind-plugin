@@ -14,14 +14,14 @@ public class GraphFactoryTests
 {
     // Valid 42-char hex addresses (0x + 40 hex) — required for IsValidEthereumAddress checks
     private static readonly string RouterAddr = "0xf1ff000000000000000000000000000000000001";
-    private static readonly string Alice      = "0xf1aa000000000000000000000000000000000002";
-    private static readonly string Bob        = "0xf1bb000000000000000000000000000000000003";
+    private static readonly string Alice = "0xf1aa000000000000000000000000000000000002";
+    private static readonly string Bob = "0xf1bb000000000000000000000000000000000003";
     // Carol available for future multi-hop tests
     // private static readonly string Carol   = "0xf1cc000000000000000000000000000000000004";
-    private static readonly string TokenA     = "0xf10a000000000000000000000000000000000005";
-    private static readonly string TokenB     = "0xf10b000000000000000000000000000000000006";
-    private static readonly string GroupG     = "0xf199000000000000000000000000000000000007";
-    private static readonly string GroupH     = "0xf198000000000000000000000000000000000008";
+    private static readonly string TokenA = "0xf10a000000000000000000000000000000000005";
+    private static readonly string TokenB = "0xf10b000000000000000000000000000000000006";
+    private static readonly string GroupG = "0xf199000000000000000000000000000000000007";
+    private static readonly string GroupH = "0xf198000000000000000000000000000000000008";
 
     /// <summary>Creates a factory with a mock ILoadGraph (no groups, no consent by default).</summary>
     private static GraphFactory MakeFactory(MockLoadGraph? mock = null)
