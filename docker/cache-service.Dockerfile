@@ -1,6 +1,9 @@
 # Circles Cache Service Dockerfile
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+
+# Copy shared build props (defines TFM)
+COPY Directory.Build.props ./
 
 # Copy entire Index directory (needed for project references)
 COPY src/Index ./Index
@@ -19,7 +22,7 @@ WORKDIR /src/Cache/Circles.Cache.Service
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
 # Runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Install curl for health checks and psql for manual DB operations

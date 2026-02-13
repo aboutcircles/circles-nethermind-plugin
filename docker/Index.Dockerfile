@@ -1,5 +1,8 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+
+# Copy shared build props (defines TFM)
+COPY Directory.Build.props ./
 
 # Copy .csproj files first for better caching (preserving original directory structure)
 COPY src/Index/Circles.Index/Circles.Index.csproj ./Index/Circles.Index/
@@ -40,7 +43,7 @@ RUN dotnet publish \
     -o /circles-nethermind-plugin \
     --no-restore
 
-FROM nethermind/nethermind:1.35.8 AS base
+FROM nethermind/nethermind:1.36.0 AS base
 
 # Install psql for manual DB operations (runs as root, compose sets runtime user)
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*

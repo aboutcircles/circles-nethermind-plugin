@@ -12,7 +12,6 @@
   <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
   <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>

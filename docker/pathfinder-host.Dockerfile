@@ -1,9 +1,12 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Detect target architecture (amd64/arm64)
 ARG TARGETARCH
 RUN echo "Building for architecture: ${TARGETARCH}"
+
+# Copy shared build props (defines TFM)
+COPY Directory.Build.props ./
 
 # Copy Index, Common, and Pathfinder sources (Pathfinder depends on Circles.Common)
 COPY ./src/Index ./Index
@@ -17,7 +20,7 @@ RUN dotnet restore ./Pathfinder/Circles.Pathfinder.Host/Circles.Pathfinder.Host.
 WORKDIR /src/Pathfinder/Circles.Pathfinder.Host
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
 # Install psql for manual DB operations

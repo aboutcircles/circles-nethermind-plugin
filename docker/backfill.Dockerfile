@@ -1,5 +1,8 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+
+# Copy shared build props (defines TFM)
+COPY Directory.Build.props ./
 
 # Copy only the backfill project (it's self-contained, no internal dependencies)
 COPY src/Index/Circles.Index.Backfill/Circles.Index.Backfill.csproj ./
@@ -10,7 +13,7 @@ COPY src/Index/Circles.Index.Backfill/ ./
 RUN dotnet publish -c Release -o /app --no-restore
 
 # Runtime image
-FROM mcr.microsoft.com/dotnet/runtime:9.0
+FROM mcr.microsoft.com/dotnet/runtime:10.0
 WORKDIR /app
 COPY --from=build /app .
 

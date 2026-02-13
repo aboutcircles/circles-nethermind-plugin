@@ -12,13 +12,12 @@
   <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
   <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
   <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.35.8" />
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.36.0" />
     </ItemGroup>
 
     <ItemGroup>

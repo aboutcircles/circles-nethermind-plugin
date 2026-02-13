@@ -1,12 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPackable>false</IsPackable>
-        <NethermindReferenceAssembliesVersion>1.35.8</NethermindReferenceAssembliesVersion>
+        <NethermindReferenceAssembliesVersion>1.36.0</NethermindReferenceAssembliesVersion>
         <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../..'))</RepoRoot>
         <NethermindRuntimeDir>$(RepoRoot)/nethermind-dev/nethermind</NethermindRuntimeDir>
     </PropertyGroup>

@@ -1,9 +1,12 @@
-﻿FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+﻿FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Detect target architecture (amd64/arm64)
 ARG TARGETARCH
 RUN echo "Building for architecture: ${TARGETARCH}"
+
+# Copy shared build props (defines TFM)
+COPY Directory.Build.props ./
 
 # Copy Index, Common, and RPC sources (required for local project references)
 # RPC Host specifically depends on:
@@ -24,7 +27,7 @@ RUN dotnet restore ./Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj
 WORKDIR /src/Rpc/Circles.Rpc.Host
 RUN dotnet publish -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
 # Install psql for manual DB operations
