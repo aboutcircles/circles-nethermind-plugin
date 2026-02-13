@@ -16,6 +16,25 @@ public class Settings : Pathfinder.Settings
         Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")
         ?? throw new ArgumentException("NETHERMIND_RPC_URL is not set.");
 
+    public bool UseCacheGraphSource =>
+        Environment.GetEnvironmentVariable("USE_CACHE_GRAPH_SOURCE")?.ToLowerInvariant() is "true" or "1";
+
+    public string? CacheServiceUrl =>
+        Environment.GetEnvironmentVariable("CACHE_SERVICE_URL");
+
+    public int CacheGraphRequestTimeoutSeconds =>
+        int.TryParse(Environment.GetEnvironmentVariable("CACHE_GRAPH_REQUEST_TIMEOUT_SECONDS"), out var timeout)
+            ? timeout
+            : 60;
+
+    public bool CacheGraphFallbackToDb =>
+        Environment.GetEnvironmentVariable("CACHE_GRAPH_FALLBACK_TO_DB")?.ToLowerInvariant() switch
+        {
+            "false" => false,
+            "0" => false,
+            _ => true
+        };
+
     public int MaxConcurrentRequests = Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS")!)
         : Environment.ProcessorCount * 2;

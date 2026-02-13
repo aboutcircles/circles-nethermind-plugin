@@ -1,5 +1,7 @@
 namespace Circles.Cache.Service.Models;
 
+using System.Text.Json.Serialization;
+
 /// <summary>
 /// Response for token balance queries
 /// </summary>
@@ -156,3 +158,44 @@ public record ProfileContentResponse(
 /// Batch request for profile content
 /// </summary>
 public record ProfileContentBatchRequest(string[] Cids);
+
+/// <summary>
+/// Canonical graph snapshot for Pathfinder cache source.
+/// </summary>
+public record PathfinderGraphResponse(
+    int SchemaVersion,
+    long LastProcessedBlock,
+    long Timestamp,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PathfinderBalanceRow>? Balances,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PathfinderTrustRow>? Trust,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PathfinderGroupRow>? Groups,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PathfinderGroupTrustRow>? GroupTrusts,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow
+);
+
+public record PathfinderBalanceRow(
+    string Balance,
+    string Account,
+    string TokenAddress,
+    long LastActivity,
+    bool IsWrapped,
+    string CirclesType
+);
+
+public record PathfinderTrustRow(
+    string Truster,
+    string Trustee,
+    int Limit
+);
+
+public record PathfinderGroupRow(string GroupAddress);
+
+public record PathfinderGroupTrustRow(
+    string GroupAddress,
+    string TrustedToken
+);
+
+public record PathfinderConsentedFlowRow(
+    string Avatar,
+    bool HasConsentedFlow
+);

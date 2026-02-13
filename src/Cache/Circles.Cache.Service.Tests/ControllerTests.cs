@@ -98,6 +98,18 @@ public class ControllerTests
         return controller;
     }
 
+    private PathfinderGraphController CreatePathfinderGraphController()
+    {
+        var logger = new Mock<ILogger<PathfinderGraphController>>();
+        var settings = new CacheServiceSettings
+        {
+            PostgresConnectionString = "Host=localhost;Database=test;Username=test;Password=test"
+        };
+        var controller = new PathfinderGraphController(_state, settings, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
     #region BalancesController Tests
 
     [Fact]
@@ -240,6 +252,57 @@ public class ControllerTests
         var balance = decimal.Parse(response!.Balance);
         balance.Should().BeGreaterThan(150m, "V1 CRC should be converted to time-circles with inflation factor > 1");
         balance.Should().BeLessThan(350m, "Converted balance should be within reasonable range (~316 for 150 CRC)");
+    }
+
+    #endregion
+
+    #region PathfinderGraphController Tests
+
+    [Fact]
+    public async Task PathfinderGraph_ShouldReturn503_WhenCacheNotReady()
+    {
+        _state.WarmupComplete = false;
+        _state.ListenerConnected = false;
+
+        var controller = CreatePathfinderGraphController();
+        var result = await controller.GetGraph();
+
+        var objectResult = result as ObjectResult;
+        objectResult.Should().NotBeNull();
+        objectResult!.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+    }
+
+    [Fact]
+    public async Task PathfinderGraph_ShouldReturnBadRequest_ForInvalidFormat()
+    {
+        var controller = CreatePathfinderGraphController();
+        var result = await controller.GetGraph(format: "protobuf");
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task PathfinderGraph_ShouldReturnBadRequest_ForInvalidInclude()
+    {
+        var controller = CreatePathfinderGraphController();
+        var result = await controller.GetGraph(include: "balances,unknown");
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task PathfinderGraph_ShouldReturn304_WhenEtagMatches()
+    {
+        _state.LastProcessedBlock = 4242;
+
+        var controller = CreatePathfinderGraphController();
+        controller.HttpContext.Request.Headers.IfNoneMatch = "\"pf-graph-v1-4242-balances,consentedFlow,groupTrusts,groups,trust\"";
+
+        var result = await controller.GetGraph();
+
+        var statusCodeResult = result as StatusCodeResult;
+        statusCodeResult.Should().NotBeNull();
+        statusCodeResult!.StatusCode.Should().Be(StatusCodes.Status304NotModified);
     }
 
     #endregion
