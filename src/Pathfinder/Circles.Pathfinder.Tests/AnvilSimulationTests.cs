@@ -1,7 +1,4 @@
-using Circles.Common;
 using Circles.Common.TestUtils;
-using Circles.Common.Dto;
-using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Tests.Helpers;
 using Circles.Pathfinder.Tests.Scenarios;
@@ -13,19 +10,25 @@ namespace Circles.Pathfinder.Tests;
 /// <summary>
 /// Differential tests: validate that HubContractValidator agrees with the actual Hub.sol contract.
 /// For each Anvil scenario:
-///   1. Compute path via pathfinder
+///   1. Compute path via pathfinder (graph data from SharedGraphCache)
 ///   2. Validate with HubContractValidator
-///   3. Simulate with eth_call on Anvil fork
+///   3. Simulate with eth_call on shared Anvil fork (SharedAnvilCache)
 ///   4. Assert: validator agrees with contract (both accept or both reject)
 ///
-/// If validator says VALID but contract REJECTS → pathfinder or validator bug
-/// If validator says INVALID but contract ACCEPTS → validator is too strict
+/// Sessions are shared per block number via SharedAnvilCache + SharedGraphCache.
+/// SharedAnvilCache registers its session with SharedGraphCache so only ONE
+/// session is created per block (both DB queries and Anvil use the same session).
 /// </summary>
 [TestFixture]
 [Category("Anvil")]
 public class AnvilSimulationTests
 {
-    private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+    [OneTimeTearDown]
+    public async Task TearDown()
+    {
+        await SharedAnvilCache.ClearAsync();
+        await SharedGraphCache.ClearAsync();
+    }
 
     [TestCaseSource(typeof(ScenarioLoader), nameof(ScenarioLoader.AnvilScenariosTestData))]
     public async Task DifferentialValidation(TransferScenario scenario)
@@ -43,9 +46,6 @@ public class AnvilSimulationTests
             return;
         }
 
-        TestEnvironmentClient? session = null;
-        AnvilExecutionHelper? anvil = null;
-
         try
         {
             var health = await TestEnvironmentClient.GetHealthAsync();
@@ -61,19 +61,6 @@ public class AnvilSimulationTests
                 Assert.Ignore($"Block {scenario.Block} not indexed");
                 return;
             }
-
-            session = await TestEnvironmentClient.CreateSessionAsync(
-                scenario.Block,
-                features: ["db", "anvil"],
-                ttl: "30m");
-
-            if (!session.HasAnvil)
-            {
-                Assert.Ignore("Anvil not available in test environment");
-                return;
-            }
-
-            anvil = new AnvilExecutionHelper(session);
         }
         catch (Exception ex)
         {
@@ -81,32 +68,18 @@ public class AnvilSimulationTests
             return;
         }
 
-        try
-        {
-            await RunDifferentialTest(scenario, session!, anvil!);
-        }
-        finally
-        {
-            anvil?.Dispose();
-            if (session != null)
-                await session.DisposeAsync();
-        }
+        await RunDifferentialTest(scenario);
     }
 
-    private async Task RunDifferentialTest(
-        TransferScenario scenario,
-        TestEnvironmentClient session,
-        AnvilExecutionHelper anvil)
+    private async Task RunDifferentialTest(TransferScenario scenario)
     {
-        // Get block timestamp for demurrage
-        var blockTimestamp = await anvil.GetBlockTimestampAsync();
+        // Get shared Anvil session for this block (created once, reused across scenarios)
+        // This also registers the session with SharedGraphCache via RegisterSession()
+        var anvilData = SharedAnvilCache.GetOrCreate(scenario.Block);
 
-        var settings = new Settings { TargetDemurrageTimestamp = blockTimestamp };
-        ILoadGraph loadGraph = session.IsDirectConnectionAvailable
-            ? new LoadGraph(session.PostgresConnectionString!, settings)
-            : new ProxyLoadGraph(session, settings);
+        // Get graph data from SharedGraphCache (reuses the Anvil session for DB queries)
+        var factory = SharedGraphCache.CreateFactory(scenario.Block);
 
-        var factory = new GraphFactory(RouterAddress, loadGraph);
         var trustGraph = factory.V2TrustGraph();
         var balanceGraph = factory.V2BalanceGraph();
         var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
@@ -131,9 +104,26 @@ public class AnvilSimulationTests
         var state = new CapacityGraphContractState(capacityGraph);
         var validation = HubContractValidator.Validate(response.Transfers, scenario.Source, scenario.Sink, state);
 
-        // Layer 2: eth_call simulation
-        var (contractAccepts, revertReason) = await anvil.SimulateTransferPathAsync(
-            scenario.Source, scenario.Sink, response.Transfers);
+        // Layer 2: eth_call simulation (stateless — safe to share session)
+        bool contractAccepts;
+        string? revertReason;
+        try
+        {
+            (contractAccepts, revertReason) = await anvilData.Anvil.SimulateTransferPathAsync(
+                scenario.Source, scenario.Sink, response.Transfers);
+        }
+        catch (HttpRequestException ex) when (
+            ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("expired", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Ignore($"Anvil session expired during test: {ex.Message}");
+            return;
+        }
+        catch (TaskCanceledException ex)
+        {
+            Assert.Ignore($"Anvil simulation timed out: {ex.Message}");
+            return;
+        }
 
         TestContext.Out.WriteLine($"Scenario {scenario.Id}:");
         TestContext.Out.WriteLine($"  Validator: {(validation.IsValid ? "VALID" : "INVALID")}");

@@ -13,61 +13,60 @@ namespace Circles.Pathfinder.Tests.Helpers;
 ///
 /// With 4 distinct blocks across 62 scenarios, this reduces total
 /// data transfer from ~47M rows to ~3M rows (94% reduction).
+///
+/// When an external session is registered (e.g. from SharedAnvilCache),
+/// it is reused instead of creating a duplicate DB session.
 /// </summary>
 public static class SharedGraphCache
 {
     private const string RouterAddress = "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+    private const int MaxRetries = 3;
+    private const int RetryBaseDelayMs = 3000;
 
-    private static readonly ConcurrentDictionary<long, Lazy<CachedGraphData>> Cache = new();
-    private static readonly ConcurrentDictionary<long, TestEnvironmentClient> Sessions = new();
+    // Successful loads — only populated after data is fully loaded
+    private static readonly ConcurrentDictionary<long, CachedGraphData> Cache = new();
+
+    // External sessions registered by other caches (e.g. SharedAnvilCache)
+    private static readonly ConcurrentDictionary<long, TestEnvironmentClient> ExternalSessions = new();
+
+    // Sessions we created ourselves (need to dispose)
+    private static readonly ConcurrentDictionary<long, TestEnvironmentClient> OwnedSessions = new();
+
+    // Lock per block to prevent concurrent loading for the same block
+    private static readonly ConcurrentDictionary<long, object> LoadLocks = new();
+
+    /// <summary>
+    /// Registers an external session for a block number. Graph loading
+    /// will reuse this session instead of creating a new one.
+    /// Call this BEFORE GetOrLoad for best results.
+    /// </summary>
+    public static void RegisterSession(long blockNumber, TestEnvironmentClient session)
+    {
+        ExternalSessions[blockNumber] = session;
+    }
 
     /// <summary>
     /// Gets (or creates) cached graph data for the given block number.
-    /// First call for a block creates a session and loads all raw ILoadGraph data.
-    /// Subsequent calls return the cached data immediately.
+    /// Retries on transient DB errors (57P01, connection reset).
+    /// Does NOT cache failures — next call will retry.
     /// </summary>
     public static CachedGraphData GetOrLoad(long blockNumber)
     {
-        var lazy = Cache.GetOrAdd(blockNumber, block => new Lazy<CachedGraphData>(() =>
+        // Fast path: already loaded
+        if (Cache.TryGetValue(blockNumber, out var cached))
+            return cached;
+
+        var lockObj = LoadLocks.GetOrAdd(blockNumber, _ => new object());
+        lock (lockObj)
         {
-            Console.WriteLine($"[SharedGraphCache] Loading graph data for block {block}...");
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            // Double-check after acquiring lock
+            if (Cache.TryGetValue(blockNumber, out cached))
+                return cached;
 
-            var session = CreateSession(block);
-            var settings = new Settings();
-
-            ILoadGraph sourceLoader = session.IsDirectConnectionAvailable
-                ? new LoadGraph(session.PostgresConnectionString!, settings)
-                : new ProxyLoadGraph(session, settings);
-
-            // Materialize all data into memory (the expensive network calls)
-            var balances = sourceLoader.LoadV2Balances().ToList();
-            var trust = sourceLoader.LoadV2Trust().ToList();
-            var groups = sourceLoader.LoadGroups().ToList();
-            var groupTrusts = sourceLoader.LoadGroupTrusts().ToList();
-            var consentedFlags = sourceLoader.LoadConsentedFlowFlags().ToList();
-
-            sw.Stop();
-            Console.WriteLine($"[SharedGraphCache] Block {block}: " +
-                $"{trust.Count} trust edges, " +
-                $"{balances.Count} balances, " +
-                $"{groups.Count} groups, " +
-                $"{consentedFlags.Count(f => f.HasConsentedFlow)} consented — " +
-                $"loaded in {sw.ElapsedMilliseconds}ms");
-
-            return new CachedGraphData
-            {
-                BlockNumber = block,
-                Balances = balances,
-                Trust = trust,
-                Groups = groups,
-                GroupTrusts = groupTrusts,
-                ConsentedFlags = consentedFlags,
-                Session = session
-            };
-        }));
-
-        return lazy.Value;
+            cached = LoadWithRetry(blockNumber);
+            Cache[blockNumber] = cached;
+            return cached;
+        }
     }
 
     /// <summary>
@@ -95,16 +94,17 @@ public static class SharedGraphCache
     /// </summary>
     public static bool IsCached(long blockNumber)
     {
-        return Cache.TryGetValue(blockNumber, out var lazy) && lazy.IsValueCreated;
+        return Cache.ContainsKey(blockNumber);
     }
 
     /// <summary>
-    /// Clears all cached data and disposes sessions.
+    /// Clears all cached data and disposes sessions we own.
+    /// Does NOT dispose external sessions (caller manages those).
     /// Call from [OneTimeTearDown] in test fixtures.
     /// </summary>
     public static async Task ClearAsync()
     {
-        foreach (var kvp in Sessions)
+        foreach (var kvp in OwnedSessions)
         {
             try
             {
@@ -115,22 +115,120 @@ public static class SharedGraphCache
                 // Ignore cleanup errors
             }
         }
-        Sessions.Clear();
+        OwnedSessions.Clear();
+        ExternalSessions.Clear();
         Cache.Clear();
+        LoadLocks.Clear();
     }
 
-    private static TestEnvironmentClient CreateSession(long blockNumber)
+    private static CachedGraphData LoadWithRetry(long blockNumber)
     {
-        return Sessions.GetOrAdd(blockNumber, block =>
+        Exception? lastException = null;
+
+        for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
+            try
+            {
+                return LoadGraphData(blockNumber);
+            }
+            catch (Exception ex) when (
+                attempt < MaxRetries &&
+                (ex is HttpRequestException hre &&
+                    (hre.Message.Contains("57P01") ||
+                     hre.Message.Contains("57P03") ||
+                     hre.Message.Contains("08006") ||
+                     hre.Message.Contains("connection") && hre.Message.Contains("reset")) ||
+                 ex is TaskCanceledException))
+            {
+                lastException = ex;
+                var delay = RetryBaseDelayMs * attempt;
+                Console.WriteLine($"[SharedGraphCache] Block {blockNumber}: transient DB error " +
+                    $"on attempt {attempt}/{MaxRetries} ({GetSqlStateHint(ex.Message)}), " +
+                    $"retrying in {delay}ms...");
+                Thread.Sleep(delay);
+
+                // If we're using our own session, it might be dead — create a fresh one
+                if (OwnedSessions.TryRemove(blockNumber, out var deadSession))
+                {
+                    try { deadSession.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+                    catch { /* ignore */ }
+                }
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to load graph data for block {blockNumber} after {MaxRetries} attempts",
+            lastException);
+    }
+
+    private static CachedGraphData LoadGraphData(long blockNumber)
+    {
+        Console.WriteLine($"[SharedGraphCache] Loading graph data for block {blockNumber}...");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var session = GetOrCreateSession(blockNumber);
+        var settings = new Settings();
+
+        ILoadGraph sourceLoader = session.IsDirectConnectionAvailable
+            ? new LoadGraph(session.PostgresConnectionString!, settings)
+            : new ProxyLoadGraph(session, settings);
+
+        // Materialize all data into memory (the expensive network calls)
+        var balances = sourceLoader.LoadV2Balances().ToList();
+        var trust = sourceLoader.LoadV2Trust().ToList();
+        var groups = sourceLoader.LoadGroups().ToList();
+        var groupTrusts = sourceLoader.LoadGroupTrusts().ToList();
+        var consentedFlags = sourceLoader.LoadConsentedFlowFlags().ToList();
+
+        sw.Stop();
+        Console.WriteLine($"[SharedGraphCache] Block {blockNumber}: " +
+            $"{trust.Count} trust edges, " +
+            $"{balances.Count} balances, " +
+            $"{groups.Count} groups, " +
+            $"{consentedFlags.Count(f => f.HasConsentedFlow)} consented — " +
+            $"loaded in {sw.ElapsedMilliseconds}ms");
+
+        return new CachedGraphData
+        {
+            BlockNumber = blockNumber,
+            Balances = balances,
+            Trust = trust,
+            Groups = groups,
+            GroupTrusts = groupTrusts,
+            ConsentedFlags = consentedFlags,
+            Session = session
+        };
+    }
+
+    private static TestEnvironmentClient GetOrCreateSession(long blockNumber)
+    {
+        // Prefer external session (from SharedAnvilCache etc.)
+        if (ExternalSessions.TryGetValue(blockNumber, out var external))
+        {
+            Console.WriteLine($"[SharedGraphCache] Reusing external session for block {blockNumber}");
+            return external;
+        }
+
+        // Create our own
+        return OwnedSessions.GetOrAdd(blockNumber, block =>
+        {
+            Console.WriteLine($"[SharedGraphCache] Creating DB session for block {block}...");
             var testEnvUrl = Environment.GetEnvironmentVariable("TEST_ENV_URL");
             return TestEnvironmentClient.CreateSessionAsync(
                 block,
                 features: ["db"],
-                ttl: "15m",
+                ttl: "10m",
                 testEnvUrl: testEnvUrl
             ).GetAwaiter().GetResult();
         });
+    }
+
+    private static string GetSqlStateHint(string message)
+    {
+        if (message.Contains("57P01")) return "admin_shutdown";
+        if (message.Contains("57P03")) return "cannot_connect_now";
+        if (message.Contains("08006")) return "connection_failure";
+        return "connection_reset";
     }
 }
 

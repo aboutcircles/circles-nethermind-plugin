@@ -70,7 +70,12 @@ public class TestEnvironmentClient : IAsyncDisposable
     {
         _baseUrl = baseUrl.TrimEnd('/');
         // Must end with / for relative URLs to work correctly with BaseAddress
-        _httpClient = new HttpClient { BaseAddress = new Uri(_baseUrl + "/") };
+        // 5-minute timeout for heavy queries (trust graph = 2M rows via HTTP proxy)
+        _httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(_baseUrl + "/"),
+            Timeout = TimeSpan.FromMinutes(5)
+        };
     }
 
     /// <summary>
