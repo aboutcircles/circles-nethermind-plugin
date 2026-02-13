@@ -5,6 +5,7 @@ using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Tests.Helpers;
 using Circles.Pathfinder.Tests.Scenarios;
+using Circles.Pathfinder.Validation;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -152,6 +153,20 @@ public class ScenarioTests
             if (scenario.Category == ScenarioCategories.GroupMinting)
             {
                 ValidateGroupEdgeOrdering(response.Transfers, capacityGraph, scenario.Id);
+            }
+
+            // Validate path against Hub.sol rules (HubContractValidator)
+            var contractState = new CapacityGraphContractState(capacityGraph);
+            var validation = HubContractValidator.Validate(
+                response.Transfers, scenario.Source, scenario.Sink, contractState);
+            var validationErrors = validation.Violations
+                .Where(v => v.Severity == "error")
+                .ToList();
+            if (validationErrors.Count > 0)
+            {
+                var errorList = string.Join("\n", validationErrors.Select(v => $"  [{v.Rule}] {v.Message}"));
+                TestContext.Out.WriteLine($"Scenario {scenario.Id}: HubContractValidator errors:\n{errorList}");
+                Assert.Fail($"Scenario {scenario.Id}: HubContractValidator detected {validationErrors.Count} error(s):\n{errorList}");
             }
         }
     }
@@ -494,6 +509,11 @@ public class ScenarioE2ETests
             scenario.Sink,
             response.Transfers);
 
+        // Differential check: run HubContractValidator on the same path
+        var contractState = new CapacityGraphContractState(capacityGraph);
+        var validation = HubContractValidator.Validate(
+            response.Transfers, scenario.Source, scenario.Sink, contractState);
+
         if (scenario.ExpectedRevertReason != null)
         {
             // Negative test - expect transaction to fail
@@ -510,6 +530,16 @@ public class ScenarioE2ETests
                 $"Scenario {scenario.Id}: Expected success but transaction failed: {result.Error}");
             TestContext.Out.WriteLine($"Scenario {scenario.Id}: Transaction succeeded! Gas used: {result.GasUsed}");
             TestContext.Out.WriteLine($"  TxHash: {result.TxHash}");
+
+            // Differential: if contract accepted but validator rejected → validator bug
+            if (!validation.IsValid)
+            {
+                var errors = string.Join("; ", validation.Violations
+                    .Where(v => v.Severity == "error")
+                    .Select(v => $"[{v.Rule}] {v.Message}"));
+                TestContext.Out.WriteLine(
+                    $"  WARNING: Validator too strict — contract accepted but validator rejected: {errors}");
+            }
         }
     }
 }

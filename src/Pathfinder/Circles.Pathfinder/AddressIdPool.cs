@@ -46,6 +46,16 @@ public static class AddressIdPool
         return result;
     }
 
+    /// <summary>
+    /// Looks up an existing id without creating a new entry.
+    /// Returns false if the address has never been registered.
+    /// </summary>
+    public static bool TryIdOf(string address, out int id)
+    {
+        string lower = address.ToLowerInvariant();
+        return Map.TryGetValue(lower, out id);
+    }
+
     public static int IdOf(string _address)
     {
         string lower = _address.ToLowerInvariant();

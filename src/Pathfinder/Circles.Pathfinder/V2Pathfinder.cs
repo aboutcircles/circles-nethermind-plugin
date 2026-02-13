@@ -329,6 +329,26 @@ public class V2Pathfinder
         }
 
         /* --------------------------------------------------------------------
+         * 7a. DEBUG: Validate output against Hub.sol rules
+         * ------------------------------------------------------------------ */
+#if DEBUG
+        if (transfer.Count > 0)
+        {
+            var debugState = new Validation.CapacityGraphContractState(capacityGraph);
+            var debugValidation = Validation.HubContractValidator.Validate(
+                transfer, request.Source!, request.Sink!, debugState);
+            if (!debugValidation.IsValid)
+            {
+                var errors = debugValidation.Violations
+                    .Where(v => v.Severity == "error")
+                    .Select(v => $"[{v.Rule}] {v.Message}");
+                _logger.LogError("[{ReqId}] HubContractValidator REJECTED output: {Violations}",
+                    reqId, string.Join("; ", errors));
+            }
+        }
+#endif
+
+        /* --------------------------------------------------------------------
          * 8. Calculate maxFlow by summing transfers TO the sink.
          *    We sum sink-bound transfers (not source-outbound) because after
          *    path collapsing, multi-hop paths may no longer have the original

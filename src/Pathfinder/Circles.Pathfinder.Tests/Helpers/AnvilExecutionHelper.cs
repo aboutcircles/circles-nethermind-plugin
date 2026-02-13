@@ -323,6 +323,34 @@ public class AnvilExecutionHelper : IDisposable
     }
 
     /// <summary>
+    /// Simulates a transfer path using eth_call (no state change).
+    /// Returns whether the contract would accept or reject the calldata.
+    /// </summary>
+    public async Task<(bool Success, string? RevertReason)> SimulateTransferPathAsync(
+        string sender,
+        string receiver,
+        List<TransferPathStep> transfers)
+    {
+        var callData = BuildOperateFlowMatrixCall(sender, receiver, transfers);
+
+        try
+        {
+            await CallRpcAsync<string>("eth_call", new
+            {
+                from = sender,
+                to = CirclesHubAddress,
+                data = callData
+            }, "latest");
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Builds the calldata for Hub.operateFlowMatrix from pathfinder transfer steps.
     ///
     /// The Hub.operateFlowMatrix function signature is:

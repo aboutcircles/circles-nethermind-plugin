@@ -30,7 +30,7 @@ public class PropertyBasedTests
     /// Builds a synthetic CapacityGraph with the token pool model used by GraphFactory.
     /// Pattern: Holder → TokenPool(token) → Receiver (where receiver trusts token owner).
     /// </summary>
-    private static CapacityGraph BuildSyntheticGraph(
+    internal static CapacityGraph BuildSyntheticGraph(
         int avatarCount,
         int groupCount,
         long balance,
@@ -45,8 +45,10 @@ public class PropertyBasedTests
         var groups = new List<int>(groupCount);
         var trustLookup = new Dictionary<int, HashSet<int>>();
 
-        // Create avatar addresses with unique prefix to avoid test interference
-        string prefix = $"0xfz{rng.Next(0x1000, 0xFFFF):x4}";
+        // Create avatar addresses with unique hex-valid prefix to avoid test interference.
+        // Using 'ee' prefix + 4 random hex chars = 6 chars after 0x, plus 34-digit decimal
+        // padding (0-9 are valid hex). Total = 2 + 6 + 34 = 42 chars per address.
+        string prefix = $"0xee{rng.Next(0x1000, 0xFFFF):x4}";
 
         for (int i = 0; i < avatarCount; i++)
         {
@@ -55,18 +57,18 @@ public class PropertyBasedTests
             avatars.Add(id);
         }
 
-        // Create groups
+        // Create groups (use 'a' prefix — valid hex)
         for (int g = 0; g < groupCount; g++)
         {
-            int id = AddressIdPool.IdOf($"{prefix}g{g:d33}");
+            int id = AddressIdPool.IdOf($"{prefix}a{g:d33}");
             graph.AddGroup(id);
             groups.Add(id);
         }
 
-        // Router
+        // Router (use 'b' prefix — valid hex)
         if (withRouter)
         {
-            int routerId = AddressIdPool.IdOf($"{prefix}r{"0":d33}");
+            int routerId = AddressIdPool.IdOf($"{prefix}b{0:d33}");
             graph.SetRouter(routerId);
         }
 
@@ -184,7 +186,7 @@ public class PropertyBasedTests
         return graph;
     }
 
-    private static (int source, int sink) PickSourceSink(CapacityGraph graph, Random rng)
+    internal static (int source, int sink) PickSourceSink(CapacityGraph graph, Random rng)
     {
         var avatars = graph.AvatarNodes.Keys
             .Where(a => !graph.IsGroup(a) && !graph.IsRouter(a))
