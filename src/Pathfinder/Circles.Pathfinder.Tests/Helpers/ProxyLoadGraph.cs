@@ -42,171 +42,152 @@ public class ProxyLoadGraph : ILoadGraph
             ? trustRows
             : 2_000_000;
 
-    // SQL queries embedded as constants (same as in LoadGraph but we can't use embedded resources from test assembly)
-    private const string BalanceQuery = """
-        with static_token_transfers as (
-            select t."blockNumber"
-                 , t."timestamp"
-                 , t."transactionIndex"
-                 , t."logIndex"
-                 , t."transactionHash"
-                 , t."tokenAddress"
-                 , t."from"
-                 , t."to"
-                 , t."amount"
-            from "CrcV2_Erc20WrapperTransfer" t
-                     join "CrcV2_ERC20WrapperDeployed" d on d."circlesType" = 1 and d."erc20Wrapper" = t."tokenAddress"
-            order by t."blockNumber", t."transactionIndex", t."logIndex"
-        ), static_from_transfers as (
-            select t1."timestamp"
-                 , t1."tokenAddress"
-                 , t1."from" as "account"
-                 , -t1."amount" as diff
-            from static_token_transfers t1
-                     inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."from"
-        ), static_to_transfers as (
-            select t1."timestamp"
-                 , t1."tokenAddress"
-                 , t1."to" as "account"
-                 , t1."amount" as diff
-            from static_token_transfers t1
-                     inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."to"
-        ), static_sum as (
-            select sum(diff) AS static_balance
-                 , account
-                 , "tokenAddress"
-                 , max("timestamp") AS "timestamp"
-                 , true as "isWrapped"
-                 , 'static' as "circlesType"
-            from (
-                     select *
-                     from static_from_transfers
-                     union all
-                     select *
-                     from static_to_transfers
-                 ) as t
-            group by account
-                   , "tokenAddress"
-        ),
+    // All queries use {0} placeholder for block number to ensure temporal consistency with Anvil forks.
+    // This prevents post-fork data from leaking into the graph (see anvil-failures-2026-02-14.md).
 
-        demurraged_wrapped_token_transfers as (
-            select t."blockNumber"
-                 , t."timestamp"
-                 , t."transactionIndex"
-                 , t."logIndex"
-                 , t."transactionHash"
-                 , t."tokenAddress"
-                 , t."from"
-                 , t."to"
-                 , t."amount"
-            from "CrcV2_Erc20WrapperTransfer" t
-                     join "CrcV2_ERC20WrapperDeployed" d on d."circlesType" = 0 and d."erc20Wrapper" = t."tokenAddress"
-            order by t."blockNumber", t."transactionIndex", t."logIndex"
-        ), demurraged_wrapped_from_transfers as (
-            select t1."timestamp"
-                 , t1."tokenAddress"
-                 , t1."from" as "account"
-                 , -t1."amount" as diff
-            from demurraged_wrapped_token_transfers t1
-                     inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."from"
-        ), demurraged_wrapped_to_transfers as (
-            select t1."timestamp"
-                 , t1."tokenAddress"
-                 , t1."to" as "account"
-                 , t1."amount" as diff
-            from demurraged_wrapped_token_transfers t1
-                     inner join "V_CrcV2_Avatars" t2 on t2.avatar = t1."to"
-        ), demurraged_wrapped_sum as (
-            select sum(diff) AS inflationary_balance
-                 , account
-                 , "tokenAddress"
-                 , max("timestamp") AS "lastActivity"
-                 , true as "isWrapped"
-                 , 'demurraged' as "circlesType"
-            from (
-                     select *
-                     from demurraged_wrapped_from_transfers
-                     union all
-                     select *
-                     from demurraged_wrapped_to_transfers
-                 ) as t
-            group by account
-                   , "tokenAddress"
+    // Block-filtered balance query: inlines V_CrcV2_BalancesByAccountAndToken with blockNumber filter
+    // and adds registration filter on ERC20 wrapper avatars (matches balanceQuery.sql)
+    private const string BalanceQueryTemplate = """
+        WITH static_token_transfers AS (
+            SELECT t."blockNumber", t."timestamp", t."transactionIndex", t."logIndex",
+                   t."transactionHash", t."tokenAddress", t."from", t."to", t."amount"
+            FROM "CrcV2_Erc20WrapperTransfer" t
+            JOIN "CrcV2_ERC20WrapperDeployed" d ON d."circlesType" = 1 AND d."erc20Wrapper" = t."tokenAddress"
+            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = d.avatar
+            WHERE t."blockNumber" <= {0}
+            ORDER BY t."blockNumber", t."transactionIndex", t."logIndex"
+        ), static_from_transfers AS (
+            SELECT t1."timestamp", t1."tokenAddress", t1."from" AS "account", -t1."amount" AS diff
+            FROM static_token_transfers t1
+            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."from"
+        ), static_to_transfers AS (
+            SELECT t1."timestamp", t1."tokenAddress", t1."to" AS "account", t1."amount" AS diff
+            FROM static_token_transfers t1
+            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."to"
+        ), static_sum AS (
+            SELECT sum(diff) AS static_balance, account, "tokenAddress",
+                   max("timestamp") AS "timestamp", true AS "isWrapped", 'static' AS "circlesType"
+            FROM (SELECT * FROM static_from_transfers UNION ALL SELECT * FROM static_to_transfers) AS t
+            GROUP BY account, "tokenAddress"
         ),
-
-        all_transfers as (
-            select "static_balance" as balance
-                 , "account"
-                 , "tokenAddress"
-                 , "timestamp" as "lastActivity"
-                 , "isWrapped"
-                 , "circlesType"
-            from static_sum
-            union all
-            select "inflationary_balance" as balance
-                 , "account"
-                 , "tokenAddress"
-                 , "lastActivity"
-                 , "isWrapped"
-                 , "circlesType"
-            from demurraged_wrapped_sum
-            union all
-            select
-                b."totalBalance" as balance
-                 ,b."account"
-                 ,b."tokenAddress"
-                 ,b."lastActivity"
-                 ,false AS "isWrapped"
-                 ,'demurraged' AS "circlesType"
-            from "V_CrcV2_BalancesByAccountAndToken" b
-            inner join "V_CrcV2_Avatars" a on a.avatar = b."account"
+        demurraged_wrapped_token_transfers AS (
+            SELECT t."blockNumber", t."timestamp", t."transactionIndex", t."logIndex",
+                   t."transactionHash", t."tokenAddress", t."from", t."to", t."amount"
+            FROM "CrcV2_Erc20WrapperTransfer" t
+            JOIN "CrcV2_ERC20WrapperDeployed" d ON d."circlesType" = 0 AND d."erc20Wrapper" = t."tokenAddress"
+            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = d.avatar
+            WHERE t."blockNumber" <= {0}
+            ORDER BY t."blockNumber", t."transactionIndex", t."logIndex"
+        ), demurraged_wrapped_from_transfers AS (
+            SELECT t1."timestamp", t1."tokenAddress", t1."from" AS "account", -t1."amount" AS diff
+            FROM demurraged_wrapped_token_transfers t1
+            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."from"
+        ), demurraged_wrapped_to_transfers AS (
+            SELECT t1."timestamp", t1."tokenAddress", t1."to" AS "account", t1."amount" AS diff
+            FROM demurraged_wrapped_token_transfers t1
+            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."to"
+        ), demurraged_wrapped_sum AS (
+            SELECT sum(diff) AS inflationary_balance, account, "tokenAddress",
+                   max("timestamp") AS "lastActivity", true AS "isWrapped", 'demurraged' AS "circlesType"
+            FROM (SELECT * FROM demurraged_wrapped_from_transfers UNION ALL SELECT * FROM demurraged_wrapped_to_transfers) AS t
+            GROUP BY account, "tokenAddress"
+        ),
+        -- Inline V_CrcV2_BalancesByAccountAndToken with block filter
+        tx AS (
+            SELECT "timestamp", "from" AS account, "tokenAddress", -value AS delta
+            FROM "CrcV2_TransferSingle" WHERE "blockNumber" <= {0}
+            UNION ALL
+            SELECT "timestamp", "to" AS account, "tokenAddress", value AS delta
+            FROM "CrcV2_TransferSingle" WHERE "blockNumber" <= {0}
+            UNION ALL
+            SELECT "timestamp", "from" AS account, "tokenAddress", -value AS delta
+            FROM "CrcV2_TransferBatch" WHERE "blockNumber" <= {0}
+            UNION ALL
+            SELECT "timestamp", "to" AS account, "tokenAddress", value AS delta
+            FROM "CrcV2_TransferBatch" WHERE "blockNumber" <= {0}
+        ), agg AS (
+            SELECT account, "tokenAddress", sum(delta) AS balance, max("timestamp") AS last_ts
+            FROM tx
+            GROUP BY account, "tokenAddress"
+        ),
+        all_transfers AS (
+            SELECT static_balance AS balance, account, "tokenAddress",
+                   "timestamp" AS "lastActivity", "isWrapped", "circlesType"
+            FROM static_sum
+            UNION ALL
+            SELECT inflationary_balance AS balance, account, "tokenAddress",
+                   "lastActivity", "isWrapped", "circlesType"
+            FROM demurraged_wrapped_sum
+            UNION ALL
+            SELECT balance, account, "tokenAddress", last_ts AS "lastActivity",
+                   false AS "isWrapped", 'demurraged' AS "circlesType"
+            FROM agg
+            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = agg.account
+            WHERE account <> '0x0000000000000000000000000000000000000000' AND balance > 0
         )
-
-        select balance::text
-             , account
-             , "tokenAddress"
-             , "lastActivity"
-             , "isWrapped"
-             , "circlesType"
-        from all_transfers
-        where balance > 0
-        order by balance, account, "tokenAddress"
+        SELECT balance::text, account, "tokenAddress", "lastActivity", "isWrapped", "circlesType"
+        FROM all_transfers
+        WHERE balance > 0
+        ORDER BY balance, account, "tokenAddress"
         """;
 
-    private const string TrustQuery = """
-        SELECT t1.truster, t1.trustee FROM "V_CrcV2_TrustRelations" t1
+    // Block-filtered trust query: inlines V_CrcV2_TrustRelations with blockNumber filter
+    // Uses row_number() to get latest trust event per (truster, trustee) pair at the target block.
+    // Includes registration filter on ERC20 wrapper avatars (matches trustQuery.sql).
+    private const string TrustQueryTemplate = """
+        WITH trust_at_block AS (
+            SELECT truster, trustee, "expiryTime",
+                   row_number() OVER (PARTITION BY truster, trustee
+                       ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
+            FROM "CrcV2_Trust"
+            WHERE "blockNumber" <= {0}
+        ), active_trust AS (
+            SELECT truster, trustee FROM trust_at_block
+            WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
+        )
+        SELECT t1.truster, t1.trustee FROM active_trust t1
         INNER JOIN "V_CrcV2_Avatars" a1 ON a1.avatar = t1.truster
         INNER JOIN "V_CrcV2_Avatars" a2 ON a2.avatar = t1.trustee
-        LEFT JOIN "CrcV2_RegisterGroup" t2 on t2."group" = t1.truster
-        WHERE t2."group"  IS NULL
+        LEFT JOIN "CrcV2_RegisterGroup" t2 ON t2."group" = t1.truster
+        WHERE t2."group" IS NULL
 
         UNION ALL
 
-        SELECT t1.truster, t2."erc20Wrapper" AS trustee FROM "V_CrcV2_TrustRelations" t1
-        INNER JOIN "CrcV2_ERC20WrapperDeployed" t2
-        ON t2.avatar = t1.trustee
+        SELECT t1.truster, t2."erc20Wrapper" AS trustee FROM active_trust t1
+        INNER JOIN "CrcV2_ERC20WrapperDeployed" t2 ON t2.avatar = t1.trustee
         INNER JOIN "V_CrcV2_Avatars" a1 ON a1.avatar = t1.truster
-        LEFT JOIN "CrcV2_RegisterGroup" t3 on t3."group" = t1.truster
-        WHERE t3."group"  IS NULL
+        INNER JOIN "V_CrcV2_Avatars" a2 ON a2.avatar = t2.avatar
+        LEFT JOIN "CrcV2_RegisterGroup" t3 ON t3."group" = t1.truster
+        WHERE t3."group" IS NULL
         """;
 
-    private const string GroupQuery = """
-        SELECT
-            "group" as group_address
+    // Block-filtered group query
+    private const string GroupQueryTemplate = """
+        SELECT "group" AS group_address
         FROM "CrcV2_RegisterGroup"
         WHERE "mint" = LOWER('0xCDFc5135AEC0aFbf102C108e7f5C8A88C6112842')
+          AND "blockNumber" <= {0}
         """;
 
-    private const string GroupTrustQuery = """
-        SELECT
-            t.truster as group_address,
-            t.trustee as trusted_token
-        FROM "V_CrcV2_TrustRelations" t
+    // Block-filtered group trust query: uses same trust_at_block CTE
+    private const string GroupTrustQueryTemplate = """
+        WITH trust_at_block AS (
+            SELECT truster, trustee, "expiryTime",
+                   row_number() OVER (PARTITION BY truster, trustee
+                       ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
+            FROM "CrcV2_Trust"
+            WHERE "blockNumber" <= {0}
+        ), active_trust AS (
+            SELECT truster, trustee FROM trust_at_block
+            WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
+        )
+        SELECT t.truster AS group_address, t.trustee AS trusted_token
+        FROM active_trust t
         INNER JOIN "CrcV2_RegisterGroup" g ON g."group" = t.truster
         WHERE g."mint" = LOWER('0xCDFc5135AEC0aFbf102C108e7f5C8A88C6112842')
+          AND g."blockNumber" <= {0}
         """;
 
-    // Note: Uses {0} placeholder for block number since raw table doesn't respect circles.max_block_number
     private const string ConsentedFlowQueryTemplate = """
         SELECT DISTINCT ON (avatar) avatar, flag
         FROM "CrcV2_SetAdvancedUsageFlag"
@@ -222,7 +203,8 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
     {
-        var response = _client.ExecuteQueryAsync(BalanceQuery, maxRows: MaxBalanceRows).GetAwaiter().GetResult();
+        var query = string.Format(BalanceQueryTemplate, _client.BlockNumber);
+        var response = _client.ExecuteQueryAsync(query, maxRows: MaxBalanceRows).GetAwaiter().GetResult();
         var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
 
         Console.WriteLine($"ProxyLoadGraph: Balance query returned {response.RowCount} rows (max: {MaxBalanceRows}){(response.Truncated ? " (TRUNCATED! Consider increasing PATHFINDER_MAX_BALANCE_ROWS)" : "")}");
@@ -285,7 +267,8 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
     {
-        var response = _client.ExecuteQueryAsync(TrustQuery, maxRows: MaxTrustRows).GetAwaiter().GetResult();
+        var query = string.Format(TrustQueryTemplate, _client.BlockNumber);
+        var response = _client.ExecuteQueryAsync(query, maxRows: MaxTrustRows).GetAwaiter().GetResult();
         var results = new List<(string Truster, string Trustee, int Limit)>();
 
         Console.WriteLine($"ProxyLoadGraph: Trust query returned {response.RowCount} rows (max: {MaxTrustRows}){(response.Truncated ? " (TRUNCATED! Consider increasing PATHFINDER_MAX_TRUST_ROWS)" : "")}");
@@ -302,7 +285,8 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<string> LoadGroups()
     {
-        var response = _client.ExecuteQueryAsync(GroupQuery, maxRows: 10000).GetAwaiter().GetResult();
+        var query = string.Format(GroupQueryTemplate, _client.BlockNumber);
+        var response = _client.ExecuteQueryAsync(query, maxRows: 10000).GetAwaiter().GetResult();
         var results = new List<string>();
 
         foreach (var row in response.Rows)
@@ -316,7 +300,8 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        var response = _client.ExecuteQueryAsync(GroupTrustQuery, maxRows: 100000).GetAwaiter().GetResult();
+        var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber);
+        var response = _client.ExecuteQueryAsync(query, maxRows: 100000).GetAwaiter().GetResult();
         var results = new List<(string GroupAddress, string TrustedToken)>();
 
         foreach (var row in response.Rows)
