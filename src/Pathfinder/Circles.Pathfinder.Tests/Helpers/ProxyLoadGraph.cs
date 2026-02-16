@@ -45,8 +45,8 @@ public class ProxyLoadGraph : ILoadGraph
     // All queries use {0} placeholder for block number to ensure temporal consistency with Anvil forks.
     // This prevents post-fork data from leaking into the graph (see anvil-failures-2026-02-14.md).
 
-    // Block-filtered balance query: inlines V_CrcV2_BalancesByAccountAndToken with blockNumber filter
-    // and adds registration filter on ERC20 wrapper avatars (matches balanceQuery.sql)
+    // Inlined balance view with temporal filter on transfer events
+    // and registration filter on ERC20 wrapper avatars (matches balanceQuery.sql)
     private const string BalanceQueryTemplate = """
         WITH static_token_transfers AS (
             SELECT t."blockNumber", t."timestamp", t."transactionIndex", t."logIndex",
@@ -92,7 +92,7 @@ public class ProxyLoadGraph : ILoadGraph
             FROM (SELECT * FROM demurraged_wrapped_from_transfers UNION ALL SELECT * FROM demurraged_wrapped_to_transfers) AS t
             GROUP BY account, "tokenAddress"
         ),
-        -- Inline V_CrcV2_BalancesByAccountAndToken with block filter
+        -- Inlined balance view with temporal filter
         tx AS (
             SELECT "timestamp", "from" AS account, "tokenAddress", -value AS delta
             FROM "CrcV2_TransferSingle" WHERE "blockNumber" <= {0}
@@ -131,18 +131,18 @@ public class ProxyLoadGraph : ILoadGraph
         ORDER BY balance, account, "tokenAddress"
         """;
 
-    // Block-filtered trust query: inlines V_CrcV2_TrustRelations with blockNumber filter
-    // Uses row_number() to get latest trust event per (truster, trustee) pair at the target block.
+    // Inlined trust view with temporal filter on trust events
+    // Uses row_number() to get latest trust event per (truster, trustee) pair at the target height.
     // Includes registration filter on ERC20 wrapper avatars (matches trustQuery.sql).
     private const string TrustQueryTemplate = """
-        WITH trust_at_block AS (
+        WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
                    row_number() OVER (PARTITION BY truster, trustee
                        ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
             FROM "CrcV2_Trust"
             WHERE "blockNumber" <= {0}
         ), active_trust AS (
-            SELECT truster, trustee FROM trust_at_block
+            SELECT truster, trustee FROM trust_state
             WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
         )
         SELECT t1.truster, t1.trustee FROM active_trust t1
@@ -161,7 +161,7 @@ public class ProxyLoadGraph : ILoadGraph
         WHERE t3."group" IS NULL
         """;
 
-    // Block-filtered group query
+    // Group query with temporal filter
     private const string GroupQueryTemplate = """
         SELECT "group" AS group_address
         FROM "CrcV2_RegisterGroup"
@@ -169,16 +169,16 @@ public class ProxyLoadGraph : ILoadGraph
           AND "blockNumber" <= {0}
         """;
 
-    // Block-filtered group trust query: uses same trust_at_block CTE
+    // Group trust query with temporal filter: uses same trust_state CTE
     private const string GroupTrustQueryTemplate = """
-        WITH trust_at_block AS (
+        WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
                    row_number() OVER (PARTITION BY truster, trustee
                        ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC) AS rn
             FROM "CrcV2_Trust"
             WHERE "blockNumber" <= {0}
         ), active_trust AS (
-            SELECT truster, trustee FROM trust_at_block
+            SELECT truster, trustee FROM trust_state
             WHERE rn = 1 AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block" WHERE "blockNumber" <= {0})::numeric
         )
         SELECT t.truster AS group_address, t.trustee AS trusted_token
