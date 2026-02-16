@@ -45,55 +45,12 @@ public class ProxyLoadGraph : ILoadGraph
     // All queries use {0} placeholder for block number to ensure temporal consistency with Anvil forks.
     // This prevents post-fork data from leaking into the graph (see anvil-failures-2026-02-14.md).
 
-    // Inlined balance view with temporal filter on transfer events
-    // and registration filter on ERC20 wrapper avatars (matches balanceQuery.sql)
+    // Native-only balance query: uses CrcV2_TransferSingle/Batch (no ERC20 wrappers).
+    // Wrapper addresses are excluded because Hub.sol operateFlowMatrix requires registered
+    // avatars as flow vertices — wrapper contracts are NOT registered avatars.
+    // The underlying avatar's tokens are already covered via native transfers.
     private const string BalanceQueryTemplate = """
-        WITH static_token_transfers AS (
-            SELECT t."blockNumber", t."timestamp", t."transactionIndex", t."logIndex",
-                   t."transactionHash", t."tokenAddress", t."from", t."to", t."amount"
-            FROM "CrcV2_Erc20WrapperTransfer" t
-            JOIN "CrcV2_ERC20WrapperDeployed" d ON d."circlesType" = 1 AND d."erc20Wrapper" = t."tokenAddress"
-            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = d.avatar
-            WHERE t."blockNumber" <= {0}
-            ORDER BY t."blockNumber", t."transactionIndex", t."logIndex"
-        ), static_from_transfers AS (
-            SELECT t1."timestamp", t1."tokenAddress", t1."from" AS "account", -t1."amount" AS diff
-            FROM static_token_transfers t1
-            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."from"
-        ), static_to_transfers AS (
-            SELECT t1."timestamp", t1."tokenAddress", t1."to" AS "account", t1."amount" AS diff
-            FROM static_token_transfers t1
-            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."to"
-        ), static_sum AS (
-            SELECT sum(diff) AS static_balance, account, "tokenAddress",
-                   max("timestamp") AS "timestamp", true AS "isWrapped", 'static' AS "circlesType"
-            FROM (SELECT * FROM static_from_transfers UNION ALL SELECT * FROM static_to_transfers) AS t
-            GROUP BY account, "tokenAddress"
-        ),
-        demurraged_wrapped_token_transfers AS (
-            SELECT t."blockNumber", t."timestamp", t."transactionIndex", t."logIndex",
-                   t."transactionHash", t."tokenAddress", t."from", t."to", t."amount"
-            FROM "CrcV2_Erc20WrapperTransfer" t
-            JOIN "CrcV2_ERC20WrapperDeployed" d ON d."circlesType" = 0 AND d."erc20Wrapper" = t."tokenAddress"
-            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = d.avatar
-            WHERE t."blockNumber" <= {0}
-            ORDER BY t."blockNumber", t."transactionIndex", t."logIndex"
-        ), demurraged_wrapped_from_transfers AS (
-            SELECT t1."timestamp", t1."tokenAddress", t1."from" AS "account", -t1."amount" AS diff
-            FROM demurraged_wrapped_token_transfers t1
-            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."from"
-        ), demurraged_wrapped_to_transfers AS (
-            SELECT t1."timestamp", t1."tokenAddress", t1."to" AS "account", t1."amount" AS diff
-            FROM demurraged_wrapped_token_transfers t1
-            INNER JOIN "V_CrcV2_Avatars" t2 ON t2.avatar = t1."to"
-        ), demurraged_wrapped_sum AS (
-            SELECT sum(diff) AS inflationary_balance, account, "tokenAddress",
-                   max("timestamp") AS "lastActivity", true AS "isWrapped", 'demurraged' AS "circlesType"
-            FROM (SELECT * FROM demurraged_wrapped_from_transfers UNION ALL SELECT * FROM demurraged_wrapped_to_transfers) AS t
-            GROUP BY account, "tokenAddress"
-        ),
-        -- Inlined balance view with temporal filter
-        tx AS (
+        WITH tx AS (
             SELECT "timestamp", "from" AS account, "tokenAddress", -value AS delta
             FROM "CrcV2_TransferSingle" WHERE "blockNumber" <= {0}
             UNION ALL
@@ -109,31 +66,19 @@ public class ProxyLoadGraph : ILoadGraph
             SELECT account, "tokenAddress", sum(delta) AS balance, max("timestamp") AS last_ts
             FROM tx
             GROUP BY account, "tokenAddress"
-        ),
-        all_transfers AS (
-            SELECT static_balance AS balance, account, "tokenAddress",
-                   "timestamp" AS "lastActivity", "isWrapped", "circlesType"
-            FROM static_sum
-            UNION ALL
-            SELECT inflationary_balance AS balance, account, "tokenAddress",
-                   "lastActivity", "isWrapped", "circlesType"
-            FROM demurraged_wrapped_sum
-            UNION ALL
-            SELECT balance, account, "tokenAddress", last_ts AS "lastActivity",
-                   false AS "isWrapped", 'demurraged' AS "circlesType"
-            FROM agg
-            INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = agg.account
-            WHERE account <> '0x0000000000000000000000000000000000000000' AND balance > 0
         )
-        SELECT balance::text, account, "tokenAddress", "lastActivity", "isWrapped", "circlesType"
-        FROM all_transfers
-        WHERE balance > 0
+        SELECT balance::text, account, "tokenAddress", last_ts AS "lastActivity",
+               false AS "isWrapped", 'demurraged' AS "circlesType"
+        FROM agg
+        INNER JOIN "V_CrcV2_Avatars" a ON a.avatar = agg.account
+        WHERE account <> '0x0000000000000000000000000000000000000000' AND balance > 0
         ORDER BY balance, account, "tokenAddress"
         """;
 
-    // Inlined trust view with temporal filter on trust events
+    // Inlined trust view with temporal filter on trust events.
     // Uses row_number() to get latest trust event per (truster, trustee) pair at the target height.
-    // Includes registration filter on ERC20 wrapper avatars (matches trustQuery.sql).
+    // Excludes ERC20 wrapper trust edges — wrapper addresses are not registered avatars
+    // and Hub.sol operateFlowMatrix rejects them as flow vertices.
     private const string TrustQueryTemplate = """
         WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
@@ -150,15 +95,6 @@ public class ProxyLoadGraph : ILoadGraph
         INNER JOIN "V_CrcV2_Avatars" a2 ON a2.avatar = t1.trustee
         LEFT JOIN "CrcV2_RegisterGroup" t2 ON t2."group" = t1.truster
         WHERE t2."group" IS NULL
-
-        UNION ALL
-
-        SELECT t1.truster, t2."erc20Wrapper" AS trustee FROM active_trust t1
-        INNER JOIN "CrcV2_ERC20WrapperDeployed" t2 ON t2.avatar = t1.trustee
-        INNER JOIN "V_CrcV2_Avatars" a1 ON a1.avatar = t1.truster
-        INNER JOIN "V_CrcV2_Avatars" a2 ON a2.avatar = t2.avatar
-        LEFT JOIN "CrcV2_RegisterGroup" t3 ON t3."group" = t1.truster
-        WHERE t3."group" IS NULL
         """;
 
     // Group query with temporal filter
