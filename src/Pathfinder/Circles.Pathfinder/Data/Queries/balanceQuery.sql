@@ -10,6 +10,7 @@ with static_token_transfers as (
          , t."amount"
     from "CrcV2_Erc20WrapperTransfer" t
              join "CrcV2_ERC20WrapperDeployed" d on d."circlesType" = 1 and d."erc20Wrapper" = t."tokenAddress"
+             inner join "V_CrcV2_Avatars" a on a.avatar = d.avatar
     order by t."blockNumber", t."transactionIndex", t."logIndex"
 ), static_from_transfers as (
     select t1."timestamp"
@@ -55,6 +56,7 @@ demurraged_wrapped_token_transfers as (
          , t."amount"
     from "CrcV2_Erc20WrapperTransfer" t
              join "CrcV2_ERC20WrapperDeployed" d on d."circlesType" = 0 and d."erc20Wrapper" = t."tokenAddress"
+             inner join "V_CrcV2_Avatars" a on a.avatar = d.avatar
     order by t."blockNumber", t."transactionIndex", t."logIndex"
 ), demurraged_wrapped_from_transfers as (
     select t1."timestamp"
