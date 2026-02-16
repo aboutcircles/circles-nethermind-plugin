@@ -45,42 +45,35 @@
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0xaa9081197e02f2fdacfc65e7606743fa2d005208",
-        "amount": "996034130344983169",
+        "amount": "995045122891097215",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
-        "token": "0x7147a7405fcfe5cfa30c6d5363f9f357a317d082",
-        "amount": "1055",
-        "isWrapped": true,
-        "isStatic": true
-      },
-      {
-        "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
-        "amount": "5524160654283460271720",
+        "amount": "6108005889882893493063",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
-        "amount": "81613752450",
+        "amount": "81532714455",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0x88b811419a2ad503e53f0b208e24c99767927aab",
-        "amount": "84352973631035537117",
+        "amount": "84269215738472513761",
         "isWrapped": false,
         "isStatic": false
       },
       {
         "holder": "0x4b6f72008e7aca33de36b6565ef30264626b21db",
         "token": "0xf5a8aaf595eabf5e858c8ec5f2243ac4a2bfc127",
-        "amount": "95200940672227339547",
+        "amount": "95106411341280440839",
         "isWrapped": false,
         "isStatic": false
       }
@@ -91,7 +84,7 @@
     "stats": {
       "addressCount": 3,
       "trustEdges": 4,
-      "balanceEntries": 6,
+      "balanceEntries": 5,
       "groupCount": 0,
       "groupTrustCount": 0,
       "consentedCount": 0
