@@ -9,7 +9,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Circles.Pathfinder.Data
 {
-    // TODO: Use CirclesQuery<T> and remove the Npgsql dependency
     public interface ILoadGraph
     {
         IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>

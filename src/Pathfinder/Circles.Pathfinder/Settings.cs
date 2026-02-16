@@ -31,14 +31,6 @@ public class Settings
         : 60;
 
     /// <summary>
-    /// Enable debug logging for pathfinder operations (default: false).
-    /// When enabled, logs detailed information about edge filtering,
-    /// consented flow validation, and other internal operations.
-    /// </summary>
-    public static bool DebugLogging { get; } =
-        Environment.GetEnvironmentVariable("PATHFINDER_DEBUG_LOGGING")?.ToLowerInvariant() is "true" or "1";
-
-    /// <summary>
     /// Target timestamp for demurrage calculations (default: null = use current time).
     /// When set, demurrage is calculated relative to this timestamp instead of NOW.
     /// Used for testing against frozen blocks where the block timestamp differs from current time.

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Circles.Pathfinder.Edges;
 using Circles.Pathfinder.Nodes;
 
@@ -95,9 +94,6 @@ public class FlowGraph : IGraph<FlowEdge>
     /// <returns>A new flow graph with aggregated edges.</returns>
     public FlowGraph AggregateIdenticalEdges()
     {
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
-
         var aggregatedGraph = new FlowGraph();
 
         // Copy all avatar nodes
@@ -159,9 +155,6 @@ public class FlowGraph : IGraph<FlowEdge>
 
             aggregatedGraph.Edges.Add(newFlowEdge);
         }
-
-        sw.Stop();
-        // Console.WriteLine($"TIMING: FlowGraph.AggregateIdenticalEdges took {sw.ElapsedMilliseconds}ms");
 
         return aggregatedGraph;
     }

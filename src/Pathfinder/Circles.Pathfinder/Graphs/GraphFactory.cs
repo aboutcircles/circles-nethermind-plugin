@@ -295,6 +295,9 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         if (needsVirtualSink)
         {
+            // Wrapped tokens from simulated balances — currently always empty in production
+            // (wrapper data excluded from queries). Kept for future support of wrapped token
+            // simulation, where callers inject ERC20-wrapped balances into the graph.
             var wrappedTokensInSim = simulated
                 .Where(x => x.IsWrapped)
                 .Select(x => x.TokenId)
