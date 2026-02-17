@@ -3,7 +3,8 @@ using System.Text.Json;
 namespace Circles.Rpc.Host;
 
 /// <summary>
-/// Client for making JSON-RPC calls to Nethermind for eth_call operations.
+/// Client for making JSON-RPC calls to Nethermind for eth_call operations
+/// and transparent forwarding of unknown RPC methods.
 /// </summary>
 public class NethermindRpcClient
 {
@@ -14,6 +15,46 @@ public class NethermindRpcClient
     {
         _httpClientFactory = httpClientFactory;
         _rpcUrl = rpcUrl;
+    }
+
+    /// <summary>
+    /// Forwards a raw JSON-RPC request to Nethermind and returns the complete response.
+    /// Used for transparent proxying of eth_*/net_*/web3_* and other non-circles methods.
+    /// </summary>
+    public async Task<JsonElement> ForwardRpcRequest(string method, int id, JsonElement @params)
+    {
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+        var payload = new
+        {
+            jsonrpc = "2.0",
+            method,
+            @params,
+            id
+        };
+
+        var response = await httpClient.PostAsJsonAsync(_rpcUrl, payload);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    /// <summary>
+    /// Forwards an entire raw JSON body (including batch requests) to Nethermind.
+    /// </summary>
+    public async Task<JsonElement> ForwardRawRequest(byte[] body)
+    {
+        using var httpClient = _httpClientFactory.CreateClient();
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+        var content = new ByteArrayContent(body);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+
+        var response = await httpClient.PostAsync(_rpcUrl, content);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     /// <summary>

@@ -49,4 +49,24 @@ public static class RpcMetrics
     public static readonly Gauge ActiveSubscriptions = Metrics.CreateGauge(
         "circles_rpc_active_subscriptions",
         "Number of active WebSocket subscriptions");
+
+    /// <summary>
+    /// Total proxied RPC requests forwarded to Nethermind by method.
+    /// </summary>
+    public static readonly Counter ProxiedTotal = Metrics.CreateCounter(
+        "circles_rpc_proxied_total",
+        "Total number of RPC requests proxied to Nethermind",
+        new CounterConfiguration { LabelNames = new[] { "method" } });
+
+    /// <summary>
+    /// Proxied RPC request duration by method.
+    /// </summary>
+    public static readonly Histogram ProxyDuration = Metrics.CreateHistogram(
+        "circles_rpc_proxy_duration_seconds",
+        "Proxied RPC request duration in seconds",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "method" },
+            Buckets = new[] { 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0 }
+        });
 }

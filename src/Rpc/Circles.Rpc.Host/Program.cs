@@ -115,6 +115,65 @@ async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionS
 app.Map("/ws/subscribe", HandleSubscriptionWebSocket).DisableAntiforgery();
 app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
 
+// ─── Batch JSON-RPC middleware ────────────────────────────────────────────────
+// JSON-RPC batch requests (body is a JSON array) are forwarded entirely to Nethermind.
+// Nethermind has the Circles module loaded, so it can handle both circles_* and eth_* methods.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == "POST" && context.Request.Path == "/")
+    {
+        context.Request.EnableBuffering();
+        var firstByte = context.Request.Body.ReadByte();
+        context.Request.Body.Position = 0;
+
+        if (firstByte == '[') // JSON array = batch request
+        {
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
+            var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var startTimestamp = Stopwatch.GetTimestamp();
+
+            logger.LogInformation("Batch JSON-RPC request from {RemoteIp}, forwarding to Nethermind", remoteIp);
+            RpcMetrics.ProxiedTotal.WithLabels("batch").Inc();
+
+            try
+            {
+                using var ms = new MemoryStream();
+                await context.Request.Body.CopyToAsync(ms);
+                var body = ms.ToArray();
+
+                var result = await nethermindClient.ForwardRawRequest(body);
+                var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+                RpcMetrics.ProxyDuration.WithLabels("batch").Observe(elapsed.TotalSeconds);
+
+                logger.LogInformation("Batch JSON-RPC proxied in {ElapsedMs} ms from {RemoteIp}",
+                    elapsed.TotalMilliseconds, remoteIp);
+
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(context.Response.Body, result);
+            }
+            catch (Exception ex)
+            {
+                var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+                RpcMetrics.ErrorsTotal.WithLabels("batch", "proxy_error").Inc();
+                logger.LogError(ex, "Failed to proxy batch JSON-RPC from {RemoteIp} after {ElapsedMs} ms",
+                    remoteIp, elapsed.TotalMilliseconds);
+
+                context.Response.StatusCode = 200;
+                context.Response.ContentType = "application/json";
+                var errorResponse = new JsonRpcErrorResponse
+                {
+                    Error = new JsonRpcError { Code = -32603, Message = $"Batch proxy error: {ex.Message}" }
+                };
+                await JsonSerializer.SerializeAsync(context.Response.Body, errorResponse);
+            }
+            return;
+        }
+    }
+
+    await next();
+});
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 app.MapPost("/", async (
@@ -183,9 +242,11 @@ app.MapPost("/", async (
             "circles_events" => await HandleEvents(request, rpcModule),
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
-            // TEMPORARY: legacy non-paginated format for old SDK compat — remove when SDK migrates to circles_query2
+            // TEMPORARY: legacy non-paginated format for old SDK compat — remove when SDK migrates to circles_paginated_query
             "circles_query" => await HandleQuery(request, rpcModule),
-            // TODO: rename to circles_query once old SDK is retired
+            // Server-side cursor pagination (returns {columns, rows, hasMore, nextCursor})
+            "circles_paginated_query" => await HandleQuery2(request, rpcModule),
+            // Deprecated alias — remove after 2026-03-17
             "circles_query2" => await HandleQuery2(request, rpcModule),
             // SDK Enablement Methods
             "circles_getProfileView" => await ReflectionHandler(request, rpcModule),
@@ -219,23 +280,48 @@ app.MapPost("/", async (
             Result = rpcResult
         });
     }
-    catch (RpcMethodNotFoundException ex)
+    catch (RpcMethodNotFoundException)
     {
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
-        RpcMetrics.ErrorsTotal.WithLabels(methodName, "method_not_found").Inc();
-
-        logger.LogWarning(ex,
-            "RPC method not found: {Method} from {RemoteIp} after {ElapsedMs} ms",
-            ex.MethodName,
-            remoteIp,
-            elapsed.TotalMilliseconds);
-        return Results.Ok(new JsonRpcErrorResponse
+        // Forward unknown methods to Nethermind (eth_*, net_*, web3_*, etc.)
+        var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
+        try
         {
-            Id = request.Id,
-            Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {ex.MethodName}" }
-        });
+            RpcMetrics.ProxiedTotal.WithLabels(methodName).Inc();
+
+            logger.LogInformation(
+                "Proxying RPC request {Method} (id={Id}) to Nethermind from {RemoteIp}",
+                methodName, request.Id, remoteIp);
+
+            var proxyResult = await nethermindClient.ForwardRpcRequest(
+                request.Method!, request.Id, request.Params);
+
+            var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+            RpcMetrics.ProxyDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+            RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+
+            logger.LogInformation(
+                "Proxied RPC request {Method} (id={Id}) completed in {ElapsedMs} ms from {RemoteIp}",
+                methodName, request.Id, elapsed.TotalMilliseconds, remoteIp);
+
+            // Return Nethermind's response verbatim (preserves result or error)
+            return Results.Json(proxyResult);
+        }
+        catch (Exception proxyEx)
+        {
+            var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+            RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+            RpcMetrics.ErrorsTotal.WithLabels(methodName, "proxy_error").Inc();
+
+            logger.LogError(proxyEx,
+                "Failed to proxy RPC request {Method} to Nethermind from {RemoteIp} after {ElapsedMs} ms",
+                methodName, remoteIp, elapsed.TotalMilliseconds);
+
+            return Results.Ok(new JsonRpcErrorResponse
+            {
+                Id = request.Id,
+                Error = new JsonRpcError { Code = -32603, Message = $"Failed to proxy request to Nethermind: {proxyEx.Message}" }
+            });
+        }
     }
     catch (ArgumentException ex)
     {
