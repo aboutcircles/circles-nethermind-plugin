@@ -207,7 +207,7 @@ Docker images are automatically pushed to `ghcr.io` using the built-in `GITHUB_T
 - `ghcr.io/OWNER/nethermind-circlesubi:TAG`
 - `ghcr.io/OWNER/pathfinder-host:TAG`
 - `ghcr.io/OWNER/rpc-host:TAG`
-- `ghcr.io/OWNER/circles-test-environment:TAG`
+- `ghcr.io/aboutcircles/test-environment:TAG` (built by circles-test-environment repo)
 
 **Visibility**: Images are private by default. To make public:
 1. Go to repository → Packages

@@ -517,17 +517,14 @@ These tests validate the mint-along-path fix. If failing:
 
 ## Deployment
 
-The test environment is a **git submodule** of circles-nethermind-plugin.
+The test environment is an independent repository ([circles-test-environment](https://github.com/aboutcircles/circles-test-environment)) that builds and deploys its own Docker image to GHCR.
 
 ```bash
-# Initialize submodule
-git submodule update --init circles-test-environment
+# Run locally (from circles-test-environment repo)
+cd circles-test-environment/docker && docker compose up -d --build
 
 # Deploy via Ansible (from aboutcircles-infrastructure repo)
-make deploy-test-environment HOST=indexer-staging2
-
-# Or with full stack
-make all HOST=indexer-staging2 -e deploy_test_environment=true
+make deploy HOST=indexer-staging2 -e deploy_test_environment=true
 ```
 
 ---
@@ -563,6 +560,6 @@ LIMIT 10;
 
 ## Further Documentation
 
-- Test Environment: `circles-test-environment/README.md`
+- Test Environment: [circles-test-environment repo](https://github.com/aboutcircles/circles-test-environment)
 - Pathfinder Tests: `src/Pathfinder/Circles.Pathfinder.Tests/README.md`
 - Regression Scenarios: `src/Pathfinder/Circles.Pathfinder.Tests/RegressionScenarios/README.md`

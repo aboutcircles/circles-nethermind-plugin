@@ -13,7 +13,6 @@ on:
       - "docker/**"
       - "src/**"
       - ".github/workflows/**"
-      - "circles-test-environment"  # Submodule pointer changes
   workflow_call:
     inputs:
       skip_tests:
@@ -27,9 +26,6 @@ on:
         type: boolean
         default: false
       deploy_grafana:
-        type: boolean
-        default: false
-      deploy_test_environment:
         type: boolean
         default: false
   workflow_dispatch:
@@ -46,10 +42,6 @@ on:
         description: "Deploy Grafana dashboards"
         type: boolean
         default: false
-      deploy_test_environment:
-        description: "Deploy test environment"
-        type: boolean
-        default: false
 
 env:
   REGISTRY: ghcr.io
@@ -57,7 +49,6 @@ env:
   IMAGE_INDEX: nethermind-plugin
   IMAGE_PATHFINDER: pathfinder-host
   IMAGE_RPC: rpc-host
-  IMAGE_TEST_ENV: test-environment
   IMAGE_TRUST_TOOL: trust-missing-avatars
 
 concurrency:
@@ -110,7 +101,6 @@ jobs:
       deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
       deploy_observability: ${{ steps.set-flags.outputs.deploy_observability }}
       deploy_grafana: ${{ steps.set-flags.outputs.deploy_grafana }}
-      deploy_test_environment: ${{ steps.set-flags.outputs.deploy_test_environment }}
       any_deploy: ${{ steps.set-flags.outputs.any_deploy }}
     steps:
       - name: Check out code
@@ -149,10 +139,6 @@ jobs:
               - 'docker/metrics-exporter.Dockerfile'
             # GRAFANA: Dashboards now managed in infrastructure repo
             # grafana path filter removed - dashboards deployed from infrastructure repo
-            # TEST ENVIRONMENT: Integration testing service
-            test_environment:
-              - 'circles-test-environment/**'
-              - 'docker/docker-compose.test-environment.yml'
 
       - name: Set deployment flags
         id: set-flags
@@ -162,38 +148,32 @@ jobs:
           INPUT_DEPLOY_GNOSIS: ${{ github.event.inputs.deploy_gnosis }}
           INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
           INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
-          INPUT_DEPLOY_TEST_ENV: ${{ github.event.inputs.deploy_test_environment }}
           # workflow_call inputs (reusable workflow)
           CALL_DEPLOY_GNOSIS: ${{ inputs.deploy_gnosis }}
           CALL_DEPLOY_OBS: ${{ inputs.deploy_observability }}
           CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
-          CALL_DEPLOY_TEST_ENV: ${{ inputs.deploy_test_environment }}
           # Path filter results
           FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
           FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           # Note: Grafana dashboards are now managed in infrastructure repo
-          FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
         run: |
           # Handle workflow_dispatch (manual trigger from UI)
           if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
             GNOSIS="$INPUT_DEPLOY_GNOSIS"
             OBS="$INPUT_DEPLOY_OBS"
             GRAFANA="$INPUT_DEPLOY_GRAFANA"
-            TEST_ENV="$INPUT_DEPLOY_TEST_ENV"
           # Handle workflow_call (reusable workflow)
           elif [ "$EVENT_NAME" == "workflow_call" ]; then
             GNOSIS="$CALL_DEPLOY_GNOSIS"
             OBS="$CALL_DEPLOY_OBS"
             GRAFANA="$CALL_DEPLOY_GRAFANA"
-            TEST_ENV="$CALL_DEPLOY_TEST_ENV"
           # Handle push (auto-detect from changed files)
           else
             GNOSIS="false"
             OBS="false"
             GRAFANA="false"
-            TEST_ENV="false"
 
             # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache + docker files
             if [ "$FILTER_GNOSIS_SRC" == "true" ]; then
@@ -218,20 +198,13 @@ jobs:
 
             # GRAFANA: Dashboards now managed in infrastructure repo
             # Manual trigger via workflow_dispatch still available if needed
-
-            # TEST ENVIRONMENT: submodule or compose file changed
-            if [ "$FILTER_TEST_ENV" == "true" ]; then
-              TEST_ENV="true"
-              echo "::notice::Test environment files changed - will deploy test-environment"
-            fi
           fi
 
           echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
           echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
           echo "deploy_grafana=$GRAFANA" >> $GITHUB_OUTPUT
-          echo "deploy_test_environment=$TEST_ENV" >> $GITHUB_OUTPUT
 
-          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ] || [ "$TEST_ENV" == "true" ]; then
+          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ]; then
             echo "any_deploy=true" >> $GITHUB_OUTPUT
           else
             echo "any_deploy=false" >> $GITHUB_OUTPUT
@@ -243,11 +216,9 @@ jobs:
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
           FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
           FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
-          FILTER_TEST_ENV: ${{ steps.filter.outputs.test_environment }}
           DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ steps.set-flags.outputs.deploy_grafana }}
-          DEPLOY_TEST_ENV: ${{ steps.set-flags.outputs.deploy_test_environment }}
         run: |
           echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -256,7 +227,6 @@ jobs:
           echo "| Gnosis (Index/Pathfinder/Rpc/Cache) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
           echo "| Observability (Metrics Exporter) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | (managed in infrastructure repo) | - | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Environment | $FILTER_TEST_ENV | - | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
 
   build-images:
     needs: detect-changes
@@ -268,8 +238,6 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -328,50 +296,12 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev,mode=max
 
-  build-test-environment:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.deploy_test_environment == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push test-environment
-        uses: docker/build-push-action@v5
-        with:
-          context: ./circles-test-environment
-          file: ./circles-test-environment/docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TEST_ENV }}:dev
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TEST_ENV }}:buildcache-dev
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TEST_ENV }}:buildcache-dev,mode=max
-
   trigger-deploy:
-    needs: [detect-changes, build-images, build-test-environment]
+    needs: [detect-changes, build-images]
     if: |
       always() &&
       needs.detect-changes.outputs.any_deploy == 'true' &&
-      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped') &&
-      (needs.build-test-environment.result == 'success' || needs.build-test-environment.result == 'skipped')
+      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Ansible deployment
@@ -391,8 +321,7 @@ jobs:
               "deploy": {
                 "gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
                 "observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
-                "grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}",
-                "test_environment": "${{ needs.detect-changes.outputs.deploy_test_environment }}"
+                "grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}"
               }
             }
 
@@ -401,7 +330,6 @@ jobs:
           DEPLOY_GNOSIS: ${{ needs.detect-changes.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ needs.detect-changes.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ needs.detect-changes.outputs.deploy_grafana }}
-          DEPLOY_TEST_ENV: ${{ needs.detect-changes.outputs.deploy_test_environment }}
         run: |
           echo "## Deployment Triggered" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -410,4 +338,3 @@ jobs:
           echo "| Gnosis | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
           echo "| Observability | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Environment | $DEPLOY_TEST_ENV |" >> $GITHUB_STEP_SUMMARY
