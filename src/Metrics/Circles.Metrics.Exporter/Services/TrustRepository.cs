@@ -180,7 +180,7 @@ public class TrustRepository
     {
         // Count mutual trusts (A trusts B AND B trusts A)
         const string sql = """
-            WITH trusts AS (
+            WITH trusts AS MATERIALIZED (
                 SELECT "truster", "trustee" FROM "V_CrcV2_TrustRelations"
                 WHERE "truster" != "trustee"
             )
@@ -201,14 +201,18 @@ public class TrustRepository
         // Density = actual edges / possible edges
         // Possible edges = n * (n-1) for directed graph without self-loops
         const string sql = """
-            WITH stats AS (
+            WITH trusts AS MATERIALIZED (
+                SELECT "truster", "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            ),
+            stats AS (
                 SELECT
                     COUNT(DISTINCT avatar) as node_count,
-                    (SELECT COUNT(*) FROM "V_CrcV2_TrustRelations" WHERE "truster" != "trustee") as edge_count
+                    (SELECT COUNT(*) FROM trusts) as edge_count
                 FROM (
-                    SELECT "truster" as avatar FROM "V_CrcV2_TrustRelations"
+                    SELECT "truster" as avatar FROM trusts
                     UNION
-                    SELECT "trustee" as avatar FROM "V_CrcV2_TrustRelations"
+                    SELECT "trustee" as avatar FROM trusts
                 ) nodes
             )
             SELECT
@@ -224,10 +228,13 @@ public class TrustRepository
     public async Task<double> GetAvgOutDegreeAsync(CancellationToken ct = default)
     {
         const string sql = """
+            WITH trusts AS MATERIALIZED (
+                SELECT "truster", "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            )
             SELECT COALESCE(AVG(out_degree), 0) FROM (
                 SELECT "truster", COUNT(*) as out_degree
-                FROM "V_CrcV2_TrustRelations"
-                WHERE "truster" != "trustee"
+                FROM trusts
                 GROUP BY "truster"
             ) degrees
             """;
@@ -238,10 +245,13 @@ public class TrustRepository
     public async Task<double> GetAvgInDegreeAsync(CancellationToken ct = default)
     {
         const string sql = """
+            WITH trusts AS MATERIALIZED (
+                SELECT "truster", "trustee" FROM "V_CrcV2_TrustRelations"
+                WHERE "truster" != "trustee"
+            )
             SELECT COALESCE(AVG(in_degree), 0) FROM (
                 SELECT "trustee", COUNT(*) as in_degree
-                FROM "V_CrcV2_TrustRelations"
-                WHERE "truster" != "trustee"
+                FROM trusts
                 GROUP BY "trustee"
             ) degrees
             """;
@@ -634,7 +644,7 @@ public class TrustRepository
                         AND "expiryTime" <= (SELECT ts FROM now_ts)) as churn_30d
                 FROM "CrcV2_Trust"
             ),
-            trusts AS (
+            trusts AS MATERIALIZED (
                 SELECT "truster", "trustee" FROM "V_CrcV2_TrustRelations"
                 WHERE "truster" != "trustee"
             ),

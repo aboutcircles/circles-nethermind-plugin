@@ -33,7 +33,7 @@ WITH active_trusts AS MATERIALIZED (
         FROM "CrcV2_Trust"
     ) t
     WHERE rn = 1
-      AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block")::numeric
+      AND "expiryTime" > COALESCE((SELECT max("timestamp") FROM "System_Block"), 0)::numeric
 ),
 unique_avatars AS (
     -- Deduplicate avatars (V_Crc_Avatars may have duplicates from v1+v2)

@@ -36,5 +36,4 @@ FROM (
     FROM "CrcV2_Trust"
 ) t
 WHERE rn = 1
-    AND "expiryTime" > ((SELECT max("System_Block"."timestamp") AS max
-                        FROM "System_Block"))::numeric
+    AND "expiryTime" > COALESCE((SELECT max("System_Block"."timestamp") FROM "System_Block"), 0)::numeric
