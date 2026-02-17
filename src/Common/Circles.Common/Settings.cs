@@ -243,5 +243,8 @@ public class Settings
             .ToArray()
         ?? [];
 
+    public readonly bool EnableGroupMinting =
+        Environment.GetEnvironmentVariable("PATHFINDER_ENABLE_GROUP_MINTING")?.ToLowerInvariant() != "false";
+
     #endregion
 }

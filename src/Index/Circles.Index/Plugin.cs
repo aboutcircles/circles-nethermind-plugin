@@ -225,6 +225,10 @@ public class Plugin : INethermindPlugin
         pluginLogger.Info(" * V2 Token offer factory: " + string.Join(", ", settings.CirclesTokenOfferFactoryAddress));
         pluginLogger.Info(" * V2 Invitation escrow: " + string.Join(", ", settings.InvitationEscrowContract));
         pluginLogger.Info(" * V2 OIC: " + settings.OICContractAddress);
+        pluginLogger.Info(" * V2 Invitation-at-scale farms: " + string.Join(", ", settings.InvitationAtScaleInvitationFarmAddresses));
+        pluginLogger.Info(" * V2 Invitation-at-scale invitation modules: " + string.Join(", ", settings.InvitationAtScaleInvitationModuleAddresses));
+        pluginLogger.Info(" * V2 Invitation-at-scale referrals modules: " + string.Join(", ", settings.InvitationAtScaleReferralsModuleAddresses));
+        pluginLogger.Info(" * V2 Invitation-at-scale quota grant modules: " + string.Join(", ", settings.InvitationAtScaleQuotaGrantModuleAddresses));
         pluginLogger.Info(" * V2 Base Group Router: " + settings.BaseGroupRouter);
         pluginLogger.Info(" * V2 Invitation Farms: " + string.Join(", ", settings.InvitationAtScaleInvitationFarmAddresses));
         pluginLogger.Info(" * V2 Invitation Modules: " + string.Join(", ", settings.InvitationAtScaleInvitationModuleAddresses));
