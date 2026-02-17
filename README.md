@@ -169,6 +169,21 @@ curl -s http://localhost:8545/ \
   }' | jq
 ```
 
+#### Get total balance (v2)
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circlesV2_getTotalBalance",
+    "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"]
+  }' | jq
+```
+
+**Returns**: Total v2 balance as TimeCircles (default) or raw atto units.
+
 #### Find a path (v2)
 
 ```bash
@@ -187,6 +202,256 @@ curl -s http://localhost:8545/ \
     }]
   }' | jq
 ```
+
+**Returns**: Computed transfer path with max flow and individual transfers.
+
+#### Get trust relations
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getTrustRelations",
+    "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"]
+  }' | jq
+```
+
+**Returns**: Incoming and outgoing trust relations for the address.
+
+#### Get common trust
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getCommonTrust",
+    "params":[
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
+    ]
+  }' | jq
+```
+
+**Returns**: Array of addresses that both avatars commonly trust.
+
+#### List indexed tables
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_tables",
+    "params":[]
+  }' | jq
+```
+
+**Returns**: All indexed tables and columns grouped by namespace.
+
+#### Database health check
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_health",
+    "params":[]
+  }' | jq
+```
+
+**Returns**: Plugin health status and database connectivity check.
+
+#### Get avatar info
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getAvatarInfo",
+    "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"]
+  }' | jq
+```
+
+**Returns**: Essential avatar information (type, version, token addresses, CID).
+
+For batch queries:
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getAvatarInfoBatch",
+    "params":[[
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
+    ]]
+  }' | jq
+```
+
+#### Get profile CID
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getProfileCid",
+    "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"]
+  }' | jq
+```
+
+**Returns**: Profile CID for the avatar.
+
+For batch queries:
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getProfileCidBatch",
+    "params":[[
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
+    ]]
+  }' | jq
+```
+
+#### Get profile by CID
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getProfileByCid",
+    "params":["Qmb2s3hjxXXcFqWvDDSPCd1fXXa9gcFJd8bzdZNNAvkq9W"]
+  }' | jq
+```
+
+**Returns**: Profile data for the given CID.
+
+For batch queries:
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getProfileByCidBatch",
+    "params":[[
+      "Qmb2s3hjxXXcFqWvDDSPCd1fXXa9gcFJd8bzdZNNAvkq9W",
+      "QmZuR1Jkhs9RLXVY28eTTRSnqbxLTBSoggp18Yde858xCM"
+    ]]
+  }' | jq
+```
+
+#### Get profile by address
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getProfileByAddress",
+    "params":["0xde374ece6fa50e781e81aac78e811b33d16912c7"]
+  }' | jq
+```
+
+**Returns**: Profile data for the given avatar address.
+
+For batch queries:
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getProfileByAddressBatch",
+    "params":[[
+      "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+      "0xe8fc7a2d0573e5164597b05f14fa9a7fca7b215c"
+    ]]
+  }' | jq
+```
+
+#### Get token info
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getTokenInfo",
+    "params":["0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e"]
+  }' | jq
+```
+
+**Returns**: Token metadata for the given token address.
+
+For batch queries:
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getTokenInfoBatch",
+    "params":[[
+      "0x0d8c4901dd270fe101b8014a5dbecc4e4432eb1e",
+      "0x42cedde51198d1773590311e2a340dc06b24cb37"
+    ]]
+  }' | jq
+```
+
+#### Get network snapshot
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_getNetworkSnapshot",
+    "params":[]
+  }' | jq
+```
+
+**Returns**: Full network snapshot with current trust relations and balances.
+
+#### Search profiles
+
+```bash
+curl -s http://localhost:8545/ \
+  -H 'content-type: application/json' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"circles_searchProfiles",
+    "params":["alice", 10, 0]
+  }' | jq
+```
+
+**Returns**: Profile search results matching the query text.
 
 ### Example request collections
 
