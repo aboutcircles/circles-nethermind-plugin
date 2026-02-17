@@ -79,6 +79,107 @@ public class NethermindRpcClientTests
         Assert.That(blockNumber, Is.EqualTo(16));
     }
 
+    // ── ForwardRpcRequest tests ──────────────────────────────────────────────
+
+    [Test]
+    public async Task ForwardRpcRequest_SendsCorrectPayloadAndReturnsVerbatimResponse()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var expectedResponse = "{\"jsonrpc\":\"2.0\",\"id\":42,\"result\":\"0xabc123\"}";
+        var rpcClient = CreateClient(message =>
+        {
+            capturedRequest = message;
+            return JsonResponse(expectedResponse);
+        });
+
+        var @params = JsonDocument.Parse("[\"0x1\"]").RootElement;
+        var result = await rpcClient.ForwardRpcRequest("eth_getBlockByNumber", 42, @params);
+
+        // Verify payload sent to Nethermind
+        Assert.That(capturedRequest, Is.Not.Null);
+        var body = await capturedRequest!.Content!.ReadAsStringAsync();
+        Assert.That(body, Does.Contain("\"method\":\"eth_getBlockByNumber\""));
+        Assert.That(body, Does.Contain("\"id\":42"));
+        Assert.That(body, Does.Contain("\"jsonrpc\":\"2.0\""));
+
+        // Verify response returned as-is
+        Assert.That(result.GetProperty("result").GetString(), Is.EqualTo("0xabc123"));
+        Assert.That(result.GetProperty("id").GetInt32(), Is.EqualTo(42));
+    }
+
+    [Test]
+    public async Task ForwardRpcRequest_PreservesNethermindErrorResponse()
+    {
+        var errorResponse = "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"Invalid params\"}}";
+        var rpcClient = CreateClient(_ => JsonResponse(errorResponse));
+
+        var @params = JsonDocument.Parse("[]").RootElement;
+        var result = await rpcClient.ForwardRpcRequest("eth_getBalance", 1, @params);
+
+        Assert.That(result.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32602));
+        Assert.That(result.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("Invalid params"));
+    }
+
+    [Test]
+    public void ForwardRpcRequest_ThrowsOnHttpError()
+    {
+        var rpcClient = CreateClient(_ =>
+            new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StringContent("Internal Server Error")
+            });
+
+        var @params = JsonDocument.Parse("[]").RootElement;
+        Assert.That(
+            async () => await rpcClient.ForwardRpcRequest("eth_blockNumber", 1, @params),
+            Throws.TypeOf<HttpRequestException>());
+    }
+
+    // ── ForwardRawRequest tests ──────────────────────────────────────────────
+
+    [Test]
+    public async Task ForwardRawRequest_ForwardsBatchAndReturnsBatchResponse()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var batchResponse = "[{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x1\"},{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":\"100\"}]";
+        var rpcClient = CreateClient(message =>
+        {
+            capturedRequest = message;
+            return JsonResponse(batchResponse);
+        });
+
+        var batch = Encoding.UTF8.GetBytes(
+            "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}," +
+            "{\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[],\"id\":2}]");
+
+        var result = await rpcClient.ForwardRawRequest(batch);
+
+        // Verify body was forwarded
+        Assert.That(capturedRequest, Is.Not.Null);
+        Assert.That(capturedRequest!.Content!.Headers.ContentType!.MediaType, Is.EqualTo("application/json"));
+        var sentBody = await capturedRequest.Content.ReadAsByteArrayAsync();
+        Assert.That(sentBody, Is.EqualTo(batch));
+
+        // Verify batch response (JSON array)
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(result.GetArrayLength(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void ForwardRawRequest_ThrowsOnHttpError()
+    {
+        var rpcClient = CreateClient(_ =>
+            new HttpResponseMessage(HttpStatusCode.BadGateway)
+            {
+                Content = new StringContent("Bad Gateway")
+            });
+
+        var body = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}");
+        Assert.That(
+            async () => await rpcClient.ForwardRawRequest(body),
+            Throws.TypeOf<HttpRequestException>());
+    }
+
     private static NethermindRpcClient CreateClient(Func<HttpRequestMessage, HttpResponseMessage> handler)
     {
         var factoryMock = new Mock<IHttpClientFactory>();
