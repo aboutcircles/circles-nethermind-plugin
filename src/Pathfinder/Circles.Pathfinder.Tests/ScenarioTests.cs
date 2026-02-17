@@ -88,7 +88,9 @@ public class ScenarioTests
         var request = BuildFlowRequest(scenario);
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
 
-        var pathfinder = new V2Pathfinder();
+        // Always use full consent validation in scenario tests — DisableConsentedFlow
+        // is a production safety net, not a correctness feature.
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var targetFlow = string.IsNullOrEmpty(scenario.MinFlow)
             ? UInt256.Parse("1000000000000000000")
             : UInt256.Parse(scenario.MinFlow);
@@ -318,7 +320,7 @@ public class ConcurrentSessionTests
                 var request = ScenarioTests.BuildFlowRequest(scenario);
                 var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
 
-                var pathfinder = new V2Pathfinder();
+                var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
                 var targetFlow = UInt256.Parse(scenario.MinFlow!);
 
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -484,7 +486,9 @@ public class ScenarioE2ETests
 
         var request = ScenarioTests.BuildFlowRequest(scenario);
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
-        var pathfinder = new V2Pathfinder();
+        // E2E tests always validate consent rules (not production exclusion mode)
+        settings.DisableConsentedFlow = false;
+        var pathfinder = new V2Pathfinder(settings: settings);
 
         var targetFlow = string.IsNullOrEmpty(scenario.MinFlow)
             ? UInt256.Parse("1000000000000000000")

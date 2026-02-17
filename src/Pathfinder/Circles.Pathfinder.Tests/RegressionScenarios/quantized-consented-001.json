@@ -9,7 +9,7 @@
   "shouldFindPath": true,
   "minFlow": "96000000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": false,
+  "runOnAnvil": true,
   "quantizedMode": true,
   "withWrap": false,
   "simulatedConsentedAvatars": [

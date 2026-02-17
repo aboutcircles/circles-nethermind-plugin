@@ -55,4 +55,17 @@ public class Settings
         Environment.GetEnvironmentVariable("PATHFINDER_SOLVER_TIMEOUT_SECONDS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("PATHFINDER_SOLVER_TIMEOUT_SECONDS")!)
         : 30;
+
+    /// <summary>
+    /// When true, consented avatars are excluded from intermediary positions in flows.
+    /// They can still be source or sink. This avoids consent rule validation entirely
+    /// for the risky multi-hop case. Default: true (conservative).
+    /// When false, the existing consent validation logic runs (PathHasConsentViolation
+    /// + ValidateConsentedFlow safety net).
+    /// </summary>
+    public bool DisableConsentedFlow { get; set; } =
+        !string.Equals(
+            Environment.GetEnvironmentVariable("PATHFINDER_DISABLE_CONSENTED_FLOW"),
+            "false",
+            StringComparison.OrdinalIgnoreCase);
 }

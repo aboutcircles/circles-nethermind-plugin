@@ -32,6 +32,8 @@ Console.WriteLine($"* DB User: {csb.Username}");
 Console.WriteLine($"* DB Name: {csb.Database}");
 Console.WriteLine($"* DB Port: {csb.Port}");
 Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
+Console.WriteLine($"* Consented flow: {(settings.DisableConsentedFlow ? "DISABLED (intermediaries excluded)" : "enabled (validate rules)")}");
+
 
 var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
 
@@ -263,7 +265,7 @@ app.MapGet("/findMaxFlow", async (
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
             SimulatedBalances = sim,
-            SimulatedConsentedAvatars = simulatedConsentedAvatars?.ToList()
+            SimulatedConsentedAvatars = settings.DisableConsentedFlow ? null : simulatedConsentedAvatars?.ToList()
         };
 
         using (var h = await pool.Rent(request, balanceGraph, trustGraph))
@@ -387,7 +389,7 @@ app.MapGet("/findPath", async (
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
             SimulatedBalances = sim,
-            SimulatedConsentedAvatars = simulatedConsentedAvatars?.ToList(),
+            SimulatedConsentedAvatars = settings.DisableConsentedFlow ? null : simulatedConsentedAvatars?.ToList(),
             MaxTransfers = maxTransfers,
             QuantizedMode = quantizedMode,
             DebugShowIntermediateSteps = debugShowIntermediateSteps
@@ -399,6 +401,10 @@ app.MapGet("/findPath", async (
             .WaitAsync(solverTimeout);
 
         FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
+        if (result.ConsentDroppedPaths > 0)
+            FindPathMetrics.ConsentPathsDroppedTotal.Inc(result.ConsentDroppedPaths);
+        if (result.ConsentSafetyNetRejected > 0)
+            FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(result.ConsentSafetyNetRejected);
         return Results.Ok(result);
     }
     catch (TimeoutException)
@@ -465,6 +471,10 @@ app.MapPost("/findPath", async (
     request.Source = request.Source?.ToLowerInvariant();
     request.Sink = request.Sink?.ToLowerInvariant();
 
+    // When consented flow is disabled, ignore simulated consent data
+    if (settings.DisableConsentedFlow)
+        request.SimulatedConsentedAvatars = null;
+
     if (string.IsNullOrEmpty(request.TargetFlow) || !UInt256.TryParse(request.TargetFlow, out var targetFlow))
     {
         log.LogWarning("Bad amount format - TargetFlow is {TargetFlow}", request.TargetFlow);
@@ -497,6 +507,10 @@ app.MapPost("/findPath", async (
             .WaitAsync(solverTimeout);
 
         FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
+        if (result.ConsentDroppedPaths > 0)
+            FindPathMetrics.ConsentPathsDroppedTotal.Inc(result.ConsentDroppedPaths);
+        if (result.ConsentSafetyNetRejected > 0)
+            FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(result.ConsentSafetyNetRejected);
         return Results.Ok(result);
     }
     catch (TimeoutException)

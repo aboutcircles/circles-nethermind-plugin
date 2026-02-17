@@ -210,7 +210,7 @@ public class PropertyBasedTests
     {
         var src = source.ToLowerInvariant();
         var snk = sink.ToLowerInvariant();
-        var netFlow = new Dictionary<string, long>();
+        var netFlow = new Dictionary<string, System.Numerics.BigInteger>();
 
         foreach (var step in steps)
         {
@@ -220,10 +220,10 @@ public class PropertyBasedTests
             // Skip self-loops (aggregation edges)
             if (from == to) continue;
 
-            var flow = long.Parse(step.Value!);
-            netFlow.TryGetValue(from, out long fromNet);
+            var flow = System.Numerics.BigInteger.Parse(step.Value!);
+            netFlow.TryGetValue(from, out var fromNet);
             netFlow[from] = fromNet - flow;
-            netFlow.TryGetValue(to, out long toNet);
+            netFlow.TryGetValue(to, out var toNet);
             netFlow[to] = toNet + flow;
         }
 
@@ -231,7 +231,7 @@ public class PropertyBasedTests
         {
             if (vertex == src || vertex == snk) continue;
             // Router is a pass-through — net flow should be zero
-            Assert.That(net, Is.EqualTo(0),
+            Assert.That(net, Is.EqualTo(System.Numerics.BigInteger.Zero),
                 $"Flow conservation violated at {vertex[..Math.Min(10, vertex.Length)]}...: net={net}");
         }
     }
@@ -240,8 +240,8 @@ public class PropertyBasedTests
     {
         foreach (var step in steps)
         {
-            var flow = long.Parse(step.Value!);
-            Assert.That(flow, Is.GreaterThan(0),
+            var flow = System.Numerics.BigInteger.Parse(step.Value!);
+            Assert.That(flow, Is.GreaterThan(System.Numerics.BigInteger.Zero),
                 $"Output contains non-positive flow: {step.From} → {step.To} = {flow}");
         }
     }
@@ -539,7 +539,8 @@ public class PropertyBasedTests
             trustDensity: 0.4, withRouter: false, withConsent: true, consentRate: 0.5);
         var (source, sink) = PickSourceSink(graph, rng);
 
-        var pathfinder = new V2Pathfinder();
+        // Use validation mode so consent rules are checked against the validator
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var sourceAddr = AddressIdPool.StringOf(source);
         var sinkAddr = AddressIdPool.StringOf(sink);
         var request = new FlowRequest
@@ -573,6 +574,87 @@ public class PropertyBasedTests
 
             Assert.That(errors, Is.Empty,
                 $"Consent graph ({avatars} avatars) validator errors:\n{string.Join("\n", errors)}");
+        }
+    }
+
+    #endregion
+
+    #region Property: Consented Flow with Groups
+
+    /// <summary>
+    /// Random graphs with groups + consent + router should never crash.
+    /// Tests the default DisableConsentedFlow=true mode (intermediary exclusion).
+    /// </summary>
+    [Test]
+    [Repeat(15)]
+    public void RandomGraph_WithGroups_WithConsent_NeverCrashes()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 650);
+        int avatars = rng.Next(4, 10);
+        int groups = rng.Next(1, 3);
+
+        var graph = BuildSyntheticGraph(avatars, groups, DefaultBalance, rng,
+            trustDensity: 0.4, withRouter: true, withConsent: true, consentRate: 0.5);
+        var (source, sink) = PickSourceSink(graph, rng);
+
+        // Default settings: DisableConsentedFlow = true
+        var pathfinder = new V2Pathfinder();
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+        };
+        UInt256 target = CirclesConverter.BlowUpToUInt256(DefaultBalance);
+
+        Assert.DoesNotThrow(() =>
+        {
+            var result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+            if (result.Transfers.Count > 0)
+            {
+                AssertFlowConservation(result.Transfers, request.Source!, request.Sink!);
+                AssertAllFlowsPositive(result.Transfers);
+            }
+        }, $"Crashed with avatars={avatars}, groups={groups}");
+    }
+
+    /// <summary>
+    /// Consent + quantized mode: flow conservation must hold.
+    /// Exercises both consent intermediary exclusion AND quantization together.
+    /// </summary>
+    [Test]
+    [Repeat(15)]
+    public void RandomGraph_WithConsent_Quantized_FlowConservation()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 700);
+        int avatars = rng.Next(4, 8);
+
+        var graph = BuildSyntheticGraph(avatars, 0, HighBalance, rng,
+            trustDensity: 0.5, withRouter: false, withConsent: true, consentRate: 0.3);
+        var (source, sink) = PickSourceSink(graph, rng);
+
+        var pathfinder = new V2Pathfinder();
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+        };
+        UInt256 target = CirclesConverter.BlowUpToUInt256(HighBalance);
+
+        MaxFlowResponse result;
+        try
+        {
+            result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph — valid
+        }
+
+        if (result.Transfers.Count > 0)
+        {
+            AssertFlowConservation(result.Transfers, request.Source!, request.Sink!);
+            AssertAllFlowsPositive(result.Transfers);
         }
     }
 

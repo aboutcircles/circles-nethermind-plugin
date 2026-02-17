@@ -56,6 +56,20 @@ public class MaxFlowResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DebugPipelineStages? Debug { get; set; }
 
+    /// <summary>
+    /// Number of solver paths dropped due to consent rules (intermediary exclusion or violation).
+    /// Not serialized — used internally for metrics.
+    /// </summary>
+    [JsonIgnore]
+    public int ConsentDroppedPaths { get; set; }
+
+    /// <summary>
+    /// Number of edges removed by the ValidateConsentedFlow safety net.
+    /// Non-zero means the path-level filter has a gap. Not serialized.
+    /// </summary>
+    [JsonIgnore]
+    public int ConsentSafetyNetRejected { get; set; }
+
     public MaxFlowResponse(string maxFlow, List<TransferPathStep> transfers, DebugPipelineStages? debug = null)
     {
         MaxFlow = maxFlow;

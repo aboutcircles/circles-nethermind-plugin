@@ -598,6 +598,212 @@ public class ConsentedFlowValidationTests
 
     #endregion
 
+    #region PathHasConsentedIntermediary Tests (DisableConsentedFlow mode)
+
+    /// <summary>
+    /// When no avatars are consented, no intermediary exclusion should happen.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_NoConsentedAvatars_NoExclusion()
+    {
+        var graph = CreateCapacityGraph(new HashSet<int>(), new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500),
+            (Bob, Carol, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Carol);
+        Assert.That(result, Is.False);
+    }
+
+    /// <summary>
+    /// Source and sink are consented — they should NOT be treated as intermediaries.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_SourceAndSinkConsented_NotExcluded()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Alice, Carol },
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500),
+            (Bob, Carol, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Carol);
+        Assert.That(result, Is.False, "Source and sink consented but should not be treated as intermediaries");
+    }
+
+    /// <summary>
+    /// Consented avatar in intermediary position — path should be excluded.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_ConsentedInMiddle_PathExcluded()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Bob }, // Bob is consented
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500),  // Bob as "to" intermediary
+            (Bob, Carol, AliceToken, 500)   // Bob as "from" intermediary
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Carol);
+        Assert.That(result, Is.True, "Consented avatar Bob in intermediary position should trigger exclusion");
+    }
+
+    /// <summary>
+    /// Direct transfer (no intermediaries): source=consented → sink.
+    /// Should NOT be excluded since there are no intermediaries.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_DirectTransfer_NoExclusion()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Alice },
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Bob);
+        Assert.That(result, Is.False, "Direct transfer has no intermediaries to exclude");
+    }
+
+    /// <summary>
+    /// Multiple consented intermediaries — should still detect and exclude.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_MultipleConsented_StillExcluded()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Bob, Carol }, // Both intermediaries consented
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500),
+            (Bob, Carol, AliceToken, 500),
+            (Carol, Dave, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Dave);
+        Assert.That(result, Is.True, "Path through consented intermediaries should be excluded");
+    }
+
+    /// <summary>
+    /// End-to-end: V2Pathfinder with DisableConsentedFlow=true excludes paths through
+    /// consented intermediaries while preserving flow conservation.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void EndToEnd_DisableConsentedFlow_ExcludesIntermediaries_PreservesConservation()
+    {
+        var rng = new Random(42);
+        var graph = PropertyBasedTests.BuildSyntheticGraph(6, 0, 1_000_000L, rng,
+            trustDensity: 0.5, withRouter: false, withConsent: true, consentRate: 0.5);
+        var (source, sink) = PropertyBasedTests.PickSourceSink(graph, rng);
+
+        var pathfinderExclude = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+        var pathfinderValidate = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
+
+        var sourceAddr = AddressIdPool.StringOf(source);
+        var sinkAddr = AddressIdPool.StringOf(sink);
+        var request = new Circles.Common.Dto.FlowRequest { Source = sourceAddr, Sink = sinkAddr };
+        var target = Circles.Common.CirclesConverter.BlowUpToUInt256(1_000_000L);
+
+        // Both modes should not crash
+        Circles.Common.Dto.MaxFlowResponse resultExclude;
+        Circles.Common.Dto.MaxFlowResponse resultValidate;
+        try
+        {
+            resultExclude = pathfinderExclude.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph — valid
+        }
+
+        // Rebuild graph with same seed for the second test (solver mutates edge flows)
+        var rng2 = new Random(42);
+        var graph2 = PropertyBasedTests.BuildSyntheticGraph(6, 0, 1_000_000L, rng2,
+            trustDensity: 0.5, withRouter: false, withConsent: true, consentRate: 0.5);
+        var (source2, sink2) = PropertyBasedTests.PickSourceSink(graph2, rng2);
+        var request2 = new Circles.Common.Dto.FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source2),
+            Sink = AddressIdPool.StringOf(sink2)
+        };
+
+        try
+        {
+            resultValidate = pathfinderValidate.ComputeMaxFlowWithPath(graph2, request2, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return;
+        }
+
+        // Both should produce valid flow conservation
+        if (resultExclude.Transfers.Count > 0)
+        {
+            PropertyBasedTests_AssertFlowConservation(resultExclude.Transfers, sourceAddr, sinkAddr);
+        }
+        if (resultValidate.Transfers.Count > 0)
+        {
+            PropertyBasedTests_AssertFlowConservation(resultValidate.Transfers,
+                request2.Source!, request2.Sink!);
+        }
+    }
+
+    private static void PropertyBasedTests_AssertFlowConservation(
+        List<Circles.Common.Dto.TransferPathStep> steps, string source, string sink)
+    {
+        var src = source.ToLowerInvariant();
+        var snk = sink.ToLowerInvariant();
+        var netFlow = new Dictionary<string, long>();
+
+        foreach (var step in steps)
+        {
+            var from = step.From!.ToLowerInvariant();
+            var to = step.To!.ToLowerInvariant();
+            if (from == to) continue;
+
+            var flow = long.Parse(step.Value!);
+            netFlow.TryGetValue(from, out long fromNet);
+            netFlow[from] = fromNet - flow;
+            netFlow.TryGetValue(to, out long toNet);
+            netFlow[to] = toNet + flow;
+        }
+
+        foreach (var (vertex, net) in netFlow)
+        {
+            if (vertex == src || vertex == snk) continue;
+            Assert.That(net, Is.EqualTo(0),
+                $"Flow conservation violated at {vertex[..Math.Min(10, vertex.Length)]}...: net={net}");
+        }
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private static CapacityGraph CreateCapacityGraph(

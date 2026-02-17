@@ -8,7 +8,7 @@
   "shouldFindPath": true,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": false,
+  "runOnAnvil": true,
   "fromTokens": [],
   "toTokens": [],
   "excludedTokens": [],

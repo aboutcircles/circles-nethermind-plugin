@@ -38,7 +38,8 @@ public class OnChainRejectionPropertyTests
             trustDensity: density, withRouter: groups > 0, withConsent: consent, consentRate: 0.5);
         var (source, sink) = PropertyBasedTests.PickSourceSink(graph, rng);
 
-        var pathfinder = new V2Pathfinder();
+        // Use validation mode so consent rules are checked (not intermediary exclusion)
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var sourceAddr = AddressIdPool.StringOf(source);
         var sinkAddr = AddressIdPool.StringOf(sink);
         var request = new FlowRequest { Source = sourceAddr, Sink = sinkAddr };
@@ -96,7 +97,8 @@ public class OnChainRejectionPropertyTests
             trustDensity: 0.4, withRouter: false, withConsent: true, consentRate: consentRate);
         var (source, sink) = PropertyBasedTests.PickSourceSink(graph, rng);
 
-        var pathfinder = new V2Pathfinder();
+        // Use validation mode so consent rules are checked (not intermediary exclusion)
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var sourceAddr = AddressIdPool.StringOf(source);
         var sinkAddr = AddressIdPool.StringOf(sink);
         var request = new FlowRequest { Source = sourceAddr, Sink = sinkAddr };

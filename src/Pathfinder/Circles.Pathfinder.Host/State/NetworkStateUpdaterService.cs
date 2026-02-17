@@ -132,6 +132,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 }
                 GraphUpdateMetrics.EdgeCount.Set(cap.Edges.Count);
                 GraphUpdateMetrics.GroupCount.Set(cap.GroupNodes.Count);
+                GraphUpdateMetrics.ConsentedAvatarCount.Set(cap.ConsentedAvatars.Count);
 
                 // O9: Address pool size
                 GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);

@@ -1092,7 +1092,7 @@ public class MutationKillerTests
 
         var request = new FlowRequest { Source = Alice, Sink = Bob };
         var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
-        var pathfinder = new V2Pathfinder();
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var result = pathfinder.ComputeMaxFlowWithPath(cg, request, UInt256.Parse("100000000000000000000"));
 
         // Flow should be blocked: From(consented) does NOT trust To

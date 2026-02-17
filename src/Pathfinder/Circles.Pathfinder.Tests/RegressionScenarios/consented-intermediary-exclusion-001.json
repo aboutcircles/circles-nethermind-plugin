@@ -1,0 +1,23 @@
+{
+  "id": "consented-intermediary-exclusion-001",
+  "name": "Non-consented source through consented intermediary to sink (exclusion mode)",
+  "category": "consented-flow",
+  "block": 43193632,
+  "source": "0x0202ad5b682c0858c167be39b910de61a844a254",
+  "sink": "0x04cd1e34baa4d2818aa43ab26e4051d1ebaa90e6",
+  "description": "Tests the DisableConsentedFlow=true behavior: a non-consented source sends to a sink, but there is a consented avatar (0xa571...) as a possible intermediary. In validation mode, this would require consent rules. In exclusion mode, the pathfinder simply avoids routing through the consented intermediary. Should still find a path via non-consented intermediaries.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "simulatedConsentedAvatars": [
+    "0xa571627c6ce9c7faebd88986c989a1647be68db5"
+  ],
+  "tags": [
+    "consented-flow",
+    "intermediary-exclusion",
+    "positive",
+    "e2e"
+  ],
+  "notes": "Validates that DisableConsentedFlow mode avoids consented intermediaries while still finding valid paths."
+}

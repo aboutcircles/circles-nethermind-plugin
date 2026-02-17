@@ -1175,7 +1175,7 @@ public class FlagInteractionTests
 
         // Act
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
-        var pathfinder = new V2Pathfinder();
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
 
         // Assert: Edge should be filtered due to consented flow violation

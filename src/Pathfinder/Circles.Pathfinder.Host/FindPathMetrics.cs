@@ -24,4 +24,16 @@ internal class FindPathMetrics
             "circles_solver_status_total",
             "Solver outcome counts by status",
             new CounterConfiguration { LabelNames = new[] { "status" } });
+
+    // Consent: paths dropped due to consent intermediary exclusion or validation
+    public static readonly Counter ConsentPathsDroppedTotal =
+        Metrics.CreateCounter(
+            "circles_consent_paths_dropped_total",
+            "Paths dropped due to consented flow rules (intermediary exclusion or validation)");
+
+    // Consent: safety net triggered — gap indicator (should always be 0)
+    public static readonly Counter ConsentSafetyNetTriggeredTotal =
+        Metrics.CreateCounter(
+            "circles_consent_safetynet_triggered_total",
+            "Times ValidateConsentedFlow safety net removed edges (indicates path-level filter gap)");
 }

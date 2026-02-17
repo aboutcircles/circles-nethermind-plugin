@@ -1447,7 +1447,7 @@ public class QuantizedAggregationTests
 
         // Act
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
-        var pathfinder = new V2Pathfinder();
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
 
         // Assert: Consented flow violation should filter the edge

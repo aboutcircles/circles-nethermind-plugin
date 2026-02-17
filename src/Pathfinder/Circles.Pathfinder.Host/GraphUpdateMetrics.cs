@@ -74,6 +74,11 @@ internal static class GraphUpdateMetrics
         "circles_address_pool_size",
         "Number of entries in the AddressIdPool");
 
+    // Consented avatar count in the current graph snapshot
+    public static readonly Gauge ConsentedAvatarCount = Metrics.CreateGauge(
+        "circles_consented_avatars_count",
+        "Number of consented avatars in the capacity graph");
+
     // O4: DB query duration — labeled by query name (balances, trust, groups, group_trusts, consented_flow)
     public static readonly Histogram DbQueryDuration = Metrics.CreateHistogram(
         "circles_db_query_duration_seconds",

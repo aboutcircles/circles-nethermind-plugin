@@ -14,10 +14,12 @@ namespace Circles.Pathfinder;
 public class V2Pathfinder
 {
     private readonly ILogger _logger;
+    private readonly Settings _settings;
 
-    public V2Pathfinder(ILogger<V2Pathfinder>? logger = null)
+    public V2Pathfinder(ILogger<V2Pathfinder>? logger = null, Settings? settings = null)
     {
         _logger = logger ?? NullLogger<V2Pathfinder>.Instance;
+        _settings = settings ?? new Settings();
     }
 
     public long ComputeMaxFlow(
@@ -206,7 +208,7 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 5. Collapse balance nodes + aggregate identical edges
          * ------------------------------------------------------------------ */
-        var collapsed = CollapseBalanceNodes(flowPaths, capacityGraph);
+        var (collapsed, consentDroppedPaths) = CollapseBalanceNodes(flowPaths, capacityGraph, sourceId, sinkId);
         var aggregated = collapsed.AggregateIdenticalEdges();
 
         {
@@ -236,14 +238,20 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 5c. Validate consented flow - filter edges that violate consent rules.
          *     Router edges are skipped by this validation (lines 332-337).
+         *     When DisableConsentedFlow is on, intermediaries are already
+         *     excluded in CollapseBalanceNodes — skip the safety net entirely.
          * ------------------------------------------------------------------ */
-        var validatedEdges = ValidateConsentedFlow(processedEdges, capacityGraph);
+        var validatedEdges = _settings.DisableConsentedFlow
+            ? processedEdges  // intermediaries already excluded — no validation needed
+            : ValidateConsentedFlow(processedEdges, capacityGraph);
 
+        int consentSafetyNetRejected = processedEdges.Count - validatedEdges.Count;
         {
             int routerEdges = processedEdges.Count - aggregated.Edges.Count;
-            int consentRejected = processedEdges.Count - validatedEdges.Count;
-            _logger.LogInformation("[{ReqId}] Router: +{RouterEdges} edges | Consent: passed={Passed}, rejected={Rejected}",
-                reqId, Math.Max(0, routerEdges), validatedEdges.Count, consentRejected);
+            _logger.LogInformation("[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}, safetyNetRejected={Rejected}",
+                reqId, Math.Max(0, routerEdges),
+                _settings.DisableConsentedFlow ? "exclude-intermediaries" : "validate-rules",
+                consentDroppedPaths, consentSafetyNetRejected);
         }
 
         /* --------------------------------------------------------------------
@@ -392,7 +400,11 @@ public class V2Pathfinder
         return new MaxFlowResponse(
             maxFlowWei.ToString(CultureInfo.InvariantCulture),
             transfer,
-            debugStages);
+            debugStages)
+        {
+            ConsentDroppedPaths = consentDroppedPaths,
+            ConsentSafetyNetRejected = consentSafetyNetRejected
+        };
     }
 
     /* ------------------------------------------------------------------------
@@ -556,7 +568,9 @@ public class V2Pathfinder
      * Previous approach filtered individual edges AFTER aggregation, which
      * left "holes" — intermediate vertices with unbalanced in/out flows.
      * --------------------------------------------------------------------- */
-    private FlowGraph CollapseBalanceNodes(List<List<FlowEdge>> pathsWithFlow, CapacityGraph capacityGraph)
+    private (FlowGraph Graph, int ConsentDroppedPaths) CollapseBalanceNodes(
+        List<List<FlowEdge>> pathsWithFlow, CapacityGraph capacityGraph,
+        int sourceId, int sinkId)
     {
         var collapsed = new FlowGraph();
 
@@ -588,10 +602,23 @@ public class V2Pathfinder
         {
             var pathEdges = CollapseSinglePathToEdges(path, capacityGraph);
 
-            if (PathHasConsentViolation(pathEdges, capacityGraph))
+            if (_settings.DisableConsentedFlow)
             {
-                droppedPaths++;
-                continue; // Drop entire path — preserves flow conservation
+                // Conservative: exclude paths through consented intermediaries entirely
+                if (PathHasConsentedIntermediary(pathEdges, capacityGraph, sourceId, sinkId))
+                {
+                    droppedPaths++;
+                    continue;
+                }
+            }
+            else
+            {
+                // Normal: apply consent rule validation (isPermittedFlow logic)
+                if (PathHasConsentViolation(pathEdges, capacityGraph))
+                {
+                    droppedPaths++;
+                    continue; // Drop entire path — preserves flow conservation
+                }
             }
 
             // Aggregate surviving path edges
@@ -603,8 +630,9 @@ public class V2Pathfinder
 
         if (droppedPaths > 0)
         {
-            _logger.LogInformation("[CollapseBalanceNodes] Dropped {DroppedPaths}/{TotalPaths} paths due to consent violations",
-                droppedPaths, pathsWithFlow.Count);
+            _logger.LogInformation("[CollapseBalanceNodes] Dropped {DroppedPaths}/{TotalPaths} paths due to consent {Mode}",
+                droppedPaths, pathsWithFlow.Count,
+                _settings.DisableConsentedFlow ? "intermediary exclusion" : "violations");
         }
 
         /* ---------------- materialise collapsed edges ---------------------- */
@@ -625,7 +653,7 @@ public class V2Pathfinder
             collapsed.Edges.Add(e);
         }
 
-        return collapsed;
+        return (collapsed, droppedPaths);
     }
 
     /* ------------------------------------------------------------------------
@@ -725,6 +753,29 @@ public class V2Pathfinder
             // 2. To must also have consented flow enabled
             if (!capacityGraph.ConsentedAvatars.Contains(to))
                 return true; // Violation: recipient doesn't have consented flow
+        }
+
+        return false;
+    }
+
+    /* ------------------------------------------------------------------------
+     * Check if a collapsed path routes through any consented avatar as an
+     * intermediary (i.e. NOT source or sink). Used when DisableConsentedFlow
+     * is true — instead of validating consent rules, we simply exclude
+     * consented avatars from intermediary positions entirely.
+     * --------------------------------------------------------------------- */
+    internal bool PathHasConsentedIntermediary(
+        List<(int From, int To, int Token, long Flow)> edges,
+        CapacityGraph graph, int sourceId, int sinkId)
+    {
+        if (graph.ConsentedAvatars.Count == 0) return false;
+
+        foreach (var (from, to, _, _) in edges)
+        {
+            if (from != sourceId && from != sinkId && graph.ConsentedAvatars.Contains(from))
+                return true;
+            if (to != sourceId && to != sinkId && graph.ConsentedAvatars.Contains(to))
+                return true;
         }
 
         return false;
