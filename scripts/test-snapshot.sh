@@ -12,7 +12,7 @@
 # Prerequisites:
 #   - Test environment must be running and accessible
 #   - For staging: https://staging.circlesubi.network/test-env
-#   - For local: docker compose -f docker/docker-compose.test-environment.yml up -d
+#   - For local: run test-env from circles-test-environment repo (cd docker && docker compose up -d)
 
 set -e
 
@@ -46,7 +46,7 @@ if [ "$HEALTH_STATUS" != "healthy" ]; then
     echo "Response: $HEALTH_RESPONSE"
     echo ""
     echo "Make sure the test environment is running:"
-    echo "  Local:   docker compose -f docker/docker-compose.test-environment.yml up -d"
+    echo "  Local:   cd ../circles-test-environment/docker && docker compose up -d"
     echo "  Staging: Ensure TEST_ENV_ENABLED=true in Ansible deployment"
     exit 1
 fi
