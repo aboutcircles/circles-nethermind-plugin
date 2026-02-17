@@ -296,7 +296,9 @@ services:
       retries: 30
       start_period: 1s
 
-  # Refreshes V_TrustScores_Current materialized view every 15 minutes
+  # Refreshes V_TrustScores_Current materialized view every 60 minutes
+  # Uses CONCURRENTLY to avoid blocking reads during refresh (~2-3 min)
+  # Fallback to blocking refresh for initial population (WITH NO DATA state)
   trust-scores-refresh:
     container_name: trust-scores-refresh
     image: postgres:16-alpine
@@ -318,9 +320,13 @@ services:
         sleep 60
         while true; do
           echo "[$(date)] Refreshing V_TrustScores_Current materialized view..."
-          psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres -c "REFRESH MATERIALIZED VIEW \"V_TrustScores_Current\";" 2>&1 || echo "[$(date)] Refresh failed (view may not exist yet)"
-          echo "[$(date)] Refresh complete, sleeping for 15 minutes..."
-          sleep 900
+          psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
+            -c "REFRESH MATERIALIZED VIEW CONCURRENTLY \"V_TrustScores_Current\";" 2>&1 \
+            || psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
+            -c "REFRESH MATERIALIZED VIEW \"V_TrustScores_Current\";" 2>&1 \
+            || echo "[$(date)] Refresh failed (view may not exist yet)"
+          echo "[$(date)] Refresh complete, sleeping for 60 minutes..."
+          sleep 3600
         done
     healthcheck:
       test: ["CMD", "pgrep", "-f", "sleep"]

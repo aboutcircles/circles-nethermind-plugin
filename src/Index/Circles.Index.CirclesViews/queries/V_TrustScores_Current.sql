@@ -12,39 +12,68 @@
 -- Trust Scores Materialized View
 -- Computes trust scores for all avatars based on network position, reciprocity, and account age.
 -- Requires periodic REFRESH MATERIALIZED VIEW CONCURRENTLY to update data.
+--
+-- Performance: Inlines trust deduplication as a single CTE to avoid repeated expansion
+-- of V_CrcV2_TrustRelations (which contains an expensive window function over CrcV2_Trust).
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS "V_TrustScores_Current" AS
-WITH unique_avatars AS (
+WITH active_trusts AS MATERIALIZED (
+    -- Deduplicate trust relations: latest event per (truster, trustee) pair, still active.
+    -- Equivalent to V_CrcV2_TrustRelations but computed once as a temp result.
+    SELECT truster, trustee
+    FROM (
+        SELECT
+            truster,
+            trustee,
+            "expiryTime",
+            row_number() OVER (
+                PARTITION BY truster, trustee
+                ORDER BY "blockNumber" DESC, "transactionIndex" DESC, "logIndex" DESC
+            ) AS rn
+        FROM "CrcV2_Trust"
+    ) t
+    WHERE rn = 1
+      AND "expiryTime" > (SELECT max("timestamp") FROM "System_Block")::numeric
+),
+unique_avatars AS (
     -- Deduplicate avatars (V_Crc_Avatars may have duplicates from v1+v2)
     SELECT DISTINCT ON ("avatar") "avatar", "timestamp"
     FROM "V_Crc_Avatars"
     ORDER BY "avatar", "timestamp" DESC
 ),
+trust_degrees AS (
+    -- Compute in-degree and out-degree in a single pass over active_trusts
+    SELECT
+        avatar,
+        SUM(CASE WHEN direction = 'in' THEN 1 ELSE 0 END) AS in_degree,
+        SUM(CASE WHEN direction = 'out' THEN 1 ELSE 0 END) AS out_degree
+    FROM (
+        SELECT trustee AS avatar, 'in' AS direction FROM active_trusts
+        UNION ALL
+        SELECT truster AS avatar, 'out' AS direction FROM active_trusts
+    ) edges
+    GROUP BY avatar
+),
+mutual_counts AS (
+    -- Count mutual trusts per avatar using EXISTS semi-join (no full self-join)
+    SELECT t1.truster AS avatar, COUNT(*) AS mutual_count
+    FROM active_trusts t1
+    WHERE EXISTS (
+        SELECT 1 FROM active_trusts t2
+        WHERE t2.truster = t1.trustee AND t2.trustee = t1.truster
+    )
+    GROUP BY t1.truster
+),
 avatar_stats AS (
     SELECT
         a."avatar",
-        COALESCE(in_deg.cnt, 0) as in_degree,
-        COALESCE(out_deg.cnt, 0) as out_degree,
-        COALESCE(mutual.cnt, 0) as mutual_count,
+        COALESCE(d.in_degree, 0) as in_degree,
+        COALESCE(d.out_degree, 0) as out_degree,
+        COALESCE(m.mutual_count, 0) as mutual_count,
         GREATEST(0, (EXTRACT(EPOCH FROM NOW()) - a."timestamp") / 86400)::int as age_days
     FROM unique_avatars a
-    LEFT JOIN (
-        SELECT "trustee" as avatar, COUNT(*) as cnt
-        FROM "V_CrcV2_TrustRelations"
-        GROUP BY "trustee"
-    ) in_deg ON a."avatar" = in_deg.avatar
-    LEFT JOIN (
-        SELECT "truster" as avatar, COUNT(*) as cnt
-        FROM "V_CrcV2_TrustRelations"
-        GROUP BY "truster"
-    ) out_deg ON a."avatar" = out_deg.avatar
-    LEFT JOIN (
-        SELECT t1."truster" as avatar, COUNT(*) as cnt
-        FROM "V_CrcV2_TrustRelations" t1
-        JOIN "V_CrcV2_TrustRelations" t2
-            ON t1."truster" = t2."trustee" AND t1."trustee" = t2."truster"
-        GROUP BY t1."truster"
-    ) mutual ON a."avatar" = mutual.avatar
+    LEFT JOIN trust_degrees d ON a."avatar" = d.avatar
+    LEFT JOIN mutual_counts m ON a."avatar" = m.avatar
 ),
 network_avg AS (
     SELECT GREATEST(1, AVG(in_degree + out_degree)) as avg_degree FROM avatar_stats
