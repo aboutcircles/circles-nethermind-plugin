@@ -97,14 +97,21 @@ src/
 │   ├── Circles.Pathfinder/         # Gnosis.Circles.Pathfinder
 │   ├── Circles.Pathfinder.Host/    # REST API service
 │   └── Circles.Pathfinder.Tests/   # Tests
-└── Rpc/                             # JSON-RPC (2 projects)
-    ├── Circles.Rpc.Host/           # RPC service
-    └── Circles.Rpc.Host.Tests/     # Tests
+├── Rpc/                             # JSON-RPC (2 projects)
+│   ├── Circles.Rpc.Host/           # RPC service
+│   └── Circles.Rpc.Host.Tests/     # Tests
+└── Cache/                           # Caching layer (2 projects)
+    ├── Circles.Cache.Service/       # Cache service
+    └── Circles.Cache.Service.Tests/ # Tests
 
 docker/
 ├── Index.Dockerfile                 # Nethermind plugin
 ├── pathfinder-host.Dockerfile       # Pathfinder service
 ├── rpc-host.Dockerfile              # RPC service
+├── cache-service.Dockerfile         # Cache service
+├── metrics-exporter.Dockerfile      # Metrics exporter
+├── backfill.Dockerfile              # Backfill job
+├── trust-missing-avatars.Dockerfile # Trust repair job
 └── docker-compose.*.yml             # Compose configurations
 
 scripts/
@@ -154,6 +161,7 @@ After building with `./scripts/docker-build.sh`:
 - **circles-index:latest** - Nethermind with Circles plugin
 - **circles-pathfinder-host:latest** - Pathfinder service
 - **circles-rpc-host:latest** - RPC service
+- **circles-cache-service:latest** - Cache service
 
 ### Running with Docker Compose
 
@@ -192,7 +200,7 @@ This section is for developing services locally with `dotnet run` (not Docker).
 
 ### Prerequisites
 
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - PostgreSQL 15+ (database only)
 - Docker (optional, for PostgreSQL container)
 
@@ -239,14 +247,13 @@ This script will:
 
 **Prerequisites:**
 
-- Nethermind source code in `src/nethermind/` directory (clone from <https://github.com/NethermindEth/nethermind>)
-  - This is set up as a git submodule. If you've just cloned the repository, you may need to initialize it:
+- Nethermind source code in `src/nethermind/` directory (clone from <https://github.com/NethermindEth/nethermind>):
     ```bash
-    git submodule update --init --recursive
+    git clone https://github.com/NethermindEth/nethermind.git src/nethermind
     ```
 - PostgreSQL running (via Docker or locally)
 - ~700GB+ free disk space for blockchain data
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 
 **Advantages:**
 
@@ -314,10 +321,10 @@ source .env.local
 
 #### For Docker Compose
 
-Docker Compose uses `docker/.env`:
+Docker Compose loads `.env` from the repository root:
 ```bash
-cp docker/.env.example docker/.env
-# Edit docker/.env with your settings
+cp .env.example .env
+# Edit .env with your settings
 docker compose -f docker/docker-compose.gnosis.yml up -d
 ```
 
@@ -357,7 +364,10 @@ This will:
 
 - **Circles.Pathfinder.Tests** - Pathfinding algorithm tests
 - **Circles.Index.Query.Tests** - Query system tests
-- **Circles.Index.Common.Tests** - Common utilities tests
+- **Circles.Index.CirclesV2.Tests** - V2 contract indexing tests
+- **Circles.Common.Tests** - Common utilities tests
+- **Circles.Rpc.Host.Tests** - RPC endpoint tests
+- **Circles.Cache.Service.Tests** - Cache service tests
 
 ### Running Tests
 
@@ -400,7 +410,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Build and Test
         run: ./scripts/build-all.sh --all
@@ -497,7 +507,7 @@ ls -la nupkgs/
 - **Full Script Documentation**: [scripts/README.md](scripts/README.md)
 - **Circles Protocol**: https://docs.circles.garden/
 - **Nethermind**: https://docs.nethermind.io/
-- **.NET 9**: https://docs.microsoft.com/en-us/dotnet/
+- **.NET 10**: https://docs.microsoft.com/en-us/dotnet/
 
 ## Getting Help
 

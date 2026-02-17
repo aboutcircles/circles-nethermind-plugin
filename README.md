@@ -24,14 +24,7 @@ make all                    # Build, test, and pack
 
 ## Deployment Note
 
-This repository contains the core indexer services. For staging/production deployment:
-
-- **Deployment orchestration** is handled by [aboutcircles-infrastructure](https://github.com/aboutcircles/aboutcircles-infrastructure)
-- **Caddy** (Dockerfile, Caddyfile template, and routing config) is fully managed in the infrastructure repo
-- **Observability** (Prometheus, Grafana dashboards, alerts) is managed in the infrastructure repo
-- This repo only contains the **metrics-exporter source** (`src/Metrics/`) since it's tightly coupled to the database schema
-
-See the infrastructure repo's [DEPLOYMENT_ARCHITECTURE.md](https://github.com/aboutcircles/aboutcircles-infrastructure/blob/main/docs/DEPLOYMENT_ARCHITECTURE.md) for the full architecture.
+This repository contains the core indexer services. Deployment orchestration, Caddy configuration, and observability (Prometheus, Grafana) are managed in a separate private infrastructure repository. This repo only contains the **metrics-exporter source** (`src/Metrics/`) since it's tightly coupled to the database schema.
 
 ---
 
@@ -58,7 +51,6 @@ See the infrastructure repo's [DEPLOYMENT_ARCHITECTURE.md](https://github.com/ab
       - [Example](#example-1)
       - [Response](#response-2)
       - [Available namespaces, tables and columns](#available-namespaces-tables-and-columns)
-  - [Available Namespaces, Tables, and Columns](#available-namespaces-tables-and-columns-1)
     - [Namespaces and Tables:](#namespaces-and-tables)
       - [CrcV1](#crcv1)
       - [CrcV2](#crcv2)
@@ -136,9 +128,7 @@ See the infrastructure repo's [DEPLOYMENT_ARCHITECTURE.md](https://github.com/ab
 
 If you're just looking for a way to query Circles events, you can check out the query examples:
 
-- [General examples](general-example-requests.md)
-- [Circles v1 examples](v1-example-requests.md)
-- [Circles v2 examples](v2-example-requests.md)
+- [RPC reference and examples](docs/rpc-reference.md)
 
 For a detailed description of the available RPC methods, see the [Circles RPC methods](#circles-rpc-methods) section.
 
@@ -152,7 +142,7 @@ postgres database to store the indexed data.
 #### 1. Clone the repository
 
 ```bash
-git clone https://github.com/CirclesUBI/circles-nethermind-plugin.git
+git clone https://github.com/aboutcircles/circles-nethermind-plugin.git
 cd circles-nethermind-plugin
 ```
 
@@ -167,10 +157,10 @@ openssl rand -hex 32 > ./.state/jwtsecret-gnosis/jwt.hex
 
 #### 3. Set up the .env file
 
-Copy the `.env.example` file to `.env` in the `docker/` directory and adjust the values to your needs.
+Copy the `.env.example` file to `.env` in the repository root and adjust the values to your needs.
 
 ```bash
-cp docker/.env.example docker/.env
+cp .env.example .env
 ```
 
 The default values should work for most setups. You may want to change:
@@ -210,8 +200,7 @@ at the same RPC endpoint.
 
 The plugin extends the Nethermind JSON-RPC API with additional methods to query Circles events and aggregate values.
 
-You can find concrete examples for all rpc-methods in the [v1-example-requests.md](./docs/v1-example-requests.md)
-and [v2-example-requests.md](./docs/v2-example-requests.md) files.
+You can find concrete examples for all RPC methods in the [RPC reference](docs/rpc-reference.md).
 
 ### circles_getTotalBalance / circlesV2_getTotalBalance
 
@@ -343,20 +332,6 @@ The result is a JSON object that resembles a table with rows and columns:
 - `Rows` - An array of rows, where each row is an array of values.
 
 #### Available namespaces, tables and columns
-
-Every table has at least the following columns:
-
-- `blockNumber` - The block number the event was emitted in.
-- `timestamp` - The unix timestamp of the event.
-- `transactionIndex` - The index of the transaction in the block.
-- `logIndex` - The index of the log in the transaction.
-
-Tables for batch events have an additional `batchIndex` column.
-The items of a batch are treated like individual events that can only be distinguished by the `batchIndex`.
-
-Namespaces and tables:
-
-## Available Namespaces, Tables, and Columns
 
 Every table has at least the following columns:
 
@@ -567,7 +542,7 @@ curl -X POST --data '{
     30282299,
     null
   ]
-}' -H "Content-Type: application/json" https://rpc.helsinki.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 #### Response
@@ -606,7 +581,7 @@ curl -X POST --data '{
        "Value": ["0xd1380076b6ad2d1872951da1852c20ed3161e10f237aca27dc531795fa6867e0"]
     }]
   ]
-}' -H "Content-Type: application/json" https://rpc.helsinki.aboutcircles.com/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 ### eth_subscribe("circles")
@@ -621,13 +596,13 @@ indexed. Can be filtered to just a specific address.
 This call subscribes to all Circles events (firehose):
 
 ```shell
-npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{}]}' -w 3600
+npx wscat -c wss://rpc.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{}]}' -w 3600
 ```
 
 This call subscribes to all Circles events that involve the address `0xde374ece6fa50e781e81aac78e811b33d16912c7`:
 
 ```shell
-npx wscat -c wss://rpc.helsinki.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{"address":"0xde374ece6fa50e781e81aac78e811b33d16912c7"}]}' -w 3600
+npx wscat -c wss://rpc.aboutcircles.com/ws -x '{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["circles",{"address":"0xde374ece6fa50e781e81aac78e811b33d16912c7"}]}' -w 3600
 ```
 
 #### Response
@@ -1000,7 +975,7 @@ curl -X POST --data '{
   "id": 0,
   "method": "circles_tables",
   "params": []
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 #### Response
@@ -1045,7 +1020,7 @@ curl -X POST --data '{
   "id": 1,
   "method": "circles_getNetworkSnapshot",
   "params": []
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 #### Response
@@ -1075,7 +1050,7 @@ curl -X POST --data '{
     10,
     0
   ]
-}' -H "Content-Type: application/json" https://rpc.circlesubi.network/
+}' -H "Content-Type: application/json" https://rpc.aboutcircles.com/
 ```
 
 #### Response
