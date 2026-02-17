@@ -12,7 +12,39 @@
 create or replace view public."V_CrcV2_GroupMemberships"
 ("blockNumber", "timestamp", "transactionIndex", "logIndex", "transactionHash", "group", member, "expiryTime", "memberType")
 as
-with cte as (
+with group_trusts as MATERIALIZED (
+    -- Pre-filter CrcV2_Trust to group trusters BEFORE the window function.
+    -- This shrinks window input from ~551K rows to ~10K (only group trust events).
+    select
+        sub."blockNumber",
+        sub."timestamp",
+        sub."transactionIndex",
+        sub."logIndex",
+        sub."transactionHash",
+        sub.truster,
+        sub.trustee,
+        sub."expiryTime"
+    from (
+        select
+            ct."blockNumber",
+            ct."timestamp",
+            ct."transactionIndex",
+            ct."logIndex",
+            ct."transactionHash",
+            ct.truster,
+            ct.trustee,
+            ct."expiryTime",
+            row_number() over (
+                partition by ct.truster, ct.trustee
+                order by ct."blockNumber" desc, ct."transactionIndex" desc, ct."logIndex" desc
+            ) as rn
+        from "CrcV2_Trust" ct
+        inner join "CrcV2_RegisterGroup" g on g."group" = ct.truster
+    ) sub
+    where rn = 1
+      and "expiryTime" > coalesce((select max("timestamp") from "System_Block"), 0)::numeric
+),
+cte as (
     select
         t."blockNumber",
         t."timestamp",
@@ -28,11 +60,10 @@ with cte as (
             when gg."group" is not null then 'CrcV2_RegisterGroup'
             else null
         end as "memberType"
-    from "V_CrcV2_TrustRelations" t
-    join "CrcV2_RegisterGroup" g on g."group" = t.truster         -- ensures truster is a group
+    from group_trusts t
     left join "CrcV2_RegisterHuman" h on h.avatar = t.trustee      -- is member a human?
     left join "CrcV2_RegisterOrganization" o on o.organization = t.trustee -- org?
-    left join "CrcV2_RegisterGroup" gg on gg."group" = t.trustee   -- is member a group?
+    left join "CrcV2_RegisterGroup" gg on gg."group" = t.truster   -- is member a group?
 )
 select "blockNumber","timestamp","transactionIndex","logIndex","transactionHash","group",member,"expiryTime","memberType"
 from cte;
