@@ -2398,6 +2398,108 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     }
 
     /// <summary>
+    /// Gets the list of accounts invited by a specific avatar.
+    /// When accepted=true: returns accounts that registered using this avatar as inviter.
+    /// When accepted=false: returns accounts this avatar trusts that are NOT yet registered (pending).
+    /// </summary>
+    public async Task<InvitationsFromResponse> GetInvitationsFrom(string address, bool accepted = false)
+    {
+        var normalizedAddress = address.ToLowerInvariant();
+        await using var connection = await CreateConnectionAsync();
+
+        if (accepted)
+        {
+            // Query RegisterHuman where inviter = this address
+            const string sql = @"
+                SELECT ""avatar"", ""blockNumber"", ""timestamp""
+                FROM ""CrcV2_RegisterHuman""
+                WHERE ""inviter"" = @address
+                ORDER BY ""blockNumber"" DESC
+                LIMIT 200";
+
+            await using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("address", normalizedAddress);
+
+            var results = new List<InvitedAccountInfo>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results.Add(new InvitedAccountInfo
+                {
+                    Address = reader.GetString(0),
+                    BlockNumber = reader.GetInt64(1),
+                    Timestamp = reader.GetInt64(2),
+                    Status = "accepted"
+                });
+            }
+
+            // Batch fetch avatar info
+            if (results.Count > 0)
+            {
+                var addresses = results.Select(r => r.Address).ToArray();
+                var avatarInfos = await GetAvatarInfoBatchInternal(addresses);
+                for (int i = 0; i < results.Count; i++)
+                {
+                    results[i] = results[i] with { AvatarInfo = avatarInfos[i] };
+                }
+            }
+
+            return new InvitationsFromResponse
+            {
+                Address = address,
+                Accepted = true,
+                Results = results.ToArray()
+            };
+        }
+        else
+        {
+            // Find accounts this avatar trusts (V2) that are NOT registered
+            const string sql = @"
+                SELECT t.""trustee""
+                FROM ""CrcV2_Trust"" t
+                WHERE t.""truster"" = @address
+                  AND t.""expiryTime"" > EXTRACT(EPOCH FROM NOW())::bigint
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ""CrcV2_RegisterHuman"" rh
+                      WHERE rh.""avatar"" = t.""trustee""
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ""CrcV2_RegisterGroup"" rg
+                      WHERE rg.""group"" = t.""trustee""
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ""CrcV2_RegisterOrganization"" ro
+                      WHERE ro.""organization"" = t.""trustee""
+                  )
+                ORDER BY t.""blockNumber"" DESC
+                LIMIT 200";
+
+            await using var cmd = new NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("address", normalizedAddress);
+
+            var pendingAddresses = new List<string>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                pendingAddresses.Add(reader.GetString(0));
+            }
+
+            var results = pendingAddresses.Select(addr => new InvitedAccountInfo
+            {
+                Address = addr,
+                Status = "pending"
+            }).ToArray();
+
+            return new InvitationsFromResponse
+            {
+                Address = address,
+                Accepted = false,
+                Results = results
+            };
+        }
+    }
+
+    /// <summary>
     /// Gets all available invitations for an address from all sources (trust, escrow, at-scale).
     /// Combines multiple invitation mechanisms into a single optimized response.
     /// </summary>

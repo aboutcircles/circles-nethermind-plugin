@@ -223,6 +223,13 @@ public interface ICirclesRpcModule
     /// </summary>
     Task<AtScaleInvitation[]> GetAtScaleInvitations(string address);
 
+    /// <summary>
+    /// Gets accounts invited by a specific avatar.
+    /// When accepted=true: accounts that registered using this avatar as inviter.
+    /// When accepted=false: accounts this avatar trusts that are NOT yet registered (pending).
+    /// </summary>
+    Task<InvitationsFromResponse> GetInvitationsFrom(string address, bool accepted = false);
+
     // ========================================================================
     // Trust Relations
     // ========================================================================
@@ -1052,4 +1059,40 @@ public record AllInvitationsResponse
 
     [JsonPropertyName("atScaleInvitations")]
     public AtScaleInvitation[] AtScaleInvitations { get; init; } = Array.Empty<AtScaleInvitation>();
+}
+
+/// <summary>
+/// Information about an account that was invited by a specific avatar.
+/// </summary>
+public record InvitedAccountInfo
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public string Status { get; init; } = string.Empty;
+
+    [JsonPropertyName("blockNumber")]
+    public long BlockNumber { get; init; }
+
+    [JsonPropertyName("timestamp")]
+    public long Timestamp { get; init; }
+
+    [JsonPropertyName("avatarInfo")]
+    public AvatarInfo? AvatarInfo { get; init; }
+}
+
+/// <summary>
+/// Response for GetInvitationsFrom — accounts invited by a specific avatar.
+/// </summary>
+public record InvitationsFromResponse
+{
+    [JsonPropertyName("address")]
+    public string Address { get; init; } = string.Empty;
+
+    [JsonPropertyName("accepted")]
+    public bool Accepted { get; init; }
+
+    [JsonPropertyName("results")]
+    public InvitedAccountInfo[] Results { get; init; } = Array.Empty<InvitedAccountInfo>();
 }

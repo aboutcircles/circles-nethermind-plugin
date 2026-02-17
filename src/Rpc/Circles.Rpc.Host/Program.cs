@@ -295,6 +295,7 @@ app.MapPost("/", async (
             "circles_getTrustInvitations" => await ReflectionHandler(request, rpcModule),
             "circles_getEscrowInvitations" => await ReflectionHandler(request, rpcModule),
             "circles_getAtScaleInvitations" => await ReflectionHandler(request, rpcModule),
+            "circles_getInvitationsFrom" => await ReflectionHandler(request, rpcModule),
 
             _ => throw new RpcMethodNotFoundException(request.Method)
         };
