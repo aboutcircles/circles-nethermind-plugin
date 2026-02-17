@@ -206,6 +206,23 @@ public interface ICirclesRpcModule
     /// <returns>All available invitations grouped by source type</returns>
     Task<AllInvitationsResponse> GetAllInvitations(string address, string? minimumBalance = null);
 
+    /// <summary>
+    /// Gets trust-based invitations (addresses that trust the invitee and have sufficient balance).
+    /// Subset of GetAllInvitations — use when only trust invitations are needed.
+    /// </summary>
+    Task<TrustInvitation[]> GetTrustInvitations(string address, string? minimumBalance = null);
+
+    /// <summary>
+    /// Gets escrow-based invitations (CRC escrowed for the address).
+    /// Filters out redeemed, revoked, and refunded escrows server-side.
+    /// </summary>
+    Task<EscrowInvitation[]> GetEscrowInvitations(string address);
+
+    /// <summary>
+    /// Gets at-scale invitations (pre-created accounts that haven't been claimed).
+    /// </summary>
+    Task<AtScaleInvitation[]> GetAtScaleInvitations(string address);
+
     // ========================================================================
     // Trust Relations
     // ========================================================================

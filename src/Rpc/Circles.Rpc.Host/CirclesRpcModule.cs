@@ -2407,9 +2407,9 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
         // Run all queries in parallel for efficiency
         // Note: Each query must use its own connection because Npgsql doesn't support concurrent operations on one connection
-        var trustTask = GetTrustInvitationsAsync(normalizedAddress, minimumBalance);
-        var escrowTask = GetEscrowInvitationsAsync(normalizedAddress);
-        var atScaleTask = GetAtScaleInvitationsAsync(normalizedAddress);
+        var trustTask = GetTrustInvitations(normalizedAddress, minimumBalance);
+        var escrowTask = GetEscrowInvitations(normalizedAddress);
+        var atScaleTask = GetAtScaleInvitations(normalizedAddress);
 
         await Task.WhenAll(trustTask, escrowTask, atScaleTask);
 
@@ -2425,7 +2425,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     /// <summary>
     /// Gets trust-based invitations (addresses that trust the invitee and have sufficient balance).
     /// </summary>
-    private async Task<TrustInvitation[]> GetTrustInvitationsAsync(string address, string? minimumBalance)
+    public async Task<TrustInvitation[]> GetTrustInvitations(string address, string? minimumBalance = null)
     {
         // Reuse existing GetValidInviters logic but transform to TrustInvitation format
         var validInviters = await GetValidInviters(address, minimumBalance, 100, null);
@@ -2443,7 +2443,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     /// Gets escrow-based invitations using optimized SQL with JOINs.
     /// Filters out redeemed, revoked, and refunded escrows in a single query.
     /// </summary>
-    private async Task<EscrowInvitation[]> GetEscrowInvitationsAsync(string address)
+    public async Task<EscrowInvitation[]> GetEscrowInvitations(string address)
     {
         const string sql = @"
             SELECT e.""inviter"", e.""amount"", e.""blockNumber"", e.""timestamp""
@@ -2514,7 +2514,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     /// <summary>
     /// Gets at-scale invitations (pre-created accounts that haven't been claimed).
     /// </summary>
-    private async Task<AtScaleInvitation[]> GetAtScaleInvitationsAsync(string address)
+    public async Task<AtScaleInvitation[]> GetAtScaleInvitations(string address)
     {
         // Check if account was pre-created but not claimed
         const string sql = @"
