@@ -279,12 +279,10 @@ app.MapPost("/", async (
             "circles_events" => await HandleEvents(request, rpcModule),
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
-            // TEMPORARY: legacy non-paginated format for old SDK compat — remove when SDK migrates to circles_paginated_query
+            // Legacy non-paginated format ({columns, rows} only) — kept for non-paginating callers
             "circles_query" => await HandleQuery(request, rpcModule),
-            // Server-side cursor pagination (returns {columns, rows, hasMore, nextCursor})
+            // Server-side cursor pagination ({columns, rows, hasMore, nextCursor})
             "circles_paginated_query" => await HandleQuery2(request, rpcModule),
-            // Deprecated alias — remove after 2026-03-17
-            "circles_query2" => await HandleQuery2(request, rpcModule),
             // SDK Enablement Methods
             "circles_getProfileView" => await ReflectionHandler(request, rpcModule),
             "circles_getTrustNetworkSummary" => await ReflectionHandler(request, rpcModule),
@@ -1125,8 +1123,8 @@ static async Task<object> HandleTables(JsonRpcRequest request, CirclesRpcModule 
     return await rpcModule.GetTables();
 }
 
-// TEMPORARY: strips pagination (hasMore/nextCursor) for old SDK compat.
-// Revert to returning PagedQueryResponse directly once SDK migrates to circles_query2.
+// Non-paginated query — returns {columns, rows} only (no hasMore/nextCursor).
+// Used by invitation backends and one-shot queries that don't need pagination.
 static async Task<object> HandleQuery(JsonRpcRequest request, CirclesRpcModule rpcModule)
 {
     var (query, cursor) = ParseQueryParameters(request);
