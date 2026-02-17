@@ -93,7 +93,8 @@ public class NethermindRpcClientTests
         });
 
         var @params = JsonDocument.Parse("[\"0x1\"]").RootElement;
-        var result = await rpcClient.ForwardRpcRequest("eth_getBlockByNumber", 42, @params);
+        var id = JsonDocument.Parse("42").RootElement;
+        var result = await rpcClient.ForwardRpcRequest("eth_getBlockByNumber", id, @params);
 
         // Verify payload sent to Nethermind
         Assert.That(capturedRequest, Is.Not.Null);
@@ -108,13 +109,37 @@ public class NethermindRpcClientTests
     }
 
     [Test]
+    public async Task ForwardRpcRequest_WithStringId_PreservesIdType()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var expectedResponse = "{\"jsonrpc\":\"2.0\",\"id\":\"req-abc\",\"result\":\"0x1\"}";
+        var rpcClient = CreateClient(message =>
+        {
+            capturedRequest = message;
+            return JsonResponse(expectedResponse);
+        });
+
+        var @params = JsonDocument.Parse("[]").RootElement;
+        var id = JsonDocument.Parse("\"req-abc\"").RootElement;
+        var result = await rpcClient.ForwardRpcRequest("eth_blockNumber", id, @params);
+
+        // Verify string ID forwarded correctly
+        var body = await capturedRequest!.Content!.ReadAsStringAsync();
+        Assert.That(body, Does.Contain("\"id\":\"req-abc\""));
+
+        // Verify string ID in response
+        Assert.That(result.GetProperty("id").GetString(), Is.EqualTo("req-abc"));
+    }
+
+    [Test]
     public async Task ForwardRpcRequest_PreservesNethermindErrorResponse()
     {
         var errorResponse = "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"Invalid params\"}}";
         var rpcClient = CreateClient(_ => JsonResponse(errorResponse));
 
         var @params = JsonDocument.Parse("[]").RootElement;
-        var result = await rpcClient.ForwardRpcRequest("eth_getBalance", 1, @params);
+        var id = JsonDocument.Parse("1").RootElement;
+        var result = await rpcClient.ForwardRpcRequest("eth_getBalance", id, @params);
 
         Assert.That(result.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32602));
         Assert.That(result.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("Invalid params"));
@@ -130,8 +155,9 @@ public class NethermindRpcClientTests
             });
 
         var @params = JsonDocument.Parse("[]").RootElement;
+        var id = JsonDocument.Parse("1").RootElement;
         Assert.That(
-            async () => await rpcClient.ForwardRpcRequest("eth_blockNumber", 1, @params),
+            async () => await rpcClient.ForwardRpcRequest("eth_blockNumber", id, @params),
             Throws.TypeOf<HttpRequestException>());
     }
 

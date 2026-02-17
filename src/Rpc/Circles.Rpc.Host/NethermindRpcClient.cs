@@ -21,7 +21,7 @@ public class NethermindRpcClient
     /// Forwards a raw JSON-RPC request to Nethermind and returns the complete response.
     /// Used for transparent proxying of eth_*/net_*/web3_* and other non-circles methods.
     /// </summary>
-    public async Task<JsonElement> ForwardRpcRequest(string method, int id, JsonElement @params)
+    public async Task<JsonElement> ForwardRpcRequest(string method, JsonElement id, JsonElement @params)
     {
         using var httpClient = _httpClientFactory.CreateClient();
         httpClient.Timeout = TimeSpan.FromSeconds(30);
