@@ -123,8 +123,10 @@ app.Use(async (context, next) =>
     if (context.Request.Method == "POST" && context.Request.Path == "/")
     {
         context.Request.EnableBuffering();
-        var firstByte = context.Request.Body.ReadByte();
+        var buf = new byte[1];
+        var bytesRead = await context.Request.Body.ReadAsync(buf, 0, 1);
         context.Request.Body.Position = 0;
+        var firstByte = bytesRead > 0 ? buf[0] : -1;
 
         if (firstByte == '[') // JSON array = batch request
         {
