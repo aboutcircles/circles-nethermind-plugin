@@ -118,10 +118,20 @@ app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
 // ─── Batch JSON-RPC middleware ────────────────────────────────────────────────
 // JSON-RPC batch requests (body is a JSON array) are forwarded entirely to Nethermind.
 // Nethermind has the Circles module loaded, so it can handle both circles_* and eth_* methods.
+const int MaxBatchBodySize = 1_048_576; // 1 MB
 app.Use(async (context, next) =>
 {
     if (context.Request.Method == "POST" && context.Request.Path == "/")
     {
+        // Only intercept JSON content types
+        var contentType = context.Request.ContentType;
+        if (contentType == null || !contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+        {
+            await next();
+            return;
+        }
+
+        // Peek first byte to detect batch (JSON array) — only EnableBuffering for this peek
         context.Request.EnableBuffering();
         var buf = new byte[1];
         var bytesRead = await context.Request.Body.ReadAsync(buf, 0, 1);
@@ -135,6 +145,19 @@ app.Use(async (context, next) =>
             var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             var startTimestamp = Stopwatch.GetTimestamp();
 
+            // Enforce body size limit for batch requests
+            if (context.Request.ContentLength > MaxBatchBodySize)
+            {
+                context.Response.StatusCode = 413;
+                context.Response.ContentType = "application/json";
+                var tooLarge = new JsonRpcErrorResponse
+                {
+                    Error = new JsonRpcError { Code = -32600, Message = $"Batch request too large (max {MaxBatchBodySize / 1024}KB)" }
+                };
+                await JsonSerializer.SerializeAsync(context.Response.Body, tooLarge);
+                return;
+            }
+
             logger.LogInformation("Batch JSON-RPC request from {RemoteIp}, forwarding to Nethermind", remoteIp);
             RpcMetrics.ProxiedTotal.WithLabels("batch").Inc();
 
@@ -142,8 +165,20 @@ app.Use(async (context, next) =>
             {
                 using var ms = new MemoryStream();
                 await context.Request.Body.CopyToAsync(ms);
-                var body = ms.ToArray();
 
+                if (ms.Length > MaxBatchBodySize)
+                {
+                    context.Response.StatusCode = 413;
+                    context.Response.ContentType = "application/json";
+                    var tooLarge = new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32600, Message = $"Batch request too large (max {MaxBatchBodySize / 1024}KB)" }
+                    };
+                    await JsonSerializer.SerializeAsync(context.Response.Body, tooLarge);
+                    return;
+                }
+
+                var body = ms.ToArray();
                 var result = await nethermindClient.ForwardRawRequest(body);
                 var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
                 RpcMetrics.ProxyDuration.WithLabels("batch").Observe(elapsed.TotalSeconds);
@@ -161,7 +196,7 @@ app.Use(async (context, next) =>
                 logger.LogError(ex, "Failed to proxy batch JSON-RPC from {RemoteIp} after {ElapsedMs} ms",
                     remoteIp, elapsed.TotalMilliseconds);
 
-                context.Response.StatusCode = 200;
+                context.Response.StatusCode = 502;
                 context.Response.ContentType = "application/json";
                 var errorResponse = new JsonRpcErrorResponse
                 {
@@ -284,7 +319,30 @@ app.MapPost("/", async (
     }
     catch (RpcMethodNotFoundException)
     {
-        // Forward unknown methods to Nethermind (eth_*, net_*, web3_*, etc.)
+        // Only proxy safe read-only Ethereum JSON-RPC methods to Nethermind.
+        // Block admin_*, debug_*, personal_*, miner_*, etc. to prevent node compromise.
+        var isProxyAllowed = methodName.StartsWith("eth_", StringComparison.Ordinal)
+            || methodName.StartsWith("net_", StringComparison.Ordinal)
+            || methodName.StartsWith("web3_", StringComparison.Ordinal);
+
+        if (!isProxyAllowed)
+        {
+            var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
+            RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+            RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+            RpcMetrics.ErrorsTotal.WithLabels(methodName, "method_not_found").Inc();
+
+            logger.LogWarning(
+                "RPC method not found (not proxyable): {Method} from {RemoteIp} after {ElapsedMs} ms",
+                methodName, remoteIp, elapsed.TotalMilliseconds);
+
+            return Results.Ok(new JsonRpcErrorResponse
+            {
+                Id = request.Id,
+                Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {methodName}" }
+            });
+        }
+
         var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
         try
         {
