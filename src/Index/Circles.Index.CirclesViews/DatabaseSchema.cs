@@ -105,6 +105,23 @@ public class DatabaseSchema : IDatabaseSchema
                 "idx_crcv2_trust_truster_trustee",
                 "CREATE INDEX IF NOT EXISTS idx_crcv2_trust_truster_trustee ON public.\"CrcV2_Trust\" (\"truster\", \"trustee\");"
             },
+            // V_CrcV2_Groups optimization: composite indexes for DISTINCT ON CTEs
+            {
+                "idx_BaseGroupOwnerUpdated_cursor",
+                "CREATE INDEX IF NOT EXISTS idx_BaseGroupOwnerUpdated_cursor ON public.\"CrcV2_BaseGroupOwnerUpdated\" (emitter, \"blockNumber\" DESC, \"transactionIndex\" DESC, \"logIndex\" DESC);"
+            },
+            {
+                "idx_BaseGroupServiceUpdated_cursor",
+                "CREATE INDEX IF NOT EXISTS idx_BaseGroupServiceUpdated_cursor ON public.\"CrcV2_BaseGroupServiceUpdated\" (emitter, \"blockNumber\" DESC, \"transactionIndex\" DESC, \"logIndex\" DESC);"
+            },
+            {
+                "idx_BaseGroupFeeCollectionUpdated_cursor",
+                "CREATE INDEX IF NOT EXISTS idx_BaseGroupFeeCollectionUpdated_cursor ON public.\"CrcV2_BaseGroupFeeCollectionUpdated\" (emitter, \"blockNumber\" DESC, \"transactionIndex\" DESC, \"logIndex\" DESC);"
+            },
+            {
+                "idx_ERC20WrapperDeployed_avatar_type",
+                "CREATE INDEX IF NOT EXISTS idx_ERC20WrapperDeployed_avatar_type ON public.\"CrcV2_ERC20WrapperDeployed\" (avatar, \"circlesType\");"
+            },
             // Trust scores history table for anomaly detection metrics
             {
                 "trust_scores_history_table",

@@ -53,10 +53,20 @@ AS
             "logIndex"         DESC
     ),
     member_counts AS (
-        SELECT bgc."group", count(*) as "memberCount"
-        FROM "CrcV2_RegisterGroup" bgc
-                 JOIN "V_CrcV2_TrustRelations" tr on tr.truster = bgc."group"
-        GROUP BY bgc."group"
+        SELECT sub.truster as "group", count(*) as "memberCount"
+        FROM (
+            SELECT ct.truster, ct.trustee,
+                   row_number() OVER (
+                       PARTITION BY ct.truster, ct.trustee
+                       ORDER BY ct."blockNumber" DESC, ct."transactionIndex" DESC, ct."logIndex" DESC
+                   ) as rn,
+                   ct."expiryTime"
+            FROM "CrcV2_Trust" ct
+            INNER JOIN "CrcV2_RegisterGroup" g ON g."group" = ct.truster
+        ) sub
+        WHERE sub.rn = 1
+          AND sub."expiryTime" > COALESCE((SELECT max("timestamp") FROM "System_Block"), 0)::numeric
+        GROUP BY sub.truster
     ),
     erc20_demurraged AS (
         SELECT ed.avatar, ed."erc20Wrapper" as "erc20WrapperDemurraged"
