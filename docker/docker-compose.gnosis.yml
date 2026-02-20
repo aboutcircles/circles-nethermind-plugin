@@ -207,6 +207,8 @@ services:
       # Uncomment to enable cache service usage:
       - CACHE_SERVICE_URL=http://cache-service:3001
       - USE_CACHE_SERVICE=true
+      # Profile Pinning Service: fast profile search proxy (falls back to SQL on error)
+      - PROFILE_PINNING_SERVICE_URL=http://profile-pinning:3000
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
