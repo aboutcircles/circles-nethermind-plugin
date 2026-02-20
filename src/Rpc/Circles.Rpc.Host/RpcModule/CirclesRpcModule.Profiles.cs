@@ -600,6 +600,116 @@ public partial class CirclesRpcModule
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
+        // Try profile pinning service first (fast path)
+        if (!string.IsNullOrEmpty(_settings.ProfilePinningServiceUrl))
+        {
+            try
+            {
+                var proxyResult = await SearchProfilesViaProxy(qText, limit, offset, typeFilter);
+                if (proxyResult != null)
+                {
+                    return proxyResult;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Profile pinning service proxy failed, falling back to SQL");
+            }
+        }
+
+        // Fallback: direct SQL search
+        return await SearchProfilesViaSql(qText, limit, offset, typeFilter);
+    }
+
+    /// <summary>
+    /// Fast path: proxy search to the profile-pinning service REST API.
+    /// Returns null if the service is unavailable or returns an error.
+    /// </summary>
+    private async Task<ProfileSearchResult?> SearchProfilesViaProxy(
+        string qText, int limit, int offset, string[]? typeFilter)
+    {
+        var url = $"{_settings.ProfilePinningServiceUrl!.TrimEnd('/')}/search/text?q={Uri.EscapeDataString(qText)}&limit={limit}";
+
+        if (typeFilter is { Length: > 0 })
+        {
+            // Profile pinning service currently supports single type filter
+            url += $"&type={Uri.EscapeDataString(typeFilter[0])}";
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var response = await HttpClient.GetAsync(url, cts.Token);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("Profile pinning service returned {StatusCode}", response.StatusCode);
+            return null;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(cts.Token);
+        var proxyResults = JsonSerializer.Deserialize<JsonElement[]>(json);
+
+        if (proxyResults == null || proxyResults.Length == 0)
+        {
+            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+        }
+
+        // Skip `offset` results (pinning service doesn't support offset natively)
+        var paged = offset > 0 ? proxyResults.Skip(offset).Take(limit).ToArray() : proxyResults;
+
+        // Collect addresses for batch avatar info lookup
+        var addresses = paged
+            .Select(r => r.TryGetProperty("address", out var addr) ? addr.GetString() : null)
+            .Where(a => a != null)
+            .ToArray();
+
+        if (addresses.Length == 0)
+        {
+            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+        }
+
+        // Batch avatar info lookup (single DB call instead of N+1)
+        var avatarInfos = await GetAvatarInfoBatchInternal(addresses!);
+
+        var results = new List<ProfileSearchResultItem>();
+        for (int i = 0; i < paged.Length && i < addresses.Length; i++)
+        {
+            var avatarInfo = avatarInfos[i];
+            if (avatarInfo == null) continue;
+
+            var proxyEntry = paged[i];
+            JsonElement? profile = null;
+
+            // Build profile from proxy response fields
+            var profileDict = new Dictionary<string, object?>();
+            if (proxyEntry.TryGetProperty("name", out var nameEl) && nameEl.ValueKind != JsonValueKind.Null)
+                profileDict["name"] = nameEl.GetString();
+            if (proxyEntry.TryGetProperty("description", out var descEl) && descEl.ValueKind != JsonValueKind.Null)
+                profileDict["description"] = descEl.GetString();
+            if (proxyEntry.TryGetProperty("location", out var locEl) && locEl.ValueKind != JsonValueKind.Null)
+                profileDict["location"] = locEl.GetString();
+
+            if (profileDict.Count > 0)
+            {
+                profile = JsonSerializer.SerializeToElement(profileDict);
+            }
+
+            results.Add(new ProfileSearchResultItem(
+                Avatar: addresses[i]!,
+                AvatarInfo: avatarInfo,
+                Profile: profile
+            ));
+        }
+
+        return new ProfileSearchResult(Total: results.Count, Results: results.ToArray());
+    }
+
+    /// <summary>
+    /// Slow path: direct SQL search with full-table aggregation.
+    /// Used as fallback when profile-pinning service is unavailable.
+    /// </summary>
+    private async Task<ProfileSearchResult> SearchProfilesViaSql(
+        string qText, int limit, int offset, string[]? typeFilter)
+    {
         bool hasTypeFilter = typeFilter is { Length: > 0 };
         string typeFilterClause = hasTypeFilter ? " AND a.type = ANY(@types)" : string.Empty;
 
@@ -688,30 +798,37 @@ public partial class CirclesRpcModule
 
         var results = new List<ProfileSearchResultItem>();
         await using var reader = await cmd.ExecuteReaderAsync();
+
+        // Collect all avatars first, then batch lookup (eliminates N+1)
+        var rows = new List<(string avatar, string? payload)>();
         while (await reader.ReadAsync())
         {
-            var avatar = reader.GetString(0);
-            var payload = reader.IsDBNull(4) ? null : reader.GetString(4);
+            rows.Add((reader.GetString(0), reader.IsDBNull(4) ? null : reader.GetString(4)));
+        }
 
-            // Get full avatar info for this result
-            var avatarInfos = await GetAvatarInfoBatchInternal(new[] { avatar });
-            var avatarInfo = avatarInfos[0];
+        if (rows.Count == 0)
+        {
+            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+        }
 
-            if (avatarInfo == null)
-            {
-                // Skip if no avatar info available
-                continue;
-            }
+        // Batch avatar info lookup
+        var avatarAddresses = rows.Select(r => r.avatar).ToArray();
+        var avatarInfos = await GetAvatarInfoBatchInternal(avatarAddresses);
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var avatarInfo = avatarInfos[i];
+            if (avatarInfo == null) continue;
 
             JsonElement? profile = null;
-            if (payload != null)
+            if (rows[i].payload != null)
             {
-                profile = JsonSerializer.Deserialize<JsonElement>(payload);
+                profile = JsonSerializer.Deserialize<JsonElement>(rows[i].payload!);
                 profile = StripJsonLdFields(profile);
             }
 
             results.Add(new ProfileSearchResultItem(
-                Avatar: avatar,
+                Avatar: rows[i].avatar,
                 AvatarInfo: avatarInfo,
                 Profile: profile
             ));

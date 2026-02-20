@@ -25,6 +25,13 @@ public class Settings : Circles.Common.Settings
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CACHE_SERVICE_URL"))
         && (Environment.GetEnvironmentVariable("USE_CACHE_SERVICE")?.ToLowerInvariant() == "true");
 
+    /// <summary>
+    /// URL for the profile pinning service (fast profile search proxy).
+    /// When set, SearchProfiles will proxy to this service before falling back to SQL.
+    /// </summary>
+    public readonly string? ProfilePinningServiceUrl =
+        Environment.GetEnvironmentVariable("PROFILE_PINNING_SERVICE_URL");
+
     #region RPC-specific database timeout configuration
 
     /// <summary>
