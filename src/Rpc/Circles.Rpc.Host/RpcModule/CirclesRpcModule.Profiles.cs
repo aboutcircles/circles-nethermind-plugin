@@ -628,7 +628,7 @@ public partial class CirclesRpcModule
     private async Task<ProfileSearchResult?> SearchProfilesViaProxy(
         string qText, int limit, int offset, string[]? typeFilter)
     {
-        var url = $"{_settings.ProfilePinningServiceUrl!.TrimEnd('/')}/search/text?q={Uri.EscapeDataString(qText)}&limit={limit}";
+        var url = $"{_settings.ProfilePinningServiceUrl!.TrimEnd('/')}/search/text?q={Uri.EscapeDataString(qText)}&limit={limit}&offset={offset}";
 
         if (typeFilter is { Length: > 0 })
         {
@@ -653,8 +653,8 @@ public partial class CirclesRpcModule
             return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
         }
 
-        // Apply offset/limit (pinning service may return more than requested)
-        var paged = proxyResults.Skip(offset).Take(limit).ToArray();
+        // Safety net: server handles offset, but cap to requested limit
+        var paged = proxyResults.Take(limit).ToArray();
 
         // Collect addresses for batch avatar info lookup
         var addresses = paged
