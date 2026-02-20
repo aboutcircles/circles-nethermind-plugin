@@ -653,8 +653,8 @@ public partial class CirclesRpcModule
             return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
         }
 
-        // Skip `offset` results (pinning service doesn't support offset natively)
-        var paged = offset > 0 ? proxyResults.Skip(offset).Take(limit).ToArray() : proxyResults;
+        // Apply offset/limit (pinning service may return more than requested)
+        var paged = proxyResults.Skip(offset).Take(limit).ToArray();
 
         // Collect addresses for batch avatar info lookup
         var addresses = paged
