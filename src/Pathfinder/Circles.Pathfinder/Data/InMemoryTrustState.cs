@@ -26,7 +26,7 @@ public class InMemoryTrustState
         _state.Clear();
         foreach (var row in rows)
         {
-            var key = (row.Truster, row.Trustee);
+            var key = (row.Truster.ToLowerInvariant(), row.Trustee.ToLowerInvariant());
             _state[key] = (row.ExpiryTime, row.BlockNumber, row.TxIndex, row.LogIndex);
         }
     }
@@ -38,7 +38,7 @@ public class InMemoryTrustState
     public void ApplyTrustEvent(long blockNumber, int txIndex, int logIndex,
         string truster, string trustee, long expiryTime)
     {
-        var key = (truster, trustee);
+        var key = (truster.ToLowerInvariant(), trustee.ToLowerInvariant());
         if (_state.TryGetValue(key, out var existing))
         {
             if (blockNumber > existing.BlockNumber

@@ -32,7 +32,7 @@ public class InMemoryBalanceState
             var balance = BigInteger.Parse(row.Balance);
             if (balance <= 0) continue;
 
-            var key = (row.Account, row.TokenAddress);
+            var key = (row.Account.ToLowerInvariant(), row.TokenAddress.ToLowerInvariant());
             _state[key] = (balance, row.LastActivity);
         }
     }
@@ -45,6 +45,10 @@ public class InMemoryBalanceState
     {
         var amount = BigInteger.Parse(value);
         if (amount <= 0) return;
+
+        from = from.ToLowerInvariant();
+        to = to.ToLowerInvariant();
+        tokenAddress = tokenAddress.ToLowerInvariant();
 
         bool fromIsZero = string.Equals(from, ZeroAddress, StringComparison.OrdinalIgnoreCase);
         bool toIsZero = string.Equals(to, ZeroAddress, StringComparison.OrdinalIgnoreCase);

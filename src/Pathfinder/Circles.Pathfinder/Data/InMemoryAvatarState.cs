@@ -18,8 +18,8 @@ public class InMemoryAvatarState
     /// <summary>Only registered groups (subset of avatars).</summary>
     public HashSet<string> GetGroupSet() => _groups;
 
-    public bool Contains(string address) => _avatars.Contains(address);
-    public bool IsGroup(string address) => _groups.Contains(address);
+    public bool Contains(string address) => _avatars.Contains(address.ToLowerInvariant());
+    public bool IsGroup(string address) => _groups.Contains(address.ToLowerInvariant());
 
     public void InitializeFromFullLoad(IEnumerable<(string Avatar, string Type)> rows)
     {
@@ -27,14 +27,15 @@ public class InMemoryAvatarState
         _groups.Clear();
         foreach (var row in rows)
         {
-            _avatars.Add(row.Avatar);
+            _avatars.Add(row.Avatar.ToLowerInvariant());
             if (row.Type == "CrcV2_RegisterGroup")
-                _groups.Add(row.Avatar);
+                _groups.Add(row.Avatar.ToLowerInvariant());
         }
     }
 
     public void AddAvatar(string avatar, string type)
     {
+        avatar = avatar.ToLowerInvariant();
         _avatars.Add(avatar);
         if (type == "CrcV2_RegisterGroup")
             _groups.Add(avatar);
