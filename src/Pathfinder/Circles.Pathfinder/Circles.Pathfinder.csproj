@@ -33,6 +33,7 @@
         <None Remove="Data\Queries\trustDeltaQuery.sql" />
         <None Remove="Data\Queries\newAvatarsQuery.sql" />
         <None Remove="Data\Queries\maxBlockTimestampQuery.sql" />
+        <None Remove="Data\Queries\avatarBalancesQuery.sql" />
         <EmbeddedResource Include="Data\Queries\balanceQuery.sql" />
         <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
         <EmbeddedResource Include="Data\Queries\groupQuery.sql" />
@@ -44,6 +45,7 @@
         <EmbeddedResource Include="Data\Queries\trustDeltaQuery.sql" />
         <EmbeddedResource Include="Data\Queries\newAvatarsQuery.sql" />
         <EmbeddedResource Include="Data\Queries\maxBlockTimestampQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\avatarBalancesQuery.sql" />
     </ItemGroup>
 
     <ItemGroup>

@@ -452,6 +452,43 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
+        /// <summary>
+        /// Load complete balances for specific avatar addresses.
+        /// Used to backfill balances when new avatars are detected during incremental updates.
+        /// </summary>
+        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
+            LoadBalancesForAvatars(IEnumerable<string> avatarAddresses)
+        {
+            var avatarList = avatarAddresses.ToArray();
+            if (avatarList.Length == 0) return Array.Empty<(string, string, string, long)>();
+
+            var query = LoadQueryFromResource("avatarBalancesQuery.sql");
+            var results = new List<(string, string, string, long)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
+            command.Parameters.AddWithValue("avatars", avatarList);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((
+                    reader.GetString(0),  // balance
+                    reader.GetString(1),  // account
+                    reader.GetString(2),  // tokenAddress
+                    reader.GetInt64(3)    // lastActivity
+                ));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("avatar_balances_backfill", sw.Elapsed);
+            return results;
+        }
+
         public long LoadMaxBlockTimestamp()
         {
             var query = LoadQueryFromResource("maxBlockTimestampQuery.sql");

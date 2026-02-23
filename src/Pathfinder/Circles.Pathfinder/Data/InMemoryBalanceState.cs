@@ -87,6 +87,32 @@ public class InMemoryBalanceState
     }
 
     /// <summary>
+    /// Overwrite balances for specific accounts from a fresh DB load.
+    /// Used to backfill new avatars with their complete historical balances.
+    /// First removes ALL existing entries for the given accounts, then inserts fresh ones.
+    /// </summary>
+    public void BackfillAvatars(
+        IEnumerable<string> avatarAddresses,
+        IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)> freshBalances)
+    {
+        // Remove all existing entries for these avatars (may have partial data from deltas)
+        var avatarsToBackfill = new HashSet<string>(avatarAddresses.Select(a => a.ToLowerInvariant()));
+        var keysToRemove = _state.Keys.Where(k => avatarsToBackfill.Contains(k.Account)).ToList();
+        foreach (var key in keysToRemove)
+            _state.Remove(key);
+
+        // Insert fresh complete balances
+        foreach (var row in freshBalances)
+        {
+            var balance = BigInteger.Parse(row.Balance);
+            if (balance <= 0) continue;
+
+            var key = (row.Account.ToLowerInvariant(), row.TokenAddress.ToLowerInvariant());
+            _state[key] = (balance, row.LastActivity);
+        }
+    }
+
+    /// <summary>
     /// Create a shallow copy for drift comparison.
     /// </summary>
     public InMemoryBalanceState Snapshot()

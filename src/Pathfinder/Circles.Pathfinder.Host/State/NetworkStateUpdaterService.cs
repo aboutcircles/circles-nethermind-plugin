@@ -301,10 +301,22 @@ public class NetworkStateUpdaterService : BackgroundService
             trustCount++;
         }
 
+        var newAvatarAddresses = new List<string>();
         foreach (var a in newAvatars)
         {
             _avatarState!.AddAvatar(a.Avatar, a.Type);
+            newAvatarAddresses.Add(a.Avatar.ToLowerInvariant());
             avatarCount++;
+        }
+
+        // Backfill complete balances for newly registered avatars.
+        // New avatars may have received tokens before registering — those transfers
+        // predating _lastFullRefreshBlock aren't in our delta window.
+        if (newAvatarAddresses.Count > 0)
+        {
+            var freshBalances = loadGraph.LoadBalancesForAvatars(newAvatarAddresses);
+            _balanceState!.BackfillAvatars(newAvatarAddresses, freshBalances);
+            _log.LogDebug("Backfilled balances for {Count} new avatars", newAvatarAddresses.Count);
         }
 
         // Record delta metrics
@@ -429,6 +441,25 @@ public class NetworkStateUpdaterService : BackgroundService
             _log.LogWarning(
                 "Drift detected: {BalanceDrift} balance, {TrustDrift} trust, {AvatarDrift} avatar entries. Max balance drift: {MaxPct:F4}%",
                 balanceDrift, trustDrift, avatarDrift, maxPctDrift);
+
+            // Log first few drifted entries for debugging
+            int logged = 0;
+            foreach (var kv in freshBalance.GetAll())
+            {
+                if (logged >= 5) break;
+                if (!prevBalance.TryGet(kv.Key, out var prevEntry))
+                {
+                    _log.LogWarning("  Drift: {Account}/{Token} — missing in accumulated, fresh={Balance}",
+                        kv.Key.Account[..10], kv.Key.TokenAddress[..10], kv.Value.Balance);
+                    logged++;
+                }
+                else if (prevEntry.Balance != kv.Value.Balance)
+                {
+                    _log.LogWarning("  Drift: {Account}/{Token} — accumulated={Prev}, fresh={Fresh}",
+                        kv.Key.Account[..10], kv.Key.TokenAddress[..10], prevEntry.Balance, kv.Value.Balance);
+                    logged++;
+                }
+            }
         }
         else
         {
