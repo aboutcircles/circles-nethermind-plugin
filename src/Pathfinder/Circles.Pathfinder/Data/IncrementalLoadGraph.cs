@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using Circles.Common;
 using Microsoft.Extensions.Logging;
@@ -137,12 +138,14 @@ public class IncrementalLoadGraph : ILoadGraph
 
     /// <summary>
     /// Derives group trusts from in-memory trust state — avoids the slow V_CrcV2_TrustRelations view.
+    /// Uses the router-filtered group set from LoadGroups() (not the full avatar group set)
+    /// to match the DB-backed groupTrustQuery.sql which filters by mint policy.
     /// </summary>
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        return _trustState.GetGroupTrusts(
-            _avatarState.GetGroupSet(),
-            _maxBlockTimestamp);
+        // Use router-filtered groups from DB (matches groupTrustQuery.sql's WHERE mint = '0xCDFc...')
+        var routerGroups = new HashSet<string>(_inner.LoadGroups().Select(g => g.ToLowerInvariant()));
+        return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp);
     }
 
     /// <summary>

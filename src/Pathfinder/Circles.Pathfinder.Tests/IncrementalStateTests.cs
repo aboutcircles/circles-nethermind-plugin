@@ -576,6 +576,7 @@ public class IncrementalLoadGraphTests
         var balances = CreateBalanceState();
         var settings = new Settings();
         var stubInner = new StubLoadGraph();
+        stubInner.Groups.Add(GroupAddr); // router-filtered groups from DB
         var incGraph = new IncrementalLoadGraph(balances, trusts, avatars, stubInner, settings, 0);
 
         var results = incGraph.LoadGroupTrusts().ToList();
