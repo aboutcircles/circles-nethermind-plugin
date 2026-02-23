@@ -13,6 +13,9 @@ public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph,
     /// <summary>Whether a snapshot has been loaded (used by health checks).</summary>
     public bool HasCurrentSnapshot => _current is not null;
 
+    /// <summary>Current snapshot (for metrics). May be null before first load.</summary>
+    public CapacityGraphSnapshot? CurrentSnapshot => _current;
+
     /* ------------------------------------------------------------------ */
     /* Snapshot                                                           */
     /* ------------------------------------------------------------------ */

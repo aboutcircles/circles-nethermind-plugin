@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Numerics;
 using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
@@ -22,6 +23,13 @@ public class NetworkStateUpdaterService : BackgroundService
     private readonly ILogger<NetworkStateUpdaterService> _log;
     private readonly CapacityGraphPool _pool;
 
+    // Incremental state (only used when IncrementalEnabled=true)
+    private InMemoryBalanceState? _balanceState;
+    private InMemoryTrustState? _trustState;
+    private InMemoryAvatarState? _avatarState;
+    private long _lastFullRefreshBlock = -1;
+    private long _lastProcessedBlock = -1;
+
     public NetworkStateUpdaterService(NetworkState networkState,
         Circles.Pathfinder.Host.Settings settings,
         ILogger<NetworkStateUpdaterService> log,
@@ -36,7 +44,23 @@ public class NetworkStateUpdaterService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var loadGraph = new LoadGraph(_settings);
-        var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
+
+        // Wire DB query timing to Prometheus histogram
+        loadGraph.OnQueryCompleted = (queryName, elapsed) =>
+        {
+            GraphUpdateMetrics.DbQueryDuration.WithLabels(queryName).Observe(elapsed.TotalSeconds);
+        };
+
+        if (_settings.IncrementalEnabled)
+        {
+            _log.LogInformation(
+                "Incremental graph updates ENABLED (full refresh every {Interval} blocks)",
+                _settings.FullRefreshIntervalBlocks);
+        }
+        else
+        {
+            _log.LogInformation("Incremental graph updates DISABLED — using original full-refresh path");
+        }
 
         long lastBlock = _networkState.LastKnownBlockNumber;
         int consecutiveErrors = 0;
@@ -54,90 +78,42 @@ public class NetworkStateUpdaterService : BackgroundService
 
                 var swTotal = Stopwatch.StartNew();
 
-                var swTrustGraph = Stopwatch.StartNew();
-                var trustTask = Task.Run(() =>
+                if (_settings.IncrementalEnabled)
                 {
-                    try
-                    {
-                        var graph = graphFactory.V2TrustGraph();
-                        var lookup = GraphFactory.BuildTrustLookup(graph);
-                        _networkState.Replace(accountTrusts: lookup);
-                        swTrustGraph.Stop();
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogError(ex, "Error loading trust graph");
-                        swTrustGraph.Stop();
-                        throw; // Re-throw to be handled by outer try-catch
-                    }
-                }, stoppingToken);
-
-                var swBalanceGraph = Stopwatch.StartNew();
-                var balanceTask = Task.Run(() =>
+                    await UpdateIncremental(loadGraph, lastBlock, stoppingToken);
+                }
+                else
                 {
-                    try
-                    {
-                        var graph = graphFactory.V2BalanceGraph();
-                        _networkState.Replace(balanceGraph: graph);
-                        swBalanceGraph.Stop();
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogError(ex, "Error loading balance graph");
-                        swBalanceGraph.Stop();
-                        throw; // Re-throw to be handled by outer try-catch
-                    }
-                }, stoppingToken);
+                    await UpdateOriginal(loadGraph, lastBlock, stoppingToken);
+                }
 
-                await Task.WhenAll(trustTask, balanceTask);
                 swTotal.Stop();
 
-                // Build full capacity graph with router address
-                var cap = await CapacityGraphPool.BuildFullGraph(
-                    _networkState.BalanceGraph ?? throw new InvalidOperationException("Balance graph is null"),
-                    _networkState.AccountTrusts ?? throw new InvalidOperationException("Account trusts is null"),
-                    loadGraph,
-                    _settings.BaseGroupRouter
-                );
-                // Extract group/consent data for caching (avoids 3 DB queries per filtered request)
-                var groupData = new CachedGroupData(
-                    new HashSet<int>(cap.GroupNodes),
-                    cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
-                    new HashSet<int>(cap.ConsentedAvatars));
-
-                var snap = new CapacityGraphSnapshot(lastBlock, cap);
-                _pool.UpdateSnapshot(snap, groupData);
-
-                _log.LogInformation(
-                    "Graphs updated – trust={TrustMs} ms balance={BalanceMs} ms total={TotalMs} ms",
-                    swTrustGraph.ElapsedMilliseconds,
-                    swBalanceGraph.ElapsedMilliseconds,
-                    swTotal.ElapsedMilliseconds);
-
-                // Record metrics for successful update
-                GraphUpdateMetrics.UpdateDuration.WithLabels("trust").Observe(swTrustGraph.Elapsed.TotalSeconds);
-                GraphUpdateMetrics.UpdateDuration.WithLabels("balance").Observe(swBalanceGraph.Elapsed.TotalSeconds);
+                // Common metrics
                 GraphUpdateMetrics.UpdateDuration.WithLabels("total").Observe(swTotal.Elapsed.TotalSeconds);
                 GraphUpdateMetrics.UpdateTotal.WithLabels("success").Inc();
                 GraphUpdateMetrics.LastUpdateTimestamp.Set(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
                 GraphUpdateMetrics.LastProcessedBlock.Set(lastBlock);
                 GraphUpdateMetrics.ConsecutiveErrors.Set(0);
 
-                // O3: Graph size gauges
+                // Graph size gauges
                 var bg = _networkState.BalanceGraph;
                 if (bg != null)
                 {
                     GraphUpdateMetrics.AvatarCount.Set(bg.AvatarNodes.Count);
                     GraphUpdateMetrics.BalanceCount.Set(bg.BalanceNodes.Count);
                 }
-                GraphUpdateMetrics.EdgeCount.Set(cap.Edges.Count);
-                GraphUpdateMetrics.GroupCount.Set(cap.GroupNodes.Count);
-                GraphUpdateMetrics.ConsentedAvatarCount.Set(cap.ConsentedAvatars.Count);
 
-                // O9: Address pool size
+                var currentSnap = _pool.CurrentSnapshot;
+                if (currentSnap != null)
+                {
+                    GraphUpdateMetrics.EdgeCount.Set(currentSnap.Base.Edges.Count);
+                    GraphUpdateMetrics.GroupCount.Set(currentSnap.Base.GroupNodes.Count);
+                    GraphUpdateMetrics.ConsentedAvatarCount.Set(currentSnap.Base.ConsentedAvatars.Count);
+                }
+
                 GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
 
-                // Reset error counter on success
                 consecutiveErrors = 0;
             }
             catch (OperationCanceledException)
@@ -160,7 +136,6 @@ public class NetworkStateUpdaterService : BackgroundService
                         $"Last error: {ex.Message}");
                 }
 
-                // Wait before retrying with exponential backoff
                 var retryDelay = TimeSpan.FromSeconds(Math.Min(30, Math.Pow(2, consecutiveErrors)));
                 _log.LogInformation("Retrying in {Delay} seconds", retryDelay.TotalSeconds);
 
@@ -173,6 +148,291 @@ public class NetworkStateUpdaterService : BackgroundService
                     break;
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Original full-refresh path — unchanged behavior, used when IncrementalEnabled=false.
+    /// </summary>
+    private async Task UpdateOriginal(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
+    {
+        var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
+
+        var swTrust = Stopwatch.StartNew();
+        var trustTask = Task.Run(() =>
+        {
+            var graph = graphFactory.V2TrustGraph();
+            var lookup = GraphFactory.BuildTrustLookup(graph);
+            _networkState.Replace(accountTrusts: lookup);
+            swTrust.Stop();
+        }, ct);
+
+        var swBalance = Stopwatch.StartNew();
+        var balanceTask = Task.Run(() =>
+        {
+            var graph = graphFactory.V2BalanceGraph();
+            _networkState.Replace(balanceGraph: graph);
+            swBalance.Stop();
+        }, ct);
+
+        await Task.WhenAll(trustTask, balanceTask);
+
+        var cap = await CapacityGraphPool.BuildFullGraph(
+            _networkState.BalanceGraph ?? throw new InvalidOperationException("Balance graph is null"),
+            _networkState.AccountTrusts ?? throw new InvalidOperationException("Account trusts is null"),
+            loadGraph,
+            _settings.BaseGroupRouter);
+
+        var groupData = new CachedGroupData(
+            new HashSet<int>(cap.GroupNodes),
+            cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
+            new HashSet<int>(cap.ConsentedAvatars));
+
+        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+
+        GraphUpdateMetrics.UpdateDuration.WithLabels("trust").Observe(swTrust.Elapsed.TotalSeconds);
+        GraphUpdateMetrics.UpdateDuration.WithLabels("balance").Observe(swBalance.Elapsed.TotalSeconds);
+        GraphUpdateMetrics.UpdateMode.Set(-1); // -1 = legacy mode
+
+        _log.LogInformation(
+            "Graphs updated (legacy) – trust={TrustMs} ms balance={BalanceMs} ms",
+            swTrust.ElapsedMilliseconds, swBalance.ElapsedMilliseconds);
+    }
+
+    /// <summary>
+    /// Incremental update path — maintains in-memory state, applies per-block deltas.
+    /// Falls back to full refresh on first run, every N blocks, or on reorg/skip.
+    /// </summary>
+    private async Task UpdateIncremental(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
+    {
+        bool needsFullRefresh = _balanceState == null                                       // first run
+            || (lastBlock - _lastFullRefreshBlock) >= _settings.FullRefreshIntervalBlocks    // periodic
+            || lastBlock <= _lastProcessedBlock;                                             // reorg / skip
+
+        if (needsFullRefresh)
+        {
+            await FullRefresh(loadGraph, lastBlock, ct);
+        }
+        else
+        {
+            await IncrementalUpdate(loadGraph, lastBlock, ct);
+        }
+
+        _lastProcessedBlock = lastBlock;
+    }
+
+    private Task FullRefresh(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+
+        // Snapshot current state for drift comparison (if not first run)
+        var prevBalance = _balanceState?.Snapshot();
+        var prevTrust = _trustState?.Snapshot();
+        var prevAvatar = _avatarState?.Snapshot();
+
+        // Load fresh state from DB (expensive — one-time cost per refresh cycle)
+        var rawBalances = loadGraph.LoadRawBalances();
+        var rawTrusts = loadGraph.LoadRawTrusts();
+        var allAvatars = loadGraph.LoadAllAvatars();
+        var maxTimestamp = loadGraph.LoadMaxBlockTimestamp();
+
+        // Initialize in-memory state
+        _balanceState = new InMemoryBalanceState();
+        _balanceState.InitializeFromFullLoad(rawBalances);
+
+        _trustState = new InMemoryTrustState();
+        _trustState.InitializeFromFullLoad(rawTrusts);
+
+        _avatarState = new InMemoryAvatarState();
+        _avatarState.InitializeFromFullLoad(allAvatars);
+
+        // Drift detection (if not first run)
+        if (prevBalance != null && prevTrust != null && prevAvatar != null)
+        {
+            DetectAndRecordDrift(prevBalance, prevTrust, prevAvatar,
+                _balanceState, _trustState, _avatarState);
+        }
+
+        // Build graphs from in-memory state
+        BuildAndPublishGraphs(loadGraph, lastBlock, maxTimestamp);
+
+        sw.Stop();
+        _lastFullRefreshBlock = lastBlock;
+
+        GraphUpdateMetrics.FullRefreshTotal.Inc();
+        GraphUpdateMetrics.UpdateMode.Set(0);
+        GraphUpdateMetrics.LastFullRefreshBlock.Set(lastBlock);
+        GraphUpdateMetrics.BlocksSinceFullRefresh.Set(0);
+        GraphUpdateMetrics.UpdateDuration.WithLabels("full_refresh").Observe(sw.Elapsed.TotalSeconds);
+
+        _log.LogInformation(
+            "Full refresh completed – {BalanceCount} balances, {TrustCount} trusts, {AvatarCount} avatars in {Ms} ms",
+            _balanceState.Count, _trustState.Count, _avatarState.Count, sw.ElapsedMilliseconds);
+
+        return Task.CompletedTask;
+    }
+
+    private Task IncrementalUpdate(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+
+        // Load deltas (fast — indexed by blockNumber)
+        var swDelta = Stopwatch.StartNew();
+        var transfers = loadGraph.LoadTransfersSince(_lastProcessedBlock);
+        var trustEvents = loadGraph.LoadTrustEventsSince(_lastProcessedBlock);
+        var newAvatars = loadGraph.LoadNewAvatarsSince(_lastProcessedBlock);
+        var maxTimestamp = loadGraph.LoadMaxBlockTimestamp();
+        swDelta.Stop();
+        GraphUpdateMetrics.DeltaQueryDuration.WithLabels("all").Observe(swDelta.Elapsed.TotalSeconds);
+
+        // Apply deltas to in-memory state
+        int transferCount = 0, trustCount = 0, avatarCount = 0;
+
+        foreach (var t in transfers)
+        {
+            _balanceState!.ApplyTransfer(t.From, t.To, t.TokenAddress, t.Value, t.Timestamp);
+            transferCount++;
+        }
+
+        foreach (var t in trustEvents)
+        {
+            _trustState!.ApplyTrustEvent(t.BlockNumber, t.TxIndex, t.LogIndex,
+                t.Truster, t.Trustee, t.ExpiryTime);
+            trustCount++;
+        }
+
+        foreach (var a in newAvatars)
+        {
+            _avatarState!.AddAvatar(a.Avatar, a.Type);
+            avatarCount++;
+        }
+
+        // Record delta metrics
+        GraphUpdateMetrics.DeltaEventsCount.WithLabels("transfer").Set(transferCount);
+        GraphUpdateMetrics.DeltaEventsCount.WithLabels("trust").Set(trustCount);
+        GraphUpdateMetrics.DeltaEventsCount.WithLabels("avatar").Set(avatarCount);
+
+        // Build graphs from in-memory state
+        BuildAndPublishGraphs(loadGraph, lastBlock, maxTimestamp);
+
+        sw.Stop();
+        GraphUpdateMetrics.IncrementalUpdateTotal.Inc();
+        GraphUpdateMetrics.UpdateMode.Set(1);
+        GraphUpdateMetrics.BlocksSinceFullRefresh.Set(lastBlock - _lastFullRefreshBlock);
+        GraphUpdateMetrics.UpdateDuration.WithLabels("incremental").Observe(sw.Elapsed.TotalSeconds);
+
+        _log.LogInformation(
+            "Incremental update – {Transfers} transfers, {Trusts} trusts, {Avatars} avatars in {Ms} ms (blocks since full: {BlocksSince})",
+            transferCount, trustCount, avatarCount, sw.ElapsedMilliseconds,
+            lastBlock - _lastFullRefreshBlock);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Build balance graph, trust graph, and capacity graph from in-memory state and publish to pool.
+    /// Shared by both full refresh and incremental paths.
+    /// </summary>
+    private void BuildAndPublishGraphs(LoadGraph loadGraph, long lastBlock, long maxBlockTimestamp)
+    {
+        var incLoadGraph = new IncrementalLoadGraph(
+            _balanceState!, _trustState!, _avatarState!,
+            loadGraph, _settings, maxBlockTimestamp, _log);
+
+        var graphFactory = new GraphFactory(_settings.BaseGroupRouter, incLoadGraph);
+
+        // Build trust and balance graphs (these are fast — in-memory iteration only)
+        var trustGraph = graphFactory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+        _networkState.Replace(accountTrusts: trustLookup);
+
+        var balanceGraph = graphFactory.V2BalanceGraph();
+        _networkState.Replace(balanceGraph: balanceGraph);
+
+        // Build capacity graph
+        var cap = graphFactory.CreateCapacityGraph(balanceGraph, trustLookup);
+
+        var groupData = new CachedGroupData(
+            new HashSet<int>(cap.GroupNodes),
+            cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
+            new HashSet<int>(cap.ConsentedAvatars));
+
+        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+    }
+
+    /// <summary>
+    /// Compare accumulated in-memory state against fresh DB load to detect drift.
+    /// Any drift indicates a bug in delta application logic.
+    /// </summary>
+    private void DetectAndRecordDrift(
+        InMemoryBalanceState prevBalance, InMemoryTrustState prevTrust, InMemoryAvatarState prevAvatar,
+        InMemoryBalanceState freshBalance, InMemoryTrustState freshTrust, InMemoryAvatarState freshAvatar)
+    {
+        // Balance drift
+        int balanceDrift = 0;
+        double maxPctDrift = 0;
+        foreach (var kv in freshBalance.GetAll())
+        {
+            if (!prevBalance.TryGet(kv.Key, out var prevEntry) || prevEntry.Balance != kv.Value.Balance)
+            {
+                balanceDrift++;
+                if (prevBalance.TryGet(kv.Key, out var p) && p.Balance != 0)
+                {
+                    var delta = (double)(kv.Value.Balance - p.Balance);
+                    var pct = Math.Abs(delta / (double)p.Balance) * 100;
+                    maxPctDrift = Math.Max(maxPctDrift, pct);
+                }
+            }
+        }
+        // Entries in prev but not in fresh
+        foreach (var key in prevBalance.Keys)
+        {
+            if (!freshBalance.TryGet(key, out _))
+                balanceDrift++;
+        }
+
+        // Trust drift
+        int trustDrift = 0;
+        foreach (var kv in freshTrust.GetAll())
+        {
+            if (!prevTrust.TryGet(kv.Key, out var prevEntry)
+                || prevEntry.ExpiryTime != kv.Value.ExpiryTime
+                || prevEntry.BlockNumber != kv.Value.BlockNumber)
+            {
+                trustDrift++;
+            }
+        }
+        foreach (var key in prevTrust.Keys)
+        {
+            if (!freshTrust.TryGet(key, out _))
+                trustDrift++;
+        }
+
+        // Avatar drift
+        int avatarDrift = 0;
+        foreach (var a in freshAvatar.AvatarSet)
+        {
+            if (!prevAvatar.Contains(a)) avatarDrift++;
+        }
+        foreach (var a in prevAvatar.AvatarSet)
+        {
+            if (!freshAvatar.Contains(a)) avatarDrift++;
+        }
+
+        GraphUpdateMetrics.DriftEntries.WithLabels("balance").Set(balanceDrift);
+        GraphUpdateMetrics.DriftEntries.WithLabels("trust").Set(trustDrift);
+        GraphUpdateMetrics.DriftEntries.WithLabels("avatar").Set(avatarDrift);
+        GraphUpdateMetrics.DriftMaxBalancePct.Set(maxPctDrift);
+
+        if (balanceDrift > 0 || trustDrift > 0 || avatarDrift > 0)
+        {
+            _log.LogWarning(
+                "Drift detected: {BalanceDrift} balance, {TrustDrift} trust, {AvatarDrift} avatar entries. Max balance drift: {MaxPct:F4}%",
+                balanceDrift, trustDrift, avatarDrift, maxPctDrift);
+        }
+        else
+        {
+            _log.LogDebug("Drift check passed — zero drift across all state");
         }
     }
 

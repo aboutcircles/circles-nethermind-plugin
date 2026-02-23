@@ -57,6 +57,28 @@ public class Settings
         : 30;
 
     /// <summary>
+    /// Master switch for incremental graph updates.
+    /// When false, the original full-refresh-every-block behavior is used — all new code bypassed.
+    /// When true, in-memory state is maintained and only deltas are loaded per block.
+    /// </summary>
+    public bool IncrementalEnabled { get; set; } =
+        !string.Equals(
+            Environment.GetEnvironmentVariable("PATHFINDER_INCREMENTAL_ENABLED"),
+            "false",
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Number of blocks between full DB refreshes (drift correction).
+    /// Only used when IncrementalEnabled=true.
+    /// Set to 1 to force full refresh every block (effectively disables incremental within the new code path).
+    /// Default: 200 (~16 min on Gnosis with 5s blocks).
+    /// </summary>
+    public int FullRefreshIntervalBlocks { get; set; } =
+        Environment.GetEnvironmentVariable("PATHFINDER_FULL_REFRESH_INTERVAL_BLOCKS") != null
+        ? int.Parse(Environment.GetEnvironmentVariable("PATHFINDER_FULL_REFRESH_INTERVAL_BLOCKS")!)
+        : 200;
+
+    /// <summary>
     /// When true, consented avatars are excluded from intermediary positions in flows.
     /// They can still be source or sink. This avoids consent rule validation entirely
     /// for the risky multi-hop case. Default: true (conservative).

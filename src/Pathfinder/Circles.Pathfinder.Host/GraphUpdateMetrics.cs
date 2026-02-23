@@ -88,4 +88,58 @@ internal static class GraphUpdateMetrics
             LabelNames = new[] { "query" },
             Buckets = Histogram.ExponentialBuckets(0.01, 2, 12) // 10ms to ~41s
         });
+
+    // ─── Incremental update metrics ───────────────────────────────────
+
+    /// <summary>Current update mode: 0=full, 1=incremental.</summary>
+    public static readonly Gauge UpdateMode = Metrics.CreateGauge(
+        "circles_graph_update_mode",
+        "Current update mode (0=full, 1=incremental)");
+
+    public static readonly Counter IncrementalUpdateTotal = Metrics.CreateCounter(
+        "circles_graph_incremental_update_total",
+        "Total incremental updates");
+
+    public static readonly Counter FullRefreshTotal = Metrics.CreateCounter(
+        "circles_graph_full_refresh_total",
+        "Total full refreshes");
+
+    /// <summary>Events in last delta, by type (transfer/trust/avatar).</summary>
+    public static readonly Gauge DeltaEventsCount = Metrics.CreateGauge(
+        "circles_graph_delta_events_count",
+        "Events in last delta",
+        new GaugeConfiguration { LabelNames = new[] { "type" } });
+
+    /// <summary>Delta query duration histogram.</summary>
+    public static readonly Histogram DeltaQueryDuration = Metrics.CreateHistogram(
+        "circles_graph_delta_query_duration_seconds",
+        "Delta query duration",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "query" },
+            Buckets = Histogram.ExponentialBuckets(0.001, 2, 12) // 1ms to ~4s
+        });
+
+    // ─── Drift detection metrics ──────────────────────────────────────
+
+    /// <summary>Drifted entries on last full refresh, by type (balance/trust/avatar).</summary>
+    public static readonly Gauge DriftEntries = Metrics.CreateGauge(
+        "circles_graph_drift_entries",
+        "Drifted entries on last full refresh",
+        new GaugeConfiguration { LabelNames = new[] { "type" } });
+
+    /// <summary>Max single-balance drift % on last full refresh.</summary>
+    public static readonly Gauge DriftMaxBalancePct = Metrics.CreateGauge(
+        "circles_graph_drift_max_balance_pct",
+        "Max balance drift % on last full refresh");
+
+    /// <summary>Block number of last full refresh.</summary>
+    public static readonly Gauge LastFullRefreshBlock = Metrics.CreateGauge(
+        "circles_graph_last_full_refresh_block",
+        "Block number of last full refresh");
+
+    /// <summary>Blocks since last full refresh.</summary>
+    public static readonly Gauge BlocksSinceFullRefresh = Metrics.CreateGauge(
+        "circles_graph_blocks_since_full_refresh",
+        "Blocks since last full refresh");
 }

@@ -278,6 +278,197 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
+        // ──────────────────────────────────────────────────────────────────
+        // Full-state + delta methods (used by incremental update orchestrator)
+        // Not part of ILoadGraph — only called by NetworkStateUpdaterService.
+        // ──────────────────────────────────────────────────────────────────
+
+        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
+            LoadRawBalances()
+        {
+            var query = LoadQueryFromResource("balanceFullStateQuery.sql");
+            var results = new List<(string, string, string, long)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((
+                    reader.GetString(0),  // balance
+                    reader.GetString(1),  // account
+                    reader.GetString(2),  // tokenAddress
+                    reader.GetInt64(3)    // lastActivity
+                ));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("raw_balances", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<(string Truster, string Trustee, long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex)>
+            LoadRawTrusts()
+        {
+            var query = LoadQueryFromResource("trustFullStateQuery.sql");
+            var results = new List<(string, string, long, long, int, int)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((
+                    reader.GetString(0),  // truster
+                    reader.GetString(1),  // trustee
+                    reader.GetInt64(2),   // expiryTime
+                    reader.GetInt64(3),   // blockNumber
+                    reader.GetInt32(4),   // transactionIndex
+                    reader.GetInt32(5)    // logIndex
+                ));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("raw_trusts", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<(string Avatar, string Type)> LoadAllAvatars()
+        {
+            var results = new List<(string, string)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand("SELECT avatar, type FROM \"V_CrcV2_Avatars\"", connection);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("all_avatars", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<(long Timestamp, string From, string To, string TokenAddress, string Value)>
+            LoadTransfersSince(long lastBlock)
+        {
+            var query = LoadQueryFromResource("balanceDeltaQuery.sql");
+            var results = new List<(long, string, string, string, string)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((
+                    reader.GetInt64(0),   // timestamp
+                    reader.GetString(1),  // from
+                    reader.GetString(2),  // to
+                    reader.GetString(3),  // tokenAddress
+                    reader.GetString(4)   // value
+                ));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("delta_transfers", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<(long BlockNumber, int TxIndex, int LogIndex, string Truster, string Trustee, long ExpiryTime)>
+            LoadTrustEventsSince(long lastBlock)
+        {
+            var query = LoadQueryFromResource("trustDeltaQuery.sql");
+            var results = new List<(long, int, int, string, string, long)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((
+                    reader.GetInt64(0),   // blockNumber
+                    reader.GetInt32(1),   // transactionIndex
+                    reader.GetInt32(2),   // logIndex
+                    reader.GetString(3),  // truster
+                    reader.GetString(4),  // trustee
+                    reader.GetInt64(5)    // expiryTime
+                ));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("delta_trusts", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<(string Avatar, string Type)> LoadNewAvatarsSince(long lastBlock)
+        {
+            var query = LoadQueryFromResource("newAvatarsQuery.sql");
+            var results = new List<(string, string)>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("delta_avatars", sw.Elapsed);
+            return results;
+        }
+
+        public long LoadMaxBlockTimestamp()
+        {
+            var query = LoadQueryFromResource("maxBlockTimestampQuery.sql");
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = 30;
+            var result = command.ExecuteScalar();
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("max_block_timestamp", sw.Elapsed);
+            return result != null && result != DBNull.Value ? Convert.ToInt64(result) : 0;
+        }
+
         // Load consented flow flags (latest per avatar)
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
         {
