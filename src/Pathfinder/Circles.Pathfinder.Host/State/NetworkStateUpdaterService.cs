@@ -414,7 +414,8 @@ public class NetworkStateUpdaterService : BackgroundService
         InMemoryBalanceState prevBalance, InMemoryTrustState prevTrust, InMemoryAvatarState prevAvatar,
         InMemoryBalanceState freshBalance, InMemoryTrustState freshTrust, InMemoryAvatarState freshAvatar)
     {
-        // Balance drift
+        // Balance drift — only compare entries for registered avatars (D11 filters non-avatars
+        // from the fresh load, but delta transfers can create non-avatar entries in accumulated state)
         int balanceDrift = 0;
         double maxPctDrift = 0;
         foreach (var kv in freshBalance.GetAll())
@@ -430,10 +431,11 @@ public class NetworkStateUpdaterService : BackgroundService
                 }
             }
         }
-        // Entries in prev but not in fresh
+        // Entries in prev but not in fresh — only count avatar entries
+        // (non-avatar entries in accumulated are expected noise from delta transfers)
         foreach (var key in prevBalance.Keys)
         {
-            if (!freshBalance.TryGet(key, out _))
+            if (!freshBalance.TryGet(key, out _) && freshAvatar.AvatarSet.Contains(key.Account))
                 balanceDrift++;
         }
 
@@ -454,15 +456,16 @@ public class NetworkStateUpdaterService : BackgroundService
                 trustDrift++;
         }
 
-        // Avatar drift
+        // Avatar drift — use AvatarSet directly (not Contains()) because Contains()
+        // excludes stopped avatars (D13), which would create false drift
         int avatarDrift = 0;
         foreach (var a in freshAvatar.AvatarSet)
         {
-            if (!prevAvatar.Contains(a)) avatarDrift++;
+            if (!prevAvatar.AvatarSet.Contains(a)) avatarDrift++;
         }
         foreach (var a in prevAvatar.AvatarSet)
         {
-            if (!freshAvatar.Contains(a)) avatarDrift++;
+            if (!freshAvatar.AvatarSet.Contains(a)) avatarDrift++;
         }
 
         GraphUpdateMetrics.DriftEntries.WithLabels("balance").Set(balanceDrift);
