@@ -106,9 +106,11 @@ public class IncrementalLoadGraph : ILoadGraph
             // Apply safety margin in live mode
             if (applyMargin && balance != "0")
             {
-                var raw = BigInteger.Parse(balance);
-                var margined = (BigInteger)((double)raw * _settings.DemurrageSafetyMargin);
-                balance = margined.ToString(CultureInfo.InvariantCulture);
+                if (BigInteger.TryParse(balance, out var raw))
+                {
+                    var margined = (BigInteger)((double)raw * _settings.DemurrageSafetyMargin);
+                    balance = margined.ToString(CultureInfo.InvariantCulture);
+                }
             }
 
             if (balance == "0") continue;

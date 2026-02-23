@@ -1,3 +1,4 @@
+using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
@@ -7,6 +8,7 @@ using Circles.Pathfinder.Graphs;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Npgsql;
 using Prometheus;
 
 namespace Circles.Pathfinder.Host.State;
@@ -29,6 +31,7 @@ public class NetworkStateUpdaterService : BackgroundService
     private InMemoryAvatarState? _avatarState;
     private long _lastFullRefreshBlock = -1;
     private long _lastProcessedBlock = -1;
+    private string? _lastProcessedBlockHash;  // D10: reorg detection
 
     public NetworkStateUpdaterService(NetworkState networkState,
         Circles.Pathfinder.Host.Settings settings,
@@ -209,6 +212,20 @@ public class NetworkStateUpdaterService : BackgroundService
             || (lastBlock - _lastFullRefreshBlock) >= _settings.FullRefreshIntervalBlocks    // periodic
             || lastBlock <= _lastProcessedBlock;                                             // reorg / skip
 
+        // D10: same-height reorg detection via block hash comparison
+        if (!needsFullRefresh && _lastProcessedBlockHash != null)
+        {
+            var currentHash = loadGraph.LoadBlockHash(_lastProcessedBlock);
+            if (currentHash != null && !string.Equals(currentHash, _lastProcessedBlockHash, StringComparison.OrdinalIgnoreCase))
+            {
+                _log.LogWarning(
+                    "Reorg detected at block {Block}: stored hash {StoredHash} != current hash {CurrentHash}. Forcing full refresh.",
+                    _lastProcessedBlock, _lastProcessedBlockHash[..10], currentHash[..10]);
+                GraphUpdateMetrics.ReorgDetectedTotal.Inc();
+                needsFullRefresh = true;
+            }
+        }
+
         if (needsFullRefresh)
         {
             await FullRefresh(loadGraph, lastBlock, ct);
@@ -219,6 +236,7 @@ public class NetworkStateUpdaterService : BackgroundService
         }
 
         _lastProcessedBlock = lastBlock;
+        _lastProcessedBlockHash = loadGraph.LoadBlockHash(lastBlock);
     }
 
     private Task FullRefresh(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
@@ -230,14 +248,21 @@ public class NetworkStateUpdaterService : BackgroundService
         var prevTrust = _trustState?.Snapshot();
         var prevAvatar = _avatarState?.Snapshot();
 
-        // Load fresh state from DB (expensive — one-time cost per refresh cycle)
-        var rawBalances = loadGraph.LoadRawBalances();
-        var rawTrusts = loadGraph.LoadRawTrusts();
-        var allAvatars = loadGraph.LoadAllAvatars();
-        var maxTimestamp = loadGraph.LoadMaxBlockTimestamp();
+        // Load fresh state from DB inside a single REPEATABLE READ transaction.
+        // This guarantees all 4 queries see a consistent DB snapshot, preventing
+        // phantom inconsistencies where balances reflect block N but trusts reflect N+1.
+        using var conn = new NpgsqlConnection(loadGraph.ConnectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction(IsolationLevel.RepeatableRead);
+        var rawBalances = loadGraph.LoadRawBalances(conn, tx);
+        var rawTrusts = loadGraph.LoadRawTrusts(conn, tx);
+        var allAvatars = loadGraph.LoadAllAvatars(conn, tx);
+        var stoppedAvatars = loadGraph.LoadStoppedAvatars(conn, tx);
+        var maxTimestamp = loadGraph.LoadMaxBlockTimestamp(conn, tx);
+        tx.Commit();
 
         // Initialize in-memory state
-        _balanceState = new InMemoryBalanceState();
+        _balanceState = new InMemoryBalanceState(_log);
         _balanceState.InitializeFromFullLoad(rawBalances);
 
         _trustState = new InMemoryTrustState();
@@ -245,6 +270,7 @@ public class NetworkStateUpdaterService : BackgroundService
 
         _avatarState = new InMemoryAvatarState();
         _avatarState.InitializeFromFullLoad(allAvatars);
+        _avatarState.InitializeStoppedAvatars(stoppedAvatars);
 
         // Drift detection (if not first run)
         if (prevBalance != null && prevTrust != null && prevAvatar != null)
@@ -281,6 +307,7 @@ public class NetworkStateUpdaterService : BackgroundService
         var transfers = loadGraph.LoadTransfersSince(_lastProcessedBlock);
         var trustEvents = loadGraph.LoadTrustEventsSince(_lastProcessedBlock);
         var newAvatars = loadGraph.LoadNewAvatarsSince(_lastProcessedBlock);
+        var stoppedAvatars = loadGraph.LoadStoppedAvatarsSince(_lastProcessedBlock);
         var maxTimestamp = loadGraph.LoadMaxBlockTimestamp();
         swDelta.Stop();
         GraphUpdateMetrics.DeltaQueryDuration.WithLabels("all").Observe(swDelta.Elapsed.TotalSeconds);
@@ -309,6 +336,13 @@ public class NetworkStateUpdaterService : BackgroundService
             avatarCount++;
         }
 
+        int stoppedCount = 0;
+        foreach (var avatar in stoppedAvatars)
+        {
+            _avatarState!.MarkStopped(avatar);
+            stoppedCount++;
+        }
+
         // Backfill complete balances for newly registered avatars.
         // New avatars may have received tokens before registering — those transfers
         // predating _lastFullRefreshBlock aren't in our delta window.
@@ -334,8 +368,8 @@ public class NetworkStateUpdaterService : BackgroundService
         GraphUpdateMetrics.UpdateDuration.WithLabels("incremental").Observe(sw.Elapsed.TotalSeconds);
 
         _log.LogInformation(
-            "Incremental update – {Transfers} transfers, {Trusts} trusts, {Avatars} avatars in {Ms} ms (blocks since full: {BlocksSince})",
-            transferCount, trustCount, avatarCount, sw.ElapsedMilliseconds,
+            "Incremental update – {Transfers} transfers, {Trusts} trusts, {Avatars} avatars, {Stopped} stopped in {Ms} ms (blocks since full: {BlocksSince})",
+            transferCount, trustCount, avatarCount, stoppedCount, sw.ElapsedMilliseconds,
             lastBlock - _lastFullRefreshBlock);
 
         return Task.CompletedTask;

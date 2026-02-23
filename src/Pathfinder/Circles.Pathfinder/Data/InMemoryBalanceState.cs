@@ -1,4 +1,6 @@
 using System.Numerics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Circles.Pathfinder.Data;
 
@@ -12,6 +14,12 @@ public class InMemoryBalanceState
     private static readonly string ZeroAddress = "0x0000000000000000000000000000000000000000";
 
     private readonly Dictionary<(string Account, string TokenAddress), (BigInteger Balance, long LastActivity)> _state = new();
+    private readonly ILogger _logger;
+
+    public InMemoryBalanceState(ILogger? logger = null)
+    {
+        _logger = logger ?? NullLogger.Instance;
+    }
 
     public int Count => _state.Count;
 
@@ -29,7 +37,12 @@ public class InMemoryBalanceState
         _state.Clear();
         foreach (var row in rows)
         {
-            var balance = BigInteger.Parse(row.Balance);
+            if (!BigInteger.TryParse(row.Balance, out var balance))
+            {
+                _logger.LogWarning("[InMemoryBalanceState] Failed to parse balance '{Value}' for account={Account}, token={Token} — skipping",
+                    row.Balance, row.Account[..Math.Min(10, row.Account.Length)], row.TokenAddress[..Math.Min(10, row.TokenAddress.Length)]);
+                continue;
+            }
             if (balance <= 0) continue;
 
             var key = (row.Account.ToLowerInvariant(), row.TokenAddress.ToLowerInvariant());
@@ -43,12 +56,26 @@ public class InMemoryBalanceState
     /// </summary>
     public void ApplyTransfer(string from, string to, string tokenAddress, string value, long timestamp)
     {
-        var amount = BigInteger.Parse(value);
+        if (!BigInteger.TryParse(value, out var amount))
+        {
+            _logger.LogWarning("[InMemoryBalanceState] Failed to parse transfer value '{Value}' from={From}, to={To} — skipping",
+                value, from[..Math.Min(10, from.Length)], to[..Math.Min(10, to.Length)]);
+            return;
+        }
         if (amount <= 0) return;
 
         from = from.ToLowerInvariant();
         to = to.ToLowerInvariant();
         tokenAddress = tokenAddress.ToLowerInvariant();
+
+        // Self-transfers are balance-neutral; only update lastActivity (D8)
+        if (string.Equals(from, to, StringComparison.Ordinal) && !string.Equals(from, ZeroAddress, StringComparison.Ordinal))
+        {
+            var key = (from, tokenAddress);
+            if (_state.TryGetValue(key, out var entry))
+                _state[key] = (entry.Balance, Math.Max(entry.LastActivity, timestamp));
+            return;
+        }
 
         bool fromIsZero = string.Equals(from, ZeroAddress, StringComparison.OrdinalIgnoreCase);
         bool toIsZero = string.Equals(to, ZeroAddress, StringComparison.OrdinalIgnoreCase);
@@ -66,7 +93,10 @@ public class InMemoryBalanceState
                 else
                     _state[senderKey] = (newBalance, newLastActivity);
             }
-            // If sender not in state: transfer of tokens we don't track (e.g. already-zero balance)
+            // If sender not in state: transfer of tokens we don't track (e.g. already-zero balance).
+            // D7 safety: this is safe because balanceDeltaQuery.sql uses ORDER BY timestamp ASC,
+            // so credits always arrive before debits within the same delta window. Within a single
+            // block, BigInteger arithmetic is commutative so ordering doesn't matter.
         }
 
         // Add to receiver (unless zero-address = burn)
@@ -104,7 +134,12 @@ public class InMemoryBalanceState
         // Insert fresh complete balances
         foreach (var row in freshBalances)
         {
-            var balance = BigInteger.Parse(row.Balance);
+            if (!BigInteger.TryParse(row.Balance, out var balance))
+            {
+                _logger.LogWarning("[InMemoryBalanceState] Failed to parse backfill balance '{Value}' for account={Account} — skipping",
+                    row.Balance, row.Account[..Math.Min(10, row.Account.Length)]);
+                continue;
+            }
             if (balance <= 0) continue;
 
             var key = (row.Account.ToLowerInvariant(), row.TokenAddress.ToLowerInvariant());
@@ -117,7 +152,7 @@ public class InMemoryBalanceState
     /// </summary>
     public InMemoryBalanceState Snapshot()
     {
-        var copy = new InMemoryBalanceState();
+        var copy = new InMemoryBalanceState(_logger);
         foreach (var kv in _state)
             copy._state[kv.Key] = kv.Value;
         return copy;

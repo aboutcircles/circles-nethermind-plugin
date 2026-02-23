@@ -142,4 +142,9 @@ internal static class GraphUpdateMetrics
     public static readonly Gauge BlocksSinceFullRefresh = Metrics.CreateGauge(
         "circles_graph_blocks_since_full_refresh",
         "Blocks since last full refresh");
+
+    /// <summary>Total reorgs detected via block hash mismatch (D10).</summary>
+    public static readonly Counter ReorgDetectedTotal = Metrics.CreateCounter(
+        "circles_graph_reorg_detected_total",
+        "Total reorgs detected via block hash comparison");
 }

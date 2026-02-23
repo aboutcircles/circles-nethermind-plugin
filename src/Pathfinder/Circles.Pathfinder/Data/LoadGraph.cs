@@ -283,28 +283,44 @@ namespace Circles.Pathfinder.Data
         // Not part of ILoadGraph — only called by NetworkStateUpdaterService.
         // ──────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Expose connection string so callers can open a shared REPEATABLE READ
+        /// transaction across multiple full-state queries.
+        /// </summary>
+        public string ConnectionString => _connectionString;
+
         public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
-            LoadRawBalances()
+            LoadRawBalances() => LoadRawBalances(null, null);
+
+        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
+            LoadRawBalances(NpgsqlConnection? sharedConn, NpgsqlTransaction? sharedTx)
         {
             var query = LoadQueryFromResource("balanceFullStateQuery.sql");
             var results = new List<(string, string, string, long)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
-
-            using var command = new NpgsqlCommand(query, connection);
-            command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
-            using var reader = command.ExecuteReader();
-
-            while (reader.Read())
+            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            try
             {
-                results.Add((
-                    reader.GetString(0),  // balance
-                    reader.GetString(1),  // account
-                    reader.GetString(2),  // tokenAddress
-                    reader.GetInt64(3)    // lastActivity
-                ));
+                if (sharedConn == null) conn.Open();
+
+                using var command = new NpgsqlCommand(query, conn, sharedTx);
+                command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    results.Add((
+                        reader.GetString(0),  // balance
+                        reader.GetString(1),  // account
+                        reader.GetString(2),  // tokenAddress
+                        reader.GetInt64(3)    // lastActivity
+                    ));
+                }
+            }
+            finally
+            {
+                if (sharedConn == null) conn.Dispose();
             }
 
             sw.Stop();
@@ -313,29 +329,39 @@ namespace Circles.Pathfinder.Data
         }
 
         public IEnumerable<(string Truster, string Trustee, long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex)>
-            LoadRawTrusts()
+            LoadRawTrusts() => LoadRawTrusts(null, null);
+
+        public IEnumerable<(string Truster, string Trustee, long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex)>
+            LoadRawTrusts(NpgsqlConnection? sharedConn, NpgsqlTransaction? sharedTx)
         {
             var query = LoadQueryFromResource("trustFullStateQuery.sql");
             var results = new List<(string, string, long, long, int, int)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
-
-            using var command = new NpgsqlCommand(query, connection);
-            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
-            using var reader = command.ExecuteReader();
-
-            while (reader.Read())
+            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            try
             {
-                results.Add((
-                    reader.GetString(0),  // truster
-                    reader.GetString(1),  // trustee
-                    reader.GetInt64(2),   // expiryTime
-                    reader.GetInt64(3),   // blockNumber
-                    reader.GetInt32(4),   // transactionIndex
-                    reader.GetInt32(5)    // logIndex
-                ));
+                if (sharedConn == null) conn.Open();
+
+                using var command = new NpgsqlCommand(query, conn, sharedTx);
+                command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    results.Add((
+                        reader.GetString(0),  // truster
+                        reader.GetString(1),  // trustee
+                        reader.GetInt64(2),   // expiryTime
+                        reader.GetInt64(3),   // blockNumber
+                        reader.GetInt32(4),   // transactionIndex
+                        reader.GetInt32(5)    // logIndex
+                    ));
+                }
+            }
+            finally
+            {
+                if (sharedConn == null) conn.Dispose();
             }
 
             sw.Stop();
@@ -344,20 +370,31 @@ namespace Circles.Pathfinder.Data
         }
 
         public IEnumerable<(string Avatar, string Type)> LoadAllAvatars()
+            => LoadAllAvatars(null, null);
+
+        public IEnumerable<(string Avatar, string Type)> LoadAllAvatars(
+            NpgsqlConnection? sharedConn, NpgsqlTransaction? sharedTx)
         {
             var results = new List<(string, string)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
-
-            using var command = new NpgsqlCommand("SELECT avatar, type FROM \"V_CrcV2_Avatars\"", connection);
-            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            using var reader = command.ExecuteReader();
-
-            while (reader.Read())
+            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            try
             {
-                results.Add((reader.GetString(0), reader.GetString(1)));
+                if (sharedConn == null) conn.Open();
+
+                using var command = new NpgsqlCommand("SELECT avatar, type FROM \"V_CrcV2_Avatars\"", conn, sharedTx);
+                command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    results.Add((reader.GetString(0), reader.GetString(1)));
+                }
+            }
+            finally
+            {
+                if (sharedConn == null) conn.Dispose();
             }
 
             sw.Stop();
@@ -452,6 +489,58 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
+        public IEnumerable<string> LoadStoppedAvatars() => LoadStoppedAvatars(null, null);
+
+        public IEnumerable<string> LoadStoppedAvatars(NpgsqlConnection? sharedConn, NpgsqlTransaction? sharedTx)
+        {
+            var query = LoadQueryFromResource("stoppedAvatarsQuery.sql");
+            var results = new List<string>();
+
+            var sw = Stopwatch.StartNew();
+            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            try
+            {
+                if (sharedConn == null) conn.Open();
+
+                using var command = new NpgsqlCommand(query, conn, sharedTx);
+                command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+                using var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                    results.Add(reader.GetString(0));
+            }
+            finally
+            {
+                if (sharedConn == null) conn.Dispose();
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("stopped_avatars", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<string> LoadStoppedAvatarsSince(long lastBlock)
+        {
+            var query = LoadQueryFromResource("stoppedAvatarsDeltaQuery.sql");
+            var results = new List<string>();
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("lastBlock", lastBlock);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+                results.Add(reader.GetString(0));
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("delta_stopped_avatars", sw.Elapsed);
+            return results;
+        }
+
         /// <summary>
         /// Load complete balances for specific avatar addresses.
         /// Used to backfill balances when new avatars are detected during incremental updates.
@@ -489,21 +578,53 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
-        public long LoadMaxBlockTimestamp()
+        /// <summary>
+        /// Load the block hash for a specific block number.
+        /// Used for reorg detection (D10): if the stored hash no longer matches,
+        /// a chain reorganization occurred and a full refresh is needed.
+        /// </summary>
+        public string? LoadBlockHash(long blockNumber)
         {
-            var query = LoadQueryFromResource("maxBlockTimestampQuery.sql");
+            var query = LoadQueryFromResource("blockHashQuery.sql");
 
             var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(query, connection);
-            command.CommandTimeout = 30;
+            command.CommandTimeout = 10;
+            command.Parameters.AddWithValue("blockNumber", blockNumber);
             var result = command.ExecuteScalar();
 
             sw.Stop();
-            OnQueryCompleted?.Invoke("max_block_timestamp", sw.Elapsed);
-            return result != null && result != DBNull.Value ? Convert.ToInt64(result) : 0;
+            OnQueryCompleted?.Invoke("block_hash", sw.Elapsed);
+            return result != null && result != DBNull.Value ? result.ToString() : null;
+        }
+
+        public long LoadMaxBlockTimestamp() => LoadMaxBlockTimestamp(null, null);
+
+        public long LoadMaxBlockTimestamp(NpgsqlConnection? sharedConn, NpgsqlTransaction? sharedTx)
+        {
+            var query = LoadQueryFromResource("maxBlockTimestampQuery.sql");
+
+            var sw = Stopwatch.StartNew();
+            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            try
+            {
+                if (sharedConn == null) conn.Open();
+
+                using var command = new NpgsqlCommand(query, conn, sharedTx);
+                command.CommandTimeout = 30;
+                var result = command.ExecuteScalar();
+
+                sw.Stop();
+                OnQueryCompleted?.Invoke("max_block_timestamp", sw.Elapsed);
+                return result != null && result != DBNull.Value ? Convert.ToInt64(result) : 0;
+            }
+            finally
+            {
+                if (sharedConn == null) conn.Dispose();
+            }
         }
 
         // Load consented flow flags (latest per avatar)

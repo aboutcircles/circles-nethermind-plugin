@@ -154,6 +154,34 @@ public class InMemoryBalanceStateTests
     }
 
     [Test]
+    public void ApplyTransfer_SelfTransfer_OnlyUpdatesTimestamp()
+    {
+        var state = new InMemoryBalanceState();
+        state.InitializeFromFullLoad(new[] { ("1000", Alice, TokenA, 100L) });
+
+        // Self-transfer: balance should remain unchanged, only lastActivity updates
+        state.ApplyTransfer(Alice, Alice, TokenA, "500", 200L);
+
+        Assert.That(state.TryGet((Alice, TokenA), out var entry), Is.True);
+        Assert.That(entry.Balance, Is.EqualTo(new BigInteger(1000)));
+        Assert.That(entry.LastActivity, Is.EqualTo(200L));
+    }
+
+    [Test]
+    public void ApplyTransfer_SelfTransfer_LargerThanBalance_NoChange()
+    {
+        var state = new InMemoryBalanceState();
+        state.InitializeFromFullLoad(new[] { ("500", Alice, TokenA, 100L) });
+
+        // Self-transfer larger than balance: should NOT corrupt state
+        state.ApplyTransfer(Alice, Alice, TokenA, "999", 200L);
+
+        Assert.That(state.TryGet((Alice, TokenA), out var entry), Is.True);
+        Assert.That(entry.Balance, Is.EqualTo(new BigInteger(500)));
+        Assert.That(entry.LastActivity, Is.EqualTo(200L));
+    }
+
+    [Test]
     public void Snapshot_CreatesIndependentCopy()
     {
         var state = new InMemoryBalanceState();
@@ -401,6 +429,48 @@ public class InMemoryAvatarStateTests
         state.AddAvatar(Alice, "CrcV2_RegisterHuman");
 
         Assert.That(state.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void StoppedAvatar_ExcludedFromContains()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[]
+        {
+            (Alice, "CrcV2_RegisterHuman"),
+            (Bob, "CrcV2_RegisterHuman"),
+        });
+
+        state.InitializeStoppedAvatars(new[] { Alice });
+
+        Assert.That(state.Contains(Alice), Is.False);
+        Assert.That(state.Contains(Bob), Is.True);
+        Assert.That(state.StoppedCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MarkStopped_ExcludesFromContains()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[] { (Alice, "CrcV2_RegisterHuman") });
+
+        Assert.That(state.Contains(Alice), Is.True);
+
+        state.MarkStopped(Alice);
+
+        Assert.That(state.Contains(Alice), Is.False);
+    }
+
+    [Test]
+    public void StoppedAvatar_Snapshot_PreservesStopped()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[] { (Alice, "CrcV2_RegisterHuman") });
+        state.MarkStopped(Alice);
+
+        var snapshot = state.Snapshot();
+        Assert.That(snapshot.Contains(Alice), Is.False);
+        Assert.That(snapshot.StoppedCount, Is.EqualTo(1));
     }
 
     [Test]
