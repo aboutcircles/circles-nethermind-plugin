@@ -1,4 +1,4 @@
-SELECT "truster", "trustee", "expiryTime"::bigint, "blockNumber", "transactionIndex", "logIndex"
+SELECT "truster", "trustee", LEAST("expiryTime", 9223372036854775807)::bigint, "blockNumber", "transactionIndex", "logIndex"
 FROM (
     SELECT *, ROW_NUMBER() OVER (
         PARTITION BY "truster", "trustee"
