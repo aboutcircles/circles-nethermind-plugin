@@ -25,7 +25,7 @@ VERBOSITY="${TEST_VERBOSITY:-normal}"
 TEST_PROJECTS=(
   "src/Pathfinder/Circles.Pathfinder.Tests/Circles.Pathfinder.Tests.csproj"
   "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
-  "src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj"
+  "src/Common/Circles.Common.Tests/Circles.Common.Tests.csproj"
   "src/Cache/Circles.Cache.Service.Tests/Circles.Cache.Service.Tests.csproj"
   "src/Rpc/Circles.Rpc.Host.Tests/Circles.Rpc.Host.Tests.csproj"
 )
@@ -50,14 +50,14 @@ for arg in "$@"; do
       ;;
     common)
       RUN_ALL=false
-      SPECIFIC_PROJECTS=("src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj")
+      SPECIFIC_PROJECTS=("src/Common/Circles.Common.Tests/Circles.Common.Tests.csproj")
       shift
       ;;
     index)
       RUN_ALL=false
       SPECIFIC_PROJECTS=(
         "src/Index/Circles.Index.Query.Tests/Circles.Index.Query.Tests.csproj"
-        "src/Index/Circles.Index.Common.Tests/Circles.Index.Common.Tests.csproj"
+        "src/Common/Circles.Common.Tests/Circles.Common.Tests.csproj"
       )
       shift
       ;;
