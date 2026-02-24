@@ -39,7 +39,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push circles-client (release)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Index.Dockerfile
@@ -53,7 +53,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache,mode=max
 
       - name: Build & push pathfinder (release)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/pathfinder-host.Dockerfile
@@ -66,7 +66,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache,mode=max
 
       - name: Build & push rpc (release)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/rpc-host.Dockerfile
@@ -79,7 +79,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache,mode=max
 
       - name: Build & push trust-missing-avatars (release)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/trust-missing-avatars.Dockerfile
