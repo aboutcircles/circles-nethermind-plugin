@@ -99,7 +99,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "files", "files", "{9F5E6384-8D91-7B30-BF94-463B36B69FC3}"
 	ProjectSection(SolutionItems) = preProject
 		.dockerignore = .dockerignore
-		.env.local.example = .env.local.example
+		.env.example = .env.example
 		.gitignore = .gitignore
 		.gitmodules = .gitmodules
 		all_tables.html = all_tables.html

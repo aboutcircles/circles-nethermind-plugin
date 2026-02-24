@@ -44,7 +44,7 @@ export PROFILE_SEARCH_TIMEOUT_SECONDS=30
 export EXTERNAL_PATHFINDER_URL="http://localhost:8080"
 ```
 
-See `.env.local.example` for full configuration options.
+See `.env.example` for full configuration options.
 
 ## JSON-RPC 2.0 API
 

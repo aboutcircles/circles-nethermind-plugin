@@ -313,7 +313,7 @@ Start services in separate terminals:
 
 Copy and customize environment variables for local development:
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env.local
 # Edit .env.local with your settings
 source .env.local
 ./scripts/run-pathfinder.sh
