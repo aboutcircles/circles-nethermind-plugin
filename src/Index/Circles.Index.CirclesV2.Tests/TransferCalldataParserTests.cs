@@ -361,6 +361,60 @@ public class TransferCalldataParserTests
         Assert.That(results, Has.Count.EqualTo(2), "Should skip stream with empty data");
     }
 
+    // ─────────────────────── D4 Bug Fix: Out-of-Bounds Coordinate Handling ───────────────────────
+
+    [Test]
+    public void OperateFlowMatrix_OutOfBoundsCoordinate_SkipsStream()
+    {
+        // Receiver coordinate (99) exceeds flowVertices.Length (3)
+        // Before fix: silently returned flowVertices[0] (wrong address)
+        // After fix: returns null → stream is skipped
+        var charlie = "0xcccccccccccccccccccccccccccccccccccccccc";
+
+        var calldata = BuildOperateFlowMatrixCalldata(
+            flowVertices: new[] { Alice, Bob, charlie },  // length = 3
+            streams: new[]
+            {
+                new StreamData(
+                    sourceCoordinate: 0,
+                    flowEdgeIds: new ulong[] { 0 },
+                    data: new byte[] { 0x01, 0x02 }
+                )
+            },
+            // Edge 0: receiver coordinate = 99 (out of bounds for flowVertices[3])
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x63 }  // 0x63 = 99
+        );
+
+        var results = TransferCalldataParser.ParseCalldata(calldata).ToList();
+
+        Assert.That(results, Is.Empty, "Stream with OOB receiver coordinate should be skipped, not fall back to flowVertices[0]");
+    }
+
+    [Test]
+    public void OperateFlowMatrix_OutOfBoundsPackedCoordinates_SkipsStream()
+    {
+        // flowEdgeId=5 → byte offset 30, needs 6 bytes → requires packedCoordinates.Length >= 36
+        // But we only provide 6 bytes (one edge triplet)
+        // Before fix: silently returned flowVertices[0] (wrong address)
+        // After fix: returns null → stream is skipped
+        var calldata = BuildOperateFlowMatrixCalldata(
+            flowVertices: new[] { Alice, Bob },
+            streams: new[]
+            {
+                new StreamData(
+                    sourceCoordinate: 0,
+                    flowEdgeIds: new ulong[] { 5 },  // edge ID 5 → offset 30, OOB
+                    data: new byte[] { 0xab }
+                )
+            },
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }  // only 6 bytes
+        );
+
+        var results = TransferCalldataParser.ParseCalldata(calldata).ToList();
+
+        Assert.That(results, Is.Empty, "Stream with OOB packed coordinates should be skipped, not fall back to flowVertices[0]");
+    }
+
     // ─────────────────────── Real Calldata Tests (Hex Encoded) ───────────────────────
 
     /// <summary>

@@ -215,7 +215,9 @@ public static class TransferCalldataParser
         // Derive 'to' from the first flow edge
         // Each packed coordinate is 2 bytes (uint16), so flowEdgeId * 2 is the byte offset
         // The coordinate at that position indexes into flowVertices
-        string to = DeriveToAddress(flowEdgeIds[0], packedCoordinates, flowVertices);
+        string? to = DeriveToAddress(flowEdgeIds[0], packedCoordinates, flowVertices);
+        if (to == null)
+            return null;
 
         return (from, to, dataBytes);
     }
@@ -232,25 +234,20 @@ public static class TransferCalldataParser
     /// The flowEdgeId indexes these 6-byte triplets.
     /// We want the receiver coordinate (third uint16 in the triplet).
     /// </summary>
-    private static string DeriveToAddress(UInt256 flowEdgeId, byte[] packedCoordinates, string[] flowVertices)
+    private static string? DeriveToAddress(UInt256 flowEdgeId, byte[] packedCoordinates, string[] flowVertices)
     {
         // Each flow edge triplet is 6 bytes: circlesId (2) + sender (2) + receiver (2)
         // flowEdgeId indexes these 6-byte triplets
         int byteOffset = (int)flowEdgeId * 6;
 
         if (byteOffset + 6 > packedCoordinates.Length)
-        {
-            // Fall back to first vertex if we can't derive
-            return flowVertices.Length > 0 ? flowVertices[0] : "";
-        }
+            return null;
 
         // Receiver coordinate is at bytes [byteOffset + 4, byteOffset + 6) (big-endian uint16)
         ushort receiverCoord = (ushort)((packedCoordinates[byteOffset + 4] << 8) | packedCoordinates[byteOffset + 5]);
 
         if (receiverCoord >= flowVertices.Length)
-        {
-            return flowVertices.Length > 0 ? flowVertices[0] : "";
-        }
+            return null;
 
         return flowVertices[receiverCoord];
     }
