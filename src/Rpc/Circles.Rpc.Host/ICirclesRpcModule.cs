@@ -298,6 +298,22 @@ public interface ICirclesRpcModule
     Task<PagedResponse<TokenHolderRow>> GetTokenHolders(string tokenAddress, int limit = 100, string? cursor = null);
 
     /// <summary>
+    /// Gets transfer data (calldata bytes) for ERC-1155 transfers involving an address.
+    /// Convenience method for querying CrcV2_TransferData without raw filterPredicates.
+    /// </summary>
+    /// <param name="address">Primary address to filter</param>
+    /// <param name="direction">"sent" (from=addr), "received" (to=addr), or null (both)</param>
+    /// <param name="counterparty">If set, AND with specific counterparty</param>
+    /// <param name="limit">Max results (default 50, max 1000)</param>
+    /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
+    Task<PagedResponse<TransferDataRow>> GetTransferData(
+        string address,
+        string? direction = null,
+        string? counterparty = null,
+        int limit = 50,
+        string? cursor = null);
+
+    /// <summary>
     /// Finds common trust connections between two addresses.
     /// For V2 humans, uses "safer" paths (outgoing → incoming).
     /// For V2 groups and V1, uses shared outgoing trusts.
@@ -514,6 +530,20 @@ public record TransactionHistoryRow(
     [property: JsonPropertyName("attoCrc")] string AttoCrc,
     [property: JsonPropertyName("staticCircles")] string StaticCircles,
     [property: JsonPropertyName("staticAttoCircles")] string StaticAttoCircles
+);
+
+/// <summary>
+/// Transfer data row containing calldata bytes from ERC-1155 transfers.
+/// </summary>
+public record TransferDataRow(
+    [property: JsonPropertyName("blockNumber")] long BlockNumber,
+    [property: JsonPropertyName("timestamp")] long Timestamp,
+    [property: JsonPropertyName("transactionIndex")] int TransactionIndex,
+    [property: JsonPropertyName("logIndex")] int LogIndex,
+    [property: JsonPropertyName("transactionHash")] string TransactionHash,
+    [property: JsonPropertyName("from")] string From,
+    [property: JsonPropertyName("to")] string To,
+    [property: JsonPropertyName("data")] string Data  // hex-encoded bytes
 );
 
 /// <summary>
