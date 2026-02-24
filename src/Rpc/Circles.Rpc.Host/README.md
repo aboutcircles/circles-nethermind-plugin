@@ -399,6 +399,134 @@ curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
 }'
 ```
 
+### Transfer Data
+
+#### `circles_getTransferData`
+
+Get transfer data (calldata bytes) from ERC-1155 transfers. Convenience method for querying `CrcV2_TransferData` without raw `filterPredicates`.
+
+**Parameters:**
+
+| # | Param | Type | Default | Description |
+|---|-------|------|---------|-------------|
+| 0 | `address` | string | required | Primary address to filter |
+| 1 | `direction` | string? | null | `"sent"` (from=addr), `"received"` (to=addr), null (both) |
+| 2 | `counterparty` | string? | null | If set, AND with specific counterparty |
+| 3 | `limit` | int | 50 | Max results (capped at 1000) |
+| 4 | `cursor` | string? | null | Pagination cursor from previous response |
+
+**Returns:** `PagedResponse<TransferDataRow>` — `{ results, hasMore, nextCursor }`
+
+**Query logic:**
+
+- `["0xA"]` → `from=A OR to=A`
+- `["0xA", "sent"]` → `from=A`
+- `["0xA", "received"]` → `to=A`
+- `["0xA", "sent", "0xB"]` → `from=A AND to=B`
+- `["0xA", "received", "0xB"]` → `from=B AND to=A`
+- `["0xA", null, "0xB"]` → `(from=A AND to=B) OR (from=B AND to=A)`
+
+**Examples:**
+
+Both directions (all transfers involving address):
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0"],
+  "id": 1
+}'
+```
+
+Sent only:
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0", "sent"],
+  "id": 1
+}'
+```
+
+Received only:
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0", "received"],
+  "id": 1
+}'
+```
+
+Sent to specific counterparty:
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0", "sent", "0x0dfa95fdad98d1b44b2db4fc513657e5426b1006"],
+  "id": 1
+}'
+```
+
+Both directions with counterparty:
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0", null, "0x0dfa95fdad98d1b44b2db4fc513657e5426b1006"],
+  "id": 1
+}'
+```
+
+With limit and pagination:
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0", null, null, 10],
+  "id": 1
+}'
+
+# Use nextCursor from response for next page:
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0",
+  "method": "circles_getTransferData",
+  "params": ["0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0", null, null, 10, "NDQxNDMyMDc6MTA6MA=="],
+  "id": 1
+}'
+```
+
+**Response example:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "results": [
+      {
+        "blockNumber": 44143207,
+        "timestamp": 1768302445,
+        "transactionIndex": 10,
+        "logIndex": 0,
+        "transactionHash": "0xa80c64f6f050c121ab1fef69d4cfad5981113af8978fdf8ebdc9a1311818ceaf",
+        "from": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
+        "to": "0x00738aca013b7b2e6cfe1690f0021c3182fa40b5",
+        "data": "0x00000000000000000000000012105a9b..."
+      }
+    ],
+    "hasMore": true,
+    "nextCursor": "NDQxNDMyMDc6MTA6MA=="
+  },
+  "id": 1
+}
+```
+
 ### Event & Query Methods
 
 #### `circles_events`
@@ -714,12 +842,13 @@ All 15 core methods are implemented and accessible via RPC:
 | `circles_getGroupMemberships`         | ✅ Working | ❌            | Cursor pagination   |
 | `circles_getTransactionHistory`       | ✅ Working | ❌            | With circle amounts |
 | `circles_getTokenHolders`             | ✅ Working | ❌            | Token distribution  |
+| `circles_getTransferData`            | ✅ Working | ❌            | Calldata bytes      |
 | `circles_getCommonTrust`              | ✅ Working | ❌            | V1/V2 support       |
 | `circles_events`                      | ✅ Working | ❌            | Advanced filtering  |
 | `circles_query`                       | ✅ Working | ❌            | Generic DB query    |
 | `circlesV2_findPath`                  | ✅ Working | ❌            | Pathfinder proxy    |
 
-**Count**: 15/15 core methods ✅
+**Count**: 16/16 core methods ✅
 
 ### SDK Enablement Methods (✅ Now Fully Implemented & Exposed)
 
