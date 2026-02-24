@@ -918,7 +918,7 @@ All scripts support environment variables for customization.
 Create a `.env.local` file from the example:
 
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env.local
 # Edit .env.local with your settings
 ```
 

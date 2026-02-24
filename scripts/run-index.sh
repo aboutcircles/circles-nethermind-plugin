@@ -55,7 +55,7 @@ if [ ! -f "$NETHERMIND_BIN_DIR/nethermind" ]; then
 fi
 
 # Load environment variables
-ENV_FILE="$PROJECT_ROOT/.env.local.example"
+ENV_FILE="$PROJECT_ROOT/.env.local"
 if [ ! -f "$ENV_FILE" ]; then
     ENV_FILE="$PROJECT_ROOT/.env.example"
 fi
