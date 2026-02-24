@@ -405,6 +405,126 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         );
     }
 
+    public async Task<PagedResponse<TransferDataRow>> GetTransferData(
+        string address,
+        string? direction = null,
+        string? counterparty = null,
+        int limit = 50,
+        string? cursor = null)
+    {
+        var addr = address.ToLower();
+        limit = Math.Clamp(limit, 1, 1000);
+
+        if (direction != null && direction != "sent" && direction != "received")
+            throw new ArgumentException("direction must be 'sent', 'received', or null");
+
+        await using var connection = await CreateConnectionAsync();
+        var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
+        var hasCursor = cursorBlock.HasValue;
+
+        // Build WHERE clause
+        var conditions = new List<string>();
+        var parameters = new List<NpgsqlParameter>();
+
+        var counterAddr = counterparty?.ToLower();
+
+        if (direction == "sent")
+        {
+            conditions.Add(@"""from"" = @addr");
+            parameters.Add(new NpgsqlParameter("addr", addr));
+            if (counterAddr != null)
+            {
+                conditions.Add(@"""to"" = @counterparty");
+                parameters.Add(new NpgsqlParameter("counterparty", counterAddr));
+            }
+        }
+        else if (direction == "received")
+        {
+            conditions.Add(@"""to"" = @addr");
+            parameters.Add(new NpgsqlParameter("addr", addr));
+            if (counterAddr != null)
+            {
+                conditions.Add(@"""from"" = @counterparty");
+                parameters.Add(new NpgsqlParameter("counterparty", counterAddr));
+            }
+        }
+        else // both directions
+        {
+            if (counterAddr != null)
+            {
+                // (from=addr AND to=counter) OR (from=counter AND to=addr)
+                conditions.Add(@"(""from"" = @addr AND ""to"" = @counterparty) OR (""from"" = @counterparty AND ""to"" = @addr)");
+                parameters.Add(new NpgsqlParameter("addr", addr));
+                parameters.Add(new NpgsqlParameter("counterparty", counterAddr));
+            }
+            else
+            {
+                conditions.Add(@"(""from"" = @addr OR ""to"" = @addr)");
+                parameters.Add(new NpgsqlParameter("addr", addr));
+            }
+        }
+
+        if (hasCursor)
+        {
+            conditions.Add(
+                @"(""blockNumber"", ""transactionIndex"", ""logIndex"") < (@cursorBlock, @cursorTxIndex, @cursorLogIndex)");
+            parameters.Add(new NpgsqlParameter("cursorBlock", cursorBlock!.Value));
+            parameters.Add(new NpgsqlParameter("cursorTxIndex", cursorTxIndex!.Value));
+            parameters.Add(new NpgsqlParameter("cursorLogIndex", cursorLogIndex!.Value));
+        }
+
+        var where = string.Join(" AND ", conditions.Select((c, i) =>
+            // Wrap the OR clause in parens so AND binds correctly
+            c.Contains(" OR ") ? $"({c})" : c));
+
+        var sql = $@"
+            SELECT ""blockNumber"", ""timestamp"", ""transactionIndex"", ""logIndex"",
+                   ""transactionHash"", ""from"", ""to"", ""data""
+            FROM ""CrcV2_TransferData""
+            WHERE {where}
+            ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC
+            LIMIT @limit";
+
+        parameters.Add(new NpgsqlParameter("limit", limit + 1));
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddRange(parameters.ToArray());
+
+        var results = new List<TransferDataRow>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var dataBytes = reader.GetFieldValue<byte[]>(7);
+            results.Add(new TransferDataRow(
+                BlockNumber: reader.GetInt64(0),
+                Timestamp: reader.GetInt64(1),
+                TransactionIndex: reader.GetInt32(2),
+                LogIndex: reader.GetInt32(3),
+                TransactionHash: reader.GetString(4),
+                From: reader.GetString(5),
+                To: reader.GetString(6),
+                Data: "0x" + Convert.ToHexString(dataBytes).ToLower()
+            ));
+        }
+
+        var hasMore = results.Count > limit;
+        if (hasMore)
+            results.RemoveAt(results.Count - 1);
+
+        string? nextCursor = null;
+        if (hasMore && results.Count > 0)
+        {
+            var last = results[^1];
+            nextCursor = CursorUtils.EncodeCursor(last.BlockNumber, last.TransactionIndex, last.LogIndex);
+        }
+
+        return new PagedResponse<TransferDataRow>(
+            Results: results.ToArray(),
+            HasMore: hasMore,
+            NextCursor: nextCursor
+        );
+    }
+
     public async Task<JsonElement> GetNetworkSnapshot()
     {
         if (string.IsNullOrEmpty(_settings.ExternalPathfinderUrl))

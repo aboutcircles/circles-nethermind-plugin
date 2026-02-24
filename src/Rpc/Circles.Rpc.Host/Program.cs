@@ -273,6 +273,7 @@ app.MapPost("/", async (
             "circles_getGroupMembers" => await ReflectionHandler(request, rpcModule),
             "circles_getGroupMemberships" => await ReflectionHandler(request, rpcModule),
             "circles_getTransactionHistory" => await ReflectionHandler(request, rpcModule),
+            "circles_getTransferData" => await ReflectionHandler(request, rpcModule),
             "circles_getTokenHolders" => await ReflectionHandler(request, rpcModule),
             "circlesV2_findPath" => await HandleV2FindPath(request, rpcModule),
             // System & Query Methods
