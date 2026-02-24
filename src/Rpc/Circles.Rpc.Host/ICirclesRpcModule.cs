@@ -302,12 +302,16 @@ public interface ICirclesRpcModule
     /// Convenience method for querying CrcV2_TransferData without raw filterPredicates.
     /// </summary>
     /// <param name="address">Primary address to filter</param>
+    /// <param name="fromBlock">Start block (inclusive), null for no lower bound</param>
+    /// <param name="toBlock">End block (inclusive), null for no upper bound</param>
     /// <param name="direction">"sent" (from=addr), "received" (to=addr), or null (both)</param>
     /// <param name="counterparty">If set, AND with specific counterparty</param>
     /// <param name="limit">Max results (default 50, max 1000)</param>
     /// <param name="cursor">Cursor for pagination (base64 encoded block:tx:log)</param>
     Task<PagedResponse<TransferDataRow>> GetTransferData(
         string address,
+        long? fromBlock = null,
+        long? toBlock = null,
         string? direction = null,
         string? counterparty = null,
         int limit = 50,

@@ -407,6 +407,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<PagedResponse<TransferDataRow>> GetTransferData(
         string address,
+        long? fromBlock = null,
+        long? toBlock = null,
         string? direction = null,
         string? counterparty = null,
         int limit = 50,
@@ -462,6 +464,18 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 conditions.Add(@"(""from"" = @addr OR ""to"" = @addr)");
                 parameters.Add(new NpgsqlParameter("addr", addr));
             }
+        }
+
+        if (fromBlock.HasValue)
+        {
+            conditions.Add(@"""blockNumber"" >= @fromBlock");
+            parameters.Add(new NpgsqlParameter("fromBlock", fromBlock.Value));
+        }
+
+        if (toBlock.HasValue)
+        {
+            conditions.Add(@"""blockNumber"" <= @toBlock");
+            parameters.Add(new NpgsqlParameter("toBlock", toBlock.Value));
         }
 
         if (hasCursor)

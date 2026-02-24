@@ -677,13 +677,16 @@ run_test "sdk" "circles_searchProfileByAddressOrName (by address prefix)" "curl 
 run_test "sdk" "circles_searchProfileByAddressOrName (by text)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_searchProfileByAddressOrName\",\"params\":[\"berlin\",10,0,[\"CrcV2_RegisterHuman\"]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
 # Transfer Data (calldata bytes from ERC-1155 transfers)
+# params: [address, fromBlock?, toBlock?, direction?, counterparty?, limit?, cursor?]
 run_test "sdk" "circles_getTransferData (addr only)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
-run_test "sdk" "circles_getTransferData (sent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",\"sent\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTransferData (block range)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",43000000,44000000],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
-run_test "sdk" "circles_getTransferData (received)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",\"received\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTransferData (sent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",null,null,\"sent\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
-run_test "sdk" "circles_getTransferData (with counterparty)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",\"sent\",\"$HIGH_ACTIVITY_ADDR_2\",10],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTransferData (received)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",null,null,\"received\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+run_test "sdk" "circles_getTransferData (with counterparty)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",null,null,\"sent\",\"$HIGH_ACTIVITY_ADDR_2\",10],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
 ######################################################################
 # Query Methods
