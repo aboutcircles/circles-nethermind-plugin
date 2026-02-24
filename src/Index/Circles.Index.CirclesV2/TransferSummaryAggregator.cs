@@ -46,7 +46,14 @@ public static class TransferSummaryAggregator
             if (e is FlowEdgesScopeSingleStarted)
             {
                 inStream = true;
-                nonStreamEvents.Add(e);
+                streamEvents.Add(e);
+                continue;
+            }
+
+            if (e is FlowEdgesScopeLastEnded)
+            {
+                streamEvents.Add(e);
+                inStream = false;
                 continue;
             }
 
