@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Circles.Cache.Service.Controllers;
 

@@ -1,5 +1,5 @@
-using Circles.Common.TestUtils;
 using Circles.Common.Dto;
+using Circles.Common.TestUtils;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Tests.Helpers;

@@ -4,12 +4,12 @@ using System.Text.RegularExpressions;
 using DotNetEnv;
 using Nethereum.ABI.FunctionEncoding.Attributes;
 using Nethereum.Contracts;
+using Nethereum.Contracts.ContractHandlers;
 using Nethereum.Hex.HexTypes;
 using Nethereum.RPC.Eth.DTOs;
 using Nethereum.Web3;
 using Nethereum.Web3.Accounts;
 using Npgsql;
-using Nethereum.Contracts.ContractHandlers;
 
 namespace Circles.TrustMissingAvatars;
 

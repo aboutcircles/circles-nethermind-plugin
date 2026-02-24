@@ -1,11 +1,10 @@
 namespace Circles.Index.CirclesV2.Erc20Lift;
 
+using System.Numerics;
+using Circles.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System.Numerics;
-using Circles.Common;
-
 using Nethermind.Logging;
 
 public class LogParser(Address standardTreasuryAddress) : ILogParser

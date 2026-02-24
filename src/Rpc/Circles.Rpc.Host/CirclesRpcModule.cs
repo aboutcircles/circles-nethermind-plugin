@@ -5,9 +5,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Circles.Common;
+using Circles.Common.Dto;
 using Circles.Index.Query;
 using Circles.Index.Query.Dto;
-using Circles.Common.Dto;
 using Npgsql;
 using NpgsqlTypes;
 

@@ -2,8 +2,8 @@ using System.Collections.Immutable;
 using Circles.Common;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Logging;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Circles.Index.CirclesV2.TokenOffers;
 

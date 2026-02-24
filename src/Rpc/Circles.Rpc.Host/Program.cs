@@ -1,4 +1,3 @@
-using Circles.Rpc.Host;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,11 +5,12 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Common.Dto;
+using Circles.Index.Query.Dto;
+using Circles.Rpc.Host;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
-using Circles.Index.Query.Dto;
-using Circles.Common.Dto;
 
 var builder = BuilderSetup.ConfigureBuilder(args);
 

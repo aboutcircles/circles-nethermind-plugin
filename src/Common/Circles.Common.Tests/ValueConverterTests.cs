@@ -4,8 +4,8 @@ using Circles.Index.ContractClient;
 
 namespace Circles.Common.Tests;
 
-using MathConv = Circles.Common.CirclesConverter;
 using ChainConv = Circles.Index.ContractClient.CirclesConverter;
+using MathConv = Circles.Common.CirclesConverter;
 
 [TestFixture]
 public sealed class CirclesConverterTests

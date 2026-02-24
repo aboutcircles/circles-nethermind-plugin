@@ -20,11 +20,11 @@ if [ -f "$SOURCE_HOOKS_DIR/pre-push" ]; then
     echo "✓ Installed pre-push hook"
 fi
 
-# Add more hooks here as needed:
-# if [ -f "$SOURCE_HOOKS_DIR/pre-commit" ]; then
-#     ln -sf "$SOURCE_HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-commit"
-#     echo "✓ Installed pre-commit hook"
-# fi
+# Install pre-commit hook
+if [ -f "$SOURCE_HOOKS_DIR/pre-commit" ]; then
+    ln -sf "$SOURCE_HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-commit"
+    echo "✓ Installed pre-commit hook"
+fi
 
 echo ""
 echo "Git hooks installed successfully!"
