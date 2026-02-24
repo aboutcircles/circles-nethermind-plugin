@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <NethermindReferenceAssembliesVersion>1.36.0</NethermindReferenceAssembliesVersion>
+        <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../..'))</RepoRoot>
+        <NethermindRuntimeDir>$(RepoRoot)/nethermind-dev/nethermind</NethermindRuntimeDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="coverlet.collector" Version="6.0.2" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+        <PackageReference Include="NUnit" Version="4.2.2" />
+        <PackageReference Include="NUnit.Analyzers" Version="4.4.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+        <PackageReference Include="Moq" Version="4.20.72" />
+        <PackageReference Include="Npgsql" Version="9.0.3" />
+        <PackageReference Include="Testcontainers.PostgreSql" Version="3.10.0" />
+        <PackageReference Include="System.Reflection.Metadata" Version="8.0.0" />
+        <PackageReference Include="Nethermind.ReferenceAssemblies" Version="$(NethermindReferenceAssembliesVersion)" PrivateAssets="all" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="NUnit.Framework" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Circles.Rpc.Host\Circles.Rpc.Host.csproj" />
+        <ProjectReference Include="..\..\Common\Circles.Common.TestUtils\Circles.Common.TestUtils.csproj" />
+        <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
+        <ProjectReference Include="..\..\Index\Circles.Index.DatabaseSchemaProvider\Circles.Index.DatabaseSchemaProvider.csproj" />
+        <ProjectReference Include="..\..\Index\Circles.Index.Postgres\Circles.Index.Postgres.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="Exists('$(NethermindRuntimeDir)')">
+        <Content Include="$(NethermindRuntimeDir)/Nethermind.*.dll">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <Target Name="EnsureNethermindRuntime" BeforeTargets="Build" Condition="!Exists('$(NethermindRuntimeDir)')">
+        <Warning Text="Nethermind runtime directory '$(NethermindRuntimeDir)' not found. Circles RPC tests require a Nethermind build in nethermind-dev/nethermind." />
+    </Target>
+
+</Project>

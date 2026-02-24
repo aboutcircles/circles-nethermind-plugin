@@ -1,0 +1,22 @@
+{
+  "id": "high-trust-consented-001",
+  "name": "High trust group with consented flow",
+  "category": "consented-flow",
+  "source": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+  "sink": "0x00a87ca5b9095fc53549b6e4aab3100c204a3fbd",
+  "description": "Tests consented flow validation at scale with 1,552+ trust edges (group members). Source is the largest group with consented flow enabled. Validates that isPermittedFlow validation performs well with large edge counts.",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": false,
+  "simulatedConsentedAvatars": ["0x42cedde51198d1773590311e2a340dc06b24cb37"],
+  "tags": ["consented-flow", "high-trust", "performance", "isPermittedFlow"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Consented flow with high-trust avatars combines two stress factors: large graph and consent validation. Critical for router insertion performance."
+}

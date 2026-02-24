@@ -3,4 +3,12 @@
 **/bin
 **/._*
 .state
+nupkgs
+TestResults
+RegressionTestResults
+nethermind-dev
+src/nethermind
+
+# Environment files (but keep examples)
 .env
+!.env.example

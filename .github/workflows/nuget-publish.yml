@@ -1,0 +1,67 @@
+name: Publish NuGet Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g., 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  publish-nuget:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run tests
+        run: |
+          chmod +x ./scripts/test.sh
+          ./scripts/test.sh
+
+      - name: Create NuGet packages
+        run: |
+          chmod +x ./scripts/nuget-pack.sh
+          ./scripts/nuget-pack.sh --clean
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: nupkgs/*.nupkg
+          retention-days: 90
+
+      - name: Publish to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          chmod +x ./scripts/nuget-push.sh
+          ./scripts/nuget-push.sh
+
+      - name: Create release notes
+        if: github.event_name == 'release'
+        run: |
+          echo "## NuGet Packages Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following packages have been published to NuGet.org:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for pkg in nupkgs/*.nupkg; do
+            echo "- $(basename $pkg)" >> $GITHUB_STEP_SUMMARY
+          done

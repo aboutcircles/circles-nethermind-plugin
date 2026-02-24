@@ -1,0 +1,42 @@
+﻿FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Detect target architecture (amd64/arm64)
+ARG TARGETARCH
+RUN echo "Building for architecture: ${TARGETARCH}"
+
+# Copy shared build props (defines TFM)
+COPY Directory.Build.props ./
+
+# Copy Index, Common, and RPC sources (required for local project references)
+# RPC Host specifically depends on:
+# - Circles.Common (shared types)
+# - Circles.Index.Query
+# - Circles.Index.DatabaseSchemaProvider
+# We copy the entire Index folder since Docker COPY works at directory level
+# and DatabaseSchemaProvider transitively depends on other Index projects
+COPY ./src/Index ./Index
+COPY ./src/Common ./Common
+COPY ./src/Rpc ./Rpc
+
+# Restore RPC host and its dependencies
+RUN dotnet restore ./Rpc/Circles.Rpc.Host/Circles.Rpc.Host.csproj
+
+# Publish RPC host
+# Note: Now uses local project references instead of NuGet packages
+WORKDIR /src/Rpc/Circles.Rpc.Host
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+
+# Install psql for manual DB operations
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user with fixed UID (consistent across all circles services)
+RUN groupadd -g 10000 circles && useradd -u 10000 -g circles -s /sbin/nologin circles
+
+COPY --from=build /app/publish .
+
+USER circles
+ENTRYPOINT ["./Circles.Rpc.Host"]

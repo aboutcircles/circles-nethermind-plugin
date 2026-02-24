@@ -1,0 +1,25 @@
+{
+  "id": "consented-quantized-exclusion-001",
+  "name": "Quantized mode with consented intermediary exclusion",
+  "category": "consented-flow",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x14c16ce62d26fd51582a646e2e30a3267b1e6d7e",
+  "description": "Combines quantized mode (96 CRC quanta) with consented flow intermediary exclusion. A simulated consented intermediary exists but should be avoided. Path should still achieve quantized flow via non-consented paths.",
+  "shouldFindPath": true,
+  "minFlow": "96000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "quantizedMode": true,
+  "withWrap": false,
+  "simulatedConsentedAvatars": [
+    "0x00669941c3411ebedd88986c989a1647be68db5c"
+  ],
+  "tags": [
+    "consented-flow",
+    "quantized-mode",
+    "intermediary-exclusion",
+    "invitation"
+  ],
+  "notes": "Validates consent exclusion + quantization work together. The consented avatar is an intermediary, not source/sink."
+}

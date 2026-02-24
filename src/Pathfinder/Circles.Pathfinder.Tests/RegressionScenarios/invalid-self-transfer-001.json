@@ -1,0 +1,19 @@
+{
+  "id": "invalid-self-transfer-001",
+  "name": "Self-transfer without toTokens should fail",
+  "category": "invalid-input",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "description": "When source equals sink without specifying toTokens for conversion, no meaningful path exists. This tests that the system properly handles self-referential requests.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": null,
+  "withWrap": false,
+  "tags": ["negative-test", "invalid-input", "self-transfer"]
+}

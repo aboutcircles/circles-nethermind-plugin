@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+  <!-- NuGet Package Metadata -->
+  <Version>0.0.1</Version>
+  <Authors>Gnosis Service GmbH</Authors>
+  <Copyright>Gnosis Service GmbH</Copyright>
+  <Product>Circles</Product>
+  <PackageId>Gnosis.Circles.Nethermind.Plugin.CirclesV1.NameRegistry</PackageId>
+  <Description>Name registry indexing for Circles V1</Description>
+  <PackageTags>circles;blockchain;indexing</PackageTags>
+  <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
+  <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
+  <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Nethermind.ReferenceAssemblies" Version="1.36.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
+      <ProjectReference Include="..\Circles.Index.Query\Circles.Index.Query.csproj" />
+    </ItemGroup>
+
+</Project>

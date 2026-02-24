@@ -1,0 +1,340 @@
+name: Smart Deploy to Staging
+
+# Kill switch: Set repository variable DEPLOYMENTS_ENABLED=false to disable automated deploys
+# Manual workflow_dispatch always allowed
+
+# Reusable workflow - called by branch-specific workflows
+# Direct push trigger for feature branches only
+on:
+  push:
+    branches:
+      - feature/refactor_pathfinder_rpc # Direct deploy for your dev branch
+    paths:
+      - "docker/**"
+      - "src/**"
+      - ".github/workflows/**"
+  workflow_call:
+    inputs:
+      skip_tests:
+        description: "Skip waiting for tests"
+        type: boolean
+        default: false
+      deploy_gnosis:
+        type: boolean
+        default: false
+      deploy_observability:
+        type: boolean
+        default: false
+      deploy_grafana:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      deploy_gnosis:
+        description: "Deploy Gnosis stack"
+        type: boolean
+        default: false
+      deploy_observability:
+        description: "Deploy observability stack"
+        type: boolean
+        default: false
+      deploy_grafana:
+        description: "Deploy Grafana dashboards"
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  # Image names (will be prefixed with ghcr.io/owner/)
+  IMAGE_INDEX: nethermind-plugin
+  IMAGE_PATHFINDER: pathfinder-host
+  IMAGE_RPC: rpc-host
+  IMAGE_TRUST_TOOL: trust-missing-avatars
+
+concurrency:
+  group: smart-deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  check-killswitch:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Check deployment kill switch
+        id: check
+        env:
+          DEPLOYMENTS_ENABLED: ${{ vars.DEPLOYMENTS_ENABLED }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          ENABLED="${DEPLOYMENTS_ENABLED:-true}"
+          if [ "$ENABLED" = "false" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "::notice::Deployments disabled via DEPLOYMENTS_ENABLED=false"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+          else
+            echo "proceed=true" >> $GITHUB_OUTPUT
+          fi
+
+  # Wait for CI tests to pass before deploying
+  # Only runs when called from dev/main workflows (workflow_call), not on direct push (feature branches)
+  wait-for-tests:
+    needs: check-killswitch
+    if: needs.check-killswitch.outputs.proceed == 'true' && github.event_name == 'workflow_call' && !inputs.skip_tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI build and test
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "build-and-test"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
+          # Don't wait forever - 15 min max
+          allowed-conclusions: success
+
+  detect-changes:
+    needs: [check-killswitch, wait-for-tests]
+    # Run even if wait-for-tests was skipped (workflow_dispatch)
+    if: always() && needs.check-killswitch.outputs.proceed == 'true' && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped')
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
+      deploy_observability: ${{ steps.set-flags.outputs.deploy_observability }}
+      deploy_grafana: ${{ steps.set-flags.outputs.deploy_grafana }}
+      any_deploy: ${{ steps.set-flags.outputs.any_deploy }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        # Only run path detection for push events (direct or via workflow_call)
+        # For workflow_dispatch, user must select components manually via checkboxes
+        if: github.event.before != ''
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Compare files changed in this push/merge
+          # github.event.before = commit branch pointed to before push
+          # This correctly handles: single commits, multi-commit pushes, and PR merges
+          base: ${{ github.event.before }}
+          filters: |
+            # GNOSIS: Index, Pathfinder, Rpc, Cache services
+            gnosis_src:
+              - 'src/Index/**'
+              - 'src/Pathfinder/**'
+              - 'src/Rpc/**'
+              - 'src/Cache/**'
+            gnosis_docker:
+              - 'docker/docker-compose.gnosis.yml'
+              - 'docker/Index.Dockerfile'
+              - 'docker/pathfinder-host.Dockerfile'
+              - 'docker/rpc-host.Dockerfile'
+              - 'docker/cache-service.Dockerfile'
+            # OBSERVABILITY: Metrics exporter source only (configs moved to infrastructure repo)
+            observability_src:
+              - 'src/Metrics/**'
+            observability_docker:
+              - 'docker/metrics-exporter.Dockerfile'
+            # GRAFANA: Dashboards now managed in infrastructure repo
+            # grafana path filter removed - dashboards deployed from infrastructure repo
+
+      - name: Set deployment flags
+        id: set-flags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # workflow_dispatch inputs
+          INPUT_DEPLOY_GNOSIS: ${{ github.event.inputs.deploy_gnosis }}
+          INPUT_DEPLOY_OBS: ${{ github.event.inputs.deploy_observability }}
+          INPUT_DEPLOY_GRAFANA: ${{ github.event.inputs.deploy_grafana }}
+          # workflow_call inputs (reusable workflow)
+          CALL_DEPLOY_GNOSIS: ${{ inputs.deploy_gnosis }}
+          CALL_DEPLOY_OBS: ${{ inputs.deploy_observability }}
+          CALL_DEPLOY_GRAFANA: ${{ inputs.deploy_grafana }}
+          # Path filter results
+          FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
+          FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
+          FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
+          FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
+          # Note: Grafana dashboards are now managed in infrastructure repo
+        run: |
+          # Handle workflow_dispatch (manual trigger from UI)
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            GNOSIS="$INPUT_DEPLOY_GNOSIS"
+            OBS="$INPUT_DEPLOY_OBS"
+            GRAFANA="$INPUT_DEPLOY_GRAFANA"
+          # Handle workflow_call (reusable workflow)
+          elif [ "$EVENT_NAME" == "workflow_call" ]; then
+            GNOSIS="$CALL_DEPLOY_GNOSIS"
+            OBS="$CALL_DEPLOY_OBS"
+            GRAFANA="$CALL_DEPLOY_GRAFANA"
+          # Handle push (auto-detect from changed files)
+          else
+            GNOSIS="false"
+            OBS="false"
+            GRAFANA="false"
+
+            # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache + docker files
+            if [ "$FILTER_GNOSIS_SRC" == "true" ]; then
+              GNOSIS="true"
+              echo "::notice::Gnosis source (Index/Pathfinder/Rpc/Cache) changed - will deploy gnosis"
+            fi
+            if [ "$FILTER_GNOSIS_DOCKER" == "true" ]; then
+              GNOSIS="true"
+              echo "::notice::Gnosis docker files changed - will deploy gnosis"
+            fi
+
+            # OBSERVABILITY: src/Metrics + docker/metrics-exporter.Dockerfile only
+            # Note: Observability configs and Grafana dashboards are now in infrastructure repo
+            if [ "$FILTER_OBS_SRC" == "true" ]; then
+              OBS="true"
+              echo "::notice::Metrics source changed - will deploy observability"
+            fi
+            if [ "$FILTER_OBS_DOCKER" == "true" ]; then
+              OBS="true"
+              echo "::notice::Metrics exporter Dockerfile changed - will deploy observability"
+            fi
+
+            # GRAFANA: Dashboards now managed in infrastructure repo
+            # Manual trigger via workflow_dispatch still available if needed
+          fi
+
+          echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
+          echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
+          echo "deploy_grafana=$GRAFANA" >> $GITHUB_OUTPUT
+
+          if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ]; then
+            echo "any_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "any_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Summary of detected changes
+        env:
+          FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
+          FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
+          FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
+          FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
+          DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
+          DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
+          DEPLOY_GRAFANA: ${{ steps.set-flags.outputs.deploy_grafana }}
+        run: |
+          echo "## Change Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Source Changed | Docker Changed | Will Deploy |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|----------------|----------------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Gnosis (Index/Pathfinder/Rpc/Cache) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability (Metrics Exporter) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | (managed in infrastructure repo) | - | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
+
+  build-images:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy_gnosis == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push circles-client
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Index.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:dev
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache-dev
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache-dev,mode=max
+
+      - name: Build & push pathfinder
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/pathfinder-host.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:dev
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache-dev
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache-dev,mode=max
+
+      - name: Build & push rpc-host
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/rpc-host.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:dev
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache-dev
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache-dev,mode=max
+
+      - name: Build & push trust-missing-avatars
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/trust-missing-avatars.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:dev
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev,mode=max
+
+  trigger-deploy:
+    needs: [detect-changes, build-images]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any_deploy == 'true' &&
+      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Ansible deployment
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.ANSIBLE_REPO_PAT }}
+          repository: ${{ secrets.ANSIBLE_REPO }}
+          event-type: deploy-circles-smart
+          client-payload: |
+            {
+              "environment": "staging",
+              "image_tag": "dev",
+              "commit_sha": "${{ github.sha }}",
+              "triggered_by": "${{ github.actor }}",
+              "source_repo": "${{ github.repository }}",
+              "source_branch": "${{ github.ref_name }}",
+              "deploy": {
+                "gnosis": "${{ needs.detect-changes.outputs.deploy_gnosis }}",
+                "observability": "${{ needs.detect-changes.outputs.deploy_observability }}",
+                "grafana": "${{ needs.detect-changes.outputs.deploy_grafana }}"
+              }
+            }
+
+      - name: Deployment summary
+        env:
+          DEPLOY_GNOSIS: ${{ needs.detect-changes.outputs.deploy_gnosis }}
+          DEPLOY_OBS: ${{ needs.detect-changes.outputs.deploy_observability }}
+          DEPLOY_GRAFANA: ${{ needs.detect-changes.outputs.deploy_grafana }}
+        run: |
+          echo "## Deployment Triggered" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Will Deploy |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Gnosis | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY

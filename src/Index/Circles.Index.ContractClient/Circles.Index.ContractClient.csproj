@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+  <!-- NuGet Package Metadata -->
+  <Version>0.0.1</Version>
+  <Authors>Gnosis Service GmbH</Authors>
+  <Copyright>Gnosis Service GmbH</Copyright>
+  <Product>Circles</Product>
+  <PackageId>Gnosis.Circles.Nethermind.Plugin.ContractClient</PackageId>
+  <Description>Contract client for interacting with Circles contracts</Description>
+  <PackageTags>circles;blockchain;indexing</PackageTags>
+  <RepositoryUrl>https://github.com/aboutcircles/circles-nethermind-plugin</RepositoryUrl>
+  <PackageProjectUrl>https://github.com/aboutcircles/circles-nethermind-plugin</PackageProjectUrl>
+  <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Nethereum.Web3" Version="4.29.0" />
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,22 @@
+{
+  "id": "multi-group-consented-001",
+  "name": "Multiple groups with consented flow (CRITICAL)",
+  "category": "consented-flow",
+  "source": "0x42cedde51198d1773590311e2a340dc06b24cb37",
+  "sink": "0xf7bd3d83df90b4682725adf668791d4d1499207f",
+  "description": "CRITICAL: Tests consented flow through path involving multiple groups. This is the HIGHEST RISK scenario type - the January 2026 isPermittedFlow bug occurred in multi-group paths. Source is a large group (1552 members) with consented flow enabled, transferring to another group (1035 members).",
+  "shouldFindPath": true,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": false,
+  "simulatedConsentedAvatars": ["0x42cedde51198d1773590311e2a340dc06b24cb37"],
+  "tags": ["consented-flow", "multi-group", "isPermittedFlow", "CRITICAL", "regression", "edge-ordering"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "This scenario type caused the January 2026 isPermittedFlow bug. Multi-group + consented flow is the most complex path type. Must pass Anvil execution."
+}

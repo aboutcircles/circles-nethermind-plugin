@@ -1,0 +1,12 @@
+{
+  "id": "consented-flow-003",
+  "name": "Consented source to non-consented untrusted sink",
+  "category": "consented-flow",
+  "block": 43677011,
+  "source": "0x227642ebd3a801e7b44a5bb956c02c2d97ca71f0",
+  "sink": "0x029b28da5a0e72b4ce98b26502936122695b12be",
+  "description": "Transfer from consented user to non-consented user who is NOT trusted by source. Should find no direct path because consented source requires: 1) source trusts receiver AND 2) receiver has consent enabled. Neither condition is met here.",
+  "shouldFindPath": false,
+  "runOnAnvil": false,
+  "tags": ["consented-flow", "negative"]
+}

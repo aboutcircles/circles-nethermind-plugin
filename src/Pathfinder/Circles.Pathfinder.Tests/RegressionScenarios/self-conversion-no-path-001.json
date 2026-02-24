@@ -1,0 +1,15 @@
+{
+  "id": "self-conversion-no-path-001",
+  "name": "Self-conversion with unavailable target token (should fail)",
+  "category": "self-conversion",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "description": "Attempt to convert to a token that is not available in the trust network. Should not find a path.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "toTokens": ["0x7e09438a61ba64b2866b5fefb350146f93db7959"],
+  "tags": ["self-conversion", "negative-test", "no-path"]
+}

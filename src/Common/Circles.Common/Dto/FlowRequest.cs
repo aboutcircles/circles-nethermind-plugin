@@ -1,0 +1,76 @@
+using System.Text.Json.Serialization;
+
+namespace Circles.Common.Dto;
+
+public class FlowRequest
+{
+    [JsonPropertyName("source")]
+    public string? Source { get; set; }
+
+    [JsonPropertyName("sink")]
+    public string? Sink { get; set; }
+
+    [JsonPropertyName("targetFlow")]
+    public string? TargetFlow { get; set; }
+
+    [JsonPropertyName("toTokens")]
+    public List<string>? ToTokens { get; set; }
+
+    [JsonPropertyName("fromTokens")]
+    public List<string>? FromTokens { get; set; }
+
+    [JsonPropertyName("excludedFromTokens")]
+    public List<string>? ExcludedFromTokens { get; set; }
+
+    [JsonPropertyName("excludedToTokens")]
+    public List<string>? ExcludedToTokens { get; set; }
+
+    [JsonPropertyName("withWrap")]
+    public bool? WithWrap { get; set; }
+
+    [JsonPropertyName("simulatedBalances")]
+    public List<SimulatedBalance>? SimulatedBalances { get; set; }
+
+    [JsonPropertyName("simulatedTrusts")]
+    public List<SimulatedTrust>? SimulatedTrusts { get; set; }
+
+    [JsonPropertyName("simulatedConsentedAvatars")]
+    public List<string>? SimulatedConsentedAvatars { get; set; }
+
+    [JsonPropertyName("maxTransfers")]
+    public int? MaxTransfers { get; set; }
+
+    /// <summary>
+    /// When true, enforces 96 CRC quantization for sink-bound transfers (invitation module).
+    /// Each sink-bound transfer will be exactly N × 96 CRC.
+    /// The number of invites is derived from targetFlow: invites = targetFlow / 96 CRC.
+    /// Use max uint256 targetFlow to discover all possible invites.
+    /// </summary>
+    [JsonPropertyName("quantizedMode")]
+    public bool? QuantizedMode { get; set; }
+
+    /// <summary>
+    /// When true, includes debug information showing all transformation stages:
+    /// - rawPaths: Direct output from MaxFlowSolver with token pools (tpool-0x...)
+    /// - collapsed: Token pools removed, showing Avatar→Avatar flows
+    /// - routerInserted: Avatar→Group splits to Avatar→Router→Group
+    /// - sorted: Final ordering for mint dependencies
+    /// </summary>
+    [JsonPropertyName("debugShowIntermediateSteps")]
+    public bool? DebugShowIntermediateSteps { get; set; }
+}
+
+public class SimulatedBalance
+{
+    public string Holder { get; set; } = string.Empty; // avatar address (lower/any case accepted)
+    public string Token { get; set; } = string.Empty; // token-owner avatar (or wrapper) address
+    public string Amount { get; set; } = "0"; // uint256 as string
+    public bool? IsWrapped { get; set; } // optional, default false
+    public bool? IsStatic { get; set; } // optional, default false
+}
+
+public class SimulatedTrust
+{
+    public string Truster { get; set; } = string.Empty;
+    public string Trustee { get; set; } = string.Empty;
+}

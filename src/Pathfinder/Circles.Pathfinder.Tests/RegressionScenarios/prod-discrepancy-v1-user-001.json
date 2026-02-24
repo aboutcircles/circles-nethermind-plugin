@@ -1,0 +1,33 @@
+{
+  "id": "prod-discrepancy-v1-user-001",
+  "name": "Production discrepancy: V1 user with wrapped tokens",
+  "category": "production-discrepancy",
+  "source": "0x26994472d896ac2124f8e83b42bf00e0f6362ea2",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "V1 token holder attempting to transfer to payment gateway. Production returns maxFlow:0 while staging finds a path. The source has only 3 trust relations on production. Tests graph completeness and V1/V2 bridge handling.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "maxFlow": "1000000000000000000",
+  "maxFlowNotEqual": "0",
+  "withWrap": true,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "discoveredAt": "2026-01-26T14:00:00+01:00",
+  "fixedIn": null,
+  "tags": [
+    "production-discrepancy",
+    "v1-user",
+    "wrapped-tokens",
+    "graph-completeness",
+    "regression"
+  ],
+  "notes": "Source 0x26994472... has hasV1=true. Production pathfinder shows only 3 trust relations for this address suggesting incomplete graph loading. Gateway sink 0xc786be... requires multi-hop path discovery.",
+  "prodResult": {
+    "maxFlow": "0",
+    "transferCount": 0
+  },
+  "stagingResult": {
+    "maxFlow": "1000000000000000000",
+    "description": "Finds path with multiple hops"
+  }
+}

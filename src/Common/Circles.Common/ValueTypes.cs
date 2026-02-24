@@ -1,0 +1,14 @@
+namespace Circles.Common;
+
+public enum ValueTypes
+{
+    Boolean = 0,
+    Address = 1,
+    Int = 2,
+    BigInt = 3,
+    String = 4,
+    Bytes = 5,
+    AddressArray = 6,
+    Json = 7,
+    Double = 8
+}

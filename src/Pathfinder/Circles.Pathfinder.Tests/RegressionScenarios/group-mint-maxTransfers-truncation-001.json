@@ -1,0 +1,24 @@
+{
+  "id": "group-mint-maxTransfers-truncation-001",
+  "name": "MaxTransfers limit truncates group mint path to empty",
+  "category": "group-minting",
+  "block": 44610372,
+  "source": "0x114776dbd5ac0e060a599b2b5d4d51a90f43858a",
+  "sink": "0x0385d1ffae39ea95c9b20336e296cab066fdd0a3",
+  "maxTransfers": 6,
+  "description": "Same pair as group-mint-multi-hop-collateral-001 but with maxTransfers=6. The group minting path requires ~20 steps. With maxTransfers=6, no feasible path can be found. Tests that maxTransfers correctly prevents paths that are too long.",
+  "shouldFindPath": false,
+  "minFlow": "1000000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "tags": [
+    "group-minting",
+    "maxTransfers",
+    "truncation",
+    "no-path",
+    "edge-case"
+  ],
+  "discoveredAt": "2026-02-10",
+  "fixedIn": null,
+  "notes": "Returns empty transfers and maxFlow=0. Group mint path needs >6 steps."
+}

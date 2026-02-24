@@ -1,0 +1,62 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Version>0.0.1</Version>
+        <Authors>Daniel Janz (Gnosis Service GmbH)</Authors>
+        <Copyright>Gnosis Service GmbH</Copyright>
+        <Product>Circles</Product>
+        <PackageId>Gnosis.Circles.Pathfinder</PackageId>
+        <OutputType>Library</OutputType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Circles.Pathfinder.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Google.OrTools" Version="9.12.4544" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+        <PackageReference Include="Npgsql" Version="9.0.3" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Remove="Data\Queries\balanceQuery.sql" />
+        <None Remove="Data\Queries\trustQuery.sql" />
+        <None Remove="Data\Queries\groupQuery.sql" />
+        <None Remove="Data\Queries\groupTrustQuery.sql" />
+        <None Remove="Data\Queries\consentedFlowQuery.sql" />
+        <None Remove="Data\Queries\balanceFullStateQuery.sql" />
+        <None Remove="Data\Queries\trustFullStateQuery.sql" />
+        <None Remove="Data\Queries\balanceDeltaQuery.sql" />
+        <None Remove="Data\Queries\trustDeltaQuery.sql" />
+        <None Remove="Data\Queries\newAvatarsQuery.sql" />
+        <None Remove="Data\Queries\maxBlockTimestampQuery.sql" />
+        <None Remove="Data\Queries\avatarBalancesQuery.sql" />
+        <None Remove="Data\Queries\stoppedAvatarsQuery.sql" />
+        <None Remove="Data\Queries\stoppedAvatarsDeltaQuery.sql" />
+        <None Remove="Data\Queries\blockHashQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\balanceQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\groupQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\groupTrustQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\consentedFlowQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\balanceFullStateQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\trustFullStateQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\balanceDeltaQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\trustDeltaQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\newAvatarsQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\maxBlockTimestampQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\avatarBalancesQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\stoppedAvatarsQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\stoppedAvatarsDeltaQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\blockHashQuery.sql" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
+        <PackageReference Include="Nethermind.Numerics.Int256" Version="1.3.6" />
+    </ItemGroup>
+
+</Project>

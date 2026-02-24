@@ -1,0 +1,21 @@
+{
+  "id": "deep-nesting-5hop-001",
+  "name": "Deep multi-hop path (5+ intermediaries)",
+  "category": "direct-transfer",
+  "source": "0x94773e9b5d5fec05ff23844958e0a306834e9b94",
+  "sink": "0xc786bee3b27036dbd490f7493cf82521935d24b2",
+  "description": "Tests deep graph traversal with 5+ hop path. Source has no direct trust to payment gateway sink. Based on the 13-hop path found in prod-discrepancy-nonv1-user-001. Validates OR-Tools scaling with deep paths and proper edge ordering across many nodes.",
+  "shouldFindPath": true,
+  "minFlow": "100000000000000000",
+  "expectedRevertReason": null,
+  "runOnAnvil": true,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": 20,
+  "withWrap": true,
+  "tags": ["deep-path", "multi-hop", "graph-traversal", "performance"],
+  "discoveredAt": "2026-01-27",
+  "fixedIn": null,
+  "notes": "Known to produce 13-hop path on staging. Tests deep graph traversal and edge ordering validation across many nodes."
+}

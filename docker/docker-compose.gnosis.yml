@@ -1,0 +1,342 @@
+services:
+  nethermind-gnosis:
+    container_name: nethermind-gnosis
+    build:
+      context: ..
+      dockerfile: docker/Index.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
+    restart: unless-stopped
+    depends_on:
+      postgres-gnosis:
+        condition: service_healthy
+      jwt-gnosis-secret:
+        condition: service_healthy
+    networks:
+      - circles-gnosis
+    ports:
+      - 30303:30303/tcp # p2p
+      - 30303:30303/udp # p2p
+    expose:
+      - 8545 # JSON-RPC (internal, Caddy proxies externally)
+      - 8551 # engine api
+      - 6060 # metrics
+    volumes:
+      - ../.state/nethermind-gnosis:/data
+      - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    command: |
+      --config=gnosis
+      --datadir=/data
+      --Sync.SnapSync=true
+      --Sync.DownloadBodiesInFastSync=true
+      --Sync.DownloadReceiptsInFastSync=true
+      --Sync.AncientBodiesBarrier=12500000
+      --Sync.AncientReceiptsBarrier=12500000
+      --Receipt.StoreReceipts=true
+      --Receipt.TxLookupLimit=0
+      --log=INFO
+      --JsonRpc.Enabled=true
+      --JsonRpc.Host=0.0.0.0
+      --JsonRpc.Port=8545
+      --JsonRpc.CorsOrigins=*
+      --JsonRpc.EnabledModules=[Web3,Eth,Subscribe,Net,Circles,Debug]
+      --JsonRpc.JwtSecretFile=/jwt.hex
+      --JsonRpc.EngineHost=0.0.0.0
+      --JsonRpc.EnginePort=8551
+      --Network.DiscoveryPort=30303
+      --Network.MaxActivePeers=100
+      --Network.EnableUPnP=${NETHERMIND_ENABLE_UPNP:-false}
+      --Network.ExternalIp=${NETHERMIND_EXTERNAL_IP:-}
+      --HealthChecks.Enabled=true
+      --HealthChecks.UIEnabled=true
+      --Metrics.Enabled=true
+      --Metrics.ExposePort=6060
+    env_file:
+      - ../.env
+    environment:
+      - CIRCLES_PLUGIN_DISABLED=${CIRCLES_PLUGIN_DISABLED:-false}
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;Application Name=nethermind-indexer;
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=true;Application Name=nethermind-indexer;
+      - START_BLOCK=12500000
+      - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
+      - IPFS_GATEWAYS=https://circles-profiles.myfilebase.com
+      - IPFS_MAX_PARALLELISM=192
+      - REINDEX_FROM_BLOCK=${REINDEX_FROM_BLOCK:-}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8545'"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  consensus-gnosis:
+    container_name: consensus-gnosis
+    image: sigp/lighthouse:v8.1.0
+    restart: always
+    depends_on:
+      nethermind-gnosis:
+        condition: service_started
+      jwt-gnosis-secret:
+        condition: service_healthy
+    networks:
+      - circles-gnosis
+    ports:
+      - 9000:9000/tcp # p2p
+      - 9000:9000/udp # p2p
+    expose:
+      - 4000 # http
+      - 5054 # metrics (internal only for Prometheus)
+    volumes:
+      - ../.state/consensus-gnosis/data:/data
+      - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    command: |
+      lighthouse
+      beacon_node
+      --network=gnosis
+      --disable-upnp
+      --datadir=/data
+      --port=9000
+      --http
+      --http-address=0.0.0.0
+      --http-port=4000
+      --execution-endpoint=http://nethermind-gnosis:8551
+      --execution-jwt=/jwt.hex
+      --checkpoint-sync-url=https://checkpoint.gnosischain.com
+      --metrics
+      --metrics-address=0.0.0.0
+      --metrics-port=5054
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/4000'"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  cache-service:
+    container_name: cache-service
+    build:
+      context: ..
+      dockerfile: docker/cache-service.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
+    depends_on:
+      postgres-gnosis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    expose:
+      - 3001
+    env_file:
+      - ../.env
+    environment:
+      - PORT=3001
+      # Keepalive=300 (5min) prevents idle_session_timeout (10min) from killing LISTEN/NOTIFY connections
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;Tcp Keepalive=true;Keepalive=300;
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;Tcp Keepalive=true;Keepalive=300;
+      - PG_NOTIFY_CHANNEL=circles_index_events
+      - ROLLBACK_CAPACITY=12
+      - MAX_CATCHUP_LAG=100
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/3001'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+
+  pathfinder:
+    container_name: pathfinder
+    build:
+      context: ..
+      dockerfile: docker/pathfinder-host.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
+    depends_on:
+      nethermind-gnosis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    expose:
+      - 8080 # Caddy proxies externally
+    env_file:
+      - ../.env
+    environment:
+      - NETHERMIND_RPC_URL=http://nethermind-gnosis:8545
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=pathfinder;
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=pathfinder;
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+      - PATHFINDER_DISABLE_CONSENTED_FLOW=${PATHFINDER_DISABLE_CONSENTED_FLOW:-true}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  rpc:
+    container_name: rpc
+    build:
+      context: ..
+      dockerfile: docker/rpc-host.Dockerfile
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
+    depends_on:
+      nethermind-gnosis:
+        condition: service_healthy
+      pathfinder:
+        condition: service_healthy
+      # Optional: uncomment to wait for cache service
+      # cache-service:
+      #   condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    expose:
+      - 8080 # Caddy proxies externally
+    env_file:
+      - ../.env
+    environment:
+      - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=rpc-host;
+      - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=rpc-host;
+      - EXTERNAL_PATHFINDER_URL=http://pathfinder:8080
+      - NETHERMIND_RPC_URL=http://nethermind-gnosis:8545
+      - BALANCE_MODE=live
+      # Cache Service Configuration (optional)
+      # Uncomment to enable cache service usage:
+      - CACHE_SERVICE_URL=http://cache-service:3001
+      - USE_CACHE_SERVICE=true
+      # Profile Pinning Service: fast profile search proxy (falls back to SQL on error)
+      - PROFILE_PINNING_SERVICE_URL=http://profile-pinning:3000
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8080'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NOTE: profile-service removed - now deployed separately via Ansible
+  # See: aboutcircles-infrastructure/indexer_ansible/roles/profile_pinning_service
+  # Container name: profile-pinning, routes via /profiles/* in Caddy
+
+  postgres-gnosis:
+    container_name: postgres-gnosis
+    image: postgres:17
+    user: "${MY_UID:-10000}:${MY_GID:-10000}"
+    command: -c 'max_connections=100'
+    shm_size: 1g  # Required for PostgreSQL parallel workers (default 64MB is too small)
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    expose:
+      - 5432
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+    volumes:
+      - ../.state/postgres-gnosis:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres-backup:
+    container_name: postgres-backup
+    image: prodrigestivill/postgres-backup-local:17
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    environment:
+      - POSTGRES_HOST=postgres-gnosis
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - BACKUP_DIR=/backups
+      - SCHEDULE=0 3 * * *
+      - KEEP_DAYS=7
+    depends_on:
+      - postgres-gnosis
+    volumes:
+      - ../.state/backups:/backups
+
+  jwt-gnosis-secret:
+    container_name: jwt-gnosis-secret
+    image: alpine:3.20
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    volumes:
+      - ../.state/jwtsecret-gnosis:/jwt
+    environment:
+      - MY_UID=${MY_UID:-10000}
+      - MY_GID=${MY_GID:-10000}
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        mkdir -p /jwt
+        if [ ! -s /jwt/jwt.hex ]; then
+          # keep it simple & reliable: use openssl
+          if ! command -v openssl >/dev/null 2>&1; then
+            apk add --no-cache openssl >/dev/null 2>&1
+          fi
+          openssl rand -hex 32 > /jwt/jwt.hex
+          chmod 0644 /jwt/jwt.hex
+          chown "${MY_UID:-10000}:${MY_GID:-10000}" /jwt/jwt.hex || true
+        fi
+        exec tail -f /dev/null
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /jwt/jwt.hex"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 1s
+
+  # Refreshes V_TrustScores_Current materialized view every 60 minutes
+  # Uses CONCURRENTLY to avoid blocking reads during refresh (~2-3 min)
+  # Fallback to blocking refresh for initial population (WITH NO DATA state)
+  trust-scores-refresh:
+    container_name: trust-scores-refresh
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - circles-gnosis
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      postgres-gnosis:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Trust scores refresh cron started"
+        sleep 60
+        while true; do
+          echo "[$(date)] Refreshing V_TrustScores_Current materialized view..."
+          psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
+            -c "REFRESH MATERIALIZED VIEW CONCURRENTLY \"V_TrustScores_Current\";" 2>&1 \
+            || psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
+            -c "REFRESH MATERIALIZED VIEW \"V_TrustScores_Current\";" 2>&1 \
+            || echo "[$(date)] Refresh failed (view may not exist yet)"
+          echo "[$(date)] Refresh complete, sleeping for 60 minutes..."
+          sleep 3600
+        done
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "sleep"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+networks:
+  circles-gnosis:
+    name: circles-gnosis

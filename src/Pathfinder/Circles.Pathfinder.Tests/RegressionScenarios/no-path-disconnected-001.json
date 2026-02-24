@@ -1,0 +1,14 @@
+{
+  "id": "no-path-disconnected-001",
+  "name": "Source and sink have no trust connection",
+  "category": "no-path",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0x0000000000000000000000000000000000000001",
+  "description": "The sink address is not in the Circles trust network (zero address placeholder). No path should be found because there's no trust relationship.",
+  "shouldFindPath": false,
+  "minFlow": null,
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "tags": ["negative-test", "no-path", "disconnected"]
+}

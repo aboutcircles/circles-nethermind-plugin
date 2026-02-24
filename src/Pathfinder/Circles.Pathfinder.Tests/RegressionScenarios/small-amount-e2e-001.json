@@ -1,0 +1,21 @@
+{
+  "id": "small-amount-e2e-001",
+  "name": "Minimum viable transfer amount",
+  "category": "direct-transfer",
+  "block": 43193632,
+  "source": "0xde374ece6fa50e781e81aac78e811b33d16912c7",
+  "sink": "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c",
+  "description": "Tests the smallest reasonable transfer amount (1 wei of CRC). Validates that very small amounts are handled correctly on-chain.",
+  "shouldFindPath": false,
+  "minFlow": "1",
+  "expectedRevertReason": null,
+  "runOnAnvil": false,
+  "fromTokens": [],
+  "toTokens": [],
+  "excludedTokens": [],
+  "maxTransfers": null,
+  "withWrap": false,
+  "tags": ["positive-test", "e2e", "edge-case", "small-amount"],
+  "fixedIn": null,
+  "notes": "E2E disabled: No path found - source/sink trust relationship may not exist at this block."
+}

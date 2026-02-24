@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+    </PropertyGroup>
+
+    <!-- BenchmarkDotNet: Release builds become an Exe with custom entry point.
+         In Debug, Program.cs is excluded so the test SDK's auto-generated
+         entry point is used and WebApplicationFactory<Program> resolves correctly. -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+        <OutputType>Exe</OutputType>
+        <GenerateProgramFile>false</GenerateProgramFile>
+        <StartupObject>Circles.Pathfinder.Tests.BenchmarkEntryPoint</StartupObject>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(Configuration)' != 'Release'">
+        <Compile Remove="Program.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="coverlet.collector" Version="6.0.4">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+        <PackageReference Include="Moq" Version="4.20.72" />
+        <PackageReference Include="NUnit" Version="4.3.2" />
+        <PackageReference Include="NUnit.Analyzers" Version="4.7.0">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
+        <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="NUnit.Framework" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\Common\Circles.Common.TestUtils\Circles.Common.TestUtils.csproj" />
+        <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
+        <ProjectReference Include="..\Circles.Pathfinder\Circles.Pathfinder.csproj" />
+        <ProjectReference Include="..\Circles.Pathfinder.Host\Circles.Pathfinder.Host.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="pathfinder-test-cases.json">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Include="RegressionScenarios\**\*.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+      <None Include="RegressionScenarios\**\*.md">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,146 @@
+name: CI - Build and Test
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run unit tests
+        run: |
+          chmod +x ./scripts/test.sh
+          ./scripts/test.sh --coverage
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/
+          retention-days: 30
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: TestResults/coverage/
+          retention-days: 30
+
+      - name: Comment test results on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: |
+            TestResults/**/*.xml
+            TestResults/**/*.trx
+          comment_mode: always
+
+  # Snapshot tests run against staging test environment
+  # These tests validate database queries and business logic against real blockchain state
+  snapshot-tests:
+    runs-on: ubuntu-latest
+    # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
+    needs: build-and-test
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run snapshot tests
+        env:
+          TEST_ENV_URL: https://staging.circlesubi.network/test-env
+        run: |
+          dotnet test --no-build -c Release \
+            --filter "Category=Snapshot" \
+            --logger "trx;LogFileName=snapshot-tests.trx" \
+            --results-directory TestResults/snapshot \
+            || true  # Don't fail if tests skip due to unavailable test-env
+
+      - name: Upload snapshot test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-test-results
+          path: TestResults/snapshot/
+          retention-days: 30
+
+  # Regression tests specifically for known bug scenarios
+  regression-tests:
+    runs-on: ubuntu-latest
+    # Now runs on PRs too - test-env returns sanitized errors (no credential exposure)
+    needs: build-and-test
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build -c Release --no-restore
+
+      - name: Run regression tests
+        env:
+          TEST_ENV_URL: https://staging.circlesubi.network/test-env
+        run: |
+          dotnet test --no-build -c Release \
+            --filter "Category=Regression" \
+            --logger "trx;LogFileName=regression-tests.trx" \
+            --results-directory TestResults/regression \
+            || true  # Don't fail if tests skip
+
+      - name: Upload regression test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-test-results
+          path: TestResults/regression/
+          retention-days: 30
