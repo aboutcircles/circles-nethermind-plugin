@@ -196,22 +196,22 @@ FAILED_PROJECT_NAMES=()
 if [ "$RUN_ALL" = true ]; then
   # Run all test projects
   for project in "${TEST_PROJECTS[@]}"; do
-    ((TOTAL_PROJECTS++))
+    ((++TOTAL_PROJECTS))
     if run_test_project "$project"; then
-      ((PASSED_PROJECTS++))
+      ((++PASSED_PROJECTS))
     else
-      ((FAILED_PROJECTS++))
+      ((++FAILED_PROJECTS))
       FAILED_PROJECT_NAMES+=("$(basename "$(dirname "$project")")")
     fi
   done
 else
   # Run specific projects
   for project in "${SPECIFIC_PROJECTS[@]}"; do
-    ((TOTAL_PROJECTS++))
+    ((++TOTAL_PROJECTS))
     if run_test_project "$project"; then
-      ((PASSED_PROJECTS++))
+      ((++PASSED_PROJECTS))
     else
-      ((FAILED_PROJECTS++))
+      ((++FAILED_PROJECTS))
       FAILED_PROJECT_NAMES+=("$(basename "$(dirname "$project")")")
     fi
   done
