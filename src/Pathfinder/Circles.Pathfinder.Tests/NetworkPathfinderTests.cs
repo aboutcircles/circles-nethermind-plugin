@@ -1,12 +1,12 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Nethermind.Int256;
-using System.Text.Json.Serialization;
-using Circles.Common;
 
 namespace Circles.Pathfinder.Tests;
 

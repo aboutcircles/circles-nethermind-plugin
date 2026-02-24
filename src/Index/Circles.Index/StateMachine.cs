@@ -1,9 +1,9 @@
+using System.Text.Json;
 using Circles.Common;
 // using Circles.Rpc;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Npgsql;
-using System.Text.Json;
 
 namespace Circles.Index;
 

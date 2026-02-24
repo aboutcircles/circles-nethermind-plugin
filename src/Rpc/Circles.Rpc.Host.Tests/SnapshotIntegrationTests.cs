@@ -1,5 +1,5 @@
-using Circles.Common.TestUtils;
 using Circles.Common;
+using Circles.Common.TestUtils;
 using Circles.Index.Postgres;
 using Npgsql;
 using NUnit.Framework;

@@ -2,24 +2,24 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Common.Dto;
 using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
-using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
 using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Console;
 using Nethermind.Int256;
 using Npgsql;
-using Prometheus;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Prometheus;
 using static Circles.Pathfinder.Tracing;
-using Microsoft.AspNetCore.ResponseCompression;
 
 var settings = new Circles.Pathfinder.Host.Settings();
 

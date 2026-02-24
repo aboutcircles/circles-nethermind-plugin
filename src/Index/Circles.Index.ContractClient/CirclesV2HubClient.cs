@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using Nethereum.ABI.FunctionEncoding.Attributes;
 using Nethereum.Contracts;
 using Nethereum.Web3;

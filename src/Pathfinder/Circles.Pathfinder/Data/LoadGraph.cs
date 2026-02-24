@@ -1,11 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
-using Npgsql;
 using System.Reflection;
 using Circles.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 
 namespace Circles.Pathfinder.Data
 {

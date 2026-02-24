@@ -1,5 +1,5 @@
-using Nethermind.Int256;
 using Nethereum.Hex.HexConvertors.Extensions;
+using Nethermind.Int256;
 
 namespace Circles.Common;
 
