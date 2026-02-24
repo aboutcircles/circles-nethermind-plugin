@@ -138,37 +138,9 @@ run_test_project() {
 
   echo -e "${GREEN}Running tests for $project_name...${NC}"
 
-  local services_started=false
-  if [[ "$project_name" == "Circles.Pathfinder.Tests" ]]; then
-    # Pathfinder tests require the full Docker stack (nethermind, postgres, pathfinder, rpc)
-    # Skip in CI — too heavy for GitHub Actions runners
-    if [ "${CI:-}" = "true" ]; then
-      echo -e "${YELLOW}Skipping $project_name in CI (requires full Docker stack)${NC}\n"
-      return 0
-    fi
-
-    echo -e "${YELLOW}Starting required services with docker-compose...${NC}"
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml up -d postgres-gnosis pathfinder rpc
-
-    # Wait for RPC container healthcheck (no host port exposure needed)
-    echo -e "${YELLOW}Waiting for RPC service to be healthy...${NC}"
-    for i in {1..60}; do
-      HEALTH=$(docker inspect --format='{{.State.Health.Status}}' rpc 2>/dev/null || echo "missing")
-      if [ "$HEALTH" = "healthy" ]; then
-        echo -e "${GREEN}RPC service is healthy${NC}"
-        break
-      fi
-      if [ $i -eq 60 ]; then
-        echo -e "${RED}RPC service failed to become healthy (status: $HEALTH)${NC}"
-        docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml logs rpc --tail 20
-        docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml down
-        return 1
-      fi
-      sleep 2
-    done
-
-    services_started=true
-  fi
+  # Integration/E2E tests self-skip via Assert.Ignore when TEST_ENV_URL
+  # or POSTGRES_CONNECTION_STRING aren't set — no Docker startup needed.
+  # For local full-stack testing, use: docker compose up + dotnet test directly.
 
   local test_result=0
   if dotnet test "$PROJECT_ROOT/$project" "${TEST_ARGS[@]}"; then
@@ -177,11 +149,6 @@ run_test_project() {
   else
     echo -e "${RED}✗ $project_name tests failed${NC}\n"
     test_result=1
-  fi
-
-  if [[ "$services_started" == true ]]; then
-    echo -e "${YELLOW}Stopping services...${NC}"
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml down
   fi
 
   return $test_result
