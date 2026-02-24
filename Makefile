@@ -267,7 +267,7 @@ setup-hooks:
 lint:
 	dotnet format --verify-no-changes
 
-lint-fix:
+lint-fix format:
 	dotnet format
 
 # Complete workflows
