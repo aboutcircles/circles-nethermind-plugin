@@ -2,6 +2,7 @@
 **/obj
 **/bin
 **/._*
+.idea/
 .state
 nupkgs
 TestResults
