@@ -407,10 +407,10 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
     public async Task<PagedResponse<TransferDataRow>> GetTransferData(
         string address,
-        long? fromBlock = null,
-        long? toBlock = null,
         string? direction = null,
         string? counterparty = null,
+        long? fromBlock = null,
+        long? toBlock = null,
         int limit = 50,
         string? cursor = null)
     {
