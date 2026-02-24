@@ -18,7 +18,7 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Running Circles Tests...${NC}\n"
 
 # Configuration
-CONFIGURATION="${BUILD_CONFIGURATION:-Debug}"
+CONFIGURATION="${BUILD_CONFIGURATION:-Release}"
 VERBOSITY="${TEST_VERBOSITY:-normal}"
 
 # Test projects
@@ -140,22 +140,31 @@ run_test_project() {
 
   local services_started=false
   if [[ "$project_name" == "Circles.Pathfinder.Tests" ]]; then
+    # Pathfinder tests require the full Docker stack (nethermind, postgres, pathfinder, rpc)
+    # Skip in CI — too heavy for GitHub Actions runners
+    if [ "${CI:-}" = "true" ]; then
+      echo -e "${YELLOW}Skipping $project_name in CI (requires full Docker stack)${NC}\n"
+      return 0
+    fi
+
     echo -e "${YELLOW}Starting required services with docker-compose...${NC}"
     docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml up -d postgres-gnosis pathfinder rpc
 
-    # Wait for RPC service to be ready
-    echo -e "${YELLOW}Waiting for RPC service to be ready...${NC}"
-    for i in {1..30}; do
-      if curl -s -f http://localhost:8081/rpc -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"circles_health","params":[]}' > /dev/null 2>&1; then
-        echo -e "${GREEN}RPC service is ready${NC}"
+    # Wait for RPC container healthcheck (no host port exposure needed)
+    echo -e "${YELLOW}Waiting for RPC service to be healthy...${NC}"
+    for i in {1..60}; do
+      HEALTH=$(docker inspect --format='{{.State.Health.Status}}' rpc 2>/dev/null || echo "missing")
+      if [ "$HEALTH" = "healthy" ]; then
+        echo -e "${GREEN}RPC service is healthy${NC}"
         break
       fi
-      sleep 1
-      if [ $i -eq 30 ]; then
-        echo -e "${RED}RPC service failed to start${NC}"
+      if [ $i -eq 60 ]; then
+        echo -e "${RED}RPC service failed to become healthy (status: $HEALTH)${NC}"
+        docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml logs rpc --tail 20
         docker compose --env-file "$PROJECT_ROOT/.env" -f docker/docker-compose.gnosis.yml down
         return 1
       fi
+      sleep 2
     done
 
     services_started=true
