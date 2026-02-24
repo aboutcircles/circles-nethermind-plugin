@@ -54,9 +54,9 @@ public class TransferSummaryAggregatorTests
     }
 
     [Test]
-    public void AggregateAll_FlowEdgesScopeSingleStarted_AddedToNonStreamEvents()
+    public void AggregateAll_FlowEdgesScopeSingleStarted_AddedToStreamEvents()
     {
-        // This test works because FlowEdgesScopeSingleStarted doesn't trigger AddNonStreamTransfers
+        // FlowEdgesScopeSingleStarted is a stream boundary event and belongs in streamEvents
         var events = new IIndexedEventV2[]
         {
             CreateFlowEdgesScopeSingleStarted(1, 0)
@@ -64,8 +64,9 @@ public class TransferSummaryAggregatorTests
 
         var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache);
 
-        Assert.That(result.NonStreamEvents, Has.Count.EqualTo(1));
-        Assert.That(result.NonStreamEvents[0], Is.InstanceOf<FlowEdgesScopeSingleStarted>());
+        Assert.That(result.StreamEvents, Has.Count.EqualTo(1));
+        Assert.That(result.StreamEvents[0], Is.InstanceOf<FlowEdgesScopeSingleStarted>());
+        Assert.That(result.NonStreamEvents, Is.Empty);
     }
 
     [Test]
@@ -377,7 +378,9 @@ public class TransferSummaryAggregatorTests
 
         var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache);
 
-        Assert.That(result.StreamEvents, Has.Count.EqualTo(3));
+        // 4 events: FlowEdgesScopeSingleStarted + 2 TransferSingle + StreamCompleted
+        Assert.That(result.StreamEvents, Has.Count.EqualTo(4));
+        Assert.That(result.StreamEvents.OfType<FlowEdgesScopeSingleStarted>().Count(), Is.EqualTo(1));
         Assert.That(result.StreamEvents.OfType<TransferSingle>().Count(), Is.EqualTo(2));
         Assert.That(result.StreamEvents.OfType<StreamCompleted>().Count(), Is.EqualTo(1));
     }
