@@ -98,6 +98,64 @@ public class TransferSummaryAggregatorTests
         Assert.That(result.NonStreamTransfers.Totals.Count(), Is.EqualTo(0));
     }
 
+    [Test]
+    public void AggregateAll_EventsAfterScopeLastEnded_StayInStream()
+    {
+        // Hub.sol emits: ScopeStart → transfers → ScopeLastEnded → GroupMint/TransferBatch → StreamCompleted
+        // Events between ScopeLastEnded and StreamCompleted are still part of the stream.
+        var events = new IIndexedEventV2[]
+        {
+            CreateFlowEdgesScopeSingleStarted(1, 0),
+            CreateTransferSingle(Alice, Bob, 100UL),
+            CreateFlowEdgesScopeLastEnded(),
+            CreateTransferBatch(ZeroAddress, Alice, 0, 200UL),
+            CreateGroupMint(Alice, Bob, Group, 300UL),
+            CreateStreamCompleted(Alice, Bob, 100UL)
+        };
+
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache);
+
+        Assert.Multiple(() =>
+        {
+            // All 6 events must be in stream
+            Assert.That(result.StreamEvents, Has.Count.EqualTo(6));
+            Assert.That(result.StreamEvents.OfType<FlowEdgesScopeLastEnded>().Count(), Is.EqualTo(1));
+            Assert.That(result.NonStreamEvents, Is.Empty);
+            // TransferBatch/GroupMint between ScopeLastEnded and StreamCompleted must NOT create non-stream totals
+            Assert.That(result.NonStreamTransfers.Totals.Count(), Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void AggregateAll_MultipleStreamsInOneTransaction_EachStreamIsolated()
+    {
+        var events = new IIndexedEventV2[]
+        {
+            // Stream 1
+            CreateFlowEdgesScopeSingleStarted(1, 0),
+            CreateTransferSingle(Alice, Bob, 100UL),
+            CreateFlowEdgesScopeLastEnded(),
+            CreateStreamCompleted(Alice, Bob, 100UL),
+            // Inter-stream non-stream event
+            CreateTransferSingle(Charlie, Alice, 50UL),
+            // Stream 2
+            CreateFlowEdgesScopeSingleStarted(2, 1),
+            CreateTransferSingle(Bob, Charlie, 200UL),
+            CreateFlowEdgesScopeLastEnded(),
+            CreateGroupMint(Bob, Charlie, Group, 200UL),
+            CreateStreamCompleted(Bob, Charlie, 200UL)
+        };
+
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.StreamTransfers.Totals.Count(), Is.EqualTo(2)); // Alice→Bob, Bob→Charlie
+            Assert.That(result.NonStreamTransfers.Totals.Count(), Is.EqualTo(1)); // Charlie→Alice
+            Assert.That(result.NonStreamEvents, Has.Count.EqualTo(1));
+        });
+    }
+
     // ─────────────────────── Stream-Only Tests (No Nethermind dependency) ───────────────────────
     // StreamCompleted aggregation uses ToHexString but only on stream transfers
 
@@ -489,6 +547,18 @@ public class TransferSummaryAggregatorTests
             Group: group,
             Collateral: new UInt256(amount),
             Amount: new UInt256(amount)
+        );
+    }
+
+    private static FlowEdgesScopeLastEnded CreateFlowEdgesScopeLastEnded()
+    {
+        return new FlowEdgesScopeLastEnded(
+            BlockNumber: 1,
+            Timestamp: 1700000000,
+            TransactionIndex: 0,
+            LogIndex: 0,
+            TransactionHash: "0x1234",
+            Emitter: HubAddress
         );
     }
 
