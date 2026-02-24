@@ -21,6 +21,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.5.0" />
       <ProjectReference Include="..\..\Common\Circles.Common\Circles.Common.csproj" />
     </ItemGroup>
 
