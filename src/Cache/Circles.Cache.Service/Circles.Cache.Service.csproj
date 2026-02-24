@@ -24,7 +24,7 @@
 
     <!-- Dependency Injection -->
     <PackageReference Include="Autofac" Version="9.0.0" />
-    <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
 
     <!-- Monitoring -->
     <PackageReference Include="prometheus-net" Version="8.2.1" />
