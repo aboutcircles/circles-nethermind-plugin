@@ -9,7 +9,24 @@ namespace Circles.Rpc.Host;
 public static class JsonRpcId
 {
     private static readonly JsonDocument NullDoc = JsonDocument.Parse("null");
+    private static readonly JsonDocument EmptyArrayDoc = JsonDocument.Parse("[]");
+
     public static JsonElement Null => NullDoc.RootElement;
+    public static JsonElement EmptyArray => EmptyArrayDoc.RootElement;
+
+    /// <summary>
+    /// Coerces a JsonElement id to a safe value for serialization.
+    /// Undefined → JSON null (valid per JSON-RPC 2.0 spec for indeterminate id).
+    /// </summary>
+    public static JsonElement CoerceId(JsonElement id)
+        => id.ValueKind == JsonValueKind.Undefined ? Null : id;
+
+    /// <summary>
+    /// Coerces a JsonElement params to a safe value for serialization.
+    /// Undefined → empty array (valid per JSON-RPC 2.0 spec for no params).
+    /// </summary>
+    public static JsonElement CoerceParams(JsonElement @params)
+        => @params.ValueKind == JsonValueKind.Undefined ? EmptyArray : @params;
 }
 
 public class JsonRpcRequest

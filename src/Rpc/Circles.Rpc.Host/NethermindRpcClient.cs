@@ -30,8 +30,8 @@ public class NethermindRpcClient
         {
             jsonrpc = "2.0",
             method,
-            @params,
-            id
+            @params = JsonRpcId.CoerceParams(@params),
+            id = JsonRpcId.CoerceId(id)
         };
 
         var response = await httpClient.PostAsJsonAsync(_rpcUrl, payload);

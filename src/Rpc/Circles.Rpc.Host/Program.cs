@@ -225,7 +225,7 @@ app.MapPost("/", async (
     {
         return Results.BadRequest(new JsonRpcErrorResponse
         {
-            Id = request.Id,
+            Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
         });
     }
@@ -316,7 +316,7 @@ app.MapPost("/", async (
 
         return Results.Ok(new JsonRpcResponse
         {
-            Id = request.Id,
+            Id = JsonRpcId.CoerceId(request.Id),
             Result = rpcResult
         });
     }
@@ -341,7 +341,7 @@ app.MapPost("/", async (
 
             return Results.Ok(new JsonRpcErrorResponse
             {
-                Id = request.Id,
+                Id = JsonRpcId.CoerceId(request.Id),
                 Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {methodName}" }
             });
         }
@@ -381,7 +381,7 @@ app.MapPost("/", async (
 
             return Results.Ok(new JsonRpcErrorResponse
             {
-                Id = request.Id,
+                Id = JsonRpcId.CoerceId(request.Id),
                 Error = new JsonRpcError { Code = -32603, Message = $"Failed to proxy request to Nethermind: {proxyEx.Message}" }
             });
         }
@@ -400,7 +400,7 @@ app.MapPost("/", async (
             elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
-            Id = request.Id,
+            Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32602, Message = ex.Message }
         });
     }
@@ -418,7 +418,7 @@ app.MapPost("/", async (
             elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
-            Id = request.Id,
+            Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32602, Message = "Invalid params" }
         });
     }
@@ -436,7 +436,7 @@ app.MapPost("/", async (
             elapsed.TotalMilliseconds);
         return Results.Ok(new JsonRpcErrorResponse
         {
-            Id = request.Id,
+            Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32603, Message = $"Internal server error: {ex.Message}" }
         });
     }
@@ -1077,11 +1077,18 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
             }
             else if (underlyingType == typeof(int))
             {
-                args[i] = parameters[i].GetInt32();
+                args[i] = parameters[i].ValueKind == JsonValueKind.Number
+                    ? parameters[i].GetInt32()
+                    : int.TryParse(parameters[i].GetString(), out var n) ? n
+                    : throw new ArgumentException($"Parameter '{methodParams[i].Name}' must be a number, got: {parameters[i]}");
             }
             else if (underlyingType == typeof(long))
             {
-                args[i] = parameters[i].GetInt64();
+                // Handle both numeric JSON values and string representations
+                args[i] = parameters[i].ValueKind == JsonValueKind.Number
+                    ? parameters[i].GetInt64()
+                    : long.TryParse(parameters[i].GetString(), out var l) ? l
+                    : throw new ArgumentException($"Parameter '{methodParams[i].Name}' must be a number, got: {parameters[i]}");
             }
             else if (underlyingType == typeof(bool))
             {
@@ -1172,6 +1179,6 @@ public static class JsonElementExtensions
 {
     public static bool IsNullOrUndefined(this JsonElement element)
     {
-        return element.ValueKind == JsonValueKind.Null;
+        return element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined;
     }
 }

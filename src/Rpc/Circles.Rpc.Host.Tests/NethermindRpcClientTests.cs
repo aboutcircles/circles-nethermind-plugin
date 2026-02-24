@@ -161,6 +161,66 @@ public class NethermindRpcClientTests
             Throws.TypeOf<HttpRequestException>());
     }
 
+    // ── ForwardRpcRequest — undefined params/id coercion ───────────────────
+
+    [Test]
+    public async Task ForwardRpcRequest_WithUndefinedParams_CoercesToEmptyArray()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var rpcClient = CreateClient(message =>
+        {
+            capturedRequest = message;
+            return JsonResponse("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x1234\"}");
+        });
+
+        // default(JsonElement) has ValueKind == Undefined — simulates omitted "params"
+        var undefinedParams = default(JsonElement);
+        var id = JsonDocument.Parse("1").RootElement;
+
+        var result = await rpcClient.ForwardRpcRequest("eth_blockNumber", id, undefinedParams);
+
+        var body = await capturedRequest!.Content!.ReadAsStringAsync();
+        Assert.That(body, Does.Contain("\"params\":[]"), "Undefined params should be coerced to empty array");
+        Assert.That(result.GetProperty("result").GetString(), Is.EqualTo("0x1234"));
+    }
+
+    [Test]
+    public async Task ForwardRpcRequest_WithUndefinedId_CoercesToNull()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var rpcClient = CreateClient(message =>
+        {
+            capturedRequest = message;
+            return JsonResponse("{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":\"0x5678\"}");
+        });
+
+        var @params = JsonDocument.Parse("[]").RootElement;
+        var undefinedId = default(JsonElement);
+
+        var result = await rpcClient.ForwardRpcRequest("eth_chainId", undefinedId, @params);
+
+        var body = await capturedRequest!.Content!.ReadAsStringAsync();
+        Assert.That(body, Does.Contain("\"id\":null"), "Undefined id should be coerced to null");
+    }
+
+    [Test]
+    public async Task ForwardRpcRequest_WithBothUndefined_CoercesBoth()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var rpcClient = CreateClient(message =>
+        {
+            capturedRequest = message;
+            return JsonResponse("{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":\"0x64\"}");
+        });
+
+        var result = await rpcClient.ForwardRpcRequest("net_version", default, default);
+
+        var body = await capturedRequest!.Content!.ReadAsStringAsync();
+        Assert.That(body, Does.Contain("\"params\":[]"));
+        Assert.That(body, Does.Contain("\"id\":null"));
+        Assert.That(result.GetProperty("result").GetString(), Is.EqualTo("0x64"));
+    }
+
     // ── ForwardRawRequest tests ──────────────────────────────────────────────
 
     [Test]
