@@ -4,7 +4,7 @@ name: Smart Deploy to Staging
 # Manual workflow_dispatch always allowed
 
 # Reusable workflow - called by branch-specific workflows
-# Direct push trigger for feature branches only
+# Direct push trigger for dev branch
 on:
   push:
     branches:
@@ -42,14 +42,6 @@ on:
         description: "Deploy Grafana dashboards"
         type: boolean
         default: false
-
-env:
-  REGISTRY: ghcr.io
-  # Image names (will be prefixed with ghcr.io/owner/)
-  IMAGE_INDEX: nethermind-plugin
-  IMAGE_PATHFINDER: pathfinder-host
-  IMAGE_RPC: rpc-host
-  IMAGE_TRUST_TOOL: trust-missing-avatars
 
 concurrency:
   group: smart-deploy-${{ github.ref_name }}
@@ -228,80 +220,12 @@ jobs:
           echo "| Observability (Metrics Exporter) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
           echo "| Grafana | (managed in infrastructure repo) | - | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
 
-  build-images:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.deploy_gnosis == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push circles-client
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Index.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:dev
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache-dev
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_INDEX }}:buildcache-dev,mode=max
-
-      - name: Build & push pathfinder
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/pathfinder-host.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:dev
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache-dev
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PATHFINDER }}:buildcache-dev,mode=max
-
-      - name: Build & push rpc-host
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/rpc-host.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:dev
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache-dev
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_RPC }}:buildcache-dev,mode=max
-
-      - name: Build & push trust-missing-avatars
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/trust-missing-avatars.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:dev
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_TRUST_TOOL }}:buildcache-dev,mode=max
-
+  # Trigger Ansible deployment on the infrastructure repo.
+  # Ansible SSHes into the target host, pulls the latest source, and builds images on-server.
+  # No GHCR/registry involved — images are built locally from Dockerfiles.
   trigger-deploy:
-    needs: [detect-changes, build-images]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.any_deploy == 'true' &&
-      (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
+    needs: detect-changes
+    if: needs.detect-changes.outputs.any_deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Ansible deployment
@@ -313,7 +237,6 @@ jobs:
           client-payload: |
             {
               "environment": "staging",
-              "image_tag": "dev",
               "commit_sha": "${{ github.sha }}",
               "triggered_by": "${{ github.actor }}",
               "source_repo": "${{ github.repository }}",
