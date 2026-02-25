@@ -8,7 +8,7 @@ name: Smart Deploy to Staging
 on:
   push:
     branches:
-      - feature/refactor_pathfinder_rpc # Direct deploy for your dev branch
+      - dev
     paths:
       - "docker/**"
       - "src/**"
