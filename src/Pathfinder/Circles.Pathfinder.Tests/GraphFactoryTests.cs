@@ -9,7 +9,7 @@ namespace Circles.Pathfinder.Tests;
 /// simulated balances/trusts, virtual sink, group minting, and validation.
 /// Uses a mock ILoadGraph to avoid DB dependency.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class GraphFactoryTests
 {
     // Valid 42-char hex addresses (0x + 40 hex) — required for IsValidEthereumAddress checks

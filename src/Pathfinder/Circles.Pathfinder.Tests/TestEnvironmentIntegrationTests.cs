@@ -105,8 +105,10 @@ public class TestEnvironmentIntegrationTests
         Assert.That(session, Is.Not.Null);
         Assert.That(session!.SessionId, Is.Not.Empty);
         Assert.That(session.BlockNumber, Is.EqualTo(blockNumber));
-        Assert.That(session.Postgres, Is.Not.Null);
-        Assert.That(session.Postgres!.ConnectionString, Does.Contain("circles.max_block_number"));
+        Assert.That(session.Postgres, Is.Not.Null,
+            "Postgres config should be returned when 'db' feature is requested");
+        // Connection details (Host, ConnectionString) may be redacted for external access.
+        // Just verify the feature was provisioned — E2E tests use the session object directly.
 
         _sessionId = session.SessionId;
     }

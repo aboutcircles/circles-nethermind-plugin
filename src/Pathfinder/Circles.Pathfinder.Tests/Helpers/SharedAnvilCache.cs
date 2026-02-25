@@ -47,7 +47,7 @@ public static class SharedAnvilCache
             var session = TestEnvironmentClient.CreateSessionAsync(
                 blockNumber,
                 features: ["db", "anvil"],
-                ttl: "10m",
+                ttl: "30m",
                 testEnvUrl: testEnvUrl
             ).GetAwaiter().GetResult();
 
@@ -77,6 +77,11 @@ public static class SharedAnvilCache
             return data;
         }
     }
+
+    /// <summary>
+    /// Check if a session is cached for the given block.
+    /// </summary>
+    public static bool IsCached(long blockNumber) => Cache.ContainsKey(blockNumber);
 
     /// <summary>
     /// Clears all cached sessions and disposes resources.

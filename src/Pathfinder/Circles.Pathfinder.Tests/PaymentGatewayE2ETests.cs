@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Circles.Common.Dto;
 using Circles.Common.TestUtils;
 using Circles.Pathfinder.Data;
@@ -110,10 +111,10 @@ public class PaymentGatewayE2ETests
         foreach (var (name, address) in TestGroups)
         {
             var result = await _session!.ExecuteScalarAsync(
-                @"SELECT COUNT(*) FROM ""CrcV2_RegisterGroup"" WHERE avatar = @addr",
+                @"SELECT COUNT(*) FROM ""CrcV2_RegisterGroup"" WHERE ""group"" = @addr",
                 new Dictionary<string, object?> { { "addr", address.ToLowerInvariant() } });
 
-            var count = Convert.ToInt64(result);
+            var count = result is JsonElement je ? je.GetInt64() : Convert.ToInt64(result ?? 0);
             Assert.That(count, Is.GreaterThan(0),
                 $"Group '{name}' ({address}) should be registered in CrcV2_RegisterGroup");
 
@@ -285,7 +286,7 @@ public class PaymentGatewayE2ETests
         var sourceResult = await _session.ExecuteQueryAsync(
             @"SELECT DISTINCT account
               FROM ""V_CrcV2_BalancesByAccountAndToken""
-              WHERE balance > 1000000000000000000
+              WHERE ""totalBalance"" > 1000000000000000000
               LIMIT 5",
             new Dictionary<string, object?>());
 

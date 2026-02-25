@@ -20,12 +20,6 @@ namespace Circles.Pathfinder.Tests;
 [TestFixture]
 public class CrossVerificationTests
 {
-    [OneTimeTearDown]
-    public async Task TearDown()
-    {
-        await SharedGraphCache.ClearAsync();
-    }
-
     /// <summary>
     /// For each scenario's source address, compares the balances loaded by pathfinder
     /// (from DB via ILoadGraph) with the balances returned by circles_getTokenBalances RPC.

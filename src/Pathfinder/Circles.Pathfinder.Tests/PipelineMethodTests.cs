@@ -7,7 +7,7 @@ namespace Circles.Pathfinder.Tests;
 /// Direct unit tests for V2Pathfinder internal pipeline methods:
 /// CollapseSinglePathToEdges, PathHasConsentViolation, InsertRouterInTransfers.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class PipelineMethodTests
 {
     private V2Pathfinder _pathfinder = null!;

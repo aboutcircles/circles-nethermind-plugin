@@ -33,14 +33,20 @@ internal static class PathUtils
 
         var result = new List<List<SimpleEdge>>();
 
+        // Reusable BFS buffers — cleared between iterations to avoid GC pressure
+        var parent = new Dictionary<int, SimpleEdge>();
+        var queue = new Queue<int>();
+        var seen = new HashSet<int>();
+
         /* --------------------------------------------------------------------
          * Repeatedly peel one augmenting path at a time (classic Edmonds-Karp).
          * ------------------------------------------------------------------ */
         while (true)
         {
-            var parent = new Dictionary<int, SimpleEdge>(); // child → edge used to reach it
-            var queue = new Queue<int>();
-            var seen = new HashSet<int> { source };
+            parent.Clear();
+            queue.Clear();
+            seen.Clear();
+            seen.Add(source);
             bool foundSink = false;
 
             queue.Enqueue(source);

@@ -14,7 +14,7 @@ namespace Circles.Pathfinder.Tests;
 /// When paths exceed this limit, they are pruned using a greedy algorithm that
 /// prioritizes high-flow paths while minimizing step count.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 [Category("Unit")]
 public class MaxTransfersTests
 {

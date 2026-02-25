@@ -957,15 +957,7 @@ static async Task<object> HandleV2FindPath(JsonRpcRequest request, CirclesRpcMod
         throw new ArgumentException("FlowRequest parameter is required");
     }
 
-    // Configure JSON options to match Pathfinder DTOs
-    var jsonOptions = new JsonSerializerOptions
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = true
-    };
-
-    var flowRequest = JsonSerializer.Deserialize<FlowRequest>(parameters[0].GetRawText(), jsonOptions);
+    var flowRequest = JsonSerializer.Deserialize<FlowRequest>(parameters[0].GetRawText(), SharedJsonOptions.CamelCase);
     if (flowRequest == null)
     {
         throw new ArgumentException("Invalid FlowRequest parameter");
@@ -1011,13 +1003,7 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
     IFilterPredicateDto[]? filterPredicates = null;
     if (parameters.Length > 4 && parameters[4].ValueKind != JsonValueKind.Null)
     {
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        };
-        options.Converters.Add(new FilterPredicateArrayConverter());
-        options.Converters.Add(new FilterPredicateDtoConverter());
-        filterPredicates = JsonSerializer.Deserialize<IFilterPredicateDto[]>(parameters[4].GetRawText(), options);
+        filterPredicates = JsonSerializer.Deserialize<IFilterPredicateDto[]>(parameters[4].GetRawText(), SharedJsonOptions.FilterPredicate);
     }
 
     if (parameters.Length > 5 && parameters[5].ValueKind != JsonValueKind.Null)

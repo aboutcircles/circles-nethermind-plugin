@@ -7,7 +7,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for CapacityGraph: avatar/group/router/token-node management,
 /// edge creation, and special-type queries (IsGroup, IsRouter).
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class CapacityGraphTests
 {
     private const string Prefix = "0xcg";

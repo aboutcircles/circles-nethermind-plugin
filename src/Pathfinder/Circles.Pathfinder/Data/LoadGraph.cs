@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
@@ -9,6 +10,18 @@ using Npgsql;
 
 namespace Circles.Pathfinder.Data
 {
+    /// <summary>
+    /// Result of <see cref="LoadGraph.LoadAll"/> — all 5 ILoadGraph queries executed
+    /// in a single REPEATABLE READ transaction.
+    /// </summary>
+    public sealed record LoadAllResult(
+        IReadOnlyList<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> Balances,
+        IReadOnlyList<(string Truster, string Trustee, int Limit)> Trust,
+        IReadOnlyList<string> Groups,
+        IReadOnlyList<(string GroupAddress, string TrustedToken)> GroupTrusts,
+        IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags
+    );
+
     public interface ILoadGraph
     {
         IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
@@ -77,19 +90,24 @@ namespace Circles.Pathfinder.Data
             throw new ArgumentException("POSTGRES_READONLY_CONNECTION_STRING environment variable is not set or connection string not found in settings.");
         }
 
-        private string LoadQueryFromResource(string resourceName)
+        private static readonly ConcurrentDictionary<string, string> _queryCache = new();
+
+        private static string LoadQueryFromResource(string resourceName)
         {
-            var assembly = Assembly.GetExecutingAssembly();
-            var fullResourceName = $"Circles.Pathfinder.Data.Queries.{resourceName}";
-
-            using var stream = assembly.GetManifestResourceStream(fullResourceName);
-            if (stream == null)
+            return _queryCache.GetOrAdd(resourceName, static name =>
             {
-                throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
-            }
+                var assembly = Assembly.GetExecutingAssembly();
+                var fullResourceName = $"Circles.Pathfinder.Data.Queries.{name}";
 
-            using var reader = new StreamReader(stream);
-            return reader.ReadToEnd();
+                using var stream = assembly.GetManifestResourceStream(fullResourceName);
+                if (stream == null)
+                {
+                    throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
+                }
+
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            });
         }
 
         public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
@@ -97,7 +115,7 @@ namespace Circles.Pathfinder.Data
         {
             // We now only have one balance query that includes the isWrapped column
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
-            var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
+            var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>(50_000);
 
             var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
@@ -117,31 +135,33 @@ namespace Circles.Pathfinder.Data
 
             while (reader.Read())
             {
-                var balance = reader.GetString(0);
+                var balanceStr = reader.GetString(0);
                 var account = reader.GetString(1);
                 var tokenAddress = reader.GetString(2);
                 var lastActivity = reader.GetInt64(3);
                 var isWrapped = reader.GetBoolean(4);
                 var type = reader.GetString(5);
 
+                // Parse once — reuse across demurrage + safety margin
+                var balanceValue = BigInteger.Parse(balanceStr);
+
                 if (type == "static")
                 {
                     // Convert static (inflationary) Circles to demurraged Circles at target day
-                    var staticAttoCircles = BigInteger.Parse(balance);
-                    var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(staticAttoCircles, targetDay);
+                    var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(balanceValue, targetDay);
                     if (demurragedAttoCircles == 0)
                     {
                         continue;
                     }
 
-                    if (staticAttoCircles > 0)
+                    if (balanceValue > 0)
                     {
-                        var pctDelta = 100.0 * (1.0 - (double)demurragedAttoCircles / (double)staticAttoCircles);
+                        var pctDelta = 100.0 * (1.0 - (double)demurragedAttoCircles / (double)balanceValue);
                         _logger.LogDebug("[LoadGraph] Demurrage static: acct={Account}, raw={Raw}, adj={Adjusted}, delta={Delta}%, targetDay={TargetDay}",
-                            account[..10], staticAttoCircles, demurragedAttoCircles, pctDelta.ToString("F2"), targetDay);
+                            account[..10], balanceValue, demurragedAttoCircles, pctDelta.ToString("F2"), targetDay);
                     }
 
-                    balance = demurragedAttoCircles.ToString(CultureInfo.InvariantCulture);
+                    balanceValue = demurragedAttoCircles;
                 }
                 else if (type == "demurraged")
                 {
@@ -154,41 +174,38 @@ namespace Circles.Pathfinder.Data
                     }
 
                     // Apply demurrage from lastActivity to target timestamp
-                    var inflationaryBalance = BigInteger.Parse(balance);
                     var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
                     var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
 
                     if (daysDelta > 0)
                     {
                         // Apply demurrage: balance * gamma^daysDelta
-                        var demurragedBalance = CirclesConverter.InflationaryToDemurrage(inflationaryBalance, daysDelta);
+                        var demurragedBalance = CirclesConverter.InflationaryToDemurrage(balanceValue, daysDelta);
 
-                        if (inflationaryBalance > 0)
+                        if (balanceValue > 0)
                         {
-                            var pctDelta = 100.0 * (1.0 - (double)demurragedBalance / (double)inflationaryBalance);
+                            var pctDelta = 100.0 * (1.0 - (double)demurragedBalance / (double)balanceValue);
                             _logger.LogDebug("[LoadGraph] Demurrage flow: acct={Account}, raw={Raw}, adj={Adjusted}, delta={Delta}%, daysDiff={DaysDiff}",
-                                account[..10], inflationaryBalance, demurragedBalance, pctDelta.ToString("F2"), daysDelta);
+                                account[..10], balanceValue, demurragedBalance, pctDelta.ToString("F2"), daysDelta);
                         }
 
-                        balance = demurragedBalance.ToString(CultureInfo.InvariantCulture);
+                        balanceValue = demurragedBalance;
                     }
                     // If no delta, balance stays as-is (already in correct form)
                 }
 
                 // Apply safety margin in live mode to prevent stale-balance reverts
-                if (applyMargin && balance != "0")
+                if (applyMargin && balanceValue != 0)
                 {
-                    var raw = BigInteger.Parse(balance);
-                    var margined = (BigInteger)((double)raw * _settings.DemurrageSafetyMargin);
-                    balance = margined.ToString(CultureInfo.InvariantCulture);
+                    balanceValue = (BigInteger)((double)balanceValue * _settings.DemurrageSafetyMargin);
                 }
 
-                if (balance == "0")
+                if (balanceValue == 0)
                 {
                     continue;
                 }
 
-                results.Add((balance,
+                results.Add((balanceValue.ToString(CultureInfo.InvariantCulture),
                     AddressIdPool.IdOf(account.ToLowerInvariant()),
                     AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
                     isWrapped,
@@ -204,7 +221,7 @@ namespace Circles.Pathfinder.Data
         {
             // We now only have one trust query that includes wrap tokens
             var trustQuery = LoadQueryFromResource("trustQuery.sql");
-            var results = new List<(string Truster, string Trustee, int Limit)>();
+            var results = new List<(string Truster, string Trustee, int Limit)>(200_000);
 
             var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
@@ -231,7 +248,7 @@ namespace Circles.Pathfinder.Data
         public IEnumerable<string> LoadGroups()
         {
             var groupQuery = LoadQueryFromResource("groupQuery.sql");
-            var results = new List<string>();
+            var results = new List<string>(1_000);
 
             var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
@@ -256,7 +273,7 @@ namespace Circles.Pathfinder.Data
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
         {
             var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
-            var results = new List<(string GroupAddress, string TrustedToken)>();
+            var results = new List<(string GroupAddress, string TrustedToken)>(5_000);
 
             var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);
@@ -275,6 +292,188 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("group_trusts", sw.Elapsed);
+            return results;
+        }
+
+        // ──────────────────────────────────────────────────────────────────
+        // Batched load: all 5 ILoadGraph queries in a single connection
+        // ──────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Executes all 5 ILoadGraph queries on a single REPEATABLE READ connection,
+        /// eliminating 4 extra connection open/close round-trips per graph refresh.
+        /// </summary>
+        public LoadAllResult LoadAll()
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+            using var tx = connection.BeginTransaction(System.Data.IsolationLevel.RepeatableRead);
+
+            var balances = LoadV2BalancesInternal(connection, tx);
+            var trust = LoadV2TrustInternal(connection, tx);
+            var groups = LoadGroupsInternal(connection, tx);
+            var groupTrusts = LoadGroupTrustsInternal(connection, tx);
+            var consentedFlags = LoadConsentedFlowFlagsInternal(connection, tx);
+
+            tx.Commit();
+
+            return new LoadAllResult(balances, trust, groups, groupTrusts, consentedFlags);
+        }
+
+        private List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
+            LoadV2BalancesInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
+            var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>(50_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(balanceQuery, connection, tx);
+            command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
+            var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
+
+            bool applyMargin = _settings.TargetDemurrageTimestamp == null
+                               && _settings.DemurrageSafetyMargin < 1.0;
+
+            while (reader.Read())
+            {
+                var balanceStr = reader.GetString(0);
+                var account = reader.GetString(1);
+                var tokenAddress = reader.GetString(2);
+                var lastActivity = reader.GetInt64(3);
+                var isWrapped = reader.GetBoolean(4);
+                var type = reader.GetString(5);
+
+                var balanceValue = BigInteger.Parse(balanceStr);
+
+                if (type == "static")
+                {
+                    var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(balanceValue, targetDay);
+                    if (demurragedAttoCircles == 0) continue;
+                    balanceValue = demurragedAttoCircles;
+                }
+                else if (type == "demurraged")
+                {
+                    if (lastActivity < InflationDayZeroUnix) continue;
+
+                    var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
+                    var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
+
+                    if (daysDelta > 0)
+                    {
+                        balanceValue = CirclesConverter.InflationaryToDemurrage(balanceValue, daysDelta);
+                    }
+                }
+
+                if (applyMargin && balanceValue != 0)
+                {
+                    balanceValue = (BigInteger)((double)balanceValue * _settings.DemurrageSafetyMargin);
+                }
+
+                if (balanceValue == 0) continue;
+
+                results.Add((balanceValue.ToString(CultureInfo.InvariantCulture),
+                    AddressIdPool.IdOf(account.ToLowerInvariant()),
+                    AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
+                    isWrapped,
+                    type == "static"));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("balances", sw.Elapsed);
+            return results;
+        }
+
+        private List<(string Truster, string Trustee, int Limit)>
+            LoadV2TrustInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var trustQuery = LoadQueryFromResource("trustQuery.sql");
+            var results = new List<(string Truster, string Trustee, int Limit)>(200_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(trustQuery, connection, tx);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1), 100));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("trust", sw.Elapsed);
+            return results;
+        }
+
+        private List<string> LoadGroupsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var groupQuery = LoadQueryFromResource("groupQuery.sql");
+            var results = new List<string>(1_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(groupQuery, connection, tx);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add(reader.GetString(0));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("groups", sw.Elapsed);
+            return results;
+        }
+
+        private List<(string GroupAddress, string TrustedToken)>
+            LoadGroupTrustsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var groupTrustQuery = LoadQueryFromResource("groupTrustQuery.sql");
+            var results = new List<(string GroupAddress, string TrustedToken)>(5_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(groupTrustQuery, connection, tx);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("group_trusts", sw.Elapsed);
+            return results;
+        }
+
+        private List<(string Avatar, bool HasConsentedFlow)>
+            LoadConsentedFlowFlagsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var query = LoadQueryFromResource("consentedFlowQuery.sql");
+            var results = new List<(string Avatar, bool HasConsentedFlow)>(10_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(query, connection, tx);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                var avatar = reader.GetString(0);
+                var flag = (byte[])reader.GetValue(1);
+                bool hasConsented = flag.Length >= 32 && (flag[31] & 0x01) != 0;
+                results.Add((avatar, hasConsented));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("consented_flow", sw.Elapsed);
             return results;
         }
 
@@ -631,7 +830,7 @@ namespace Circles.Pathfinder.Data
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
         {
             var query = LoadQueryFromResource("consentedFlowQuery.sql");
-            var results = new List<(string Avatar, bool HasConsentedFlow)>();
+            var results = new List<(string Avatar, bool HasConsentedFlow)>(10_000);
 
             var sw = Stopwatch.StartNew();
             using var connection = new NpgsqlConnection(_connectionString);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Common.TestUtils;
@@ -423,9 +424,9 @@ public class PathfinderQuerySnapshotTests
         var result = await _session!.ExecuteQueryAsync(@"
             SELECT COUNT(*)
             FROM ""V_CrcV2_BalancesByAccountAndToken""
-            WHERE ""balance"" > 0");
+            WHERE ""totalBalance"" > 0");
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = ConvertToInt64(result.Rows.FirstOrDefault()?[0]);
         TestContext.Out.WriteLine($"V2 balances with positive balance: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have positive balances");
     }
@@ -439,7 +440,7 @@ public class PathfinderQuerySnapshotTests
             SELECT COUNT(*)
             FROM ""V_CrcV2_TrustRelations""");
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = ConvertToInt64(result.Rows.FirstOrDefault()?[0]);
         TestContext.Out.WriteLine($"V2 trust relations: {count}");
         Assert.That(count, Is.GreaterThan(0), "Should have trust relations");
     }
@@ -453,7 +454,7 @@ public class PathfinderQuerySnapshotTests
             SELECT COUNT(*)
             FROM ""CrcV2_RegisterGroup""");
 
-        var count = Convert.ToInt64(result.Rows.FirstOrDefault()?[0] ?? 0);
+        var count = ConvertToInt64(result.Rows.FirstOrDefault()?[0]);
         TestContext.Out.WriteLine($"Registered groups: {count}");
         Assert.That(count, Is.GreaterThanOrEqualTo(0), "Should be able to query groups");
     }
@@ -464,9 +465,9 @@ public class PathfinderQuerySnapshotTests
         Assert.That(_session, Is.Not.Null);
 
         var result = await _session!.ExecuteQueryAsync(@"
-            SELECT ""tokenId"", ""balance""
+            SELECT ""tokenId"", ""totalBalance""
             FROM ""V_CrcV2_BalancesByAccountAndToken""
-            WHERE ""account"" = @address AND ""balance"" > 0
+            WHERE ""account"" = @address AND ""totalBalance"" > 0
             LIMIT 10",
             new Dictionary<string, object?> { ["address"] = BugSource });
 
@@ -477,6 +478,15 @@ public class PathfinderQuerySnapshotTests
         }
 
         Assert.That(result.RowCount, Is.GreaterThan(0), "Bug source should have token balances");
+    }
+
+    /// <summary>
+    /// Safely converts a value that may be a JsonElement (from query proxy) or a numeric type to Int64.
+    /// </summary>
+    private static long ConvertToInt64(object? value)
+    {
+        if (value is JsonElement je) return je.GetInt64();
+        return Convert.ToInt64(value ?? 0);
     }
 
     [Test]

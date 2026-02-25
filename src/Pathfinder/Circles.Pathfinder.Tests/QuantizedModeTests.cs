@@ -10,7 +10,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for PathUtils.QuantizeSinkBoundFlows - the quantization logic
 /// for invitation module transfers (96 CRC chunks).
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class QuantizedModeTests
 {
     // 96 CRC in 6-decimal precision = 96 * 10^6
@@ -424,7 +424,7 @@ public class QuantizedModeTests
 /// 2. Untrusted tokens are accepted in quantizedMode (bypass trust check)
 /// 3. Self-loop aggregation is added to quantizedMode responses
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class QuantizedModeGraphFactoryTests
 {
     private static int Node(int i) => AddressIdPool.IdOf($"0x{i:X40}");
@@ -625,7 +625,7 @@ public class QuantizedModeGraphFactoryTests
 /// <summary>
 /// Tests for self-loop aggregation in V2Pathfinder quantizedMode responses.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class QuantizedModeSelfLoopTests
 {
     private const long Quanta96CRC = 96_000_000L;
@@ -778,7 +778,7 @@ public class QuantizedModeSelfLoopTests
 /// Issue 2: Auto-discover tokens with 96+ CRC liquidity when no ToTokens specified
 /// Issue 3: Filter ToTokens to only sink-trusted tokens
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class QuantizedModeInvitationFlowTests
 {
     private const long Quanta96CRC = 96_000_000L;
@@ -1113,7 +1113,7 @@ public class QuantizedModeInvitationFlowTests
 /// - Old: Per-path quantization (60 CRC + 36 CRC = 0 invitations - each individually < 96)
 /// - New: Per-token aggregation (60 CRC + 36 CRC = 1 invitation - combined = 96)
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 [Category("Unit")]
 public class QuantizedAggregationTests
 {

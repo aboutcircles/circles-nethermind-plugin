@@ -4,7 +4,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for AddressIdPool: ID allocation, reverse lookup,
 /// balance-node marking, avatar snapshot filtering, and thread safety.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class AddressIdPoolTests
 {
     // Unique prefix per test file to avoid collisions with other test classes

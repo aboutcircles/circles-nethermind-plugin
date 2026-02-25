@@ -17,7 +17,7 @@ namespace Circles.Pathfinder.Tests;
 ///   - ValidateMintEdgeOrdering passes on sorted output
 ///   - Quantized output sums to exact quantum multiples
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class PropertyBasedTests
 {
     private const long DefaultBalance = 1_000_000L; // 1 CRC truncated

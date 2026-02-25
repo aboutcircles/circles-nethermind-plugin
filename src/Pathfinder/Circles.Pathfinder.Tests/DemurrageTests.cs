@@ -17,7 +17,7 @@ namespace Circles.Pathfinder.Tests;
 /// - Edge-of-sufficiency after demurrage
 /// - Multi-day drift effects
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class DemurrageTests
 {
     // V2 Hub contract epoch (must match LoadGraph.cs and DiscountedBalances.sol)

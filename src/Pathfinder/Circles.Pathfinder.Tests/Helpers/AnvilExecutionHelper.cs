@@ -79,6 +79,23 @@ public class AnvilExecutionHelper : IDisposable
     }
 
     /// <summary>
+    /// Takes a snapshot of Anvil state. Returns a snapshot ID for RevertAsync.
+    /// Use this before stateful operations (eth_sendTransaction) on shared sessions.
+    /// </summary>
+    public async Task<string> SnapshotAsync()
+    {
+        return await CallRpcAsync<string>("evm_snapshot");
+    }
+
+    /// <summary>
+    /// Reverts Anvil state to a previous snapshot. The snapshot is consumed (single-use).
+    /// </summary>
+    public async Task RevertAsync(string snapshotId)
+    {
+        await CallRpcAsync<bool>("evm_revert", snapshotId);
+    }
+
+    /// <summary>
     /// Gets the balance of an ERC1155 token for an account.
     /// </summary>
     public async Task<BigInteger> GetErc1155BalanceAsync(string tokenContract, string account, BigInteger tokenId)
@@ -228,8 +245,12 @@ public class AnvilExecutionHelper : IDisposable
 
     private async Task<JsonElement> GetTransactionReceiptAsync(string txHash)
     {
-        // Poll for receipt (transaction might not be mined immediately)
-        for (int i = 0; i < 10; i++)
+        // Poll for receipt with exponential backoff.
+        // Anvil proxied through test-env can be slow under load.
+        const int maxAttempts = 20;
+        var delay = 200;
+
+        for (int i = 0; i < maxAttempts; i++)
         {
             try
             {
@@ -239,52 +260,73 @@ public class AnvilExecutionHelper : IDisposable
                     return result;
                 }
             }
+            catch (HttpRequestException ex) when (ex.Message.Contains("429") || ex.Message.Contains("TooManyRequests"))
+            {
+                // Rate limited — back off more aggressively
+                delay = Math.Min(delay * 2, 5000);
+            }
             catch
             {
                 // Receipt not ready yet
             }
 
-            await Task.Delay(100);
+            await Task.Delay(delay);
+            delay = Math.Min(delay + 200, 3000);
         }
 
-        throw new TimeoutException($"Transaction receipt not found for {txHash}");
+        throw new TimeoutException($"Transaction receipt not found for {txHash} after {maxAttempts} attempts");
     }
 
     private async Task<T> CallRpcAsync<T>(string method, params object[] parameters)
     {
         JsonElement result;
+        const int maxRetries = 3;
 
-        if (_session != null)
+        for (int attempt = 1; ; attempt++)
         {
-            // Use proxied RPC through test environment
-            result = await _session.ExecuteAnvilRpcAsync(method, parameters);
-        }
-        else if (_httpClient != null)
-        {
-            // Use direct HTTP (legacy mode for internal access)
-            var response = await _httpClient.PostAsJsonAsync("", new
+            try
             {
-                jsonrpc = "2.0",
-                method,
-                @params = parameters,
-                id = 1
-            });
+                if (_session != null)
+                {
+                    // Use proxied RPC through test environment
+                    result = await _session.ExecuteAnvilRpcAsync(method, parameters);
+                }
+                else if (_httpClient != null)
+                {
+                    // Use direct HTTP (legacy mode for internal access)
+                    var response = await _httpClient.PostAsJsonAsync("", new
+                    {
+                        jsonrpc = "2.0",
+                        method,
+                        @params = parameters,
+                        id = 1
+                    });
 
-            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+                    var json = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-            if (json.TryGetProperty("error", out var error))
-            {
-                var message = error.TryGetProperty("message", out var msg)
-                    ? msg.GetString()
-                    : "RPC error";
-                throw new Exception(message);
+                    if (json.TryGetProperty("error", out var error))
+                    {
+                        var message = error.TryGetProperty("message", out var msg)
+                            ? msg.GetString()
+                            : "RPC error";
+                        throw new Exception(message);
+                    }
+
+                    result = json.GetProperty("result");
+                }
+                else
+                {
+                    throw new InvalidOperationException("No RPC connection available");
+                }
+
+                break; // success
             }
-
-            result = json.GetProperty("result");
-        }
-        else
-        {
-            throw new InvalidOperationException("No RPC connection available");
+            catch (HttpRequestException ex) when (
+                attempt < maxRetries &&
+                (ex.Message.Contains("429") || ex.Message.Contains("TooManyRequests")))
+            {
+                await Task.Delay(1000 * attempt); // exponential backoff
+            }
         }
 
         if (typeof(T) == typeof(string))

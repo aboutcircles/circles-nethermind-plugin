@@ -13,7 +13,7 @@ namespace Circles.Pathfinder.Tests;
 ///   1. From trusts To
 ///   2. To also has consented flow enabled
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class ConsentedFlowValidationTests
 {
     // Use AddressIdPool.IdOf() to avoid collisions with BalanceNodeIds from other tests.

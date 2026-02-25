@@ -29,7 +29,7 @@ namespace Circles.Rpc.Host;
 public partial class CirclesRpcModule : ICirclesRpcModule
 {
     private readonly Settings _settings;
-    private readonly string _readOnlyDbConnectionString;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly MemoryCache _profileByCidCache;
     private readonly MemoryCache _tokenExposureCache;
     private static readonly HttpClient HttpClient = new();
@@ -52,13 +52,14 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
     public CirclesRpcModule(
         Settings settings,
+        NpgsqlDataSource dataSource,
         IHttpClientFactory? httpClientFactory = null,
         IHttpContextAccessor? httpContextAccessor = null,
         ILogger<CirclesRpcModule>? logger = null,
         CacheServiceClient.CacheServiceClient? cacheServiceClient = null)
     {
         _settings = settings;
-        _readOnlyDbConnectionString = settings.IndexReadonlyDbConnectionString;
+        _dataSource = dataSource;
         _profileByCidCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 10_000 });
         _tokenExposureCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 50_000 });
         _httpContextAccessor = httpContextAccessor;
@@ -81,8 +82,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
     private async Task<NpgsqlConnection> CreateConnectionAsync()
     {
-        var connection = new NpgsqlConnection(_readOnlyDbConnectionString);
-        await connection.OpenAsync();
+        var connection = await _dataSource.OpenConnectionAsync();
 
         // Check for block filter header (used by test environment proxy)
         var maxBlockNumber = GetMaxBlockNumberFromHeader();

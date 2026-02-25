@@ -227,7 +227,7 @@ public static class SharedGraphCache
             return TestEnvironmentClient.CreateSessionAsync(
                 block,
                 features: ["db"],
-                ttl: "10m",
+                ttl: "30m",
                 testEnvUrl: testEnvUrl
             ).GetAwaiter().GetResult();
         });

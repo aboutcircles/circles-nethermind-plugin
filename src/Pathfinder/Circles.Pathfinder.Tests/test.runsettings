@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <NUnit>
+    <!-- Worker threads for parallel fixture execution.
+         Unit test fixtures (~30) run in parallel across workers.
+         E2E fixtures marked [NonParallelizable] run sequentially regardless.
+         Capped at 8 to avoid overwhelming staging session pool. -->
+    <NumberOfTestWorkers>8</NumberOfTestWorkers>
+  </NUnit>
+</RunSettings>

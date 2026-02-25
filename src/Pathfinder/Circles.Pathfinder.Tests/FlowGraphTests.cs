@@ -8,7 +8,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for FlowGraph: node creation, edge addition, and AggregateIdenticalEdges
 /// (including the B1 saturating addition fix).
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class FlowGraphTests
 {
     #region Node Creation

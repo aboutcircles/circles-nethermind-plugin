@@ -10,7 +10,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for CapacityGraphPool: snapshot management, Rent semantics,
 /// and RequestNeedsFiltering logic.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class CapacityGraphPoolTests
 {
     // Deterministic addresses for test isolation

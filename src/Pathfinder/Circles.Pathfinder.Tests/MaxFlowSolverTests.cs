@@ -9,7 +9,7 @@ namespace Circles.Pathfinder.Tests;
 /// Tests cover: empty graph, single edge, diamond topology, chain bottleneck,
 /// parallel edges, disconnected components, and large capacities.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class MaxFlowSolverTests
 {
     private const int TokenId = 999; // arbitrary — Token is metadata, doesn't affect solver

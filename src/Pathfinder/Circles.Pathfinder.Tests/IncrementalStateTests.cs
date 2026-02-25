@@ -3,7 +3,7 @@ using Circles.Pathfinder.Data;
 
 namespace Circles.Pathfinder.Tests;
 
-[TestFixture]
+[TestFixture, Parallelizable]
 public class InMemoryBalanceStateTests
 {
     private const string ZeroAddr = "0x0000000000000000000000000000000000000000";
@@ -196,7 +196,7 @@ public class InMemoryBalanceStateTests
     }
 }
 
-[TestFixture]
+[TestFixture, Parallelizable]
 public class InMemoryTrustStateTests
 {
     private const string Alice = "0x0000000000000000000000000000000000000001";
@@ -386,7 +386,7 @@ public class InMemoryTrustStateTests
     }
 }
 
-[TestFixture]
+[TestFixture, Parallelizable]
 public class InMemoryAvatarStateTests
 {
     private const string Alice = "0x0000000000000000000000000000000000000001";
@@ -487,7 +487,7 @@ public class InMemoryAvatarStateTests
     }
 }
 
-[TestFixture]
+[TestFixture, Parallelizable]
 public class IncrementalLoadGraphTests
 {
     private const string Alice = "0x0000000000000000000000000000000000inc001";
