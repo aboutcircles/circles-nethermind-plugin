@@ -14,7 +14,7 @@ namespace Circles.Pathfinder.Tests;
 /// These tests verify the SortEdgesForMintDependencies and ValidateMintEdgeOrdering
 /// methods in V2Pathfinder by calling the REAL implementation (not duplicated logic).
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class EdgeOrderingTests
 {
     // Test addresses - using realistic-looking addresses for clarity

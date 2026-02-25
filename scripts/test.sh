@@ -142,8 +142,15 @@ run_test_project() {
   # or POSTGRES_CONNECTION_STRING aren't set — no Docker startup needed.
   # For local full-stack testing, use: docker compose up + dotnet test directly.
 
+  # Use .runsettings if available for the project (enables parallel fixtures)
+  local runsettings="$PROJECT_ROOT/$(dirname "$project")/test.runsettings"
+  local project_test_args=("${TEST_ARGS[@]}")
+  if [ -f "$runsettings" ]; then
+    project_test_args+=("--settings" "$runsettings")
+  fi
+
   local test_result=0
-  if dotnet test "$PROJECT_ROOT/$project" "${TEST_ARGS[@]}"; then
+  if dotnet test "$PROJECT_ROOT/$project" "${project_test_args[@]}"; then
     echo -e "${GREEN}✓ $project_name tests passed${NC}\n"
     test_result=0
   else

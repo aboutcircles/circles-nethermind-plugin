@@ -7,7 +7,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for PathUtils.ExtractFlowPaths - the path extraction algorithm.
 /// These tests validate the Edmonds-Karp style path peeling logic.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class PathExtractionTests
 {
     // Test addresses (just need unique IDs)

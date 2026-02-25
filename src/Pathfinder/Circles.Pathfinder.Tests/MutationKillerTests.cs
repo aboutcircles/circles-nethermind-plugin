@@ -14,7 +14,7 @@ namespace Circles.Pathfinder.Tests;
 ///
 /// Naming convention: Kill_{File}_{Condition}_{MutationType}
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class MutationKillerTests
 {
     // Valid 42-char hex addresses

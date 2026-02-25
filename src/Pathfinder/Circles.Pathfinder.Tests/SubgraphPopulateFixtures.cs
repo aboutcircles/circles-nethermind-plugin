@@ -39,12 +39,6 @@ public class SubgraphPopulateFixtures
         AllowTrailingCommas = true
     };
 
-    [OneTimeTearDown]
-    public async Task TearDown()
-    {
-        await SharedGraphCache.ClearAsync();
-    }
-
     /// <summary>
     /// Extracts subgraphs for ALL positive scenarios and saves them into the JSON files.
     /// Skips scenarios that already have subgraph data (use ForceRefresh to override).

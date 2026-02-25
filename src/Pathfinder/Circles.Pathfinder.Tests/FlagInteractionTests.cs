@@ -11,7 +11,7 @@ namespace Circles.Pathfinder.Tests;
 /// Tests all flag combinations using MockLoadGraph (no external dependencies).
 /// These tests run in &lt;10ms each and can run offline.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 [Category("Unit")]
 public class FlagInteractionTests
 {

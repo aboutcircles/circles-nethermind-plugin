@@ -5,7 +5,7 @@ using NUnit.Framework;
 
 namespace Circles.Pathfinder.Tests;
 
-[TestFixture]
+[TestFixture, Parallelizable]
 public class SnapshotCacheTests
 {
     private static NetworkState CreatePopulatedState(long blockNumber = 100)

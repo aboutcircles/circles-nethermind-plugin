@@ -7,7 +7,7 @@ namespace Circles.Pathfinder.Tests;
 /// Unit tests for HubContractValidator — each rule tested in isolation
 /// with positive, negative, and edge cases.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class HubContractValidatorTests
 {
     // Standard test addresses (valid 42-char hex)

@@ -10,7 +10,7 @@ namespace Circles.Pathfinder.Tests;
 /// Covers: overflow in aggregation, AddressIdPool thread safety, orphaned TokenPool edges,
 /// and quantization rounding.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class ArithmeticSafetyTests
 {
     private const string Addr1 = "0xa100000000000000000000000000000000000001";

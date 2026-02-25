@@ -23,13 +23,6 @@ namespace Circles.Pathfinder.Tests;
 [Category("Anvil")]
 public class AnvilSimulationTests
 {
-    [OneTimeTearDown]
-    public async Task TearDown()
-    {
-        await SharedAnvilCache.ClearAsync();
-        await SharedGraphCache.ClearAsync();
-    }
-
     [TestCaseSource(typeof(ScenarioLoader), nameof(ScenarioLoader.AnvilScenariosTestData))]
     public async Task DifferentialValidation(TransferScenario scenario)
     {

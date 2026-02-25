@@ -19,7 +19,7 @@ namespace Circles.Pathfinder.Tests;
 /// - Stream structure: terminal edges in same stream have same receiver
 /// - No negative or zero-flow edges in final output
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class ContractConformanceTests
 {
     private const string SourceAddr = "0xcf10000000000000000000000000000000000001";

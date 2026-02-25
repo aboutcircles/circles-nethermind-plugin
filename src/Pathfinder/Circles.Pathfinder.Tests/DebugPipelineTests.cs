@@ -9,7 +9,7 @@ namespace Circles.Pathfinder.Tests;
 /// Tests that DebugShowIntermediateSteps populates all pipeline stages
 /// with correct transformation data.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class DebugPipelineTests
 {
     // Simple 3-avatar graph: A → B → C (each trusts the previous avatar's token)

@@ -13,7 +13,7 @@ namespace Circles.Pathfinder.Tests;
 /// If the pathfinder produces output that the validator rejects, it's a real bug.
 /// If a mutated path passes the validator, the validator has a blind spot.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class OnChainRejectionPropertyTests
 {
     private const long DefaultBalance = 1_000_000L;

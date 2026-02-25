@@ -10,7 +10,7 @@ namespace Circles.Pathfinder.Tests;
 /// Tests for ComputeMaxFlow (flow-only, no path extraction) and
 /// CountCollapsedTransferSteps / CollapsePathToTransfers (step counting).
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class MaxFlowAndCollapseTests
 {
     // Unique prefixed addresses to avoid AddressIdPool collisions

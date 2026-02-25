@@ -73,7 +73,7 @@ public class BalanceNodeJson
 /// Tests for the pathfinder service using real network data via HTTP requests.
 /// These tests ensure the pathfinder respects flow conservation, token filters, and other integrity rules.
 /// </summary>
-[TestFixture]
+[TestFixture, Parallelizable]
 public class NetworkPathfinderTests
 {
     private static readonly bool NetworkTestsEnabled =
