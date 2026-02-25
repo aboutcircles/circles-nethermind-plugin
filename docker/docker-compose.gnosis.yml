@@ -47,7 +47,6 @@ services:
       --Network.DiscoveryPort=30303
       --Network.MaxActivePeers=100
       --Network.EnableUPnP=${NETHERMIND_ENABLE_UPNP:-false}
-      --Network.ExternalIp=${NETHERMIND_EXTERNAL_IP:-}
       --HealthChecks.Enabled=true
       --HealthChecks.UIEnabled=true
       --Metrics.Enabled=true
