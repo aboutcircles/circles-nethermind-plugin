@@ -90,72 +90,42 @@ public class FlowGraph : IGraph<FlowEdge>
 
     /// <summary>
     /// Aggregates identical edges in the flow graph, combining flows for edges with the same From, To, and Token.
+    /// Operates in-place: replaces the Edges list with aggregated results, preserving all nodes.
     /// </summary>
-    /// <returns>A new flow graph with aggregated edges.</returns>
+    /// <returns>This graph instance (for chaining).</returns>
     public FlowGraph AggregateIdenticalEdges()
     {
-        var aggregatedGraph = new FlowGraph();
+        var aggregatedEdges = new Dictionary<(int From, int To, int Token), FlowEdge>(Edges.Count);
 
-        // Copy all avatar nodes
-        foreach (var avatarNode in AvatarNodes.Values)
-        {
-            aggregatedGraph.AddAvatar(avatarNode.Address);
-        }
-
-        // Dictionary to store aggregated edges
-        // Key is a tuple of (From, To, Token)
-        var aggregatedEdges = new Dictionary<(int From, int To, int Token), FlowEdge>();
-
-        // Aggregate edges with the same From, To, and Token
         foreach (var edge in Edges)
         {
-            // Skip edges with zero flow
-            if (edge.Flow <= 0)
-            {
-                continue;
-            }
+            if (edge.Flow <= 0) continue;
 
             var key = (edge.From, edge.To, edge.Token);
 
             if (aggregatedEdges.TryGetValue(key, out var existingEdge))
             {
-                // Saturating addition to prevent overflow (same pattern as V2Pathfinder.AddToAggregation)
+                // Saturating addition to prevent overflow
                 existingEdge.Flow = existingEdge.Flow > long.MaxValue - edge.Flow
                     ? long.MaxValue
                     : existingEdge.Flow + edge.Flow;
 
-                // For capacity, take the max, as that's the logical limit
                 existingEdge.CurrentCapacity = Math.Max(existingEdge.CurrentCapacity, edge.CurrentCapacity);
             }
             else
             {
-                // Create a new aggregated edge
-                var newEdge = new FlowEdge(edge.From, edge.To, edge.Token, edge.InitialCapacity)
+                aggregatedEdges[key] = new FlowEdge(edge.From, edge.To, edge.Token, edge.InitialCapacity)
                 {
                     Flow = edge.Flow,
                     CurrentCapacity = edge.CurrentCapacity
                 };
-
-                aggregatedEdges[key] = newEdge;
             }
         }
 
-        // Add all aggregated edges to the graph
-        foreach (var edge in aggregatedEdges.Values)
-        {
-            // Instead of using AddFlowEdge, add directly to avoid validation checks
-            // that might prevent adding the aggregated edge
-            var fromNode = aggregatedGraph.Nodes[edge.From];
-            var toNode = aggregatedGraph.Nodes[edge.To];
+        // Replace edges list in-place
+        Edges.Clear();
+        Edges.AddRange(aggregatedEdges.Values);
 
-            var newFlowEdge = new FlowEdge(fromNode.Address, toNode.Address, edge.Token, edge.CurrentCapacity)
-            {
-                Flow = edge.Flow
-            };
-
-            aggregatedGraph.Edges.Add(newFlowEdge);
-        }
-
-        return aggregatedGraph;
+        return this;
     }
 }

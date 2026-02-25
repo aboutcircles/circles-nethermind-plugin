@@ -51,6 +51,10 @@ public static class BuilderSetup
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(semaphore);
 
+        // NpgsqlDataSource for connection pooling + prepared statement caching
+        var dataSource = NpgsqlDataSource.Create(settings.IndexReadonlyDbConnectionString);
+        builder.Services.AddSingleton(dataSource);
+
         // HTTP client factory for health checks and external API calls
         builder.Services.AddHttpClient();
 
@@ -84,15 +88,16 @@ public static class BuilderSetup
             });
         }
 
-        // Use the existing CirclesRpcModule with IHttpClientFactory
+        // Use the existing CirclesRpcModule with IHttpClientFactory + NpgsqlDataSource
         builder.Services.AddSingleton<CirclesRpcModule>(sp =>
         {
             var settings = sp.GetRequiredService<Settings>();
+            var npgsqlDataSource = sp.GetRequiredService<NpgsqlDataSource>();
             var httpClientFactory = sp.GetService<IHttpClientFactory>();
             var httpContextAccessor = sp.GetService<IHttpContextAccessor>();
             var logger = sp.GetService<ILogger<CirclesRpcModule>>();
             var cacheServiceClient = settings.UseCacheService ? sp.GetService<CacheServiceClient.CacheServiceClient>() : null;
-            return new CirclesRpcModule(settings, httpClientFactory, httpContextAccessor, logger, cacheServiceClient);
+            return new CirclesRpcModule(settings, npgsqlDataSource, httpClientFactory, httpContextAccessor, logger, cacheServiceClient);
         });
 
         builder.Services.AddSingleton<CirclesSubscriptionService>();

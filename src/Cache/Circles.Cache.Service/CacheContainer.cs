@@ -7,15 +7,10 @@ namespace Circles.Cache.Service.Caches;
 /// Container for all RollbackCache instances used by the Cache Service.
 /// Initialized during warmup and maintained in real-time via pg_notify.
 ///
-/// NOTE: This is a simplified initial implementation. Full implementation will include:
-/// - V1/V2 Avatar caches
-/// - Token owner mappings
-/// - Erc20 wrapper addresses
-/// - Groups
-/// - Balance caches
-/// - Name registry mappings
+/// Uses per-domain ReaderWriterLockSlim to allow concurrent reads (the common case)
+/// while serializing writes (once per block event).
 /// </summary>
-public class CacheContainer
+public class CacheContainer : IDisposable
 {
     private readonly int _rollbackCapacity;
 
@@ -71,7 +66,10 @@ public class CacheContainer
     // circlesType: 0 = demurraged, 1 = inflationary
     private readonly Dictionary<string, (string Avatar, int CirclesType)> _erc20WrapperToAvatar = new();
 
-    private readonly object _indexLock = new();
+    // Per-domain reader-writer locks: concurrent reads, exclusive writes
+    private readonly ReaderWriterLockSlim _balanceLock = new();
+    private readonly ReaderWriterLockSlim _trustLock = new();
+    private readonly ReaderWriterLockSlim _wrapperLock = new();
 
     /// <summary>
     /// Gets all caches as an enumerable for bulk operations (e.g., rollback).
@@ -130,14 +128,14 @@ public class CacheContainer
     /// </summary>
     public void UpdateBalanceIndex(string accountTokenKey, bool isV1, decimal balance)
     {
-        // Key format is "address:tokenId"
-        var parts = accountTokenKey.Split(':', 2);
-        if (parts.Length != 2) return;
+        var separatorIndex = accountTokenKey.IndexOf(':');
+        if (separatorIndex < 0) return;
 
-        var address = parts[0];
-        var tokenId = parts[1];
+        var address = accountTokenKey[..separatorIndex];
+        var tokenId = accountTokenKey[(separatorIndex + 1)..];
 
-        lock (_indexLock)
+        _balanceLock.EnterWriteLock();
+        try
         {
             var index = isV1 ? _v1BalancesByAddress : _v2BalancesByAddress;
 
@@ -164,6 +162,10 @@ public class CacheContainer
                 }
             }
         }
+        finally
+        {
+            _balanceLock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -171,12 +173,17 @@ public class CacheContainer
     /// </summary>
     public IEnumerable<string> GetTokenIdsForAddress(string address, bool isV1)
     {
-        lock (_indexLock)
+        _balanceLock.EnterReadLock();
+        try
         {
             var index = isV1 ? _v1BalancesByAddress : _v2BalancesByAddress;
             return index.TryGetValue(address, out var tokens)
                 ? tokens.ToList() // Return copy to avoid lock issues
                 : Enumerable.Empty<string>();
+        }
+        finally
+        {
+            _balanceLock.ExitReadLock();
         }
     }
 
@@ -186,7 +193,11 @@ public class CacheContainer
     /// </summary>
     public void RebuildSecondaryIndexes()
     {
-        lock (_indexLock)
+        // Acquire all write locks to ensure consistency during full rebuild
+        _balanceLock.EnterWriteLock();
+        _trustLock.EnterWriteLock();
+        _wrapperLock.EnterWriteLock();
+        try
         {
             _v1BalancesByAddress.Clear();
             _v2BalancesByAddress.Clear();
@@ -201,11 +212,11 @@ public class CacheContainer
             // Rebuild V1 balance index
             foreach (var kvp in V1BalancesByAccountAndToken.ReadOnlyDictionary)
             {
-                var parts = kvp.Key.Split(':', 2);
-                if (parts.Length == 2 && kvp.Value > 0)
+                var separatorIndex = kvp.Key.IndexOf(':');
+                if (separatorIndex >= 0 && kvp.Value > 0)
                 {
-                    var address = parts[0];
-                    var tokenId = parts[1];
+                    var address = kvp.Key[..separatorIndex];
+                    var tokenId = kvp.Key[(separatorIndex + 1)..];
 
                     if (!_v1BalancesByAddress.TryGetValue(address, out var tokens))
                     {
@@ -219,11 +230,11 @@ public class CacheContainer
             // Rebuild V2 balance index
             foreach (var kvp in V2BalancesByAccountAndToken.ReadOnlyDictionary)
             {
-                var parts = kvp.Key.Split(':', 2);
-                if (parts.Length == 2 && kvp.Value > 0)
+                var separatorIndex = kvp.Key.IndexOf(':');
+                if (separatorIndex >= 0 && kvp.Value > 0)
                 {
-                    var address = parts[0];
-                    var tokenId = parts[1];
+                    var address = kvp.Key[..separatorIndex];
+                    var tokenId = kvp.Key[(separatorIndex + 1)..];
 
                     if (!_v2BalancesByAddress.TryGetValue(address, out var tokens))
                     {
@@ -237,11 +248,11 @@ public class CacheContainer
             // Rebuild V1 trust relation indexes
             foreach (var kvp in V1TrustRelations.ReadOnlyDictionary)
             {
-                var parts = kvp.Key.Split(':', 2);
-                if (parts.Length == 2)
+                var separatorIndex = kvp.Key.IndexOf(':');
+                if (separatorIndex >= 0)
                 {
-                    var truster = parts[0];
-                    var trustee = parts[1];
+                    var truster = kvp.Key[..separatorIndex];
+                    var trustee = kvp.Key[(separatorIndex + 1)..];
 
                     if (!_v1TrustsByTruster.TryGetValue(truster, out var trusterKeys))
                     {
@@ -262,11 +273,11 @@ public class CacheContainer
             // Rebuild V2 trust relation indexes
             foreach (var kvp in V2TrustRelations.ReadOnlyDictionary)
             {
-                var parts = kvp.Key.Split(':', 2);
-                if (parts.Length == 2)
+                var separatorIndex = kvp.Key.IndexOf(':');
+                if (separatorIndex >= 0)
                 {
-                    var truster = parts[0];
-                    var trustee = parts[1];
+                    var truster = kvp.Key[..separatorIndex];
+                    var trustee = kvp.Key[(separatorIndex + 1)..];
 
                     if (!_v2TrustsByTruster.TryGetValue(truster, out var trusterKeys))
                     {
@@ -287,10 +298,10 @@ public class CacheContainer
             // Rebuild group membership indexes
             foreach (var kvp in GroupMemberships.ReadOnlyDictionary)
             {
-                var parts = kvp.Key.Split(':', 2);
-                if (parts.Length == 2)
+                var separatorIndex = kvp.Key.IndexOf(':');
+                if (separatorIndex >= 0)
                 {
-                    var group = parts[0];
+                    var group = kvp.Key[..separatorIndex];
                     var member = kvp.Value.Member.ToLowerInvariant();
 
                     if (!_membershipsByGroup.TryGetValue(group, out var groupKeys))
@@ -319,6 +330,12 @@ public class CacheContainer
                 _erc20WrapperToAvatar[wrapper] = (avatar, circlesType);
             }
         }
+        finally
+        {
+            _wrapperLock.ExitWriteLock();
+            _trustLock.ExitWriteLock();
+            _balanceLock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -328,7 +345,8 @@ public class CacheContainer
     public IEnumerable<(string Trustee, long ExpiryTime)> GetTrustsFor(string address, bool isV1)
     {
         var addressLower = address.ToLowerInvariant();
-        lock (_indexLock)
+        _trustLock.EnterReadLock();
+        try
         {
             var index = isV1 ? _v1TrustsByTruster : _v2TrustsByTruster;
             var cache = isV1 ? V1TrustRelations : V2TrustRelations;
@@ -339,13 +357,17 @@ public class CacheContainer
             var results = new List<(string, long)>();
             foreach (var key in keys)
             {
-                var parts = key.Split(':', 2);
-                if (parts.Length == 2 && cache.TryGetValue(key, out var expiryTime))
+                var separatorIndex = key.IndexOf(':');
+                if (separatorIndex >= 0 && cache.TryGetValue(key, out var expiryTime))
                 {
-                    results.Add((parts[1], expiryTime));
+                    results.Add((key[(separatorIndex + 1)..], expiryTime));
                 }
             }
             return results;
+        }
+        finally
+        {
+            _trustLock.ExitReadLock();
         }
     }
 
@@ -356,7 +378,8 @@ public class CacheContainer
     public IEnumerable<(string Truster, long ExpiryTime)> GetTrustedByFor(string address, bool isV1)
     {
         var addressLower = address.ToLowerInvariant();
-        lock (_indexLock)
+        _trustLock.EnterReadLock();
+        try
         {
             var index = isV1 ? _v1TrustsByTrustee : _v2TrustsByTrustee;
             var cache = isV1 ? V1TrustRelations : V2TrustRelations;
@@ -367,13 +390,17 @@ public class CacheContainer
             var results = new List<(string, long)>();
             foreach (var key in keys)
             {
-                var parts = key.Split(':', 2);
-                if (parts.Length == 2 && cache.TryGetValue(key, out var expiryTime))
+                var separatorIndex = key.IndexOf(':');
+                if (separatorIndex >= 0 && cache.TryGetValue(key, out var expiryTime))
                 {
-                    results.Add((parts[0], expiryTime));
+                    results.Add((key[..separatorIndex], expiryTime));
                 }
             }
             return results;
+        }
+        finally
+        {
+            _trustLock.ExitReadLock();
         }
     }
 
@@ -384,7 +411,8 @@ public class CacheContainer
     public IEnumerable<(string Member, long ExpiryTime)> GetGroupMembers(string groupAddress)
     {
         var groupLower = groupAddress.ToLowerInvariant();
-        lock (_indexLock)
+        _trustLock.EnterReadLock();
+        try
         {
             if (!_membershipsByGroup.TryGetValue(groupLower, out var keys))
                 return Enumerable.Empty<(string, long)>();
@@ -399,6 +427,10 @@ public class CacheContainer
             }
             return results;
         }
+        finally
+        {
+            _trustLock.ExitReadLock();
+        }
     }
 
     /// <summary>
@@ -408,7 +440,8 @@ public class CacheContainer
     public IEnumerable<(string Group, long ExpiryTime)> GetMemberGroups(string memberAddress)
     {
         var memberLower = memberAddress.ToLowerInvariant();
-        lock (_indexLock)
+        _trustLock.EnterReadLock();
+        try
         {
             if (!_membershipsByMember.TryGetValue(memberLower, out var keys))
                 return Enumerable.Empty<(string, long)>();
@@ -416,13 +449,17 @@ public class CacheContainer
             var results = new List<(string, long)>();
             foreach (var key in keys)
             {
-                var parts = key.Split(':', 2);
-                if (parts.Length == 2 && GroupMemberships.TryGetValue(key, out var membership))
+                var separatorIndex = key.IndexOf(':');
+                if (separatorIndex >= 0 && GroupMemberships.TryGetValue(key, out var membership))
                 {
-                    results.Add((parts[0], membership.ExpiryTime));
+                    results.Add((key[..separatorIndex], membership.ExpiryTime));
                 }
             }
             return results;
+        }
+        finally
+        {
+            _trustLock.ExitReadLock();
         }
     }
 
@@ -433,9 +470,14 @@ public class CacheContainer
     public string? GetAvatarForWrapper(string wrapperAddress)
     {
         var wrapperLower = wrapperAddress.ToLowerInvariant();
-        lock (_indexLock)
+        _wrapperLock.EnterReadLock();
+        try
         {
             return _erc20WrapperToAvatar.TryGetValue(wrapperLower, out var info) ? info.Avatar : null;
+        }
+        finally
+        {
+            _wrapperLock.ExitReadLock();
         }
     }
 
@@ -447,46 +489,94 @@ public class CacheContainer
     public (string Avatar, int CirclesType)? GetWrapperInfo(string wrapperAddress)
     {
         var wrapperLower = wrapperAddress.ToLowerInvariant();
-        lock (_indexLock)
+        _wrapperLock.EnterReadLock();
+        try
         {
             return _erc20WrapperToAvatar.TryGetValue(wrapperLower, out var info) ? info : null;
+        }
+        finally
+        {
+            _wrapperLock.ExitReadLock();
         }
     }
 
     /// <summary>
     /// Gets statistics for all caches.
+    /// Each domain's secondary index counts are read under their respective lock,
+    /// then combined. The snapshot may be transiently inconsistent across domains,
+    /// which is acceptable for metrics.
     /// </summary>
     public Dictionary<string, object> GetStatistics()
     {
-        lock (_indexLock)
+        // Read balance-domain stats
+        int v1IndexedAddresses, v2IndexedAddresses;
+        _balanceLock.EnterReadLock();
+        try
         {
-            return new Dictionary<string, object>
-            {
-                ["v1_avatars"] = V1Avatars.Count,
-                ["v1_token_owners"] = V1TokenOwnerByToken.Count,
-                ["v1_avatar_cids"] = V1AvatarToCidMap.Count,
-                ["v2_avatars"] = V2Avatars.Count,
-                ["erc20_wrappers"] = Erc20WrapperAddresses.Count,
-                ["erc20_wrapper_reverse_index"] = _erc20WrapperToAvatar.Count,
-                ["groups"] = Groups.Count,
-                ["group_memberships"] = GroupMemberships.Count,
-                ["group_membership_by_group_index"] = _membershipsByGroup.Count,
-                ["group_membership_by_member_index"] = _membershipsByMember.Count,
-                ["v2_avatar_cids"] = V2AvatarToCidMap.Count,
-                ["v2_avatar_short_names"] = V2AvatarToShortNameMap.Count,
-                ["v1_balances"] = V1BalancesByAccountAndToken.Count,
-                ["v2_balances"] = V2BalancesByAccountAndToken.Count,
-                ["v1_trust_relations"] = V1TrustRelations.Count,
-                ["v1_trust_by_truster_index"] = _v1TrustsByTruster.Count,
-                ["v1_trust_by_trustee_index"] = _v1TrustsByTrustee.Count,
-                ["v2_trust_relations"] = V2TrustRelations.Count,
-                ["v2_trust_by_truster_index"] = _v2TrustsByTruster.Count,
-                ["v2_trust_by_trustee_index"] = _v2TrustsByTrustee.Count,
-                ["total_entries"] = AllCaches.Sum(c => c.Count),
-                ["v1_indexed_addresses"] = _v1BalancesByAddress.Count,
-                ["v2_indexed_addresses"] = _v2BalancesByAddress.Count,
-                ["v2_last_activity_entries"] = V2LastActivity.Count
-            };
+            v1IndexedAddresses = _v1BalancesByAddress.Count;
+            v2IndexedAddresses = _v2BalancesByAddress.Count;
         }
+        finally { _balanceLock.ExitReadLock(); }
+
+        // Read trust-domain stats
+        int v1TrustByTruster, v1TrustByTrustee, v2TrustByTruster, v2TrustByTrustee;
+        int membershipByGroup, membershipByMember;
+        _trustLock.EnterReadLock();
+        try
+        {
+            v1TrustByTruster = _v1TrustsByTruster.Count;
+            v1TrustByTrustee = _v1TrustsByTrustee.Count;
+            v2TrustByTruster = _v2TrustsByTruster.Count;
+            v2TrustByTrustee = _v2TrustsByTrustee.Count;
+            membershipByGroup = _membershipsByGroup.Count;
+            membershipByMember = _membershipsByMember.Count;
+        }
+        finally { _trustLock.ExitReadLock(); }
+
+        // Read wrapper-domain stats
+        int wrapperReverseIndex;
+        _wrapperLock.EnterReadLock();
+        try
+        {
+            wrapperReverseIndex = _erc20WrapperToAvatar.Count;
+        }
+        finally { _wrapperLock.ExitReadLock(); }
+
+        // Primary caches are ConcurrentDictionary-backed, no lock needed
+        return new Dictionary<string, object>
+        {
+            ["v1_avatars"] = V1Avatars.Count,
+            ["v1_token_owners"] = V1TokenOwnerByToken.Count,
+            ["v1_avatar_cids"] = V1AvatarToCidMap.Count,
+            ["v2_avatars"] = V2Avatars.Count,
+            ["erc20_wrappers"] = Erc20WrapperAddresses.Count,
+            ["erc20_wrapper_reverse_index"] = wrapperReverseIndex,
+            ["groups"] = Groups.Count,
+            ["group_memberships"] = GroupMemberships.Count,
+            ["group_membership_by_group_index"] = membershipByGroup,
+            ["group_membership_by_member_index"] = membershipByMember,
+            ["v2_avatar_cids"] = V2AvatarToCidMap.Count,
+            ["v2_avatar_short_names"] = V2AvatarToShortNameMap.Count,
+            ["v1_balances"] = V1BalancesByAccountAndToken.Count,
+            ["v2_balances"] = V2BalancesByAccountAndToken.Count,
+            ["v1_trust_relations"] = V1TrustRelations.Count,
+            ["v1_trust_by_truster_index"] = v1TrustByTruster,
+            ["v1_trust_by_trustee_index"] = v1TrustByTrustee,
+            ["v2_trust_relations"] = V2TrustRelations.Count,
+            ["v2_trust_by_truster_index"] = v2TrustByTruster,
+            ["v2_trust_by_trustee_index"] = v2TrustByTrustee,
+            ["total_entries"] = AllCaches.Sum(c => c.Count),
+            ["v1_indexed_addresses"] = v1IndexedAddresses,
+            ["v2_indexed_addresses"] = v2IndexedAddresses,
+            ["v2_last_activity_entries"] = V2LastActivity.Count
+        };
+    }
+
+    public void Dispose()
+    {
+        _balanceLock.Dispose();
+        _trustLock.Dispose();
+        _wrapperLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

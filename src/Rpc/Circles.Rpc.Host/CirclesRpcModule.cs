@@ -607,15 +607,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         var baseUrl = _settings.ExternalPathfinderUrl.TrimEnd('/');
         var url = $"{baseUrl}/findPath";
 
-        // Configure JSON serialization with camelCase property names to match Pathfinder DTOs
-        var jsonOptions = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNameCaseInsensitive = true
-        };
-
-        var jsonContent = JsonSerializer.Serialize(flowRequest, jsonOptions);
+        var jsonContent = JsonSerializer.Serialize(flowRequest, SharedJsonOptions.CamelCase);
 
         using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 

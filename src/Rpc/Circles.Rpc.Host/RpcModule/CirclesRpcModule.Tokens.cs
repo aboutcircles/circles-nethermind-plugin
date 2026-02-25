@@ -190,8 +190,7 @@ public partial class CirclesRpcModule
             WHERE balance > 0
         ";
 
-        await using var connection = new NpgsqlConnection(_readOnlyDbConnectionString);
-        await connection.OpenAsync();
+        await using var connection = await _dataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("address", lowerAddress);
 

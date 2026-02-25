@@ -68,7 +68,8 @@ public class CirclesRpcModuleTests
         Environment.SetEnvironmentVariable("BALANCE_MODE", "database");
 
         var settings = new Settings();
-        _module = new CirclesRpcModule(settings);
+        var dataSource = NpgsqlDataSource.Create(settings.IndexReadonlyDbConnectionString);
+        _module = new CirclesRpcModule(settings, dataSource);
     }
 
     [OneTimeTearDown]
