@@ -161,7 +161,7 @@ SELECT
     wli."from",
     wli."to",
     wli.total_amount,
-    '[]'::text  -- events JSON not used by RPC queries; supplementary only
+    '[]'::json  -- events JSON not used by RPC queries; supplementary only
 FROM with_log_index wli
 WHERE NOT EXISTS (
     SELECT 1
