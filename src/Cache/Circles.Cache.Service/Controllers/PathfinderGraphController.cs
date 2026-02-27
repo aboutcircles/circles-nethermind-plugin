@@ -1,5 +1,8 @@
+using System.Globalization;
+using System.Numerics;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Circles.Cache.Service.Controllers;
@@ -24,6 +27,10 @@ public class PathfinderGraphController : ControllerBase
     private const string StandardTreasuryMint = "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
 
     private const int SchemaVersion = 1;
+
+    /// <summary>V2 Hub epoch: 2023-02-01 00:00 UTC</summary>
+    private const uint V2InflationDayZero = 1_675_209_600;
+    private const long SecondsPerDay = 86_400;
 
     public PathfinderGraphController(
         CacheContainer caches,
@@ -115,12 +122,14 @@ public class PathfinderGraphController : ControllerBase
 
     /// <summary>
     /// Builds balance rows from V2BalancesByAccountAndToken.
-    /// Only includes balances for registered V2 avatars.
-    /// Marks wrapper tokens and includes circlesType metadata.
+    /// Converts cached decimal balances to attoCircles integer strings (matching LoadGraph output).
+    /// Applies demurrage from lastActivity → now for demurraged balances.
+    /// Converts static (inflationary) balances to demurraged equivalent at target day.
     /// </summary>
     private List<PathfinderBalanceRow> BuildBalances()
     {
         var balances = new List<PathfinderBalanceRow>();
+        var targetDay = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, V2InflationDayZero);
 
         foreach (var kvp in _caches.V2BalancesByAccountAndToken.ReadOnlyDictionary)
         {
@@ -140,29 +149,50 @@ public class PathfinderGraphController : ControllerBase
 
             // Determine if this is a wrapper token
             var isWrapped = false;
-            var circlesType = "Demurrage"; // default for native ERC1155
+            var isStatic = false;
 
             if (_caches.Erc20WrapperAddresses.TryGetValue(tokenAddress, out var wrapperInfo))
             {
                 isWrapped = true;
-                // Verify the underlying avatar is registered
                 if (!_caches.V2Avatars.ContainsKey(wrapperInfo.Avatar))
                     continue;
-
-                // circlesType: 0 = demurraged, 1 = inflationary/static
-                circlesType = wrapperInfo.CirclesType == 1 ? "Static" : "Demurrage";
+                isStatic = wrapperInfo.CirclesType == 1;
             }
 
-            // Get last activity timestamp for demurrage calculation
+            // Convert decimal Circles → attoCircles BigInteger
+            var attoBalance = CirclesConverter.CirclesToAttoCircles(kvp.Value);
+            if (attoBalance == BigInteger.Zero)
+                continue;
+
+            // Get last activity timestamp
             _caches.V2LastActivity.TryGetValue(kvp.Key, out var lastActivity);
 
+            if (isStatic)
+            {
+                // Static (inflationary) → convert to demurraged equivalent at target day
+                attoBalance = CirclesConverter.InflationaryToDemurrage(attoBalance, targetDay);
+            }
+            else if (lastActivity >= V2InflationDayZero)
+            {
+                // Demurraged: apply demurrage from lastActivity → now
+                var lastActivityDay = (ulong)(lastActivity - V2InflationDayZero) / (ulong)SecondsPerDay;
+                var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
+                if (daysDelta > 0)
+                {
+                    attoBalance = CirclesConverter.InflationaryToDemurrage(attoBalance, daysDelta);
+                }
+            }
+
+            if (attoBalance == BigInteger.Zero)
+                continue;
+
             balances.Add(new PathfinderBalanceRow(
-                Balance: kvp.Value.ToString(),
+                Balance: attoBalance.ToString(CultureInfo.InvariantCulture),
                 Account: account,
                 TokenAddress: tokenAddress,
                 LastActivity: lastActivity,
                 IsWrapped: isWrapped,
-                CirclesType: circlesType
+                CirclesType: isStatic ? "static" : "demurraged"
             ));
         }
 
