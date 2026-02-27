@@ -98,6 +98,7 @@ public class CacheWarmupService : BackgroundService
             await ReplayV2EventsAsync(conn, warmupTarget, token);
             await LoadGroupMembershipsAsync(conn, warmupTarget, token);
             await LoadTrustRelationsAsync(conn, warmupTarget, token);
+            await LoadConsentedFlowFlagsAsync(conn, warmupTarget, token);
             await LoadAvatarMetadataAsync(conn, warmupTarget, token);
             await LoadV2ShortNamesAsync(conn, warmupTarget, token);
             await LoadBalancesAsync(conn, token);
@@ -1237,6 +1238,34 @@ public class CacheWarmupService : BackgroundService
 
         _caches.V2TrustRelations.Seed(v2TrustData, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 trust relations", v2TrustData.Count);
+    }
+
+    protected virtual async Task LoadConsentedFlowFlagsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
+    {
+        _logger.LogInformation("Loading consented flow flags...");
+
+        const string sql = @"
+            SELECT DISTINCT ON (avatar) avatar, flag
+            FROM ""CrcV2_SetAdvancedUsageFlag""
+            WHERE ""blockNumber"" <= @toBlock
+            ORDER BY avatar, ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC";
+
+        var flags = new Dictionary<string, byte[]>();
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+        cmd.CommandTimeout = 300;
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        while (await reader.ReadAsync(ct))
+        {
+            var avatar = reader.GetString(0).ToLowerInvariant();
+            var flag = (byte[])reader.GetValue(1);
+            flags[avatar] = flag;
+        }
+
+        _caches.ConsentedFlowFlags.Seed(flags, _state.WarmupTargetBlock);
+        _logger.LogInformation("Loaded {Count} consented flow flags", flags.Count);
     }
 
     protected virtual async Task LoadAvatarMetadataAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)

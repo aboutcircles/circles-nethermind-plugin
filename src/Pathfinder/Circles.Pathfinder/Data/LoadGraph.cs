@@ -113,7 +113,6 @@ namespace Circles.Pathfinder.Data
         public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
             LoadV2Balances()
         {
-            // We now only have one balance query that includes the isWrapped column
             var balanceQuery = LoadQueryFromResource("balanceQuery.sql");
             var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>(50_000);
 
@@ -219,7 +218,6 @@ namespace Circles.Pathfinder.Data
 
         public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
         {
-            // We now only have one trust query that includes wrap tokens
             var trustQuery = LoadQueryFromResource("trustQuery.sql");
             var results = new List<(string Truster, string Trustee, int Limit)>(200_000);
 

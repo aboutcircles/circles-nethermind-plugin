@@ -156,3 +156,51 @@ public record ProfileContentResponse(
 /// Batch request for profile content
 /// </summary>
 public record ProfileContentBatchRequest(string[] Cids);
+
+// ─── Pathfinder Graph Snapshot DTOs ────────────────────────────────
+
+/// <summary>
+/// Canonical graph snapshot for the Pathfinder cache source endpoint.
+/// </summary>
+public record PathfinderGraphResponse(
+    int SchemaVersion,
+    long LastProcessedBlock,
+    long Timestamp,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderBalanceRow>? Balances,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderTrustRow>? Trust,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderGroupRow>? Groups,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderGroupTrustRow>? GroupTrusts,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow
+);
+
+public record PathfinderBalanceRow(
+    string Balance,
+    string Account,
+    string TokenAddress,
+    long LastActivity,
+    bool IsWrapped,
+    string CirclesType
+);
+
+public record PathfinderTrustRow(
+    string Truster,
+    string Trustee,
+    int Limit
+);
+
+public record PathfinderGroupRow(string GroupAddress);
+
+public record PathfinderGroupTrustRow(
+    string GroupAddress,
+    string TrustedToken
+);
+
+public record PathfinderConsentedFlowRow(
+    string Avatar,
+    bool HasConsentedFlow
+);

@@ -44,6 +44,10 @@ public class CacheContainer : IDisposable
     public RollbackCache<string, long> V1TrustRelations { get; private set; } = null!;
     public RollbackCache<string, long> V2TrustRelations { get; private set; } = null!;
 
+    // Consented flow flags (key: avatar address, value: flag bytes)
+    // Used by the pathfinder graph endpoint to determine consented flow status
+    public RollbackCache<string, byte[]> ConsentedFlowFlags { get; private set; } = null!;
+
     // Secondary Indexes for O(1) balance lookups
     // Maps address -> set of token IDs that address holds
     private readonly Dictionary<string, HashSet<string>> _v1BalancesByAddress = new();
@@ -88,7 +92,8 @@ public class CacheContainer : IDisposable
         V1BalancesByAccountAndToken,
         V2BalancesByAccountAndToken,
         V1TrustRelations,
-        V2TrustRelations
+        V2TrustRelations,
+        ConsentedFlowFlags
     };
 
     private void InitializeCaches()
@@ -111,6 +116,7 @@ public class CacheContainer : IDisposable
 
         V1TrustRelations = new RollbackCache<string, long>("V1TrustRelations");
         V2TrustRelations = new RollbackCache<string, long>("V2TrustRelations");
+        ConsentedFlowFlags = new RollbackCache<string, byte[]>("ConsentedFlowFlags");
     }
 
 

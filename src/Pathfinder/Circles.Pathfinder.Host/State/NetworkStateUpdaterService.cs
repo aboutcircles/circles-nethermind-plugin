@@ -33,6 +33,11 @@ public class NetworkStateUpdaterService : BackgroundService
     private long _lastProcessedBlock = -1;
     private string? _lastProcessedBlockHash;  // D10: reorg detection
 
+    // Cache-source state (only used when UseCacheGraphSource=true)
+    private CacheGraphClient? _cacheGraphClient;
+    private CacheLoadGraph? _cacheLoadGraph;
+    private string? _cacheGraphEtag;
+
     public NetworkStateUpdaterService(NetworkState networkState,
         Circles.Pathfinder.Host.Settings settings,
         ILogger<NetworkStateUpdaterService> log,
@@ -50,9 +55,23 @@ public class NetworkStateUpdaterService : BackgroundService
 
         // Wire DB query timing to Prometheus histogram
         loadGraph.OnQueryCompleted = (queryName, elapsed) =>
-        {
             GraphUpdateMetrics.DbQueryDuration.WithLabels(queryName).Observe(elapsed.TotalSeconds);
-        };
+
+        // Initialize cache graph client if enabled
+        if (_settings.UseCacheGraphSource)
+        {
+            if (string.IsNullOrWhiteSpace(_settings.CacheServiceUrl))
+                throw new InvalidOperationException("USE_CACHE_GRAPH_SOURCE is enabled but CACHE_SERVICE_URL is not configured.");
+
+            _cacheGraphClient = new CacheGraphClient(
+                new HttpClient(),
+                _settings.CacheServiceUrl,
+                TimeSpan.FromSeconds(_settings.CacheGraphRequestTimeoutSeconds));
+
+            _log.LogInformation(
+                "Cache graph source ENABLED (url={Url}, timeout={Timeout}s, fallback={Fallback})",
+                _settings.CacheServiceUrl, _settings.CacheGraphRequestTimeoutSeconds, _settings.CacheGraphFallbackToDb);
+        }
 
         if (_settings.IncrementalEnabled)
         {
@@ -79,6 +98,14 @@ public class NetworkStateUpdaterService : BackgroundService
 
                 _log.LogDebug("→ got block {Block}", lastBlock);
 
+                // ── Try cache source first (if enabled) ──
+                if (await TryCacheSourceUpdate(lastBlock, stoppingToken))
+                {
+                    consecutiveErrors = 0;
+                    continue;
+                }
+
+                // ── Fall back to DB-based update ──
                 var swTotal = Stopwatch.StartNew();
 
                 if (_settings.IncrementalEnabled)
@@ -91,6 +118,7 @@ public class NetworkStateUpdaterService : BackgroundService
                 }
 
                 swTotal.Stop();
+                GraphUpdateMetrics.PathfinderGraphSourceTotal.WithLabels("db").Inc();
 
                 // Common metrics
                 GraphUpdateMetrics.UpdateDuration.WithLabels("total").Observe(swTotal.Elapsed.TotalSeconds);
@@ -502,6 +530,114 @@ public class NetworkStateUpdaterService : BackgroundService
         {
             _log.LogDebug("Drift check passed — zero drift across all state");
         }
+    }
+
+    /// <summary>
+    /// Attempt to update graphs from the cache service. Returns true if the update was handled
+    /// (either new data applied or 304 Not Modified), false if cache is unavailable/disabled
+    /// and the caller should fall back to DB.
+    /// </summary>
+    private async Task<bool> TryCacheSourceUpdate(long lastBlock, CancellationToken ct)
+    {
+        if (_cacheGraphClient == null)
+            return false;
+
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var fetchResult = await _cacheGraphClient.FetchGraphSnapshotAsync(_cacheGraphEtag, ct);
+            sw.Stop();
+            GraphUpdateMetrics.CacheGraphFetchDuration.Observe(sw.Elapsed.TotalSeconds);
+
+            if (fetchResult.IsNotModified)
+            {
+                GraphUpdateMetrics.CacheGraphNotModifiedTotal.Inc();
+                GraphUpdateMetrics.PathfinderGraphSourceTotal.WithLabels("cache_304").Inc();
+                return true; // Graph unchanged — skip rebuild
+            }
+
+            var snapshot = fetchResult.Snapshot
+                ?? throw new InvalidOperationException("Cache graph response missing snapshot payload.");
+            _cacheGraphEtag = fetchResult.Etag;
+            GraphUpdateMetrics.CacheGraphPayloadBytes.Observe(fetchResult.PayloadBytes);
+
+            if (_cacheLoadGraph == null)
+                _cacheLoadGraph = new CacheLoadGraph(snapshot);
+            else
+                _cacheLoadGraph.ReplaceSnapshot(snapshot);
+
+            // Build graphs from cache snapshot
+            var effectiveBlock = snapshot.LastProcessedBlock;
+            BuildGraphsFromLoadGraph(_cacheLoadGraph, effectiveBlock);
+
+            _networkState.Replace(lastKnownBlockNumber: effectiveBlock);
+            GraphUpdateMetrics.PathfinderGraphSourceTotal.WithLabels("cache").Inc();
+            GraphUpdateMetrics.UpdateTotal.WithLabels("success").Inc();
+            GraphUpdateMetrics.LastUpdateTimestamp.Set(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            GraphUpdateMetrics.LastProcessedBlock.Set(effectiveBlock);
+            GraphUpdateMetrics.ConsecutiveErrors.Set(0);
+
+            // Graph size gauges
+            var bg = _networkState.BalanceGraph;
+            if (bg != null)
+            {
+                GraphUpdateMetrics.AvatarCount.Set(bg.AvatarNodes.Count);
+                GraphUpdateMetrics.BalanceCount.Set(bg.BalanceNodes.Count);
+            }
+            var currentSnap = _pool.CurrentSnapshot;
+            if (currentSnap != null)
+            {
+                GraphUpdateMetrics.EdgeCount.Set(currentSnap.Base.Edges.Count);
+                GraphUpdateMetrics.GroupCount.Set(currentSnap.Base.GroupNodes.Count);
+                GraphUpdateMetrics.ConsentedAvatarCount.Set(currentSnap.Base.ConsentedAvatars.Count);
+            }
+            GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
+
+            _log.LogInformation(
+                "Graphs updated (cache) – block={Block}, fetch={FetchMs}ms, payload={Bytes}B",
+                effectiveBlock, sw.ElapsedMilliseconds, fetchResult.PayloadBytes);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            GraphUpdateMetrics.CacheGraphErrorsTotal.Inc();
+
+            if (_settings.CacheGraphFallbackToDb)
+            {
+                _log.LogWarning(ex, "Cache graph fetch failed, falling back to DB for this cycle");
+                return false; // Caller will use DB path
+            }
+
+            _log.LogError(ex, "Cache graph fetch failed and DB fallback is disabled");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Build trust graph, balance graph, and capacity graph from any ILoadGraph and publish to pool.
+    /// Used by both the cache-source path and could be reused by other graph sources.
+    /// </summary>
+    private void BuildGraphsFromLoadGraph(ILoadGraph loadGraph, long lastBlock)
+    {
+        var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
+
+        var trustGraph = graphFactory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+        _networkState.Replace(accountTrusts: trustLookup);
+
+        var balanceGraph = graphFactory.V2BalanceGraph();
+        _networkState.Replace(balanceGraph: balanceGraph);
+
+        var cap = graphFactory.CreateCapacityGraph(balanceGraph, trustLookup);
+
+        var groupData = new CachedGroupData(
+            new HashSet<int>(cap.GroupNodes),
+            cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
+            new HashSet<int>(cap.ConsentedAvatars));
+
+        _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
     }
 
     private async Task<long> WaitForNextBlock(CancellationToken stoppingToken, long lastBlock)

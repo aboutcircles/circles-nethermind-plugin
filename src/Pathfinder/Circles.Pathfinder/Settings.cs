@@ -90,4 +90,5 @@ public class Settings
             Environment.GetEnvironmentVariable("PATHFINDER_DISABLE_CONSENTED_FLOW"),
             "false",
             StringComparison.OrdinalIgnoreCase);
+
 }
