@@ -398,13 +398,15 @@ public class CalldataUnwrapperTests
     [Test]
     public void UnwrapAndParse_DirectOperateFlowMatrix_PassesThrough()
     {
+        // packedCoordinates: each flow edge is 6 bytes (circlesId:2 + sender:2 + receiver:2)
+        // Edge 0: circlesId=0, sender=0 (Alice), receiver=1 (Bob)
         var calldata = BuildOperateFlowMatrixCalldata(
             flowVertices: new[] { Alice, Bob },
             streams: new[]
             {
                 new StreamData(0, new ulong[] { 0 }, new byte[] { 0xca, 0xfe })
             },
-            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x01 }
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }
         );
 
         var results = CalldataUnwrapper.UnwrapAndParse(calldata).ToList();
@@ -677,13 +679,14 @@ public class CalldataUnwrapperTests
         // Full chain: handleOps → UserOp.callData [executeUserOpWithErrorString] → multiSend → [operateFlowMatrix]
         // This is the actual call path for Safe accounts using 4337 module
 
+        // packedCoordinates: 6 bytes per edge (circlesId:2 + sender:2 + receiver:2)
         var operateFlowMatrix = BuildOperateFlowMatrixCalldata(
             flowVertices: new[] { Alice, Bob },
             streams: new[]
             {
                 new StreamData(0, new ulong[] { 0 }, new byte[] { 0x74, 0x78, 0x64, 0x61, 0x74, 0x61 }) // "txdata"
             },
-            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x01 }
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }
         );
 
         var multiSend = BuildMultiSendCalldata(new[]
@@ -763,13 +766,14 @@ public class CalldataUnwrapperTests
     public void UnwrapAndParse_TypicalERC4337Pattern_ExtractsData()
     {
         // Typical ERC-4337 flow: EntryPoint.handleOps → Safe.execTransaction → Hub.operateFlowMatrix
+        // packedCoordinates: 6 bytes per edge (circlesId:2 + sender:2 + receiver:2)
         var operateFlowMatrix = BuildOperateFlowMatrixCalldata(
             flowVertices: new[] { Alice, Bob, Charlie },
             streams: new[]
             {
                 new StreamData(0, new ulong[] { 0 }, new byte[] { 0x50, 0x41, 0x59 }) // "PAY"
             },
-            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x01 }
+            packedCoordinates: new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 }
         );
 
         var execTransaction = BuildExecTransactionCalldata(operateFlowMatrix);
