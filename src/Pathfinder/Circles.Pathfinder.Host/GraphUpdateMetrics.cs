@@ -147,4 +147,29 @@ internal static class GraphUpdateMetrics
     public static readonly Counter ReorgDetectedTotal = Metrics.CreateCounter(
         "circles_graph_reorg_detected_total",
         "Total reorgs detected via block hash comparison");
+
+    // ─── Cache graph source metrics ──────────────────────────────────
+
+    public static readonly Counter PathfinderGraphSourceTotal = Metrics.CreateCounter(
+        "circles_pathfinder_graph_source",
+        "Pathfinder graph data source usage",
+        new CounterConfiguration { LabelNames = new[] { "source" } });
+
+    public static readonly Histogram CacheGraphFetchDuration = Metrics.CreateHistogram(
+        "circles_pathfinder_cache_graph_fetch_duration_seconds",
+        "Cache graph fetch duration in seconds",
+        new HistogramConfiguration { Buckets = Histogram.ExponentialBuckets(0.01, 2, 12) });
+
+    public static readonly Histogram CacheGraphPayloadBytes = Metrics.CreateHistogram(
+        "circles_pathfinder_cache_graph_payload_bytes",
+        "Cache graph payload size in bytes",
+        new HistogramConfiguration { Buckets = Histogram.ExponentialBuckets(1024, 2, 12) });
+
+    public static readonly Counter CacheGraphNotModifiedTotal = Metrics.CreateCounter(
+        "circles_pathfinder_cache_graph_not_modified_total",
+        "Total number of cache graph 304 Not Modified responses");
+
+    public static readonly Counter CacheGraphErrorsTotal = Metrics.CreateCounter(
+        "circles_pathfinder_cache_graph_errors_total",
+        "Total number of cache graph fetch errors");
 }

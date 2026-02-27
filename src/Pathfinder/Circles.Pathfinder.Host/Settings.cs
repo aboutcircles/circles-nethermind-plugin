@@ -20,6 +20,30 @@ public class Settings : Pathfinder.Settings
         ? int.Parse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS")!)
         : Environment.ProcessorCount * 2;
 
+    /// <summary>
+    /// When true, the pathfinder fetches graph data from the Cache Service instead of DB.
+    /// Requires CACHE_SERVICE_URL to be set. Falls back to DB if cache is unavailable
+    /// (unless CACHE_GRAPH_FALLBACK_TO_DB=false).
+    /// </summary>
+    public bool UseCacheGraphSource =>
+        Environment.GetEnvironmentVariable("USE_CACHE_GRAPH_SOURCE")?.ToLowerInvariant() is "true" or "1";
+
+    public string? CacheServiceUrl =>
+        Environment.GetEnvironmentVariable("CACHE_SERVICE_URL");
+
+    public int CacheGraphRequestTimeoutSeconds =>
+        int.TryParse(Environment.GetEnvironmentVariable("CACHE_GRAPH_REQUEST_TIMEOUT_SECONDS"), out var timeout)
+            ? timeout
+            : 60;
+
+    public bool CacheGraphFallbackToDb =>
+        Environment.GetEnvironmentVariable("CACHE_GRAPH_FALLBACK_TO_DB")?.ToLowerInvariant() switch
+        {
+            "false" => false,
+            "0" => false,
+            _ => true
+        };
+
     // Access BaseGroupRouter from common settings
     public string BaseGroupRouter => _commonSettings.BaseGroupRouter;
 

@@ -450,6 +450,9 @@ public class NotificationListenerService : BackgroundService
 
         // Process V2 RegisterShortName (for short name mappings)
         await ProcessV2RegisterShortNameAsync(conn, fromBlock, toBlock, ct);
+
+        // Process V2 SetAdvancedUsageFlag (for consented flow)
+        await ProcessV2SetAdvancedUsageFlagAsync(conn, fromBlock, toBlock, ct);
     }
 
     private async Task ProcessV2RegisterHumanAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
@@ -1162,6 +1165,38 @@ public class NotificationListenerService : BackgroundService
         if (count > 0)
         {
             _logger.LogDebug("Processed {Count} V2 short name registrations", count);
+        }
+    }
+
+    private async Task ProcessV2SetAdvancedUsageFlagAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT f.""blockNumber"", f.avatar, f.flag
+            FROM ""CrcV2_SetAdvancedUsageFlag"" f
+            WHERE f.""blockNumber"" >= @fromBlock AND f.""blockNumber"" <= @toBlock
+            ORDER BY f.""blockNumber"", f.""transactionIndex"", f.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var count = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var avatar = reader.GetString(1).ToLowerInvariant();
+                var flag = (byte[])reader.GetValue(2);
+
+                _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogDebug("Processed {Count} V2 advanced usage flag updates", count);
         }
     }
 }

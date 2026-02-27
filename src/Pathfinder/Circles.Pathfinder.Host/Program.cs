@@ -33,7 +33,12 @@ Console.WriteLine($"* DB Name: {csb.Database}");
 Console.WriteLine($"* DB Port: {csb.Port}");
 Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
 Console.WriteLine($"* Consented flow: {(settings.DisableConsentedFlow ? "DISABLED (intermediaries excluded)" : "enabled (validate rules)")}");
-
+Console.WriteLine($"* Graph source: {(settings.UseCacheGraphSource ? $"CACHE ({settings.CacheServiceUrl})" : "DATABASE")}");
+if (settings.UseCacheGraphSource)
+{
+    Console.WriteLine($"  - Fallback to DB: {settings.CacheGraphFallbackToDb}");
+    Console.WriteLine($"  - Request timeout: {settings.CacheGraphRequestTimeoutSeconds}s");
+}
 
 var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
 
