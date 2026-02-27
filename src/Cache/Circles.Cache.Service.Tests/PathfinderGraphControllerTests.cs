@@ -1,0 +1,576 @@
+using System.Numerics;
+using Circles.Cache.Service.Caches;
+using Circles.Cache.Service.Controllers;
+using Circles.Cache.Service.Models;
+using Circles.Common;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
+using Moq;
+using Xunit;
+using FluentAssertions;
+
+namespace Circles.Cache.Service.Tests;
+
+/// <summary>
+/// Tests for PathfinderGraphController — the zero-SQL cache-feed endpoint.
+/// Covers: balance conversion + demurrage, wrapper trust derivation, consent bit extraction,
+/// ETag conditional requests, warmup gating, group filtering, and include param parsing.
+/// </summary>
+public class PathfinderGraphControllerTests
+{
+    private const string StandardTreasuryMint = "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
+    private const uint V2InflationDayZero = 1_675_209_600;
+
+    private readonly CacheContainer _cache;
+    private readonly CacheServiceState _state;
+
+    public PathfinderGraphControllerTests()
+    {
+        _cache = new CacheContainer(rollbackCapacity: 12);
+        _state = new CacheServiceState(rollbackCapacity: 12);
+        _state.LastProcessedBlock = 5000;
+        _state.WarmupComplete = true;
+        _state.ListenerConnected = true;
+    }
+
+    private PathfinderGraphController CreateController(string? ifNoneMatch = null)
+    {
+        var logger = new Mock<ILogger<PathfinderGraphController>>();
+        var controller = new PathfinderGraphController(_cache, _state, logger.Object);
+        var context = new DefaultHttpContext();
+        if (ifNoneMatch != null)
+            context.Request.Headers.IfNoneMatch = new StringValues(ifNoneMatch);
+        controller.ControllerContext = new ControllerContext { HttpContext = context };
+        return controller;
+    }
+
+    // ── Warmup / ETag ──────────────────────────────────────────────────
+
+    [Fact]
+    public void GetGraph_ShouldReturn503_WhenWarmupIncomplete()
+    {
+        _state.WarmupComplete = false;
+        var controller = CreateController();
+
+        var result = controller.GetGraph();
+
+        var obj = result.Result as ObjectResult;
+        obj.Should().NotBeNull();
+        obj!.StatusCode.Should().Be(503);
+    }
+
+    [Fact]
+    public void GetGraph_ShouldReturn304_WhenETagMatches()
+    {
+        var etag = $"\"{_state.LastProcessedBlock}\"";
+        var controller = CreateController(ifNoneMatch: etag);
+
+        var result = controller.GetGraph();
+
+        var status = result.Result as StatusCodeResult;
+        status.Should().NotBeNull();
+        status!.StatusCode.Should().Be(304);
+    }
+
+    [Fact]
+    public void GetGraph_ShouldReturnOk_WhenETagDoesNotMatch()
+    {
+        var controller = CreateController(ifNoneMatch: "\"999\"");
+
+        var result = controller.GetGraph();
+
+        var ok = result.Result as OkObjectResult;
+        ok.Should().NotBeNull();
+        var response = ok!.Value as PathfinderGraphResponse;
+        response.Should().NotBeNull();
+        response!.LastProcessedBlock.Should().Be(5000);
+        response.SchemaVersion.Should().Be(1);
+    }
+
+    // ── ParseInclude ───────────────────────────────────────────────────
+
+    [Fact]
+    public void GetGraph_ShouldReturnAllSections_WhenNoInclude()
+    {
+        SeedMinimalData();
+        var controller = CreateController();
+
+        var result = controller.GetGraph();
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().NotBeNull();
+        response.Trust.Should().NotBeNull();
+        response.Groups.Should().NotBeNull();
+        response.GroupTrusts.Should().NotBeNull();
+        response.ConsentedFlow.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void GetGraph_ShouldReturnOnlyRequestedSections()
+    {
+        SeedMinimalData();
+        var controller = CreateController();
+
+        var result = controller.GetGraph(include: "balances,groups");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().NotBeNull();
+        response.Groups.Should().NotBeNull();
+        response.Trust.Should().BeNull();
+        response.GroupTrusts.Should().BeNull();
+        response.ConsentedFlow.Should().BeNull();
+    }
+
+    // ── BuildBalances ──────────────────────────────────────────────────
+
+    [Fact]
+    public void BuildBalances_ShouldConvertDecimalToAttoCirclesIntegerString()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token}", 1.5m);
+        // Set a recent lastActivity so demurrage is minimal
+        var recentTimestamp = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+        _cache.V2LastActivity[$"{account}:{token}"] = recentTimestamp;
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().HaveCount(1);
+        var balance = response.Balances![0];
+        balance.Account.Should().Be(account);
+        balance.TokenAddress.Should().Be(token);
+
+        // Balance should be a valid integer string (no decimals, no scientific notation)
+        BigInteger.TryParse(balance.Balance, out var parsed).Should().BeTrue(
+            $"Balance '{balance.Balance}' should be a valid integer string");
+        parsed.Should().BeGreaterThan(BigInteger.Zero);
+
+        // 1.5 Circles = 1.5e18 attoCircles ≈ 1500000000000000000 (before demurrage)
+        // After demurrage (very recent), should be close but slightly less
+        var expected = CirclesConverter.CirclesToAttoCircles(1.5m);
+        parsed.Should().BeLessOrEqualTo(expected, "demurrage should only reduce the balance");
+        parsed.Should().BeGreaterThan(expected * 99 / 100, "1 minute of demurrage should be < 1%");
+    }
+
+    [Fact]
+    public void BuildBalances_ShouldSkipUnregisteredAvatars()
+    {
+        var unregistered = "0xunregistered000000000000000000000000000000";
+        var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        // NOT in V2Avatars — should be skipped
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{unregistered}:{token}", 100m);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildBalances_ShouldSkipZeroBalances()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token}", 0m);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildBalances_ShouldMarkWrappedTokens()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var wrapperAddress = "0xwrapper00000000000000000000000000000000";
+        var underlyingAvatar = "0xunderlying0000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, underlyingAvatar, ("Human", 1704067200L));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, 0)); // 0 = demurraged
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
+        _cache.V2LastActivity[$"{account}:{wrapperAddress}"] =
+            (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().HaveCount(1);
+        response.Balances![0].IsWrapped.Should().BeTrue();
+        response.Balances[0].CirclesType.Should().Be("demurraged");
+    }
+
+    [Fact]
+    public void BuildBalances_ShouldMarkStaticWrappedTokens()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var wrapperAddress = "0xstaticwrap0000000000000000000000000000";
+        var underlyingAvatar = "0xunderlying0000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, underlyingAvatar, ("Human", 1704067200L));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, 1)); // 1 = static
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().HaveCount(1);
+        response.Balances![0].IsWrapped.Should().BeTrue();
+        response.Balances[0].CirclesType.Should().Be("static");
+    }
+
+    [Fact]
+    public void BuildBalances_ShouldFilterWrappersOfUnregisteredAvatars()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var wrapperAddress = "0xwrapper00000000000000000000000000000000";
+        var unregisteredAvatar = "0xunregistered000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        // underlyingAvatar NOT registered in V2Avatars
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (unregisteredAvatar, 0));
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().BeEmpty();
+    }
+
+    // ── BuildTrust ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void BuildTrust_ShouldEmitNativeTrustEdges()
+    {
+        var truster = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, truster, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, trustee, ("Human", 1704067200L));
+        // expiryTime in the far future
+        _cache.V2TrustRelations.Add(1000, $"{truster}:{trustee}", 9999999999L);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "trust");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Trust.Should().ContainSingle(t => t.Truster == truster && t.Trustee == trustee);
+        response.Trust![0].Limit.Should().Be(100);
+    }
+
+    [Fact]
+    public void BuildTrust_ShouldSkipRevokedTrust()
+    {
+        var truster = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, truster, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, trustee, ("Human", 1704067200L));
+        // expiryTime in the past → revoked
+        _cache.V2TrustRelations.Add(1000, $"{truster}:{trustee}", 1L);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "trust");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Trust.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildTrust_ShouldDeriveWrapperTrustEdges()
+    {
+        var truster = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        var wrapperAddress = "0xwrapper00000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, truster, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, trustee, ("Human", 1704067200L));
+        _cache.V2TrustRelations.Add(1000, $"{truster}:{trustee}", 9999999999L);
+        // trustee has a wrapper deployed
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (trustee, 0));
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "trust");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        // Should have 2 edges: native + wrapper
+        response!.Trust.Should().HaveCount(2);
+        response.Trust.Should().Contain(t => t.Truster == truster && t.Trustee == trustee);
+        response.Trust.Should().Contain(t => t.Truster == truster && t.Trustee == wrapperAddress);
+    }
+
+    [Fact]
+    public void BuildTrust_ShouldDeriveMultipleWrapperEdgesPerTrustee()
+    {
+        var truster = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        var wrapper1 = "0xwrapper10000000000000000000000000000000";
+        var wrapper2 = "0xwrapper20000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, truster, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, trustee, ("Human", 1704067200L));
+        _cache.V2TrustRelations.Add(1000, $"{truster}:{trustee}", 9999999999L);
+        _cache.Erc20WrapperAddresses.Add(1000, wrapper1, (trustee, 0));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapper2, (trustee, 1));
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "trust");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        // 1 native + 2 wrappers = 3
+        response!.Trust.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void BuildTrust_ShouldExcludeGroupTrusters()
+    {
+        var group = "0xgroup000000000000000000000000000000000000";
+        var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+
+        _cache.V2Avatars.Add(1000, group, ("Group", 1704067200L));
+        _cache.V2Avatars.Add(1000, trustee, ("Human", 1704067200L));
+        _cache.Groups.Add(1000, group, ("Test Group", StandardTreasuryMint, "TG"));
+        _cache.V2TrustRelations.Add(1000, $"{group}:{trustee}", 9999999999L);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "trust");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        // Group trusters are excluded from BuildTrust (handled in BuildGroupTrusts)
+        response!.Trust.Should().BeEmpty();
+    }
+
+    // ── BuildGroups ────────────────────────────────────────────────────
+
+    [Fact]
+    public void BuildGroups_ShouldOnlyIncludeRouterGroups()
+    {
+        var routerGroup = "0xroutergroup000000000000000000000000000000";
+        var otherGroup = "0xothergroup0000000000000000000000000000000";
+
+        _cache.Groups.Add(1000, routerGroup, ("Router Group", StandardTreasuryMint, "RG"));
+        _cache.Groups.Add(1000, otherGroup, ("Custom Group", "0xothermint", "CG"));
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "groups");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Groups.Should().HaveCount(1);
+        response.Groups![0].GroupAddress.Should().Be(routerGroup);
+    }
+
+    // ── BuildGroupTrusts ───────────────────────────────────────────────
+
+    [Fact]
+    public void BuildGroupTrusts_ShouldOnlyIncludeRouterGroupTrusters()
+    {
+        var routerGroup = "0xroutergroup000000000000000000000000000000";
+        var member = "0xmember00000000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, routerGroup, ("Group", 1704067200L));
+        _cache.V2Avatars.Add(1000, member, ("Human", 1704067200L));
+        _cache.Groups.Add(1000, routerGroup, ("Router Group", StandardTreasuryMint, "RG"));
+        _cache.V2TrustRelations.Add(1000, $"{routerGroup}:{member}", 9999999999L);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "groupTrusts");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.GroupTrusts.Should().HaveCount(1);
+        response.GroupTrusts![0].GroupAddress.Should().Be(routerGroup);
+        response.GroupTrusts[0].TrustedToken.Should().Be(member);
+    }
+
+    [Fact]
+    public void BuildGroupTrusts_ShouldExcludeNonRouterGroups()
+    {
+        var nonRouterGroup = "0xnonrouter00000000000000000000000000000000";
+        var member = "0xmember00000000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, nonRouterGroup, ("Group", 1704067200L));
+        _cache.V2Avatars.Add(1000, member, ("Human", 1704067200L));
+        _cache.Groups.Add(1000, nonRouterGroup, ("Custom Group", "0xothermint", "CG"));
+        _cache.V2TrustRelations.Add(1000, $"{nonRouterGroup}:{member}", 9999999999L);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "groupTrusts");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.GroupTrusts.Should().BeEmpty();
+    }
+
+    // ── BuildConsentedFlow ─────────────────────────────────────────────
+
+    [Fact]
+    public void BuildConsentedFlow_ShouldExtractBit0OfByte31()
+    {
+        var avatar = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2Avatars.Add(1000, avatar, ("Human", 1704067200L));
+
+        // Create 32-byte flag with bit 0 of byte[31] set to 1
+        var flags = new byte[32];
+        flags[31] = 0x01; // consent = true
+        _cache.ConsentedFlowFlags.Add(1000, avatar, flags);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "consentedFlow");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ConsentedFlow.Should().HaveCount(1);
+        response.ConsentedFlow![0].Avatar.Should().Be(avatar);
+        response.ConsentedFlow[0].HasConsentedFlow.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BuildConsentedFlow_ShouldReturnFalse_WhenBit0IsZero()
+    {
+        var avatar = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2Avatars.Add(1000, avatar, ("Human", 1704067200L));
+
+        var flags = new byte[32];
+        flags[31] = 0x00; // consent = false
+        _cache.ConsentedFlowFlags.Add(1000, avatar, flags);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "consentedFlow");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ConsentedFlow.Should().HaveCount(1);
+        response.ConsentedFlow![0].HasConsentedFlow.Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildConsentedFlow_ShouldHandleOnlyBit0_NotOtherBits()
+    {
+        var avatar = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2Avatars.Add(1000, avatar, ("Human", 1704067200L));
+
+        var flags = new byte[32];
+        flags[31] = 0xFE; // all bits except bit 0 → consent = false
+        _cache.ConsentedFlowFlags.Add(1000, avatar, flags);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "consentedFlow");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ConsentedFlow![0].HasConsentedFlow.Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildConsentedFlow_ShouldSkipShortFlagBytes()
+    {
+        var avatar = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2Avatars.Add(1000, avatar, ("Human", 1704067200L));
+
+        // Only 16 bytes — should be skipped with warning
+        var shortFlags = new byte[16];
+        shortFlags[15] = 0x01;
+        _cache.ConsentedFlowFlags.Add(1000, avatar, shortFlags);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "consentedFlow");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ConsentedFlow.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildConsentedFlow_ShouldSkipUnregisteredAvatars()
+    {
+        var unregistered = "0xunregistered000000000000000000000000000000";
+        var flags = new byte[32];
+        flags[31] = 0x01;
+        _cache.ConsentedFlowFlags.Add(1000, unregistered, flags);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "consentedFlow");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.ConsentedFlow.Should().BeEmpty();
+    }
+
+    // ── Full snapshot consistency ──────────────────────────────────────
+
+    [Fact]
+    public void GetGraph_FullSnapshot_ShouldIncludeAllSections()
+    {
+        SeedFullData();
+        var controller = CreateController();
+
+        var result = controller.GetGraph();
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().NotBeEmpty("seeded balance data");
+        response.Trust.Should().NotBeEmpty("seeded trust data");
+        response.Groups.Should().NotBeEmpty("seeded group data");
+        response.GroupTrusts.Should().NotBeEmpty("seeded group trust data");
+        response.ConsentedFlow.Should().NotBeEmpty("seeded consent data");
+    }
+
+    [Fact]
+    public void GetGraph_ShouldReturnBalancesWithDemurrageApplied()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token}", 100m);
+
+        // lastActivity 30 days ago — should show noticeable demurrage
+        var thirtyDaysAgo = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (30 * 86400);
+        _cache.V2LastActivity[$"{account}:{token}"] = thirtyDaysAgo;
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        var parsed = BigInteger.Parse(response!.Balances![0].Balance);
+        var rawAtto = CirclesConverter.CirclesToAttoCircles(100m);
+
+        // 30 days of 7%/year demurrage ≈ ~0.6% reduction
+        parsed.Should().BeLessThan(rawAtto, "30 days of demurrage should reduce the balance");
+        parsed.Should().BeGreaterThan(rawAtto * 98 / 100, "30 days should be < 2% demurrage");
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────
+
+    private void SeedMinimalData()
+    {
+        var addr = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2Avatars.Add(1000, addr, ("Human", 1704067200L));
+    }
+
+    private void SeedFullData()
+    {
+        var alice = "0xalice000000000000000000000000000000000000";
+        var bob = "0xbob00000000000000000000000000000000000000";
+        var group = "0xgroup000000000000000000000000000000000000";
+        var now = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        _cache.V2Avatars.Add(1000, alice, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, bob, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, group, ("Group", 1704067200L));
+
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{alice}:{bob}", 100m);
+        _cache.V2LastActivity[$"{alice}:{bob}"] = now;
+
+        _cache.V2TrustRelations.Add(1000, $"{alice}:{bob}", 9999999999L);
+        _cache.V2TrustRelations.Add(1000, $"{group}:{alice}", 9999999999L);
+
+        _cache.Groups.Add(1000, group, ("Test Group", StandardTreasuryMint, "TG"));
+
+        var flags = new byte[32];
+        flags[31] = 0x01;
+        _cache.ConsentedFlowFlags.Add(1000, alice, flags);
+    }
+}
