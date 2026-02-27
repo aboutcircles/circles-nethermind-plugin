@@ -67,6 +67,14 @@ public static class TransferSummaryAggregator
             if (inStream)
             {
                 streamEvents.Add(e);
+                // Erc20WrapperTransfer events come from wrapper contracts, not the Hub.
+                // StreamCompleted only reflects Hub ERC1155 flows and doesn't capture these.
+                // Aggregate them separately so they appear in TransferSummary.
+                if (e is Erc20WrapperTransfer)
+                {
+                    AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses);
+                    nonStreamEvents.Add(e);
+                }
             }
             else
             {
