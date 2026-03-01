@@ -91,10 +91,10 @@ internal static class GraphUpdateMetrics
 
     // ─── Incremental update metrics ───────────────────────────────────
 
-    /// <summary>Current update mode: 0=full, 1=incremental.</summary>
+    /// <summary>Current update mode: -1=legacy, 0=full, 1=incremental, 2=cache.</summary>
     public static readonly Gauge UpdateMode = Metrics.CreateGauge(
         "circles_graph_update_mode",
-        "Current update mode (0=full, 1=incremental)");
+        "Current update mode (-1=legacy, 0=full, 1=incremental, 2=cache)");
 
     public static readonly Counter IncrementalUpdateTotal = Metrics.CreateCounter(
         "circles_graph_incremental_update_total",

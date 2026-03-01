@@ -570,6 +570,17 @@ public class NetworkStateUpdaterService : BackgroundService
             var effectiveBlock = snapshot.LastProcessedBlock;
             BuildGraphsFromLoadGraph(_cacheLoadGraph, effectiveBlock);
 
+            // Reset incremental state so any subsequent DB fallback starts clean
+            // (prevents stale drift detection after cache→DB transition)
+            ResetIncrementalState();
+
+            // Clear any lingering drift metrics from a prior DB phase
+            GraphUpdateMetrics.DriftEntries.WithLabels("balance").Set(0);
+            GraphUpdateMetrics.DriftEntries.WithLabels("trust").Set(0);
+            GraphUpdateMetrics.DriftEntries.WithLabels("avatar").Set(0);
+            GraphUpdateMetrics.DriftMaxBalancePct.Set(0);
+            GraphUpdateMetrics.UpdateMode.Set(2); // 2 = cache mode
+
             _networkState.Replace(lastKnownBlockNumber: effectiveBlock);
             GraphUpdateMetrics.PathfinderGraphSourceTotal.WithLabels("cache").Inc();
             GraphUpdateMetrics.UpdateTotal.WithLabels("success").Inc();
@@ -638,6 +649,21 @@ public class NetworkStateUpdaterService : BackgroundService
             new HashSet<int>(cap.ConsentedAvatars));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+    }
+
+    /// <summary>
+    /// Reset all incremental state so the next DB fallback starts with a clean FullRefresh
+    /// (first-run path) instead of comparing against stale accumulated state.
+    /// Called after every successful cache-source update.
+    /// </summary>
+    internal void ResetIncrementalState()
+    {
+        _balanceState = null;
+        _trustState = null;
+        _avatarState = null;
+        _lastFullRefreshBlock = -1;
+        _lastProcessedBlock = -1;
+        _lastProcessedBlockHash = null;
     }
 
     private async Task<long> WaitForNextBlock(CancellationToken stoppingToken, long lastBlock)
