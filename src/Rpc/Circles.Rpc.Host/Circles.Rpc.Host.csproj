@@ -36,7 +36,7 @@
 
   <ItemGroup>
     <PackageReference Include="Autofac" Version="9.0.0" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
   </ItemGroup>
 
   <ItemGroup>
