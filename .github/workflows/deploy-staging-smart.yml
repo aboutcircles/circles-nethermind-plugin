@@ -96,7 +96,7 @@ jobs:
       any_deploy: ${{ steps.set-flags.outputs.any_deploy }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
