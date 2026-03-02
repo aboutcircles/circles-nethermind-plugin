@@ -42,7 +42,7 @@ jobs:
           ./scripts/nuget-pack.sh --clean
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-packages
           path: nupkgs/*.nupkg
