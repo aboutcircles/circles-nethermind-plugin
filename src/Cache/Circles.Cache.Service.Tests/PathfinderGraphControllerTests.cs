@@ -333,6 +333,25 @@ public class PathfinderGraphControllerTests
     }
 
     [Fact]
+    public void BuildTrust_ShouldIncludeEdgesWhereGroupIsTrustee()
+    {
+        var org = "0xorg00000000000000000000000000000000000000";
+        var group = "0xgroup000000000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, org, ("Organization", 1704067200L));
+        // Group is NOT in V2Avatars — only in Groups cache (like production)
+        _cache.Groups.Add(1000, group, ("Gnosis Group", StandardTreasuryMint, "GG"));
+        _cache.V2TrustRelations.Add(1000, $"{org}:{group}", 9999999999L);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "trust");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        // Org trusting a router group should produce a trust edge
+        response!.Trust.Should().ContainSingle(t => t.Truster == org && t.Trustee == group);
+    }
+
+    [Fact]
     public void BuildTrust_ShouldExcludeGroupTrusters()
     {
         var group = "0xgroup000000000000000000000000000000000000";
