@@ -154,6 +154,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 }
 
                 var avatarId = AddressIdPool.IdOf(normalized);
+                capacityGraph.AddAvatar(avatarId);
                 capacityGraph.ConsentedAvatars.Add(avatarId);
                 addedCount++;
             }
@@ -528,7 +529,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             foreach (var groupId in cached.GroupNodes)
                 capacityGraph.AddGroup(groupId);
             foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
+            {
                 capacityGraph.GroupTrustedTokens[groupId] = new HashSet<int>(tokens);
+                foreach (var tokenId in tokens)
+                    capacityGraph.AddAvatar(tokenId);  // Ensure group-trusted tokens are valid graph nodes
+            }
             _logger.LogDebug("Used cached group data: {GroupCount} groups, {TrustCount} group-trust entries",
                 cached.GroupNodes.Count, cached.GroupTrustedTokens.Count);
             return;
@@ -556,6 +561,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             }
 
             trustedSet.Add(tokenId);
+            capacityGraph.AddAvatar(tokenId);  // Ensure group-trusted tokens are valid graph nodes
         }
     }
 
