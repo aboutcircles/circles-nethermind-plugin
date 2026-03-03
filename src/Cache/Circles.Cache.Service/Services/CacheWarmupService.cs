@@ -585,7 +585,7 @@ public class CacheWarmupService : BackgroundService
         const string sql = @"
             SELECT
                 account,
-                ""tokenId"",
+                ""tokenAddress"",
                 ""totalBalance"",
                 ""lastActivity""
             FROM ""V_CrcV2_BalancesByAccountAndToken""
@@ -604,7 +604,7 @@ public class CacheWarmupService : BackgroundService
         while (await reader.ReadAsync(ct))
         {
             var account = reader.GetString(0).ToLowerInvariant();
-            var tokenId = reader.GetString(1); // tokenId is already a string in the view
+            var tokenAddress = reader.GetString(1).ToLowerInvariant();
             var totalBalanceBig = reader.GetFieldValue<BigInteger>(2);
             var lastActivity = reader.GetInt64(3);
 
@@ -621,7 +621,7 @@ public class CacheWarmupService : BackgroundService
             }
             if (balance > 0)
             {
-                var key = $"{account}:{tokenId}";
+                var key = $"{account}:{tokenAddress}";
                 balances[key] = balance;
                 lastActivities[key] = lastActivity;
             }
@@ -934,7 +934,7 @@ public class CacheWarmupService : BackgroundService
                 SELECT
                     ""from"",
                     ""to"",
-                    id,
+                    ""tokenAddress"",
                     value,
                     ""blockNumber"",
                     ""transactionIndex"",
@@ -947,7 +947,7 @@ public class CacheWarmupService : BackgroundService
                 SELECT
                     ""from"",
                     ""to"",
-                    id,
+                    ""tokenAddress"",
                     value,
                     ""blockNumber"",
                     ""transactionIndex"",
@@ -973,7 +973,7 @@ public class CacheWarmupService : BackgroundService
         {
             var from = reader.GetString(0);
             var to = reader.GetString(1);
-            var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
+            var tokenAddress = reader.GetString(2).ToLowerInvariant();
             var valueBig = reader.GetFieldValue<BigInteger>(3);
             var blockNumber = reader.GetInt64(4);
 
@@ -1003,13 +1003,13 @@ public class CacheWarmupService : BackgroundService
 
             if (from != "0x0000000000000000000000000000000000000000")
             {
-                var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                var fromKey = $"{from.ToLowerInvariant()}:{tokenAddress}";
                 currentBalances[fromKey] = currentBalances.GetValueOrDefault(fromKey, 0m) - amount;
             }
 
             if (to != "0x0000000000000000000000000000000000000000")
             {
-                var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                var toKey = $"{to.ToLowerInvariant()}:{tokenAddress}";
                 currentBalances[toKey] = currentBalances.GetValueOrDefault(toKey, 0m) + amount;
             }
 
