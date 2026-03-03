@@ -46,7 +46,8 @@ public class CacheFeedIntegrationTests
             },
             Groups: Array.Empty<PathfinderGraphGroupRow>(),
             GroupTrusts: Array.Empty<PathfinderGraphGroupTrustRow>(),
-            ConsentedFlow: Array.Empty<PathfinderGraphConsentedFlowRow>()
+            ConsentedFlow: Array.Empty<PathfinderGraphConsentedFlowRow>(),
+            Avatars: new[] { Alice, Bob }
         );
 
         var loadGraph = new CacheLoadGraph(snapshot);
@@ -94,7 +95,8 @@ public class CacheFeedIntegrationTests
             },
             Groups: null,
             GroupTrusts: null,
-            ConsentedFlow: null
+            ConsentedFlow: null,
+            Avatars: null
         );
 
         var cacheLoadGraph = new CacheLoadGraph(snapshot);
@@ -146,7 +148,8 @@ public class CacheFeedIntegrationTests
             },
             Groups: null,
             GroupTrusts: null,
-            ConsentedFlow: null
+            ConsentedFlow: null,
+            Avatars: null
         );
 
         var loadGraph = new CacheLoadGraph(snapshot);
@@ -178,7 +181,7 @@ public class CacheFeedIntegrationTests
             1, 100, 0,
             new[] { new PathfinderGraphBalanceRow(amount1, Alice, Bob, 0, false, "demurraged") },
             new[] { new PathfinderGraphTrustRow(Bob, Alice, 100) },
-            null, null, null);
+            null, null, null, null);
 
         var loadGraph = new CacheLoadGraph(snapshot1);
         Assert.That(loadGraph.LastProcessedBlock, Is.EqualTo(100));
@@ -198,7 +201,7 @@ public class CacheFeedIntegrationTests
                 new PathfinderGraphTrustRow(Bob, Alice, 100),
                 new PathfinderGraphTrustRow(Charlie, Bob, 100)
             },
-            null, null, null);
+            null, null, null, null);
 
         loadGraph.ReplaceSnapshot(snapshot2);
 
@@ -229,7 +232,8 @@ public class CacheFeedIntegrationTests
             {
                 new PathfinderGraphConsentedFlowRow(Alice, true),
                 new PathfinderGraphConsentedFlowRow(Bob, false)
-            });
+            },
+            null);
 
         var loadGraph = new CacheLoadGraph(snapshot);
 
@@ -238,5 +242,77 @@ public class CacheFeedIntegrationTests
         Assert.That(consentFlags, Has.Count.EqualTo(2));
         Assert.That(consentFlags.Any(c => c.Avatar == Alice.ToLowerInvariant() && c.HasConsentedFlow), Is.True);
         Assert.That(consentFlags.Any(c => c.Avatar == Bob.ToLowerInvariant() && !c.HasConsentedFlow), Is.True);
+    }
+
+    /// <summary>
+    /// Registered avatar with no balances and no trust edges should still
+    /// be present in the capacity graph's AvatarNodes — enabling it as a
+    /// valid source/sink (returns maxFlow=0 instead of "not in graph" error).
+    /// </summary>
+    [Test]
+    public void CacheFeed_RegisteredAvatarWithNoData_ShouldBeInCapacityGraph()
+    {
+        var amount = CirclesConverter.CirclesToAttoCircles(100m).ToString();
+        var lonely = "0xdddd000000000000000000000000000000000004";
+
+        var snapshot = new PathfinderGraphSnapshot(
+            SchemaVersion: 1,
+            LastProcessedBlock: 10000,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Balances: new[]
+            {
+                new PathfinderGraphBalanceRow(amount, Alice, Bob, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), false, "demurraged")
+            },
+            Trust: new[]
+            {
+                new PathfinderGraphTrustRow(Bob, Alice, 100)
+            },
+            Groups: null,
+            GroupTrusts: null,
+            ConsentedFlow: null,
+            // "lonely" is registered but has no balances/trust
+            Avatars: new[] { Alice, Bob, lonely }
+        );
+
+        var loadGraph = new CacheLoadGraph(snapshot);
+        var factory = new GraphFactory(Router, loadGraph);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var capacityGraph = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var lonelyId = AddressIdPool.IdOf(lonely.ToLowerInvariant());
+        Assert.That(capacityGraph.AvatarNodes.ContainsKey(lonelyId), Is.True,
+            "Registered avatar with no balances/trust should still be in AvatarNodes");
+    }
+
+    /// <summary>
+    /// Registered avatar via MockLoadGraph (DB path) should also appear in AvatarNodes.
+    /// </summary>
+    [Test]
+    public void MockLoadGraph_RegisteredAvatarWithNoData_ShouldBeInCapacityGraph()
+    {
+        var mockLoadGraph = new MockLoadGraph();
+        var lonely = "0xdddd000000000000000000000000000000000005";
+
+        // Add some normal graph data
+        mockLoadGraph.AddTrust(Alice, Bob);
+        mockLoadGraph.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(Bob.ToLowerInvariant()),
+            200_000_000);
+
+        // Register lonely avatar (no balance, no trust)
+        mockLoadGraph.AddRegisteredAvatar(lonely);
+
+        var factory = new GraphFactory(Router, mockLoadGraph);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var capacityGraph = factory.CreateCapacityGraph(bg, trustLookup);
+
+        var lonelyId = AddressIdPool.IdOf(lonely.ToLowerInvariant());
+        Assert.That(capacityGraph.AvatarNodes.ContainsKey(lonelyId), Is.True,
+            "Registered avatar with no balances/trust should still be in AvatarNodes (DB path)");
     }
 }

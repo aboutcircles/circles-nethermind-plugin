@@ -89,17 +89,19 @@ public class PathfinderGraphController : ControllerBase
                 Trust: sections.Contains("trust") ? BuildTrust(routerGroups!, avatarToWrappers!) : null,
                 Groups: sections.Contains("groups") ? BuildGroups(routerGroups!) : null,
                 GroupTrusts: sections.Contains("grouptrusts") ? BuildGroupTrusts(routerGroups!) : null,
-                ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow() : null
+                ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow() : null,
+                Avatars: sections.Contains("avatars") ? BuildAvatars() : null
             );
 
             _logger.LogDebug(
-                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}",
+                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}",
                 lastBlock,
                 response.Balances?.Count ?? 0,
                 response.Trust?.Count ?? 0,
                 response.Groups?.Count ?? 0,
                 response.GroupTrusts?.Count ?? 0,
-                response.ConsentedFlow?.Count ?? 0);
+                response.ConsentedFlow?.Count ?? 0,
+                response.Avatars?.Count ?? 0);
 
             return Ok(response);
         }
@@ -113,7 +115,7 @@ public class PathfinderGraphController : ControllerBase
     private static HashSet<string> ParseInclude(string? include)
     {
         if (string.IsNullOrWhiteSpace(include))
-            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow" };
+            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow", "avatars" };
 
         return new HashSet<string>(
             include.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -304,6 +306,19 @@ public class PathfinderGraphController : ControllerBase
         }
 
         return groupTrusts;
+    }
+
+    /// <summary>
+    /// Returns all registered V2 avatar addresses from the cache.
+    /// </summary>
+    private List<string> BuildAvatars()
+    {
+        var avatars = new List<string>(_caches.V2Avatars.Count);
+        foreach (var address in _caches.V2Avatars.ReadOnlyDictionary.Keys)
+        {
+            avatars.Add(address);
+        }
+        return avatars;
     }
 
     /// <summary>

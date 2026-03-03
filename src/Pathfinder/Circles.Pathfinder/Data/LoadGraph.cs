@@ -11,7 +11,7 @@ using Npgsql;
 namespace Circles.Pathfinder.Data
 {
     /// <summary>
-    /// Result of <see cref="LoadGraph.LoadAll"/> — all 5 ILoadGraph queries executed
+    /// Result of <see cref="LoadGraph.LoadAll"/> — all 6 ILoadGraph queries executed
     /// in a single REPEATABLE READ transaction.
     /// </summary>
     public sealed record LoadAllResult(
@@ -19,7 +19,8 @@ namespace Circles.Pathfinder.Data
         IReadOnlyList<(string Truster, string Trustee, int Limit)> Trust,
         IReadOnlyList<string> Groups,
         IReadOnlyList<(string GroupAddress, string TrustedToken)> GroupTrusts,
-        IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags
+        IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags,
+        IReadOnlyList<string> RegisteredAvatars
     );
 
     public interface ILoadGraph
@@ -33,6 +34,8 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
 
         IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags();
+
+        IEnumerable<string> LoadRegisteredAvatars();
     }
 
     public class LoadGraph : ILoadGraph
@@ -294,12 +297,12 @@ namespace Circles.Pathfinder.Data
         }
 
         // ──────────────────────────────────────────────────────────────────
-        // Batched load: all 5 ILoadGraph queries in a single connection
+        // Batched load: all 6 ILoadGraph queries in a single connection
         // ──────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Executes all 5 ILoadGraph queries on a single REPEATABLE READ connection,
-        /// eliminating 4 extra connection open/close round-trips per graph refresh.
+        /// Executes all 6 ILoadGraph queries on a single REPEATABLE READ connection,
+        /// eliminating 5 extra connection open/close round-trips per graph refresh.
         /// </summary>
         public LoadAllResult LoadAll()
         {
@@ -312,10 +315,11 @@ namespace Circles.Pathfinder.Data
             var groups = LoadGroupsInternal(connection, tx);
             var groupTrusts = LoadGroupTrustsInternal(connection, tx);
             var consentedFlags = LoadConsentedFlowFlagsInternal(connection, tx);
+            var registeredAvatars = LoadRegisteredAvatarsInternal(connection, tx);
 
             tx.Commit();
 
-            return new LoadAllResult(balances, trust, groups, groupTrusts, consentedFlags);
+            return new LoadAllResult(balances, trust, groups, groupTrusts, consentedFlags, registeredAvatars);
         }
 
         private List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
@@ -472,6 +476,27 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("consented_flow", sw.Elapsed);
+            return results;
+        }
+
+        private List<string> LoadRegisteredAvatarsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var results = new List<string>(20_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(
+                "SELECT avatar FROM \"V_CrcV2_Avatars\"", connection, tx);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add(reader.GetString(0));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("registered_avatars", sw.Elapsed);
             return results;
         }
 
@@ -860,6 +885,29 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("consented_flow", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<string> LoadRegisteredAvatars()
+        {
+            var results = new List<string>(20_000);
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(
+                "SELECT avatar FROM \"V_CrcV2_Avatars\"", connection);
+            command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add(reader.GetString(0));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("registered_avatars", sw.Elapsed);
             return results;
         }
     }

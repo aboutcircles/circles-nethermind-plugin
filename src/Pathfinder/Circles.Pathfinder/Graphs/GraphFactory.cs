@@ -110,6 +110,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // STEP 1: Add all avatar nodes from both graphs
         AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
+        // STEP 1a: Ensure ALL registered avatars are valid source/sink candidates
+        // (avatars with no balances/trust are still valid — they just have maxFlow=0)
+        foreach (var avatar in loadGraph.LoadRegisteredAvatars())
+        {
+            capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
+        }
+
         // STEP 1b: Add avatars referenced by simulated balances (holders + tokens)
         var simulated = NormalizeSimulatedBalances(request?.SimulatedBalances);
         foreach (var sb in simulated)

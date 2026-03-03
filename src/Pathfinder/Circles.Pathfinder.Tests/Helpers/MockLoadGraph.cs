@@ -14,6 +14,7 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<string> _groups = new();
     private readonly List<(string GroupAddress, string TrustedToken)> _groupTrusts = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
+    private readonly List<string> _registeredAvatars = new();
 
     /// <summary>
     /// Add a trust relationship using integer node IDs.
@@ -129,6 +130,19 @@ public class MockLoadGraph : ILoadGraph
         return _consentedFlags;
     }
 
+    public IEnumerable<string> LoadRegisteredAvatars()
+    {
+        return _registeredAvatars;
+    }
+
+    /// <summary>
+    /// Register an avatar address so it appears in LoadRegisteredAvatars().
+    /// </summary>
+    public void AddRegisteredAvatar(string address)
+    {
+        _registeredAvatars.Add(address.ToLowerInvariant());
+    }
+
     /// <summary>
     /// Clears all data for reuse.
     /// </summary>
@@ -139,6 +153,7 @@ public class MockLoadGraph : ILoadGraph
         _groups.Clear();
         _groupTrusts.Clear();
         _consentedFlags.Clear();
+        _registeredAvatars.Clear();
     }
 
     /// <summary>

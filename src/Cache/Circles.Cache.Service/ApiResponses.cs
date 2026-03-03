@@ -175,7 +175,9 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderGroupTrustRow>? GroupTrusts,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow
+    IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? Avatars
 );
 
 public record PathfinderBalanceRow(

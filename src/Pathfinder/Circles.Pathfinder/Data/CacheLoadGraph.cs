@@ -62,4 +62,11 @@ public sealed class CacheLoadGraph : ILoadGraph
         foreach (var row in rows)
             yield return (row.Avatar.ToLowerInvariant(), row.HasConsentedFlow);
     }
+
+    public IEnumerable<string> LoadRegisteredAvatars()
+    {
+        var rows = _snapshot.Avatars ?? [];
+        foreach (var row in rows)
+            yield return row.ToLowerInvariant();
+    }
 }
