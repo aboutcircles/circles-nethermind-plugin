@@ -155,4 +155,13 @@ public class IncrementalLoadGraph : ILoadGraph
     /// </summary>
     public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags()
         => _inner.LoadConsentedFlowFlags();
+
+    /// <summary>
+    /// Returns all registered, non-stopped avatars from in-memory state.
+    /// </summary>
+    public IEnumerable<string> LoadRegisteredAvatars()
+    {
+        foreach (var avatar in _avatarState.AvatarSet)
+            yield return avatar;
+    }
 }

@@ -131,4 +131,48 @@ public class FixtureLoadGraph : ILoadGraph
             yield return (avatar, true);
         }
     }
+
+    /// <summary>
+    /// Derives all unique addresses from the fixture subgraph.
+    /// In fixture scenarios, every address that appears is implicitly registered.
+    /// </summary>
+    public IEnumerable<string> LoadRegisteredAvatars()
+    {
+        var addresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (_subgraph.Balances != null)
+        {
+            foreach (var b in _subgraph.Balances)
+            {
+                addresses.Add(b.Holder.ToLowerInvariant());
+                addresses.Add(b.Token.ToLowerInvariant());
+            }
+        }
+
+        if (_subgraph.Trust != null)
+        {
+            foreach (var t in _subgraph.Trust)
+            {
+                if (t.Length >= 2)
+                {
+                    addresses.Add(t[0].ToLowerInvariant());
+                    addresses.Add(t[1].ToLowerInvariant());
+                }
+            }
+        }
+
+        if (_subgraph.Groups != null)
+        {
+            foreach (var g in _subgraph.Groups)
+                addresses.Add(g.ToLowerInvariant());
+        }
+
+        if (_subgraph.ConsentedAvatars != null)
+        {
+            foreach (var a in _subgraph.ConsentedAvatars)
+                addresses.Add(a.ToLowerInvariant());
+        }
+
+        return addresses;
+    }
 }

@@ -592,4 +592,53 @@ public class PathfinderGraphControllerTests
         flags[31] = 0x01;
         _cache.ConsentedFlowFlags.Add(1000, alice, flags);
     }
+
+    // ── Avatars Section ─────────────────────────────────────────────────
+
+    [Fact]
+    public void GetGraph_ShouldIncludeAvatarsSection_WithAllRegisteredV2Avatars()
+    {
+        var alice = "0xalice0000000000000000000000000000000000";
+        var bob = "0xbob00000000000000000000000000000000000000";
+        var lonely = "0xlonely00000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, alice, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, bob, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(1000, lonely, ("Organization", 1704067200L));
+
+        var controller = CreateController();
+        var result = controller.GetGraph();
+
+        var ok = result.Result as OkObjectResult;
+        ok.Should().NotBeNull();
+        var response = ok!.Value as PathfinderGraphResponse;
+        response.Should().NotBeNull();
+        response!.Avatars.Should().NotBeNull();
+        response.Avatars!.Count.Should().Be(3);
+        response.Avatars.Should().Contain(alice);
+        response.Avatars.Should().Contain(bob);
+        response.Avatars.Should().Contain(lonely);
+    }
+
+    [Fact]
+    public void GetGraph_AvatarsInclude_ShouldBeFilterable()
+    {
+        var alice = "0xalice0000000000000000000000000000000000";
+        _cache.V2Avatars.Add(1000, alice, ("Human", 1704067200L));
+
+        var controller = CreateController();
+
+        // Only request balances — avatars should be null
+        var result = controller.GetGraph(include: "balances");
+        var ok = result.Result as OkObjectResult;
+        var response = ok!.Value as PathfinderGraphResponse;
+        response!.Avatars.Should().BeNull();
+
+        // Explicitly request avatars
+        var result2 = controller.GetGraph(include: "avatars");
+        var ok2 = result2.Result as OkObjectResult;
+        var response2 = ok2!.Value as PathfinderGraphResponse;
+        response2!.Avatars.Should().NotBeNull();
+        response2.Avatars!.Count.Should().Be(1);
+    }
 }

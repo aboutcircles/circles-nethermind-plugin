@@ -203,6 +203,7 @@ public class CacheLoadGraphTests
             Trust: trust,
             Groups: groups,
             GroupTrusts: groupTrusts,
-            ConsentedFlow: consent);
+            ConsentedFlow: consent,
+            Avatars: null);
     }
 }

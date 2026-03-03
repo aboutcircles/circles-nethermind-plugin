@@ -637,6 +637,9 @@ public class ArithmeticSafetyTests
                 throw new InvalidOperationException("Simulated DB failure in LoadConsentedFlowFlags");
             return Enumerable.Empty<(string, bool)>();
         }
+
+        public IEnumerable<string> LoadRegisteredAvatars()
+            => Enumerable.Empty<string>();
     }
 
     #endregion

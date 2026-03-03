@@ -706,5 +706,6 @@ public class IncrementalLoadGraphTests
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrustEntries;
 
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
+        public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
     }
 }

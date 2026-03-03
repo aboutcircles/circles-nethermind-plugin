@@ -124,6 +124,11 @@ public class ProxyLoadGraph : ILoadGraph
           AND g."blockNumber" <= {0}
         """;
 
+    private const string RegisteredAvatarsQueryTemplate = """
+        SELECT avatar FROM "V_CrcV2_Avatars"
+        WHERE "blockNumber" <= {0}
+        """;
+
     private const string ConsentedFlowQueryTemplate = """
         SELECT DISTINCT ON (avatar) avatar, flag
         FROM "CrcV2_SetAdvancedUsageFlag"
@@ -268,6 +273,22 @@ public class ProxyLoadGraph : ILoadGraph
             results.Add((avatar, hasConsented));
         }
 
+        return results;
+    }
+
+    public IEnumerable<string> LoadRegisteredAvatars()
+    {
+        var query = string.Format(RegisteredAvatarsQueryTemplate, _client.BlockNumber);
+        var response = _client.ExecuteQueryAsync(query, maxRows: 100000).GetAwaiter().GetResult();
+        var results = new List<string>();
+
+        foreach (var row in response.Rows)
+        {
+            var avatar = GetString(row[0]);
+            results.Add(avatar.ToLowerInvariant());
+        }
+
+        Console.WriteLine($"ProxyLoadGraph: RegisteredAvatars query returned {results.Count} rows");
         return results;
     }
 

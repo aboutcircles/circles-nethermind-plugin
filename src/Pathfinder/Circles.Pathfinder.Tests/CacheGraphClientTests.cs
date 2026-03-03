@@ -181,7 +181,7 @@ public class CacheGraphClientTests
     [Test]
     public void CacheGraphFetchResult_Success_ShouldHaveCorrectState()
     {
-        var snapshot = new PathfinderGraphSnapshot(1, 5000, 0, null, null, null, null, null);
+        var snapshot = new PathfinderGraphSnapshot(1, 5000, 0, null, null, null, null, null, null);
         var result = CacheGraphFetchResult.Success(snapshot, "\"5000\"", 1024);
 
         Assert.That(result.IsNotModified, Is.False);

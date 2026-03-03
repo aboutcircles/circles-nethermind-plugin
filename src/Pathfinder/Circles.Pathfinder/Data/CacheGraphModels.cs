@@ -13,7 +13,8 @@ public record PathfinderGraphSnapshot(
     IReadOnlyList<PathfinderGraphTrustRow>? Trust,
     IReadOnlyList<PathfinderGraphGroupRow>? Groups,
     IReadOnlyList<PathfinderGraphGroupTrustRow>? GroupTrusts,
-    IReadOnlyList<PathfinderGraphConsentedFlowRow>? ConsentedFlow
+    IReadOnlyList<PathfinderGraphConsentedFlowRow>? ConsentedFlow,
+    IReadOnlyList<string>? Avatars
 );
 
 public record PathfinderGraphBalanceRow(
@@ -72,6 +73,9 @@ internal sealed class PathfinderGraphSnapshotDto
     [JsonPropertyName("consentedFlow")]
     public List<PathfinderGraphConsentedFlowRow>? ConsentedFlow { get; set; }
 
+    [JsonPropertyName("avatars")]
+    public List<string>? Avatars { get; set; }
+
     public PathfinderGraphSnapshot ToModel() => new(
         SchemaVersion,
         LastProcessedBlock,
@@ -80,5 +84,6 @@ internal sealed class PathfinderGraphSnapshotDto
         Trust,
         Groups,
         GroupTrusts,
-        ConsentedFlow);
+        ConsentedFlow,
+        Avatars);
 }

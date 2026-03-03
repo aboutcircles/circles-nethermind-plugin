@@ -188,12 +188,14 @@ public static class SharedGraphCache
         var groups = sourceLoader.LoadGroups().ToList();
         var groupTrusts = sourceLoader.LoadGroupTrusts().ToList();
         var consentedFlags = sourceLoader.LoadConsentedFlowFlags().ToList();
+        var registeredAvatars = sourceLoader.LoadRegisteredAvatars().ToList();
 
         sw.Stop();
         Console.WriteLine($"[SharedGraphCache] Block {blockNumber}: " +
             $"{trust.Count} trust edges, " +
             $"{balances.Count} balances, " +
             $"{groups.Count} groups, " +
+            $"{registeredAvatars.Count} avatars, " +
             $"{consentedFlags.Count(f => f.HasConsentedFlow)} consented — " +
             $"loaded in {sw.ElapsedMilliseconds}ms");
 
@@ -206,6 +208,7 @@ public static class SharedGraphCache
             Groups = groups,
             GroupTrusts = groupTrusts,
             ConsentedFlags = consentedFlags,
+            RegisteredAvatars = registeredAvatars,
             Session = session
         };
     }
@@ -255,6 +258,7 @@ public class CachedGraphData
     public List<string> Groups { get; init; } = [];
     public List<(string GroupAddress, string TrustedToken)> GroupTrusts { get; init; } = [];
     public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; init; } = [];
+    public List<string> RegisteredAvatars { get; init; } = [];
     public TestEnvironmentClient Session { get; init; } = null!;
 
     /// <summary>
@@ -283,4 +287,7 @@ internal class CachedLoadGraph(CachedGraphData data) : ILoadGraph
 
     public IEnumerable<(string Avatar, bool HasConsentedFlow)>
         LoadConsentedFlowFlags() => data.ConsentedFlags;
+
+    public IEnumerable<string>
+        LoadRegisteredAvatars() => data.RegisteredAvatars;
 }
