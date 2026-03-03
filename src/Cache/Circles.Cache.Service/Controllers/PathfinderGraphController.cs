@@ -225,8 +225,9 @@ public class PathfinderGraphController : ControllerBase
             if (expiryTime > 0 && expiryTime <= now)
                 continue;
 
-            // Both must be registered avatars
-            if (!_caches.V2Avatars.ContainsKey(truster) || !_caches.V2Avatars.ContainsKey(trustee))
+            // Both must be registered (avatars or groups)
+            if (!_caches.V2Avatars.ContainsKey(truster) ||
+                (!_caches.V2Avatars.ContainsKey(trustee) && !routerGroups.Contains(trustee)))
                 continue;
 
             // Skip group trusters — they're handled separately in GroupTrusts
