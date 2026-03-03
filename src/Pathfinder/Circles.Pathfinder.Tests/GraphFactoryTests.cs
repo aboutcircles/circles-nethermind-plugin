@@ -491,6 +491,57 @@ public class GraphFactoryTests
         Assert.That(mintEdges[0].InitialCapacity, Is.EqualTo(long.MaxValue));
     }
 
+    [Test]
+    public void GroupTrustedToken_IsAvatarNode_EvenWithNoUserTrust_DbPath()
+    {
+        // Token T is ONLY reachable via group trust (G trusts T).
+        // No user-to-user trust mentions T, no balance holder is T.
+        // Before fix: T was in GroupTrustedTokens but NOT in AvatarNodes → "Sink isn't in the graph snapshot"
+        var mock = new MockLoadGraph
+        {
+            Groups = new List<string> { GroupG },
+            GroupTrusts = new List<(string, string)> { (GroupG, TokenA) }
+        };
+        var factory = MakeFactory(mock);
+        var balance = MakeBalanceGraph((Alice, TokenA, 300));
+        // Only Alice→TokenA trust; TokenA appears as trustee, but the key test is
+        // that group-trusted tokens also get AddAvatar() called
+        var trust = MakeTrust((Alice, TokenA));
+
+        var cg = factory.CreateCapacityGraph(balance, trust);
+
+        int tokenAId = AddressIdPool.IdOf(TokenA);
+        Assert.That(cg.AvatarNodes.ContainsKey(tokenAId), Is.True,
+            "Group-trusted token should be a valid avatar node (DB path)");
+    }
+
+    [Test]
+    public void GroupTrustedToken_IsAvatarNode_EvenWithNoUserTrust_CachedPath()
+    {
+        // Same scenario but via cached group data path
+        var factory = MakeFactory(); // no DB groups
+
+        int groupGId = AddressIdPool.IdOf(GroupG);
+        int tokenBId = AddressIdPool.IdOf(TokenB);
+
+        var cached = new CachedGroupData(
+            GroupNodes: new HashSet<int> { groupGId },
+            GroupTrustedTokens: new Dictionary<int, HashSet<int>>
+            {
+                { groupGId, new HashSet<int> { tokenBId } }
+            },
+            ConsentedAvatars: new HashSet<int>());
+
+        var balance = MakeBalanceGraph((Alice, TokenA, 100));
+        // TokenB has NO user trust edges and NO balance holders
+        var trust = MakeTrust((Alice, TokenA));
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request: null, cachedGroupData: cached);
+
+        Assert.That(cg.AvatarNodes.ContainsKey(tokenBId), Is.True,
+            "Group-trusted token should be a valid avatar node (cached path)");
+    }
+
     #endregion
 
     #region CachedGroupData
@@ -577,6 +628,32 @@ public class GraphFactoryTests
         Assert.That(cg.ConsentedAvatars.Contains(aliceId), Is.True);
         // Only the valid address should be added (1 entry)
         Assert.That(cg.ConsentedAvatars.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void SimulatedConsentedAvatar_IsAvatarNode_EvenWithNoBalanceOrTrust()
+    {
+        // A simulated consented avatar that has no balance and no trust edges
+        // should still be registered as an avatar node (consistency with STEP 1b/1c)
+        var factory = MakeFactory();
+        var balance = MakeBalanceGraph(); // empty
+        var trust = MakeTrust();          // empty
+
+        // Bob has no economic activity but is injected as consented
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            SimulatedConsentedAvatars = new List<string> { Bob }
+        };
+
+        var cg = factory.CreateCapacityGraph(balance, trust, request);
+
+        int bobId = AddressIdPool.IdOf(Bob);
+        Assert.That(cg.AvatarNodes.ContainsKey(bobId), Is.True,
+            "Simulated consented avatar should be registered as avatar node");
+        Assert.That(cg.ConsentedAvatars.Contains(bobId), Is.True,
+            "Simulated consented avatar should be in ConsentedAvatars set");
     }
 
     #endregion
