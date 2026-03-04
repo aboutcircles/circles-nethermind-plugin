@@ -11,7 +11,7 @@ namespace Circles.Pathfinder.Data;
 /// ILoadGraph implementation backed by in-memory state stores.
 /// Reads balances/trusts from InMemoryBalanceState/InMemoryTrustState,
 /// delegates small-table queries (groups, consented flow) to the inner LoadGraph.
-/// Demurrage logic is replicated exactly from LoadGraph.LoadV2Balances().
+/// Uses <see cref="DemurrageCalculator"/> for demurrage — same code path as LoadGraph.
 /// </summary>
 public class IncrementalLoadGraph : ILoadGraph
 {
@@ -22,10 +22,6 @@ public class IncrementalLoadGraph : ILoadGraph
     private readonly Settings _settings;
     private readonly long _maxBlockTimestamp;
     private readonly ILogger _logger;
-
-    // Demurrage constants — must match LoadGraph exactly
-    private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
-    private const ulong SecondsPerDay = 86_400;
 
     public IncrementalLoadGraph(
         InMemoryBalanceState balanceState,
@@ -47,26 +43,14 @@ public class IncrementalLoadGraph : ILoadGraph
 
     /// <summary>
     /// Produce balance tuples from in-memory state with demurrage applied.
-    /// Replicates LoadGraph.LoadV2Balances() logic exactly:
-    ///   1. Calculate targetDay from settings
-    ///   2. Filter to registered avatars only
-    ///   3. Guard against pre-epoch lastActivity
-    ///   4. Apply demurrage via CirclesConverter.InflationaryToDemurrage
-    ///   5. Apply safety margin in live mode
-    ///   6. Skip zeros
+    /// Uses shared <see cref="DemurrageCalculator"/> — same code path as LoadGraph.
+    /// Filters to registered avatars, applies demurrage + safety margin, skips zeros.
     /// </summary>
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
         LoadV2Balances()
     {
         var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>();
-
-        // Calculate target day for demurrage (configurable for testing, defaults to NOW)
-        var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
-        var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
-
-        // Safety margin: only in live mode (no frozen timestamp)
-        bool applyMargin = _settings.TargetDemurrageTimestamp == null
-                           && _settings.DemurrageSafetyMargin < 1.0;
+        var ctx = DemurrageCalculator.CreateContext(_settings);
 
         foreach (var kv in _balanceState.GetAll())
         {
@@ -76,46 +60,14 @@ public class IncrementalLoadGraph : ILoadGraph
             // Filter: must be a registered avatar
             if (!_avatarState.Contains(account)) continue;
 
-            // Guard: corrupted data where lastActivity predates Circles epoch
-            if (lastActivity < InflationDayZeroUnix)
-            {
-                _logger.LogWarning(
-                    "[IncrementalLoadGraph] lastActivity {LastActivity} < InflationDayZero {Epoch} for account={Account}, token={Token} — skipping",
-                    lastActivity, InflationDayZeroUnix,
-                    account.Length >= 10 ? account[..10] : account,
-                    tokenAddress.Length >= 10 ? tokenAddress[..10] : tokenAddress);
-                continue;
-            }
+            // All in-memory balances are stored as inflationary (type="demurraged")
+            var adjusted = DemurrageCalculator.Apply(
+                inflationaryBalance, lastActivity, isStatic: false, ctx,
+                _logger, account.Length >= 10 ? account[..10] : account);
 
-            // Apply demurrage from lastActivity to target timestamp
-            // All in-memory balances are stored as inflationary (type="demurraged" in original query)
-            var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
-            var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
+            if (adjusted == null) continue;
 
-            string balance;
-            if (daysDelta > 0)
-            {
-                var demurragedBalance = CirclesConverter.InflationaryToDemurrage(inflationaryBalance, daysDelta);
-                balance = demurragedBalance.ToString(CultureInfo.InvariantCulture);
-            }
-            else
-            {
-                balance = inflationaryBalance.ToString(CultureInfo.InvariantCulture);
-            }
-
-            // Apply safety margin in live mode
-            if (applyMargin && balance != "0")
-            {
-                if (BigInteger.TryParse(balance, out var raw))
-                {
-                    var margined = (BigInteger)((double)raw * _settings.DemurrageSafetyMargin);
-                    balance = margined.ToString(CultureInfo.InvariantCulture);
-                }
-            }
-
-            if (balance == "0") continue;
-
-            results.Add((balance,
+            results.Add((adjusted.Value.ToString(CultureInfo.InvariantCulture),
                 AddressIdPool.IdOf(account.ToLowerInvariant()),
                 AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
                 false,  // isWrapped: full-state query doesn't load wrapped balances
@@ -145,7 +97,7 @@ public class IncrementalLoadGraph : ILoadGraph
     /// </summary>
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        // Use router-filtered groups from DB (matches groupTrustQuery.sql's WHERE mint = '0xCDFc...')
+        // Use router-filtered groups from DB (matches groupQuery.sql parameterized by GroupRouterAddress)
         var routerGroups = new HashSet<string>(_inner.LoadGroups().Select(g => g.ToLowerInvariant()));
         return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp);
     }

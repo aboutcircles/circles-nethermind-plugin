@@ -97,7 +97,7 @@ internal sealed class FindPathHandler(
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
             SimulatedBalances = sim,
-            SimulatedConsentedAvatars = settings.DisableConsentedFlow ? null : simulatedConsentedAvatars?.ToList(),
+            SimulatedConsentedAvatars = settings.ExcludeConsentedIntermediaries ? null : simulatedConsentedAvatars?.ToList(),
             MaxTransfers = maxTransfers,
             QuantizedMode = quantizedMode,
             DebugShowIntermediateSteps = debugShowIntermediateSteps

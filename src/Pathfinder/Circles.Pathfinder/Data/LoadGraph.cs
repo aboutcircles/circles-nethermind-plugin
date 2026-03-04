@@ -50,10 +50,6 @@ namespace Circles.Pathfinder.Data
         /// </summary>
         public Action<string, TimeSpan>? OnQueryCompleted { get; set; }
 
-        // Demurrage constants (same as CirclesConverter)
-        private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
-        private const ulong SecondsPerDay = 86_400;
-
         public LoadGraph(string connectionString, Settings settings, ILogger<LoadGraph>? logger = null)
         {
             _connectionString = connectionString;
@@ -127,13 +123,7 @@ namespace Circles.Pathfinder.Data
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
-            // Calculate target day for demurrage (configurable for testing, defaults to NOW)
-            var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
-            var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
-
-            // Safety margin: only in live mode (no frozen timestamp) to account for execution delay
-            bool applyMargin = _settings.TargetDemurrageTimestamp == null
-                               && _settings.DemurrageSafetyMargin < 1.0;
+            var ctx = DemurrageCalculator.CreateContext(_settings);
 
             while (reader.Read())
             {
@@ -144,70 +134,14 @@ namespace Circles.Pathfinder.Data
                 var isWrapped = reader.GetBoolean(4);
                 var type = reader.GetString(5);
 
-                // Parse once — reuse across demurrage + safety margin
                 var balanceValue = BigInteger.Parse(balanceStr);
+                var adjusted = DemurrageCalculator.Apply(
+                    balanceValue, lastActivity, type == "static", ctx,
+                    _logger, account.Length >= 10 ? account[..10] : account);
 
-                if (type == "static")
-                {
-                    // Convert static (inflationary) Circles to demurraged Circles at target day
-                    var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(balanceValue, targetDay);
-                    if (demurragedAttoCircles == 0)
-                    {
-                        continue;
-                    }
+                if (adjusted == null) continue;
 
-                    if (balanceValue > 0)
-                    {
-                        var pctDelta = 100.0 * (1.0 - (double)demurragedAttoCircles / (double)balanceValue);
-                        _logger.LogDebug("[LoadGraph] Demurrage static: acct={Account}, raw={Raw}, adj={Adjusted}, delta={Delta}%, targetDay={TargetDay}",
-                            account[..10], balanceValue, demurragedAttoCircles, pctDelta.ToString("F2"), targetDay);
-                    }
-
-                    balanceValue = demurragedAttoCircles;
-                }
-                else if (type == "demurraged")
-                {
-                    // Guard: corrupted data where lastActivity predates Circles epoch
-                    if (lastActivity < InflationDayZeroUnix)
-                    {
-                        _logger.LogWarning("[LoadGraph] lastActivity {LastActivity} < InflationDayZero {Epoch} for account={Account}, token={Token} — skipping (corrupted data)",
-                            lastActivity, InflationDayZeroUnix, account[..10], tokenAddress[..10]);
-                        continue;
-                    }
-
-                    // Apply demurrage from lastActivity to target timestamp
-                    var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
-                    var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
-
-                    if (daysDelta > 0)
-                    {
-                        // Apply demurrage: balance * gamma^daysDelta
-                        var demurragedBalance = CirclesConverter.InflationaryToDemurrage(balanceValue, daysDelta);
-
-                        if (balanceValue > 0)
-                        {
-                            var pctDelta = 100.0 * (1.0 - (double)demurragedBalance / (double)balanceValue);
-                            _logger.LogDebug("[LoadGraph] Demurrage flow: acct={Account}, raw={Raw}, adj={Adjusted}, delta={Delta}%, daysDiff={DaysDiff}",
-                                account[..10], balanceValue, demurragedBalance, pctDelta.ToString("F2"), daysDelta);
-                        }
-
-                        balanceValue = demurragedBalance;
-                    }
-                    // If no delta, balance stays as-is (already in correct form)
-                }
-
-                // Apply safety margin in live mode to prevent stale-balance reverts
-                if (applyMargin && balanceValue != 0)
-                {
-                    balanceValue = (BigInteger)((double)balanceValue * _settings.DemurrageSafetyMargin);
-                }
-
-                if (balanceValue == 0)
-                {
-                    continue;
-                }
-
-                results.Add((balanceValue.ToString(CultureInfo.InvariantCulture),
+                results.Add((adjusted.Value.ToString(CultureInfo.InvariantCulture),
                     AddressIdPool.IdOf(account.ToLowerInvariant()),
                     AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
                     isWrapped,
@@ -257,6 +191,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -282,6 +217,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -334,11 +270,7 @@ namespace Circles.Pathfinder.Data
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
             using var reader = command.ExecuteReader();
 
-            var targetTimestamp = _settings.TargetDemurrageTimestamp ?? DateTimeOffset.UtcNow;
-            var targetDay = CirclesConverter.DayFromTimestamp(targetTimestamp, InflationDayZeroUnix);
-
-            bool applyMargin = _settings.TargetDemurrageTimestamp == null
-                               && _settings.DemurrageSafetyMargin < 1.0;
+            var ctx = DemurrageCalculator.CreateContext(_settings);
 
             while (reader.Read())
             {
@@ -350,34 +282,12 @@ namespace Circles.Pathfinder.Data
                 var type = reader.GetString(5);
 
                 var balanceValue = BigInteger.Parse(balanceStr);
+                var adjusted = DemurrageCalculator.Apply(
+                    balanceValue, lastActivity, type == "static", ctx);
 
-                if (type == "static")
-                {
-                    var demurragedAttoCircles = CirclesConverter.InflationaryToDemurrage(balanceValue, targetDay);
-                    if (demurragedAttoCircles == 0) continue;
-                    balanceValue = demurragedAttoCircles;
-                }
-                else if (type == "demurraged")
-                {
-                    if (lastActivity < InflationDayZeroUnix) continue;
+                if (adjusted == null) continue;
 
-                    var lastActivityDay = (ulong)(lastActivity - InflationDayZeroUnix) / SecondsPerDay;
-                    var daysDelta = targetDay > lastActivityDay ? targetDay - lastActivityDay : 0;
-
-                    if (daysDelta > 0)
-                    {
-                        balanceValue = CirclesConverter.InflationaryToDemurrage(balanceValue, daysDelta);
-                    }
-                }
-
-                if (applyMargin && balanceValue != 0)
-                {
-                    balanceValue = (BigInteger)((double)balanceValue * _settings.DemurrageSafetyMargin);
-                }
-
-                if (balanceValue == 0) continue;
-
-                results.Add((balanceValue.ToString(CultureInfo.InvariantCulture),
+                results.Add((adjusted.Value.ToString(CultureInfo.InvariantCulture),
                     AddressIdPool.IdOf(account.ToLowerInvariant()),
                     AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
                     isWrapped,
@@ -420,6 +330,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -442,6 +353,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
