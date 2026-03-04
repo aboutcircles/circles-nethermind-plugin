@@ -126,6 +126,18 @@ public class CacheContainer : IDisposable
         {
             cache.DeleteAllGreaterOrEqualBlock(toBlock);
         }
+
+        // Prune V2LastActivity entries whose balance was rolled away.
+        // V2LastActivity is not a RollbackCache (timestamps change every transfer —
+        // tracking full history per-key would be too memory-intensive).
+        // Instead, we remove entries for keys no longer in the balance cache so stale
+        // timestamps from rolled-back blocks don't cause wrong demurrage calculations.
+        var balanceKeys = V2BalancesByAccountAndToken.ReadOnlyDictionary;
+        var staleKeys = V2LastActivity.Keys.Where(k => !balanceKeys.ContainsKey(k)).ToList();
+        foreach (var key in staleKeys)
+        {
+            V2LastActivity.TryRemove(key, out _);
+        }
     }
 
     /// <summary>

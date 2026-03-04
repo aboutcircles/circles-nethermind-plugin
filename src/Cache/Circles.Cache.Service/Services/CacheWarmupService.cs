@@ -657,8 +657,11 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading ERC20 wrapper balances...");
 
-        // Aggregate wrapper transfers to get current balances
-        // This is faster than replaying transfers one by one because it's a single SQL aggregation
+        var warmupBlock = _state.WarmupTargetBlock;
+
+        // Aggregate wrapper transfers up to the warmup target block.
+        // Without the block filter, transfers arriving during warmup would be double-counted
+        // when gap processing re-applies them as deltas on top of the seeded balances.
         const string sql = @"
             WITH account_balances AS (
                 SELECT
@@ -672,6 +675,7 @@ public class CacheWarmupService : BackgroundService
                     SELECT DISTINCT x FROM (VALUES (t.""to""), (t.""from"")) AS v(x)
                     WHERE x != '0x0000000000000000000000000000000000000000'
                 ) AS accounts(account)
+                WHERE t.""blockNumber"" <= @warmupBlock
                 GROUP BY account, ""tokenAddress""
                 HAVING SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
@@ -680,6 +684,7 @@ public class CacheWarmupService : BackgroundService
             FROM account_balances";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("warmupBlock", warmupBlock);
         cmd.CommandTimeout = 300;
 
         try
@@ -764,11 +769,15 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     private async Task LoadErc20WrapperBalancesSimpleAsync(NpgsqlConnection conn, CancellationToken ct)
     {
+        var warmupBlock = _state.WarmupTargetBlock;
+
         const string sql = @"
             SELECT ""from"", ""to"", ""tokenAddress"", amount, ""timestamp""
-            FROM ""CrcV2_Erc20WrapperTransfer""";
+            FROM ""CrcV2_Erc20WrapperTransfer""
+            WHERE ""blockNumber"" <= @warmupBlock";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("warmupBlock", warmupBlock);
         cmd.CommandTimeout = 300;
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
@@ -1174,10 +1183,8 @@ public class CacheWarmupService : BackgroundService
 
         // Load V1 trust relations using Seed() for efficiency
         // V1 trust has a "limit" field (0-100 percentage) that we store as the value
-        // NOTE: We intentionally include limit=0 entries (untrusts) to match production behavior.
-        // The V_CrcV1_TrustRelations view filters "limit > 0", but production RPC doesn't use it.
-        // Semantically, limit=0 means "untrusted" and arguably shouldn't be returned, but we need
-        // production parity for now. TODO: Consider filtering limit=0 in both places in future.
+        // Filter out limit=0 entries (untrusts) to match incremental path behavior
+        // (NotificationListenerService.ProcessV1TrustAsync removes limit=0 entries)
         const string v1Sql = @"
             SELECT ""user"" as truster, ""canSendTo"" as trustee, ""limit""
             FROM (
@@ -1186,7 +1193,7 @@ public class CacheWarmupService : BackgroundService
                                           ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
                 FROM ""CrcV1_Trust""
             ) t
-            WHERE rn = 1";
+            WHERE rn = 1 AND ""limit"" > 0";
 
         var v1TrustData = new Dictionary<string, long>();
 
