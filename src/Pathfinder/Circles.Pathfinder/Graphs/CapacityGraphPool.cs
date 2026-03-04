@@ -63,7 +63,7 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
         string routerAddress)
     {
         var gf = new GraphFactory(routerAddress, loadGraph);
-        return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts));
+        return Task.FromResult(gf.CreateBaseCapacityGraph(balanceGraph, accountTrusts));
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)
