@@ -2,6 +2,7 @@ using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Tests.Helpers;
 using NUnit.Framework;
 
 namespace Circles.Pathfinder.Tests;
@@ -19,16 +20,12 @@ public class CapacityGraphPoolTests
     private const string BobAddr = "0xf200000000000000000000000000000000000002";
 
     /// <summary>
-    /// Creates a CapacityGraphPool with a dummy LoadGraph that will never hit the DB.
-    /// Only safe when the tests do not trigger filtered Rent paths without cached group data.
+    /// Creates a CapacityGraphPool backed by an in-memory MockLoadGraph — no DB needed.
     /// </summary>
     private static CapacityGraphPool CreatePool()
     {
-        // LoadGraph stores the connection string but does not connect until a query method is called.
-        // For tests that never reach the DB code path, a dummy string is safe.
-        var settings = new Settings();
-        var loadGraph = new LoadGraph("Host=localhost;Database=dummy;Username=x;Password=x", settings);
-        return new CapacityGraphPool(RouterAddr, loadGraph);
+        var mockLoadGraph = new MockLoadGraph();
+        return new CapacityGraphPool(RouterAddr, mockLoadGraph);
     }
 
     /// <summary>

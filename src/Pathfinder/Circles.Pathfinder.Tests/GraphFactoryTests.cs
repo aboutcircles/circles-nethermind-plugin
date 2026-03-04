@@ -1,6 +1,7 @@
 using Circles.Common.Dto;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
+using HelperMock = Circles.Pathfinder.Tests.Helpers.MockLoadGraph;
 
 namespace Circles.Pathfinder.Tests;
 
@@ -654,6 +655,247 @@ public class GraphFactoryTests
             "Simulated consented avatar should be registered as avatar node");
         Assert.That(cg.ConsentedAvatars.Contains(bobId), Is.True,
             "Simulated consented avatar should be in ConsentedAvatars set");
+    }
+
+    #endregion
+
+    #region Regression: Unregistered Wrapper Trustee (Bug #1 + #6)
+
+    /// <summary>
+    /// Regression: a wrapper address for an unregistered avatar that enters through trust
+    /// should be in AvatarNodes (from AddAllAvatarNodes) but must NOT create capacity edges
+    /// if its wrapped balance is skipped (WithWrap=false). This means it cannot be a flow
+    /// intermediary — preventing AvatarMustBeRegistered contract reverts.
+    /// Bug: Trust query returned wrapper trustee → AddAllAvatarNodes added it → graph included
+    /// an unregistered vertex → Hub.sol rejected with 0xc14c0700.
+    /// </summary>
+    [Test]
+    public void GraphFactory_UnregisteredWrapperTrustee_CannotBeFlowIntermediary()
+    {
+        // WrapperAddr is trusted by Bob but has no balance and is unregistered
+        var WrapperAddr = "0xf1wr000000000000000000000000000000000009";
+        var factory = MakeFactory();
+        var bg = new BalanceGraph();
+        int aliceId = AddressIdPool.IdOf(Alice);
+        int tokenAId = AddressIdPool.IdOf(TokenA);
+        bg.AddAvatar(aliceId);
+        // Alice holds TokenA (not wrapped)
+        bg.AddBalance(aliceId, tokenAId, 500, isWrapped: false, isStatic: false);
+
+        // Bob trusts WrapperAddr token AND TokenA
+        var trust = MakeTrust((Bob, WrapperAddr), (Bob, TokenA));
+
+        var request = new FlowRequest { Source = Alice, Sink = Bob };
+        var cg = factory.CreateCapacityGraph(bg, trust, request);
+
+        int wrapperId = AddressIdPool.IdOf(WrapperAddr);
+        // WrapperAddr should be in AvatarNodes (from trust lookup)
+        Assert.That(cg.AvatarNodes.ContainsKey(wrapperId), Is.True,
+            "Wrapper address should be registered as avatar node from trust");
+
+        // But it should have NO outbound capacity edges (no balance → no H→Pool edges)
+        // This means it can never be a flow intermediary
+        var wrapperOutbound = cg.Edges.Where(e => e.From == wrapperId).ToList();
+        Assert.That(wrapperOutbound, Is.Empty,
+            "Wrapper with no balance should have no outbound edges → cannot be intermediary");
+    }
+
+    #endregion
+
+    #region Regression: Consent Flag False (Bug #2)
+
+    /// <summary>
+    /// Regression: avatars with HasConsentedFlow=false should NOT appear in ConsentedAvatars.
+    /// If they leaked in, consent validation would incorrectly apply consented flow rules
+    /// to non-consented avatars, breaking flow paths.
+    /// </summary>
+    [Test]
+    public void GraphFactory_ConsentFlagFalse_ExcludedFromConsentedAvatars()
+    {
+        var mock = new HelperMock();
+        mock.AddConsentedAvatar(Alice, hasConsentedFlow: true);
+        mock.AddConsentedAvatar(Bob, hasConsentedFlow: false);
+        mock.AddTrust(Bob, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice),
+            AddressIdPool.IdOf(TokenA),
+            200_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int bobId = AddressIdPool.IdOf(Bob.ToLowerInvariant());
+
+        Assert.That(cg.ConsentedAvatars.Contains(aliceId), Is.True,
+            "Alice (consent=true) should be in ConsentedAvatars");
+        Assert.That(cg.ConsentedAvatars.Contains(bobId), Is.False,
+            "Bob (consent=false) should NOT be in ConsentedAvatars");
+    }
+
+    #endregion
+
+    #region Regression: Registered Avatar With No Edges (PR #191)
+
+    /// <summary>
+    /// Regression for PR #191: a registered avatar with zero balance and zero trust edges
+    /// should still be a valid source/sink candidate. Before the fix, requesting maxFlow
+    /// with such an avatar as source/sink would crash with "not in graph".
+    /// </summary>
+    [Test]
+    public void GraphFactory_RegisteredAvatarWithNoEdges_IsValidSourceSink()
+    {
+        var lonely = "0xf1lo000000000000000000000000000000000010";
+        var mock = new HelperMock();
+        mock.AddRegisteredAvatar(lonely);
+        // Add some normal graph data so the graph isn't empty
+        mock.AddTrust(Alice, Bob);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(Bob.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        int lonelyId = AddressIdPool.IdOf(lonely.ToLowerInvariant());
+        Assert.That(cg.AvatarNodes.ContainsKey(lonelyId), Is.True,
+            "Registered avatar with no edges should be in AvatarNodes");
+    }
+
+    #endregion
+
+    #region Regression: Group-Trusted Tokens as Avatar Nodes (PR #189)
+
+    /// <summary>
+    /// Regression for PR #189: tokens trusted by groups must be added as avatar nodes
+    /// via AddAvatar(). Before the fix, group-trusted tokens that had no user trust
+    /// or balance edges were missing from AvatarNodes, causing "Sink isn't in the graph
+    /// snapshot" errors.
+    /// </summary>
+    [Test]
+    public void GraphFactory_GroupTrustedTokens_RegisteredAsAvatarNodes()
+    {
+        // TokenB is ONLY reachable via group trust (GroupG trusts TokenB)
+        // No user-to-user trust mentions TokenB, no balance holder is TokenB
+        var mock = new HelperMock();
+        mock.AddGroup(GroupG);
+        mock.AddGroupTrust(GroupG, TokenB);
+        // Some normal data so graph isn't empty
+        mock.AddTrust(Alice, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+        var cg = factory.CreateCapacityGraph(bg, trustLookup);
+
+        int tokenBId = AddressIdPool.IdOf(TokenB.ToLowerInvariant());
+        Assert.That(cg.AvatarNodes.ContainsKey(tokenBId), Is.True,
+            "Group-trusted token should be registered as avatar node (DB path)");
+    }
+
+    #endregion
+
+    #region Regression: Cached vs DB Consent Consistency
+
+    /// <summary>
+    /// The cached group data path should produce identical ConsentedAvatars as the DB path.
+    /// If caching logic diverges, consent validation would differ between fresh and cached
+    /// requests — causing intermittent flow failures.
+    /// </summary>
+    [Test]
+    public void CachedGroupData_ConsentSet_MatchesDBPath()
+    {
+        // DB path: consent loaded from LoadConsentedFlowFlags
+        var mock = new HelperMock();
+        mock.AddConsentedAvatar(Alice, true);
+        mock.AddConsentedAvatar(Bob, false);
+        mock.AddTrust(Bob, Alice);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factoryDb = new GraphFactory(RouterAddr, mock);
+        var bgDb = factoryDb.V2BalanceGraph();
+        var tgDb = factoryDb.V2TrustGraph();
+        var trustDb = GraphFactory.BuildTrustLookup(tgDb);
+        var cgDb = factoryDb.CreateCapacityGraph(bgDb, trustDb);
+
+        // Cached path: consent provided via CachedGroupData
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        var cached = new CachedGroupData(
+            GroupNodes: new HashSet<int>(),
+            GroupTrustedTokens: new Dictionary<int, HashSet<int>>(),
+            ConsentedAvatars: new HashSet<int> { aliceId }
+        );
+
+        var mock2 = new HelperMock();
+        mock2.AddTrust(Bob, Alice);
+        mock2.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            100_000_000);
+
+        var factoryCached = new GraphFactory(RouterAddr, mock2);
+        var bgCached = factoryCached.V2BalanceGraph();
+        var tgCached = factoryCached.V2TrustGraph();
+        var trustCached = GraphFactory.BuildTrustLookup(tgCached);
+        var cgCached = factoryCached.CreateCapacityGraph(bgCached, trustCached, cachedGroupData: cached);
+
+        // Both should agree on who is consented
+        Assert.That(cgDb.ConsentedAvatars.Contains(aliceId), Is.EqualTo(cgCached.ConsentedAvatars.Contains(aliceId)),
+            "DB and cached paths should agree on Alice's consent status");
+        int bobId = AddressIdPool.IdOf(Bob.ToLowerInvariant());
+        Assert.That(cgDb.ConsentedAvatars.Contains(bobId), Is.EqualTo(cgCached.ConsentedAvatars.Contains(bobId)),
+            "DB and cached paths should agree on Bob's consent status (both false)");
+    }
+
+    #endregion
+
+    #region Regression: IsWrapped Balance Filtering (Bug #6)
+
+    /// <summary>
+    /// Regression: wrapped balances must produce zero capacity edges when WithWrap=false.
+    /// If wrapping filter is broken, wrapper addresses (which Hub.sol rejects as flow
+    /// vertices) would leak into the transfer path → ERC1155InvalidReceiver revert.
+    /// </summary>
+    [Test]
+    public void GraphFactory_IsWrappedBalance_SkippedWithoutWithWrapFlag()
+    {
+        var mock = new HelperMock();
+        var wrapperId = AddressIdPool.IdOf("0xf1wr000000000000000000000000000000000020".ToLowerInvariant());
+        var aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+
+        // Alice holds a WRAPPED token
+        mock.AddBalance(aliceId, wrapperId, 500_000_000, isWrapped: true);
+        mock.AddTrust(Bob, Alice);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        // WithWrap=false (default)
+        var request = new FlowRequest { Source = Alice, Sink = Bob };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        // Alice should have no outbound edges to the wrapper's pool
+        int wrapperPoolId = AddressIdPool.TokenPoolIdOf(wrapperId);
+        var wrapperEdges = cg.Edges.Where(e => e.From == aliceId && e.To == wrapperPoolId).ToList();
+        Assert.That(wrapperEdges, Is.Empty,
+            "Wrapped balance should not produce capacity edges when WithWrap=false");
     }
 
     #endregion

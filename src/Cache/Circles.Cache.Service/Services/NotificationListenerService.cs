@@ -781,7 +781,7 @@ public class NotificationListenerService : BackgroundService
                 SELECT
                     ""from"",
                     ""to"",
-                    id,
+                    ""tokenAddress"",
                     value,
                     ""blockNumber"",
                     ""transactionIndex"",
@@ -796,7 +796,7 @@ public class NotificationListenerService : BackgroundService
                 SELECT
                     ""from"",
                     ""to"",
-                    id,
+                    ""tokenAddress"",
                     value,
                     ""blockNumber"",
                     ""transactionIndex"",
@@ -822,7 +822,7 @@ public class NotificationListenerService : BackgroundService
             {
                 var from = reader.GetString(0);
                 var to = reader.GetString(1);
-                var tokenId = reader.GetFieldValue<BigInteger>(2).ToString();
+                var tokenAddress = reader.GetString(2).ToLowerInvariant();
                 var valueBig = reader.GetFieldValue<BigInteger>(3);
                 var blockNumber = reader.GetInt64(4);
                 var timestamp = reader.GetInt64(7);
@@ -857,7 +857,7 @@ public class NotificationListenerService : BackgroundService
                 // Update sender balance and last activity
                 if (from != "0x0000000000000000000000000000000000000000")
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenId}";
+                    var fromKey = $"{from.ToLowerInvariant()}:{tokenAddress}";
                     // Initialize from cache if we haven't seen this key yet in this block range
                     if (!currentBalances.ContainsKey(fromKey))
                     {
@@ -871,7 +871,7 @@ public class NotificationListenerService : BackgroundService
                 // Update receiver balance and last activity
                 if (to != "0x0000000000000000000000000000000000000000")
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenId}";
+                    var toKey = $"{to.ToLowerInvariant()}:{tokenAddress}";
                     // Initialize from cache if we haven't seen this key yet in this block range
                     if (!currentBalances.ContainsKey(toKey))
                     {

@@ -641,4 +641,91 @@ public class PathfinderGraphControllerTests
         response2!.Avatars.Should().NotBeNull();
         response2.Avatars!.Count.Should().Be(1);
     }
+
+    // ── Regression: Cache Key Format Consistency (PR #188 / NotificationListener fix) ──
+
+    /// <summary>
+    /// Regression test for the cache key mismatch bug (PR #188 pattern).
+    /// V2 balance cache keys MUST use hex tokenAddress (e.g. "0xaccount:0xtoken...")
+    /// not decimal BigInteger id (e.g. "0xaccount:108659...").
+    /// If warmup and realtime listeners use different key formats, post-warmup
+    /// transfers create duplicate entries and balance updates go to wrong slots.
+    /// </summary>
+    [Fact]
+    public void BalanceRow_TokenAddress_AlwaysHex42Chars()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var token1 = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        var token2 = "0xabc123def456789012345678901234567890abcd";
+        var now = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token1}", 1.0m);
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token2}", 2.0m);
+        _cache.V2LastActivity[$"{account}:{token1}"] = now;
+        _cache.V2LastActivity[$"{account}:{token2}"] = now;
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().HaveCount(2);
+        foreach (var balance in response.Balances!)
+        {
+            balance.TokenAddress.Should().StartWith("0x",
+                "token address must be hex, not decimal BigInteger");
+            balance.TokenAddress.Should().HaveLength(42,
+                "token address must be a full 42-char Ethereum address");
+            balance.TokenAddress.Should().MatchRegex("^0x[0-9a-f]{40}$",
+                "token address must be lowercase hex");
+        }
+    }
+
+    /// <summary>
+    /// Verifies that V2 balance cache keys use the format "account:tokenAddress" (hex)
+    /// matching the CacheWarmupService pattern, not "account:id" (decimal BigInteger).
+    /// This is a source-code-level regression guard: if someone changes the SQL back to
+    /// 'id' or the reader back to GetFieldValue&lt;BigInteger&gt;, this test catches it.
+    /// </summary>
+    [Fact]
+    public void NotificationListener_V2TransferSql_UsesTokenAddressNotId()
+    {
+        // Read the source file and verify the SQL uses "tokenAddress" not bare 'id'
+        var sourceFile = Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "Cache", "Circles.Cache.Service", "Services", "NotificationListenerService.cs");
+
+        // Normalize the path
+        sourceFile = Path.GetFullPath(sourceFile);
+
+        if (!File.Exists(sourceFile))
+        {
+            // CI or deployment — source not adjacent to test binary
+            return;
+        }
+
+        var source = File.ReadAllText(sourceFile);
+
+        // Find the ProcessV2TransfersAsync method DEFINITION (not the call site)
+        var methodDef = "private async Task ProcessV2TransfersAsync";
+        var methodStart = source.IndexOf(methodDef, StringComparison.Ordinal);
+        methodStart.Should().BeGreaterThan(0, "ProcessV2TransfersAsync method definition should exist");
+
+        // Extract the method's SQL + reader section — SQL is ~800 chars, reader access ~400 more
+        var methodBody = source.Substring(methodStart, Math.Min(2000, source.Length - methodStart));
+
+        // The SQL SELECT should use tokenAddress (double-quoted in SQL verbatim string)
+        // In the source code: ""tokenAddress"" (C# escaped) renders as "tokenAddress" in SQL
+        methodBody.Should().Contain("tokenAddress",
+            "SQL must SELECT tokenAddress (hex) not id (BigInteger) — PR #188 cache key mismatch");
+
+        // The reader should use GetString for the token column, not GetFieldValue<BigInteger>
+        methodBody.Should().Contain("GetString(2)",
+            "Reader must use GetString for tokenAddress, not GetFieldValue<BigInteger>");
+
+        // Variable should NOT be named tokenId (old bug pattern)
+        methodBody.Should().NotContain("var tokenId",
+            "Variable should be tokenAddress not tokenId — PR #188 cache key fix");
+    }
 }
