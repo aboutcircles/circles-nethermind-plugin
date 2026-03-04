@@ -91,4 +91,13 @@ public class Settings
             "false",
             StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Address of the V2 base group router contract used to filter groups and group trusts.
+    /// Previously hardcoded in SQL; now parameterized to avoid silent data loss if the router changes.
+    /// Reads V2_BASE_GROUP_ROUTER env var (same as Common.Settings.BaseGroupRouter).
+    /// </summary>
+    public string GroupRouterAddress { get; set; } =
+        Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
+        ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
 }
