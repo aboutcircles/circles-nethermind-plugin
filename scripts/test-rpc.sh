@@ -67,7 +67,7 @@ GROUPMINT_USER="0xf9117e9931e6ab91f025e1afa4e70cafa5e0aa1e"
 V1_TRANSFER_FROM="0xa9f4ef92c814f01f16b92d472595a6820f48e36a"
 V1_TRANSFER_TO="0x16c6aea3d4069994c0fe7dc26884a4cc1d3dc255"
 
-# Invitation test addresses (staging only - will fail regression against prod)
+# Invitation test addresses
 INVITE_ESCROW_USER="0x6366dd088e7979a4d16f4ab892b78d41051f45a6"      # Registered via escrow (InvitationRedeemed)
 INVITE_ATSCALE_USER="0x4e7cee95f04a44f3b67f0f329212f14a18b65b16"     # Registered via at-scale
 INVITE_STANDARD_USER="0xd40133ea712e7012a95fdd3c008ab58f7918b446"    # Registered via standard V2
