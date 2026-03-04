@@ -71,6 +71,7 @@ builder.Services.AddSingleton<CapacityGraphPool>(provider =>
         provider.GetRequiredService<LoadGraph>(),
         provider.GetRequiredService<ILoggerFactory>().CreateLogger<GraphFactory>()));
 builder.Services.AddSingleton<V2Pathfinder>();
+builder.Services.AddSingleton<FindPathHandler>();
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
@@ -170,21 +171,6 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
     }
 });
 
-// ─── Shared validation ───────────────────────────────────────────────────────
-const int MaxArrayEntries = 1000;
-
-static IResult? ValidateAddresses(params (string? addr, string name)[] pairs)
-{
-    foreach (var (addr, name) in pairs)
-    {
-        if (!string.IsNullOrWhiteSpace(addr) && !GraphFactory.IsValidEthereumAddress(addr.Trim().ToLowerInvariant()))
-            return Results.BadRequest($"Invalid Ethereum address for '{name}': {addr}");
-    }
-    return null;
-}
-
-var sharedCaseInsensitiveJson = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findMaxFlow", async (
     string from,
@@ -195,117 +181,35 @@ app.MapGet("/findMaxFlow", async (
     string[]? excludedFromTokens,
     string[]? excludedToTokens,
     bool? withWrap,
-    string? simulatedBalances, // JSON array as query param
-    string[]? simulatedConsentedAvatars, // Addresses with consented flow enabled (for testing)
+    string? simulatedBalances,
+    string[]? simulatedConsentedAvatars,
     NetworkState state,
-    SemaphoreSlim sem,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
-    ILogger<Program> log) =>
+    FindPathHandler handler) =>
 {
-    // O8: Activity span for distributed tracing (mirrors findPath)
     using var act = Source.StartActivity("findMaxFlow", ActivityKind.Server);
     act?.SetTag("http.route", "/findMaxFlow");
     act?.SetTag("from", from);
     act?.SetTag("to", to);
     act?.SetTag("amount", amount);
 
-    // S1: Validate address format
-    var addrErr = ValidateAddresses((from, "from"), (to, "to"));
+    var addrErr = FindPathHandler.ValidateAddresses((from, "from"), (to, "to"));
     if (addrErr != null) return addrErr;
 
     if (!UInt256.TryParse(amount, out var targetFlow))
-    {
-        log.LogWarning("Bad amount format");
         return Results.BadRequest("amount must be a valid integer.");
-    }
 
-    List<SimulatedBalance>? sim = null;
-    if (!string.IsNullOrWhiteSpace(simulatedBalances))
-    {
-        try
-        {
-            sim = JsonSerializer.Deserialize<List<SimulatedBalance>>(
-                simulatedBalances,
-                sharedCaseInsensitiveJson);
+    var (sim, simErr) = FindPathHandler.ParseSimulatedBalances(simulatedBalances);
+    if (simErr != null) return simErr;
 
-            // S2: Cap array sizes
-            if (sim != null && sim.Count > MaxArrayEntries)
-                return Results.BadRequest($"simulatedBalances exceeds maximum of {MaxArrayEntries} entries.");
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Invalid simulatedBalances query JSON");
-            return Results.BadRequest("simulatedBalances must be a JSON array of objects.");
-        }
-    }
+    var request = handler.BuildRequest(from, to, amount, fromTokens, toTokens,
+        excludedFromTokens, excludedToTokens, withWrap, sim, simulatedConsentedAvatars);
 
-    if (!sem.Wait(0))
-    {
-        FindPathMetrics.RejectedRequestsCounter.Inc();
-        log.LogWarning("Concurrency limit hit — request rejected");
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-    }
-
-    FindPathMetrics.InFlightRequestsGauge.Inc();
-    try
-    {
-        var balanceGraph = state.BalanceGraph;
-        if (balanceGraph is null)
-        {
-            log.LogWarning("Graphs not ready");
-            return Results.BadRequest("Graphs are not loaded yet.");
-        }
-
-        var trustGraph = state.AccountTrusts;
-
-        var request = new FlowRequest
-        {
-            Source = from.ToLowerInvariant(),
-            Sink = to.ToLowerInvariant(),
-            TargetFlow = amount,
-            FromTokens = fromTokens?.ToList(),
-            ToTokens = toTokens?.ToList(),
-            ExcludedFromTokens = excludedFromTokens?.ToList(),
-            ExcludedToTokens = excludedToTokens?.ToList(),
-            WithWrap = withWrap,
-            SimulatedBalances = sim,
-            SimulatedConsentedAvatars = settings.ExcludeConsentedIntermediaries ? null : simulatedConsentedAvatars?.ToList()
-        };
-
-        using (var h = await pool.Rent(request, balanceGraph, trustGraph))
-        {
-            // S4: Solver timeout prevents stuck requests from blocking semaphore forever
-            var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
-            var result = await Task.Run(() => pathfinder.ComputeMaxFlow(h.Graph, request, targetFlow))
-                .WaitAsync(solverTimeout);
-            FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
-            return Results.Ok(result);
-        }
-    }
-    catch (TimeoutException)
-    {
-        FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
-        log.LogError("findMaxFlow solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
-            settings.SolverTimeoutSeconds, from, to, amount);
-        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
-    }
-    catch (Exception ex) when (ex is not OutOfMemoryException)
-    {
-        FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
-        log.LogError(ex, "findMaxFlow threw exception for request: from={From}, to={To}, amount={Amount}",
-            from, to, amount);
-        return Results.StatusCode(StatusCodes.Status500InternalServerError);
-    }
-    finally
-    {
-        sem.Release();
-        FindPathMetrics.InFlightRequestsGauge.Dec();
-    }
+    return await handler.ExecuteWithGuard("findMaxFlow", request, state, pool,
+        graph => pathfinder.ComputeMaxFlow(graph, request, targetFlow));
 });
 
-
-// ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findPath", async (
     string from,
     string to,
@@ -316,14 +220,14 @@ app.MapGet("/findPath", async (
     string[]? excludedToTokens,
     bool? withWrap,
     string? simulatedBalances,
-    string[]? simulatedConsentedAvatars, // Addresses with consented flow enabled (for testing)
+    string[]? simulatedConsentedAvatars,
     int? maxTransfers,
-    bool? quantizedMode, // When true, enforces 96 CRC quantization for sink-bound transfers (invites = targetFlow / 96 CRC)
-    bool? debugShowIntermediateSteps, // When true, includes all transformation stages in response
+    bool? quantizedMode,
+    bool? debugShowIntermediateSteps,
     NetworkState state,
-    SemaphoreSlim sem,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
+    FindPathHandler handler,
     ILogger<Program> log) =>
 {
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
@@ -331,135 +235,42 @@ app.MapGet("/findPath", async (
     act?.SetTag("from", from);
     act?.SetTag("to", to);
     act?.SetTag("amount", amount);
-
     using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
 
-    // S1: Validate address format
-    var addrErr2 = ValidateAddresses((from, "from"), (to, "to"));
-    if (addrErr2 != null) return addrErr2;
+    var addrErr = FindPathHandler.ValidateAddresses((from, "from"), (to, "to"));
+    if (addrErr != null) return addrErr;
 
     if (!UInt256.TryParse(amount, out var targetFlow))
-    {
-        log.LogWarning("Bad amount format");
         return Results.BadRequest("amount must be a valid integer.");
-    }
 
-    List<SimulatedBalance>? sim = null;
-    if (!string.IsNullOrWhiteSpace(simulatedBalances))
-    {
-        try
-        {
-            sim = JsonSerializer.Deserialize<List<SimulatedBalance>>(
-                simulatedBalances,
-                sharedCaseInsensitiveJson);
+    var (sim, simErr) = FindPathHandler.ParseSimulatedBalances(simulatedBalances);
+    if (simErr != null) return simErr;
 
-            // S2: Cap array sizes
-            if (sim != null && sim.Count > MaxArrayEntries)
-                return Results.BadRequest($"simulatedBalances exceeds maximum of {MaxArrayEntries} entries.");
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Invalid simulatedBalances query JSON");
-            return Results.BadRequest("simulatedBalances must be a JSON array of objects.");
-        }
-    }
+    var request = handler.BuildRequest(from, to, amount, fromTokens, toTokens,
+        excludedFromTokens, excludedToTokens, withWrap, sim, simulatedConsentedAvatars,
+        maxTransfers, quantizedMode, debugShowIntermediateSteps);
 
-    if (!sem.Wait(0))
-    {
-        FindPathMetrics.RejectedRequestsCounter.Inc();
-        log.LogWarning("Concurrency limit hit — request rejected");
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-    }
-
-    FindPathMetrics.InFlightRequestsGauge.Inc();
-    try
-    {
-        var balanceGraph = state.BalanceGraph;
-        var trustGraph = state.AccountTrusts;
-
-        if (balanceGraph is null)
-        {
-            log.LogWarning("Graphs not ready");
-            return Results.BadRequest("Graphs are not loaded yet.");
-        }
-
-        var request = new FlowRequest
-        {
-            Source = from.ToLowerInvariant(),
-            Sink = to.ToLowerInvariant(),
-            TargetFlow = amount,
-            FromTokens = fromTokens?.ToList(),
-            ToTokens = toTokens?.ToList(),
-            ExcludedFromTokens = excludedFromTokens?.ToList(),
-            ExcludedToTokens = excludedToTokens?.ToList(),
-            WithWrap = withWrap,
-            SimulatedBalances = sim,
-            SimulatedConsentedAvatars = settings.ExcludeConsentedIntermediaries ? null : simulatedConsentedAvatars?.ToList(),
-            MaxTransfers = maxTransfers,
-            QuantizedMode = quantizedMode,
-            DebugShowIntermediateSteps = debugShowIntermediateSteps
-        };
-
-        using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
-        MaxFlowResponse result = await Task.Run(() => pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow))
-            .WaitAsync(solverTimeout);
-
-        FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
-        if (result.ConsentDroppedPaths > 0)
-            FindPathMetrics.ConsentPathsDroppedTotal.Inc(result.ConsentDroppedPaths);
-        if (result.ConsentSafetyNetRejected > 0)
-            FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(result.ConsentSafetyNetRejected);
-        return Results.Ok(result);
-    }
-    catch (TimeoutException)
-    {
-        FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
-        log.LogError("findPath solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
-            settings.SolverTimeoutSeconds, from, to, amount);
-        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
-    }
-    catch (Exception ex) when (ex is not OutOfMemoryException)
-    {
-        FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
-        log.LogError(ex, "findPath threw exception for request: from={From}, to={To}, amount={Amount}",
-            from, to, amount);
-        return Results.StatusCode(StatusCodes.Status500InternalServerError);
-    }
-    finally
-    {
-        sem.Release();
-        FindPathMetrics.InFlightRequestsGauge.Dec();
-    }
+    return await handler.ExecuteWithGuard("findPath", request, state, pool,
+        graph => pathfinder.ComputeMaxFlowWithPath(graph, request, targetFlow));
 });
 
 // POST  /findPath  -----------------------------------------------------------
 app.MapPost("/findPath", async (
-    [FromBody] FlowRequest? request, // body-bound request DTO
+    [FromBody] FlowRequest? request,
     NetworkState state,
-    SemaphoreSlim sem,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
+    FindPathHandler handler,
     ILogger<Program> log) =>
 {
-    // Handle JSON deserialization errors gracefully
     if (request == null)
-    {
-        log.LogWarning("Invalid JSON request body - could not deserialize FlowRequest");
         return Results.BadRequest("Invalid request body: Unable to deserialize FlowRequest. Check JSON format.");
-    }
 
-    // S1: Validate address format
-    var addrErr3 = ValidateAddresses((request.Source, "source"), (request.Sink, "sink"));
-    if (addrErr3 != null) return addrErr3;
+    var addrErr = FindPathHandler.ValidateAddresses((request.Source, "source"), (request.Sink, "sink"));
+    if (addrErr != null) return addrErr;
 
-    // S2: Cap array sizes
-    if (request.SimulatedBalances?.Count > MaxArrayEntries)
-        return Results.BadRequest($"simulatedBalances exceeds maximum of {MaxArrayEntries} entries.");
-    if (request.SimulatedTrusts?.Count > MaxArrayEntries)
-        return Results.BadRequest($"simulatedTrusts exceeds maximum of {MaxArrayEntries} entries.");
-    if (request.SimulatedConsentedAvatars?.Count > MaxArrayEntries)
-        return Results.BadRequest($"simulatedConsentedAvatars exceeds maximum of {MaxArrayEntries} entries.");
+    var arraySizeErr = FindPathHandler.ValidateArraySizes(request);
+    if (arraySizeErr != null) return arraySizeErr;
 
     log.LogInformation("Deserialized request - Source: {Source}, Sink: {Sink}, TargetFlow: {TargetFlow}",
         request.Source, request.Sink, request.TargetFlow);
@@ -469,74 +280,19 @@ app.MapPost("/findPath", async (
     act?.SetTag("from", request.Source);
     act?.SetTag("to", request.Sink);
     act?.SetTag("amount", request.TargetFlow);
-
     using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
 
-    // Normalise addresses so matching is case-insensitive
     request.Source = request.Source?.ToLowerInvariant();
     request.Sink = request.Sink?.ToLowerInvariant();
 
-    // When consented flow is disabled, ignore simulated consent data
     if (settings.ExcludeConsentedIntermediaries)
         request.SimulatedConsentedAvatars = null;
 
     if (string.IsNullOrEmpty(request.TargetFlow) || !UInt256.TryParse(request.TargetFlow, out var targetFlow))
-    {
-        log.LogWarning("Bad amount format - TargetFlow is {TargetFlow}", request.TargetFlow);
         return Results.BadRequest("amount must be a valid integer.");
-    }
 
-    if (!sem.Wait(0))
-    {
-        FindPathMetrics.RejectedRequestsCounter.Inc();
-        log.LogWarning("Concurrency limit hit — request rejected");
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-    }
-
-    FindPathMetrics.InFlightRequestsGauge.Inc();
-    try
-    {
-        var balanceGraph = state.BalanceGraph;
-        var trustGraph = state.AccountTrusts;
-
-        if (balanceGraph is null)
-        {
-            log.LogWarning("Graphs not ready");
-            return Results.BadRequest("Graphs are not loaded yet.");
-        }
-
-        using var h = await pool.Rent(request, balanceGraph, trustGraph);
-        var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
-        MaxFlowResponse result = await Task.Run(
-                () => pathfinder.ComputeMaxFlowWithPath(h.Graph, request, targetFlow))
-            .WaitAsync(solverTimeout);
-
-        FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
-        if (result.ConsentDroppedPaths > 0)
-            FindPathMetrics.ConsentPathsDroppedTotal.Inc(result.ConsentDroppedPaths);
-        if (result.ConsentSafetyNetRejected > 0)
-            FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(result.ConsentSafetyNetRejected);
-        return Results.Ok(result);
-    }
-    catch (TimeoutException)
-    {
-        FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
-        log.LogError("findPath solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
-            settings.SolverTimeoutSeconds, request.Source, request.Sink, request.TargetFlow);
-        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
-    }
-    catch (Exception ex) when (ex is not OutOfMemoryException)
-    {
-        FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
-        log.LogError(ex, "findPath threw exception for request: from={From}, to={To}, amount={Amount}",
-            request.Source, request.Sink, request.TargetFlow);
-        return Results.StatusCode(StatusCodes.Status500InternalServerError);
-    }
-    finally
-    {
-        sem.Release();
-        FindPathMetrics.InFlightRequestsGauge.Dec();
-    }
+    return await handler.ExecuteWithGuard("findPath", request, state, pool,
+        graph => pathfinder.ComputeMaxFlowWithPath(graph, request, targetFlow));
 });
 
 app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpContext httpContext) =>
