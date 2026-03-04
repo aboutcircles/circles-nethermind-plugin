@@ -238,10 +238,10 @@ public class V2Pathfinder
         /* --------------------------------------------------------------------
          * 5c. Validate consented flow - filter edges that violate consent rules.
          *     Router edges are skipped by this validation (lines 332-337).
-         *     When DisableConsentedFlow is on, intermediaries are already
+         *     When ExcludeConsentedIntermediaries is on, intermediaries are already
          *     excluded in CollapseBalanceNodes — skip the safety net entirely.
          * ------------------------------------------------------------------ */
-        var validatedEdges = _settings.DisableConsentedFlow
+        var validatedEdges = _settings.ExcludeConsentedIntermediaries
             ? processedEdges  // intermediaries already excluded — no validation needed
             : ValidateConsentedFlow(processedEdges, capacityGraph);
 
@@ -250,7 +250,7 @@ public class V2Pathfinder
             int routerEdges = processedEdges.Count - aggregated.Edges.Count;
             _logger.LogInformation("[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}, safetyNetRejected={Rejected}",
                 reqId, Math.Max(0, routerEdges),
-                _settings.DisableConsentedFlow ? "exclude-intermediaries" : "validate-rules",
+                _settings.ExcludeConsentedIntermediaries ? "exclude-intermediaries" : "validate-rules",
                 consentDroppedPaths, consentSafetyNetRejected);
         }
 
@@ -602,7 +602,7 @@ public class V2Pathfinder
         {
             var pathEdges = CollapseSinglePathToEdges(path, capacityGraph);
 
-            if (_settings.DisableConsentedFlow)
+            if (_settings.ExcludeConsentedIntermediaries)
             {
                 // Conservative: exclude paths through consented intermediaries entirely
                 if (PathHasConsentedIntermediary(pathEdges, capacityGraph, sourceId, sinkId))
@@ -632,7 +632,7 @@ public class V2Pathfinder
         {
             _logger.LogInformation("[CollapseBalanceNodes] Dropped {DroppedPaths}/{TotalPaths} paths due to consent {Mode}",
                 droppedPaths, pathsWithFlow.Count,
-                _settings.DisableConsentedFlow ? "intermediary exclusion" : "violations");
+                _settings.ExcludeConsentedIntermediaries ? "intermediary exclusion" : "violations");
         }
 
         /* ---------------- materialise collapsed edges ---------------------- */
@@ -760,7 +760,7 @@ public class V2Pathfinder
 
     /* ------------------------------------------------------------------------
      * Check if a collapsed path routes through any consented avatar as an
-     * intermediary (i.e. NOT source or sink). Used when DisableConsentedFlow
+     * intermediary (i.e. NOT source or sink). Used when ExcludeConsentedIntermediaries
      * is true — instead of validating consent rules, we simply exclude
      * consented avatars from intermediary positions entirely.
      * --------------------------------------------------------------------- */

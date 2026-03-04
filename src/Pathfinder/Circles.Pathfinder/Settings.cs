@@ -84,11 +84,28 @@ public class Settings
     /// for the risky multi-hop case. Default: true (conservative).
     /// When false, the existing consent validation logic runs (PathHasConsentViolation
     /// + ValidateConsentedFlow safety net).
+    /// Reads PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES first, falls back to
+    /// PATHFINDER_DISABLE_CONSENTED_FLOW for backward compatibility.
     /// </summary>
-    public bool DisableConsentedFlow { get; set; } =
-        !string.Equals(
-            Environment.GetEnvironmentVariable("PATHFINDER_DISABLE_CONSENTED_FLOW"),
-            "false",
-            StringComparison.OrdinalIgnoreCase);
+    public bool ExcludeConsentedIntermediaries { get; set; } =
+        Environment.GetEnvironmentVariable("PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES") != null
+            ? !string.Equals(
+                Environment.GetEnvironmentVariable("PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES"),
+                "false",
+                StringComparison.OrdinalIgnoreCase)
+            : !string.Equals(
+                Environment.GetEnvironmentVariable("PATHFINDER_DISABLE_CONSENTED_FLOW"),
+                "false",
+                StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Backward-compatible alias for <see cref="ExcludeConsentedIntermediaries"/>.
+    /// </summary>
+    [Obsolete("Use ExcludeConsentedIntermediaries instead. Will be removed in a future release.")]
+    public bool DisableConsentedFlow
+    {
+        get => ExcludeConsentedIntermediaries;
+        set => ExcludeConsentedIntermediaries = value;
+    }
 
 }
