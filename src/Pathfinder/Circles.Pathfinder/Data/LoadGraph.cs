@@ -191,6 +191,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -216,6 +217,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -328,6 +330,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -350,6 +353,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            command.Parameters.AddWithValue("$1", _settings.GroupRouterAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())

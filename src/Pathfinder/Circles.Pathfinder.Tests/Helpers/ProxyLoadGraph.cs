@@ -97,15 +97,15 @@ public class ProxyLoadGraph : ILoadGraph
         WHERE t2."group" IS NULL
         """;
 
-    // Group query with temporal filter
+    // Group query with temporal filter — {1} = router address from Settings.GroupRouterAddress
     private const string GroupQueryTemplate = """
         SELECT "group" AS group_address
         FROM "CrcV2_RegisterGroup"
-        WHERE "mint" = LOWER('0xCDFc5135AEC0aFbf102C108e7f5C8A88C6112842')
+        WHERE "mint" = LOWER('{1}')
           AND "blockNumber" <= {0}
         """;
 
-    // Group trust query with temporal filter: uses same trust_state CTE
+    // Group trust query with temporal filter: uses same trust_state CTE — {1} = router address
     private const string GroupTrustQueryTemplate = """
         WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
@@ -120,7 +120,7 @@ public class ProxyLoadGraph : ILoadGraph
         SELECT t.truster AS group_address, t.trustee AS trusted_token
         FROM active_trust t
         INNER JOIN "CrcV2_RegisterGroup" g ON g."group" = t.truster
-        WHERE g."mint" = LOWER('0xCDFc5135AEC0aFbf102C108e7f5C8A88C6112842')
+        WHERE g."mint" = LOWER('{1}')
           AND g."blockNumber" <= {0}
         """;
 
@@ -226,7 +226,7 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<string> LoadGroups()
     {
-        var query = string.Format(GroupQueryTemplate, _client.BlockNumber);
+        var query = string.Format(GroupQueryTemplate, _client.BlockNumber, _settings.GroupRouterAddress);
         var response = _client.ExecuteQueryAsync(query, maxRows: 10000).GetAwaiter().GetResult();
         var results = new List<string>();
 
@@ -241,7 +241,7 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber);
+        var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber, _settings.GroupRouterAddress);
         var response = _client.ExecuteQueryAsync(query, maxRows: 100000).GetAwaiter().GetResult();
         var results = new List<(string GroupAddress, string TrustedToken)>();
 
