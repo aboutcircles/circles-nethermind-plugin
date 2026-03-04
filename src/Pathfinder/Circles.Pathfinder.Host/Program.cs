@@ -32,7 +32,7 @@ Console.WriteLine($"* DB User: {csb.Username}");
 Console.WriteLine($"* DB Name: {csb.Database}");
 Console.WriteLine($"* DB Port: {csb.Port}");
 Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
-Console.WriteLine($"* Consented flow: {(settings.DisableConsentedFlow ? "DISABLED (intermediaries excluded)" : "enabled (validate rules)")}");
+Console.WriteLine($"* Consented flow: {(settings.ExcludeConsentedIntermediaries ? "DISABLED (intermediaries excluded)" : "enabled (validate rules)")}");
 Console.WriteLine($"* Graph source: {(settings.UseCacheGraphSource ? $"CACHE ({settings.CacheServiceUrl})" : "DATABASE")}");
 if (settings.UseCacheGraphSource)
 {
@@ -270,7 +270,7 @@ app.MapGet("/findMaxFlow", async (
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
             SimulatedBalances = sim,
-            SimulatedConsentedAvatars = settings.DisableConsentedFlow ? null : simulatedConsentedAvatars?.ToList()
+            SimulatedConsentedAvatars = settings.ExcludeConsentedIntermediaries ? null : simulatedConsentedAvatars?.ToList()
         };
 
         using (var h = await pool.Rent(request, balanceGraph, trustGraph))
@@ -394,7 +394,7 @@ app.MapGet("/findPath", async (
             ExcludedToTokens = excludedToTokens?.ToList(),
             WithWrap = withWrap,
             SimulatedBalances = sim,
-            SimulatedConsentedAvatars = settings.DisableConsentedFlow ? null : simulatedConsentedAvatars?.ToList(),
+            SimulatedConsentedAvatars = settings.ExcludeConsentedIntermediaries ? null : simulatedConsentedAvatars?.ToList(),
             MaxTransfers = maxTransfers,
             QuantizedMode = quantizedMode,
             DebugShowIntermediateSteps = debugShowIntermediateSteps
@@ -477,7 +477,7 @@ app.MapPost("/findPath", async (
     request.Sink = request.Sink?.ToLowerInvariant();
 
     // When consented flow is disabled, ignore simulated consent data
-    if (settings.DisableConsentedFlow)
+    if (settings.ExcludeConsentedIntermediaries)
         request.SimulatedConsentedAvatars = null;
 
     if (string.IsNullOrEmpty(request.TargetFlow) || !UInt256.TryParse(request.TargetFlow, out var targetFlow))
