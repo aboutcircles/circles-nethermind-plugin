@@ -60,7 +60,8 @@ help:
 	@echo "  make test-rpc ARGS='--json'                Run RPC tests with JSON output"
 	@echo "  make test-rpc-prod                         Run RPC tests against production"
 	@echo "  make test-rpc-prod ARGS='--json'           Run production tests with JSON output"
-	@echo "  make test-rpc-regression                   Compare local vs production responses"
+	@echo "  make test-rpc-regression                   Compare staging vs production (default)"
+	@echo "  make test-rpc-regression ENV_A=<url> ENV_B=<url>  Compare custom environments"
 	@echo "  make test-cache                            Test cache service endpoints"
 	@echo "  make test-cache URL=<url>                  Test cache service against custom URL"
 	@echo "  make test-cache ARGS='--performance'       Run cache tests with performance benchmarks"
@@ -236,7 +237,11 @@ test-rpc-prod:
 	./scripts/test-rpc.sh https://rpc.aboutcircles.com $(ARGS)
 
 test-rpc-regression:
-	./scripts/rpc-regression.sh
+	@if [ -n "$(ENV_A)" ] && [ -n "$(ENV_B)" ]; then \
+		./scripts/rpc-regression.sh "$(ENV_A)" "$(ENV_B)" $(ARGS); \
+	else \
+		./scripts/rpc-regression.sh --label-a "Staging" --label-b "Production" $(ARGS); \
+	fi
 
 test-subscriptions:
 	@if [ -n "$(URL)" ]; then \

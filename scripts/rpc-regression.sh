@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# RPC Regression Testing Script V2
-# Enhanced version with parallel execution, method-specific tolerances, and normalization
+# RPC Regression Testing Script V3
+# Symmetric comparison between two same-architecture environments
 # Compatible with Bash 3.2+ (macOS default)
 #
 # Features:
@@ -11,14 +11,21 @@ set -e
 # - Dynamic field normalization
 # - Expected failures configuration
 # - Detailed reporting with categorization
+# - Custom labels for each environment
 #
 # Usage:
-#   ./rpc-regression-v2.sh [LOCAL_URL] [REMOTE_URL] [--config CONFIG_FILE]
+#   ./rpc-regression.sh [ENV_A_URL] [ENV_B_URL] [OPTIONS]
+#
+# Options:
+#   --config FILE       Path to config JSON file
+#   --label-a NAME      Label for environment A (default: "Env A")
+#   --label-b NAME      Label for environment B (default: "Env B")
 #
 # Examples:
-#   ./rpc-regression-v2.sh                                                    # Default: localhost vs production
-#   ./rpc-regression-v2.sh http://localhost:8081 https://rpc.aboutcircles.com # Custom URLs
-#   ./rpc-regression-v2.sh http://localhost:8081 https://rpc.aboutcircles.com --config custom-config.json
+#   ./rpc-regression.sh                                                    # Default: staging vs production
+#   ./rpc-regression.sh http://localhost:8081 https://rpc.aboutcircles.com # Custom URLs
+#   ./rpc-regression.sh https://staging.circlesubi.network https://rpc.aboutcircles.com \
+#     --label-a "Staging" --label-b "Production"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -29,18 +36,46 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Parse arguments
-LOCAL_URL="${1:-http://localhost:8081}"
-REMOTE_URL="${2:-https://rpc.aboutcircles.com}"
+# Parse positional arguments first, then flags
+ENV_A_URL=""
+ENV_B_URL=""
 CONFIG_FILE=""
+LABEL_A="Env A"
+LABEL_B="Env B"
 
-# Check if --config flag is present
-if [[ "$3" == "--config" ]]; then
-    CONFIG_FILE="$4"
-elif [[ "$2" == "--config" ]]; then
-    CONFIG_FILE="$3"
-    REMOTE_URL="https://rpc.aboutcircles.com"
-fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --config)
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        --label-a)
+            LABEL_A="$2"
+            shift 2
+            ;;
+        --label-b)
+            LABEL_B="$2"
+            shift 2
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            # Positional args
+            if [[ -z "$ENV_A_URL" ]]; then
+                ENV_A_URL="$1"
+            elif [[ -z "$ENV_B_URL" ]]; then
+                ENV_B_URL="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Apply defaults for URLs
+ENV_A_URL="${ENV_A_URL:-https://staging.circlesubi.network}"
+ENV_B_URL="${ENV_B_URL:-https://rpc.aboutcircles.com}"
 
 # Output directory for test results
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,12 +100,12 @@ fi
 
 mkdir -p "$RUN_DIR"
 
-LOCAL_OUTPUT_DIR="$RUN_DIR/local"
-REMOTE_OUTPUT_DIR="$RUN_DIR/remote"
-LOCAL_MANIFEST="$LOCAL_OUTPUT_DIR/manifest.json"
-REMOTE_MANIFEST="$REMOTE_OUTPUT_DIR/manifest.json"
-LOCAL_LOG="$RUN_DIR/local-run.log"
-REMOTE_LOG="$RUN_DIR/remote-run.log"
+ENV_A_OUTPUT_DIR="$RUN_DIR/env_a"
+ENV_B_OUTPUT_DIR="$RUN_DIR/env_b"
+ENV_A_MANIFEST="$ENV_A_OUTPUT_DIR/manifest.json"
+ENV_B_MANIFEST="$ENV_B_OUTPUT_DIR/manifest.json"
+ENV_A_LOG="$RUN_DIR/env_a-run.log"
+ENV_B_LOG="$RUN_DIR/env_b-run.log"
 DIFF_OUTPUT="$RUN_DIR/diff.txt"
 SUMMARY_OUTPUT="$RUN_DIR/summary.txt"
 METHODS_OUTPUT="$RUN_DIR/methods.txt"
@@ -202,9 +237,9 @@ if [[ -n "$CONFIG_FILE" ]] && [[ -f "$CONFIG_FILE" ]]; then
     fi
 fi
 
-echo -e "${BLUE}=== RPC Regression Testing V2 ===${NC}"
-echo -e "${CYAN}Local URL:           $LOCAL_URL${NC}"
-echo -e "${CYAN}Remote URL:          $REMOTE_URL${NC}"
+echo -e "${BLUE}=== RPC Regression Testing V3 ===${NC}"
+echo -e "${CYAN}${LABEL_A} URL:        $ENV_A_URL${NC}"
+echo -e "${CYAN}${LABEL_B} URL:        $ENV_B_URL${NC}"
 echo -e "${CYAN}Default Tolerance:   ${DEFAULT_TOLERANCE}%${NC}"
 echo -e "${CYAN}Balance Tolerance:   ${BALANCE_TOLERANCE}%${NC}"
 echo -e "${CYAN}Results:             $RUN_DIR${NC}"
@@ -216,7 +251,7 @@ echo ""
 # Step 1: Run tests in parallel
 echo -e "${YELLOW}[1/4] Running tests in parallel...${NC}"
 
-mkdir -p "$LOCAL_OUTPUT_DIR" "$REMOTE_OUTPUT_DIR"
+mkdir -p "$ENV_A_OUTPUT_DIR" "$ENV_B_OUTPUT_DIR"
 
 # Start subscription test in background (if enabled) - runs in parallel with RPC tests
 SUBSCRIPTION_OUTPUT="$RUN_DIR/subscription_test.json"
@@ -227,7 +262,7 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
     echo -e "${CYAN}  Starting subscription test in background...${NC}"
 
     # Convert HTTP URL to WebSocket URL
-    LOCAL_WS_URL=$(echo "$LOCAL_URL" | sed 's/^http/ws/')/ws/subscribe
+    ENV_A_WS_URL=$(echo "$ENV_A_URL" | sed 's/^http/ws/')/ws/subscribe
 
     # Build arguments
     FILTER_ARG=""
@@ -239,7 +274,7 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
     TIMEOUT_DURATION=$((SUBSCRIPTION_DURATION + 10))
 
     (
-        timeout ${TIMEOUT_DURATION}s "$SCRIPT_DIR/test-subscriptions.sh" "$LOCAL_WS_URL" \
+        timeout ${TIMEOUT_DURATION}s "$SCRIPT_DIR/test-subscriptions.sh" "$ENV_A_WS_URL" \
             --duration "$SUBSCRIPTION_DURATION" \
             --min-events "$SUBSCRIPTION_MIN_EVENTS" \
             $FILTER_ARG \
@@ -250,36 +285,36 @@ fi
 
 # Start both test runs simultaneously
 (
-    if ! "$SCRIPT_DIR/test-rpc.sh" "$LOCAL_URL" --json --json-dir "$LOCAL_OUTPUT_DIR" > "$LOCAL_LOG" 2>&1; then
-        echo -e "${RED}Error: Failed to run tests against local endpoint${NC}" >&2
+    if ! "$SCRIPT_DIR/test-rpc.sh" "$ENV_A_URL" --json --json-dir "$ENV_A_OUTPUT_DIR" > "$ENV_A_LOG" 2>&1; then
+        echo -e "${RED}Error: Failed to run tests against ${LABEL_A}${NC}" >&2
         exit 1
     fi
 ) &
-LOCAL_PID=$!
+ENV_A_PID=$!
 
 (
-    if ! "$SCRIPT_DIR/test-rpc.sh" "$REMOTE_URL" --json --json-dir "$REMOTE_OUTPUT_DIR" > "$REMOTE_LOG" 2>&1; then
-        echo -e "${RED}Error: Failed to run tests against remote endpoint${NC}" >&2
+    if ! "$SCRIPT_DIR/test-rpc.sh" "$ENV_B_URL" --json --json-dir "$ENV_B_OUTPUT_DIR" > "$ENV_B_LOG" 2>&1; then
+        echo -e "${RED}Error: Failed to run tests against ${LABEL_B}${NC}" >&2
         exit 1
     fi
 ) &
-REMOTE_PID=$!
+ENV_B_PID=$!
 
 # Wait for both to complete
-wait $LOCAL_PID
-LOCAL_EXIT=$?
-wait $REMOTE_PID
-REMOTE_EXIT=$?
+wait $ENV_A_PID
+ENV_A_EXIT=$?
+wait $ENV_B_PID
+ENV_B_EXIT=$?
 
-if [[ $LOCAL_EXIT -ne 0 ]]; then
-    echo -e "${RED}Error: Failed to run tests against local endpoint${NC}"
-    echo -e "${RED}Check $LOCAL_LOG for details${NC}"
+if [[ $ENV_A_EXIT -ne 0 ]]; then
+    echo -e "${RED}Error: Failed to run tests against ${LABEL_A}${NC}"
+    echo -e "${RED}Check $ENV_A_LOG for details${NC}"
     exit 1
 fi
 
-if [[ $REMOTE_EXIT -ne 0 ]]; then
-    echo -e "${RED}Error: Failed to run tests against remote endpoint${NC}"
-    echo -e "${RED}Check $REMOTE_LOG for details${NC}"
+if [[ $ENV_B_EXIT -ne 0 ]]; then
+    echo -e "${RED}Error: Failed to run tests against ${LABEL_B}${NC}"
+    echo -e "${RED}Check $ENV_B_LOG for details${NC}"
     exit 1
 fi
 
@@ -288,26 +323,26 @@ echo -e "${GREEN}✓ Parallel tests completed${NC}\n"
 # Step 2: Parse test results
 echo -e "${YELLOW}[2/4] Parsing test results...${NC}"
 
-if [[ ! -f "$LOCAL_MANIFEST" ]]; then
-    echo -e "${RED}Error: Missing manifest at $LOCAL_MANIFEST${NC}"
-    echo -e "${YELLOW}Check $LOCAL_LOG for details.${NC}"
+if [[ ! -f "$ENV_A_MANIFEST" ]]; then
+    echo -e "${RED}Error: Missing manifest at $ENV_A_MANIFEST${NC}"
+    echo -e "${YELLOW}Check $ENV_A_LOG for details.${NC}"
     exit 1
 fi
 
-if [[ ! -f "$REMOTE_MANIFEST" ]]; then
-    echo -e "${RED}Error: Missing manifest at $REMOTE_MANIFEST${NC}"
-    echo -e "${YELLOW}Check $REMOTE_LOG for details.${NC}"
+if [[ ! -f "$ENV_B_MANIFEST" ]]; then
+    echo -e "${RED}Error: Missing manifest at $ENV_B_MANIFEST${NC}"
+    echo -e "${YELLOW}Check $ENV_B_LOG for details.${NC}"
     exit 1
 fi
 
-if ! diff -q "$LOCAL_MANIFEST" "$REMOTE_MANIFEST" >/dev/null 2>&1; then
-    echo -e "${YELLOW}Warning: Manifests differ between local and remote; using local ordering.${NC}"
+if ! diff -q "$ENV_A_MANIFEST" "$ENV_B_MANIFEST" >/dev/null 2>&1; then
+    echo -e "${YELLOW}Warning: Manifests differ between environments; using ${LABEL_A} ordering.${NC}"
 fi
 
 CATEGORY_JSON=()
-CATEGORY_JSON_RAW=$(jq -c '.categories[]' "$LOCAL_MANIFEST" 2>/dev/null || true)
+CATEGORY_JSON_RAW=$(jq -c '.categories[]' "$ENV_A_MANIFEST" 2>/dev/null || true)
 if [[ -z "$CATEGORY_JSON_RAW" ]]; then
-    echo -e "${RED}Error: No categories found in $LOCAL_MANIFEST${NC}"
+    echo -e "${RED}Error: No categories found in $ENV_A_MANIFEST${NC}"
     exit 1
 fi
 
@@ -332,7 +367,7 @@ for entry in "${CATEGORY_JSON[@]}"; do
     diff_file=$(printf '%s/%02d-%s.diff.txt' "$CATEGORY_DIFF_DIR" "$idx" "$key")
     CATEGORY_DIFF_FILES+=("$diff_file")
     : > "$diff_file"
-    touch "$LOCAL_OUTPUT_DIR/$file" "$REMOTE_OUTPUT_DIR/$file"
+    touch "$ENV_A_OUTPUT_DIR/$file" "$ENV_B_OUTPUT_DIR/$file"
     idx=$((idx + 1))
 done
 
@@ -341,20 +376,20 @@ TOTAL_TESTS=0
 MATCHING_TESTS=0
 DIFFERENT_TESTS=0
 NUMERIC_TOLERANCE_MATCHES=0
-MISSING_LOCAL=0
-MISSING_REMOTE=0
+MISSING_A=0
+MISSING_B=0
 EXPECTED_FAILURE_COUNT=0
 
 # Temporary files for storing test lists
 TESTS_WITH_DIFFERENCES_FILE="$RUN_DIR/tests_different.tmp"
-TESTS_MISSING_LOCAL_FILE="$RUN_DIR/tests_missing_local.tmp"
-TESTS_MISSING_REMOTE_FILE="$RUN_DIR/tests_missing_remote.tmp"
+TESTS_MISSING_A_FILE="$RUN_DIR/tests_missing_a.tmp"
+TESTS_MISSING_B_FILE="$RUN_DIR/tests_missing_b.tmp"
 TESTS_MATCH_FILE="$RUN_DIR/tests_match.tmp"
 TESTS_EXPECTED_FAILURE_FILE="$RUN_DIR/tests_expected.tmp"
 
 : > "$TESTS_WITH_DIFFERENCES_FILE"
-: > "$TESTS_MISSING_LOCAL_FILE"
-: > "$TESTS_MISSING_REMOTE_FILE"
+: > "$TESTS_MISSING_A_FILE"
+: > "$TESTS_MISSING_B_FILE"
 : > "$TESTS_MATCH_FILE"
 : > "$TESTS_EXPECTED_FAILURE_FILE"
 
@@ -365,10 +400,10 @@ echo -e "${YELLOW}[3/4] Analyzing differences with normalization...${NC}"
 
 # Create output files
 {
-    echo "=== RPC Regression Test Results V2 ==="
+    echo "=== RPC Regression Test Results V3 ==="
     echo "Timestamp: $(date)"
-    echo "Local URL:  $LOCAL_URL"
-    echo "Remote URL: $REMOTE_URL"
+    echo "${LABEL_A} URL:  $ENV_A_URL"
+    echo "${LABEL_B} URL:  $ENV_B_URL"
     echo "Default Tolerance: ${DEFAULT_TOLERANCE}%"
     echo ""
 } > "$DIFF_OUTPUT"
@@ -392,13 +427,6 @@ get_response() {
     jq -c --arg test "$test_name" 'select(.test == $test) | .response' "$file" 2>/dev/null | head -n 1
 }
 
-# Function to extract request for a test (for pagination support)
-get_request() {
-    local file=$1
-    local test_name=$2
-    jq -c --arg test "$test_name" 'select(.test == $test) | .request // empty' "$file" 2>/dev/null | head -n 1
-}
-
 # Maximum response size for detailed normalization (500KB)
 # Increased from 100KB to handle large token balance responses
 MAX_NORMALIZE_SIZE=512000
@@ -408,7 +436,7 @@ normalize_response() {
     local response=$1
     local response_size=${#response}
 
-    # Skip expensive normalization for very large responses (>100KB)
+    # Skip expensive normalization for very large responses (>500KB)
     # These are typically network snapshots that differ due to state changes
     if [[ $response_size -gt $MAX_NORMALIZE_SIZE ]]; then
         echo "$response"
@@ -427,30 +455,6 @@ normalize_response() {
     # This normalizes {"type": "Int"} to {"type": "BigInt"} for comparison
     # since both are semantically acceptable for bigint database columns
     normalized=$(echo "$normalized" | jq 'walk(if type == "object" and has("type") and .type == "Int" then .type = "BigInt" else . end)' 2>/dev/null || echo "$normalized")
-
-    # Normalize pagination wrapper response structure
-    # Staging uses {events: [], hasMore: bool} or {rows: [], hasMore: bool}
-    # Production uses [] directly
-    # Extract just the data array for comparison
-    normalized=$(echo "$normalized" | jq '
-        if .result | type == "object" then
-            if .result | has("events") then
-                .result = .result.events
-            elif .result | has("rows") then
-                .result = .result.rows
-            else
-                .
-            end
-        else
-            .
-        end
-    ' 2>/dev/null || echo "$normalized")
-
-    # Normalize circles_getProfileByCid response structure
-    # Staging returns more fields than production - only compare common fields
-    # Production returns: {name, previewImageUrl}
-    # Keep only fields that exist in production for fair comparison
-    normalized=$(echo "$normalized" | jq 'if .result | type == "object" and has("name") and has("previewImageUrl") and has("id") then .result = {name: .result.name, previewImageUrl: .result.previewImageUrl} else . end' 2>/dev/null || echo "$normalized")
 
     # Sort arrays in result to handle ordering differences (e.g. namespaces in circles_tables)
     normalized=$(echo "$normalized" | jq 'if .result | type == "array" then .result |= sort_by(.namespace // .column // .) else . end' 2>/dev/null || echo "$normalized")
@@ -534,152 +538,12 @@ extract_numbers() {
     echo "$json" | jq -r '.. | if type == "number" then . elif type == "string" and test("^[0-9]+\\.?[0-9]*([eE][+-]?[0-9]+)?$") then . else empty end' 2>/dev/null | head -n 200
 }
 
-# Function to unwrap pagination wrapper from result
-# Staging uses {events: [...], hasMore: bool} or {rows: [...], hasMore: bool}
-# Production uses [...] directly
-# This function extracts the inner array for proper comparison
-unwrap_pagination() {
-    local json=$1
-    echo "$json" | jq '
-        if .result | type == "object" then
-            if .result | has("events") then
-                .result = .result.events
-            elif .result | has("rows") then
-                .result = .result.rows
-            else
-                .
-            end
-        else
-            .
-        end
-    ' 2>/dev/null || echo "$json"
-}
-
-# Function to check if response has pagination info
-has_pagination() {
-    local json=$1
-    echo "$json" | jq -e '.result | type == "object" and (has("events") or has("rows")) and has("hasMore")' >/dev/null 2>&1
-}
-
-# Function to get nextCursor from paginated response
-get_next_cursor() {
-    local json=$1
-    echo "$json" | jq -r '.result.nextCursor // empty' 2>/dev/null
-}
-
-# Function to check if there are more pages
-has_more_pages() {
-    local json=$1
-    local has_more
-    has_more=$(echo "$json" | jq -r '.result.hasMore // false' 2>/dev/null)
-    [[ "$has_more" == "true" ]]
-}
-
-# Function to get data array from paginated response
-get_pagination_data() {
-    local json=$1
-    echo "$json" | jq -c '.result.events // .result.rows // .result' 2>/dev/null
-}
-
-# Function to fetch all pages from staging until we match production count
-# Args: request_json, target_count, url
-# Returns: JSON response with all events merged
-fetch_all_pages() {
-    local request_json=$1
-    local target_count=$2
-    local url=$3
-    local max_pages=100  # Safety limit
-
-    # Check if this is a paginated method (circles_events or circles_query)
-    local method
-    method=$(echo "$request_json" | jq -r '.method // empty' 2>/dev/null)
-
-    if [[ "$method" != "circles_events" && "$method" != "circles_query" ]]; then
-        # Not a paginated method, just make a single call
-        local response
-        response=$(curl -s -X POST --data "$request_json" -H "Content-Type: application/json" "$url" 2>/dev/null)
-        echo "$response"
-        return
-    fi
-
-    # For circles_events, modify params to include limit=1000 (max allowed)
-    local modified_request="$request_json"
-    if [[ "$method" == "circles_events" ]]; then
-        # circles_events params: [address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit, cursor]
-        # We need to set limit (index 6) to 1000
-        modified_request=$(echo "$request_json" | jq '.params[6] = 1000' 2>/dev/null)
-    fi
-
-    # First request
-    local response
-    response=$(curl -s -X POST --data "$modified_request" -H "Content-Type: application/json" "$url" 2>/dev/null)
-
-    # Check if we got a paginated response
-    if ! has_pagination "$response"; then
-        # Not paginated, return as-is
-        echo "$response"
-        return
-    fi
-
-    # Collect all data
-    local all_data
-    all_data=$(get_pagination_data "$response")
-    local current_count
-    current_count=$(echo "$all_data" | jq 'length' 2>/dev/null || echo "0")
-    local page=1
-
-    # Keep fetching until we have enough or no more pages
-    while has_more_pages "$response" && [[ $current_count -lt $target_count ]] && [[ $page -lt $max_pages ]]; do
-        local cursor
-        cursor=$(get_next_cursor "$response")
-        if [[ -z "$cursor" ]]; then
-            break
-        fi
-
-        # Add cursor to request
-        local paged_request
-        if [[ "$method" == "circles_events" ]]; then
-            paged_request=$(echo "$modified_request" | jq --arg c "$cursor" '.params[7] = $c' 2>/dev/null)
-        else
-            # For circles_query, cursor is 2nd parameter
-            paged_request=$(echo "$modified_request" | jq --arg c "$cursor" '.params[1] = $c' 2>/dev/null)
-        fi
-
-        response=$(curl -s -X POST --data "$paged_request" -H "Content-Type: application/json" "$url" 2>/dev/null)
-        if [[ $? -ne 0 ]]; then
-            break
-        fi
-
-        # Append new data
-        local new_data
-        new_data=$(get_pagination_data "$response")
-        all_data=$(echo "[$all_data, $new_data]" | jq 'add' 2>/dev/null)
-        current_count=$(echo "$all_data" | jq 'length' 2>/dev/null || echo "$current_count")
-        page=$((page + 1))
-    done
-
-    # Construct final response with merged data
-    # Use the original response structure but with merged events/rows
-    local final_response
-    if echo "$response" | jq -e '.result | has("events")' >/dev/null 2>&1; then
-        final_response=$(echo "$response" | jq --argjson data "$all_data" '.result.events = $data | .result.hasMore = false' 2>/dev/null)
-    else
-        final_response=$(echo "$response" | jq --argjson data "$all_data" '.result.rows = $data | .result.hasMore = false' 2>/dev/null)
-    fi
-
-    echo "$final_response"
-}
-
-# Function to detect empty results (after unwrapping pagination)
+# Function to detect empty results
 is_empty_result() {
     local json=$1
 
-    # First unwrap pagination wrapper if present
-    local unwrapped
-    unwrapped=$(unwrap_pagination "$json")
-
     local result
-    result=$(echo "$unwrapped" | jq -r '.result' 2>/dev/null)
+    result=$(echo "$json" | jq -r '.result' 2>/dev/null)
 
     # Check various forms of empty
     if [[ "$result" == "null" ]] || [[ "$result" == "[]" ]] || [[ "$result" == "{}" ]] || [[ -z "$result" ]]; then
@@ -688,7 +552,7 @@ is_empty_result() {
 
     # Check if array is empty
     local arr_len
-    arr_len=$(echo "$unwrapped" | jq '.result | if type == "array" then length else -1 end' 2>/dev/null)
+    arr_len=$(echo "$json" | jq '.result | if type == "array" then length else -1 end' 2>/dev/null)
     if [[ "$arr_len" == "0" ]]; then
         return 0
     fi
@@ -696,15 +560,11 @@ is_empty_result() {
     return 1
 }
 
-# Function to get result type and structure info (after unwrapping pagination)
+# Function to get result type and structure info
 get_result_structure() {
     local json=$1
 
-    # First unwrap pagination wrapper if present
-    local unwrapped
-    unwrapped=$(unwrap_pagination "$json")
-
-    echo "$unwrapped" | jq -r '
+    echo "$json" | jq -r '
         .result |
         if type == "null" then "null"
         elif type == "array" then
@@ -719,7 +579,6 @@ get_result_structure() {
 }
 
 # Function to check if structures are compatible
-# Note: This is called AFTER unwrapping pagination, so structures should match directly
 structures_compatible() {
     local struct1=$1
     local struct2=$2
@@ -737,73 +596,59 @@ structures_compatible() {
 }
 
 # Function to compare responses with normalization and tolerance
-# Returns: exact|tolerance|empty_both|empty_local|empty_remote|structure_mismatch|different
+# Returns: exact|tolerance|empty_both|empty_a|empty_b|structure_mismatch|different
 compare_responses() {
     local resp1=$1
     local resp2=$2
     local tolerance=$3
 
-    # First, unwrap pagination wrappers from both responses
-    # This ensures we compare the actual data arrays
-    local unwrapped1=$(unwrap_pagination "$resp1")
-    local unwrapped2=$(unwrap_pagination "$resp2")
-
-    local resp1_size=${#unwrapped1}
-    local resp2_size=${#unwrapped2}
+    local resp1_size=${#resp1}
+    local resp2_size=${#resp2}
 
     # Check for empty results first - this is important diagnostic info
-    local local_empty=false
-    local remote_empty=false
-    if is_empty_result "$unwrapped1"; then
-        local_empty=true
+    local a_empty=false
+    local b_empty=false
+    if is_empty_result "$resp1"; then
+        a_empty=true
     fi
-    if is_empty_result "$unwrapped2"; then
-        remote_empty=true
+    if is_empty_result "$resp2"; then
+        b_empty=true
     fi
 
     # Report empty status
-    if $local_empty && $remote_empty; then
+    if $a_empty && $b_empty; then
         echo "empty_both"
         return
-    elif $local_empty; then
-        echo "empty_local"
+    elif $a_empty; then
+        echo "empty_a"
         return
-    elif $remote_empty; then
-        echo "empty_remote"
+    elif $b_empty; then
+        echo "empty_b"
         return
     fi
 
-    # Check structure compatibility (using unwrapped responses)
-    local struct1=$(get_result_structure "$unwrapped1")
-    local struct2=$(get_result_structure "$unwrapped2")
+    # Check structure compatibility
+    local struct1=$(get_result_structure "$resp1")
+    local struct2=$(get_result_structure "$resp2")
     if ! structures_compatible "$struct1" "$struct2"; then
         echo "structure_mismatch:$struct1|$struct2"
         return
     fi
 
-    # Check array lengths - after pagination fetching, they should match
-    # If they still differ, report the count difference
-    local local_len=$(echo "$unwrapped1" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
-    local remote_len=$(echo "$unwrapped2" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
+    # Check array lengths
+    local a_len=$(echo "$resp1" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
+    local b_len=$(echo "$resp2" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
 
-    if [[ "$local_len" != "$remote_len" ]] && [[ "$local_len" -gt 0 ]] && [[ "$remote_len" -gt 0 ]]; then
-        # Lengths still differ after pagination fetch - compare what we have
-        # Truncate to smaller size for fair comparison of overlapping items
-        local min_len=$((local_len < remote_len ? local_len : remote_len))
-        unwrapped1=$(echo "$unwrapped1" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$unwrapped1")
-        unwrapped2=$(echo "$unwrapped2" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$unwrapped2")
-        # Update sizes after truncation
-        resp1_size=${#unwrapped1}
-        resp2_size=${#unwrapped2}
-        # Note: We'll still compare the overlapping items, but the count difference is notable
+    if [[ "$a_len" != "$b_len" ]] && [[ "$a_len" -gt 0 ]] && [[ "$b_len" -gt 0 ]]; then
+        # Lengths differ - compare overlapping items
+        local min_len=$((a_len < b_len ? a_len : b_len))
+        resp1=$(echo "$resp1" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$resp1")
+        resp2=$(echo "$resp2" | jq --argjson n "$min_len" '.result = .result[:$n]' 2>/dev/null || echo "$resp2")
+        resp1_size=${#resp1}
+        resp2_size=${#resp2}
     fi
 
-    # Use unwrapped responses for rest of comparison
-    resp1="$unwrapped1"
-    resp2="$unwrapped2"
-
-    # For very large responses (>100KB), use efficient comparison
-    # These are typically network snapshots or large query results
+    # For very large responses (>500KB), use efficient comparison
     if [[ $resp1_size -gt $MAX_NORMALIZE_SIZE ]] || [[ $resp2_size -gt $MAX_NORMALIZE_SIZE ]]; then
         # Quick string comparison first
         if [[ "$resp1" == "$resp2" ]]; then
@@ -812,7 +657,6 @@ compare_responses() {
         fi
 
         # If sizes match, the difference might just be key ordering
-        # Use jq -S for semantic comparison (sorts all keys recursively)
         if [[ $resp1_size -eq $resp2_size ]]; then
             local sorted1=$(echo "$resp1" | jq -S -c '.' 2>/dev/null)
             local sorted2=$(echo "$resp2" | jq -S -c '.' 2>/dev/null)
@@ -831,7 +675,6 @@ compare_responses() {
     local norm2=$(normalize_response "$resp2")
 
     # First try exact match on normalized
-    # Use jq -S to sort keys for semantic comparison
     local sorted1=$(echo "$norm1" | jq -S -c '.' 2>/dev/null || echo "$norm1")
     local sorted2=$(echo "$norm2" | jq -S -c '.' 2>/dev/null || echo "$norm2")
 
@@ -841,15 +684,15 @@ compare_responses() {
     fi
 
     # Check if responses contain error
-    local local_error=$(echo "$resp1" | jq -r '.error.message // empty' 2>/dev/null)
-    local remote_error=$(echo "$resp2" | jq -r '.error.message // empty' 2>/dev/null)
-    if [[ -n "$local_error" ]] || [[ -n "$remote_error" ]]; then
-        if [[ -n "$local_error" ]] && [[ -z "$remote_error" ]]; then
-            echo "error_local:$local_error"
-        elif [[ -z "$local_error" ]] && [[ -n "$remote_error" ]]; then
-            echo "error_remote:$remote_error"
+    local a_error=$(echo "$resp1" | jq -r '.error.message // empty' 2>/dev/null)
+    local b_error=$(echo "$resp2" | jq -r '.error.message // empty' 2>/dev/null)
+    if [[ -n "$a_error" ]] || [[ -n "$b_error" ]]; then
+        if [[ -n "$a_error" ]] && [[ -z "$b_error" ]]; then
+            echo "error_a:$a_error"
+        elif [[ -z "$a_error" ]] && [[ -n "$b_error" ]]; then
+            echo "error_b:$b_error"
         else
-            echo "error_both:$local_error|$remote_error"
+            echo "error_both:$a_error|$b_error"
         fi
         return
     fi
@@ -930,23 +773,23 @@ compare_responses() {
 for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
     key="${CATEGORY_KEYS_ORDERED[$idx]}"
     label="${CATEGORY_LABELS[$idx]}"
-    local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-    remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    env_a_file="$ENV_A_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    env_b_file="$ENV_B_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
     category_diff_file="${CATEGORY_DIFF_FILES[$idx]}"
 
-    if [[ -s "$local_file" ]]; then
-        local_tests=$(jq -r '.test' "$local_file" 2>/dev/null | sort -u)
+    if [[ -s "$env_a_file" ]]; then
+        env_a_tests=$(jq -r '.test' "$env_a_file" 2>/dev/null | sort -u)
     else
-        local_tests=""
+        env_a_tests=""
     fi
 
-    if [[ -s "$remote_file" ]]; then
-        remote_tests=$(jq -r '.test' "$remote_file" 2>/dev/null | sort -u)
+    if [[ -s "$env_b_file" ]]; then
+        env_b_tests=$(jq -r '.test' "$env_b_file" 2>/dev/null | sort -u)
     else
-        remote_tests=""
+        env_b_tests=""
     fi
 
-    cat_all_tests=$(echo -e "$local_tests\n$remote_tests" | sort -u)
+    cat_all_tests=$(echo -e "$env_a_tests\n$env_b_tests" | sort -u)
     cat_total=$(echo "$cat_all_tests" | grep -c . || echo 0)
 
     echo -e "${CYAN}Analyzing ${label} (${key}) - ${cat_total} tests${NC}"
@@ -961,61 +804,43 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
         TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
         # Check if test exists in both
-        if [[ -n "$local_tests" ]]; then
-            local_exists=$(echo "$local_tests" | grep -Fx "$test_name" || true)
+        if [[ -n "$env_a_tests" ]]; then
+            a_exists=$(echo "$env_a_tests" | grep -Fx "$test_name" || true)
         else
-            local_exists=""
+            a_exists=""
         fi
 
-        if [[ -n "$remote_tests" ]]; then
-            remote_exists=$(echo "$remote_tests" | grep -Fx "$test_name" || true)
+        if [[ -n "$env_b_tests" ]]; then
+            b_exists=$(echo "$env_b_tests" | grep -Fx "$test_name" || true)
         else
-            remote_exists=""
+            b_exists=""
         fi
 
-        if [[ -z "$local_exists" ]]; then
-            echo "$test_name" >> "$TESTS_MISSING_LOCAL_FILE"
-            MISSING_LOCAL=$((MISSING_LOCAL + 1))
+        if [[ -z "$a_exists" ]]; then
+            echo "$test_name" >> "$TESTS_MISSING_A_FILE"
+            MISSING_A=$((MISSING_A + 1))
             continue
         fi
 
-        if [[ -z "$remote_exists" ]]; then
-            echo "$test_name" >> "$TESTS_MISSING_REMOTE_FILE"
-            MISSING_REMOTE=$((MISSING_REMOTE + 1))
+        if [[ -z "$b_exists" ]]; then
+            echo "$test_name" >> "$TESTS_MISSING_B_FILE"
+            MISSING_B=$((MISSING_B + 1))
             continue
         fi
 
         # Extract responses
-        local_response=$(get_response "$local_file" "$test_name")
-        remote_response=$(get_response "$remote_file" "$test_name")
-
-        # Check if we need to fetch additional pages from local (staging) to match remote (production)
-        # This handles the case where staging returns paginated results and production returns all
-        local_request=$(get_request "$local_file" "$test_name")
-        if [[ -n "$local_request" ]] && has_pagination "$local_response" && has_more_pages "$local_response"; then
-            # Get remote (production) count to know how many we need
-            remote_count=$(echo "$remote_response" | jq '.result | if type == "array" then length else 0 end' 2>/dev/null || echo "0")
-
-            if [[ "$remote_count" -gt 0 ]]; then
-                local_count=$(get_pagination_data "$local_response" | jq 'length' 2>/dev/null || echo "0")
-
-                # Only fetch more if remote has more items than our current local page
-                if [[ "$remote_count" -gt "$local_count" ]]; then
-                    echo -e "${YELLOW}  Fetching additional pages for: $test_name (local: $local_count, remote: $remote_count)${NC}"
-                    local_response=$(fetch_all_pages "$local_request" "$remote_count" "$LOCAL_URL")
-                fi
-            fi
-        fi
+        env_a_response=$(get_response "$env_a_file" "$test_name")
+        env_b_response=$(get_response "$env_b_file" "$test_name")
 
     # Get tolerance for this specific test
     tolerance=$(get_method_tolerance "$test_name")
 
     # Check for errors
-    local_error=$(echo "$local_response" | jq -r '.error.message // empty' 2>/dev/null)
-    remote_error=$(echo "$remote_response" | jq -r '.error.message // empty' 2>/dev/null)
+    a_error=$(echo "$env_a_response" | jq -r '.error.message // empty' 2>/dev/null)
+    b_error=$(echo "$env_b_response" | jq -r '.error.message // empty' 2>/dev/null)
 
-    if [[ -n "$local_error" ]] || [[ -n "$remote_error" ]]; then
-        if [[ "$local_error" != "$remote_error" ]]; then
+    if [[ -n "$a_error" ]] || [[ -n "$b_error" ]]; then
+        if [[ "$a_error" != "$b_error" ]]; then
             if is_expected_failure "$test_name"; then
                 echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
                 EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
@@ -1033,8 +858,8 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 else
                     echo "✗ ERROR MISMATCH"
                 fi
-                echo "Local error: $local_error"
-                echo "Remote error: $remote_error"
+                echo "${LABEL_A} error: $a_error"
+                echo "${LABEL_B} error: $b_error"
                 echo ""
             } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
         else
@@ -1045,7 +870,7 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
     fi
 
     # Compare responses
-    comparison=$(compare_responses "$local_response" "$remote_response" "$tolerance")
+    comparison=$(compare_responses "$env_a_response" "$env_b_response" "$tolerance")
     comparison_type="${comparison%%:*}"  # Get base type (before colon)
     comparison_detail="${comparison#*:}" # Get detail (after colon)
     [[ "$comparison_type" == "$comparison" ]] && comparison_detail=""
@@ -1065,8 +890,8 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
             echo "$test_name" >> "$TESTS_MATCH_FILE"
             MATCHING_TESTS=$((MATCHING_TESTS + 1))
             ;;
-        empty_local)
-            # Local is empty but remote has data - this is a problem!
+        empty_a)
+            # Env A is empty but Env B has data
             if is_expected_failure "$test_name"; then
                 echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
                 EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
@@ -1078,23 +903,23 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 echo "--- Test: $test_name ---"
                 echo "Tolerance: ${tolerance}%"
                 if is_expected_failure "$test_name"; then
-                    echo "⚠ EXPECTED FAILURE - EMPTY LOCAL RESULT"
+                    echo "⚠ EXPECTED FAILURE - EMPTY ${LABEL_A} RESULT"
                     echo "Reason: $(get_expected_failure_reason "$test_name")"
                 else
-                    echo "✗ EMPTY LOCAL RESULT (remote has data)"
+                    echo "✗ EMPTY ${LABEL_A} RESULT (${LABEL_B} has data)"
                 fi
                 echo ""
-                echo "Local structure: $(get_result_structure "$local_response")"
-                echo "Remote structure: $(get_result_structure "$remote_response")"
+                echo "${LABEL_A} structure: $(get_result_structure "$env_a_response")"
+                echo "${LABEL_B} structure: $(get_result_structure "$env_b_response")"
                 echo ""
-                echo "Remote response preview:"
-                echo "$remote_response" | jq '.result | if type == "array" then .[0:3] else . end' 2>&1 | head -20
+                echo "${LABEL_B} response preview:"
+                echo "$env_b_response" | jq '.result | if type == "array" then .[0:3] else . end' 2>&1 | head -20
                 echo ""
             } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
             continue
             ;;
-        empty_remote)
-            # Remote is empty but local has data - staging has new data
+        empty_b)
+            # Env B is empty but Env A has data
             if is_expected_failure "$test_name"; then
                 echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
                 EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
@@ -1106,17 +931,17 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 echo "--- Test: $test_name ---"
                 echo "Tolerance: ${tolerance}%"
                 if is_expected_failure "$test_name"; then
-                    echo "⚠ EXPECTED FAILURE - EMPTY REMOTE RESULT"
+                    echo "⚠ EXPECTED FAILURE - EMPTY ${LABEL_B} RESULT"
                     echo "Reason: $(get_expected_failure_reason "$test_name")"
                 else
-                    echo "✗ EMPTY REMOTE RESULT (local has data)"
+                    echo "✗ EMPTY ${LABEL_B} RESULT (${LABEL_A} has data)"
                 fi
                 echo ""
-                echo "Local structure: $(get_result_structure "$local_response")"
-                echo "Remote structure: $(get_result_structure "$remote_response")"
+                echo "${LABEL_A} structure: $(get_result_structure "$env_a_response")"
+                echo "${LABEL_B} structure: $(get_result_structure "$env_b_response")"
                 echo ""
-                echo "Local response preview:"
-                echo "$local_response" | jq '.result | if type == "array" then .[0:3] else . end' 2>&1 | head -20
+                echo "${LABEL_A} response preview:"
+                echo "$env_a_response" | jq '.result | if type == "array" then .[0:3] else . end' 2>&1 | head -20
                 echo ""
             } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
             continue
@@ -1141,17 +966,17 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 fi
                 echo ""
                 echo "Structure comparison: $comparison_detail"
-                local_struct="${comparison_detail%%|*}"
-                remote_struct="${comparison_detail#*|}"
-                echo "  Local:  $local_struct"
-                echo "  Remote: $remote_struct"
+                a_struct="${comparison_detail%%|*}"
+                b_struct="${comparison_detail#*|}"
+                echo "  ${LABEL_A}:  $a_struct"
+                echo "  ${LABEL_B}:  $b_struct"
                 echo ""
                 echo "This indicates a fundamental API response change!"
                 echo ""
             } | tee -a "$category_diff_file" >> "$DIFF_OUTPUT"
             continue
             ;;
-        error_local|error_remote|error_both)
+        error_a|error_b|error_both)
             if is_expected_failure "$test_name"; then
                 echo "$test_name" >> "$TESTS_EXPECTED_FAILURE_FILE"
                 EXPECTED_FAILURE_COUNT=$((EXPECTED_FAILURE_COUNT + 1))
@@ -1199,42 +1024,42 @@ for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
                 echo ""
 
                 # For large responses, truncate output to avoid massive diff files
-                local_size=${#local_response}
-                remote_size=${#remote_response}
+                a_size=${#env_a_response}
+                b_size=${#env_b_response}
                 max_output_size=10000  # 10KB max per response in diff output
 
                 # Show structure info
                 echo "Structure comparison:"
-                echo "  Local:  $(get_result_structure "$local_response")"
-                echo "  Remote: $(get_result_structure "$remote_response")"
+                echo "  ${LABEL_A}:  $(get_result_structure "$env_a_response")"
+                echo "  ${LABEL_B}:  $(get_result_structure "$env_b_response")"
                 echo ""
 
-                echo "Local response (${local_size} bytes):"
-                if [[ $local_size -gt $max_output_size ]]; then
-                    echo "[Response truncated - showing first ${max_output_size} chars of ${local_size}]"
-                    echo "${local_response:0:$max_output_size}..." | jq '.' 2>&1 || echo "${local_response:0:$max_output_size}..."
+                echo "${LABEL_A} response (${a_size} bytes):"
+                if [[ $a_size -gt $max_output_size ]]; then
+                    echo "[Response truncated - showing first ${max_output_size} chars of ${a_size}]"
+                    echo "${env_a_response:0:$max_output_size}..." | jq '.' 2>&1 || echo "${env_a_response:0:$max_output_size}..."
                 else
-                    echo "$local_response" | jq '.' 2>&1 || echo "$local_response"
+                    echo "$env_a_response" | jq '.' 2>&1 || echo "$env_a_response"
                 fi
                 echo ""
-                echo "Remote response (${remote_size} bytes):"
-                if [[ $remote_size -gt $max_output_size ]]; then
-                    echo "[Response truncated - showing first ${max_output_size} chars of ${remote_size}]"
-                    echo "${remote_response:0:$max_output_size}..." | jq '.' 2>&1 || echo "${remote_response:0:$max_output_size}..."
+                echo "${LABEL_B} response (${b_size} bytes):"
+                if [[ $b_size -gt $max_output_size ]]; then
+                    echo "[Response truncated - showing first ${max_output_size} chars of ${b_size}]"
+                    echo "${env_b_response:0:$max_output_size}..." | jq '.' 2>&1 || echo "${env_b_response:0:$max_output_size}..."
                 else
-                    echo "$remote_response" | jq '.' 2>&1 || echo "$remote_response"
+                    echo "$env_b_response" | jq '.' 2>&1 || echo "$env_b_response"
                 fi
                 echo ""
 
                 # Skip detailed normalized comparison for large responses
-                if [[ $local_size -lt $MAX_NORMALIZE_SIZE ]] && [[ $remote_size -lt $MAX_NORMALIZE_SIZE ]]; then
+                if [[ $a_size -lt $MAX_NORMALIZE_SIZE ]] && [[ $b_size -lt $MAX_NORMALIZE_SIZE ]]; then
                     echo "Normalized comparison:"
-                    norm1=$(normalize_response "$local_response")
-                    norm2=$(normalize_response "$remote_response")
-                    echo "Local (normalized):"
+                    norm1=$(normalize_response "$env_a_response")
+                    norm2=$(normalize_response "$env_b_response")
+                    echo "${LABEL_A} (normalized):"
                     echo "$norm1" | jq '.' 2>&1 || echo "$norm1"
                     echo ""
-                    echo "Remote (normalized):"
+                    echo "${LABEL_B} (normalized):"
                     echo "$norm2" | jq '.' 2>&1 || echo "$norm2"
                     echo ""
                     echo "Diff:"
@@ -1258,7 +1083,7 @@ echo -e "${YELLOW}[4/4] Generating reports...${NC}"
 # Write methods comparison
 {
     echo "=== Methods Available in BOTH ==="
-    echo "Total: $((TOTAL_TESTS - MISSING_LOCAL - MISSING_REMOTE))"
+    echo "Total: $((TOTAL_TESTS - MISSING_A - MISSING_B))"
     echo ""
     echo "Matching (${MATCHING_TESTS}):"
     while read -r test; do
@@ -1281,26 +1106,26 @@ echo -e "${YELLOW}[4/4] Generating reports...${NC}"
     done < "$TESTS_EXPECTED_FAILURE_FILE"
     echo ""
 
-    echo "=== Methods ONLY in LOCAL ($MISSING_REMOTE total) ==="
+    echo "=== Methods ONLY in ${LABEL_A} ($MISSING_B total) ==="
     while read -r test; do
         [[ -z "$test" ]] && continue
         echo "  $test"
-    done < "$TESTS_MISSING_REMOTE_FILE"
+    done < "$TESTS_MISSING_B_FILE"
     echo ""
 
-    echo "=== Methods ONLY in REMOTE ($MISSING_LOCAL total) ==="
+    echo "=== Methods ONLY in ${LABEL_B} ($MISSING_A total) ==="
     while read -r test; do
         [[ -z "$test" ]] && continue
         echo "  $test"
-    done < "$TESTS_MISSING_LOCAL_FILE"
+    done < "$TESTS_MISSING_A_FILE"
 } >> "$METHODS_OUTPUT"
 
 # Generate summary
 cat > "$SUMMARY_OUTPUT" << EOF
-=== RPC Regression Test Summary V2 ===
+=== RPC Regression Test Summary V3 ===
 Timestamp: $(date)
-Local URL:  $LOCAL_URL
-Remote URL: $REMOTE_URL
+${LABEL_A} URL:  $ENV_A_URL
+${LABEL_B} URL:  $ENV_B_URL
 Default Tolerance: ${DEFAULT_TOLERANCE}%
 
 Configuration:
@@ -1310,7 +1135,7 @@ Configuration:
 
 Results:
   Total unique tests:        $TOTAL_TESTS
-  Tests in both endpoints:   $((TOTAL_TESTS - MISSING_LOCAL - MISSING_REMOTE))
+  Tests in both endpoints:   $((TOTAL_TESTS - MISSING_A - MISSING_B))
 
   ✓ Matching responses:      $MATCHING_TESTS
     - Exact matches:         $((MATCHING_TESTS - NUMERIC_TOLERANCE_MATCHES))
@@ -1319,12 +1144,12 @@ Results:
   ✗ Different responses:     $DIFFERENT_TESTS
   ⚠ Expected failures:       $EXPECTED_FAILURE_COUNT
 
-  Methods only in local:     $MISSING_REMOTE
-  Methods only in remote:    $MISSING_LOCAL
+  Methods only in ${LABEL_A}:  $MISSING_B
+  Methods only in ${LABEL_B}:  $MISSING_A
 
 Files:
-    Local output dir:  $LOCAL_OUTPUT_DIR
-    Remote output dir: $REMOTE_OUTPUT_DIR
+    ${LABEL_A} output dir:  $ENV_A_OUTPUT_DIR
+    ${LABEL_B} output dir:  $ENV_B_OUTPUT_DIR
     Category diffs:    $CATEGORY_DIFF_DIR
   Detailed diff:     $DIFF_OUTPUT
   Methods compare:   $METHODS_OUTPUT
@@ -1359,86 +1184,85 @@ TIMING_OUTPUT="$RUN_DIR/timing_comparison.txt"
 echo -e "${YELLOW}Generating timing comparison...${NC}"
 
 # Pre-extract all timing data in a single pass per file to avoid repeated JSON parsing
-LOCAL_TIMING_DATA="$RUN_DIR/local_timing.tsv"
-REMOTE_TIMING_DATA="$RUN_DIR/remote_timing.tsv"
+ENV_A_TIMING_DATA="$RUN_DIR/env_a_timing.tsv"
+ENV_B_TIMING_DATA="$RUN_DIR/env_b_timing.tsv"
 
-# Extract timing data from all local files in one pass
-: > "$LOCAL_TIMING_DATA"
+# Extract timing data from all files in one pass
+: > "$ENV_A_TIMING_DATA"
 for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
-    local_file="$LOCAL_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-    [[ -s "$local_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$local_file" 2>/dev/null >> "$LOCAL_TIMING_DATA"
+    env_a_file="$ENV_A_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    [[ -s "$env_a_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$env_a_file" 2>/dev/null >> "$ENV_A_TIMING_DATA"
 done
 
-# Extract timing data from all remote files in one pass
-: > "$REMOTE_TIMING_DATA"
+: > "$ENV_B_TIMING_DATA"
 for idx in "${!CATEGORY_KEYS_ORDERED[@]}"; do
-    remote_file="$REMOTE_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
-    [[ -s "$remote_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$remote_file" 2>/dev/null >> "$REMOTE_TIMING_DATA"
+    env_b_file="$ENV_B_OUTPUT_DIR/${CATEGORY_FILES[$idx]}"
+    [[ -s "$env_b_file" ]] && jq -r '[.test, (.timing.total_ms // 0)] | @tsv' "$env_b_file" 2>/dev/null >> "$ENV_B_TIMING_DATA"
 done
 
 {
     echo "=== Timing Comparison Report ==="
     echo "Timestamp: $(date)"
-    echo "Local (Staging):  $LOCAL_URL"
-    echo "Remote (Production): $REMOTE_URL"
+    echo "${LABEL_A}:  $ENV_A_URL"
+    echo "${LABEL_B}:  $ENV_B_URL"
     echo ""
     echo "Performance Summary:"
     echo "===================="
     echo ""
 
     # Process timing data for all tests using pre-extracted data
-    local_faster_count=0
-    remote_faster_count=0
+    a_faster_count=0
+    b_faster_count=0
     total_timing_tests=0
-    local_total_time=0
-    remote_total_time=0
+    a_total_time=0
+    b_total_time=0
 
-    printf "%-60s %12s %12s %12s %s\n" "Test Name" "Local (ms)" "Remote (ms)" "Diff (%)" "Winner"
+    printf "%-60s %12s %12s %12s %s\n" "Test Name" "${LABEL_A} (ms)" "${LABEL_B} (ms)" "Diff (%)" "Winner"
     echo "=========================================================================================================="
 
     # Get all unique test names from both timing files
-    all_tests=$(cat "$LOCAL_TIMING_DATA" "$REMOTE_TIMING_DATA" | cut -f1 | sort -u)
+    all_tests=$(cat "$ENV_A_TIMING_DATA" "$ENV_B_TIMING_DATA" | cut -f1 | sort -u)
 
     while IFS= read -r test_name; do
         [[ -z "$test_name" ]] && continue
 
         # Get timing from pre-extracted data (grep + awk is much faster than jq per-test)
-        local_timing=$(grep -F "	" "$LOCAL_TIMING_DATA" | awk -F'\t' -v test="$test_name" '$1 == test {print $2; exit}')
-        remote_timing=$(grep -F "	" "$REMOTE_TIMING_DATA" | awk -F'\t' -v test="$test_name" '$1 == test {print $2; exit}')
+        a_timing=$(grep -F "	" "$ENV_A_TIMING_DATA" | awk -F'\t' -v test="$test_name" '$1 == test {print $2; exit}')
+        b_timing=$(grep -F "	" "$ENV_B_TIMING_DATA" | awk -F'\t' -v test="$test_name" '$1 == test {print $2; exit}')
 
         # Skip if timing data missing
-        if [[ -z "$local_timing" ]] || [[ -z "$remote_timing" ]] || [[ "$local_timing" == "null" ]] || [[ "$remote_timing" == "null" ]]; then
+        if [[ -z "$a_timing" ]] || [[ -z "$b_timing" ]] || [[ "$a_timing" == "null" ]] || [[ "$b_timing" == "null" ]]; then
             continue
         fi
 
         # Ensure we have integers
-        local_timing=${local_timing%.*}
-        remote_timing=${remote_timing%.*}
-        [[ -z "$local_timing" ]] && local_timing=0
-        [[ -z "$remote_timing" ]] && remote_timing=0
+        a_timing=${a_timing%.*}
+        b_timing=${b_timing%.*}
+        [[ -z "$a_timing" ]] && a_timing=0
+        [[ -z "$b_timing" ]] && b_timing=0
 
         total_timing_tests=$((total_timing_tests + 1))
-        local_total_time=$((local_total_time + local_timing))
-        remote_total_time=$((remote_total_time + remote_timing))
+        a_total_time=$((a_total_time + a_timing))
+        b_total_time=$((b_total_time + b_timing))
 
         # Calculate difference percentage
-        if [[ $remote_timing -gt 0 ]]; then
-            diff_pct=$(echo "scale=1; (($local_timing - $remote_timing) * 100) / $remote_timing" | bc -l 2>/dev/null || echo "0")
+        if [[ $b_timing -gt 0 ]]; then
+            diff_pct=$(echo "scale=1; (($a_timing - $b_timing) * 100) / $b_timing" | bc -l 2>/dev/null || echo "0")
         else
             diff_pct="N/A"
         fi
 
         # Determine winner
         winner="="
-        if [[ $local_timing -lt $remote_timing ]]; then
-            local_faster_count=$((local_faster_count + 1))
-            winner="LOCAL"
-        elif [[ $local_timing -gt $remote_timing ]]; then
-            remote_faster_count=$((remote_faster_count + 1))
-            winner="REMOTE"
+        if [[ $a_timing -lt $b_timing ]]; then
+            a_faster_count=$((a_faster_count + 1))
+            winner="${LABEL_A}"
+        elif [[ $a_timing -gt $b_timing ]]; then
+            b_faster_count=$((b_faster_count + 1))
+            winner="${LABEL_B}"
         fi
 
-        printf "%-60s %12d %12d %11s%% %s\n" "$test_name" "$local_timing" "$remote_timing" "$diff_pct" "$winner"
+        printf "%-60s %12d %12d %11s%% %s\n" "$test_name" "$a_timing" "$b_timing" "$diff_pct" "$winner"
 
     done <<< "$all_tests"
 
@@ -1447,29 +1271,29 @@ done
     echo "Aggregate Statistics:"
     echo "---------------------"
     printf "Total tests with timing data:     %d\n" "$total_timing_tests"
-    printf "Local (staging) faster:            %d tests\n" "$local_faster_count"
-    printf "Remote (production) faster:        %d tests\n" "$remote_faster_count"
-    printf "Equal performance:                 %d tests\n" "$((total_timing_tests - local_faster_count - remote_faster_count))"
+    printf "${LABEL_A} faster:                 %d tests\n" "$a_faster_count"
+    printf "${LABEL_B} faster:                 %d tests\n" "$b_faster_count"
+    printf "Equal performance:                 %d tests\n" "$((total_timing_tests - a_faster_count - b_faster_count))"
     echo ""
     printf "Total time (all tests):\n"
-    printf "  Local:                           %d ms\n" "$local_total_time"
-    printf "  Remote:                          %d ms\n" "$remote_total_time"
+    printf "  ${LABEL_A}:                      %d ms\n" "$a_total_time"
+    printf "  ${LABEL_B}:                      %d ms\n" "$b_total_time"
     if [[ $total_timing_tests -gt 0 ]]; then
-        local_avg=$((local_total_time / total_timing_tests))
-        remote_avg=$((remote_total_time / total_timing_tests))
-        printf "  Average per test (local):        %d ms\n" "$local_avg"
-        printf "  Average per test (remote):       %d ms\n" "$remote_avg"
+        a_avg=$((a_total_time / total_timing_tests))
+        b_avg=$((b_total_time / total_timing_tests))
+        printf "  Average per test (${LABEL_A}):   %d ms\n" "$a_avg"
+        printf "  Average per test (${LABEL_B}):   %d ms\n" "$b_avg"
 
-        if [[ $remote_avg -gt 0 ]]; then
-            overall_diff=$(echo "scale=1; (($local_avg - $remote_avg) * 100) / $remote_avg" | bc -l 2>/dev/null || echo "0")
+        if [[ $b_avg -gt 0 ]]; then
+            overall_diff=$(echo "scale=1; (($a_avg - $b_avg) * 100) / $b_avg" | bc -l 2>/dev/null || echo "0")
             printf "  Overall performance difference:  %s%%\n" "$overall_diff"
 
-            if (( $(echo "$local_avg < $remote_avg" | bc -l 2>/dev/null || echo 0) )); then
+            if (( $(echo "$a_avg < $b_avg" | bc -l 2>/dev/null || echo 0) )); then
                 echo ""
-                echo "  🚀 LOCAL (STAGING) IS FASTER OVERALL"
-            elif (( $(echo "$local_avg > $remote_avg" | bc -l 2>/dev/null || echo 0) )); then
+                echo "  🚀 ${LABEL_A} IS FASTER OVERALL"
+            elif (( $(echo "$a_avg > $b_avg" | bc -l 2>/dev/null || echo 0) )); then
                 echo ""
-                echo "  ⚠️  REMOTE (PRODUCTION) IS FASTER OVERALL"
+                echo "  ⚠️  ${LABEL_B} IS FASTER OVERALL"
             else
                 echo ""
                 echo "  ⚖️  PERFORMANCE IS EQUAL"
@@ -1479,16 +1303,16 @@ done
     echo ""
 
     # Top 10 slowest endpoints on each (use pre-extracted data)
-    echo "Top 10 Slowest Endpoints (Local):"
+    echo "Top 10 Slowest Endpoints (${LABEL_A}):"
     echo "-----------------------------------"
-    sort -t$'\t' -k2 -n -r "$LOCAL_TIMING_DATA" | head -10 | while IFS=$'\t' read -r test time; do
+    sort -t$'\t' -k2 -n -r "$ENV_A_TIMING_DATA" | head -10 | while IFS=$'\t' read -r test time; do
         printf "  %-60s %12d ms\n" "$test" "${time%.*}"
     done
     echo ""
 
-    echo "Top 10 Slowest Endpoints (Remote):"
+    echo "Top 10 Slowest Endpoints (${LABEL_B}):"
     echo "------------------------------------"
-    sort -t$'\t' -k2 -n -r "$REMOTE_TIMING_DATA" | head -10 | while IFS=$'\t' read -r test time; do
+    sort -t$'\t' -k2 -n -r "$ENV_B_TIMING_DATA" | head -10 | while IFS=$'\t' read -r test time; do
         printf "  %-60s %12d ms\n" "$test" "${time%.*}"
     done
     echo ""
@@ -1496,28 +1320,27 @@ done
     # Biggest performance differences (use pre-extracted data with join)
     echo "Top 10 Biggest Performance Differences:"
     echo "----------------------------------------"
-    # Join local and remote timing data on test name
-    join -t$'\t' -1 1 -2 1 <(sort -t$'\t' -k1 "$LOCAL_TIMING_DATA") <(sort -t$'\t' -k1 "$REMOTE_TIMING_DATA") 2>/dev/null | \
-    while IFS=$'\t' read -r test_name local_t remote_t; do
-        local_t=${local_t%.*}
-        remote_t=${remote_t%.*}
-        [[ -z "$local_t" ]] && local_t=0
-        [[ -z "$remote_t" ]] && remote_t=0
-        abs_diff=$((local_t > remote_t ? local_t - remote_t : remote_t - local_t))
-        echo -e "$test_name\t$local_t\t$remote_t\t$abs_diff"
-    done | sort -t$'\t' -k4 -n -r | head -10 | while IFS=$'\t' read -r test local_t remote_t diff; do
-        if [[ $local_t -lt $remote_t ]]; then
-            winner="LOCAL"
+    join -t$'\t' -1 1 -2 1 <(sort -t$'\t' -k1 "$ENV_A_TIMING_DATA") <(sort -t$'\t' -k1 "$ENV_B_TIMING_DATA") 2>/dev/null | \
+    while IFS=$'\t' read -r test_name a_t b_t; do
+        a_t=${a_t%.*}
+        b_t=${b_t%.*}
+        [[ -z "$a_t" ]] && a_t=0
+        [[ -z "$b_t" ]] && b_t=0
+        abs_diff=$((a_t > b_t ? a_t - b_t : b_t - a_t))
+        echo -e "$test_name\t$a_t\t$b_t\t$abs_diff"
+    done | sort -t$'\t' -k4 -n -r | head -10 | while IFS=$'\t' read -r test a_t b_t diff; do
+        if [[ $a_t -lt $b_t ]]; then
+            winner="${LABEL_A}"
         else
-            winner="REMOTE"
+            winner="${LABEL_B}"
         fi
-        printf "  %-50s  L:%5dms  R:%5dms  Diff:%5dms  Winner:%s\n" "$test" "$local_t" "$remote_t" "$diff" "$winner"
+        printf "  %-50s  A:%5dms  B:%5dms  Diff:%5dms  Winner:%s\n" "$test" "$a_t" "$b_t" "$diff" "$winner"
     done
 
 } > "$TIMING_OUTPUT"
 
 # Cleanup timing temp files
-rm -f "$LOCAL_TIMING_DATA" "$REMOTE_TIMING_DATA"
+rm -f "$ENV_A_TIMING_DATA" "$ENV_B_TIMING_DATA"
 
 echo -e "${GREEN}✓ Timing analysis complete${NC}"
 echo -e "${GREEN}✓ Reports generated${NC}\n"
@@ -1591,10 +1414,10 @@ if [[ $EXPECTED_FAILURE_COUNT -gt 0 ]]; then
     echo -e "${MAGENTA}⚠ $EXPECTED_FAILURE_COUNT expected failures occurred (as configured)${NC}"
 fi
 
-if [[ $MISSING_LOCAL -gt 0 ]] || [[ $MISSING_REMOTE -gt 0 ]]; then
+if [[ $MISSING_A -gt 0 ]] || [[ $MISSING_B -gt 0 ]]; then
     echo -e "${YELLOW}⚠ Method coverage mismatch:${NC}"
-    [[ $MISSING_REMOTE -gt 0 ]] && echo -e "${YELLOW}  - $MISSING_REMOTE methods only in local${NC}"
-    [[ $MISSING_LOCAL -gt 0 ]] && echo -e "${YELLOW}  - $MISSING_LOCAL methods only in remote${NC}"
+    [[ $MISSING_B -gt 0 ]] && echo -e "${YELLOW}  - $MISSING_B methods only in ${LABEL_A}${NC}"
+    [[ $MISSING_A -gt 0 ]] && echo -e "${YELLOW}  - $MISSING_A methods only in ${LABEL_B}${NC}"
     echo -e "${YELLOW}Review methods comparison: $METHODS_OUTPUT${NC}"
 fi
 
@@ -1604,7 +1427,7 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" && "$SUBSCRIPTION_SUCCESS" == "false" ]]
 fi
 
 # Cleanup temp files
-rm -f "$TESTS_WITH_DIFFERENCES_FILE" "$TESTS_MISSING_LOCAL_FILE" "$TESTS_MISSING_REMOTE_FILE" \
+rm -f "$TESTS_WITH_DIFFERENCES_FILE" "$TESTS_MISSING_A_FILE" "$TESTS_MISSING_B_FILE" \
       "$TESTS_MATCH_FILE" "$TESTS_EXPECTED_FAILURE_FILE" "$TEMP_CONFIG"
 
 # Determine overall success
@@ -1616,7 +1439,7 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" && "$SUBSCRIPTION_SUCCESS" == "false" ]]
     OVERALL_SUCCESS=false
 fi
 
-if [[ "$OVERALL_SUCCESS" == "true" ]] && [[ $MISSING_LOCAL -eq 0 ]] && [[ $MISSING_REMOTE -eq 0 ]]; then
+if [[ "$OVERALL_SUCCESS" == "true" ]] && [[ $MISSING_A -eq 0 ]] && [[ $MISSING_B -eq 0 ]]; then
     echo -e "${GREEN}✓✓✓ All tests match perfectly! ✓✓✓${NC}"
     exit 0
 else
