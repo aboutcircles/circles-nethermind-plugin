@@ -146,12 +146,9 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    // Determine token type from cached metadata
-                    // V2 tokenId can be:
-                    // 1. A numeric ID (ERC1155 - human or group token)
-                    // 2. A hex address (ERC20 wrapper)
-                    var isHexAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-
+                    // Classify by checking the wrapper index first (O(1)).
+                    // Cache keys are hex addresses for BOTH ERC1155 and ERC20 wrappers,
+                    // so we can't use string format to distinguish them.
                     string? tokenType = null;
                     string? tokenOwner = null;
                     bool isGroup = false;
@@ -160,61 +157,46 @@ public class BalancesController : ControllerBase
                     bool isWrapped = false;
                     bool isInflationary = false;
 
-                    if (isHexAddress)
+                    var wrapperInfo = _caches.GetWrapperInfo(tokenId);
+
+                    if (wrapperInfo.HasValue)
                     {
-                        // ERC20 wrapper token - find the avatar that owns this wrapper
+                        // Confirmed ERC20 wrapper
                         isErc20 = true;
                         isWrapped = true;
-
-                        // O(1) reverse lookup using the pre-built index (includes circlesType)
-                        var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-
-                        if (wrapperInfo.HasValue)
-                        {
-                            tokenOwner = wrapperInfo.Value.Avatar;
-                            // circlesType: 0 = demurraged, 1 = inflationary
-                            isInflationary = wrapperInfo.Value.CirclesType == 1;
-                            tokenType = isInflationary
-                                ? "CrcV2_ERC20WrapperDeployed_Inflationary"
-                                : "CrcV2_ERC20WrapperDeployed_Demurraged";
-                        }
-                        else
-                        {
-                            // Fallback: if not found in cache, use the wrapper address itself
-                            // and default to demurraged (safer assumption for balance calculations)
-                            tokenOwner = tokenId.ToLowerInvariant();
-                            isInflationary = false;
-                            tokenType = "CrcV2_ERC20WrapperDeployed_Demurraged";
-                        }
+                        tokenOwner = wrapperInfo.Value.Avatar;
+                        isInflationary = wrapperInfo.Value.CirclesType == 1;
+                        tokenType = isInflationary
+                            ? "CrcV2_ERC20WrapperDeployed_Inflationary"
+                            : "CrcV2_ERC20WrapperDeployed_Demurraged";
                     }
                     else
                     {
-                        // ERC1155 token - numeric tokenId represents avatar address
-                        // Convert tokenId to address and check if it's a human or group
+                        // ERC1155 token — resolve address and check avatar/group caches
                         isErc1155 = true;
+                        var tokenAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                            ? tokenId.ToLowerInvariant()
+                            : TokenIdToAddress(tokenId);
 
-                        // Convert numeric tokenId to address for lookup
-                        var tokenAddress = TokenIdToAddress(tokenId);
-
-                        // Check V2Avatars cache for Human
                         if (_caches.V2Avatars.TryGetValue(tokenAddress, out var avatarInfo))
                         {
-                            isGroup = avatarInfo.Type != "Human";
-                            tokenType = isGroup ? "CrcV2_RegisterGroup" : "CrcV2_RegisterHuman";
+                            // V2Avatars stores "Human" / "Organization" — groups are in the Groups cache
+                            isGroup = false;
+                            tokenType = avatarInfo.Type == "Human" ? "CrcV2_RegisterHuman" : "CrcV2_RegisterOrganization";
                         }
                         else if (_caches.Groups.TryGetValue(tokenAddress, out _))
                         {
-                            // It's a group
                             isGroup = true;
                             tokenType = "CrcV2_RegisterGroup";
                         }
                         else
                         {
-                            // Default to group if not found (safer assumption)
+                            // Unknown token — not in V2Avatars or Groups cache.
+                            // Could be deregistered avatar, migration artifact, or cache lag.
+                            _logger.LogWarning("Unknown V2 ERC1155 token {TokenAddress} for account {Account} — defaulting to group", tokenAddress, addressLower);
                             isGroup = true;
                             tokenType = "CrcV2_RegisterGroup";
                         }
-
                         tokenOwner = tokenAddress;
                     }
 
@@ -330,14 +312,10 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    // Skip demurrage for inflationary wrappers (static amounts)
-                    var isHexAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-                    var isInflationary = false;
-                    if (isHexAddress)
-                    {
-                        var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-                        isInflationary = wrapperInfo?.CirclesType == 1;
-                    }
+                    // Only inflationary wrappers skip demurrage (static amounts).
+                    // GetWrapperInfo returns null for ERC1155 tokens → isInflationary=false → demurrage applied correctly.
+                    var wrapperInfo = _caches.GetWrapperInfo(tokenId);
+                    var isInflationary = wrapperInfo?.CirclesType == 1;
 
                     total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }
@@ -401,14 +379,10 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    // Skip demurrage for inflationary wrappers (static amounts)
-                    var isHexAddress = tokenId.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-                    var isInflationary = false;
-                    if (isHexAddress)
-                    {
-                        var wrapperInfo = _caches.GetWrapperInfo(tokenId);
-                        isInflationary = wrapperInfo?.CirclesType == 1;
-                    }
+                    // Only inflationary wrappers skip demurrage (static amounts).
+                    // GetWrapperInfo returns null for ERC1155 tokens → isInflationary=false → demurrage applied correctly.
+                    var wrapperInfo = _caches.GetWrapperInfo(tokenId);
+                    var isInflationary = wrapperInfo?.CirclesType == 1;
 
                     v2Total += isInflationary ? balance : ApplyV2Demurrage(key, balance);
                 }

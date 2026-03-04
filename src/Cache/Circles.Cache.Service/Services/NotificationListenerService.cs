@@ -715,12 +715,11 @@ public class NotificationListenerService : BackgroundService
                 {
                     if (currentBlock != -1)
                     {
-                        // Add balances for the previous block
+                        // Flush balances for the previous block (index-before-balance ordering)
                         foreach (var kvp in currentBalances)
                         {
-                            _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
-                            // Update secondary index for fast lookups
                             _caches.UpdateBalanceIndex(kvp.Key, isV1: true, kvp.Value);
+                            _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -756,14 +755,13 @@ public class NotificationListenerService : BackgroundService
             }
         }
 
-        // Add balances for the last block
+        // Flush balances for the last block (index-before-balance ordering)
         if (currentBlock != -1)
         {
             foreach (var kvp in currentBalances)
             {
-                _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
-                // Update secondary index for fast lookups
                 _caches.UpdateBalanceIndex(kvp.Key, isV1: true, kvp.Value);
+                _caches.V1BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
@@ -843,12 +841,14 @@ public class NotificationListenerService : BackgroundService
                 {
                     if (currentBlock != -1)
                     {
-                        // Add balances for the previous block
+                        // Flush balances for the previous block.
+                        // Update secondary index BEFORE writing balance so concurrent reads
+                        // see the token in the index before the balance appears (worst case:
+                        // momentary 0-balance entry, not an invisible balance).
                         foreach (var kvp in currentBalances)
                         {
-                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
-                            // Update secondary index for fast lookups
                             _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
+                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -886,14 +886,13 @@ public class NotificationListenerService : BackgroundService
             }
         }
 
-        // Add balances for the last block
+        // Flush balances for the last block (index-before-balance ordering)
         if (currentBlock != -1)
         {
             foreach (var kvp in currentBalances)
             {
-                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
-                // Update secondary index for fast lookups
                 _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
+                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
@@ -949,12 +948,11 @@ public class NotificationListenerService : BackgroundService
                 {
                     if (currentBlock != -1)
                     {
-                        // Add balances for the previous block
+                        // Flush balances for the previous block (index-before-balance ordering)
                         foreach (var kvp in currentBalances)
                         {
-                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
-                            // Update secondary index for fast lookups
                             _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
+                            _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
                         }
                     }
                     currentBlock = blockNumber;
@@ -992,14 +990,13 @@ public class NotificationListenerService : BackgroundService
             }
         }
 
-        // Add balances for the last block
+        // Flush balances for the last block (index-before-balance ordering)
         if (currentBlock != -1)
         {
             foreach (var kvp in currentBalances)
             {
-                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
-                // Update secondary index for fast lookups
                 _caches.UpdateBalanceIndex(kvp.Key, isV1: false, kvp.Value);
+                _caches.V2BalancesByAccountAndToken.Add(currentBlock, kvp.Key, kvp.Value);
             }
         }
 
