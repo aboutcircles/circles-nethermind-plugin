@@ -424,7 +424,7 @@ public class NetworkStateUpdaterService : BackgroundService
         _networkState.Replace(balanceGraph: balanceGraph);
 
         // Build capacity graph
-        var cap = graphFactory.CreateCapacityGraph(balanceGraph, trustLookup);
+        var cap = graphFactory.CreateBaseCapacityGraph(balanceGraph, trustLookup);
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
@@ -641,7 +641,7 @@ public class NetworkStateUpdaterService : BackgroundService
         var balanceGraph = graphFactory.V2BalanceGraph();
         _networkState.Replace(balanceGraph: balanceGraph);
 
-        var cap = graphFactory.CreateCapacityGraph(balanceGraph, trustLookup);
+        var cap = graphFactory.CreateBaseCapacityGraph(balanceGraph, trustLookup);
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
