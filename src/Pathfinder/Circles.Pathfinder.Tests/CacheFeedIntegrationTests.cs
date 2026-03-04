@@ -287,6 +287,62 @@ public class CacheFeedIntegrationTests
     }
 
     /// <summary>
+    /// Regression: wrapper token of an unregistered avatar should produce zero capacity
+    /// edges when WithWrap guard is active. In the cache-feed path, isWrapped=true balances
+    /// must be filtered by the WithWrap flag. If not, wrapper addresses (which Hub.sol
+    /// rejects) leak into the flow graph → ERC1155InvalidReceiver revert.
+    /// </summary>
+    [Test]
+    public void CacheLoadGraph_WrapperOfUnregisteredAvatar_NoCapacityEdges()
+    {
+        var amount = CirclesConverter.CirclesToAttoCircles(50m).ToString();
+        var unregisteredWrapper = "0xww22000000000000000000000000000000000002";
+
+        var snapshot = new PathfinderGraphSnapshot(
+            SchemaVersion: 1,
+            LastProcessedBlock: 10000,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Balances: new[]
+            {
+                // Alice holds a WRAPPED token from an unregistered avatar
+                new PathfinderGraphBalanceRow(amount, Alice, unregisteredWrapper,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds(), true, "demurraged"),
+                // Alice also holds Bob's native token
+                new PathfinderGraphBalanceRow(amount, Alice, Bob,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds(), false, "demurraged")
+            },
+            Trust: new[]
+            {
+                new PathfinderGraphTrustRow(Bob, Alice, 100),
+                new PathfinderGraphTrustRow(Bob, unregisteredWrapper, 100)
+            },
+            Groups: null,
+            GroupTrusts: null,
+            ConsentedFlow: null,
+            Avatars: new[] { Alice, Bob } // unregisteredWrapper NOT in avatars
+        );
+
+        var loadGraph = new CacheLoadGraph(snapshot);
+        var factory = new GraphFactory(Router, loadGraph);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        // WithWrap=false (default)
+        var request = new Circles.Common.Dto.FlowRequest { Source = Alice, Sink = Bob };
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int wrapperId = AddressIdPool.IdOf(unregisteredWrapper.ToLowerInvariant());
+        int wrapperPool = AddressIdPool.TokenPoolIdOf(wrapperId);
+
+        // Wrapped balance should NOT produce capacity edges (WithWrap=false)
+        var wrapperEdges = cg.Edges.Where(e => e.From == aliceId && e.To == wrapperPool).ToList();
+        Assert.That(wrapperEdges, Is.Empty,
+            "Wrapped balance of unregistered avatar should have no capacity edges when WithWrap=false");
+    }
+
+    /// <summary>
     /// Registered avatar via MockLoadGraph (DB path) should also appear in AvatarNodes.
     /// </summary>
     [Test]

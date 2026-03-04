@@ -660,6 +660,62 @@ public class PropertyBasedTests
 
     #endregion
 
+    #region Property: Quantized Mode — No Self-Loops in Transfer DTO (Bug #3)
+
+    /// <summary>
+    /// Regression for quantization self-loop bug: AddSinkSelfLoopAggregation() adds
+    /// Sink→Sink display-only edges. If these leak into the transfer DTO, Hub.sol
+    /// sees flow conservation violation (outflow without matching inflow).
+    /// This test generates random quantized graphs and asserts no From==To in transfers.
+    /// </summary>
+    [Test]
+    [Repeat(15)]
+    public void PropertyBased_QuantizedMode_NoSelfLoopsInTransferDTO()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 1100);
+        int avatars = rng.Next(3, 8);
+
+        var graph = BuildSyntheticGraph(avatars, 0, HighBalance, rng,
+            trustDensity: 0.5, withRouter: false);
+        var (source, sink) = PickSourceSink(graph, rng);
+
+        var pathfinder = new V2Pathfinder();
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+            QuantizedMode = true,
+        };
+        UInt256 target = CirclesConverter.BlowUpToUInt256(HighBalance);
+
+        MaxFlowResponse result;
+        try
+        {
+            result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph — valid
+        }
+
+        // Assert: no self-loops in transfer DTO (the bug was From==To edges leaking through)
+        foreach (var step in result.Transfers)
+        {
+            Assert.That(step.From!.ToLowerInvariant(), Is.Not.EqualTo(step.To!.ToLowerInvariant()),
+                $"Self-loop detected in transfer DTO: {step.From} → {step.To} (token={step.TokenOwner}, value={step.Value}). " +
+                "Sink self-loop aggregation edges must be filtered before building DTOs.");
+        }
+
+        // Also verify flow conservation (self-loops would break this)
+        if (result.Transfers.Count > 0)
+        {
+            AssertFlowConservation(result.Transfers, request.Source!, request.Sink!);
+            AssertAllFlowsPositive(result.Transfers);
+        }
+    }
+
+    #endregion
+
     #region Property: Dense Graph Stress
 
     /// <summary>

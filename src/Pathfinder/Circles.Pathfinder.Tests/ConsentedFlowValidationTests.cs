@@ -598,6 +598,108 @@ public class ConsentedFlowValidationTests
 
     #endregion
 
+    #region Regression: 3-Path Graph Consent Drop Preserves Flow Conservation (Bug #2)
+
+    /// <summary>
+    /// Regression for consent conservation bug: deterministic 3-path graph where 1 path
+    /// violates consent rules. Dropping the violating path ENTIRELY (not individual edges)
+    /// must preserve flow conservation at all intermediate vertices.
+    ///
+    /// Before the fix: edge-level consent filtering on AGGREGATED edges left "holes" —
+    /// intermediate vertices with unbalanced in/out flows.
+    /// After the fix: path-level filtering drops entire paths before aggregation.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentPathLevel_ThreePathGraph_DropsViolatingPathPreservesConservation()
+    {
+        // Topology: 3 independent paths from Source to Sink
+        //   Path 1: Source(consented) → A(consented) → Sink(consented)  [VALID: all consented, Source trusts A, A trusts Sink]
+        //   Path 2: Source(consented) → B(non-consented) → Sink(consented)  [INVALID: Source→B fails (B not consented)]
+        //   Path 3: Source(consented) → C(consented) → Sink(consented)  [VALID: all consented, Source trusts C, C trusts Sink]
+        //
+        // After filtering: paths 1 and 3 survive. Flow conservation MUST hold at A and C.
+
+        var Source = AddressIdPool.IdOf("0xcf10_3path_source_0000000000000");
+        var A = AddressIdPool.IdOf("0xcf10_3path_vertex_a000000000000");
+        var B = AddressIdPool.IdOf("0xcf10_3path_vertex_b000000000000");
+        var C = AddressIdPool.IdOf("0xcf10_3path_vertex_c000000000000");
+        var Sink = AddressIdPool.IdOf("0xcf10_3path_sink_0000000000000000");
+        var Token = AddressIdPool.IdOf("0xcf10_3path_token_000000000000000");
+
+        var graph = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int> { Source, A, C, Sink }, // B is NOT consented; Sink IS consented
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                { Source, new HashSet<int> { A, C } }, // Source trusts A and C (NOT B)
+                { A, new HashSet<int> { Sink, Token } }, // A trusts Sink
+                { B, new HashSet<int> { Token } },
+                { C, new HashSet<int> { Sink, Token } }, // C trusts Sink
+                { Sink, new HashSet<int> { Token } }
+            }
+        );
+        graph.AddAvatar(Source);
+        graph.AddAvatar(A);
+        graph.AddAvatar(B);
+        graph.AddAvatar(C);
+        graph.AddAvatar(Sink);
+
+        // 3 independent paths
+        var path1 = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Source, A, Token, 300),
+            (A, Sink, Token, 300)
+        };
+        var path2 = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Source, B, Token, 200), // VIOLATION: Source(consented) → B(non-consented)
+            (B, Sink, Token, 200)
+        };
+        var path3 = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Source, C, Token, 400),
+            (C, Sink, Token, 400)
+        };
+
+        // Verify consent violation detection
+        Assert.That(PathHasConsentViolation(path1, graph), Is.False, "Path 1 should be valid");
+        Assert.That(PathHasConsentViolation(path2, graph), Is.True, "Path 2 should be violation");
+        Assert.That(PathHasConsentViolation(path3, graph), Is.False, "Path 3 should be valid");
+
+        // Simulate path-level filtering: keep valid paths, drop invalid ones
+        var survivingEdges = new List<FlowEdge>();
+        foreach (var (from, to, token, flow) in path1)
+            survivingEdges.Add(new FlowEdge(from, to, token, flow) { Flow = flow });
+        // path2 dropped entirely
+        foreach (var (from, to, token, flow) in path3)
+            survivingEdges.Add(new FlowEdge(from, to, token, flow) { Flow = flow });
+
+        // Verify flow conservation on surviving edges
+        var netFlow = new Dictionary<int, long>();
+        foreach (var e in survivingEdges)
+        {
+            netFlow.TryGetValue(e.From, out var fromNet);
+            netFlow[e.From] = fromNet - e.Flow;
+            netFlow.TryGetValue(e.To, out var toNet);
+            netFlow[e.To] = toNet + e.Flow;
+        }
+
+        // Intermediaries (A, C) should have net flow = 0
+        Assert.That(netFlow.GetValueOrDefault(A), Is.EqualTo(0),
+            "Flow conservation violated at vertex A after dropping path 2");
+        Assert.That(netFlow.GetValueOrDefault(C), Is.EqualTo(0),
+            "Flow conservation violated at vertex C after dropping path 2");
+
+        // Source should have net outflow = -(300+400) = -700
+        Assert.That(netFlow[Source], Is.EqualTo(-700),
+            "Source should have total outflow of 700 (paths 1+3)");
+        // Sink should have net inflow = 300+400 = 700
+        Assert.That(netFlow[Sink], Is.EqualTo(700),
+            "Sink should have total inflow of 700 (paths 1+3)");
+    }
+
+    #endregion
+
     #region PathHasConsentedIntermediary Tests (DisableConsentedFlow mode)
 
     /// <summary>

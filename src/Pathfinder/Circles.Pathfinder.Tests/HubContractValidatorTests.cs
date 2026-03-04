@@ -1,4 +1,5 @@
 using Circles.Common.Dto;
+using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Validation;
 
 namespace Circles.Pathfinder.Tests;
@@ -538,5 +539,62 @@ public class HubContractValidatorTests
         var errorRules = result.Violations.Where(v => v.Severity == "error").Select(v => v.Rule).ToHashSet();
         Assert.That(errorRules, Does.Contain("NoZeroFlow"));
         Assert.That(errorRules, Does.Contain("AddressFormat"));
+    }
+
+    // ═══════════════════════════════════════════
+    // Property: Quantized + Groups → All 8 Rules Pass
+    // ═══════════════════════════════════════════
+
+    /// <summary>
+    /// Regression: random quantized graphs with groups validated against all 8 Hub.sol rules.
+    /// Covers the intersection of Bug #3 (self-loop), collateral ordering, and flow conservation.
+    /// If any quantization or group minting logic regresses, this catches it via the validator.
+    /// </summary>
+    [Test]
+    [Repeat(15)]
+    public void PropertyBased_QuantizedGraphWithGroups_PassesHubContractValidator()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 2000);
+        int avatars = rng.Next(4, 8);
+        int groups = rng.Next(1, 3);
+
+        var graph = PropertyBasedTests.BuildSyntheticGraph(avatars, groups,
+            100_000_000L, rng, trustDensity: 0.5, withRouter: true);
+        var (source, sink) = PropertyBasedTests.PickSourceSink(graph, rng);
+
+        var pathfinder = new V2Pathfinder();
+        var sourceAddr = AddressIdPool.StringOf(source);
+        var sinkAddr = AddressIdPool.StringOf(sink);
+        var request = new Circles.Common.Dto.FlowRequest
+        {
+            Source = sourceAddr,
+            Sink = sinkAddr,
+            QuantizedMode = true,
+        };
+        var target = Circles.Common.CirclesConverter.BlowUpToUInt256(100_000_000L);
+
+        Circles.Common.Dto.MaxFlowResponse result;
+        try
+        {
+            result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph — valid
+        }
+
+        if (result.Transfers.Count == 0)
+            return;
+
+        var state = new CapacityGraphContractState(graph);
+        var validation = HubContractValidator.Validate(result.Transfers, sourceAddr, sinkAddr, state);
+
+        var errors = validation.Violations
+            .Where(v => v.Severity == "error")
+            .Select(v => $"  [{v.Rule}] {v.Message}")
+            .ToList();
+
+        Assert.That(errors, Is.Empty,
+            $"Quantized+groups graph ({avatars} avatars, {groups} groups) validator errors:\n{string.Join("\n", errors)}");
     }
 }

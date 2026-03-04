@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Circles.Pathfinder.Graphs;
 
-public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
+public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
 {
     private volatile CapacityGraphSnapshot? _current;
     private volatile CachedGroupData? _cachedGroupData;
@@ -59,7 +59,7 @@ public sealed class CapacityGraphPool(string routerAddress, LoadGraph loadGraph,
     public static Task<CapacityGraph> BuildFullGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
-        LoadGraph loadGraph,
+        ILoadGraph loadGraph,
         string routerAddress)
     {
         var gf = new GraphFactory(routerAddress, loadGraph);
