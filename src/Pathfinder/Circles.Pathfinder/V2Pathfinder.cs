@@ -294,7 +294,7 @@ public class V2Pathfinder
     {
         var beforeCount = ctx.Edges.Count;
 
-        ctx.Edges = _settings.DisableConsentedFlow
+        ctx.Edges = _settings.ExcludeConsentedIntermediaries
             ? ctx.Edges
             : ValidateConsentedFlow(ctx.Edges, ctx.Graph);
 
@@ -305,7 +305,7 @@ public class V2Pathfinder
             _logger.LogInformation(
                 "[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}, safetyNetRejected={Rejected}",
                 ctx.ReqId, Math.Max(0, routerEdges),
-                _settings.DisableConsentedFlow ? "exclude-intermediaries" : "validate-rules",
+                _settings.ExcludeConsentedIntermediaries ? "exclude-intermediaries" : "validate-rules",
                 ctx.ConsentDroppedPaths, ctx.ConsentSafetyNetRejected);
         }
 
@@ -626,7 +626,7 @@ public class V2Pathfinder
         {
             var pathEdges = CollapseSinglePathToEdges(path, capacityGraph);
 
-            if (_settings.DisableConsentedFlow)
+            if (_settings.ExcludeConsentedIntermediaries)
             {
                 // Conservative: exclude paths through consented intermediaries entirely
                 if (PathHasConsentedIntermediary(pathEdges, capacityGraph, sourceId, sinkId))
@@ -656,7 +656,7 @@ public class V2Pathfinder
         {
             _logger.LogInformation("[CollapseBalanceNodes] Dropped {DroppedPaths}/{TotalPaths} paths due to consent {Mode}",
                 droppedPaths, pathsWithFlow.Count,
-                _settings.DisableConsentedFlow ? "intermediary exclusion" : "violations");
+                _settings.ExcludeConsentedIntermediaries ? "intermediary exclusion" : "violations");
         }
 
         /* ---------------- materialise collapsed edges ---------------------- */
@@ -784,7 +784,7 @@ public class V2Pathfinder
 
     /* ------------------------------------------------------------------------
      * Check if a collapsed path routes through any consented avatar as an
-     * intermediary (i.e. NOT source or sink). Used when DisableConsentedFlow
+     * intermediary (i.e. NOT source or sink). Used when ExcludeConsentedIntermediaries
      * is true — instead of validating consent rules, we simply exclude
      * consented avatars from intermediary positions entirely.
      * --------------------------------------------------------------------- */

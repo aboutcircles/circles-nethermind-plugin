@@ -84,11 +84,37 @@ public class Settings
     /// for the risky multi-hop case. Default: true (conservative).
     /// When false, the existing consent validation logic runs (PathHasConsentViolation
     /// + ValidateConsentedFlow safety net).
+    /// Reads PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES first, falls back to
+    /// PATHFINDER_DISABLE_CONSENTED_FLOW for backward compatibility.
     /// </summary>
-    public bool DisableConsentedFlow { get; set; } =
-        !string.Equals(
-            Environment.GetEnvironmentVariable("PATHFINDER_DISABLE_CONSENTED_FLOW"),
-            "false",
-            StringComparison.OrdinalIgnoreCase);
+    public bool ExcludeConsentedIntermediaries { get; set; } =
+        Environment.GetEnvironmentVariable("PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES") != null
+            ? !string.Equals(
+                Environment.GetEnvironmentVariable("PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES"),
+                "false",
+                StringComparison.OrdinalIgnoreCase)
+            : !string.Equals(
+                Environment.GetEnvironmentVariable("PATHFINDER_DISABLE_CONSENTED_FLOW"),
+                "false",
+                StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Backward-compatible alias for <see cref="ExcludeConsentedIntermediaries"/>.
+    /// </summary>
+    [Obsolete("Use ExcludeConsentedIntermediaries instead. Will be removed in a future release.")]
+    public bool DisableConsentedFlow
+    {
+        get => ExcludeConsentedIntermediaries;
+        set => ExcludeConsentedIntermediaries = value;
+    }
+
+    /// <summary>
+    /// Address of the V2 base group router contract used to filter groups and group trusts.
+    /// Previously hardcoded in SQL; now parameterized to avoid silent data loss if the router changes.
+    /// Reads V2_BASE_GROUP_ROUTER env var (same as Common.Settings.BaseGroupRouter).
+    /// </summary>
+    public string GroupRouterAddress { get; set; } =
+        Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
+        ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
 
 }

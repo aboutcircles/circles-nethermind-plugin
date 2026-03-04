@@ -89,21 +89,76 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
     }
 
     /// <summary>
-    /// Takes a balance graph and a trust graph and creates a capacity graph from them.
-    /// Also sets up a "virtual sink" if source == sink and toTokens are specified.
+    /// Creates a base capacity graph with NO per-request filtering.
+    /// Contains only: avatar nodes, registered avatars, groups, router, consented flags,
+    /// and unfiltered edges from all balances and trust relations.
+    /// Used by the shared snapshot path (CapacityGraphPool.BuildFullGraph).
     /// </summary>
-    /// <param name="balanceGraph">The balance graph to use.</param>
-    /// <param name="trustLookup">The trust graph to use.</param>
-    /// <param name="request">Flow request parameters.</param>
-    /// <returns>A capacity graph created from the balance and trust graphs.</returns>
+    public CapacityGraph CreateBaseCapacityGraph(
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> trustLookup,
+        CachedGroupData? cachedGroupData = null)
+    {
+        Interlocked.Increment(ref _createdCount);
+        _logger.LogDebug("Creating BASE capacity graph {Count}...", _createdCount);
+
+        var capacityGraph = new CapacityGraph();
+
+        // Add all avatar nodes from both graphs
+        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
+
+        // Ensure ALL registered avatars are valid source/sink candidates
+        foreach (var avatar in loadGraph.LoadRegisteredAvatars())
+        {
+            capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
+        }
+
+        // Load groups and track router node
+        LoadGroupsAndTrackRouter(capacityGraph, cachedGroupData);
+
+        // Load consented flow flags
+        LoadConsentedFlowFlags(capacityGraph, cachedGroupData);
+
+        // Store trust lookup (no merge — no simulated trust in base graph)
+        capacityGraph.TrustLookup = trustLookup;
+
+        // Add ALL holder→token pool edges (no filters)
+        AddHolderToTokenEdges_Pooled(
+            capacityGraph, balanceGraph,
+            req: null, sourceEqualsSink: false,
+            new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
+
+        // Add ALL trust-based out-edges (no filters)
+        AddTokenPoolOutEdges(
+            capacityGraph, trustLookup,
+            virtualSink: null, virtualSinkTrustedTokens: new HashSet<int>(),
+            sinkId: null, new HashSet<int>(), new HashSet<int>());
+
+        // Add ALL group minting edges (no filters)
+        AddGroupMintingEdges(
+            capacityGraph, trustLookup,
+            sinkId: null, new HashSet<int>(), new HashSet<int>());
+
+        return capacityGraph;
+    }
+
+    /// <summary>
+    /// Creates a filtered capacity graph for a specific <see cref="FlowRequest"/>.
+    /// Applies token filters, simulated balances/trusts, virtual sink construction,
+    /// and quantized mode logic. Used by CapacityGraphPool.Rent for ad-hoc requests.
+    /// </summary>
     public CapacityGraph CreateCapacityGraph(
         BalanceGraph balanceGraph,
         IReadOnlyDictionary<int, HashSet<int>> trustLookup,
         FlowRequest? request = null,
         CachedGroupData? cachedGroupData = null)
     {
+        // Fast path: no request means base graph (delegate to clean path)
+        if (request == null)
+            return CreateBaseCapacityGraph(balanceGraph, trustLookup, cachedGroupData);
+
         Interlocked.Increment(ref _createdCount);
-        _logger.LogDebug("Creating capacity graph {Count}...", _createdCount);
+        _logger.LogDebug("Creating FILTERED capacity graph {Count}...", _createdCount);
 
         var capacityGraph = new CapacityGraph();
 
@@ -111,14 +166,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
         // STEP 1a: Ensure ALL registered avatars are valid source/sink candidates
-        // (avatars with no balances/trust are still valid — they just have maxFlow=0)
         foreach (var avatar in loadGraph.LoadRegisteredAvatars())
         {
             capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
         }
 
         // STEP 1b: Add avatars referenced by simulated balances (holders + tokens)
-        var simulated = NormalizeSimulatedBalances(request?.SimulatedBalances);
+        var simulated = NormalizeSimulatedBalances(request.SimulatedBalances);
         foreach (var sb in simulated)
         {
             capacityGraph.AddAvatar(sb.HolderId);
@@ -126,7 +180,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
 
         // STEP 1c: Add simulated trust relations
-        var simulatedTrust = NormalizeSimulatedTrusts(request?.SimulatedTrusts);
+        var simulatedTrust = NormalizeSimulatedTrusts(request.SimulatedTrusts);
         foreach (var kv in simulatedTrust)
         {
             capacityGraph.AddAvatar(kv.Key);

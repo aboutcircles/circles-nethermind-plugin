@@ -26,12 +26,13 @@ public class NetworkStateUpdaterService : BackgroundService
     private readonly CapacityGraphPool _pool;
 
     // Incremental state (only used when IncrementalEnabled=true)
-    private InMemoryBalanceState? _balanceState;
-    private InMemoryTrustState? _trustState;
-    private InMemoryAvatarState? _avatarState;
-    private long _lastFullRefreshBlock = -1;
-    private long _lastProcessedBlock = -1;
-    private string? _lastProcessedBlockHash;  // D10: reorg detection
+    // Internal for testability (InternalsVisibleTo: Circles.Pathfinder.Tests)
+    internal InMemoryBalanceState? _balanceState;
+    internal InMemoryTrustState? _trustState;
+    internal InMemoryAvatarState? _avatarState;
+    internal long _lastFullRefreshBlock = -1;
+    internal long _lastProcessedBlock = -1;
+    internal string? _lastProcessedBlockHash;  // D10: reorg detection
 
     // Cache-source state (only used when UseCacheGraphSource=true)
     private CacheGraphClient? _cacheGraphClient;
@@ -234,11 +235,18 @@ public class NetworkStateUpdaterService : BackgroundService
     /// Incremental update path — maintains in-memory state, applies per-block deltas.
     /// Falls back to full refresh on first run, every N blocks, or on reorg/skip.
     /// </summary>
-    private async Task UpdateIncremental(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
+    /// <summary>
+    /// Determines whether a full refresh is needed based on current state.
+    /// Does NOT check block hash (that requires DB). Caller must handle hash-based reorg separately.
+    /// </summary>
+    internal bool NeedsFullRefresh(long lastBlock) =>
+        _balanceState == null                                                   // first run
+        || (lastBlock - _lastFullRefreshBlock) >= _settings.FullRefreshIntervalBlocks  // periodic
+        || lastBlock <= _lastProcessedBlock;                                    // reorg / skip
+
+    internal async Task UpdateIncremental(LoadGraph loadGraph, long lastBlock, CancellationToken ct)
     {
-        bool needsFullRefresh = _balanceState == null                                       // first run
-            || (lastBlock - _lastFullRefreshBlock) >= _settings.FullRefreshIntervalBlocks    // periodic
-            || lastBlock <= _lastProcessedBlock;                                             // reorg / skip
+        bool needsFullRefresh = NeedsFullRefresh(lastBlock);
 
         // D10: same-height reorg detection via block hash comparison
         if (!needsFullRefresh && _lastProcessedBlockHash != null)
@@ -424,7 +432,7 @@ public class NetworkStateUpdaterService : BackgroundService
         _networkState.Replace(balanceGraph: balanceGraph);
 
         // Build capacity graph
-        var cap = graphFactory.CreateCapacityGraph(balanceGraph, trustLookup);
+        var cap = graphFactory.CreateBaseCapacityGraph(balanceGraph, trustLookup);
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
@@ -438,7 +446,7 @@ public class NetworkStateUpdaterService : BackgroundService
     /// Compare accumulated in-memory state against fresh DB load to detect drift.
     /// Any drift indicates a bug in delta application logic.
     /// </summary>
-    private void DetectAndRecordDrift(
+    internal void DetectAndRecordDrift(
         InMemoryBalanceState prevBalance, InMemoryTrustState prevTrust, InMemoryAvatarState prevAvatar,
         InMemoryBalanceState freshBalance, InMemoryTrustState freshTrust, InMemoryAvatarState freshAvatar)
     {
@@ -630,7 +638,7 @@ public class NetworkStateUpdaterService : BackgroundService
     /// Build trust graph, balance graph, and capacity graph from any ILoadGraph and publish to pool.
     /// Used by both the cache-source path and could be reused by other graph sources.
     /// </summary>
-    private void BuildGraphsFromLoadGraph(ILoadGraph loadGraph, long lastBlock)
+    internal void BuildGraphsFromLoadGraph(ILoadGraph loadGraph, long lastBlock)
     {
         var graphFactory = new GraphFactory(_settings.BaseGroupRouter, loadGraph);
 
@@ -641,7 +649,7 @@ public class NetworkStateUpdaterService : BackgroundService
         var balanceGraph = graphFactory.V2BalanceGraph();
         _networkState.Replace(balanceGraph: balanceGraph);
 
-        var cap = graphFactory.CreateCapacityGraph(balanceGraph, trustLookup);
+        var cap = graphFactory.CreateBaseCapacityGraph(balanceGraph, trustLookup);
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
