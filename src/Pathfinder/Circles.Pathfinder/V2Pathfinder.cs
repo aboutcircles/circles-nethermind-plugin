@@ -83,265 +83,299 @@ public class V2Pathfinder
         FlowRequest request,
         UInt256 targetFlow)
     {
-        /* --------------------------------------------------------------------
-         * 1. Resolve ids and basic guards
-         * ------------------------------------------------------------------ */
+        var ctx = ResolveAndGuard(capacityGraph, request, targetFlow);
+        SolveAndExtractPaths(ctx);
+        PruneByMaxTransfers(ctx);
+        ConvertToFlowEdges(ctx);
+        ReplaceVirtualSink(ctx);
+        CollapseAndAggregate(ctx);
+        InsertRouterEdges(ctx);
+        ValidateConsent(ctx);
+        SortForMintDependencies(ctx);
+        Quantize(ctx);
+        BuildTransferDtos(ctx);
+        return BuildResponse(ctx);
+    }
+
+    /* ======================================================================
+     * Pipeline context — carries data between stages
+     * ====================================================================== */
+
+    private sealed class PipelineContext
+    {
+        // Immutable inputs
+        public required CapacityGraph Graph { get; init; }
+        public required FlowRequest Request { get; init; }
+        public required int SourceId { get; init; }
+        public required int SinkId { get; init; }
+        public required int EffectiveSinkId { get; init; }
+        public required long Target { get; init; }
+        public required string ReqId { get; init; }
+        public required Stopwatch TotalStopwatch { get; init; }
+        public required bool WantDebug { get; init; }
+
+        // Mutable state flowing through stages
+        public List<List<SimpleEdge>> SimplePaths { get; set; } = new();
+        public List<List<FlowEdge>> FlowPaths { get; set; } = new();
+        public FlowGraph Aggregated { get; set; } = null!;
+        public List<FlowEdge> Edges { get; set; } = new();
+        public List<TransferPathStep> Transfers { get; set; } = new();
+        public int ConsentDroppedPaths { get; set; }
+        public int ConsentSafetyNetRejected { get; set; }
+        public DebugPipelineStages? DebugStages { get; set; }
+    }
+
+    /* ======================================================================
+     * Stage 1: Resolve IDs and validate source/sink
+     * ====================================================================== */
+
+    private PipelineContext ResolveAndGuard(
+        CapacityGraph capacityGraph,
+        FlowRequest request,
+        UInt256 targetFlow)
+    {
         int sinkId = AddressIdPool.IdOf(request.Sink ?? throw new ArgumentNullException(nameof(request.Sink)));
         int effSink = capacityGraph.VirtualSinkAddress ?? sinkId;
         int sourceId = AddressIdPool.IdOf(request.Source ?? throw new ArgumentNullException(nameof(request.Source)));
 
-        bool srcMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
-        bool dstMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
-        if (srcMissing)
+        if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
             throw new ArgumentException($"Source '{request.Source}' isn't in the graph snapshot.");
-        if (dstMissing)
+        if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
             throw new ArgumentException($"Sink '{request.Sink}' isn't in the graph snapshot.");
 
-        /* --------------------------------------------------------------------
-         * 2. Run max-flow and peel paths
-         * ------------------------------------------------------------------ */
         var reqId = Guid.NewGuid().ToString("N")[..8];
-        var totalSw = Stopwatch.StartNew();
 
         _logger.LogInformation("[{ReqId}] Graph: avatars={Avatars}, groups={Groups}, edges={Edges}",
             reqId, capacityGraph.AvatarNodes.Count, capacityGraph.GroupNodes.Count, capacityGraph.Edges.Count);
 
-        long tgt = CirclesConverter.TruncateToInt64(targetFlow);
+        return new PipelineContext
+        {
+            Graph = capacityGraph,
+            Request = request,
+            SourceId = sourceId,
+            SinkId = sinkId,
+            EffectiveSinkId = effSink,
+            Target = CirclesConverter.TruncateToInt64(targetFlow),
+            ReqId = reqId,
+            TotalStopwatch = Stopwatch.StartNew(),
+            WantDebug = request.DebugShowIntermediateSteps == true,
+            DebugStages = request.DebugShowIntermediateSteps == true ? new DebugPipelineStages() : null
+        };
+    }
+
+    /* ======================================================================
+     * Stage 2: Run max-flow solver and extract flow paths
+     * ====================================================================== */
+
+    private void SolveAndExtractPaths(PipelineContext ctx)
+    {
         var solveSw = Stopwatch.StartNew();
-        var solved = MaxFlowSolver.Solve(capacityGraph.Edges, sourceId, effSink, tgt);
+        var solved = MaxFlowSolver.Solve(ctx.Graph.Edges, ctx.SourceId, ctx.EffectiveSinkId, ctx.Target);
         solveSw.Stop();
-        var simplePaths = PathUtils.ExtractFlowPaths(solved, sourceId, effSink);
+
+        ctx.SimplePaths = PathUtils.ExtractFlowPaths(solved, ctx.SourceId, ctx.EffectiveSinkId);
 
         {
-            long solvedFlow = solved.Where(e => e.From == sourceId && e.Flow > 0).Sum(e => e.Flow);
+            long solvedFlow = solved.Where(e => e.From == ctx.SourceId && e.Flow > 0).Sum(e => e.Flow);
             _logger.LogInformation("[{ReqId}] MaxFlow: flow={Flow}, edgesWithFlow={EdgesWithFlow}, paths={Paths}, solveMs={SolveMs}",
-                reqId, solvedFlow, solved.Count(e => e.Flow > 0), simplePaths.Count, solveSw.ElapsedMilliseconds);
+                ctx.ReqId, solvedFlow, solved.Count(e => e.Flow > 0), ctx.SimplePaths.Count, solveSw.ElapsedMilliseconds);
         }
 
-        /* --------------------------------------------------------------------
-         * 2a. NOTE: Quantization for invitation module moved to step 6d (after aggregation)
-         *     Old per-path quantization filtered paths individually, missing cases where
-         *     multiple paths deliver the same token type that together form valid quanta.
-         * ------------------------------------------------------------------ */
+        if (ctx.WantDebug)
+            ctx.DebugStages!.RawPaths = ConvertSimplePathsToTransferSteps(ctx.SimplePaths);
+    }
 
-        /* --------------------------------------------------------------------
-         * 2b. CAPTURE: Stage 1 - Raw paths from solver (before pruning/collapsing)
-         *     Shows Avatar → TokenPool → Avatar paths with token pools visible.
-         * ------------------------------------------------------------------ */
-        bool wantDebug = request.DebugShowIntermediateSteps == true;
-        DebugPipelineStages? debugStages = wantDebug ? new DebugPipelineStages() : null;
+    /* ======================================================================
+     * Stage 3: Prune paths to fit optional MaxTransfers budget
+     * ====================================================================== */
 
-        if (wantDebug)
-        {
-            debugStages!.RawPaths = ConvertSimplePathsToTransferSteps(simplePaths);
-        }
+    private void PruneByMaxTransfers(PipelineContext ctx)
+    {
+        if (!ctx.Request.MaxTransfers.HasValue || ctx.Request.MaxTransfers.Value <= 0)
+            return;
 
-        /* --------------------------------------------------------------------
-         * 2c. Optional pruning to fit a transfer-step budget
-         *      We keep the biggest-flow paths first and count "steps" after
-         *      collapsing balance nodes (avatar→avatar per token).
-         * ------------------------------------------------------------------ */
-        bool hasStepCap = request.MaxTransfers.HasValue && request.MaxTransfers.Value > 0;
-        if (hasStepCap)
-        {
-            int stepCap = request.MaxTransfers!.Value;
-            int currentSteps = CountCollapsedTransferSteps(simplePaths, capacityGraph);
+        int stepCap = ctx.Request.MaxTransfers!.Value;
+        int currentSteps = CountCollapsedTransferSteps(ctx.SimplePaths, ctx.Graph);
 
-            bool needsPrune = currentSteps > stepCap;
-            if (needsPrune)
-            {
-                simplePaths = PrunePathsByStepLimit(simplePaths, stepCap, capacityGraph);
-            }
-        }
+        if (currentSteps > stepCap)
+            ctx.SimplePaths = PrunePathsByStepLimit(ctx.SimplePaths, stepCap, ctx.Graph);
+    }
 
-        /* --------------------------------------------------------------------
-         * 3. Convert SimpleEdge → FlowEdge
-         * ------------------------------------------------------------------ */
-        var flowPaths = new List<List<FlowEdge>>(simplePaths.Count);
+    /* ======================================================================
+     * Stage 4: Convert SimpleEdge paths → FlowEdge paths
+     * ====================================================================== */
 
-        foreach (var path in simplePaths)
+    private static void ConvertToFlowEdges(PipelineContext ctx)
+    {
+        ctx.FlowPaths = new List<List<FlowEdge>>(ctx.SimplePaths.Count);
+
+        foreach (var path in ctx.SimplePaths)
         {
             var list = new List<FlowEdge>(path.Count);
             foreach (var e in path)
             {
-                var fe = new FlowEdge(e.From, e.To, e.Token, e.Capacity)
+                list.Add(new FlowEdge(e.From, e.To, e.Token, e.Capacity)
                 {
                     Flow = e.Flow,
                     CurrentCapacity = e.Capacity
-                };
-                list.Add(fe);
+                });
             }
-
-            flowPaths.Add(list);
+            ctx.FlowPaths.Add(list);
         }
+    }
 
-        /* --------------------------------------------------------------------
-         * 4. Replace virtual-sink ids (if any) with the real sink id
-         * ------------------------------------------------------------------ */
-        if (capacityGraph.VirtualSinkAddress != null)
+    /* ======================================================================
+     * Stage 5: Replace virtual-sink IDs with real sink
+     * ====================================================================== */
+
+    private static void ReplaceVirtualSink(PipelineContext ctx)
+    {
+        if (ctx.Graph.VirtualSinkAddress == null)
+            return;
+
+        int vs = ctx.Graph.VirtualSinkAddress.Value;
+        var replaced = new List<List<FlowEdge>>(ctx.FlowPaths.Count);
+
+        foreach (var path in ctx.FlowPaths)
         {
-            int vs = capacityGraph.VirtualSinkAddress.Value;
-
-            var replaced = new List<List<FlowEdge>>(flowPaths.Count);
-            foreach (var path in flowPaths)
+            var fixedPath = new List<FlowEdge>(path.Count);
+            foreach (var fe in path)
             {
-                var fixedPath = new List<FlowEdge>(path.Count);
-                foreach (var fe in path)
+                int from = fe.From == vs ? ctx.SinkId : fe.From;
+                int to = fe.To == vs ? ctx.SinkId : fe.To;
+                fixedPath.Add(new FlowEdge(from, to, fe.Token, fe.InitialCapacity)
                 {
-                    int from = fe.From == vs ? sinkId : fe.From;
-                    int to = fe.To == vs ? sinkId : fe.To;
-
-                    var copy = new FlowEdge(from, to, fe.Token, fe.InitialCapacity)
-                    {
-                        Flow = fe.Flow,
-                        CurrentCapacity = fe.CurrentCapacity
-                    };
-                    fixedPath.Add(copy);
-                }
-
-                replaced.Add(fixedPath);
+                    Flow = fe.Flow,
+                    CurrentCapacity = fe.CurrentCapacity
+                });
             }
-
-            flowPaths = replaced;
+            replaced.Add(fixedPath);
         }
 
-        /* --------------------------------------------------------------------
-         * 5. Collapse balance nodes + aggregate identical edges
-         * ------------------------------------------------------------------ */
-        var (collapsed, consentDroppedPaths) = CollapseBalanceNodes(flowPaths, capacityGraph, sourceId, sinkId);
-        var aggregated = collapsed.AggregateIdenticalEdges();
+        ctx.FlowPaths = replaced;
+    }
+
+    /* ======================================================================
+     * Stage 6: Collapse balance nodes + aggregate identical edges
+     * ====================================================================== */
+
+    private void CollapseAndAggregate(PipelineContext ctx)
+    {
+        var (collapsed, consentDroppedPaths) =
+            CollapseBalanceNodes(ctx.FlowPaths, ctx.Graph, ctx.SourceId, ctx.SinkId);
+        ctx.Aggregated = collapsed.AggregateIdenticalEdges();
+        ctx.ConsentDroppedPaths = consentDroppedPaths;
 
         {
-            int beforeCollapse = flowPaths.Sum(p => p.Count);
+            int beforeCollapse = ctx.FlowPaths.Sum(p => p.Count);
             _logger.LogInformation("[{ReqId}] Collapsed: before={Before}, after={After}, droppedZero={DroppedZero}",
-                reqId, beforeCollapse, aggregated.Edges.Count, aggregated.Edges.Count(e => e.Flow <= 0));
+                ctx.ReqId, beforeCollapse, ctx.Aggregated.Edges.Count,
+                ctx.Aggregated.Edges.Count(e => e.Flow <= 0));
         }
 
-        /* --------------------------------------------------------------------
-         * 5a. CAPTURE: Stage 2 - Collapsed edges (token pools removed)
-         * ------------------------------------------------------------------ */
-        if (wantDebug)
+        if (ctx.WantDebug)
+            ctx.DebugStages!.Collapsed = ConvertFlowEdgesToTransferSteps(ctx.Aggregated.Edges);
+    }
+
+    /* ======================================================================
+     * Stage 7: Insert Router between Avatar → Group transfers
+     * ====================================================================== */
+
+    private void InsertRouterEdges(PipelineContext ctx)
+    {
+        ctx.Edges = InsertRouterInTransfers(ctx.Aggregated.Edges, ctx.Graph);
+    }
+
+    /* ======================================================================
+     * Stage 8: Validate consented flow rules
+     * ====================================================================== */
+
+    private void ValidateConsent(PipelineContext ctx)
+    {
+        var beforeCount = ctx.Edges.Count;
+
+        ctx.Edges = _settings.ExcludeConsentedIntermediaries
+            ? ctx.Edges
+            : ValidateConsentedFlow(ctx.Edges, ctx.Graph);
+
+        ctx.ConsentSafetyNetRejected = beforeCount - ctx.Edges.Count;
+
         {
-            debugStages!.Collapsed = ConvertFlowEdgesToTransferSteps(aggregated.Edges);
-        }
-
-        /* --------------------------------------------------------------------
-         * 5b. Insert Router between Avatar → Group transfers.
-         *     This MUST happen BEFORE ValidateConsentedFlow so that router edges
-         *     exist when validation runs - allowing the router-skip logic to work.
-         *     Without this order, consented flow avatars sending to groups would
-         *     have their Avatar→Group edge incorrectly filtered because the router
-         *     edges (Avatar→Router, Router→Group) don't exist yet.
-         * ------------------------------------------------------------------ */
-        var processedEdges = InsertRouterInTransfers(aggregated.Edges, capacityGraph);
-
-        /* --------------------------------------------------------------------
-         * 5c. Validate consented flow - filter edges that violate consent rules.
-         *     Router edges are skipped by this validation (lines 332-337).
-         *     When ExcludeConsentedIntermediaries is on, intermediaries are already
-         *     excluded in CollapseBalanceNodes — skip the safety net entirely.
-         * ------------------------------------------------------------------ */
-        var validatedEdges = _settings.ExcludeConsentedIntermediaries
-            ? processedEdges  // intermediaries already excluded — no validation needed
-            : ValidateConsentedFlow(processedEdges, capacityGraph);
-
-        int consentSafetyNetRejected = processedEdges.Count - validatedEdges.Count;
-        {
-            int routerEdges = processedEdges.Count - aggregated.Edges.Count;
-            _logger.LogInformation("[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}, safetyNetRejected={Rejected}",
-                reqId, Math.Max(0, routerEdges),
+            int routerEdges = beforeCount - ctx.Aggregated.Edges.Count;
+            _logger.LogInformation(
+                "[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}, safetyNetRejected={Rejected}",
+                ctx.ReqId, Math.Max(0, routerEdges),
                 _settings.ExcludeConsentedIntermediaries ? "exclude-intermediaries" : "validate-rules",
-                consentDroppedPaths, consentSafetyNetRejected);
+                ctx.ConsentDroppedPaths, ctx.ConsentSafetyNetRejected);
         }
 
-        /* --------------------------------------------------------------------
-         * 5d. CAPTURE: Stage 3 - Router inserted (Avatar→Group → Avatar→Router→Group)
-         * ------------------------------------------------------------------ */
-        if (wantDebug)
-        {
-            debugStages!.RouterInserted = ConvertFlowEdgesToTransferSteps(validatedEdges);
-        }
+        if (ctx.WantDebug)
+            ctx.DebugStages!.RouterInserted = ConvertFlowEdgesToTransferSteps(ctx.Edges);
+    }
 
-        /* --------------------------------------------------------------------
-         * 6. Sort edges to ensure mint dependencies are satisfied.
-         *    All collateral edges (Router→Group) must precede the group's
-         *    outbound mint edge (Group→Avatar) for contract execution to succeed.
-         * ------------------------------------------------------------------ */
-        var sortedEdges = SortEdgesForMintDependencies(validatedEdges, capacityGraph);
+    /* ======================================================================
+     * Stage 9: Sort edges for mint dependencies
+     * ====================================================================== */
 
-        /* --------------------------------------------------------------------
-         * 6a. Validate the edge ordering - throw if mint dependencies violated
-         * ------------------------------------------------------------------ */
-        ValidateMintEdgeOrdering(sortedEdges, capacityGraph);
+    private void SortForMintDependencies(PipelineContext ctx)
+    {
+        ctx.Edges = SortEdgesForMintDependencies(ctx.Edges, ctx.Graph);
+        ValidateMintEdgeOrdering(ctx.Edges, ctx.Graph);
 
         {
-            int groupMints = sortedEdges.Count(e => capacityGraph.IsGroup(e.From));
-            int routerNode = capacityGraph.RouterNode ?? -1;
-            int collateralEdges = sortedEdges.Count(e => e.From == routerNode && capacityGraph.IsGroup(e.To));
+            int groupMints = ctx.Edges.Count(e => ctx.Graph.IsGroup(e.From));
+            int routerNode = ctx.Graph.RouterNode ?? -1;
+            int collateralEdges = ctx.Edges.Count(e => e.From == routerNode && ctx.Graph.IsGroup(e.To));
             _logger.LogInformation("[{ReqId}] MintSort: groups={Groups}, collateral={Collateral}, total={Total}",
-                reqId, groupMints, collateralEdges, sortedEdges.Count);
+                ctx.ReqId, groupMints, collateralEdges, ctx.Edges.Count);
         }
+    }
 
-        /* --------------------------------------------------------------------
-         * 6b. Apply quantization if requested - aggregate sink transfers by token
-         *     and round down to 96 CRC multiples. This allows multiple small
-         *     transfers of the same token to combine into valid quanta.
-         * ------------------------------------------------------------------ */
-        if (request.QuantizedMode == true)
-        {
-            const long InvitationQuanta = 96_000_000L;
-            int preQuantCount = sortedEdges.Count;
-            sortedEdges = QuantizeSinkBoundEdgesByToken(sortedEdges, sinkId, InvitationQuanta, tgt);
+    /* ======================================================================
+     * Stage 10: Quantize sink-bound edges (invitation module)
+     * ====================================================================== */
 
-            // Propagate quantization reduction backwards through the edge graph
-            // to maintain flow conservation at intermediate vertices (Router, Group)
-            PropagateQuantizationBackwards(sortedEdges, sinkId, sourceId);
+    private void Quantize(PipelineContext ctx)
+    {
+        if (ctx.Request.QuantizedMode != true)
+            return;
 
-            // Safety validation - ensure quantization produced valid results
-            ValidateQuantizedSinkTransfers(sortedEdges, sinkId, InvitationQuanta);
+        const long InvitationQuanta = 96_000_000L;
+        int preQuantCount = ctx.Edges.Count;
 
-            // Add self-loop aggregation: Sink → Sink edges showing total per token type
-            // This provides a summary of what tokens the sink receives in the quantized flow
-            sortedEdges = AddSinkSelfLoopAggregation(sortedEdges, sinkId);
+        ctx.Edges = QuantizeSinkBoundEdgesByToken(ctx.Edges, ctx.SinkId, InvitationQuanta, ctx.Target);
+        PropagateQuantizationBackwards(ctx.Edges, ctx.SinkId, ctx.SourceId);
+        ValidateQuantizedSinkTransfers(ctx.Edges, ctx.SinkId, InvitationQuanta);
+        ctx.Edges = AddSinkSelfLoopAggregation(ctx.Edges, ctx.SinkId);
 
-            _logger.LogInformation("[{ReqId}] Quantized: before={Before}, after={After}, quanta={Quanta}",
-                reqId, preQuantCount, sortedEdges.Count, InvitationQuanta);
-        }
+        _logger.LogInformation("[{ReqId}] Quantized: before={Before}, after={After}, quanta={Quanta}",
+            ctx.ReqId, preQuantCount, ctx.Edges.Count, InvitationQuanta);
 
-        /* --------------------------------------------------------------------
-         * 6c. CAPTURE: Stage 4 - Sorted edges (final execution order)
-         *
-         *    NOTE: Debug output includes sink self-loop aggregation edges
-         *    (Sink→Sink) for visibility. The actual transfer list (step 7)
-         *    filters these out since they are display-only and violate
-         *    Hub.sol's flow conservation requirement.
-         * ------------------------------------------------------------------ */
-        if (wantDebug)
-        {
-            debugStages!.Sorted = ConvertFlowEdgesToTransferSteps(sortedEdges);
-        }
+        if (ctx.WantDebug)
+            ctx.DebugStages!.Sorted = ConvertFlowEdgesToTransferSteps(ctx.Edges);
+    }
 
-        /* --------------------------------------------------------------------
-         * 7. Build DTOs
-         * ------------------------------------------------------------------ */
-        var transfer = new List<TransferPathStep>();
+    /* ======================================================================
+     * Stage 11: Build transfer DTOs from flow edges
+     * ====================================================================== */
 
-        foreach (var e in sortedEdges)
+    private void BuildTransferDtos(PipelineContext ctx)
+    {
+        if (ctx.WantDebug && ctx.Request.QuantizedMode != true)
+            ctx.DebugStages!.Sorted = ConvertFlowEdgesToTransferSteps(ctx.Edges);
+
+        ctx.Transfers = new List<TransferPathStep>();
+
+        foreach (var e in ctx.Edges)
         {
             if (e.Flow <= 0)
-            {
                 continue;
-            }
 
-            // Skip sink self-loop edges added by AddSinkSelfLoopAggregation()
-            // These are display-only aggregation edges for quantized mode responses
-            // and should NOT be sent to the Hub contract (they violate flow conservation)
-            if (e.From == sinkId && e.To == sinkId)
-            {
+            // Skip sink self-loop edges (display-only, violate flow conservation)
+            if (e.From == ctx.SinkId && e.To == ctx.SinkId)
                 continue;
-            }
 
-            var step = new TransferPathStep
+            ctx.Transfers.Add(new TransferPathStep
             {
                 From = AddressIdPool.StringOf(e.From),
                 To = AddressIdPool.StringOf(e.To),
@@ -349,61 +383,51 @@ public class V2Pathfinder
                 Value = CirclesConverter
                     .BlowUpToUInt256(e.Flow)
                     .ToString(CultureInfo.InvariantCulture)
-            };
-            transfer.Add(step);
+            });
         }
 
-        /* --------------------------------------------------------------------
-         * 7a. DEBUG: Validate output against Hub.sol rules
-         * ------------------------------------------------------------------ */
 #if DEBUG
-        if (transfer.Count > 0)
+        if (ctx.Transfers.Count > 0)
         {
-            var debugState = new Validation.CapacityGraphContractState(capacityGraph);
+            var debugState = new Validation.CapacityGraphContractState(ctx.Graph);
             var debugValidation = Validation.HubContractValidator.Validate(
-                transfer, request.Source!, request.Sink!, debugState);
+                ctx.Transfers, ctx.Request.Source!, ctx.Request.Sink!, debugState);
             if (!debugValidation.IsValid)
             {
                 var errors = debugValidation.Violations
                     .Where(v => v.Severity == "error")
                     .Select(v => $"[{v.Rule}] {v.Message}");
                 _logger.LogError("[{ReqId}] HubContractValidator REJECTED output: {Violations}",
-                    reqId, string.Join("; ", errors));
+                    ctx.ReqId, string.Join("; ", errors));
             }
         }
 #endif
+    }
 
-        /* --------------------------------------------------------------------
-         * 8. Calculate maxFlow by summing transfers TO the sink.
-         *    We sum sink-bound transfers (not source-outbound) because after
-         *    path collapsing, multi-hop paths may no longer have the original
-         *    source in the 'from' field. The total reaching the sink correctly
-         *    represents the achievable flow.
-         *
-         *    NOTE: Sink self-loop aggregation edges (Sink→Sink) added by
-         *    AddSinkSelfLoopAggregation() are already filtered out in step 7
-         *    when building the transfer list, so they won't appear here.
-         * ------------------------------------------------------------------ */
+    /* ======================================================================
+     * Stage 12: Calculate maxFlow and assemble response
+     * ====================================================================== */
+
+    private MaxFlowResponse BuildResponse(PipelineContext ctx)
+    {
         UInt256 maxFlowWei = 0;
-        foreach (var t in transfer)
+        foreach (var t in ctx.Transfers)
         {
-            var toId = AddressIdPool.IdOf(t.To);
-            bool toIsSink = toId == sinkId;
-            if (toIsSink)
+            if (AddressIdPool.IdOf(t.To) == ctx.SinkId)
                 maxFlowWei += UInt256.Parse(t.Value);
         }
 
-        totalSw.Stop();
+        ctx.TotalStopwatch.Stop();
         _logger.LogInformation("[{ReqId}] Result: maxFlow={MaxFlow}, steps={Steps}, totalMs={TotalMs}",
-            reqId, maxFlowWei, transfer.Count, totalSw.ElapsedMilliseconds);
+            ctx.ReqId, maxFlowWei, ctx.Transfers.Count, ctx.TotalStopwatch.ElapsedMilliseconds);
 
         return new MaxFlowResponse(
             maxFlowWei.ToString(CultureInfo.InvariantCulture),
-            transfer,
-            debugStages)
+            ctx.Transfers,
+            ctx.DebugStages)
         {
-            ConsentDroppedPaths = consentDroppedPaths,
-            ConsentSafetyNetRejected = consentSafetyNetRejected
+            ConsentDroppedPaths = ctx.ConsentDroppedPaths,
+            ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected
         };
     }
 
