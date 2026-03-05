@@ -12,7 +12,7 @@ namespace Circles.Cache.Service.Caches;
 public sealed class IpfsContentCache
 {
     private readonly MemoryCache _cache;
-    private readonly string _connectionString;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<IpfsContentCache> _logger;
     private readonly int _maxEntries;
 
@@ -20,9 +20,9 @@ public sealed class IpfsContentCache
     private long _hits;
     private long _misses;
 
-    public IpfsContentCache(string connectionString, int maxEntries, ILogger<IpfsContentCache> logger)
+    public IpfsContentCache(NpgsqlDataSource dataSource, int maxEntries, ILogger<IpfsContentCache> logger)
     {
-        _connectionString = connectionString;
+        _dataSource = dataSource;
         _maxEntries = maxEntries;
         _logger = logger;
         _cache = new MemoryCache(new MemoryCacheOptions
@@ -124,8 +124,7 @@ public sealed class IpfsContentCache
     {
         const string sql = "SELECT payload FROM ipfs_files WHERE cid = @cid";
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = await _dataSource.OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("cid", cid);
 
@@ -143,8 +142,7 @@ public sealed class IpfsContentCache
             LEFT JOIN ipfs_files f ON f.cid = u._cid
             ORDER BY u._index";
 
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync();
+        await using var connection = await _dataSource.OpenConnectionAsync();
         await using var cmd = new NpgsqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("cids", cids);
 

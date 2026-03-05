@@ -26,11 +26,18 @@ var settings = new Circles.Pathfinder.Host.Settings();
 Console.WriteLine("Starting Pathfinder service...");
 Console.WriteLine($"* Max concurrent requests: {settings.MaxConcurrentRequests}");
 
-var csb = new NpgsqlConnectionStringBuilder(settings.IndexReadonlyDbConnectionString);
-Console.WriteLine($"* DB Host: {csb.Host}");
-Console.WriteLine($"* DB User: {csb.Username}");
-Console.WriteLine($"* DB Name: {csb.Database}");
-Console.WriteLine($"* DB Port: {csb.Port}");
+// Build NpgsqlDataSource with explicit pool configuration
+var dsBuilder = new NpgsqlDataSourceBuilder(settings.IndexReadonlyDbConnectionString);
+dsBuilder.ConnectionStringBuilder.MinPoolSize = 2;
+dsBuilder.ConnectionStringBuilder.MaxPoolSize = 20;
+dsBuilder.ConnectionStringBuilder.ConnectionIdleLifetime = 300; // 5 min
+var dataSource = dsBuilder.Build();
+
+Console.WriteLine($"* DB Host: {dsBuilder.ConnectionStringBuilder.Host}");
+Console.WriteLine($"* DB User: {dsBuilder.ConnectionStringBuilder.Username}");
+Console.WriteLine($"* DB Name: {dsBuilder.ConnectionStringBuilder.Database}");
+Console.WriteLine($"* DB Port: {dsBuilder.ConnectionStringBuilder.Port}");
+Console.WriteLine($"* DB Pool: min={dsBuilder.ConnectionStringBuilder.MinPoolSize}, max={dsBuilder.ConnectionStringBuilder.MaxPoolSize}");
 Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
 Console.WriteLine($"* Consented flow: {(settings.ExcludeConsentedIntermediaries ? "DISABLED (intermediaries excluded)" : "enabled (validate rules)")}");
 Console.WriteLine($"* Graph source: {(settings.UseCacheGraphSource ? $"CACHE ({settings.CacheServiceUrl})" : "DATABASE")}");
@@ -55,11 +62,12 @@ builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<Circles.Common.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>().CommonSettings);
 builder.Services.AddSingleton<Circles.Pathfinder.Settings>(provider => provider.GetRequiredService<Circles.Pathfinder.Host.Settings>());
 builder.Services.AddSingleton(semaphore);
+builder.Services.AddSingleton(dataSource);
 builder.Services.AddSingleton<NetworkState>();
 builder.Services.AddSingleton<SnapshotCache>();
 builder.Services.AddSingleton<LoadGraph>(provider =>
 {
-    var lg = new LoadGraph(settings, provider.GetRequiredService<ILoggerFactory>().CreateLogger<LoadGraph>());
+    var lg = new LoadGraph(dataSource, settings, provider.GetRequiredService<ILoggerFactory>().CreateLogger<LoadGraph>());
     // O4: Wire DB query duration metric
     lg.OnQueryCompleted = (queryName, elapsed) =>
         GraphUpdateMetrics.DbQueryDuration.WithLabels(queryName).Observe(elapsed.TotalSeconds);

@@ -29,13 +29,21 @@ builder.Services.Configure<HostOptions>(options =>
 var settings = CacheServiceSettings.FromEnvironment();
 builder.Services.AddSingleton(settings);
 
+// Build NpgsqlDataSource for readonly connection pooling
+var readonlyDsBuilder = new NpgsqlDataSourceBuilder(settings.EffectiveReadonlyConnectionString);
+readonlyDsBuilder.ConnectionStringBuilder.MinPoolSize = 2;
+readonlyDsBuilder.ConnectionStringBuilder.MaxPoolSize = 20;
+readonlyDsBuilder.ConnectionStringBuilder.ConnectionIdleLifetime = 300; // 5 min
+var readonlyDataSource = readonlyDsBuilder.Build();
+builder.Services.AddSingleton(readonlyDataSource);
+
 // Register cache infrastructure
 builder.Services.AddSingleton(sp => new CacheServiceState(settings.RollbackCapacity));
 builder.Services.AddSingleton(sp => new CacheContainer(settings.RollbackCapacity));
 builder.Services.AddSingleton(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<IpfsContentCache>>();
-    return new IpfsContentCache(settings.EffectiveReadonlyConnectionString, settings.IpfsCacheMaxEntries, logger);
+    return new IpfsContentCache(readonlyDataSource, settings.IpfsCacheMaxEntries, logger);
 });
 
 // Register background services
@@ -97,6 +105,9 @@ logger.LogInformation("PostgreSQL Connection: {ConnectionString}",
     MaskConnectionString(settings.PostgresConnectionString));
 logger.LogInformation("PostgreSQL Readonly Connection: {ConnectionString}",
     MaskConnectionString(settings.PostgresReadonlyConnectionString));
+logger.LogInformation("PostgreSQL Pool: min={MinPool}, max={MaxPool}",
+    readonlyDsBuilder.ConnectionStringBuilder.MinPoolSize,
+    readonlyDsBuilder.ConnectionStringBuilder.MaxPoolSize);
 logger.LogInformation("PG Notify Channel: {Channel}", settings.PgNotifyChannel);
 logger.LogInformation("Rollback Capacity: {Capacity} blocks", settings.RollbackCapacity);
 logger.LogInformation("Max Catchup Lag: {Lag} blocks", settings.MaxCatchupLag);
@@ -118,15 +129,14 @@ app.MapMetrics();
 
 // Health check endpoints
 app.MapHealthChecks("/live");
-app.MapGet("/ready", async (CacheServiceState state, CacheServiceSettings settings) =>
+app.MapGet("/ready", async (CacheServiceState state, NpgsqlDataSource dataSource) =>
 {
     // Query actual DB head from database
     long dbHead = state.LastProcessedBlock; // Default to current if query fails
 
     try
     {
-        await using var conn = new Npgsql.NpgsqlConnection(settings.PostgresReadonlyConnectionString);
-        await conn.OpenAsync();
+        await using var conn = await dataSource.OpenConnectionAsync();
         await using var cmd = new Npgsql.NpgsqlCommand("SELECT COALESCE(MAX(\"blockNumber\"), 0) FROM \"System_Block\"", conn);
         var result = await cmd.ExecuteScalarAsync();
         if (result != null && result != DBNull.Value)

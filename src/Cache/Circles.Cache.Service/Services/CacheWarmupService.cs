@@ -15,6 +15,7 @@ public class CacheWarmupService : BackgroundService
     private readonly CacheServiceSettings _settings;
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
+    private readonly NpgsqlDataSource _readonlyDataSource;
 
     protected CacheServiceSettings Settings => _settings;
     protected CacheServiceState State => _state;
@@ -28,12 +29,14 @@ public class CacheWarmupService : BackgroundService
         ILogger<CacheWarmupService> logger,
         CacheServiceSettings settings,
         CacheServiceState state,
-        CacheContainer caches)
+        CacheContainer caches,
+        NpgsqlDataSource readonlyDataSource)
     {
         _logger = logger;
         _settings = settings;
         _state = state;
         _caches = caches;
+        _readonlyDataSource = readonlyDataSource;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -143,8 +146,7 @@ public class CacheWarmupService : BackgroundService
         Func<NpgsqlConnection, CancellationToken, Task> action,
         CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-        await conn.OpenAsync(ct);
+        await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
         await action(conn, ct);
     }
 
@@ -162,8 +164,7 @@ public class CacheWarmupService : BackgroundService
         {
             try
             {
-                await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-                await conn.OpenAsync(ct);
+                await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
                 await using var cmd = new NpgsqlCommand("SELECT 1", conn);
                 await cmd.ExecuteScalarAsync(ct);
                 _logger.LogInformation("PostgreSQL is ready");

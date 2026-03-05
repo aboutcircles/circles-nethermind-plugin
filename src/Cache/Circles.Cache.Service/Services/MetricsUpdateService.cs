@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Metrics;
 using Npgsql;
@@ -10,26 +11,58 @@ namespace Circles.Cache.Service.Services;
 public class MetricsUpdateService : BackgroundService
 {
     private readonly ILogger<MetricsUpdateService> _logger;
-    private readonly CacheServiceSettings _settings;
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
+    private readonly NpgsqlDataSource _readonlyDataSource;
     private readonly TimeSpan _updateInterval = TimeSpan.FromSeconds(10);
+
+    // Pool state tracked via MeterListener on Npgsql's System.Diagnostics.Metrics
+    private int _idleConnections;
+    private int _usedConnections;
 
     public MetricsUpdateService(
         ILogger<MetricsUpdateService> logger,
-        CacheServiceSettings settings,
         CacheServiceState state,
-        CacheContainer caches)
+        CacheContainer caches,
+        NpgsqlDataSource readonlyDataSource)
     {
         _logger = logger;
-        _settings = settings;
         _state = state;
         _caches = caches;
+        _readonlyDataSource = readonlyDataSource;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Metrics update service started");
+
+        // Set max pool gauge from connection string
+        var csb = new NpgsqlConnectionStringBuilder(_readonlyDataSource.ConnectionString);
+        CacheMetrics.DbPoolMaxConnections.Set(csb.MaxPoolSize);
+
+        // Listen for Npgsql pool metrics via System.Diagnostics.Metrics
+        using var meterListener = new MeterListener();
+        meterListener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == "Npgsql" && instrument.Name == "db.client.connections.usage")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        meterListener.SetMeasurementEventCallback<int>((instrument, measurement, tags, state) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "state")
+                {
+                    if (tag.Value?.ToString() == "idle")
+                        Interlocked.Exchange(ref _idleConnections, measurement);
+                    else if (tag.Value?.ToString() == "used")
+                        Interlocked.Exchange(ref _usedConnections, measurement);
+                }
+            }
+        });
+        meterListener.Start();
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -53,11 +86,17 @@ public class MetricsUpdateService : BackgroundService
         CacheMetrics.WarmupComplete.Set(_state.WarmupComplete ? 1 : 0);
         CacheMetrics.ListenerConnected.Set(_state.ListenerConnected ? 1 : 0);
 
+        // Update pool metrics
+        var idle = Volatile.Read(ref _idleConnections);
+        var used = Volatile.Read(ref _usedConnections);
+        CacheMetrics.DbPoolIdleConnections.Set(idle);
+        CacheMetrics.DbPoolBusyConnections.Set(used);
+        CacheMetrics.DbPoolTotalConnections.Set(idle + used);
+
         // Get database head to calculate lag
         try
         {
-            await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-            await conn.OpenAsync(ct);
+            await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
             await using var cmd = new NpgsqlCommand(
                 "SELECT COALESCE(MAX(\"blockNumber\"), 0) FROM \"System_Block\"", conn);
             var result = await cmd.ExecuteScalarAsync(ct);

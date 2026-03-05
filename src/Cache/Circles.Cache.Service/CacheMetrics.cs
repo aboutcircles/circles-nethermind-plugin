@@ -95,4 +95,21 @@ public static class CacheMetrics
                 LabelNames = new[] { "version" },
                 Buckets = Histogram.ExponentialBuckets(0.001, 2, 10) // 1ms to ~1s
             });
+
+    // Connection pool metrics
+    public static readonly Gauge DbPoolIdleConnections = Prometheus.Metrics
+        .CreateGauge("circles_cache_db_pool_idle_connections",
+            "Number of idle connections in the Npgsql pool");
+
+    public static readonly Gauge DbPoolBusyConnections = Prometheus.Metrics
+        .CreateGauge("circles_cache_db_pool_busy_connections",
+            "Number of busy/in-use connections in the Npgsql pool");
+
+    public static readonly Gauge DbPoolTotalConnections = Prometheus.Metrics
+        .CreateGauge("circles_cache_db_pool_total_connections",
+            "Total number of connections (idle + busy) in the Npgsql pool");
+
+    public static readonly Gauge DbPoolMaxConnections = Prometheus.Metrics
+        .CreateGauge("circles_cache_db_pool_max_connections",
+            "Maximum pool size configured for the Npgsql pool");
 }
