@@ -290,4 +290,7 @@ internal class CachedLoadGraph(CachedGraphData data) : ILoadGraph
 
     public IEnumerable<string>
         LoadRegisteredAvatars() => data.RegisteredAvatars;
+
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)>
+        LoadWrapperMappings() => Array.Empty<(string, string)>();
 }

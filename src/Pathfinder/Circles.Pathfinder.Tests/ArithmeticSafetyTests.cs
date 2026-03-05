@@ -640,6 +640,8 @@ public class ArithmeticSafetyTests
 
         public IEnumerable<string> LoadRegisteredAvatars()
             => Enumerable.Empty<string>();
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+            => Array.Empty<(string, string)>();
     }
 
     #endregion

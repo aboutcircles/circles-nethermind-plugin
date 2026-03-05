@@ -116,4 +116,10 @@ public class IncrementalLoadGraph : ILoadGraph
         foreach (var avatar in _avatarState.AvatarSet)
             yield return avatar;
     }
+
+    /// <summary>
+    /// Delegates to inner LoadGraph — wrapper deployment table is append-only, fast query.
+    /// </summary>
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        => _inner.LoadWrapperMappings();
 }

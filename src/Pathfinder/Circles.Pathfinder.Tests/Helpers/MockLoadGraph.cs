@@ -15,6 +15,7 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<(string GroupAddress, string TrustedToken)> _groupTrusts = new();
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
+    private readonly List<(string WrapperAddress, string UnderlyingAvatar)> _wrapperMappings = new();
 
     /// <summary>
     /// Add a trust relationship using integer node IDs.
@@ -135,12 +136,25 @@ public class MockLoadGraph : ILoadGraph
         return _registeredAvatars;
     }
 
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    {
+        return _wrapperMappings;
+    }
+
     /// <summary>
     /// Register an avatar address so it appears in LoadRegisteredAvatars().
     /// </summary>
     public void AddRegisteredAvatar(string address)
     {
         _registeredAvatars.Add(address.ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// Add a wrapper→avatar mapping for testing.
+    /// </summary>
+    public void AddWrapperMapping(string wrapperAddress, string underlyingAvatar)
+    {
+        _wrapperMappings.Add((wrapperAddress.ToLowerInvariant(), underlyingAvatar.ToLowerInvariant()));
     }
 
     /// <summary>
@@ -154,6 +168,7 @@ public class MockLoadGraph : ILoadGraph
         _groupTrusts.Clear();
         _consentedFlags.Clear();
         _registeredAvatars.Clear();
+        _wrapperMappings.Clear();
     }
 
     /// <summary>

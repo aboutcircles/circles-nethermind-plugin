@@ -37,6 +37,7 @@
         <None Remove="Data\Queries\stoppedAvatarsQuery.sql" />
         <None Remove="Data\Queries\stoppedAvatarsDeltaQuery.sql" />
         <None Remove="Data\Queries\blockHashQuery.sql" />
+        <None Remove="Data\Queries\wrapperMappingQuery.sql" />
         <EmbeddedResource Include="Data\Queries\balanceQuery.sql" />
         <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
         <EmbeddedResource Include="Data\Queries\groupQuery.sql" />
@@ -52,6 +53,7 @@
         <EmbeddedResource Include="Data\Queries\stoppedAvatarsQuery.sql" />
         <EmbeddedResource Include="Data\Queries\stoppedAvatarsDeltaQuery.sql" />
         <EmbeddedResource Include="Data\Queries\blockHashQuery.sql" />
+        <EmbeddedResource Include="Data\Queries\wrapperMappingQuery.sql" />
     </ItemGroup>
 
     <ItemGroup>

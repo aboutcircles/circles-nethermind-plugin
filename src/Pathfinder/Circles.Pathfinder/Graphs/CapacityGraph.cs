@@ -10,7 +10,9 @@ namespace Circles.Pathfinder.Graphs;
 public sealed record CachedGroupData(
     HashSet<int> GroupNodes,
     Dictionary<int, HashSet<int>> GroupTrustedTokens,
-    HashSet<int> ConsentedAvatars);
+    HashSet<int> ConsentedAvatars,
+    HashSet<int> RegisteredAvatarIds,
+    Dictionary<int, int> WrapperToAvatar);
 
 public class CapacityGraph : IGraph<CapacityEdge>
 {
@@ -30,6 +32,13 @@ public class CapacityGraph : IGraph<CapacityEdge>
 
     // Track avatars that have enabled consented flow
     public HashSet<int> ConsentedAvatars { get; set; } = new HashSet<int>();
+
+    // Track all registered V2 avatar IDs (cached to avoid per-request DB queries)
+    public HashSet<int> RegisteredAvatarIds { get; } = new HashSet<int>();
+
+    // Reverse mapping: ERC20 wrapper contract address ID → underlying avatar address ID
+    // Used at DTO output layer to resolve wrapper addresses to registered avatars
+    public Dictionary<int, int> WrapperToAvatar { get; } = new Dictionary<int, int>();
 
     // Trust lookup for consented flow validation (truster -> set of trustees)
     public IReadOnlyDictionary<int, HashSet<int>>? TrustLookup { get; set; }
