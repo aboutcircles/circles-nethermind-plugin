@@ -44,7 +44,7 @@ public class PathfinderGraphController : ControllerBase
 
     /// <summary>
     /// Returns the full pathfinder graph snapshot from in-memory caches.
-    /// Supports ?include=balances,trust,groups,groupTrusts,consentedFlow for selective loading.
+    /// Supports ?include=balances,trust,groups,groupTrusts,consentedFlow,avatars,wrapperMappings for selective loading.
     /// ETag is based on LastProcessedBlock for conditional 304 responses.
     /// </summary>
     [HttpGet("graph")]
@@ -90,18 +90,20 @@ public class PathfinderGraphController : ControllerBase
                 Groups: sections.Contains("groups") ? BuildGroups(routerGroups!) : null,
                 GroupTrusts: sections.Contains("grouptrusts") ? BuildGroupTrusts(routerGroups!) : null,
                 ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow() : null,
-                Avatars: sections.Contains("avatars") ? BuildAvatars() : null
+                Avatars: sections.Contains("avatars") ? BuildAvatars() : null,
+                WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings() : null
             );
 
             _logger.LogDebug(
-                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}",
+                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}, wrappers={Wrappers}",
                 lastBlock,
                 response.Balances?.Count ?? 0,
                 response.Trust?.Count ?? 0,
                 response.Groups?.Count ?? 0,
                 response.GroupTrusts?.Count ?? 0,
                 response.ConsentedFlow?.Count ?? 0,
-                response.Avatars?.Count ?? 0);
+                response.Avatars?.Count ?? 0,
+                response.WrapperMappings?.Count ?? 0);
 
             return Ok(response);
         }
@@ -115,7 +117,7 @@ public class PathfinderGraphController : ControllerBase
     private static HashSet<string> ParseInclude(string? include)
     {
         if (string.IsNullOrWhiteSpace(include))
-            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow", "avatars" };
+            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow", "avatars", "wrappermappings" };
 
         return new HashSet<string>(
             include.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -319,6 +321,26 @@ public class PathfinderGraphController : ControllerBase
             avatars.Add(address);
         }
         return avatars;
+    }
+
+    /// <summary>
+    /// Builds wrapper→avatar mapping rows from the Erc20WrapperAddresses cache.
+    /// Only includes wrappers whose underlying avatar is registered.
+    /// </summary>
+    private List<PathfinderWrapperMappingRow> BuildWrapperMappings()
+    {
+        var mappings = new List<PathfinderWrapperMappingRow>();
+        foreach (var kvp in _caches.Erc20WrapperAddresses.ReadOnlyDictionary)
+        {
+            if (!_caches.V2Avatars.ContainsKey(kvp.Value.Avatar))
+                continue;
+
+            mappings.Add(new PathfinderWrapperMappingRow(
+                WrapperAddress: kvp.Key,
+                UnderlyingAvatar: kvp.Value.Avatar
+            ));
+        }
+        return mappings;
     }
 
     /// <summary>

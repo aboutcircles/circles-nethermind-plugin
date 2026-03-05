@@ -177,7 +177,9 @@ public record PathfinderGraphResponse(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyList<PathfinderConsentedFlowRow>? ConsentedFlow,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<string>? Avatars
+    IReadOnlyList<string>? Avatars,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<PathfinderWrapperMappingRow>? WrapperMappings
 );
 
 public record PathfinderBalanceRow(
@@ -205,4 +207,9 @@ public record PathfinderGroupTrustRow(
 public record PathfinderConsentedFlowRow(
     string Avatar,
     bool HasConsentedFlow
+);
+
+public record PathfinderWrapperMappingRow(
+    string WrapperAddress,
+    string UnderlyingAvatar
 );
