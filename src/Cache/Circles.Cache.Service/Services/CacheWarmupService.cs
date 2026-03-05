@@ -85,36 +85,54 @@ public class CacheWarmupService : BackgroundService
 
         long warmupTarget = 0;
 
+        // Phase 1: Wait for database and initial sync on a shared connection
         await WithReadonlyConnectionAsync(async (conn, token) =>
         {
             await WaitForInitialSyncAsync(conn, token);
-
             ClearCaches();
-
             warmupTarget = await GetDatabaseHeadAsync(conn, token);
-            _state.WarmupTargetBlock = warmupTarget;
-            _logger.LogInformation("Warmup target block set to: {Block}", warmupTarget);
+        }, stoppingToken);
 
-            _logger.LogInformation("Starting warmup replay up to block {Block}...", warmupTarget);
+        _state.WarmupTargetBlock = warmupTarget;
+        _logger.LogInformation("Starting warmup replay up to block {Block}...", warmupTarget);
 
-            await ReplayV1EventsAsync(conn, warmupTarget, token);
-            await ReplayV2EventsAsync(conn, warmupTarget, token);
-            await LoadGroupMembershipsAsync(conn, warmupTarget, token);
-            await LoadTrustRelationsAsync(conn, warmupTarget, token);
-            await LoadConsentedFlowFlagsAsync(conn, warmupTarget, token);
-            await LoadAvatarMetadataAsync(conn, warmupTarget, token);
-            await LoadV2ShortNamesAsync(conn, warmupTarget, token);
-            await LoadBalancesAsync(conn, token);
+        // Phase 2: Load all data in parallel — each task opens its own pooled connection
+        var warmupSw = System.Diagnostics.Stopwatch.StartNew();
 
-            _logger.LogInformation("Rebuilding secondary indexes...");
-            _caches.RebuildSecondaryIndexes();
-            _logger.LogInformation("Secondary indexes rebuilt");
+        await Task.WhenAll(
+            TimedLoadAsync("V1 events", ct => WithReadonlyConnectionAsync(
+                (c, t) => ReplayV1EventsAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("V2 events", ct => WithReadonlyConnectionAsync(
+                (c, t) => ReplayV2EventsAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("group memberships", ct => WithReadonlyConnectionAsync(
+                (c, t) => LoadGroupMembershipsAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("trust relations", ct => WithReadonlyConnectionAsync(
+                (c, t) => LoadTrustRelationsAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("consented flow flags", ct => WithReadonlyConnectionAsync(
+                (c, t) => LoadConsentedFlowFlagsAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("avatar metadata", ct => WithReadonlyConnectionAsync(
+                (c, t) => LoadAvatarMetadataAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("short names", ct => WithReadonlyConnectionAsync(
+                (c, t) => LoadV2ShortNamesAsync(c, warmupTarget, t), ct), stoppingToken),
+            TimedLoadAsync("balances", ct => WithReadonlyConnectionAsync(
+                (c, t) => LoadBalancesAsync(c, t), ct), stoppingToken)
+        );
 
-            _state.LastProcessedBlock = warmupTarget;
-            _logger.LogInformation("========================================");
-            _logger.LogInformation("✓ Warmup replay completed at block {Block}", warmupTarget);
-            _logger.LogInformation("========================================");
+        warmupSw.Stop();
+        _logger.LogInformation("All data loaded in {Elapsed:n1}s (parallel)", warmupSw.Elapsed.TotalSeconds);
 
+        _logger.LogInformation("Rebuilding secondary indexes...");
+        _caches.RebuildSecondaryIndexes();
+        _logger.LogInformation("Secondary indexes rebuilt");
+
+        _state.LastProcessedBlock = warmupTarget;
+        _logger.LogInformation("========================================");
+        _logger.LogInformation("✓ Warmup replay completed at block {Block}", warmupTarget);
+        _logger.LogInformation("========================================");
+
+        // Phase 3: Initialize ring buffer and catch up on a shared connection
+        await WithReadonlyConnectionAsync(async (conn, token) =>
+        {
             await InitializeBlockRingBufferAsync(conn, warmupTarget, token);
 
             var currentHead = await GetDatabaseHeadAsync(conn, token);
@@ -148,6 +166,15 @@ public class CacheWarmupService : BackgroundService
     {
         await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
         await action(conn, ct);
+    }
+
+    private async Task TimedLoadAsync(string name, Func<CancellationToken, Task> load, CancellationToken ct)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _logger.LogInformation("Loading {Name}...", name);
+        await load(ct);
+        sw.Stop();
+        _logger.LogInformation("Loaded {Name} in {Elapsed:n1}s", name, sw.Elapsed.TotalSeconds);
     }
 
     protected virtual Task DelayAfterFailureAsync(CancellationToken ct)

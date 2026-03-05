@@ -10,6 +10,8 @@ namespace Circles.Cache.Service.Tests;
 
 public class CacheWarmupServiceTests
 {
+    private static readonly NpgsqlDataSource DummyDataSource =
+        NpgsqlDataSource.Create("Host=localhost;Database=dummy");
     [Fact]
     public async Task RetriesUntilSuccessAndMarksWarmupComplete()
     {
@@ -64,7 +66,7 @@ public class CacheWarmupServiceTests
             CacheServiceState state,
             CacheContainer caches,
             int? failuresBeforeSuccess)
-            : base(NullLogger<CacheWarmupService>.Instance, settings, state, caches)
+            : base(NullLogger<CacheWarmupService>.Instance, settings, state, caches, DummyDataSource)
         {
             _failuresBeforeSuccess = failuresBeforeSuccess;
         }
@@ -107,6 +109,8 @@ public class CacheWarmupServiceTests
 
 public class NotificationListenerServiceTests
 {
+    private static readonly NpgsqlDataSource DummyDataSource =
+        NpgsqlDataSource.Create("Host=localhost;Database=dummy");
     [Fact]
     public async Task ProcessesNewBlocksWhenHeadAdvances()
     {
@@ -199,7 +203,7 @@ public class NotificationListenerServiceTests
             CacheServiceState state,
             CacheContainer caches,
             List<(long BlockNumber, string BlockHash)> blocks)
-            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches)
+            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches, DummyDataSource)
         {
             _blocks = blocks;
         }
@@ -355,7 +359,7 @@ public class NotificationListenerServiceTests
             CacheContainer caches,
             List<(long BlockNumber, string BlockHash)> blocks,
             Func<bool> shouldFail)
-            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches)
+            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches, DummyDataSource)
         {
             _blocks = blocks;
             _shouldFail = shouldFail;

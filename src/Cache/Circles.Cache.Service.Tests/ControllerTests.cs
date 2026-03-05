@@ -8,6 +8,7 @@ using Moq;
 using Xunit;
 using FluentAssertions;
 using System.Net;
+using Npgsql;
 
 namespace Circles.Cache.Service.Tests;
 
@@ -30,7 +31,8 @@ public class ControllerTests
 
         // Create IpfsContentCache with dummy connection string (won't be used in tests)
         var ipfsLogger = new Mock<ILogger<IpfsContentCache>>();
-        _ipfsCache = new IpfsContentCache("Host=localhost;Database=test", maxEntries: 100, ipfsLogger.Object);
+        var dummyDataSource = NpgsqlDataSource.Create("Host=localhost;Database=test");
+        _ipfsCache = new IpfsContentCache(dummyDataSource, maxEntries: 100, ipfsLogger.Object);
     }
 
     /// <summary>
