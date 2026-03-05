@@ -52,7 +52,7 @@ AS
             "transactionIndex" DESC,
             "logIndex"         DESC
     ),
-    member_counts AS (
+    member_counts AS MATERIALIZED (
         SELECT sub.truster as "group", count(*) as "memberCount"
         FROM (
             SELECT ct.truster, ct.trustee,
