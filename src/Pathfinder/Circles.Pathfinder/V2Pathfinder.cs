@@ -375,11 +375,16 @@ public class V2Pathfinder
             if (e.From == ctx.SinkId && e.To == ctx.SinkId)
                 continue;
 
+            // Resolve wrapper contract address → underlying registered avatar
+            // Hub.sol rejects wrapper addresses as flow vertices (CirclesAvatarMustBeRegistered)
+            int resolvedToken = ctx.Graph.WrapperToAvatar.TryGetValue(e.Token, out int avatarId)
+                ? avatarId : e.Token;
+
             ctx.Transfers.Add(new TransferPathStep
             {
                 From = AddressIdPool.StringOf(e.From),
                 To = AddressIdPool.StringOf(e.To),
-                TokenOwner = AddressIdPool.StringOf(e.Token),
+                TokenOwner = AddressIdPool.StringOf(resolvedToken),
                 Value = CirclesConverter
                     .BlowUpToUInt256(e.Flow)
                     .ToString(CultureInfo.InvariantCulture)

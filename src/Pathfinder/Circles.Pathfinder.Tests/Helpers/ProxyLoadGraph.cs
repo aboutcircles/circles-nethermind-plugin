@@ -292,6 +292,12 @@ public class ProxyLoadGraph : ILoadGraph
         return results;
     }
 
+    /// <summary>
+    /// Returns empty — ProxyLoadGraph uses native-only queries (no wrappers in graph).
+    /// </summary>
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        => Array.Empty<(string, string)>();
+
     // Helper methods to extract values from JsonElement or raw objects
     private static string GetString(object? value)
     {

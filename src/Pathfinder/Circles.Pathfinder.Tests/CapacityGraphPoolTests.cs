@@ -157,7 +157,9 @@ public class CapacityGraphPoolTests
         var cachedGroups = new CachedGroupData(
             GroupNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>(),
-            ConsentedAvatars: new HashSet<int>());
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int>(),
+            WrapperToAvatar: new Dictionary<int, int>());
 
         pool.UpdateSnapshot(snap, cachedGroups);
 
@@ -393,7 +395,9 @@ public class CapacityGraphPoolTests
             {
                 [groupId] = new HashSet<int> { alice }
             },
-            ConsentedAvatars: new HashSet<int> { bob });
+            ConsentedAvatars: new HashSet<int> { bob },
+            RegisteredAvatarIds: new HashSet<int> { alice, bob, groupId },
+            WrapperToAvatar: new Dictionary<int, int>());
 
         pool.UpdateSnapshot(snap, cachedGroups);
 

@@ -110,8 +110,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // Ensure ALL registered avatars are valid source/sink candidates
         foreach (var avatar in loadGraph.LoadRegisteredAvatars())
         {
-            capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
+            var id = AddressIdPool.IdOf(avatar.ToLowerInvariant());
+            capacityGraph.AddAvatar(id);
+            capacityGraph.RegisteredAvatarIds.Add(id);
         }
+
+        // Load wrapper→avatar mappings (for DTO output resolution)
+        LoadWrapperMappings(capacityGraph, cachedGroupData);
 
         // Load groups and track router node
         LoadGroupsAndTrackRouter(capacityGraph, cachedGroupData);
@@ -166,9 +171,15 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
         // STEP 1a: Ensure ALL registered avatars are valid source/sink candidates
-        foreach (var avatar in loadGraph.LoadRegisteredAvatars())
+        if (cachedGroupData?.RegisteredAvatarIds != null)
         {
-            capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
+            foreach (var avatarId in cachedGroupData.RegisteredAvatarIds)
+                capacityGraph.AddAvatar(avatarId);
+        }
+        else
+        {
+            foreach (var avatar in loadGraph.LoadRegisteredAvatars())
+                capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
         }
 
         // STEP 1b: Add avatars referenced by simulated balances (holders + tokens)
@@ -190,13 +201,16 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             }
         }
 
-        // STEP 1d: Load groups and track router node for post-processing
+        // STEP 1d: Load wrapper→avatar mappings
+        LoadWrapperMappings(capacityGraph, cachedGroupData);
+
+        // STEP 1e: Load groups and track router node for post-processing
         LoadGroupsAndTrackRouter(capacityGraph, cachedGroupData);
 
-        // STEP 1e: Load consented flow flags
+        // STEP 1f: Load consented flow flags
         LoadConsentedFlowFlags(capacityGraph, cachedGroupData);
 
-        // STEP 1f: Add simulated consented avatars (for testing)
+        // STEP 1g: Add simulated consented avatars (for testing)
         if (request?.SimulatedConsentedAvatars != null && request.SimulatedConsentedAvatars.Count > 0)
         {
             int addedCount = 0;
@@ -624,6 +638,27 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             trustedSet.Add(tokenId);
             capacityGraph.AddAvatar(tokenId);  // Ensure group-trusted tokens are valid graph nodes
         }
+    }
+
+    // Load ERC20 wrapper→avatar reverse mappings for DTO output resolution
+    private void LoadWrapperMappings(CapacityGraph capacityGraph, CachedGroupData? cached = null)
+    {
+        if (cached != null)
+        {
+            foreach (var (wrapperId, avatarId) in cached.WrapperToAvatar)
+                capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
+            _logger.LogDebug("Used cached wrapper mappings: {Count} entries", cached.WrapperToAvatar.Count);
+            return;
+        }
+
+        foreach (var (wrapperAddr, avatarAddr) in loadGraph.LoadWrapperMappings())
+        {
+            int wrapperId = AddressIdPool.IdOf(wrapperAddr.ToLowerInvariant());
+            int avatarId = AddressIdPool.IdOf(avatarAddr.ToLowerInvariant());
+            capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
+        }
+
+        _logger.LogDebug("Loaded {Count} wrapper→avatar mappings from DB", capacityGraph.WrapperToAvatar.Count);
     }
 
     // Load consented flow flags — exceptions propagate to caller (CreateCapacityGraph)

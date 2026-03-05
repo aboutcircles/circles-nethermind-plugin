@@ -20,7 +20,8 @@ namespace Circles.Pathfinder.Data
         IReadOnlyList<string> Groups,
         IReadOnlyList<(string GroupAddress, string TrustedToken)> GroupTrusts,
         IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags,
-        IReadOnlyList<string> RegisteredAvatars
+        IReadOnlyList<string> RegisteredAvatars,
+        IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)> WrapperMappings
     );
 
     public interface ILoadGraph
@@ -36,6 +37,8 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags();
 
         IEnumerable<string> LoadRegisteredAvatars();
+
+        IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings();
     }
 
     public class LoadGraph : ILoadGraph
@@ -252,10 +255,11 @@ namespace Circles.Pathfinder.Data
             var groupTrusts = LoadGroupTrustsInternal(connection, tx);
             var consentedFlags = LoadConsentedFlowFlagsInternal(connection, tx);
             var registeredAvatars = LoadRegisteredAvatarsInternal(connection, tx);
+            var wrapperMappings = LoadWrapperMappingsInternal(connection, tx);
 
             tx.Commit();
 
-            return new LoadAllResult(balances, trust, groups, groupTrusts, consentedFlags, registeredAvatars);
+            return new LoadAllResult(balances, trust, groups, groupTrusts, consentedFlags, registeredAvatars, wrapperMappings);
         }
 
         private List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
@@ -409,6 +413,28 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("registered_avatars", sw.Elapsed);
+            return results;
+        }
+
+        private List<(string WrapperAddress, string UnderlyingAvatar)>
+            LoadWrapperMappingsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var query = LoadQueryFromResource("wrapperMappingQuery.sql");
+            var results = new List<(string WrapperAddress, string UnderlyingAvatar)>(10_000);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(query, connection, tx);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("wrapper_mappings", sw.Elapsed);
             return results;
         }
 
@@ -820,6 +846,29 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("registered_avatars", sw.Elapsed);
+            return results;
+        }
+
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        {
+            var query = LoadQueryFromResource("wrapperMappingQuery.sql");
+            var results = new List<(string WrapperAddress, string UnderlyingAvatar)>(10_000);
+
+            var sw = Stopwatch.StartNew();
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("wrapper_mappings", sw.Elapsed);
             return results;
         }
     }

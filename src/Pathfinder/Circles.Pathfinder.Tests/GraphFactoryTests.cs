@@ -531,7 +531,9 @@ public class GraphFactoryTests
             {
                 { groupGId, new HashSet<int> { tokenBId } }
             },
-            ConsentedAvatars: new HashSet<int>());
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int>(),
+            WrapperToAvatar: new Dictionary<int, int>());
 
         var balance = MakeBalanceGraph((Alice, TokenA, 100));
         // TokenB has NO user trust edges and NO balance holders
@@ -567,7 +569,9 @@ public class GraphFactoryTests
             {
                 { groupGId, new HashSet<int> { tokenAId } }
             },
-            ConsentedAvatars: new HashSet<int>());
+            ConsentedAvatars: new HashSet<int>(),
+            RegisteredAvatarIds: new HashSet<int>(),
+            WrapperToAvatar: new Dictionary<int, int>());
 
         var balance = MakeBalanceGraph((Alice, TokenA, 100));
         var trust = MakeTrust((Bob, TokenA));
@@ -838,7 +842,9 @@ public class GraphFactoryTests
         var cached = new CachedGroupData(
             GroupNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>(),
-            ConsentedAvatars: new HashSet<int> { aliceId }
+            ConsentedAvatars: new HashSet<int> { aliceId },
+            RegisteredAvatarIds: new HashSet<int>(),
+            WrapperToAvatar: new Dictionary<int, int>()
         );
 
         var mock2 = new HelperMock();
@@ -941,6 +947,8 @@ public class GraphFactoryTests
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrusts;
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+            => Array.Empty<(string, string)>();
     }
 
     #endregion

@@ -218,7 +218,9 @@ public class NetworkStateUpdaterService : BackgroundService
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
             cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
-            new HashSet<int>(cap.ConsentedAvatars));
+            new HashSet<int>(cap.ConsentedAvatars),
+            new HashSet<int>(cap.RegisteredAvatarIds),
+            new Dictionary<int, int>(cap.WrapperToAvatar));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
@@ -437,7 +439,9 @@ public class NetworkStateUpdaterService : BackgroundService
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
             cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
-            new HashSet<int>(cap.ConsentedAvatars));
+            new HashSet<int>(cap.ConsentedAvatars),
+            new HashSet<int>(cap.RegisteredAvatarIds),
+            new Dictionary<int, int>(cap.WrapperToAvatar));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
     }
@@ -654,7 +658,9 @@ public class NetworkStateUpdaterService : BackgroundService
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
             cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
-            new HashSet<int>(cap.ConsentedAvatars));
+            new HashSet<int>(cap.ConsentedAvatars),
+            new HashSet<int>(cap.RegisteredAvatarIds),
+            new Dictionary<int, int>(cap.WrapperToAvatar));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
     }

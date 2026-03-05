@@ -69,4 +69,11 @@ public sealed class CacheLoadGraph : ILoadGraph
         foreach (var row in rows)
             yield return row.ToLowerInvariant();
     }
+
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+    {
+        var rows = _snapshot.WrapperMappings ?? [];
+        foreach (var row in rows)
+            yield return (row.WrapperAddress.ToLowerInvariant(), row.UnderlyingAvatar.ToLowerInvariant());
+    }
 }
