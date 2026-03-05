@@ -48,6 +48,8 @@ public class TestEnvironmentIntegrationTests
     [OneTimeTearDown]
     public async Task Teardown()
     {
+        if (_client == null!) return;
+
         if (_sessionId != null)
         {
             try
