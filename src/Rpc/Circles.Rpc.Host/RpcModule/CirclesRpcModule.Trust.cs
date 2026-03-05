@@ -96,6 +96,19 @@ public partial class CirclesRpcModule
 
     private async Task<bool> IsV2Human(string address)
     {
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                var avatarInfo = await _cacheServiceClient.GetAvatarInfoAsync(address);
+                return avatarInfo is { Version: 2, Type: "Human" };
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service IsV2Human failed, falling back to database");
+            }
+        }
+
         await using var connection = await CreateConnectionAsync();
         const string sql = @"SELECT 1 FROM ""CrcV2_RegisterHuman"" WHERE avatar = @address";
         await using var command = new NpgsqlCommand(sql, connection);
@@ -107,6 +120,88 @@ public partial class CirclesRpcModule
     public async Task<AggregatedTrustRelation[]> GetAggregatedTrustRelations(string avatar)
     {
         var normalizedAvatar = avatar.ToLower();
+
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for aggregated trust relations for {Avatar}", normalizedAvatar);
+
+                var cacheResult = await _cacheServiceClient.GetTrustRelationsAsync(normalizedAvatar, version: 2);
+                if (cacheResult != null)
+                {
+                    // Collect all unique counterpart addresses for batch avatar info lookup
+                    var counterparts = new Dictionary<string, (bool trusts, bool trustedBy, long expiryTime, long timestamp)>(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var t in cacheResult.Trusts)
+                    {
+                        if (t.Trustee.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (counterparts.TryGetValue(t.Trustee, out var existing))
+                            counterparts[t.Trustee] = (true, existing.trustedBy, Math.Max(t.ExpiryTime, existing.expiryTime), Math.Max(t.Timestamp, existing.timestamp));
+                        else
+                            counterparts[t.Trustee] = (true, false, t.ExpiryTime, t.Timestamp);
+                    }
+
+                    foreach (var t in cacheResult.TrustedBy)
+                    {
+                        if (t.Truster.Equals(normalizedAvatar, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (counterparts.TryGetValue(t.Truster, out var existing))
+                            counterparts[t.Truster] = (existing.trusts, true, Math.Max(t.ExpiryTime, existing.expiryTime), Math.Max(t.Timestamp, existing.timestamp));
+                        else
+                            counterparts[t.Truster] = (false, true, t.ExpiryTime, t.Timestamp);
+                    }
+
+                    // Batch-fetch avatar types for all counterparts
+                    var counterpartAddresses = counterparts.Keys.ToArray();
+                    var avatarInfos = counterpartAddresses.Length > 0
+                        ? await _cacheServiceClient.GetAvatarInfoBatchAsync(counterpartAddresses)
+                        : Array.Empty<CacheServiceClient.Models.AvatarInfoResponse?>();
+
+                    var avatarTypeMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i < counterpartAddresses.Length; i++)
+                    {
+                        var info = avatarInfos[i];
+                        avatarTypeMap[counterpartAddresses[i]] = info?.Type switch
+                        {
+                            "Human" => "Human",
+                            "Organization" => "Organization",
+                            "Group" => "Group",
+                            _ => null
+                        };
+                    }
+
+                    // Build aggregated relations
+                    var cacheAggregated = new List<AggregatedTrustRelation>(counterparts.Count);
+                    foreach (var (counterpart, (trusts, trustedBy, expiryTime, timestamp)) in counterparts)
+                    {
+                        var relation = (trusts, trustedBy) switch
+                        {
+                            (true, true) => "mutuallyTrusts",
+                            (true, false) => "trusts",
+                            (false, true) => "trustedBy",
+                            _ => "trustedBy" // shouldn't happen
+                        };
+
+                        avatarTypeMap.TryGetValue(counterpart, out var objectAvatarType);
+
+                        cacheAggregated.Add(new AggregatedTrustRelation(
+                            SubjectAvatar: normalizedAvatar,
+                            Relation: relation,
+                            ObjectAvatar: counterpart,
+                            Timestamp: timestamp,
+                            ExpiryTime: expiryTime,
+                            ObjectAvatarType: objectAvatarType
+                        ));
+                    }
+
+                    return cacheAggregated.ToArray();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service aggregated trust relations failed, falling back to database");
+            }
+        }
 
         await using var connection = await CreateConnectionAsync();
 
@@ -227,6 +322,71 @@ public partial class CirclesRpcModule
 
     public async Task<CommonTrustResponse> GetCommonTrust(string address1, string address2, int? version = null)
     {
+        if (_settings.UseCacheService && _cacheServiceClient != null)
+        {
+            try
+            {
+                _logger?.LogDebug("Using Cache Service for common trust between {A1} and {A2}", address1, address2);
+                var addr1 = address1.ToLower();
+                var addr2 = address2.ToLower();
+
+                // Determine if address2 is V2 human (uses cache internally)
+                var isAddr2V2Human = await IsV2Human(addr2);
+
+                var common = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                if (version == 1 || version == null)
+                {
+                    // V1 shared outgoing: address1.Trusts ∩ address2.Trusts
+                    var (trust1, trust2) = await FetchTrustPairAsync(addr1, addr2, 1);
+                    if (trust1 != null && trust2 != null)
+                    {
+                        var set1 = new HashSet<string>(trust1.Trusts.Select(t => t.Trustee), StringComparer.OrdinalIgnoreCase);
+                        set1.ExceptWith(new[] { addr1, addr2 });
+                        var set2 = new HashSet<string>(trust2.Trusts.Select(t => t.Trustee), StringComparer.OrdinalIgnoreCase);
+                        set1.IntersectWith(set2);
+                        common.UnionWith(set1);
+                    }
+                }
+
+                if (version == 2 || version == null)
+                {
+                    if (isAddr2V2Human)
+                    {
+                        // Safer V2: address1.Trusts ∩ address2.TrustedBy (find intermediaries)
+                        var (trust1, trust2) = await FetchTrustPairAsync(addr1, addr2, 2);
+                        if (trust1 != null && trust2 != null)
+                        {
+                            var set1 = new HashSet<string>(trust1.Trusts.Select(t => t.Trustee), StringComparer.OrdinalIgnoreCase);
+                            set1.ExceptWith(new[] { addr1, addr2 });
+                            var set2 = new HashSet<string>(trust2.TrustedBy.Select(t => t.Truster), StringComparer.OrdinalIgnoreCase);
+                            set1.IntersectWith(set2);
+                            common.UnionWith(set1);
+                        }
+                    }
+                    else
+                    {
+                        // V2 shared outgoing: address1.Trusts ∩ address2.Trusts
+                        var (trust1, trust2) = await FetchTrustPairAsync(addr1, addr2, 2);
+                        if (trust1 != null && trust2 != null)
+                        {
+                            var set1 = new HashSet<string>(trust1.Trusts.Select(t => t.Trustee), StringComparer.OrdinalIgnoreCase);
+                            set1.ExceptWith(new[] { addr1, addr2 });
+                            var set2 = new HashSet<string>(trust2.Trusts.Select(t => t.Trustee), StringComparer.OrdinalIgnoreCase);
+                            set1.IntersectWith(set2);
+                            common.UnionWith(set1);
+                        }
+                    }
+                }
+
+                return new CommonTrustResponse(Address1: addr1, Address2: addr2, CommonTrusts: common.ToArray());
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Cache Service common trust query failed, falling back to database");
+            }
+        }
+
         var address2IsV2Human = await IsV2Human(address2);
 
         const string saferV2 = @"
@@ -293,5 +453,17 @@ public partial class CirclesRpcModule
             commonTrusts.Add(reader.GetString(0));
         }
         return new CommonTrustResponse(Address1: address1.ToLower(), Address2: address2.ToLower(), CommonTrusts: commonTrusts.ToArray());
+    }
+
+    /// <summary>
+    /// Fetches trust relations for two addresses in parallel from the cache service.
+    /// </summary>
+    private async Task<(CacheServiceClient.Models.TrustRelationsResponse? trust1, CacheServiceClient.Models.TrustRelationsResponse? trust2)>
+        FetchTrustPairAsync(string address1, string address2, int version)
+    {
+        var task1 = _cacheServiceClient!.GetTrustRelationsAsync(address1, version);
+        var task2 = _cacheServiceClient!.GetTrustRelationsAsync(address2, version);
+        await Task.WhenAll(task1, task2);
+        return (task1.Result, task2.Result);
     }
 }
