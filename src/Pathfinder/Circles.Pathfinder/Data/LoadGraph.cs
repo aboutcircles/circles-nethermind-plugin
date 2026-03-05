@@ -41,9 +41,10 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings();
     }
 
-    public class LoadGraph : ILoadGraph
+    public class LoadGraph : ILoadGraph, IDisposable
     {
-        private readonly string _connectionString;
+        private readonly NpgsqlDataSource _dataSource;
+        private readonly bool _ownsDataSource;
         private readonly Settings _settings;
         private readonly ILogger _logger;
 
@@ -53,9 +54,26 @@ namespace Circles.Pathfinder.Data
         /// </summary>
         public Action<string, TimeSpan>? OnQueryCompleted { get; set; }
 
+        /// <summary>
+        /// Creates a LoadGraph using an externally-managed NpgsqlDataSource (preferred for DI).
+        /// The caller is responsible for disposing the data source.
+        /// </summary>
+        public LoadGraph(NpgsqlDataSource dataSource, Settings settings, ILogger<LoadGraph>? logger = null)
+        {
+            _dataSource = dataSource;
+            _ownsDataSource = false;
+            _settings = settings;
+            _logger = logger ?? NullLogger<LoadGraph>.Instance;
+        }
+
+        /// <summary>
+        /// Creates a LoadGraph from a connection string (creates its own NpgsqlDataSource).
+        /// Used by tests and callers that don't have DI.
+        /// </summary>
         public LoadGraph(string connectionString, Settings settings, ILogger<LoadGraph>? logger = null)
         {
-            _connectionString = connectionString;
+            _dataSource = NpgsqlDataSource.Create(connectionString);
+            _ownsDataSource = true;
             _settings = settings;
             _logger = logger ?? NullLogger<LoadGraph>.Instance;
         }
@@ -63,6 +81,12 @@ namespace Circles.Pathfinder.Data
         public LoadGraph(Settings settings, ILogger<LoadGraph>? logger = null)
             : this(GetConnectionStringFromSettings(settings), settings, logger)
         {
+        }
+
+        public void Dispose()
+        {
+            if (_ownsDataSource)
+                _dataSource.Dispose();
         }
 
         private static string GetConnectionStringFromSettings(Settings settings)
@@ -119,8 +143,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>(50_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(balanceQuery, connection);
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
@@ -162,8 +185,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string Truster, string Trustee, int Limit)>(200_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(trustQuery, connection);
             command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
@@ -189,8 +211,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<string>(1_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(groupQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
@@ -215,8 +236,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string GroupAddress, string TrustedToken)>(5_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
@@ -245,8 +265,7 @@ namespace Circles.Pathfinder.Data
         /// </summary>
         public LoadAllResult LoadAll()
         {
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
             using var tx = connection.BeginTransaction(System.Data.IsolationLevel.RepeatableRead);
 
             var balances = LoadV2BalancesInternal(connection, tx);
@@ -444,10 +463,10 @@ namespace Circles.Pathfinder.Data
         // ──────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Expose connection string so callers can open a shared REPEATABLE READ
+        /// Expose data source so callers can open a shared REPEATABLE READ
         /// transaction across multiple full-state queries.
         /// </summary>
-        public string ConnectionString => _connectionString;
+        public NpgsqlDataSource DataSource => _dataSource;
 
         public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
             LoadRawBalances() => LoadRawBalances(null, null);
@@ -459,7 +478,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string, string, string, long)>();
 
             var sw = Stopwatch.StartNew();
-            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            var conn = sharedConn ?? _dataSource.CreateConnection();
             try
             {
                 if (sharedConn == null) conn.Open();
@@ -498,7 +517,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string, string, long, long, int, int)>();
 
             var sw = Stopwatch.StartNew();
-            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            var conn = sharedConn ?? _dataSource.CreateConnection();
             try
             {
                 if (sharedConn == null) conn.Open();
@@ -538,7 +557,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string, string)>();
 
             var sw = Stopwatch.StartNew();
-            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            var conn = sharedConn ?? _dataSource.CreateConnection();
             try
             {
                 if (sharedConn == null) conn.Open();
@@ -569,8 +588,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(long, string, string, string, string)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
@@ -600,8 +618,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(long, int, int, string, string, long)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
@@ -631,8 +648,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string, string)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
@@ -657,7 +673,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<string>();
 
             var sw = Stopwatch.StartNew();
-            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            var conn = sharedConn ?? _dataSource.CreateConnection();
             try
             {
                 if (sharedConn == null) conn.Open();
@@ -685,8 +701,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<string>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
@@ -715,8 +730,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string, string, string, long)>();
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderBalanceTimeoutSeconds;
@@ -748,8 +762,7 @@ namespace Circles.Pathfinder.Data
             var query = LoadQueryFromResource("blockHashQuery.sql");
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = 10;
@@ -768,7 +781,7 @@ namespace Circles.Pathfinder.Data
             var query = LoadQueryFromResource("maxBlockTimestampQuery.sql");
 
             var sw = Stopwatch.StartNew();
-            var conn = sharedConn ?? new NpgsqlConnection(_connectionString);
+            var conn = sharedConn ?? _dataSource.CreateConnection();
             try
             {
                 if (sharedConn == null) conn.Open();
@@ -794,8 +807,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string Avatar, bool HasConsentedFlow)>(10_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderTrustTimeoutSeconds;
@@ -831,8 +843,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<string>(20_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(
                 "SELECT avatar FROM \"V_CrcV2_Avatars\"", connection);
@@ -855,8 +866,7 @@ namespace Circles.Pathfinder.Data
             var results = new List<(string WrapperAddress, string UnderlyingAvatar)>(10_000);
 
             var sw = Stopwatch.StartNew();
-            using var connection = new NpgsqlConnection(_connectionString);
-            connection.Open();
+            using var connection = _dataSource.OpenConnection();
 
             using var command = new NpgsqlCommand(query, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;

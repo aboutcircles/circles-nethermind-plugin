@@ -9,12 +9,12 @@ namespace Circles.Pathfinder.Host;
 /// </summary>
 public sealed class DbConnectivityHealthCheck : IHealthCheck
 {
-    private readonly string _connectionString;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly ILogger<DbConnectivityHealthCheck> _log;
 
-    public DbConnectivityHealthCheck(Settings settings, ILogger<DbConnectivityHealthCheck> log)
+    public DbConnectivityHealthCheck(NpgsqlDataSource dataSource, ILogger<DbConnectivityHealthCheck> log)
     {
-        _connectionString = settings.IndexReadonlyDbConnectionString;
+        _dataSource = dataSource;
         _log = log;
     }
 
@@ -24,8 +24,7 @@ public sealed class DbConnectivityHealthCheck : IHealthCheck
     {
         try
         {
-            await using var conn = new NpgsqlConnection(_connectionString);
-            await conn.OpenAsync(ct);
+            await using var conn = await _dataSource.OpenConnectionAsync(ct);
 
             await using var cmd = new NpgsqlCommand("SELECT 1", conn);
             cmd.CommandTimeout = 5;

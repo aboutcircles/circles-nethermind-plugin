@@ -17,6 +17,7 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheServiceSettings _settings;
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
+    private readonly NpgsqlDataSource _readonlyDataSource;
 
     protected CacheServiceSettings Settings => _settings;
     protected CacheServiceState State => _state;
@@ -26,12 +27,14 @@ public class NotificationListenerService : BackgroundService
         ILogger<NotificationListenerService> logger,
         CacheServiceSettings settings,
         CacheServiceState state,
-        CacheContainer caches)
+        CacheContainer caches,
+        NpgsqlDataSource readonlyDataSource)
     {
         _logger = logger;
         _settings = settings;
         _state = state;
         _caches = caches;
+        _readonlyDataSource = readonlyDataSource;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -294,8 +297,7 @@ public class NotificationListenerService : BackgroundService
         Func<NpgsqlConnection, CancellationToken, Task> action,
         CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-        await conn.OpenAsync(ct);
+        await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
         await action(conn, ct);
     }
 
@@ -333,8 +335,7 @@ public class NotificationListenerService : BackgroundService
 
     protected virtual async Task ProcessBlockRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
     {
-        await using var conn = new NpgsqlConnection(_settings.EffectiveReadonlyConnectionString);
-        await conn.OpenAsync(ct);
+        await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
 
         // Process V1 events in this range
         await ProcessV1EventsAsync(conn, fromBlock, toBlock, ct);

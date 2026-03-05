@@ -289,8 +289,7 @@ public class NetworkStateUpdaterService : BackgroundService
         // Load fresh state from DB inside a single REPEATABLE READ transaction.
         // This guarantees all 4 queries see a consistent DB snapshot, preventing
         // phantom inconsistencies where balances reflect block N but trusts reflect N+1.
-        using var conn = new NpgsqlConnection(loadGraph.ConnectionString);
-        conn.Open();
+        using var conn = loadGraph.DataSource.OpenConnection();
         using var tx = conn.BeginTransaction(IsolationLevel.RepeatableRead);
         var rawBalances = loadGraph.LoadRawBalances(conn, tx);
         var rawTrusts = loadGraph.LoadRawTrusts(conn, tx);

@@ -172,4 +172,22 @@ internal static class GraphUpdateMetrics
     public static readonly Counter CacheGraphErrorsTotal = Metrics.CreateCounter(
         "circles_pathfinder_cache_graph_errors_total",
         "Total number of cache graph fetch errors");
+
+    // ─── Connection pool metrics ────────────────────────────────────────
+
+    public static readonly Gauge DbPoolIdleConnections = Metrics.CreateGauge(
+        "circles_db_pool_idle_connections",
+        "Number of idle connections in the Npgsql pool");
+
+    public static readonly Gauge DbPoolBusyConnections = Metrics.CreateGauge(
+        "circles_db_pool_busy_connections",
+        "Number of busy/in-use connections in the Npgsql pool");
+
+    public static readonly Gauge DbPoolTotalConnections = Metrics.CreateGauge(
+        "circles_db_pool_total_connections",
+        "Total number of connections (idle + busy) in the Npgsql pool");
+
+    public static readonly Gauge DbPoolMaxConnections = Metrics.CreateGauge(
+        "circles_db_pool_max_connections",
+        "Maximum pool size configured for the Npgsql pool");
 }
