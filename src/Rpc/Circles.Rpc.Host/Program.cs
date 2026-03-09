@@ -74,6 +74,7 @@ app.MapGet("/openrpc", () =>
     Results.Redirect("https://aboutcircles.github.io/CirclesTools/rpcQueryView.html"))
     .ExcludeFromDescription();
 
+
 // ─── Unified API documentation portal ───────────────────────────────────────
 app.MapGet("/docs", (HttpContext ctx) =>
 {
