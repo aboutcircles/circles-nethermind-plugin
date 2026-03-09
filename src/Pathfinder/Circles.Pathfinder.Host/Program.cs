@@ -237,6 +237,9 @@ app.MapGet("/findMaxFlow", async (
     bool? withWrap,
     string? simulatedBalances,
     string[]? simulatedConsentedAvatars,
+    int? maxTransfers,
+    bool? quantizedMode,
+    bool? debugShowIntermediateSteps,
     NetworkState state,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
@@ -258,13 +261,32 @@ app.MapGet("/findMaxFlow", async (
     if (simErr != null) return simErr;
 
     var request = handler.BuildRequest(from, to, amount, fromTokens, toTokens,
-        excludedFromTokens, excludedToTokens, withWrap, sim, simulatedConsentedAvatars);
+        excludedFromTokens, excludedToTokens, withWrap, sim, simulatedConsentedAvatars,
+        maxTransfers, quantizedMode, debugShowIntermediateSteps);
 
     return await handler.ExecuteWithGuard("findMaxFlow", request, state, pool,
         graph => pathfinder.ComputeMaxFlow(graph, request, targetFlow));
 })
 .WithTags("Pathfinding")
-.WithDescription("Compute the maximum transferable flow between two addresses without computing the full path.");
+.WithSummary("Compute max transferable flow (GET)")
+.WithDescription(
+    "Computes the maximum transferable flow between two addresses WITHOUT computing the full transfer path. " +
+    "Faster than /findPath when you only need to know the amount.\n\n" +
+    "**Required params**: `from` (sender address), `to` (receiver address), `amount` (target flow in CRC wei, use max uint256 for max possible).\n\n" +
+    "**Optional params**:\n" +
+    "- `fromTokens`/`toTokens`: Restrict which tokens can be used at source/sink (array of token-owner addresses)\n" +
+    "- `excludedFromTokens`/`excludedToTokens`: Exclude specific tokens\n" +
+    "- `withWrap`: Include ERC-20 wrapper paths (default: false)\n" +
+    "- `simulatedBalances`: JSON string of hypothetical balances for 'what-if' testing\n" +
+    "- `simulatedConsentedAvatars`: Addresses to treat as having consented\n" +
+    "- `maxTransfers`: Limit transfer step count (gas cost control)\n" +
+    "- `quantizedMode`: Enforce 96 CRC quantization for invitations\n" +
+    "- `debugShowIntermediateSteps`: Include all transformation stages\n\n" +
+    "**Address format**: 0x-prefixed, 40 hex chars, checksummed or lowercase.\n" +
+    "**Amount format**: uint256 as decimal string. Max uint256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935.\n" +
+    "**Array size limit**: 1000 entries per array parameter.\n" +
+    "**Request body limit**: 1 MB.")
+.Produces<MaxFlowResponse>();
 
 app.MapGet("/findPath", async (
     string from,
@@ -310,7 +332,18 @@ app.MapGet("/findPath", async (
         graph => pathfinder.ComputeMaxFlowWithPath(graph, request, targetFlow));
 })
 .WithTags("Pathfinding")
-.WithDescription("Compute a transitive transfer path between two addresses (GET with query parameters).");
+.WithSummary("Compute transfer path (GET)")
+.WithDescription(
+    "Computes a multi-hop transitive transfer path between two addresses. Uses Google OR-Tools max-flow solver. " +
+    "The response contains the exact transfer steps to submit on-chain via Hub.sol operateFlowMatrix().\n\n" +
+    "**Required params**: `from` (sender address), `to` (receiver address), `amount` (target flow in CRC wei).\n\n" +
+    "**Optional params**: Same as GET /findMaxFlow, plus:\n" +
+    "- `maxTransfers`: Limit the number of transfer steps for gas cost control\n" +
+    "- `quantizedMode`: Enforce 96 CRC quantization per sink-bound transfer (invitation module)\n" +
+    "- `debugShowIntermediateSteps`: Include rawPaths, collapsed, routerInserted, sorted stages in response\n\n" +
+    "**Response**: `maxFlow` (actual achievable amount) + `transfers` (ordered list of from/to/tokenOwner/value steps).\n\n" +
+    "**Use POST /findPath** for complex requests with simulatedBalances/simulatedTrusts (JSON body).")
+.Produces<MaxFlowResponse>();
 
 // POST  /findPath  -----------------------------------------------------------
 app.MapPost("/findPath", async (
@@ -353,7 +386,27 @@ app.MapPost("/findPath", async (
         graph => pathfinder.ComputeMaxFlowWithPath(graph, request, targetFlow));
 })
 .WithTags("Pathfinding")
-.WithDescription("Compute a transitive transfer path between two addresses (POST with JSON body).");
+.WithSummary("Compute transfer path (POST)")
+.WithDescription(
+    "Computes a multi-hop transitive transfer path (POST variant with JSON body). " +
+    "**Preferred for complex requests** with simulatedBalances, simulatedTrusts, or many token filters.\n\n" +
+    "**Request body**: FlowRequest JSON object with fields:\n" +
+    "- `source` (required): Sender address (0x-prefixed, 40 hex chars)\n" +
+    "- `sink` (required): Receiver address\n" +
+    "- `targetFlow` (required): Amount in CRC wei (uint256 string). Use max uint256 for 'send as much as possible'.\n" +
+    "- `fromTokens`/`toTokens`: Restrict tokens at source/sink (array of addresses)\n" +
+    "- `excludedFromTokens`/`excludedToTokens`: Exclude specific tokens\n" +
+    "- `withWrap`: Include ERC-20 wrapper paths (default: false)\n" +
+    "- `simulatedBalances`: Array of {holder, token, amount, isWrapped?, isStatic?} for 'what-if' testing\n" +
+    "- `simulatedTrusts`: Array of {truster, trustee} for hypothetical trust edges\n" +
+    "- `simulatedConsentedAvatars`: Addresses to treat as consented\n" +
+    "- `maxTransfers`: Limit transfer step count (gas cost control)\n" +
+    "- `quantizedMode`: Enforce 96 CRC quantization (invitation module)\n" +
+    "- `debugShowIntermediateSteps`: Include all transformation stages\n\n" +
+    "**Response**: MaxFlowResponse with `maxFlow`, `transfers[]`, and optional `debug` stages.\n\n" +
+    "**Restrictions**: Body limit 1 MB, array params max 1000 entries each.\n" +
+    "**Solver timeout**: 30 seconds (configurable via PATHFINDER_SOLVER_TIMEOUT_SECONDS).")
+.Produces<MaxFlowResponse>();
 
 app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpContext httpContext) =>
 {
@@ -383,7 +436,15 @@ app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpCo
     return Results.Bytes(json, "application/json");
 })
 .WithTags("Graph")
-.WithDescription("Get a snapshot of the full trust graph (balances, trusts, avatars). Supports ETag-based conditional requests.");
+.WithSummary("Get trust graph snapshot")
+.WithDescription(
+    "Returns a snapshot of the full Circles trust graph including all avatars, trust edges, and token balances. " +
+    "**Large response** (can be several MB compressed).\n\n" +
+    "**ETag support**: Responses include an ETag header. Send `If-None-Match` with the previous ETag to get " +
+    "304 Not Modified if the graph hasn't changed. The graph updates every ~5 seconds.\n\n" +
+    "**Cache-Control**: `public, max-age=5` — clients can cache briefly.\n\n" +
+    "**503**: Returned if the graph has not been built yet (service starting up).\n\n" +
+    "**Common use case**: Pre-loading the trust graph for client-side pathfinding or visualization.");
 
 app.Run();
 

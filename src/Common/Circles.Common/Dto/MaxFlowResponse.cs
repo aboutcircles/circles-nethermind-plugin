@@ -41,11 +41,20 @@ public class DebugPipelineStages
     public List<TransferPathStep>? Sorted { get; set; }
 }
 
+/// <summary>
+/// Response from path computation. Contains the maximum achievable flow and the transfer steps to execute on-chain.
+/// </summary>
 public class MaxFlowResponse
 {
+    /// <summary>
+    /// Maximum achievable flow in CRC wei (uint256 as decimal string). This is the actual amount that can be transferred, which may be less than targetFlow.
+    /// </summary>
     [JsonPropertyName("maxFlow")]
     public string MaxFlow { get; set; }
 
+    /// <summary>
+    /// Ordered list of individual token transfer steps to submit on-chain via Hub.sol operateFlowMatrix().
+    /// </summary>
     [JsonPropertyName("transfers")]
     public List<TransferPathStep> Transfers { get; set; }
 

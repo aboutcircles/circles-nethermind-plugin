@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Circles.Common.Dto;
 using Circles.Index.Query.Dto;
 
 namespace Circles.Rpc.Host.OpenRpc;
@@ -350,6 +351,203 @@ public static class OpenRpcGenerator
                 "Structured query definition. Same format as circles_query but returns paginated results with cursor-based navigation."),
             Param("cursor", false, "string",
                 "Opaque cursor from the previous response's nextCursor field. Pass this to get the next page of results.")
+        ],
+        ["circles_getAggregatedTrustRelations"] =
+        [
+            Param("avatar", true, "string",
+                "Avatar address to query aggregated trust relations for. Returns trust relations grouped by counterpart with relation type (mutuallyTrusts/trusts/trustedBy) and expiry times.",
+                pattern: AddrPattern)
+        ],
+        ["circles_getNetworkSnapshot"] =
+        [
+            // No parameters — returns the entire trust network snapshot from the Pathfinder
+        ],
+        ["circles_findGroups"] =
+        [
+            Param("limit", false, "integer",
+                "Maximum number of groups to return. Default: 50."),
+            Param("queryParams", false, "object",
+                "Optional filter object with fields: nameStartsWith (string), symbolStartsWith (string), ownerIn (string[] of addresses)."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getGroupMembers"] =
+        [
+            Param("groupAddress", true, "string",
+                "The group address to query members for. Returns all avatars that are members of this group with membership metadata.",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum number of members to return. Default: 100, max: 200."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getGroupMemberships"] =
+        [
+            Param("memberAddress", true, "string",
+                "Avatar address to query group memberships for. Returns all groups this avatar belongs to (inverse of getGroupMembers).",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum number of memberships to return. Default: 50, max: 200."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getTransactionHistory"] =
+        [
+            Param("avatarAddress", true, "string",
+                "Avatar address to query transaction history for. Returns transfers where this avatar is sender or receiver.",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum number of transactions to return. Default: 50, max: 200."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination."),
+            Param("version", false, "integer",
+                "Filter by protocol version: 1 = V1 only, 2 = V2 only, null = both V1+V2."),
+            Param("excludeIntermediary", false, "boolean",
+                "When true (default), uses TransferSummary which excludes intermediary hop transfers. When false, includes all individual hops.")
+        ],
+        ["circles_getTransferData"] =
+        [
+            Param("address", true, "string",
+                "Primary address to filter transfer data for. Returns ERC-1155 transfer calldata bytes.",
+                pattern: AddrPattern),
+            Param("direction", false, "string",
+                "Filter by direction: 'sent' (from=address), 'received' (to=address), or null/omit for both."),
+            Param("counterparty", false, "string",
+                "If set, additionally filters by this specific counterparty address.",
+                pattern: AddrPattern),
+            Param("fromBlock", false, "integer",
+                "Start block number (inclusive). Null for no lower bound."),
+            Param("toBlock", false, "integer",
+                "End block number (inclusive). Null for no upper bound."),
+            Param("limit", false, "integer",
+                "Maximum results. Default: 50, max: 1000."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getTokenHolders"] =
+        [
+            Param("tokenAddress", true, "string",
+                "Token address to query holders for. Returns all addresses holding this token with their balances.",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum number of holders to return. Default: 100, max: 200."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination (account address).")
+        ],
+        ["circles_health"] =
+        [
+            // No parameters — returns database connectivity and sync status
+        ],
+        ["circles_tables"] =
+        [
+            // No parameters — returns all available database tables/schemas for use with circles_query
+        ],
+        ["circles_getProfileView"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to get the consolidated profile view for. Returns avatar info, IPFS profile, trust stats, and V1/V2 balances in a single call (replaces 6-7 separate RPC calls).",
+                pattern: AddrPattern)
+        ],
+        ["circles_getTrustNetworkSummary"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query trust network summary for. Returns trust counts, mutual trust count, and network reach statistics.",
+                pattern: AddrPattern),
+            Param("maxDepth", false, "integer",
+                "Maximum depth for network traversal. Limits how far the trust graph is explored. Optional.")
+        ],
+        ["circles_getAggregatedTrustRelationsEnriched"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query enriched trust relations for. Returns trust relations categorized by type (mutual, one-way) with enriched avatar info.",
+                pattern: AddrPattern),
+            Param("limit", false, "integer",
+                "Maximum results per page. Default: 50, max: 200."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getValidInviters"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to find valid inviters for. Returns addresses that trust this user AND have sufficient balance to sponsor an invitation.",
+                pattern: AddrPattern),
+            Param("minimumBalance", false, "string",
+                "Minimum CRC balance required for an inviter (as string). Default: 96 CRC (1 invitation unit). Example: '96000000000000000000'."),
+            Param("limit", false, "integer",
+                "Maximum results per page. Default: 50, max: 200."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination.")
+        ],
+        ["circles_getTransactionHistoryEnriched"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query enriched transaction history for. Returns transactions with participant profiles and metadata (replaces circles_events + multiple getProfileByAddress calls).",
+                pattern: AddrPattern),
+            Param("fromBlock", true, "integer",
+                "Starting block number (inclusive). Required."),
+            Param("toBlock", false, "integer",
+                "Ending block number (inclusive). Null = up to the latest indexed block."),
+            Param("limit", false, "integer",
+                "Maximum transactions to return. Default: 20."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination."),
+            Param("version", false, "integer",
+                "Filter by version: null = V2 only (backward compat), 1 = V1 only, 2 = V2 only."),
+            Param("excludeIntermediary", false, "boolean",
+                "When true (default), uses TransferSummary which excludes intermediary hop transfers.")
+        ],
+        ["circles_searchProfileByAddressOrName"] =
+        [
+            Param("query", true, "string",
+                "Search query. If starts with '0x', searches by address prefix. Otherwise performs full-text search across profile name and description."),
+            Param("limit", false, "integer",
+                "Maximum results per page. Default: 20, max: 100."),
+            Param("cursor", false, "string",
+                "Cursor from a previous response's nextCursor field for pagination."),
+            ParamArray("types", false, "string",
+                "Filter by avatar types: 'CrcV2_RegisterHuman', 'CrcV2_RegisterGroup', 'CrcV2_RegisterOrganization'. Omit for all types.")
+        ],
+        ["circles_getInvitationOrigin"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to look up the invitation origin for. Returns how this address was invited (V1 Signup, V2 Standard, V2 Escrow, V2 At Scale) with inviter details.",
+                pattern: AddrPattern)
+        ],
+        ["circles_getAllInvitations"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query all available invitations for. Returns trust-based, escrow-based, and at-scale invitations in a single response.",
+                pattern: AddrPattern),
+            Param("minimumBalance", false, "string",
+                "Minimum CRC balance required for trust-based invitations (as string). Example: '96000000000000000000' = 96 CRC.")
+        ],
+        ["circles_getTrustInvitations"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query trust-based invitations for. Returns addresses that trust this user and have sufficient balance. Subset of getAllInvitations.",
+                pattern: AddrPattern),
+            Param("minimumBalance", false, "string",
+                "Minimum CRC balance required (as string). Default: 96 CRC. Example: '96000000000000000000'.")
+        ],
+        ["circles_getEscrowInvitations"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query escrow-based invitations for. Returns CRC escrowed for this address. Filters out redeemed, revoked, and refunded escrows.",
+                pattern: AddrPattern)
+        ],
+        ["circles_getAtScaleInvitations"] =
+        [
+            Param("address", true, "string",
+                "Avatar address to query at-scale invitations for. Returns pre-created accounts that haven't been claimed yet.",
+                pattern: AddrPattern)
+        ],
+        ["circles_getInvitationsFrom"] =
+        [
+            Param("address", true, "string",
+                "Inviter avatar address. When accepted=true: returns accounts that registered using this avatar as inviter. When accepted=false: returns addresses this avatar trusts that are NOT yet registered.",
+                pattern: AddrPattern),
+            Param("accepted", false, "boolean",
+                "When true, returns registered (accepted) invitations. When false (default), returns pending (not yet registered) invitations.")
         ],
         ["circlesV2_findPath"] =
         [
@@ -719,6 +917,285 @@ public static class OpenRpcGenerator
                 ],
             }
         ],
+        ["circles_getTokenInfo"] =
+        [
+            new()
+            {
+                Name = "Look up a token",
+                Description = "Get metadata for a specific token address",
+                Params = [new() { Name = "tokenAddress", Value = ExampleToken }],
+            }
+        ],
+        ["circles_getTokenInfoBatch"] =
+        [
+            new()
+            {
+                Name = "Batch token lookup",
+                Description = "Resolve multiple token addresses at once",
+                Params = [new() { Name = "tokenAddresses", Value = new[] { ExampleToken, ExampleAddr1 } }],
+            }
+        ],
+        ["circles_getAvatarInfoBatch"] =
+        [
+            new()
+            {
+                Name = "Batch avatar lookup",
+                Description = "Get avatar info for a contact list",
+                Params = [new() { Name = "addresses", Value = new[] { ExampleAddr1, ExampleAddr2 } }],
+            }
+        ],
+        ["circles_getProfileCid"] =
+        [
+            new()
+            {
+                Name = "Get IPFS CID for a profile",
+                Description = "Get the IPFS content identifier for an avatar's profile",
+                Params = [new() { Name = "address", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_getProfileCidBatch"] =
+        [
+            new()
+            {
+                Name = "Batch CID lookup",
+                Description = "Get IPFS CIDs for multiple avatars at once",
+                Params = [new() { Name = "addresses", Value = new[] { ExampleAddr1, ExampleAddr2 } }],
+            }
+        ],
+        ["circles_getProfileByCid"] =
+        [
+            new()
+            {
+                Name = "Fetch profile by IPFS CID",
+                Description = "Load profile JSON from IPFS via the server-side cache",
+                Params = [new() { Name = "cid", Value = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG" }],
+            }
+        ],
+        ["circles_getProfileByCidBatch"] =
+        [
+            new()
+            {
+                Name = "Batch profile fetch",
+                Description = "Load multiple profiles by their IPFS CIDs",
+                Params = [new() { Name = "cids", Value = new[] { "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", "QmPbxeGcXhYQoAkwH5LRZSxvAXKTDJoNTJHVLHXHFkN3aR" } }],
+            }
+        ],
+        ["circles_getProfileByAddress"] =
+        [
+            new()
+            {
+                Name = "Get enriched profile",
+                Description = "Fetch a profile with avatar type and name injected",
+                Params = [new() { Name = "address", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_getProfileByAddressBatch"] =
+        [
+            new()
+            {
+                Name = "Batch enriched profiles",
+                Description = "Fetch profiles for a list of addresses with avatar enrichment",
+                Params = [new() { Name = "addresses", Value = new[] { ExampleAddr1, ExampleAddr2 } }],
+            }
+        ],
+        ["circles_getTrustRelations"] =
+        [
+            new()
+            {
+                Name = "Get trust network for an address",
+                Description = "View who this address trusts and who trusts it",
+                Params = [new() { Name = "address", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_getAggregatedTrustRelations"] =
+        [
+            new()
+            {
+                Name = "Get categorized trust relations",
+                Description = "Trust relations grouped as mutuallyTrusts/trusts/trustedBy",
+                Params = [new() { Name = "avatar", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_getNetworkSnapshot"] =
+        [
+            new()
+            {
+                Name = "Full network snapshot",
+                Description = "Download the entire trust network (large response, use sparingly)",
+                Params = [],
+            }
+        ],
+        ["circles_getGroupMemberships"] =
+        [
+            new()
+            {
+                Name = "Groups I belong to",
+                Description = "Find all groups that trust this avatar",
+                Params =
+                [
+                    new() { Name = "memberAddress", Value = ExampleAddr1 },
+                    new() { Name = "limit", Value = 50 },
+                ],
+            }
+        ],
+        ["circles_getTransactionHistory"] =
+        [
+            new()
+            {
+                Name = "Recent V2 transactions",
+                Description = "Get the 50 most recent V2 transfers for an avatar",
+                Params =
+                [
+                    new() { Name = "avatarAddress", Value = ExampleAddr1 },
+                    new() { Name = "limit", Value = 50 },
+                    new() { Name = "version", Value = 2 },
+                    new() { Name = "excludeIntermediary", Value = true },
+                ],
+            }
+        ],
+        ["circles_getTokenHolders"] =
+        [
+            new()
+            {
+                Name = "Token distribution",
+                Description = "Get all holders of a specific token",
+                Params =
+                [
+                    new() { Name = "tokenAddress", Value = ExampleToken },
+                    new() { Name = "limit", Value = 100 },
+                ],
+            }
+        ],
+        ["circles_health"] =
+        [
+            new()
+            {
+                Name = "Check health",
+                Description = "Verify indexer is healthy and synced",
+                Params = [],
+            }
+        ],
+        ["circles_tables"] =
+        [
+            new()
+            {
+                Name = "Discover available tables",
+                Description = "List all queryable tables and their columns",
+                Params = [],
+            }
+        ],
+        ["circles_getTrustNetworkSummary"] =
+        [
+            new()
+            {
+                Name = "Trust network stats",
+                Description = "Get trust counts and network reach for an avatar",
+                Params =
+                [
+                    new() { Name = "address", Value = ExampleAddr1 },
+                    new() { Name = "maxDepth", Value = 3 },
+                ],
+            }
+        ],
+        ["circles_getAggregatedTrustRelationsEnriched"] =
+        [
+            new()
+            {
+                Name = "Trust list with profiles",
+                Description = "Get trust relations with enriched avatar info (names, images)",
+                Params =
+                [
+                    new() { Name = "address", Value = ExampleAddr1 },
+                    new() { Name = "limit", Value = 50 },
+                ],
+            }
+        ],
+        ["circles_getInvitationOrigin"] =
+        [
+            new()
+            {
+                Name = "How was this user invited?",
+                Description = "Trace the invitation chain for an address",
+                Params = [new() { Name = "address", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_getTrustInvitations"] =
+        [
+            new()
+            {
+                Name = "Trust-based invitations",
+                Description = "Find who can invite this address via trust + balance",
+                Params =
+                [
+                    new() { Name = "address", Value = ExampleAddr1 },
+                    new() { Name = "minimumBalance", Value = "96000000000000000000" },
+                ],
+            }
+        ],
+        ["circles_getEscrowInvitations"] =
+        [
+            new()
+            {
+                Name = "Escrow invitations",
+                Description = "Find CRC escrowed for this address (active only)",
+                Params = [new() { Name = "address", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_getAtScaleInvitations"] =
+        [
+            new()
+            {
+                Name = "At-scale invitations",
+                Description = "Find pre-created accounts available for this address",
+                Params = [new() { Name = "address", Value = ExampleAddr1 }],
+            }
+        ],
+        ["circles_query"] =
+        [
+            new()
+            {
+                Name = "Query V2 trusts for an address",
+                Description = "Low-level query to get V2 trust relations where the address is the truster",
+                Params =
+                [
+                    new()
+                    {
+                        Name = "query", Value = new
+                        {
+                            @namespace = "CrcV2",
+                            table = "CrcV2_Trust",
+                            columns = new[] { "truster", "trustee", "expiryTime" },
+                            filter = new[]
+                            {
+                                new { Type = "FilterPredicate", Column = "truster", FilterType = "Equals", Value = ExampleAddr1 }
+                            },
+                            limit = 100
+                        }
+                    }
+                ],
+            }
+        ],
+        ["circles_paginated_query"] =
+        [
+            new()
+            {
+                Name = "Paginated transfer query",
+                Description = "Iterate through V2 transfers with cursor pagination",
+                Params =
+                [
+                    new()
+                    {
+                        Name = "query", Value = new
+                        {
+                            @namespace = "CrcV2",
+                            table = "CrcV2_TransferSingle",
+                            columns = new[] { "from", "to", "id", "value", "blockNumber" },
+                            limit = 50
+                        }
+                    }
+                ],
+            }
+        ],
     };
 
     public static OpenRpcDocument Generate()
@@ -787,13 +1264,24 @@ public static class OpenRpcGenerator
                 rpcMethod.Params.AddRange(ReflectParams(method));
             }
 
-            // Build result schema from return type
-            var returnType = UnwrapTaskType(method.ReturnType);
-            rpcMethod.Result = new OpenRpcResult
+            // Build result schema — use override if available, otherwise reflect from return type
+            if (ResultOverrides.TryGetValue(rpcName, out var resultSchema))
             {
-                Name = $"{rpcName}Result",
-                Schema = BuildSchema(returnType)
-            };
+                rpcMethod.Result = new OpenRpcResult
+                {
+                    Name = $"{rpcName}Result",
+                    Schema = resultSchema
+                };
+            }
+            else
+            {
+                var returnType = UnwrapTaskType(method.ReturnType);
+                rpcMethod.Result = new OpenRpcResult
+                {
+                    Name = $"{rpcName}Result",
+                    Schema = BuildSchema(returnType)
+                };
+            }
 
             // Add examples if available
             if (MethodExamples.TryGetValue(rpcName, out var examples))
@@ -803,6 +1291,22 @@ public static class OpenRpcGenerator
 
             doc.Methods.Add(rpcMethod);
         }
+
+        // Re-ensure schemas referenced via $ref that were wiped by SchemaCache.Clear().
+        // ParamRef() calls EnsureSchemaByName() during static init, but Clear() at the
+        // top of Generate() removes those entries. Re-add them now.
+        foreach (var method in doc.Methods)
+        {
+            foreach (var p in method.Params)
+                if (p.Schema?.Ref != null)
+                    EnsureSchemaByName(p.Schema.Ref.Replace("#/components/schemas/", ""));
+
+            if (method.Result?.Schema?.Ref != null)
+                EnsureSchemaByName(method.Result.Schema.Ref.Replace("#/components/schemas/", ""));
+        }
+
+        // Apply property descriptions to generated schemas
+        ApplyPropertyDescriptions();
 
         // Add component schemas
         if (SchemaCache.Count > 0)
@@ -1039,7 +1543,12 @@ public static class OpenRpcGenerator
         // Map known schema names to types
         var typeMap = new Dictionary<string, Type>
         {
-            ["FlowRequest"] = typeof(Circles.Common.Dto.FlowRequest),
+            ["FlowRequest"] = typeof(FlowRequest),
+            ["SimulatedBalance"] = typeof(SimulatedBalance),
+            ["SimulatedTrust"] = typeof(SimulatedTrust),
+            ["MaxFlowResponse"] = typeof(MaxFlowResponse),
+            ["TransferPathStep"] = typeof(TransferPathStep),
+            ["DebugPipelineStages"] = typeof(DebugPipelineStages),
             ["SelectDto"] = typeof(SelectDto),
             ["FilterPredicateDto"] = typeof(IFilterPredicateDto),
         };
@@ -1053,6 +1562,89 @@ public static class OpenRpcGenerator
         else
         {
             SchemaCache[schemaName] = new JsonSchemaObject { Type = "object" };
+        }
+    }
+
+    // ─── Result schema overrides ────────────────────────────────────────────
+    // For methods returning JsonElement (opaque proxy), provide explicit result schemas
+    // so LLMs and codegen tools know the actual response shape.
+
+    private static readonly Dictionary<string, JsonSchemaObject> ResultOverrides = new()
+    {
+        ["circlesV2_findPath"] = new JsonSchemaObject
+        {
+            Ref = "#/components/schemas/MaxFlowResponse"
+        },
+    };
+
+    // ─── Property descriptions ──────────────────────────────────────────────
+    // BuildObjectSchema reflects property names/types but not XML doc comments (those
+    // aren't available at runtime without shipping the XML file). This dictionary
+    // provides descriptions keyed by (schemaName, jsonPropertyName).
+
+    private static readonly Dictionary<(string Schema, string Prop), string> PropertyDescriptions = new()
+    {
+        // FlowRequest
+        { ("FlowRequest", "source"), "Sender address (0x-prefixed, 40 hex chars). Must be a registered Circles V2 avatar." },
+        { ("FlowRequest", "sink"), "Receiver address (0x-prefixed, 40 hex chars). Must be a registered Circles V2 avatar." },
+        { ("FlowRequest", "targetFlow"), "Amount to transfer in CRC wei (1 CRC = 10^18 wei). Use max uint256 to discover maximum possible flow." },
+        { ("FlowRequest", "toTokens"), "Restrict which tokens the sink can receive. Array of token-owner addresses." },
+        { ("FlowRequest", "fromTokens"), "Restrict which tokens the source can send. Array of token-owner addresses." },
+        { ("FlowRequest", "excludedFromTokens"), "Exclude specific tokens from the source side. Array of token-owner addresses." },
+        { ("FlowRequest", "excludedToTokens"), "Exclude specific tokens from the sink side. Array of token-owner addresses." },
+        { ("FlowRequest", "withWrap"), "When true, includes ERC-20 wrapper token paths in addition to native ERC-1155 paths." },
+        { ("FlowRequest", "simulatedBalances"), "Hypothetical token balances to inject into the graph before path computation." },
+        { ("FlowRequest", "simulatedTrusts"), "Hypothetical trust relations to inject into the graph before path computation." },
+        { ("FlowRequest", "simulatedConsentedAvatars"), "Addresses to treat as having consented to advanced usage (ERC-1155 operator approval)." },
+        { ("FlowRequest", "maxTransfers"), "Maximum number of transfer steps in the result. Limits path complexity for on-chain gas cost control." },
+        { ("FlowRequest", "quantizedMode"), "When true, enforces 96 CRC quantization for sink-bound transfers (invitation module). Each transfer = N × 96 CRC." },
+        { ("FlowRequest", "debugShowIntermediateSteps"), "When true, includes debug info showing all transformation stages: rawPaths, collapsed, routerInserted, sorted." },
+
+        // SimulatedBalance
+        { ("SimulatedBalance", "holder"), "Holder address — the avatar that holds the tokens (0x-prefixed)." },
+        { ("SimulatedBalance", "token"), "Token identifier — the token-owner avatar address, or ERC-20 wrapper address." },
+        { ("SimulatedBalance", "amount"), "Balance amount as uint256 string in CRC wei. Example: \"96000000000000000000\" = 96 CRC." },
+        { ("SimulatedBalance", "isWrapped"), "When true, treat as an ERC-20 wrapped token balance instead of native ERC-1155." },
+        { ("SimulatedBalance", "isStatic"), "When true, this balance is not subject to demurrage decay." },
+
+        // SimulatedTrust
+        { ("SimulatedTrust", "truster"), "The address that grants trust (0x-prefixed, 40 hex chars)." },
+        { ("SimulatedTrust", "trustee"), "The address that receives trust (0x-prefixed, 40 hex chars)." },
+
+        // MaxFlowResponse
+        { ("MaxFlowResponse", "maxFlow"), "Maximum achievable flow in CRC wei (uint256 as decimal string)." },
+        { ("MaxFlowResponse", "transfers"), "Ordered list of individual token transfer steps to submit on-chain via Hub.sol operateFlowMatrix()." },
+        { ("MaxFlowResponse", "debug"), "Debug information showing transformation stages (only present if debugShowIntermediateSteps=true)." },
+
+        // TransferPathStep
+        { ("TransferPathStep", "from"), "Sender address for this transfer step (0x-prefixed, lowercase)." },
+        { ("TransferPathStep", "to"), "Receiver address for this transfer step (0x-prefixed, lowercase)." },
+        { ("TransferPathStep", "tokenOwner"), "Token owner address identifying which Circles token is transferred." },
+        { ("TransferPathStep", "value"), "Transfer amount in CRC wei (uint256 as decimal string)." },
+
+        // DebugPipelineStages
+        { ("DebugPipelineStages", "rawPaths"), "Stage 1: Raw paths from MaxFlowSolver with token pools (tpool-0x...)." },
+        { ("DebugPipelineStages", "collapsed"), "Stage 2: Token pools collapsed, showing Avatar→Avatar flows." },
+        { ("DebugPipelineStages", "routerInserted"), "Stage 3: Router inserted for group mints (Avatar→Group becomes Avatar→Router→Group)." },
+        { ("DebugPipelineStages", "sorted"), "Stage 4: Final sorted order for contract execution (collateral before mints)." },
+    };
+
+    /// <summary>
+    /// Post-process schemas in the cache to apply property descriptions from the static dictionary.
+    /// </summary>
+    private static void ApplyPropertyDescriptions()
+    {
+        foreach (var (schemaName, schema) in SchemaCache)
+        {
+            if (schema.Properties == null) continue;
+
+            foreach (var (propName, propSchema) in schema.Properties)
+            {
+                if (PropertyDescriptions.TryGetValue((schemaName, propName), out var desc))
+                {
+                    propSchema.Description = desc;
+                }
+            }
         }
     }
 }
