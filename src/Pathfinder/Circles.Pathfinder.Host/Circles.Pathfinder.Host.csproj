@@ -42,6 +42,12 @@
     </ItemGroup>
 
     <ItemGroup>
+      <!-- OpenAPI documentation -->
+      <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+      <PackageReference Include="Scalar.AspNetCore" Version="2.4.18" />
+    </ItemGroup>
+
+    <ItemGroup>
       <None Remove="LogDb\0_applied_migrations.sql" />
       <None Remove="LogDb\1_request_and_response.sql" />
       <None Remove="LogDb\2_request_block_no.sql" />
