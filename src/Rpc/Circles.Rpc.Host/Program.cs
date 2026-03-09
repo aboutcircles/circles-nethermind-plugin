@@ -85,10 +85,9 @@ app.MapGet("/openrpc", (HttpContext ctx) =>
       <script>
         var base = 'https://playground.open-rpc.org/';
         var params = new URLSearchParams({
-          schemaUrl: location.origin + '/openrpc.json',
+          url: location.origin,
           'uiSchema[appBar][ui:examplesDropdown]': 'false',
           'uiSchema[appBar][ui:title]': 'Circles RPC',
-          'uiSchema[appBar][ui:input]': 'false',
           'uiSchema[appBar][ui:darkMode]': 'false',
           'uiSchema[methods][ui:defaultExpanded]': 'false',
           'uiSchema[params][ui:defaultExpanded]': 'false'
@@ -404,6 +403,9 @@ app.MapPost("/", async (
     {
         object rpcResult = request.Method switch
         {
+            // OpenRPC discovery — returns the spec so playgrounds can auto-discover methods
+            "rpc.discover" => OpenRpcGenerator.Generate(),
+
             // Balance & Token Methods
             "circles_getTotalBalance" => await HandleGetTotalBalance(request, rpcModule),
             "circlesV2_getTotalBalance" => await HandleV2GetTotalBalance(request, rpcModule),
