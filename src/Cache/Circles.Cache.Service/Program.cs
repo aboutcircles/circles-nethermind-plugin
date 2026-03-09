@@ -5,6 +5,7 @@ using Npgsql;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Prometheus;
+using Scalar.AspNetCore;
 
 static void AddConfigurableCors(IServiceCollection services)
 {
@@ -63,6 +64,18 @@ builder.Services.AddHealthChecks();
 // Add controllers for API endpoints
 builder.Services.AddControllers();
 
+// OpenAPI documentation
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info.Title = "Circles Cache Service API";
+        document.Info.Version = "1.0.0";
+        document.Info.Description = "Low-latency read cache for Circles protocol data — balances, avatars, tokens, profiles, trust relations, and group memberships.";
+        return Task.CompletedTask;
+    });
+});
+
 AddConfigurableCors(builder.Services);
 
 // Add logging - use simple console format
@@ -117,6 +130,14 @@ logger.LogInformation("=======================================");
 // Configure middleware
 app.UseCors();
 app.UseRouting();
+
+// OpenAPI + Scalar interactive docs
+app.MapOpenApi();
+app.MapScalarApiReference(options =>
+{
+    options.Title = "Circles Cache Service API";
+    options.Theme = ScalarTheme.DeepSpace;
+});
 
 // Enable Prometheus metrics collection and HTTP metrics
 app.UseHttpMetrics();
@@ -198,6 +219,11 @@ app.MapGet("/", () => new
         readiness = "/ready",
         stats = "/cache/stats",
         metrics = "/metrics",
+        docs = new
+        {
+            openapi = "/openapi/v1.json",
+            scalar = "/scalar/v1"
+        },
         api = new
         {
             balances = "/api/balances/{address}",

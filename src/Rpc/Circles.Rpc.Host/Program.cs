@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Circles.Common.Dto;
 using Circles.Index.Query.Dto;
 using Circles.Rpc.Host;
+using Circles.Rpc.Host.OpenRpc;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
@@ -56,6 +57,35 @@ app.MapHealthChecks("/health", new HealthCheckOptions
         [HealthStatus.Degraded] = StatusCodes.Status200OK
     }
 });
+
+// ─── OpenRPC spec endpoint ───────────────────────────────────────────────────
+var openRpcJson = JsonSerializer.SerializeToUtf8Bytes(
+    OpenRpcGenerator.Generate(),
+    new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, WriteIndented = true });
+
+app.MapGet("/openrpc.json", () => Results.Bytes(openRpcJson, "application/json"))
+    .ExcludeFromDescription();
+
+// Serve a minimal HTML page that loads the OpenRPC Playground
+app.MapGet("/openrpc", (HttpContext ctx) =>
+{
+    var schemaUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}/openrpc.json";
+    var html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8"/>
+      <title>Circles RPC — OpenRPC Playground</title>
+      <style>body { margin: 0; } iframe { width: 100vw; height: 100vh; border: none; }</style>
+    </head>
+    <body>
+      <iframe id="pg"></iframe>
+      <script>document.getElementById('pg').src='https://playground.open-rpc.org/?schemaUrl='+encodeURIComponent(location.origin+'/openrpc.json');</script>
+    </body>
+    </html>
+    """;
+    return Results.Content(html, "text/html");
+}).ExcludeFromDescription();
 
 async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionService subscriptionService, ILogger<Program> logger)
 {

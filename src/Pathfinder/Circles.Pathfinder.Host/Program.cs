@@ -19,6 +19,7 @@ using Npgsql;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Prometheus;
+using Scalar.AspNetCore;
 using static Circles.Pathfinder.Tracing;
 
 var settings = new Circles.Pathfinder.Host.Settings();
@@ -144,6 +145,18 @@ builder.Services
     .AddCheck<BackgroundServiceHealthCheck>("background_services", tags: new[] { "ready" })
     .AddCheck<DbConnectivityHealthCheck>("db_connectivity", tags: new[] { "ready" });
 
+// OpenAPI documentation
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info.Title = "Circles Pathfinder API";
+        document.Info.Version = "1.0.0";
+        document.Info.Description = "REST API for computing transitive transfer paths through the Circles trust network using Google OR-Tools.";
+        return Task.CompletedTask;
+    });
+});
+
 // ─── Misc DI ────────────────────────────────────────────────────────────────
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -160,6 +173,14 @@ app.UseResponseCompression();
 app.MapMetrics();
 app.UseMiddleware<RequestBodyLoggingMiddleware>();
 app.UseMiddleware<RequestTimingMiddleware>();
+
+// OpenAPI + Scalar interactive docs
+app.MapOpenApi();
+app.MapScalarApiReference(options =>
+{
+    options.Title = "Circles Pathfinder API";
+    options.Theme = ScalarTheme.DeepSpace;
+});
 
 app.MapHealthChecks("/live", new HealthCheckOptions
 {
@@ -216,7 +237,9 @@ app.MapGet("/findMaxFlow", async (
 
     return await handler.ExecuteWithGuard("findMaxFlow", request, state, pool,
         graph => pathfinder.ComputeMaxFlow(graph, request, targetFlow));
-});
+})
+.WithTags("Pathfinding")
+.WithDescription("Compute the maximum transferable flow between two addresses without computing the full path.");
 
 app.MapGet("/findPath", async (
     string from,
@@ -260,7 +283,9 @@ app.MapGet("/findPath", async (
 
     return await handler.ExecuteWithGuard("findPath", request, state, pool,
         graph => pathfinder.ComputeMaxFlowWithPath(graph, request, targetFlow));
-});
+})
+.WithTags("Pathfinding")
+.WithDescription("Compute a transitive transfer path between two addresses (GET with query parameters).");
 
 // POST  /findPath  -----------------------------------------------------------
 app.MapPost("/findPath", async (
@@ -301,7 +326,9 @@ app.MapPost("/findPath", async (
 
     return await handler.ExecuteWithGuard("findPath", request, state, pool,
         graph => pathfinder.ComputeMaxFlowWithPath(graph, request, targetFlow));
-});
+})
+.WithTags("Pathfinding")
+.WithDescription("Compute a transitive transfer path between two addresses (POST with JSON body).");
 
 app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpContext httpContext) =>
 {
@@ -329,7 +356,9 @@ app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpCo
 
     // Return pre-serialized JSON bytes directly
     return Results.Bytes(json, "application/json");
-});
+})
+.WithTags("Graph")
+.WithDescription("Get a snapshot of the full trust graph (balances, trusts, avatars). Supports ETag-based conditional requests.");
 
 app.Run();
 
