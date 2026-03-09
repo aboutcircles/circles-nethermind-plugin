@@ -1,17 +1,22 @@
+using System.Globalization;
+using System.Numerics;
+
 namespace Circles.Pathfinder.Data;
 
 /// <summary>
 /// ILoadGraph implementation backed by a deserialized Cache Service snapshot.
-/// No DB connection, no demurrage calculation — the cache service provides
-/// raw balances that LoadGraph/IncrementalLoadGraph would normally compute.
+/// The cache service provides already-demurraged balances; this class applies
+/// the safety margin (matching the DB path's DemurrageCalculator.Apply behavior).
 /// </summary>
 public sealed class CacheLoadGraph : ILoadGraph
 {
     private PathfinderGraphSnapshot _snapshot;
+    private readonly Settings? _settings;
 
-    public CacheLoadGraph(PathfinderGraphSnapshot snapshot)
+    public CacheLoadGraph(PathfinderGraphSnapshot snapshot, Settings? settings = null)
     {
         _snapshot = snapshot;
+        _settings = settings;
     }
 
     public void ReplaceSnapshot(PathfinderGraphSnapshot snapshot)
@@ -24,10 +29,31 @@ public sealed class CacheLoadGraph : ILoadGraph
     public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
     {
         var rows = _snapshot.Balances ?? [];
+
+        // Apply safety margin to match DB path behavior (DemurrageCalculator.Apply).
+        // The cache service already applies demurrage, but not the safety margin.
+        var applyMargin = _settings != null
+                          && _settings.TargetDemurrageTimestamp == null
+                          && _settings.DemurrageSafetyMargin < 1.0;
+        var safetyMargin = _settings?.DemurrageSafetyMargin ?? 1.0;
+
         foreach (var row in rows)
         {
+            var balance = row.Balance;
+
+            if (applyMargin)
+            {
+                var balanceValue = BigInteger.Parse(balance);
+                if (balanceValue != BigInteger.Zero)
+                {
+                    balanceValue = (BigInteger)((double)balanceValue * safetyMargin);
+                    if (balanceValue == BigInteger.Zero) continue;
+                    balance = balanceValue.ToString(CultureInfo.InvariantCulture);
+                }
+            }
+
             yield return (
-                row.Balance,
+                balance,
                 AddressIdPool.IdOf(row.Account.ToLowerInvariant()),
                 AddressIdPool.IdOf(row.TokenAddress.ToLowerInvariant()),
                 row.IsWrapped,

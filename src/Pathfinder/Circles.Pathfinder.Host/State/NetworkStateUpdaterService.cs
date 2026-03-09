@@ -573,7 +573,7 @@ public class NetworkStateUpdaterService : BackgroundService
             GraphUpdateMetrics.CacheGraphPayloadBytes.Observe(fetchResult.PayloadBytes);
 
             if (_cacheLoadGraph == null)
-                _cacheLoadGraph = new CacheLoadGraph(snapshot);
+                _cacheLoadGraph = new CacheLoadGraph(snapshot, _settings);
             else
                 _cacheLoadGraph.ReplaceSnapshot(snapshot);
 
