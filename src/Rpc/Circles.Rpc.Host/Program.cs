@@ -69,36 +69,10 @@ var openRpcJson = JsonSerializer.SerializeToUtf8Bytes(
 app.MapGet("/openrpc.json", () => Results.Bytes(openRpcJson, "application/json"))
     .ExcludeFromDescription();
 
-// Serve a minimal HTML page that loads the OpenRPC Playground
-app.MapGet("/openrpc", (HttpContext ctx) =>
-{
-    var html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8"/>
-      <title>Circles RPC — OpenRPC Playground</title>
-      <style>body { margin: 0; } iframe { width: 100vw; height: 100vh; border: none; }</style>
-    </head>
-    <body>
-      <iframe id="pg"></iframe>
-      <script>
-        var base = 'https://playground.open-rpc.org/';
-        var params = new URLSearchParams({
-          url: location.origin,
-          'uiSchema[appBar][ui:examplesDropdown]': 'false',
-          'uiSchema[appBar][ui:title]': 'Circles RPC',
-          'uiSchema[appBar][ui:darkMode]': 'false',
-          'uiSchema[methods][ui:defaultExpanded]': 'false',
-          'uiSchema[params][ui:defaultExpanded]': 'false'
-        });
-        document.getElementById('pg').src = base + '?' + params.toString();
-      </script>
-    </body>
-    </html>
-    """;
-    return Results.Content(html, "text/html");
-}).ExcludeFromDescription();
+// Redirect /openrpc to the CirclesTools RPC Query View (comprehensive interactive playground)
+app.MapGet("/openrpc", () =>
+    Results.Redirect("https://aboutcircles.github.io/CirclesTools/rpcQueryView.html"))
+    .ExcludeFromDescription();
 
 // ─── Unified API documentation portal ───────────────────────────────────────
 app.MapGet("/docs", (HttpContext ctx) =>
@@ -143,7 +117,7 @@ app.MapGet("/docs", (HttpContext ctx) =>
           <h2><span class="badge badge-rpc">JSON-RPC</span> Circles RPC API</h2>
           <p>40+ JSON-RPC 2.0 methods for querying balances, avatars, profiles, trust relations, events, groups, invitations, and transitive transfer paths.</p>
           <div class="links">
-            <a href="/openrpc">Interactive Playground</a>
+            <a href="https://aboutcircles.github.io/CirclesTools/rpcQueryView.html">Interactive Playground</a>
             <a href="/openrpc.json">openrpc.json</a>
           </div>
         </div>
@@ -153,6 +127,7 @@ app.MapGet("/docs", (HttpContext ctx) =>
           <div class="links">
             <a href="/pathfinder/scalar/v1">Interactive Docs</a>
             <a href="/pathfinder/openapi/v1.json">openapi.json</a>
+            <a href="https://aboutcircles.github.io/CirclesTools/rpcQueryView.html?method=circlesV2_findPath">Query Builder</a>
           </div>
         </div>
         <div class="card">
