@@ -158,6 +158,22 @@ app.MapGet("/docs", (HttpContext ctx) =>
           </div>
         </div>
         <div class="card">
+          <h2><span class="badge badge-rest">REST</span> Profile Pinning Service</h2>
+          <p>IPFS profile storage, content pinning, full-text search, and CID resolution. Indexes profiles from on-chain NameRegistry events.</p>
+          <div class="links">
+            <a href="/profiles/docs">Swagger UI</a>
+            <a href="/profiles/openapi.json">openapi.json</a>
+          </div>
+        </div>
+        <div class="card">
+          <h2><span class="badge badge-rest">REST</span> Marketplace API</h2>
+          <p>Product catalogs, shopping carts, checkout, order fulfillment, and seller management. Supports Odoo and CodeDispenser adapters.</p>
+          <div class="links">
+            <a href="/market/swagger">Swagger UI</a>
+            <a href="/market/openapi/v1.json">openapi.json</a>
+          </div>
+        </div>
+        <div class="card">
           <h2><span class="badge badge-rest">REST</span> Ethereum JSON-RPC</h2>
           <p>Standard Ethereum JSON-RPC (eth_*, net_*, web3_*) proxied to Nethermind. Use for block queries, transaction submission, and chain state.</p>
           <div class="links">
