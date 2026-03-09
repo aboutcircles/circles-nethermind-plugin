@@ -58,6 +58,9 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     }
 });
 
+// ─── Browser root redirect ──────────────────────────────────────────────────
+app.MapGet("/", () => Results.Redirect("/docs")).ExcludeFromDescription();
+
 // ─── OpenRPC spec endpoint ───────────────────────────────────────────────────
 var openRpcJson = JsonSerializer.SerializeToUtf8Bytes(
     OpenRpcGenerator.Generate(),
