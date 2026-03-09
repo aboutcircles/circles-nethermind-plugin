@@ -17,9 +17,23 @@ public class OpenRpcDocument
     [JsonPropertyName("methods")]
     public List<OpenRpcMethod> Methods { get; set; } = [];
 
+    [JsonPropertyName("servers")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<OpenRpcServer>? Servers { get; set; }
+
     [JsonPropertyName("components")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public OpenRpcComponents? Components { get; set; }
+}
+
+public class OpenRpcServer
+{
+    [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = "";
 }
 
 public class OpenRpcInfo

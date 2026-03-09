@@ -82,7 +82,19 @@ app.MapGet("/openrpc", (HttpContext ctx) =>
     </head>
     <body>
       <iframe id="pg"></iframe>
-      <script>document.getElementById('pg').src='https://playground.open-rpc.org/?schemaUrl='+encodeURIComponent(location.origin+'/openrpc.json');</script>
+      <script>
+        var base = 'https://playground.open-rpc.org/';
+        var params = new URLSearchParams({
+          schemaUrl: location.origin + '/openrpc.json',
+          'uiSchema[appBar][ui:examplesDropdown]': 'false',
+          'uiSchema[appBar][ui:title]': 'Circles RPC',
+          'uiSchema[appBar][ui:input]': 'false',
+          'uiSchema[appBar][ui:darkMode]': 'false',
+          'uiSchema[methods][ui:defaultExpanded]': 'false',
+          'uiSchema[params][ui:defaultExpanded]': 'false'
+        });
+        document.getElementById('pg').src = base + '?' + params.toString();
+      </script>
     </body>
     </html>
     """;
