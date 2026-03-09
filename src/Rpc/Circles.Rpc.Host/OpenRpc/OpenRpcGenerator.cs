@@ -515,10 +515,7 @@ public static class OpenRpcGenerator
                 Params =
                 [
                     new() { Name = "address", Value = ExampleAddr1 },
-                    new() { Name = "fromBlock", Value = null },
-                    new() { Name = "toBlock", Value = null },
                     new() { Name = "eventTypes", Value = new[] { "CrcV2_TransferSingle" } },
-                    new() { Name = "filterPredicates", Value = null },
                     new() { Name = "sortAscending", Value = false },
                     new() { Name = "limit", Value = 50 },
                 ],
@@ -529,7 +526,6 @@ public static class OpenRpcGenerator
                 Description = "Find all V2 human registrations between two blocks",
                 Params =
                 [
-                    new() { Name = "address", Value = null },
                     new() { Name = "fromBlock", Value = 35000000 },
                     new() { Name = "toBlock", Value = 35100000 },
                     new() { Name = "eventTypes", Value = new[] { "CrcV2_RegisterHuman" } },
@@ -629,9 +625,7 @@ public static class OpenRpcGenerator
                 [
                     new() { Name = "address", Value = ExampleAddr1 },
                     new() { Name = "fromBlock", Value = 35000000 },
-                    new() { Name = "toBlock", Value = null },
                     new() { Name = "limit", Value = 20 },
-                    new() { Name = "cursor", Value = null },
                     new() { Name = "version", Value = 2 },
                     new() { Name = "excludeIntermediary", Value = true },
                 ],
@@ -707,8 +701,6 @@ public static class OpenRpcGenerator
                     new() { Name = "address", Value = ExampleAddr1 },
                     new() { Name = "direction", Value = "sent" },
                     new() { Name = "counterparty", Value = ExampleAddr2 },
-                    new() { Name = "fromBlock", Value = null },
-                    new() { Name = "toBlock", Value = null },
                     new() { Name = "limit", Value = 50 },
                 ],
             }
