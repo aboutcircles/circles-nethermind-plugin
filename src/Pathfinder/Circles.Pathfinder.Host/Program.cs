@@ -10,6 +10,7 @@ using Circles.Pathfinder.Host;
 using Circles.Pathfinder.Host.State;
 using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -81,6 +82,7 @@ builder.Services.AddSingleton<CapacityGraphPool>(provider =>
         provider.GetRequiredService<ILoggerFactory>().CreateLogger<GraphFactory>()));
 builder.Services.AddSingleton<V2Pathfinder>();
 builder.Services.AddSingleton<FindPathHandler>();
+builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
@@ -148,11 +150,27 @@ builder.Services
 // OpenAPI documentation
 builder.Services.AddOpenApi(options =>
 {
-    options.AddDocumentTransformer((document, _, _) =>
+    options.AddDocumentTransformer((document, context, _) =>
     {
         document.Info.Title = "Circles Pathfinder API";
         document.Info.Version = "1.0.0";
         document.Info.Description = "REST API for computing transitive transfer paths through the Circles trust network using Google OR-Tools.";
+
+        // Use the request's scheme+host so the Scalar "Try it" client sends requests to the correct URL.
+        // Behind Caddy's `handle_path /pathfinder/*`, the prefix is stripped — we must add it back.
+        // X-Forwarded-* headers provide the public scheme/host when behind a reverse proxy.
+        var request = context.ApplicationServices.GetRequiredService<IHttpContextAccessor>().HttpContext?.Request;
+        if (request != null)
+        {
+            var scheme = request.Scheme; // "https" when ForwardedHeaders processes X-Forwarded-Proto
+            var host = request.Host.ToString();
+            var basePath = Environment.GetEnvironmentVariable("PATHFINDER_BASE_PATH") ?? "/pathfinder";
+            document.Servers =
+            [
+                new Microsoft.OpenApi.OpenApiServer { Url = $"{scheme}://{host}{basePath}" }
+            ];
+        }
+
         return Task.CompletedTask;
     });
 });
@@ -167,6 +185,13 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear(); // Trust all proxies (Docker network)
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 app.UseCors();
 app.UseHttpMetrics();
 app.UseResponseCompression();
