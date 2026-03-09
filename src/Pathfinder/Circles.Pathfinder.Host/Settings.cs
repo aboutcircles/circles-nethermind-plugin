@@ -22,11 +22,17 @@ public class Settings : Pathfinder.Settings
 
     /// <summary>
     /// When true, the pathfinder fetches graph data from the Cache Service instead of DB.
-    /// Requires CACHE_SERVICE_URL to be set. Falls back to DB if cache is unavailable
+    /// Defaults to ON when CACHE_SERVICE_URL is configured — set USE_CACHE_GRAPH_SOURCE=false
+    /// to explicitly opt out. Falls back to DB if cache is unavailable
     /// (unless CACHE_GRAPH_FALLBACK_TO_DB=false).
     /// </summary>
     public bool UseCacheGraphSource =>
-        Environment.GetEnvironmentVariable("USE_CACHE_GRAPH_SOURCE")?.ToLowerInvariant() is "true" or "1";
+        Environment.GetEnvironmentVariable("USE_CACHE_GRAPH_SOURCE")?.ToLowerInvariant() switch
+        {
+            "false" or "0" => false,
+            "true" or "1" => true,
+            _ => !string.IsNullOrWhiteSpace(CacheServiceUrl)
+        };
 
     public string? CacheServiceUrl =>
         Environment.GetEnvironmentVariable("CACHE_SERVICE_URL");
