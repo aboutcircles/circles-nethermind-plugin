@@ -755,6 +755,13 @@ public static class OpenRpcGenerator
             }
         };
 
+        // Servers array tells the OpenRPC playground where to POST JSON-RPC requests
+        doc.Servers =
+        [
+            new OpenRpcServer { Name = "Staging", Url = "https://staging.circlesubi.network" },
+            new OpenRpcServer { Name = "Production", Url = "https://rpc.aboutcircles.com" }
+        ];
+
         var interfaceType = typeof(ICirclesRpcModule);
 
         foreach (var (rpcName, csharpName, tag, summary, description) in MethodMappings)
