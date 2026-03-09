@@ -148,14 +148,16 @@ app.MapGet("/docs", (HttpContext ctx) =>
           <h2><span class="badge badge-auth">Auth</span> Authentication Service</h2>
           <p>Sign-In with Ethereum (SIWE), passkey registration, JWT issuance, JWKS endpoint, and service-to-service authentication.</p>
           <div class="links">
-            <a href="/auth/">/auth/*</a>
+            <a href="/auth/docs">Swagger UI</a>
+            <a href="/auth/openapi.json">openapi.json</a>
           </div>
         </div>
         <div class="card">
           <h2><span class="badge badge-rest">REST</span> Referrals API</h2>
           <p>Invitation links, referral distributions, and at-scale onboarding backend for the Circles protocol.</p>
           <div class="links">
-            <a href="/referrals/">/referrals/*</a>
+            <a href="/referrals/docs">Swagger UI</a>
+            <a href="/referrals/openapi.json">openapi.json</a>
           </div>
         </div>
         <div class="card">
@@ -163,13 +165,15 @@ app.MapGet("/docs", (HttpContext ctx) =>
           <p>IPFS profile storage, content pinning, full-text search, and CID resolution. Indexes profiles from on-chain NameRegistry events.</p>
           <div class="links">
             <a href="/profiles/docs">Swagger UI</a>
+            <a href="/profiles/openapi.json">openapi.json</a>
           </div>
         </div>
         <div class="card">
           <h2><span class="badge badge-rest">REST</span> Marketplace API</h2>
           <p>Product catalogs, shopping carts, checkout, order fulfillment, and seller management. Supports Odoo and CodeDispenser adapters.</p>
           <div class="links">
-            <a href="/market/">/market/*</a>
+            <a href="/market/swagger">Swagger UI</a>
+            <a href="/market/swagger/v1/swagger.json">openapi.json</a>
           </div>
         </div>
         <div class="card">
