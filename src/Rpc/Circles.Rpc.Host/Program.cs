@@ -69,30 +69,182 @@ var openRpcJson = JsonSerializer.SerializeToUtf8Bytes(
 app.MapGet("/openrpc.json", () => Results.Bytes(openRpcJson, "application/json"))
     .ExcludeFromDescription();
 
-// Serve a minimal HTML page that loads the OpenRPC Playground
+// Serve a self-contained JSON-RPC playground built from the OpenRPC spec
+var openRpcDoc = OpenRpcGenerator.Generate();
+var playgroundMethodsJson = JsonSerializer.Serialize(
+    openRpcDoc.Methods.Select(m => new
+    {
+        m.Name,
+        m.Summary,
+        m.Description,
+        Tag = m.Tags?.FirstOrDefault()?.Name ?? "Other",
+        Params = m.Params.Select(p => new { p.Name, p.Required, p.Description, p.Schema }),
+        Example = m.Examples?.FirstOrDefault() is { } ex
+            ? new
+            {
+                Params = ex.Params.Select(p => p.Value),
+                Result = ex.Result?.Value
+            }
+            : null
+    }),
+    new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, WriteIndented = false });
+
 app.MapGet("/openrpc", (HttpContext ctx) =>
 {
-    var html = """
+    var html = $$"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8"/>
-      <title>Circles RPC — OpenRPC Playground</title>
-      <style>body { margin: 0; } iframe { width: 100vw; height: 100vh; border: none; }</style>
+      <title>Circles RPC — Playground</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: #0d1117; color: #c9d1d9; display: flex; height: 100vh; }
+        #sidebar { width: 320px; min-width: 280px; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; padding: 16px 0; }
+        #sidebar h2 { padding: 0 16px 12px; font-size: 14px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+        .tag-group { margin-bottom: 8px; }
+        .tag-name { padding: 8px 16px; font-size: 11px; color: #58a6ff; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        .method-item { padding: 8px 16px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s; }
+        .method-item:hover { background: #1c2128; }
+        .method-item.active { background: #1c2128; border-left-color: #58a6ff; }
+        .method-name { font-size: 13px; color: #e6edf3; font-family: monospace; }
+        .method-summary { font-size: 11px; color: #8b949e; margin-top: 2px; }
+        #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        #header { padding: 16px 24px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
+        #header h1 { font-size: 18px; color: #e6edf3; }
+        #header .badge { background: #238636; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+        #header a { color: #58a6ff; font-size: 12px; text-decoration: none; }
+        #header .spacer { margin-left: auto; }
+        #content { flex: 1; display: flex; overflow: hidden; }
+        #request-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #30363d; }
+        #response-panel { flex: 1; display: flex; flex-direction: column; }
+        .panel-header { padding: 10px 16px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; }
+        .panel-header h3 { font-size: 13px; color: #8b949e; text-transform: uppercase; }
+        #method-desc { padding: 12px 16px; background: #1c2128; border-bottom: 1px solid #30363d; font-size: 13px; color: #8b949e; line-height: 1.5; max-height: 80px; overflow-y: auto; }
+        textarea { flex: 1; background: #0d1117; color: #e6edf3; border: none; padding: 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; resize: none; outline: none; tab-size: 2; }
+        #run-btn { background: #238636; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+        #run-btn:hover { background: #2ea043; }
+        #run-btn:active { background: #1a7f37; }
+        #response-body { flex: 1; background: #0d1117; color: #e6edf3; padding: 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+        #response-meta { padding: 8px 16px; background: #161b22; border-top: 1px solid #30363d; font-size: 12px; color: #8b949e; }
+        .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #484f58; font-size: 14px; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+        .result-ok { color: #3fb950; }
+        .result-err { color: #f85149; }
+      </style>
     </head>
     <body>
-      <iframe id="pg"></iframe>
+      <div id="sidebar">
+        <h2>Methods</h2>
+        <div id="method-list"></div>
+      </div>
+      <div id="main">
+        <div id="header">
+          <h1>Circles RPC Playground</h1>
+          <span class="badge">JSON-RPC 2.0</span>
+          <span class="spacer"></span>
+          <a href="/openrpc.json">openrpc.json</a>
+          <a href="/docs">All Docs</a>
+        </div>
+        <div id="content">
+          <div id="request-panel">
+            <div class="panel-header">
+              <h3>Request</h3>
+              <button id="run-btn" onclick="execute()">Execute</button>
+            </div>
+            <div id="method-desc">Select a method from the sidebar to get started.</div>
+            <textarea id="editor" spellcheck="false">{
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "circles_getTotalBalance",
+      "params": ["0xde374ece6fa50e781e81aac78e811b33d16912c7", true]
+    }</textarea>
+          </div>
+          <div id="response-panel">
+            <div class="panel-header"><h3>Response</h3></div>
+            <div id="response-body" class="empty-state">Click Execute or press Ctrl+Enter</div>
+            <div id="response-meta"></div>
+          </div>
+        </div>
+      </div>
       <script>
-        var base = 'https://playground.open-rpc.org/';
-        var params = new URLSearchParams({
-          url: location.origin,
-          'uiSchema[appBar][ui:examplesDropdown]': 'false',
-          'uiSchema[appBar][ui:title]': 'Circles RPC',
-          'uiSchema[appBar][ui:darkMode]': 'false',
-          'uiSchema[methods][ui:defaultExpanded]': 'false',
-          'uiSchema[params][ui:defaultExpanded]': 'false'
+        const methods = {{playgroundMethodsJson}};
+        const tags = {};
+        methods.forEach(function(m) { (tags[m.Tag] = tags[m.Tag] || []).push(m); });
+
+        const list = document.getElementById('method-list');
+        Object.entries(tags).forEach(function(entry) {
+          var tag = entry[0], meths = entry[1];
+          var g = document.createElement('div');
+          g.className = 'tag-group';
+          var tagLabel = document.createElement('div');
+          tagLabel.className = 'tag-name';
+          tagLabel.textContent = tag;
+          g.appendChild(tagLabel);
+          meths.forEach(function(m) {
+            var d = document.createElement('div');
+            d.className = 'method-item';
+            var nameEl = document.createElement('div');
+            nameEl.className = 'method-name';
+            nameEl.textContent = m.Name;
+            d.appendChild(nameEl);
+            if (m.Summary) {
+              var sumEl = document.createElement('div');
+              sumEl.className = 'method-summary';
+              sumEl.textContent = m.Summary;
+              d.appendChild(sumEl);
+            }
+            d.onclick = function() { selectMethod(m, d); };
+            g.appendChild(d);
+          });
+          list.appendChild(g);
         });
-        document.getElementById('pg').src = base + '?' + params.toString();
+
+        function selectMethod(m, el) {
+          document.querySelectorAll('.method-item').forEach(function(e) { e.classList.remove('active'); });
+          el.classList.add('active');
+          document.getElementById('method-desc').textContent = m.Description || m.Summary || '';
+          var params = m.Example ? m.Example.Params : m.Params.map(function(p) {
+            return p.Required ? (p.Schema && p.Schema.type === 'boolean' ? true : p.Schema && p.Schema.type === 'integer' ? 0 : '') : null;
+          }).filter(function(v) { return v !== null; });
+          var req = { jsonrpc: '2.0', id: 1, method: m.Name, params: Array.from(params) };
+          document.getElementById('editor').value = JSON.stringify(req, null, 2);
+        }
+
+        async function execute() {
+          var btn = document.getElementById('run-btn');
+          var body = document.getElementById('response-body');
+          var meta = document.getElementById('response-meta');
+          btn.textContent = 'Running...';
+          body.textContent = ''; body.className = ''; meta.textContent = '';
+          var start = performance.now();
+          try {
+            var res = await fetch(location.origin, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: document.getElementById('editor').value
+            });
+            var elapsed = (performance.now() - start).toFixed(0);
+            var json = await res.json();
+            body.textContent = JSON.stringify(json, null, 2);
+            body.className = json.error ? 'result-err' : 'result-ok';
+            meta.textContent = res.status + ' ' + res.statusText + ' \u00b7 ' + elapsed + 'ms';
+          } catch (e) {
+            body.textContent = 'Network error: ' + e.message;
+            body.className = 'result-err';
+            meta.textContent = 'Failed';
+          }
+          btn.textContent = 'Execute';
+        }
+
+        document.getElementById('editor').addEventListener('keydown', function(e) {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); execute(); }
+        });
+
+        // Auto-select first method
+        var first = document.querySelector('.method-item');
+        if (first) first.click();
       </script>
     </body>
     </html>
