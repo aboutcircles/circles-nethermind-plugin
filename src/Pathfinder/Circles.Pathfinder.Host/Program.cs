@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
@@ -227,19 +228,19 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.MapGet("/findMaxFlow", async (
-    string from,
-    string to,
-    string amount,
-    string[]? fromTokens,
-    string[]? toTokens,
-    string[]? excludedFromTokens,
-    string[]? excludedToTokens,
-    bool? withWrap,
-    string? simulatedBalances,
-    string[]? simulatedConsentedAvatars,
-    int? maxTransfers,
-    bool? quantizedMode,
-    bool? debugShowIntermediateSteps,
+    [Description("Sender Ethereum address (0x-prefixed, 40 hex chars)")] string from,
+    [Description("Receiver Ethereum address (0x-prefixed, 40 hex chars)")] string to,
+    [Description("Target flow as uint256 decimal string. Use max uint256 for 'find maximum possible flow'")] string amount,
+    [Description("Restrict which token types source can send (array of token-owner addresses)")] string[]? fromTokens,
+    [Description("Restrict which token types sink will receive (array of token-owner addresses)")] string[]? toTokens,
+    [Description("Token types source must NOT send (array of token-owner addresses)")] string[]? excludedFromTokens,
+    [Description("Token types sink must NOT receive (array of token-owner addresses)")] string[]? excludedToTokens,
+    [Description("Include ERC-20 wrapper tokens in path calculation")] bool? withWrap,
+    [Description("JSON-encoded array of SimulatedBalance objects for what-if analysis")] string? simulatedBalances,
+    [Description("Avatars with consented flow enabled (array of 0x-prefixed addresses)")] string[]? simulatedConsentedAvatars,
+    [Description("Cap the number of transfer steps in result (gas cost control)")] int? maxTransfers,
+    [Description("Enforce 96 CRC quantization per sink-bound transfer (invitation module)")] bool? quantizedMode,
+    [Description("Include debug pipeline stages (rawPaths, collapsed, routerInserted, sorted) in response")] bool? debugShowIntermediateSteps,
     NetworkState state,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
@@ -289,19 +290,19 @@ app.MapGet("/findMaxFlow", async (
 .Produces<MaxFlowResponse>();
 
 app.MapGet("/findPath", async (
-    string from,
-    string to,
-    string amount,
-    string[]? fromTokens,
-    string[]? toTokens,
-    string[]? excludedFromTokens,
-    string[]? excludedToTokens,
-    bool? withWrap,
-    string? simulatedBalances,
-    string[]? simulatedConsentedAvatars,
-    int? maxTransfers,
-    bool? quantizedMode,
-    bool? debugShowIntermediateSteps,
+    [Description("Sender Ethereum address (0x-prefixed, 40 hex chars)")] string from,
+    [Description("Receiver Ethereum address (0x-prefixed, 40 hex chars)")] string to,
+    [Description("Target flow as uint256 decimal string. Use max uint256 for 'find maximum possible flow'")] string amount,
+    [Description("Restrict which token types source can send (array of token-owner addresses)")] string[]? fromTokens,
+    [Description("Restrict which token types sink will receive (array of token-owner addresses)")] string[]? toTokens,
+    [Description("Token types source must NOT send (array of token-owner addresses)")] string[]? excludedFromTokens,
+    [Description("Token types sink must NOT receive (array of token-owner addresses)")] string[]? excludedToTokens,
+    [Description("Include ERC-20 wrapper tokens in path calculation")] bool? withWrap,
+    [Description("JSON-encoded array of SimulatedBalance objects for what-if analysis")] string? simulatedBalances,
+    [Description("Avatars with consented flow enabled (array of 0x-prefixed addresses)")] string[]? simulatedConsentedAvatars,
+    [Description("Cap the number of transfer steps in result (gas cost control)")] int? maxTransfers,
+    [Description("Enforce 96 CRC quantization per sink-bound transfer (invitation module)")] bool? quantizedMode,
+    [Description("Include debug pipeline stages (rawPaths, collapsed, routerInserted, sorted) in response")] bool? debugShowIntermediateSteps,
     NetworkState state,
     CapacityGraphPool pool,
     V2Pathfinder pathfinder,
@@ -444,7 +445,9 @@ app.MapGet("/snapshot", (NetworkState state, SnapshotCache snapshotCache, HttpCo
     "304 Not Modified if the graph hasn't changed. The graph updates every ~5 seconds.\n\n" +
     "**Cache-Control**: `public, max-age=5` — clients can cache briefly.\n\n" +
     "**503**: Returned if the graph has not been built yet (service starting up).\n\n" +
-    "**Common use case**: Pre-loading the trust graph for client-side pathfinding or visualization.");
+    "**Common use case**: Pre-loading the trust graph for client-side pathfinding or visualization.")
+.Produces<object>(200, "application/json")
+.ProducesProblem(503);
 
 app.Run();
 

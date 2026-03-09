@@ -1575,6 +1575,21 @@ public static class OpenRpcGenerator
         {
             Ref = "#/components/schemas/MaxFlowResponse"
         },
+        ["circles_getProfileByCid"] = new JsonSchemaObject
+        {
+            Type = "object",
+            Description = "Profile JSON object from IPFS. Schema varies by profile version — typically contains name, description, imageUrl, and other user-defined fields."
+        },
+        ["circles_getProfileByAddress"] = new JsonSchemaObject
+        {
+            Type = "object",
+            Description = "Profile JSON from IPFS, enriched with avatar type and short name from V2 registration. Schema varies by profile version."
+        },
+        ["circles_getNetworkSnapshot"] = new JsonSchemaObject
+        {
+            Type = "object",
+            Description = "Network state snapshot containing trust graph edges, token balances, and avatar registrations. Internal format — structure may change between versions."
+        },
     };
 
     // ─── Property descriptions ──────────────────────────────────────────────
@@ -1584,7 +1599,7 @@ public static class OpenRpcGenerator
 
     private static readonly Dictionary<(string Schema, string Prop), string> PropertyDescriptions = new()
     {
-        // FlowRequest
+        // ── FlowRequest ─────────────────────────────────────────────────────
         { ("FlowRequest", "source"), "Sender address (0x-prefixed, 40 hex chars). Must be a registered Circles V2 avatar." },
         { ("FlowRequest", "sink"), "Receiver address (0x-prefixed, 40 hex chars). Must be a registered Circles V2 avatar." },
         { ("FlowRequest", "targetFlow"), "Amount to transfer in CRC wei (1 CRC = 10^18 wei). Use max uint256 to discover maximum possible flow." },
@@ -1600,33 +1615,413 @@ public static class OpenRpcGenerator
         { ("FlowRequest", "quantizedMode"), "When true, enforces 96 CRC quantization for sink-bound transfers (invitation module). Each transfer = N × 96 CRC." },
         { ("FlowRequest", "debugShowIntermediateSteps"), "When true, includes debug info showing all transformation stages: rawPaths, collapsed, routerInserted, sorted." },
 
-        // SimulatedBalance
+        // ── SimulatedBalance ────────────────────────────────────────────────
         { ("SimulatedBalance", "holder"), "Holder address — the avatar that holds the tokens (0x-prefixed)." },
         { ("SimulatedBalance", "token"), "Token identifier — the token-owner avatar address, or ERC-20 wrapper address." },
         { ("SimulatedBalance", "amount"), "Balance amount as uint256 string in CRC wei. Example: \"96000000000000000000\" = 96 CRC." },
         { ("SimulatedBalance", "isWrapped"), "When true, treat as an ERC-20 wrapped token balance instead of native ERC-1155." },
         { ("SimulatedBalance", "isStatic"), "When true, this balance is not subject to demurrage decay." },
 
-        // SimulatedTrust
+        // ── SimulatedTrust ──────────────────────────────────────────────────
         { ("SimulatedTrust", "truster"), "The address that grants trust (0x-prefixed, 40 hex chars)." },
         { ("SimulatedTrust", "trustee"), "The address that receives trust (0x-prefixed, 40 hex chars)." },
 
-        // MaxFlowResponse
+        // ── MaxFlowResponse ─────────────────────────────────────────────────
         { ("MaxFlowResponse", "maxFlow"), "Maximum achievable flow in CRC wei (uint256 as decimal string)." },
         { ("MaxFlowResponse", "transfers"), "Ordered list of individual token transfer steps to submit on-chain via Hub.sol operateFlowMatrix()." },
         { ("MaxFlowResponse", "debug"), "Debug information showing transformation stages (only present if debugShowIntermediateSteps=true)." },
 
-        // TransferPathStep
+        // ── TransferPathStep ────────────────────────────────────────────────
         { ("TransferPathStep", "from"), "Sender address for this transfer step (0x-prefixed, lowercase)." },
         { ("TransferPathStep", "to"), "Receiver address for this transfer step (0x-prefixed, lowercase)." },
         { ("TransferPathStep", "tokenOwner"), "Token owner address identifying which Circles token is transferred." },
         { ("TransferPathStep", "value"), "Transfer amount in CRC wei (uint256 as decimal string)." },
 
-        // DebugPipelineStages
+        // ── DebugPipelineStages ─────────────────────────────────────────────
         { ("DebugPipelineStages", "rawPaths"), "Stage 1: Raw paths from MaxFlowSolver with token pools (tpool-0x...)." },
         { ("DebugPipelineStages", "collapsed"), "Stage 2: Token pools collapsed, showing Avatar→Avatar flows." },
         { ("DebugPipelineStages", "routerInserted"), "Stage 3: Router inserted for group mints (Avatar→Group becomes Avatar→Router→Group)." },
         { ("DebugPipelineStages", "sorted"), "Stage 4: Final sorted order for contract execution (collateral before mints)." },
+
+        // ── TokenInfo ───────────────────────────────────────────────────────
+        { ("TokenInfo", "tokenAddress"), "On-chain address of the token contract (ERC-1155 token ID or ERC-20 wrapper address)." },
+        { ("TokenInfo", "tokenOwner"), "Avatar address that owns/minted this token." },
+        { ("TokenInfo", "tokenType"), "Token classification: 'RegisterHuman', 'RegisterGroup', or 'RegisterOrganization'." },
+        { ("TokenInfo", "version"), "Circles protocol version: 1 = V1 CRC token, 2 = V2 ERC-1155/ERC-20 token." },
+        { ("TokenInfo", "isErc20"), "True if this is an ERC-20 token (V1 CRC or V2 wrapper)." },
+        { ("TokenInfo", "isErc1155"), "True if this is a native V2 ERC-1155 token." },
+        { ("TokenInfo", "isWrapped"), "True if this is an ERC-20 wrapper around a V2 ERC-1155 token." },
+        { ("TokenInfo", "isInflationary"), "True if the token uses inflationary (TimeCircles) denomination." },
+        { ("TokenInfo", "isGroup"), "True if this token belongs to a Circles group (minted via group trust)." },
+
+        // ── CirclesTokenBalance ─────────────────────────────────────────────
+        { ("CirclesTokenBalance", "tokenAddress"), "On-chain address of the token contract." },
+        { ("CirclesTokenBalance", "tokenId"), "ERC-1155 token ID (same as token owner address for personal tokens)." },
+        { ("CirclesTokenBalance", "tokenOwner"), "Avatar address that owns/minted this token." },
+        { ("CirclesTokenBalance", "tokenType"), "Token classification: 'RegisterHuman', 'RegisterGroup', or 'RegisterOrganization'." },
+        { ("CirclesTokenBalance", "version"), "Circles protocol version: 1 or 2." },
+        { ("CirclesTokenBalance", "attoCircles"), "Balance in atto-Circles (10^-18 CRC) as string, inflationary/TimeCircles denomination." },
+        { ("CirclesTokenBalance", "circles"), "Balance in Circles (human-readable), inflationary/TimeCircles denomination." },
+        { ("CirclesTokenBalance", "staticAttoCircles"), "Balance in atto-Circles (10^-18 CRC) as string, demurrage-adjusted static denomination." },
+        { ("CirclesTokenBalance", "staticCircles"), "Balance in Circles (human-readable), demurrage-adjusted static denomination." },
+        { ("CirclesTokenBalance", "attoCrc"), "Balance in atto-CRC as string (alias for attoCircles in V2 context)." },
+        { ("CirclesTokenBalance", "crc"), "Balance in CRC (human-readable, alias for circles in V2 context)." },
+        { ("CirclesTokenBalance", "isErc20"), "True if this is an ERC-20 token." },
+        { ("CirclesTokenBalance", "isErc1155"), "True if this is a native V2 ERC-1155 token." },
+        { ("CirclesTokenBalance", "isWrapped"), "True if this is an ERC-20 wrapper around a V2 ERC-1155 token." },
+        { ("CirclesTokenBalance", "isInflationary"), "True if the token uses inflationary denomination." },
+        { ("CirclesTokenBalance", "isGroup"), "True if this token belongs to a Circles group." },
+
+        // ── AvatarInfo ──────────────────────────────────────────────────────
+        { ("AvatarInfo", "version"), "Circles protocol version the avatar is registered under: 1 or 2." },
+        { ("AvatarInfo", "type"), "Avatar type: 'RegisterHuman', 'RegisterGroup', or 'RegisterOrganization'." },
+        { ("AvatarInfo", "avatar"), "Ethereum address of the avatar (0x-prefixed, lowercase)." },
+        { ("AvatarInfo", "tokenId"), "Token ID associated with this avatar (personal token address)." },
+        { ("AvatarInfo", "hasV1"), "True if this avatar also has a V1 registration (migrated or dual-registered)." },
+        { ("AvatarInfo", "v1Token"), "V1 CRC token address, if the avatar has a V1 registration." },
+        { ("AvatarInfo", "cidV0Digest"), "Raw digest bytes of the IPFS CIDv0 for the avatar's profile (hex-encoded)." },
+        { ("AvatarInfo", "cidV0"), "IPFS CIDv0 string pointing to the avatar's profile JSON." },
+        { ("AvatarInfo", "isHuman"), "True if the avatar is registered as a human (not a group or organization)." },
+        { ("AvatarInfo", "name"), "Human-readable name from V2 registration (on-chain, not from IPFS profile)." },
+        { ("AvatarInfo", "symbol"), "Token symbol from V2 registration." },
+
+        // ── TrustRelation ───────────────────────────────────────────────────
+        { ("TrustRelation", "user"), "Address of the trusted/trusting avatar." },
+        { ("TrustRelation", "limit"), "Trust limit percentage (0-100). 100 = full trust, 0 = no trust." },
+
+        // ── TrustRelationsResponse ──────────────────────────────────────────
+        { ("TrustRelationsResponse", "user"), "Address of the queried avatar." },
+        { ("TrustRelationsResponse", "trusts"), "Addresses this avatar trusts (outgoing trust edges)." },
+        { ("TrustRelationsResponse", "trustedBy"), "Addresses that trust this avatar (incoming trust edges)." },
+
+        // ── CommonTrustResponse ─────────────────────────────────────────────
+        { ("CommonTrustResponse", "address1"), "First address in the common trust query." },
+        { ("CommonTrustResponse", "address2"), "Second address in the common trust query." },
+        { ("CommonTrustResponse", "commonTrusts"), "Array of addresses that both queried addresses have a trust relationship with." },
+
+        // ── AggregatedTrustRelation ─────────────────────────────────────────
+        { ("AggregatedTrustRelation", "subjectAvatar"), "Avatar address that is the subject of this trust relation." },
+        { ("AggregatedTrustRelation", "relation"), "Trust relation type: 'mutuallyTrusts', 'trusts', or 'trustedBy'." },
+        { ("AggregatedTrustRelation", "objectAvatar"), "Avatar address that is the object of this trust relation." },
+        { ("AggregatedTrustRelation", "timestamp"), "Unix timestamp when this trust relation was established." },
+        { ("AggregatedTrustRelation", "expiryTime"), "Unix timestamp when this trust expires (0 = no expiry)." },
+        { ("AggregatedTrustRelation", "objectAvatarType"), "Type of the object avatar: 'Human', 'Group', or 'Organization'." },
+
+        // ── TrustStats ──────────────────────────────────────────────────────
+        { ("TrustStats", "trustsCount"), "Number of avatars this address trusts (outgoing)." },
+        { ("TrustStats", "trustedByCount"), "Number of avatars that trust this address (incoming)." },
+
+        // ── TrustRelationInfo ───────────────────────────────────────────────
+        { ("TrustRelationInfo", "address"), "Ethereum address of the related avatar." },
+        { ("TrustRelationInfo", "avatarInfo"), "Full avatar registration info for the related address." },
+        { ("TrustRelationInfo", "relationType"), "Relation type: 'mutual', 'trusts', or 'trustedBy'." },
+
+        // ── TrustRelationCounts ─────────────────────────────────────────────
+        { ("TrustRelationCounts", "mutual"), "Number of mutual trust relationships." },
+        { ("TrustRelationCounts", "trusts"), "Number of outgoing trust relationships (this avatar trusts them)." },
+        { ("TrustRelationCounts", "trustedBy"), "Number of incoming trust relationships (they trust this avatar)." },
+        { ("TrustRelationCounts", "total"), "Total trust relationships across all types." },
+
+        // ── TransactionHistoryRow ───────────────────────────────────────────
+        { ("TransactionHistoryRow", "blockNumber"), "Gnosis Chain block number containing this transaction." },
+        { ("TransactionHistoryRow", "timestamp"), "Unix timestamp of the block." },
+        { ("TransactionHistoryRow", "transactionIndex"), "Position of the transaction within the block." },
+        { ("TransactionHistoryRow", "logIndex"), "Position of the log entry within the transaction receipt." },
+        { ("TransactionHistoryRow", "transactionHash"), "Keccak-256 hash of the transaction (0x-prefixed, 64 hex chars)." },
+        { ("TransactionHistoryRow", "version"), "Circles protocol version: 1 or 2." },
+        { ("TransactionHistoryRow", "from"), "Sender address of the transfer." },
+        { ("TransactionHistoryRow", "to"), "Receiver address of the transfer." },
+        { ("TransactionHistoryRow", "operator"), "ERC-1155 operator address (V2 only, null for V1)." },
+        { ("TransactionHistoryRow", "id"), "ERC-1155 token ID (V2 only, null for V1)." },
+        { ("TransactionHistoryRow", "value"), "Transfer amount in CRC wei as string." },
+        { ("TransactionHistoryRow", "circles"), "Transfer amount in Circles (inflationary/TimeCircles denomination)." },
+        { ("TransactionHistoryRow", "attoCircles"), "Transfer amount in atto-Circles (inflationary denomination) as string." },
+        { ("TransactionHistoryRow", "crc"), "Transfer amount in CRC (V2 static denomination)." },
+        { ("TransactionHistoryRow", "attoCrc"), "Transfer amount in atto-CRC (V2 static denomination) as string." },
+        { ("TransactionHistoryRow", "staticCircles"), "Transfer amount in static Circles (demurrage-adjusted)." },
+        { ("TransactionHistoryRow", "staticAttoCircles"), "Transfer amount in static atto-Circles (demurrage-adjusted) as string." },
+
+        // ── TransferDataRow ─────────────────────────────────────────────────
+        { ("TransferDataRow", "blockNumber"), "Gnosis Chain block number." },
+        { ("TransferDataRow", "timestamp"), "Unix timestamp of the block." },
+        { ("TransferDataRow", "transactionIndex"), "Position of the transaction within the block." },
+        { ("TransferDataRow", "logIndex"), "Position of the log entry within the transaction receipt." },
+        { ("TransferDataRow", "transactionHash"), "Keccak-256 hash of the transaction." },
+        { ("TransferDataRow", "from"), "Sender address." },
+        { ("TransferDataRow", "to"), "Receiver address." },
+        { ("TransferDataRow", "data"), "Hex-encoded bytes of the transfer data payload." },
+
+        // ── TokenHolderRow ──────────────────────────────────────────────────
+        { ("TokenHolderRow", "account"), "Ethereum address of the token holder." },
+        { ("TokenHolderRow", "balance"), "Token balance in CRC wei as string." },
+        { ("TokenHolderRow", "tokenAddress"), "Address of the held token contract." },
+        { ("TokenHolderRow", "version"), "Circles protocol version: 1 or 2." },
+
+        // ── EnrichedTransaction ─────────────────────────────────────────────
+        { ("EnrichedTransaction", "blockNumber"), "Gnosis Chain block number." },
+        { ("EnrichedTransaction", "timestamp"), "Unix timestamp of the block." },
+        { ("EnrichedTransaction", "transactionHash"), "Keccak-256 hash of the transaction." },
+        { ("EnrichedTransaction", "transactionIndex"), "Position of the transaction within the block." },
+        { ("EnrichedTransaction", "logIndex"), "Position of the log entry within the transaction receipt." },
+        { ("EnrichedTransaction", "event"), "Raw event data as JSON object." },
+        { ("EnrichedTransaction", "participants"), "Map of participant address → profile/avatar info for all addresses involved in this event." },
+        // RpcResponses.cs variant has extra fields
+        { ("EnrichedTransaction", "version"), "Circles protocol version: 1 or 2." },
+        { ("EnrichedTransaction", "from"), "Sender address of the transfer." },
+        { ("EnrichedTransaction", "to"), "Receiver address of the transfer." },
+        { ("EnrichedTransaction", "operator"), "ERC-1155 operator address (V2 only)." },
+        { ("EnrichedTransaction", "id"), "ERC-1155 token ID (V2 only)." },
+        { ("EnrichedTransaction", "value"), "Transfer amount in CRC wei as string." },
+        { ("EnrichedTransaction", "circles"), "Transfer amount in Circles (inflationary denomination)." },
+        { ("EnrichedTransaction", "attoCircles"), "Transfer amount in atto-Circles as string." },
+        { ("EnrichedTransaction", "crc"), "Transfer amount in CRC (static denomination)." },
+        { ("EnrichedTransaction", "attoCrc"), "Transfer amount in atto-CRC as string." },
+        { ("EnrichedTransaction", "staticCircles"), "Transfer amount in static Circles." },
+        { ("EnrichedTransaction", "staticAttoCircles"), "Transfer amount in static atto-Circles as string." },
+        { ("EnrichedTransaction", "fromProfile"), "IPFS profile JSON of the sender (if available)." },
+        { ("EnrichedTransaction", "toProfile"), "IPFS profile JSON of the receiver (if available)." },
+
+        // ── ParticipantInfo ─────────────────────────────────────────────────
+        { ("ParticipantInfo", "avatarInfo"), "Avatar registration info for the participant." },
+        { ("ParticipantInfo", "profile"), "IPFS profile JSON for the participant (if available)." },
+
+        // ── GroupRow ────────────────────────────────────────────────────────
+        { ("GroupRow", "group"), "Ethereum address of the group." },
+        { ("GroupRow", "name"), "On-chain name of the group." },
+        { ("GroupRow", "symbol"), "On-chain token symbol of the group." },
+        { ("GroupRow", "mint"), "Mint policy contract address controlling who can mint group tokens." },
+        { ("GroupRow", "treasury"), "Treasury contract address holding group collateral." },
+        { ("GroupRow", "blockNumber"), "Block number when the group was registered." },
+        { ("GroupRow", "timestamp"), "Unix timestamp when the group was registered." },
+
+        // ── GroupMembershipRow ──────────────────────────────────────────────
+        { ("GroupMembershipRow", "blockNumber"), "Block number when the membership was created." },
+        { ("GroupMembershipRow", "timestamp"), "Unix timestamp when the membership was created." },
+        { ("GroupMembershipRow", "transactionIndex"), "Position of the transaction within the block." },
+        { ("GroupMembershipRow", "logIndex"), "Position of the log entry within the transaction receipt." },
+        { ("GroupMembershipRow", "transactionHash"), "Keccak-256 hash of the membership transaction." },
+        { ("GroupMembershipRow", "group"), "Ethereum address of the group." },
+        { ("GroupMembershipRow", "member"), "Ethereum address of the group member." },
+        { ("GroupMembershipRow", "expiryTime"), "Unix timestamp when the membership expires (0 = no expiry)." },
+
+        // ── InvitationOriginResponse ────────────────────────────────────────
+        { ("InvitationOriginResponse", "address"), "Address of the invited avatar." },
+        { ("InvitationOriginResponse", "invitationType"), "How the avatar was invited: 'v1_signup', 'v2_standard', 'v2_escrow', or 'v2_at_scale'." },
+        { ("InvitationOriginResponse", "inviter"), "Address of the direct inviter (null if unknown)." },
+        { ("InvitationOriginResponse", "proxyInviter"), "Address of the proxy inviter for escrow invitations." },
+        { ("InvitationOriginResponse", "escrowAmount"), "Amount escrowed for escrow invitations (CRC wei string)." },
+        { ("InvitationOriginResponse", "blockNumber"), "Block number when the invitation occurred." },
+        { ("InvitationOriginResponse", "timestamp"), "Unix timestamp of the invitation." },
+        { ("InvitationOriginResponse", "transactionHash"), "Transaction hash of the invitation event." },
+        { ("InvitationOriginResponse", "version"), "Circles protocol version: 1 or 2." },
+
+        // ── AllInvitationsResponse ──────────────────────────────────────────
+        { ("AllInvitationsResponse", "address"), "Address of the queried inviter." },
+        { ("AllInvitationsResponse", "trustInvitations"), "Invitations via direct trust (the inviter trusts the invitee)." },
+        { ("AllInvitationsResponse", "escrowInvitations"), "Invitations via CRC escrow deposit." },
+        { ("AllInvitationsResponse", "atScaleInvitations"), "Invitations via the at-scale invitation mechanism." },
+
+        // ── TrustInvitation ─────────────────────────────────────────────────
+        { ("TrustInvitation", "address"), "Address of the invited avatar." },
+        { ("TrustInvitation", "source"), "Invitation source type (always 'trust')." },
+        { ("TrustInvitation", "balance"), "Current CRC balance of the inviter relevant to this invitation (CRC wei string)." },
+        { ("TrustInvitation", "avatarInfo"), "Avatar info of the invited account (if registered)." },
+
+        // ── EscrowInvitation ────────────────────────────────────────────────
+        { ("EscrowInvitation", "address"), "Address of the invited avatar." },
+        { ("EscrowInvitation", "source"), "Invitation source type (always 'escrow')." },
+        { ("EscrowInvitation", "escrowedAmount"), "Amount of CRC escrowed for this invitation (CRC wei string)." },
+        { ("EscrowInvitation", "escrowDays"), "Number of days the CRC is escrowed before release." },
+        { ("EscrowInvitation", "blockNumber"), "Block number when the escrow was created." },
+        { ("EscrowInvitation", "timestamp"), "Unix timestamp when the escrow was created." },
+        { ("EscrowInvitation", "avatarInfo"), "Avatar info of the invited account (if registered)." },
+
+        // ── AtScaleInvitation ───────────────────────────────────────────────
+        { ("AtScaleInvitation", "address"), "Address of the invited avatar." },
+        { ("AtScaleInvitation", "source"), "Invitation source type (always 'atScale')." },
+        { ("AtScaleInvitation", "blockNumber"), "Block number of the at-scale invitation event." },
+        { ("AtScaleInvitation", "timestamp"), "Unix timestamp of the at-scale invitation event." },
+        { ("AtScaleInvitation", "originInviter"), "Original inviter address in the invitation chain." },
+
+        // ── InvitationsFromResponse ─────────────────────────────────────────
+        { ("InvitationsFromResponse", "address"), "Address of the queried inviter." },
+        { ("InvitationsFromResponse", "accepted"), "Filter applied: true = registered invitees, false = pending invitees." },
+        { ("InvitationsFromResponse", "results"), "List of invited accounts matching the filter." },
+
+        // ── InvitedAccountInfo ──────────────────────────────────────────────
+        { ("InvitedAccountInfo", "address"), "Address of the invited account." },
+        { ("InvitedAccountInfo", "status"), "Invitation status: 'accepted' (registered) or 'pending' (not yet registered)." },
+        { ("InvitedAccountInfo", "blockNumber"), "Block number of the invitation event." },
+        { ("InvitedAccountInfo", "timestamp"), "Unix timestamp of the invitation event." },
+        { ("InvitedAccountInfo", "avatarInfo"), "Avatar info if the invited account has registered." },
+
+        // ── PagedResponse (generic — applied to all PagedResponse_* variants) ──
+        { ("PagedResponse_TrustRelationInfo", "results"), "Array of trust relation info objects for the current page." },
+        { ("PagedResponse_TrustRelationInfo", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_TrustRelationInfo", "nextCursor"), "Opaque cursor to pass as 'cursor' parameter for the next page. Null if no more results." },
+        { ("PagedResponse_AggregatedTrustRelation", "results"), "Array of aggregated trust relations for the current page." },
+        { ("PagedResponse_AggregatedTrustRelation", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_AggregatedTrustRelation", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_GroupRow", "results"), "Array of group rows for the current page." },
+        { ("PagedResponse_GroupRow", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_GroupRow", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_GroupMembershipRow", "results"), "Array of group membership rows for the current page." },
+        { ("PagedResponse_GroupMembershipRow", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_GroupMembershipRow", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_TransactionHistoryRow", "results"), "Array of transaction history rows for the current page." },
+        { ("PagedResponse_TransactionHistoryRow", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_TransactionHistoryRow", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_TransferDataRow", "results"), "Array of transfer data rows for the current page." },
+        { ("PagedResponse_TransferDataRow", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_TransferDataRow", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_TokenHolderRow", "results"), "Array of token holder rows for the current page." },
+        { ("PagedResponse_TokenHolderRow", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_TokenHolderRow", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_InvitedAccountInfo", "results"), "Array of invited account info objects for the current page." },
+        { ("PagedResponse_InvitedAccountInfo", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_InvitedAccountInfo", "nextCursor"), "Opaque cursor for the next page." },
+
+        // ── PagedEventsResponse ─────────────────────────────────────────────
+        { ("PagedEventsResponse", "events"), "Array of event objects for the current page." },
+        { ("PagedEventsResponse", "hasMore"), "True if more events exist beyond this page." },
+        { ("PagedEventsResponse", "nextCursor"), "Opaque cursor for the next page." },
+
+        // ── PagedQueryResponse ──────────────────────────────────────────────
+        { ("PagedQueryResponse", "columns"), "Column names for the result set." },
+        { ("PagedQueryResponse", "rows"), "Array of row arrays, each containing values in column order." },
+        { ("PagedQueryResponse", "hasMore"), "True if more rows exist beyond this page." },
+        { ("PagedQueryResponse", "nextCursor"), "Opaque cursor for the next page." },
+
+        // ── PagedAggregatedTrustRelationsResponse ───────────────────────────
+        { ("PagedAggregatedTrustRelationsResponse", "address"), "Address of the queried avatar." },
+        { ("PagedAggregatedTrustRelationsResponse", "results"), "Array of trust relation info objects for the current page." },
+        { ("PagedAggregatedTrustRelationsResponse", "counts"), "Summary counts of trust relations by type." },
+        { ("PagedAggregatedTrustRelationsResponse", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedAggregatedTrustRelationsResponse", "nextCursor"), "Opaque cursor for the next page." },
+
+        // ── PagedValidInvitersResponse ──────────────────────────────────────
+        { ("PagedValidInvitersResponse", "address"), "Address of the account being checked for valid inviters." },
+        { ("PagedValidInvitersResponse", "results"), "Array of valid inviter info objects for the current page." },
+        { ("PagedValidInvitersResponse", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedValidInvitersResponse", "nextCursor"), "Opaque cursor for the next page." },
+
+        // ── PagedProfileSearchResponse ──────────────────────────────────────
+        { ("PagedProfileSearchResponse", "query"), "The search query that was executed." },
+        { ("PagedProfileSearchResponse", "searchType"), "Search type used: 'address' (prefix match) or 'text' (name/description search)." },
+        { ("PagedProfileSearchResponse", "results"), "Array of matching profile JSON objects." },
+        { ("PagedProfileSearchResponse", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedProfileSearchResponse", "nextCursor"), "Opaque cursor for the next page." },
+
+        // ── HealthResponse ──────────────────────────────────────────────────
+        { ("HealthResponse", "status"), "Overall health status: 'healthy', 'degraded', or 'unhealthy'." },
+        { ("HealthResponse", "timestamp"), "Unix timestamp of the health check." },
+        { ("HealthResponse", "database"), "Database connectivity status." },
+        { ("HealthResponse", "index"), "Index synchronization status." },
+
+        // ── TableNamespace ──────────────────────────────────────────────────
+        { ("TableNamespace", "namespace"), "Schema namespace grouping related tables (e.g., 'CrcV1', 'CrcV2')." },
+        { ("TableNamespace", "tables"), "Array of table definitions within this namespace." },
+
+        // ── TableDefinition ─────────────────────────────────────────────────
+        { ("TableDefinition", "table"), "Table name within the namespace." },
+        { ("TableDefinition", "topic"), "Event topic this table indexes." },
+        { ("TableDefinition", "columns"), "Array of column definitions for this table." },
+
+        // ── TableColumn ─────────────────────────────────────────────────────
+        { ("TableColumn", "column"), "Column name." },
+        { ("TableColumn", "type"), "PostgreSQL column type (e.g., 'text', 'bigint', 'boolean')." },
+
+        // ── TotalBalanceResponse ────────────────────────────────────────────
+        { ("TotalBalanceResponse", "balance"), "Aggregated total balance in CRC wei as string." },
+
+        // ── ProfileCidResponse ──────────────────────────────────────────────
+        { ("ProfileCidResponse", "cid"), "IPFS CIDv0 string pointing to the avatar's profile JSON (null if no profile set)." },
+
+        // ── ProfileSearchResult ─────────────────────────────────────────────
+        { ("ProfileSearchResult", "total"), "Total number of matching profiles." },
+        { ("ProfileSearchResult", "results"), "Array of profile search result items." },
+
+        // ── ProfileSearchResultItem ─────────────────────────────────────────
+        { ("ProfileSearchResultItem", "avatar"), "Ethereum address of the matched avatar." },
+        { ("ProfileSearchResultItem", "avatarInfo"), "Avatar registration info." },
+        { ("ProfileSearchResultItem", "profile"), "IPFS profile JSON (if available)." },
+
+        // ── ProfileViewResponse ─────────────────────────────────────────────
+        { ("ProfileViewResponse", "address"), "Ethereum address of the avatar." },
+        { ("ProfileViewResponse", "avatarInfo"), "Full avatar registration info." },
+        { ("ProfileViewResponse", "profile"), "IPFS profile JSON (if available)." },
+        { ("ProfileViewResponse", "trustStats"), "Trust relationship counts (trusts/trustedBy)." },
+        { ("ProfileViewResponse", "v1Balance"), "V1 CRC balance as string (null if no V1 registration)." },
+        { ("ProfileViewResponse", "v2Balance"), "V2 CRC balance as string (null if no V2 registration)." },
+
+        // ── TrustNetworkSummaryResponse ─────────────────────────────────────
+        { ("TrustNetworkSummaryResponse", "address"), "Ethereum address of the queried avatar." },
+        { ("TrustNetworkSummaryResponse", "directTrustsCount"), "Number of avatars this address directly trusts." },
+        { ("TrustNetworkSummaryResponse", "directTrustedByCount"), "Number of avatars that directly trust this address." },
+        { ("TrustNetworkSummaryResponse", "mutualTrustsCount"), "Number of mutual trust relationships." },
+        { ("TrustNetworkSummaryResponse", "mutualTrusts"), "Array of addresses with mutual trust." },
+        { ("TrustNetworkSummaryResponse", "networkReach"), "Estimated number of avatars reachable via transitive trust." },
+
+        // ── AggregatedTrustRelationsResponse ────────────────────────────────
+        { ("AggregatedTrustRelationsResponse", "address"), "Ethereum address of the queried avatar." },
+        { ("AggregatedTrustRelationsResponse", "mutual"), "Array of mutual trust relations." },
+        { ("AggregatedTrustRelationsResponse", "trusts"), "Array of outgoing trust relations." },
+        { ("AggregatedTrustRelationsResponse", "trustedBy"), "Array of incoming trust relations." },
+
+        // ── ValidInvitersResponse ───────────────────────────────────────────
+        { ("ValidInvitersResponse", "address"), "Address of the account being checked." },
+        { ("ValidInvitersResponse", "validInviters"), "Array of avatars that can validly invite this address." },
+
+        // ── InviterInfo ─────────────────────────────────────────────────────
+        { ("InviterInfo", "address"), "Ethereum address of the potential inviter." },
+        { ("InviterInfo", "balance"), "Inviter's CRC balance relevant to invitation capability (CRC wei string)." },
+        { ("InviterInfo", "avatarInfo"), "Avatar registration info for the inviter." },
+
+        // ── EnrichedTransactionHistoryResponse ──────────────────────────────
+        { ("EnrichedTransactionHistoryResponse", "address"), "Address whose transaction history was queried." },
+        { ("EnrichedTransactionHistoryResponse", "transactions"), "Array of enriched transaction objects." },
+        { ("EnrichedTransactionHistoryResponse", "totalCount"), "Total number of transactions matching the query." },
+
+        // ── ProfileSearchResponse (class variant) ───────────────────────────
+        { ("ProfileSearchResponse", "query"), "The search query that was executed." },
+        { ("ProfileSearchResponse", "searchType"), "Search type: 'address' or 'text'." },
+        { ("ProfileSearchResponse", "results"), "Array of matching profile JSON objects." },
+        { ("ProfileSearchResponse", "totalCount"), "Total number of matching profiles." },
+
+        // ── SelectDto ───────────────────────────────────────────────────────
+        { ("SelectDto", "namespace"), "Database namespace to query (e.g., 'CrcV1', 'CrcV2', 'V_CrcV1', 'V_CrcV2')." },
+        { ("SelectDto", "table"), "Table name within the namespace." },
+        { ("SelectDto", "columns"), "Column names to return. Omit or empty for all columns." },
+        { ("SelectDto", "filter"), "Array of filter predicates to apply (AND logic)." },
+        { ("SelectDto", "order"), "Array of ordering directives." },
+        { ("SelectDto", "limit"), "Maximum rows to return (default: 50, max: 200)." },
+        { ("SelectDto", "distinct"), "When true, return only distinct rows." },
+
+        // ── OrderByDto ──────────────────────────────────────────────────────
+        { ("OrderByDto", "column"), "Column name to sort by." },
+        { ("OrderByDto", "sortOrder"), "Sort direction: 'ASC' (ascending) or 'DESC' (descending)." },
+
+        // ── FilterPredicateDto ──────────────────────────────────────────────
+        { ("FilterPredicateDto", "type"), "Discriminator: always 'FilterPredicate'." },
+        { ("FilterPredicateDto", "column"), "Column name to filter on." },
+        { ("FilterPredicateDto", "filterType"), "Comparison operator: 'Equals', 'NotEquals', 'GreaterThan', 'LessThan', 'GreaterThanOrEquals', 'LessThanOrEquals', 'Like', 'NotLike', 'In', 'NotIn'." },
+        { ("FilterPredicateDto", "value"), "Value to compare against. Type must match the column type." },
+
+        // ── GroupQueryParams ────────────────────────────────────────────────
+        { ("GroupQueryParams", "nameStartsWith"), "Filter groups whose name starts with this prefix (case-insensitive)." },
+        { ("GroupQueryParams", "symbolStartsWith"), "Filter groups whose symbol starts with this prefix (case-insensitive)." },
+        { ("GroupQueryParams", "ownerIn"), "Filter groups owned by any of these addresses." },
+
+        // ── EventResponse ───────────────────────────────────────────────────
+        { ("EventResponse", "blockNumber"), "Gnosis Chain block number." },
+        { ("EventResponse", "transactionHash"), "Transaction hash of the event." },
+        { ("EventResponse", "logIndex"), "Log index within the transaction." },
+        { ("EventResponse", "event"), "Event type name." },
+        { ("EventResponse", "payload"), "Event-specific payload data." },
+
+        // ── QueryResponse ───────────────────────────────────────────────────
+        { ("QueryResponse", "columns"), "Column names for the result set." },
+        { ("QueryResponse", "rows"), "Array of row arrays, each containing values in column order." },
     };
 
     /// <summary>
