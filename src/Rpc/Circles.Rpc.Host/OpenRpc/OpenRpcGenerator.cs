@@ -1880,6 +1880,9 @@ public static class OpenRpcGenerator
         { ("PagedResponse_InvitedAccountInfo", "results"), "Array of invited account info objects for the current page." },
         { ("PagedResponse_InvitedAccountInfo", "hasMore"), "True if more results exist beyond this page." },
         { ("PagedResponse_InvitedAccountInfo", "nextCursor"), "Opaque cursor for the next page." },
+        { ("PagedResponse_EnrichedTransaction", "results"), "Array of enriched transaction objects for the current page." },
+        { ("PagedResponse_EnrichedTransaction", "hasMore"), "True if more results exist beyond this page." },
+        { ("PagedResponse_EnrichedTransaction", "nextCursor"), "Opaque cursor for the next page." },
 
         // ── PagedEventsResponse ─────────────────────────────────────────────
         { ("PagedEventsResponse", "events"), "Array of event objects for the current page." },
@@ -2006,6 +2009,9 @@ public static class OpenRpcGenerator
         { ("FilterPredicateDto", "column"), "Column name to filter on." },
         { ("FilterPredicateDto", "filterType"), "Comparison operator: 'Equals', 'NotEquals', 'GreaterThan', 'LessThan', 'GreaterThanOrEquals', 'LessThanOrEquals', 'Like', 'NotLike', 'In', 'NotIn'." },
         { ("FilterPredicateDto", "value"), "Value to compare against. Type must match the column type." },
+
+        // ── IFilterPredicateDto ─────────────────────────────────────────────
+        { ("IFilterPredicateDto", "type"), "Discriminator for filter predicate polymorphism. Value: 'FilterPredicate'." },
 
         // ── GroupQueryParams ────────────────────────────────────────────────
         { ("GroupQueryParams", "nameStartsWith"), "Filter groups whose name starts with this prefix (case-insensitive)." },
