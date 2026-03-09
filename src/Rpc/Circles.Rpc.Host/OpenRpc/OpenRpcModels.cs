@@ -57,6 +57,36 @@ public class OpenRpcMethod
     [JsonPropertyName("tags")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<OpenRpcTag>? Tags { get; set; }
+
+    [JsonPropertyName("examples")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<OpenRpcExamplePairing>? Examples { get; set; }
+}
+
+public class OpenRpcExamplePairing
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("description")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("params")]
+    public List<OpenRpcExampleValue> Params { get; set; } = [];
+
+    [JsonPropertyName("result")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OpenRpcExampleValue? Result { get; set; }
+}
+
+public class OpenRpcExampleValue
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("value")]
+    public object? Value { get; set; }
 }
 
 public class OpenRpcParam
