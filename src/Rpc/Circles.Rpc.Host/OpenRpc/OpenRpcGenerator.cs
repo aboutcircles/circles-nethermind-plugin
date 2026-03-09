@@ -19,6 +19,9 @@ public static class OpenRpcGenerator
     private const string ExampleGroup = "0x9b1BCe0E51F19B392e3F7a053e37930Bfa1e0B5A";
     private const string ExampleToken = "0xc5d024cb3218c4bfb3cdf1178e04c87742123708";
 
+    // ─── Schema cache (must be declared before ParameterOverrides which calls ParamRef → EnsureSchemaByName) ──
+    private static readonly Dictionary<string, JsonSchemaObject> SchemaCache = new();
+
     /// <summary>
     /// RPC method name → (C# method name, tag, summary, description).
     /// This is the single source of truth for the RPC → C# mapping.
@@ -725,9 +728,6 @@ public static class OpenRpcGenerator
             }
         ],
     };
-
-    // ─── Schema cache ────────────────────────────────────────────────────────
-    private static readonly Dictionary<string, JsonSchemaObject> SchemaCache = new();
 
     public static OpenRpcDocument Generate()
     {
