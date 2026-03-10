@@ -124,6 +124,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{DCB6FCB8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.TrustMissingAvatars", "src\Tools\Circles.TrustMissingAvatars\Circles.TrustMissingAvatars.csproj", "{EDA7A6B7-03F5-4203-A24B-84921B3069A8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circles.Index.CirclesViews.Tests", "src\Index\Circles.Index.CirclesViews.Tests\Circles.Index.CirclesViews.Tests.csproj", "{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -565,6 +567,18 @@ Global
 		{EDA7A6B7-03F5-4203-A24B-84921B3069A8}.Release|x64.Build.0 = Release|Any CPU
 		{EDA7A6B7-03F5-4203-A24B-84921B3069A8}.Release|x86.ActiveCfg = Release|Any CPU
 		{EDA7A6B7-03F5-4203-A24B-84921B3069A8}.Release|x86.Build.0 = Release|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Debug|x64.Build.0 = Debug|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Debug|x86.Build.0 = Debug|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Release|x64.ActiveCfg = Release|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Release|x64.Build.0 = Release|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Release|x86.ActiveCfg = Release|Any CPU
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -613,5 +627,6 @@ Global
 		{80C84B1E-06FF-42C1-BD9B-DDA5DFF1A3AD} = {664289F4-DCD6-D41D-7163-C693306A2F35}
 		{DCB6FCB8-FF92-AC57-0842-1F72A354D6B1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{EDA7A6B7-03F5-4203-A24B-84921B3069A8} = {DCB6FCB8-FF92-AC57-0842-1F72A354D6B1}
+		{9DA038DE-C0B1-425F-8F7E-4B1773E0B2EA} = {664289F4-DCD6-D41D-7163-C693306A2F35}
 	EndGlobalSection
 EndGlobal

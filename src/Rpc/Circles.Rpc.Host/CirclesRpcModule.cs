@@ -3098,6 +3098,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
         await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(finalSql, connection);
+        command.CommandTimeout = _settings.DatabaseQueryTimeoutSeconds;
         command.Parameters.AddRange(parameters.ToArray());
 
         var results = new List<object?[]>();

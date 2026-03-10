@@ -18,7 +18,7 @@ public class Settings : Pathfinder.Settings
 
     public int MaxConcurrentRequests = Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS")!)
-        : Environment.ProcessorCount * 2;
+        : Math.Max(Environment.ProcessorCount * 2, 8);
 
     /// <summary>
     /// When true, the pathfinder fetches graph data from the Cache Service instead of DB.

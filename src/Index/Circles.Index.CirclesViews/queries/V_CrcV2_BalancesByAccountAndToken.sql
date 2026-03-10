@@ -13,7 +13,7 @@ DECLARE
 BEGIN
     RETURN ("timestamp" - "inflationDayZero") / DEMURRAGE_WINDOW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql STABLE;
 
 CREATE OR REPLACE FUNCTION crc_demurrage("inflationDayZero" bigint, "timestamp" bigint, "value" numeric)
     RETURNS numeric AS $$
@@ -27,7 +27,7 @@ BEGIN
     _day_now := crc_day("inflationDayZero", _now);
     return (value * POWER(_gamma, _day_now - _day_last_interaction));
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql STABLE;
 
 create or replace view public."V_CrcV2_BalancesByAccountAndToken"
             (account, "tokenId", "tokenAddress", "lastActivity", "totalBalance", "demurragedTotalBalance") as
