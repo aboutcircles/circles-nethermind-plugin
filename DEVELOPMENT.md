@@ -111,7 +111,6 @@ docker/
 ├── cache-service.Dockerfile         # Cache service
 ├── metrics-exporter.Dockerfile      # Metrics exporter
 ├── backfill.Dockerfile              # Backfill job
-├── trust-missing-avatars.Dockerfile # Trust repair job
 └── docker-compose.*.yml             # Compose configurations
 
 scripts/
