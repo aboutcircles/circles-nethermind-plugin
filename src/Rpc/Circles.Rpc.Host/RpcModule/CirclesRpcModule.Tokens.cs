@@ -123,17 +123,22 @@ public partial class CirclesRpcModule
                 END) > 0
             ),
             -- V2 wrapped ERC20 token balances (demurraged)
-            -- Need to apply demurrage based on last activity timestamp
+            -- Inline demurrage computation avoids PL/pgSQL function call overhead
             demurraged_wrapped_balances AS (
                 SELECT wt.""tokenAddress""
                      , 'CrcV2_ERC20WrapperDeployed_Demurraged' as ""type""
                      , wd.avatar as ""tokenOwner""
-                     , floor(crc_demurrage(1675209600::bigint, MAX(wt.""timestamp""),
+                     , floor(
                          SUM(CASE
                              WHEN wt.""to"" = @address THEN wt.amount
                              WHEN wt.""from"" = @address THEN -wt.amount
                              ELSE 0
-                         END))) as balance
+                         END)
+                         * POWER(0.9998013320085989574306481700129226782902039065082930593676448873,
+                             (EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
+                             - (MAX(wt.""timestamp"") - 1675209600) / 86400
+                         )
+                       ) as balance
                 FROM public.""CrcV2_Erc20WrapperTransfer"" wt
                 JOIN public.""CrcV2_ERC20WrapperDeployed"" wd
                   ON wd.""erc20Wrapper"" = wt.""tokenAddress"" AND wd.""circlesType"" = 0

@@ -48,7 +48,6 @@ WITH events AS (
              JOIN "CrcV2_CreateVault" cv ON cv."group" = grcb."group"
 ),
      grouped AS (
-         -- Sum net balances & track the max timestamp per (vault, tokenId)
          SELECT
              vault,
              id,
@@ -61,11 +60,11 @@ SELECT
     vault,
     id,
     FLOOR(
-            crc_demurrage(
-            1675209600::bigint,
-            "lastActivity",
-            balance
-            )
+        balance * POWER(
+            0.9998013320085989574306481700129226782902039065082930593676448873,
+            (EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
+            - ("lastActivity" - 1675209600) / 86400
+        )
     ) AS "balance"
 FROM grouped
 ORDER BY vault, id;
