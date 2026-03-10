@@ -342,6 +342,40 @@ services:
       timeout: 5s
       retries: 3
 
+  metrics-exporter:
+    container_name: metrics-exporter
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    build:
+      context: ..
+      dockerfile: docker/metrics-exporter.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres-gnosis:
+        condition: service_healthy
+    networks:
+      - circles-gnosis
+    expose:
+      - 9100
+    environment:
+      - ConnectionStrings__CirclesDb=Server=${METRICS_DB_HOST:-postgres-gnosis};Port=5432;Database=postgres;User Id=${METRICS_DB_USER:-${POSTGRES_USER}};Password=${METRICS_DB_PASSWORD:-${POSTGRES_PASSWORD}};Application Name=metrics-exporter;Maximum Pool Size=7;
+      - CoinGecko__ApiKey=${COINGECKO_API_KEY:-}
+      - Pricing__FallbackCrcPriceUsd=${PRICING_FALLBACK_CRC_PRICE_USD:-0.01}
+      - Pricing__CacheExpiryMinutes=${PRICING_CACHE_EXPIRY_MINUTES:-5}
+      - Deployment__Environments__Staging=${DEPLOYMENT__ENVIRONMENTS__STAGING:-}
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/ready"]
+      interval: 30s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+
 networks:
   circles-gnosis:
     name: circles-gnosis
