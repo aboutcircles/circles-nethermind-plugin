@@ -85,9 +85,8 @@ jobs:
           allowed-conclusions: success
 
   detect-changes:
-    needs: [check-killswitch, wait-for-tests]
-    # Run even if wait-for-tests was skipped (workflow_dispatch)
-    if: always() && needs.check-killswitch.outputs.proceed == 'true' && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped')
+    needs: check-killswitch
+    if: needs.check-killswitch.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     outputs:
       deploy_gnosis: ${{ steps.set-flags.outputs.deploy_gnosis }}
@@ -192,15 +191,21 @@ jobs:
             # Manual trigger via workflow_dispatch still available if needed
           fi
 
+          # Debug: log resolved values for diagnosability
+          echo "::debug::EVENT_NAME=$EVENT_NAME GNOSIS=$GNOSIS OBS=$OBS GRAFANA=$GRAFANA"
+          echo "::debug::FILTER_GNOSIS_SRC=$FILTER_GNOSIS_SRC FILTER_OBS_SRC=$FILTER_OBS_SRC"
+
           echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
           echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
           echo "deploy_grafana=$GRAFANA" >> $GITHUB_OUTPUT
 
           if [ "$GNOSIS" == "true" ] || [ "$OBS" == "true" ] || [ "$GRAFANA" == "true" ]; then
-            echo "any_deploy=true" >> $GITHUB_OUTPUT
+            ANY="true"
           else
-            echo "any_deploy=false" >> $GITHUB_OUTPUT
+            ANY="false"
           fi
+          echo "::notice::any_deploy=$ANY (gnosis=$GNOSIS, obs=$OBS, grafana=$GRAFANA)"
+          echo "any_deploy=$ANY" >> $GITHUB_OUTPUT
 
       - name: Summary of detected changes
         env:
@@ -224,8 +229,14 @@ jobs:
   # Ansible SSHes into the target host, pulls the latest source, and builds images on-server.
   # No GHCR/registry involved — images are built locally from Dockerfiles.
   trigger-deploy:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.any_deploy == 'true'
+    needs: [detect-changes, wait-for-tests]
+    # always() required: wait-for-tests is skipped on push events (only runs for workflow_call)
+    # Without always(), GitHub Actions skips this job when ANY transitive dependency is skipped
+    if: >-
+      always()
+      && needs.detect-changes.result == 'success'
+      && needs.detect-changes.outputs.any_deploy == 'true'
+      && (needs.wait-for-tests.result == 'success' || needs.wait-for-tests.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Ansible deployment
