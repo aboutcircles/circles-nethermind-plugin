@@ -108,6 +108,11 @@ public class Settings
             ? maxRequests
             : Environment.ProcessorCount;
 
+    public readonly int RpcMaxConcurrentRequests =
+        int.TryParse(Environment.GetEnvironmentVariable("RPC_MAX_CONCURRENT_REQUESTS"), out var rpcMaxRequests)
+            ? rpcMaxRequests
+            : Math.Max(Environment.ProcessorCount * 4, 32);
+
     #endregion
 
     #region Indexed contract addresses
