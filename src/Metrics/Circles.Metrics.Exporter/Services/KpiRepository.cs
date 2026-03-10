@@ -465,7 +465,7 @@ public class KpiRepository
             FROM "CrcV2_PersonalMint" pm
             LEFT JOIN (
                 SELECT DISTINCT "account" FROM "V_CrcV2_BalancesByAccountAndToken"
-                WHERE "totalBalance" > 0
+                WHERE "demurragedTotalBalance" > 0
             ) b ON pm."human" = b."account"
             WHERE pm."timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
             AND b."account" IS NULL

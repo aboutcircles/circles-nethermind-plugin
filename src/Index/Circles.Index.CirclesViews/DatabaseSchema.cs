@@ -122,6 +122,22 @@ public class DatabaseSchema : IDatabaseSchema
                 "idx_ERC20WrapperDeployed_avatar_type",
                 "CREATE INDEX IF NOT EXISTS idx_ERC20WrapperDeployed_avatar_type ON public.\"CrcV2_ERC20WrapperDeployed\" (avatar, \"circlesType\");"
             },
+            // Covering index for Pathfinder trust query ROW_NUMBER() window function.
+            // The window uses PARTITION BY truster, trustee ORDER BY blockNumber DESC, transactionIndex DESC, logIndex DESC.
+            // Without this, 585K-row CrcV2_Trust requires full seq scan + sort on every pathfinder refresh.
+            {
+                "idx_crcv2_trust_covering",
+                "CREATE INDEX IF NOT EXISTS idx_crcv2_trust_covering ON public.\"CrcV2_Trust\" (\"truster\", \"trustee\", \"blockNumber\" DESC, \"transactionIndex\" DESC, \"logIndex\" DESC);"
+            },
+            // Time-window indexes for KPI queries (COUNT of new registrations per time window)
+            {
+                "idx_CrcV2_RegisterGroup_timestamp",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_RegisterGroup_timestamp\" ON public.\"CrcV2_RegisterGroup\" (\"timestamp\");"
+            },
+            {
+                "idx_CrcV2_RegisterOrganization_timestamp",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_RegisterOrganization_timestamp\" ON public.\"CrcV2_RegisterOrganization\" (\"timestamp\");"
+            },
             // Trust scores history table for anomaly detection metrics
             {
                 "trust_scores_history_table",
