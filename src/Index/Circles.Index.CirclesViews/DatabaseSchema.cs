@@ -156,6 +156,24 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 "idx_history_avatar_snapshot",
                 "CREATE INDEX IF NOT EXISTS idx_history_avatar_snapshot ON trust_scores_history(avatar, snapshot_date DESC);"
+            },
+            // Performance: cover the `from` side of OR clauses in getTokenBalances / BalancesByAccountAndToken
+            {
+                "idx_CrcV2_Erc20WrapperTransfer_from_tokenAddress",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_Erc20WrapperTransfer_from_tokenAddress\" ON public.\"CrcV2_Erc20WrapperTransfer\" (\"from\", \"tokenAddress\");"
+            },
+            {
+                "idx_CrcV2_TransferSingle_from_tokenAddress",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_TransferSingle_from_tokenAddress\" ON public.\"CrcV2_TransferSingle\" (\"from\", \"tokenAddress\");"
+            },
+            {
+                "idx_CrcV2_TransferBatch_from_tokenAddress",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_TransferBatch_from_tokenAddress\" ON public.\"CrcV2_TransferBatch\" (\"from\", \"tokenAddress\");"
+            },
+            // Performance: cover circles_query lookups on CreateVault by group
+            {
+                "idx_CrcV2_CreateVault_group",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_CreateVault_group\" ON public.\"CrcV2_CreateVault\" (\"group\");"
             }
         };
 

@@ -54,7 +54,7 @@ public class Settings
     public int SolverTimeoutSeconds { get; set; } =
         Environment.GetEnvironmentVariable("PATHFINDER_SOLVER_TIMEOUT_SECONDS") != null
         ? int.Parse(Environment.GetEnvironmentVariable("PATHFINDER_SOLVER_TIMEOUT_SECONDS")!)
-        : 30;
+        : 10;
 
     /// <summary>
     /// Master switch for incremental graph updates.
