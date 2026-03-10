@@ -458,7 +458,7 @@ public class KpiRepository
 
     public async Task<long> GetMintAndDrainAccountsAsync(TimeSpan window, CancellationToken ct = default)
     {
-        // Accounts that minted in the window but have zero balance now
+        // Accounts that minted in the window but have zero on-chain balance (explicitly drained)
         // LEFT JOIN instead of NOT IN for hash join optimization
         var sql = $"""
             SELECT COUNT(DISTINCT pm."human")
@@ -543,10 +543,10 @@ public class KpiRepository
             SELECT COUNT(DISTINCT h."avatar")
             FROM "CrcV2_RegisterHuman" h
             INNER JOIN "CrcV2_UpdateMetadataDigest" m ON h."avatar" = m."avatar"
-            WHERE h."avatar" IN (
+            INNER JOIN (
                 SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
                 WHERE "truster" != "trustee"
-            )
+            ) t ON h."avatar" = t."trustee"
             """;
 
         try
