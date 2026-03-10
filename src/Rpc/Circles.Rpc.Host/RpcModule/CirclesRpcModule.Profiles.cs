@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Circles.Common;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
@@ -628,11 +629,19 @@ public partial class CirclesRpcModule
     private async Task<ProfileSearchResult?> SearchProfilesViaProxy(
         string qText, int limit, int offset, string[]? typeFilter)
     {
-        var url = $"{_settings.ProfilePinningServiceUrl!.TrimEnd('/')}/search/text?q={Uri.EscapeDataString(qText)}&limit={limit}&offset={offset}";
+        var baseUrl = _settings.ProfilePinningServiceUrl!.TrimEnd('/');
+
+        // Use /search?address= for address-like queries (FTS doesn't index addresses)
+        bool isAddressQuery = qText.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                              && qText.Length >= 10
+                              && Regex.IsMatch(qText, @"^0x[0-9a-fA-F]+$");
+
+        var url = isAddressQuery
+            ? $"{baseUrl}/search?address={Uri.EscapeDataString(qText)}&limit={limit}&offset={offset}"
+            : $"{baseUrl}/search/text?q={Uri.EscapeDataString(qText)}&limit={limit}&offset={offset}";
 
         if (typeFilter is { Length: > 0 })
         {
-            // Profile pinning service currently supports single type filter
             url += $"&type={Uri.EscapeDataString(typeFilter[0])}";
         }
 
@@ -650,7 +659,8 @@ public partial class CirclesRpcModule
 
         if (proxyResults == null || proxyResults.Length == 0)
         {
-            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            // Return null to fall through to SQL fallback
+            return null;
         }
 
         // Safety net: server handles offset, but cap to requested limit
