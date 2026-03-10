@@ -33,7 +33,7 @@ public static class BuilderSetup
         var settings = new Settings();
 
         Console.WriteLine("Starting Circles.Rpc service...");
-        Console.WriteLine($"* Max concurrent requests: {settings.MaxConcurrentRequests}");
+        Console.WriteLine($"* RPC max concurrent requests: {settings.RpcMaxConcurrentRequests}");
 
         var csb = new NpgsqlConnectionStringBuilder(settings.IndexReadonlyDbConnectionString);
         Console.WriteLine($"* DB Host: {csb.Host}");
@@ -45,7 +45,7 @@ public static class BuilderSetup
         Console.WriteLine($"* Cache Service URL: {settings.CacheServiceUrl ?? "Not configured"}");
         Console.WriteLine($"* Use Cache Service: {settings.UseCacheService}");
 
-        var semaphore = new SemaphoreSlim(settings.MaxConcurrentRequests, settings.MaxConcurrentRequests);
+        var semaphore = new SemaphoreSlim(settings.RpcMaxConcurrentRequests, settings.RpcMaxConcurrentRequests);
 
         var builder = WebApplication.CreateSlimBuilder(args);
         builder.Services.AddSingleton(settings);

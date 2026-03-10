@@ -51,6 +51,13 @@ public static class RpcMetrics
         "Number of active WebSocket subscriptions");
 
     /// <summary>
+    /// Total RPC requests rejected due to concurrency limit.
+    /// </summary>
+    public static readonly Counter RejectedTotal = Metrics.CreateCounter(
+        "circles_rpc_rejected_total",
+        "Total number of RPC requests rejected due to concurrency limit");
+
+    /// <summary>
     /// Total proxied RPC requests forwarded to Nethermind by method.
     /// </summary>
     public static readonly Counter ProxiedTotal = Metrics.CreateCounter(

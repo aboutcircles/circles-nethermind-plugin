@@ -246,6 +246,11 @@ async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionS
 app.Map("/ws/subscribe", HandleSubscriptionWebSocket).DisableAntiforgery();
 app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
 
+// ─── Concurrency guard ───────────────────────────────────────────────────────
+// Limits concurrent RPC requests to prevent DB pool exhaustion under load.
+// Returns 503 immediately when at capacity (same pattern as pathfinder).
+var rpcSemaphore = app.Services.GetRequiredService<SemaphoreSlim>();
+
 // ─── Batch JSON-RPC middleware ────────────────────────────────────────────────
 // JSON-RPC batch requests (body is a JSON array) are forwarded entirely to Nethermind.
 // Nethermind has the Circles module loaded, so it can handle both circles_* and eth_* methods.
@@ -359,6 +364,13 @@ app.MapPost("/", async (
             Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
         });
+    }
+
+    // Concurrency guard — reject immediately when at capacity
+    if (!rpcSemaphore.Wait(0))
+    {
+        RpcMetrics.RejectedTotal.Inc();
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
 
     var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -573,6 +585,10 @@ app.MapPost("/", async (
             Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32603, Message = $"Internal server error: {ex.Message}" }
         });
+    }
+    finally
+    {
+        rpcSemaphore.Release();
     }
 
 }).DisableAntiforgery();
