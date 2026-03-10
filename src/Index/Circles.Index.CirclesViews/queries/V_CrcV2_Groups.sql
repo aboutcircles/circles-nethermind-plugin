@@ -27,11 +27,14 @@ WITH watermark AS (
 affected AS (
     SELECT "group" FROM "CrcV2_RegisterGroup" WHERE "blockNumber" > (SELECT wm FROM watermark)
     UNION SELECT truster FROM "CrcV2_Trust" WHERE "blockNumber" > (SELECT wm FROM watermark)
+        AND truster IN (SELECT "group" FROM "CrcV2_RegisterGroup")
     UNION SELECT emitter FROM "CrcV2_BaseGroupOwnerUpdated" WHERE "blockNumber" > (SELECT wm FROM watermark)
     UNION SELECT emitter FROM "CrcV2_BaseGroupServiceUpdated" WHERE "blockNumber" > (SELECT wm FROM watermark)
     UNION SELECT emitter FROM "CrcV2_BaseGroupFeeCollectionUpdated" WHERE "blockNumber" > (SELECT wm FROM watermark)
     UNION SELECT avatar FROM "CrcV2_UpdateMetadataDigest" WHERE "blockNumber" > (SELECT wm FROM watermark)
+        AND avatar IN (SELECT "group" FROM "CrcV2_RegisterGroup")
     UNION SELECT avatar FROM "CrcV2_ERC20WrapperDeployed" WHERE "blockNumber" > (SELECT wm FROM watermark)
+        AND avatar IN (SELECT "group" FROM "CrcV2_RegisterGroup")
 ),
 -- Live re-computation for affected groups only
 live_groups AS (
