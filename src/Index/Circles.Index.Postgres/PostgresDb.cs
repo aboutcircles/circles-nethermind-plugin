@@ -159,6 +159,18 @@ public class PostgresDb : ReadonlyPostgresDb, IDatabase
 
             ddlSql.Clear();
 
+            // Create table-returning functions before views (functions may be used by query rewrite)
+            if (Schema.FunctionSql.Count > 0)
+            {
+                foreach (var funcSql in Schema.FunctionSql)
+                {
+                    Console.WriteLine("PostgresDb.Migrate: Creating function...");
+                    ddlSql.AppendLine(funcSql);
+                }
+                ExecuteNonQuery(connection, ddlSql.ToString());
+                ddlSql.Clear();
+            }
+
             foreach (var table in views)
             {
                 Console.WriteLine($"PostgresDb.Migrate: Creating DDL for view " + table + "...");

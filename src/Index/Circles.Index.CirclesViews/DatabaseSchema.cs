@@ -66,6 +66,12 @@ public class DatabaseSchema : IDatabaseSchema
     public IEventDtoTableMap EventDtoTableMap { get; } = new EventDtoTableMap();
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
 
+    /// <summary>
+    /// SQL function definitions (F_* files) to create before views.
+    /// These are table-returning functions that accept filter parameters for WHERE pushdown.
+    /// </summary>
+    public IReadOnlyList<string> FunctionSql { get; }
+
     public IDictionary<string, string> Indexes { get; } =
         new Dictionary<string, string>
         {
@@ -174,12 +180,48 @@ public class DatabaseSchema : IDatabaseSchema
             {
                 "idx_CrcV2_CreateVault_group",
                 "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_CreateVault_group\" ON public.\"CrcV2_CreateVault\" (\"group\");"
+            },
+            // Phase 4: V1 token→owner lookup for getTokenInfo
+            {
+                "idx_CrcV1_Signup_token",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV1_Signup_token\" ON public.\"CrcV1_Signup\" (token);"
+            },
+            // Phase 4: Wrapped token lookup for getTokenInfo
+            {
+                "idx_CrcV2_ERC20WrapperDeployed_erc20Wrapper",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_ERC20WrapperDeployed_erc20Wrapper\" ON public.\"CrcV2_ERC20WrapperDeployed\" (\"erc20Wrapper\");"
+            },
+            // Phase 4: Index on TransferSummary("to") for receive count matview refresh
+            {
+                "idx_CrcV2_TransferSummary_to",
+                "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_TransferSummary_to\" ON public.\"CrcV2_TransferSummary\" (\"to\");"
             }
         };
 
     public DatabaseSchema()
     {
+        FunctionSql = DiscoverFunctionSql();
         Tables = DiscoverAndBuildSchemas();
+    }
+
+    /// <summary>
+    /// Discovers F_*.sql (functions) and M_*.sql (materialized views) files
+    /// and returns their raw SQL content for execution before regular views.
+    /// </summary>
+    private IReadOnlyList<string> DiscoverFunctionSql()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        return assembly.GetManifestResourceNames()
+            .Where(name => name.EndsWith(".sql") &&
+                (name.StartsWith("Circles.Index.CirclesViews.queries.F_") ||
+                 name.StartsWith("Circles.Index.CirclesViews.queries.M_")))
+            .Select(name =>
+            {
+                using var stream = assembly.GetManifestResourceStream(name)!;
+                using var reader = new StreamReader(stream);
+                return reader.ReadToEnd();
+            })
+            .ToList();
     }
 
     private IDictionary<(string Namespace, string Table), EventSchema> DiscoverAndBuildSchemas()

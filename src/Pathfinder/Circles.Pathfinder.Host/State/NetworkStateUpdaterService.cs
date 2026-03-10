@@ -33,6 +33,7 @@ public class NetworkStateUpdaterService : BackgroundService
     internal long _lastFullRefreshBlock = -1;
     internal long _lastProcessedBlock = -1;
     internal string? _lastProcessedBlockHash;  // D10: reorg detection
+    internal long _lastMatViewRefreshBlock = -1;
 
     // Cache-source state (only used when UseCacheGraphSource=true)
     private CacheGraphClient? _cacheGraphClient;
@@ -226,6 +227,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
         // Pre-build wrapped snapshot so withWrap=true requests hit the cache
         BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
+
+        // Refresh materialized views periodically
+        RefreshMaterializedViewsIfDue(lastBlock);
 
         GraphUpdateMetrics.UpdateDuration.WithLabels("trust").Observe(swTrust.Elapsed.TotalSeconds);
         GraphUpdateMetrics.UpdateDuration.WithLabels("balance").Observe(swBalance.Elapsed.TotalSeconds);
@@ -449,6 +453,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
         // Pre-build wrapped snapshot so withWrap=true requests hit the cache
         BuildAndPublishWrappedSnapshot(incLoadGraph, lastBlock, groupData);
+
+        // Refresh materialized views periodically
+        RefreshMaterializedViewsIfDue(lastBlock);
     }
 
     /// <summary>
@@ -671,6 +678,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
         // Pre-build wrapped snapshot so withWrap=true requests hit the cache
         BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
+
+        // Refresh materialized views periodically
+        RefreshMaterializedViewsIfDue(lastBlock);
     }
 
     /// <summary>
@@ -706,6 +716,57 @@ public class NetworkStateUpdaterService : BackgroundService
     }
 
     /// <summary>
+    /// Refreshes materialized views if enough blocks have elapsed since the last refresh.
+    /// Uses CONCURRENTLY to avoid blocking readers. Failures are logged but do not crash the service.
+    /// </summary>
+    internal void RefreshMaterializedViewsIfDue(long currentBlock)
+    {
+        if (!_settings.MaterializedViewRefreshEnabled)
+            return;
+
+        if (_lastMatViewRefreshBlock >= 0 &&
+            (currentBlock - _lastMatViewRefreshBlock) < _settings.MaterializedViewRefreshIntervalBlocks)
+            return;
+
+        var matViews = new[]
+        {
+            "M_CrcV2_BalancesByAccountAndToken",
+            "V_TrustScores_Current",
+            "M_CrcV2_Avatars",
+            "M_CrcV2_ReceiveCount"
+        };
+
+        foreach (var viewName in matViews)
+        {
+            try
+            {
+                var sw = Stopwatch.StartNew();
+                using var conn = Npgsql.NpgsqlDataSource
+                    .Create(_settings.MaterializedViewDbConnectionString)
+                    .OpenConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"REFRESH MATERIALIZED VIEW CONCURRENTLY \"{viewName}\"";
+                cmd.CommandTimeout = 300; // 5 minutes max
+                cmd.ExecuteNonQuery();
+                sw.Stop();
+
+                GraphUpdateMetrics.MatViewRefreshDuration.WithLabels(viewName).Observe(sw.Elapsed.TotalSeconds);
+                GraphUpdateMetrics.MatViewRefreshTotal.WithLabels(viewName).Inc();
+
+                _log.LogInformation("Refreshed materialized view {View} in {Ms} ms", viewName, sw.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                GraphUpdateMetrics.MatViewRefreshErrors.WithLabels(viewName).Inc();
+                _log.LogWarning(ex, "Failed to refresh materialized view {View} — stale data until next refresh", viewName);
+            }
+        }
+
+        _lastMatViewRefreshBlock = currentBlock;
+        GraphUpdateMetrics.LastMatViewRefreshBlock.Set(currentBlock);
+    }
+
+    /// <summary>
     /// Reset all incremental state so the next DB fallback starts with a clean FullRefresh
     /// (first-run path) instead of comparing against stale accumulated state.
     /// Called after every successful cache-source update.
@@ -718,6 +779,7 @@ public class NetworkStateUpdaterService : BackgroundService
         _lastFullRefreshBlock = -1;
         _lastProcessedBlock = -1;
         _lastProcessedBlockHash = null;
+        // Note: don't reset _lastMatViewRefreshBlock — matview refresh cadence is independent
     }
 
     private async Task<long> WaitForNextBlock(CancellationToken stoppingToken, long lastBlock)

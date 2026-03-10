@@ -13,6 +13,12 @@ public interface IDatabaseSchema
     /// Must be written in an idempotent way, so that the same index can be created multiple times without error.
     /// </summary>
     public IDictionary<string, string> Indexes { get; }
+
+    /// <summary>
+    /// Raw SQL for table-returning functions (CREATE OR REPLACE FUNCTION).
+    /// Executed before views during migration. Default: empty.
+    /// </summary>
+    public IReadOnlyList<string> FunctionSql => Array.Empty<string>();
 }
 
 public abstract class BaseDatabaseSchema : IDatabaseSchema

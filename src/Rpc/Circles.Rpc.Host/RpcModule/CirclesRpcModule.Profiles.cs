@@ -713,6 +713,10 @@ public partial class CirclesRpcModule
         bool hasTypeFilter = typeFilter is { Length: > 0 };
         string typeFilterClause = hasTypeFilter ? " AND a.type = ANY(@types)" : string.Empty;
 
+        // Uses materialized views for performance:
+        // - M_CrcV2_Avatars: pre-computed avatar UNION + LATERAL CID lookup
+        // - M_CrcV2_ReceiveCount: pre-aggregated receive counts (replaces full-table GROUP BY)
+        // - idx_ipfs_files_payload_profile_fts: GIN index on profile tsvectors
         string sql = $@"
         WITH
             input(txt) AS (VALUES (@search)),
@@ -726,11 +730,6 @@ public partial class CirclesRpcModule
                        ) AS query
                 FROM input
             ),
-            recv AS (
-                SELECT ""to""::text AS avatar, COUNT(*) AS receive_count
-                FROM   ""CrcV2_TransferSummary""
-                GROUP  BY ""to""
-            ),
             w_profile AS (
                 SELECT  a.avatar, a.""timestamp"", a.name AS avatar_name, rs.""shortName"" AS short_name,
                         a.type AS avatar_type, f.cid AS cid, f.metadata_digest, f.payload,
@@ -743,7 +742,7 @@ public partial class CirclesRpcModule
                           ),
                           q.query
                         ) AS rank
-                FROM   ""V_CrcV2_Avatars"" a
+                FROM   ""M_CrcV2_Avatars"" a
                 LEFT JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
                 JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
                 CROSS JOIN q
@@ -765,7 +764,7 @@ public partial class CirclesRpcModule
                           ),
                           q.query
                         ) AS rank
-                FROM   ""V_CrcV2_Avatars"" a
+                FROM   ""M_CrcV2_Avatars"" a
                 LEFT JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
                 LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
                 CROSS JOIN q
@@ -780,7 +779,7 @@ public partial class CirclesRpcModule
         FROM   (SELECT * FROM w_profile
                 UNION ALL
                 SELECT * FROM wo_profile) p
-        LEFT JOIN recv r USING (avatar)
+        LEFT JOIN ""M_CrcV2_ReceiveCount"" r USING (avatar)
         ORDER BY COALESCE(r.receive_count, 0) DESC, p.rank DESC
         LIMIT  @limit
         OFFSET @offset;";

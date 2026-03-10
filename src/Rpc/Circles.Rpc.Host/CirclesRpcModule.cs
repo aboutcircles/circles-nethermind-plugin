@@ -1109,6 +1109,30 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         return $"{column} {@operator} ({string.Join(", ", placeholders)})";
     }
 
+    /// <summary>
+    /// Extracts the value from a top-level "group" Equals filter, if present.
+    /// Used for WHERE pushdown optimization on GroupMintRedeem/GroupWrapUnWrap views.
+    /// </summary>
+    private static bool TryGetGroupEqualsValue(IEnumerable<IFilterPredicateDto>? filters, out string groupValue)
+    {
+        groupValue = "";
+        if (filters == null) return false;
+
+        foreach (var filter in filters)
+        {
+            if (filter is FilterPredicateDto fp &&
+                fp.Column == "group" &&
+                fp.FilterType == FilterType.Equals &&
+                fp.Value is string val &&
+                !string.IsNullOrEmpty(val))
+            {
+                groupValue = val;
+                return true;
+            }
+        }
+        return false;
+    }
+
     private string BuildQueryFilterPredicateClause(FilterPredicateDto predicate, List<NpgsqlParameter> parameters)
     {
         if (predicate.Column == null)
@@ -3094,7 +3118,37 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         // Fetch one extra row to determine if there are more results
         var limitSql = $"LIMIT {effectiveLimit + 1}";
 
-        var finalSql = $"SELECT {columns} FROM {tableName} {whereSql} {orderBySql} {limitSql}";
+        // WHERE pushdown optimization: for GroupMintRedeem and GroupWrapUnWrap views,
+        // if a "group" Equals filter is present, rewrite to use the table-returning function
+        // which pushes the filter into the innermost joins (avoiding full table scan).
+        var fromClause = tableName;
+        var functionRewriteApplied = false;
+
+        if (validatedNamespace == "V_CrcV2" && TryGetGroupEqualsValue(query.Filter, out var groupValue))
+        {
+            var functionName = validatedTable switch
+            {
+                "GroupMintRedeem_1h" => "F_CrcV2_GroupMintRedeem_1h",
+                "GroupMintRedeem_1d" => "F_CrcV2_GroupMintRedeem_1d",
+                "GroupWrapUnWrap_1h" => "F_CrcV2_GroupWrapUnWrap_1h",
+                "GroupWrapUnWrap_1d" => "F_CrcV2_GroupWrapUnWrap_1d",
+                _ => null
+            };
+
+            if (functionName != null)
+            {
+                var groupParam = new NpgsqlParameter("fn_group", groupValue);
+                parameters.Add(groupParam);
+                fromClause = $"\"{functionName}\"(@fn_group)";
+                functionRewriteApplied = true;
+
+                // Remove the "group" = X clause from WHERE since the function handles it
+                whereClauses.RemoveAll(c => c.Contains("\"group\"") && c.Contains("@p"));
+                whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
+            }
+        }
+
+        var finalSql = $"SELECT {columns} FROM {fromClause} {whereSql} {orderBySql} {limitSql}";
 
         await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(finalSql, connection);
