@@ -214,7 +214,7 @@ public partial class CirclesRpcModule
                 t.timestamp,
                 a.type as avatar_type
             FROM ""V_CrcV2_TrustRelations"" t
-            LEFT JOIN ""V_CrcV2_Avatars"" a
+            LEFT JOIN ""M_CrcV2_Avatars"" a
                 ON a.avatar = CASE
                     WHEN t.truster = @avatar THEN t.trustee
                     ELSE t.truster

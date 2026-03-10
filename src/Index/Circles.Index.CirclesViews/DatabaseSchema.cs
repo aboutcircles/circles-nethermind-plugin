@@ -181,6 +181,12 @@ public class DatabaseSchema : IDatabaseSchema
                 "idx_CrcV2_CreateVault_group",
                 "CREATE INDEX IF NOT EXISTS \"idx_CrcV2_CreateVault_group\" ON public.\"CrcV2_CreateVault\" (\"group\");"
             },
+            // Trust query optimization: standalone trustee index for OR clause in getAggregatedTrustRelations.
+            // The covering index (truster, trustee, ...) serves truster= lookups but trustee= needs its own index.
+            {
+                "idx_crcv2_trust_trustee",
+                "CREATE INDEX IF NOT EXISTS idx_crcv2_trust_trustee ON public.\"CrcV2_Trust\" (\"trustee\");"
+            },
             // Phase 4: V1 token→owner lookup for getTokenInfo
             {
                 "idx_CrcV1_Signup_token",

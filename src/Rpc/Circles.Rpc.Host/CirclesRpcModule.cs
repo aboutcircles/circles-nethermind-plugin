@@ -2885,7 +2885,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                           ),
                           q.query
                         ) AS rank
-                FROM   ""V_CrcV2_Avatars"" a
+                FROM   ""M_CrcV2_Avatars"" a
                 LEFT JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
                 JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
                 CROSS JOIN q
@@ -2907,7 +2907,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                           ),
                           q.query
                         ) AS rank
-                FROM   ""V_CrcV2_Avatars"" a
+                FROM   ""M_CrcV2_Avatars"" a
                 LEFT JOIN ""CrcV2_RegisterShortName"" rs ON rs.avatar = a.avatar
                 LEFT JOIN ipfs_files f ON f.metadata_digest = a.""cidV0Digest""
                 CROSS JOIN q

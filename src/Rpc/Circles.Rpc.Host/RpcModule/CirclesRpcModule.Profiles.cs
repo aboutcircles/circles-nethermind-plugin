@@ -324,7 +324,7 @@ public partial class CirclesRpcModule
         }
 
         // Get avatar types from V2
-        const string v2TypeSql = @"SELECT avatar, type FROM ""V_CrcV2_Avatars"" WHERE avatar = ANY(@addresses)";
+        const string v2TypeSql = @"SELECT avatar, type FROM ""M_CrcV2_Avatars"" WHERE avatar = ANY(@addresses)";
         await using (var cmd = new NpgsqlCommand(v2TypeSql, connection))
         {
             cmd.Parameters.AddWithValue("addresses", lowerAddresses);
