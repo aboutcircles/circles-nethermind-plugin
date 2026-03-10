@@ -20,7 +20,11 @@ FROM (
         "group"
         ,"id"
         ,SUM("amountLocked") AS "amountLocked"
-        ,floor(SUM(crc_demurrage(1675209600::bigint, "timestamp", "amountLocked"))) AS "demurragedAmountLocked"
+        ,floor(SUM("amountLocked" * POWER(
+            0.9998013320085989574306481700129226782902039065082930593676448873,
+            (EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
+            - ("timestamp" - 1675209600) / 86400
+        ))) AS "demurragedAmountLocked"
     FROM "V_CrcV2_GroupCollateralDiffByToken"
     GROUP BY 1, 2
 )

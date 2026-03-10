@@ -7,6 +7,7 @@ namespace Circles.Pathfinder.Graphs;
 public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
 {
     private volatile CapacityGraphSnapshot? _current;
+    private volatile CapacityGraphSnapshot? _currentWrapped;
     private volatile CachedGroupData? _cachedGroupData;
     private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger);
 
@@ -15,6 +16,9 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
 
     /// <summary>Current snapshot (for metrics). May be null before first load.</summary>
     public CapacityGraphSnapshot? CurrentSnapshot => _current;
+
+    /// <summary>Current wrapped snapshot (for metrics). May be null before first load.</summary>
+    public CapacityGraphSnapshot? CurrentWrappedSnapshot => _currentWrapped;
 
     /* ------------------------------------------------------------------ */
     /* Snapshot                                                           */
@@ -27,6 +31,15 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
         // Volatile write (field is already volatile) — old snapshot becomes
         // eligible for GC once all in-flight requests release their references.
         _current = snap;
+    }
+
+    /// <summary>
+    /// Updates the pre-built wrapped snapshot. Called by the background service
+    /// after building the base snapshot, so withWrap=true requests hit the cache.
+    /// </summary>
+    public void UpdateWrappedSnapshot(CapacityGraphSnapshot snap)
+    {
+        _currentWrapped = snap;
     }
 
     /* ------------------------------------------------------------------ */
@@ -43,6 +56,17 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
 
         if (RequestNeedsFiltering(r))
         {
+            // Fast path: if ONLY withWrap is set (no other filters), use pre-built wrapped snapshot
+            if (IsWrapOnly(r))
+            {
+                var wrappedSnap = _currentWrapped;
+                if (wrappedSnap != null)
+                {
+                    return Task.FromResult(new CapacityGraphHandle(wrappedSnap.Base));
+                }
+                // Fall through to ad-hoc build if wrapped snapshot not yet available
+            }
+
             // build ad-hoc filtered graph, using cached group/consent data to skip DB queries
             var g = _gf.CreateCapacityGraph(balances, trust, r, _cachedGroupData);
             return Task.FromResult(new CapacityGraphHandle(g));
@@ -64,6 +88,23 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
     {
         var gf = new GraphFactory(routerAddress, loadGraph);
         return Task.FromResult(gf.CreateBaseCapacityGraph(balanceGraph, accountTrusts));
+    }
+
+    /// <summary>
+    /// Builds a full graph with withWrap=true applied (all wrapped edges included).
+    /// Used by the background service to pre-build the wrapped snapshot.
+    /// </summary>
+    public static Task<CapacityGraph> BuildFullWrappedGraph(
+        BalanceGraph balanceGraph,
+        IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
+        ILoadGraph loadGraph,
+        string routerAddress,
+        CachedGroupData? cachedGroupData = null)
+    {
+        var gf = new GraphFactory(routerAddress, loadGraph);
+        // Build a filtered graph with only WithWrap=true set
+        var wrapRequest = new FlowRequest { WithWrap = true };
+        return Task.FromResult(gf.CreateCapacityGraph(balanceGraph, accountTrusts, wrapRequest, cachedGroupData));
     }
 
     public static bool RequestNeedsFiltering(FlowRequest r)
@@ -91,6 +132,28 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
                               || hasQuantizedMode;
 
         return needsFiltering;
+    }
+
+    /// <summary>
+    /// Returns true when the ONLY reason a request needs filtering is WithWrap=true.
+    /// These requests can use the pre-built wrapped snapshot instead of rebuilding.
+    /// </summary>
+    public static bool IsWrapOnly(FlowRequest r)
+    {
+        if (r.WithWrap != true)
+            return false;
+
+        bool hasOtherFilters =
+            (r.FromTokens?.Any() ?? false) ||
+            (r.ToTokens?.Any() ?? false) ||
+            (r.ExcludedFromTokens?.Any() ?? false) ||
+            (r.ExcludedToTokens?.Any() ?? false) ||
+            (r.SimulatedBalances?.Any() ?? false) ||
+            (r.SimulatedTrusts?.Any() ?? false) ||
+            (r.SimulatedConsentedAvatars?.Any() ?? false) ||
+            (r.QuantizedMode == true);
+
+        return !hasOtherFilters;
     }
 }
 

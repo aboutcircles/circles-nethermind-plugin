@@ -23,8 +23,8 @@ group_wrap_tokens AS (
 		,SUM(
 			CASE
 				WHEN t1."from"='0x0000000000000000000000000000000000000000' THEN t1.amount
-				ELSE 0 
-			END 
+				ELSE 0
+			END
 		) AS "wrapAmount"
 		,SUM(
 			CASE
@@ -41,45 +41,15 @@ group_wrap_tokens AS (
 		ON t3."avatar" = t2."avatar"
 		AND t3."type" = 'CrcV2_RegisterGroup'
 	GROUP BY 1, 2, 3, 4
-),
-
-min_per_group AS (
-    SELECT
-        "group",
-        "tokenAddress",
-        "tokenType",
-        MIN("timestamp") AS min_timestamp
-    FROM 
-        group_wrap_tokens
-    GROUP BY 1, 2, 3
-),
-
-
-calendar AS (
-    SELECT
-        g."group",
-		g."tokenAddress",
-		g."tokenType",
-        generate_series(
-            g.min_timestamp,
-            date_trunc('day', CURRENT_TIMESTAMP),
-            interval '1 day'
-        ) AS "timestamp"
-    FROM min_per_group g
 )
 
-SELECT 
-	t1."group"
-	,t1."timestamp"
-	,t1."tokenAddress"
-	,t1."tokenType"
-	,COALESCE(t2."wrapAmount", 0) AS "wrapAmount"
-	,COALESCE(t2."unwrapAmount", 0) AS "unwrapAmount"
-	,SUM(COALESCE(t2."wrapAmount", 0) + COALESCE(t2."unwrapAmount", 0)) OVER (PARTITION BY t1."group", t1."tokenAddress" ORDER BY t1."timestamp") AS "wrapSupply"
-FROM 
-	calendar t1
-LEFT JOIN
-	group_wrap_tokens t2
-    ON t2."timestamp" = t1."timestamp"
-	AND t2."group" = t1."group"
-	AND t2."tokenAddress" = t1."tokenAddress"
+SELECT
+	"group"
+	,"timestamp"
+	,"tokenAddress"
+	,"tokenType"
+	,"wrapAmount"
+	,"unwrapAmount"
+	,SUM("wrapAmount" + "unwrapAmount") OVER (PARTITION BY "group", "tokenAddress" ORDER BY "timestamp") AS "wrapSupply"
+FROM
+	group_wrap_tokens

@@ -224,6 +224,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
+        // Pre-build wrapped snapshot so withWrap=true requests hit the cache
+        BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
+
         GraphUpdateMetrics.UpdateDuration.WithLabels("trust").Observe(swTrust.Elapsed.TotalSeconds);
         GraphUpdateMetrics.UpdateDuration.WithLabels("balance").Observe(swBalance.Elapsed.TotalSeconds);
         GraphUpdateMetrics.UpdateMode.Set(-1); // -1 = legacy mode
@@ -443,6 +446,9 @@ public class NetworkStateUpdaterService : BackgroundService
             new Dictionary<int, int>(cap.WrapperToAvatar));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+
+        // Pre-build wrapped snapshot so withWrap=true requests hit the cache
+        BuildAndPublishWrappedSnapshot(incLoadGraph, lastBlock, groupData);
     }
 
     /// <summary>
@@ -662,6 +668,41 @@ public class NetworkStateUpdaterService : BackgroundService
             new Dictionary<int, int>(cap.WrapperToAvatar));
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
+
+        // Pre-build wrapped snapshot so withWrap=true requests hit the cache
+        BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
+    }
+
+    /// <summary>
+    /// Build and publish a pre-built wrapped graph snapshot.
+    /// This avoids rebuilding the full graph for every withWrap=true request.
+    /// </summary>
+    private void BuildAndPublishWrappedSnapshot(ILoadGraph loadGraph, long lastBlock, CachedGroupData? groupData)
+    {
+        try
+        {
+            var balanceGraph = _networkState.BalanceGraph;
+            var accountTrusts = _networkState.AccountTrusts;
+            if (balanceGraph == null || accountTrusts == null)
+            {
+                _log.LogWarning("Cannot build wrapped snapshot: balance graph or trust data not available");
+                return;
+            }
+
+            var sw = Stopwatch.StartNew();
+            var wrappedCap = CapacityGraphPool.BuildFullWrappedGraph(
+                balanceGraph, accountTrusts, loadGraph, _settings.BaseGroupRouter, groupData).Result;
+            sw.Stop();
+
+            _pool.UpdateWrappedSnapshot(new CapacityGraphSnapshot(lastBlock, wrappedCap));
+
+            _log.LogInformation("Pre-built wrapped graph snapshot in {Ms} ms – {Nodes} nodes, {Edges} edges",
+                sw.ElapsedMilliseconds, wrappedCap.Nodes.Count, wrappedCap.Edges.Count);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to build wrapped snapshot — withWrap requests will fall back to ad-hoc build");
+        }
     }
 
     /// <summary>

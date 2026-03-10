@@ -13,9 +13,9 @@ drop view if exists "V_CrcV2_GroupMintRedeem_1h";
 
 create or replace view "V_CrcV2_GroupMintRedeem_1h" ("group", "timestamp", "minted", "burned", "supply", "demurragedMinted", "demurragedBurned", "demurragedSupply") as
 
-WITH 
+WITH
 	mint AS (
-         SELECT 
+         SELECT
 		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
 			,t1."tokenAddress" AS "group"
             ,SUM(t1."value") AS "minted"
@@ -27,7 +27,7 @@ WITH
 		   WHERE t1."from" = '0x0000000000000000000000000000000000000000'::text
 		   GROUP BY 1, 2, 4
         UNION ALL
-         SELECT 
+         SELECT
 		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
 			,t1."tokenAddress" AS "group"
             ,SUM(t1."value") AS "minted"
@@ -38,10 +38,10 @@ WITH
 				 ON t2.avatar = t1."tokenAddress"
 		   WHERE t1."from" = '0x0000000000000000000000000000000000000000'::text
 		   GROUP BY 1, 2, 4
-        ), 
-		
+        ),
+
 	burn AS (
-         SELECT 
+         SELECT
 		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
 			,t1."tokenAddress" AS "group"
             ,0			 AS "minted"
@@ -53,7 +53,7 @@ WITH
 		   WHERE t1."to" = '0x0000000000000000000000000000000000000000'::text
 		   GROUP BY 1, 2, 3
         UNION ALL
-         SELECT 
+         SELECT
 		 	date_trunc('hour',TO_TIMESTAMP(t1."timestamp"))  AS "timestamp"
 			,t1."tokenAddress" AS "group"
             ,0			 AS "minted"
@@ -78,30 +78,8 @@ group_actions AS (
 		SELECT * FROM burn
 	)
 	GROUP BY 1, 2
-	
-),
 
-min_max_per_group AS (
-    SELECT
-        "group",
-        MIN("timestamp") AS min_timestamp
-    FROM 
-        group_actions
-    GROUP BY 1
-),
-
-
-calendar AS (
-    SELECT
-        g."group",
-        generate_series(
-            g.min_timestamp,
-            date_trunc('hour', CURRENT_TIMESTAMP),
-            interval '1 hour'
-        ) AS "timestamp"
-    FROM min_max_per_group g
 )
-
 
 SELECT
 	"group"
@@ -109,20 +87,25 @@ SELECT
 	,"minted"
 	,"burned"
 	,"supply"
-	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "minted")) AS "demurragedMinted"
-	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "burned")) AS "demurragedBurned"
-	,floor(crc_demurrage(1675209600::bigint, CAST(EXTRACT(EPOCH FROM "timestamp") AS BIGINT), "supply")) AS "demurragedSupply"
+	,floor("minted" * POWER(0.9998013320085989574306481700129226782902039065082930593676448873,
+		(EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
+		- (EXTRACT(EPOCH FROM "timestamp")::bigint - 1675209600) / 86400
+	)) AS "demurragedMinted"
+	,floor("burned" * POWER(0.9998013320085989574306481700129226782902039065082930593676448873,
+		(EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
+		- (EXTRACT(EPOCH FROM "timestamp")::bigint - 1675209600) / 86400
+	)) AS "demurragedBurned"
+	,floor("supply" * POWER(0.9998013320085989574306481700129226782902039065082930593676448873,
+		(EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
+		- (EXTRACT(EPOCH FROM "timestamp")::bigint - 1675209600) / 86400
+	)) AS "demurragedSupply"
 FROM (
-    SELECT 
-        t1."group"
-        ,t1."timestamp"
-        ,COALESCE(t2."minted", 0) AS "minted"
-        ,COALESCE(t2."burned", 0) AS "burned"
-        ,SUM(COALESCE(t2."minted", 0) + COALESCE(t2."burned", 0)) OVER (PARTITION BY t1."group" ORDER BY t1."timestamp") AS "supply"
-    FROM 
-        calendar t1
-    LEFT JOIN
-        group_actions t2
-        ON t2."group" = t1."group"
-        AND t2."timestamp" = t1."timestamp"
+    SELECT
+        "group"
+        ,"timestamp"
+        ,"minted"
+        ,"burned"
+        ,SUM("minted" + "burned") OVER (PARTITION BY "group" ORDER BY "timestamp") AS "supply"
+    FROM
+        group_actions
 )
