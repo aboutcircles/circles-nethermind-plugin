@@ -7,6 +7,7 @@ public class CompositeDatabaseSchema : IDatabaseSchema
 
     public IDictionary<(string Namespace, string Table), EventSchema> Tables { get; }
     public IDictionary<string, string> Indexes { get; }
+    public IReadOnlyList<string> FunctionSql { get; }
 
     public CompositeDatabaseSchema(IDatabaseSchema[] components)
     {
@@ -27,6 +28,10 @@ public class CompositeDatabaseSchema : IDatabaseSchema
                 Indexes.Add(kvp.Key, kvp.Value);
             }
         }
+
+        FunctionSql = components
+            .SelectMany(c => c.FunctionSql)
+            .ToList();
     }
 }
 

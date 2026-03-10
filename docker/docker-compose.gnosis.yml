@@ -304,12 +304,14 @@ services:
       retries: 30
       start_period: 1s
 
-  # Refreshes V_TrustScores_Current materialized view every 60 minutes
-  # Uses CONCURRENTLY to avoid blocking reads during refresh (~2-3 min)
-  # Fallback to blocking refresh for initial population (WITH NO DATA state)
-  trust-scores-refresh:
-    container_name: trust-scores-refresh
-    image: postgres:16-alpine
+  # Two-tier materialized view refresh cron:
+  #   Fast tier (every 5 min): balances, avatars, groups, receive counts
+  #   Slow tier (every 60 min): trust scores (expensive)
+  # Uses CONCURRENTLY to avoid blocking reads during refresh.
+  # Fallback to blocking refresh for initial population (WITH NO DATA state).
+  matview-refresh:
+    container_name: matview-refresh
+    image: postgres:17-alpine
     restart: unless-stopped
     networks:
       - circles-gnosis
@@ -324,17 +326,30 @@ services:
       - /bin/sh
       - -c
       - |
-        echo "Trust scores refresh cron started"
+        echo "Materialized view refresh cron started (fast=5min, slow=60min)"
         sleep 60
         while true; do
-          echo "[$(date)] Refreshing V_TrustScores_Current materialized view..."
+          # Fast tier — 12 iterations x 300s = 3600s (1 hour)
+          for i in $$(seq 1 12); do
+            for VIEW in M_CrcV2_BalancesByAccountAndToken M_CrcV2_Avatars M_CrcV2_ReceiveCount M_CrcV2_Groups; do
+              echo "[$(date)] [fast] Refreshing $${VIEW}..."
+              psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
+                -c "REFRESH MATERIALIZED VIEW CONCURRENTLY \"$${VIEW}\";" 2>&1 \
+                || psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
+                -c "REFRESH MATERIALIZED VIEW \"$${VIEW}\";" 2>&1 \
+                || echo "[$(date)] [fast] Refresh failed for $${VIEW} (view may not exist yet)"
+            done
+            echo "[$(date)] [fast] Cycle $${i}/12 complete, sleeping 5 minutes..."
+            sleep 300
+          done
+          # Slow tier — once per outer loop (every 60 min)
+          echo "[$(date)] [slow] Refreshing V_TrustScores_Current..."
           psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
             -c "REFRESH MATERIALIZED VIEW CONCURRENTLY \"V_TrustScores_Current\";" 2>&1 \
             || psql -h postgres-gnosis -U $${POSTGRES_USER} -d postgres \
             -c "REFRESH MATERIALIZED VIEW \"V_TrustScores_Current\";" 2>&1 \
-            || echo "[$(date)] Refresh failed (view may not exist yet)"
-          echo "[$(date)] Refresh complete, sleeping for 60 minutes..."
-          sleep 3600
+            || echo "[$(date)] [slow] Refresh failed for V_TrustScores_Current"
+          echo "[$(date)] [slow] Trust scores refresh complete"
         done
     healthcheck:
       test: ["CMD", "pgrep", "-f", "sleep"]

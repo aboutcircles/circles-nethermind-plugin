@@ -123,4 +123,4 @@ WITH NO DATA;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_trust_current_avatar ON "V_TrustScores_Current"(avatar);
 CREATE INDEX IF NOT EXISTS idx_trust_current_score ON "V_TrustScores_Current"(trust_score);
 CREATE INDEX IF NOT EXISTS idx_trust_current_level ON "V_TrustScores_Current"(trust_level);
-CREATE INDEX IF NOT EXISTS idx_trust_current_computed_at ON "V_TrustScores_Current"(computed_at DESC)
+CREATE INDEX IF NOT EXISTS idx_trust_current_computed_at ON "V_TrustScores_Current"(computed_at DESC);
