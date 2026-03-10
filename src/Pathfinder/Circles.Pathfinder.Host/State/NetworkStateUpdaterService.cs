@@ -229,8 +229,9 @@ public class NetworkStateUpdaterService : BackgroundService
         // Pre-build wrapped snapshot so withWrap=true requests hit the cache
         BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
 
-        // Refresh materialized views periodically
-        RefreshMaterializedViewsIfDue(lastBlock);
+        // Refresh materialized views periodically (non-fatal if DB unavailable)
+        try { RefreshMaterializedViewsIfDue(lastBlock); }
+        catch (Exception ex) { _log.LogWarning(ex, "Materialized view refresh failed"); }
 
         GraphUpdateMetrics.UpdateDuration.WithLabels("trust").Observe(swTrust.Elapsed.TotalSeconds);
         GraphUpdateMetrics.UpdateDuration.WithLabels("balance").Observe(swBalance.Elapsed.TotalSeconds);
@@ -455,8 +456,9 @@ public class NetworkStateUpdaterService : BackgroundService
         // Pre-build wrapped snapshot so withWrap=true requests hit the cache
         BuildAndPublishWrappedSnapshot(incLoadGraph, lastBlock, groupData);
 
-        // Refresh materialized views periodically
-        RefreshMaterializedViewsIfDue(lastBlock);
+        // Refresh materialized views periodically (non-fatal if DB unavailable)
+        try { RefreshMaterializedViewsIfDue(lastBlock); }
+        catch (Exception ex) { _log.LogWarning(ex, "Materialized view refresh failed"); }
     }
 
     /// <summary>
@@ -680,8 +682,9 @@ public class NetworkStateUpdaterService : BackgroundService
         // Pre-build wrapped snapshot so withWrap=true requests hit the cache
         BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
 
-        // Refresh materialized views periodically
-        RefreshMaterializedViewsIfDue(lastBlock);
+        // Refresh materialized views periodically (non-fatal if DB unavailable)
+        try { RefreshMaterializedViewsIfDue(lastBlock); }
+        catch (Exception ex) { _log.LogWarning(ex, "Materialized view refresh failed"); }
     }
 
     /// <summary>

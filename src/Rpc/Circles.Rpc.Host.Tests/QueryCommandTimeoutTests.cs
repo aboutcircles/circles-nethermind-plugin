@@ -41,8 +41,8 @@ public class QueryCommandTimeoutTests
         var source = File.ReadAllText(sourceFile);
 
         // The Query method creates NpgsqlCommand with finalSql. Verify CommandTimeout is set.
-        // Look for the pattern: new NpgsqlCommand(finalSql, ...) followed by CommandTimeout
-        var queryMethodIndex = source.IndexOf("var finalSql = $\"SELECT {columns} FROM {tableName}",
+        // Look for the pattern: var finalSql = $"SELECT {columns} FROM {fromClause} ..."
+        var queryMethodIndex = source.IndexOf("var finalSql = $\"SELECT {columns} FROM {fromClause}",
             StringComparison.Ordinal);
         Assert.That(queryMethodIndex, Is.GreaterThan(0),
             "Could not find the Query method's finalSql construction");
