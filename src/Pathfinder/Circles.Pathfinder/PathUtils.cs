@@ -4,23 +4,27 @@ namespace Circles.Pathfinder;
 
 internal static class PathUtils
 {
+    /// <summary>
+    /// Decomposes a solved flow into individual source-to-sink paths.
+    /// Uses DFS with current-arc optimization: each edge is visited at most once
+    /// across all path extractions, giving O(V + E) total complexity.
+    /// </summary>
     public static List<List<SimpleEdge>> ExtractFlowPaths(
         IReadOnlyList<SimpleEdge> edges,
         int source,
         int sink)
     {
-        /* --------------------------------------------------------------------
-         * Build adjacency: map  node → List<SimpleEdge> that still have flow.
-         * ------------------------------------------------------------------ */
+        // Source == sink: no valid path exists (would be a zero-length cycle)
+        if (source == sink)
+            return new List<List<SimpleEdge>>();
+
+        // Build adjacency: node → list of edges with positive flow
         var adjacency = new Dictionary<int, List<SimpleEdge>>(capacity: Math.Max(4, edges.Count));
 
         foreach (var edge in edges)
         {
-            bool edgeHasResidualFlow = edge.Flow > 0;
-            if (!edgeHasResidualFlow)
-            {
+            if (edge.Flow <= 0)
                 continue;
-            }
 
             if (!adjacency.TryGetValue(edge.From, out var list))
             {
@@ -33,124 +37,138 @@ internal static class PathUtils
 
         var result = new List<List<SimpleEdge>>();
 
-        // Reusable BFS buffers — cleared between iterations to avoid GC pressure
-        var parent = new Dictionary<int, SimpleEdge>();
-        var queue = new Queue<int>();
-        var seen = new HashSet<int>();
+        // Current-arc pointers: track which edge index to try next per node.
+        // This avoids re-scanning already-depleted edges on subsequent iterations.
+        var currentArc = new Dictionary<int, int>();
 
-        /* --------------------------------------------------------------------
-         * Repeatedly peel one augmenting path at a time (classic Edmonds-Karp).
-         * ------------------------------------------------------------------ */
+        // DFS stack and cycle detection, reused between iterations
+        var pathStack = new List<SimpleEdge>();
+        var onStack = new HashSet<int>();
+
         while (true)
         {
-            parent.Clear();
-            queue.Clear();
-            seen.Clear();
-            seen.Add(source);
-            bool foundSink = false;
+            pathStack.Clear();
+            onStack.Clear();
+            onStack.Add(source);
 
-            queue.Enqueue(source);
+            // DFS from source, following edges with remaining flow
+            bool foundSink = DfsToSink(source, sink, adjacency, currentArc, pathStack, onStack);
 
-            /* ---------- BFS restricted to positive-flow arcs ---------------- */
-            while (queue.Count > 0 && !foundSink)
-            {
-                int current = queue.Dequeue();
-
-                bool hasOutgoing = adjacency.TryGetValue(current, out var outgoing);
-                if (!hasOutgoing)
-                {
-                    continue;
-                }
-
-                for (int i = 0; i < outgoing?.Count; i++)
-                {
-                    var edge = outgoing![i];
-
-                    bool edgeHasResidual = edge.Flow > 0;
-                    if (!edgeHasResidual)
-                    {
-                        continue;
-                    }
-
-                    bool newlySeen = seen.Add(edge.To);
-                    if (!newlySeen)
-                    {
-                        continue;
-                    }
-
-                    parent[edge.To] = edge;
-
-                    bool reachedSink = edge.To == sink;
-                    if (reachedSink)
-                    {
-                        foundSink = true;
-                        break;
-                    }
-
-                    queue.Enqueue(edge.To);
-                }
-            }
-
-            bool noPathFound = !foundSink;
-            if (noPathFound)
-            {
+            if (!foundSink)
                 break;
-            } // algorithm terminates
 
-            /* ----------------------------------------------------------------
-             * Walk back sink → source to collect edges in this path and
-             * find the bottleneck capacity (minFlow).
-             * ---------------------------------------------------------------- */
-            var peel = new List<SimpleEdge>();
+            // Find bottleneck flow along the path
             long minFlow = long.MaxValue;
-            int node = sink;
-
-            while (node != source)
+            foreach (var edge in pathStack)
             {
-                var edge = parent[node];
-                peel.Add(edge);
-                minFlow = Math.Min(minFlow, edge.Flow);
-                node = edge.From;
+                if (edge.Flow < minFlow)
+                    minFlow = edge.Flow;
             }
 
-            peel.Reverse(); // now in source → sink order
-
-            /* ----------------------------------------------------------------
-             * Store an immutable copy of the path with the exact flow value.
-             * ---------------------------------------------------------------- */
-            var pathCopy = new List<SimpleEdge>(peel.Count);
-            foreach (var edge in peel)
+            // Store immutable copy with exact flow value
+            var pathCopy = new List<SimpleEdge>(pathStack.Count);
+            foreach (var edge in pathStack)
             {
-                var copy = edge with { Flow = minFlow };
-                pathCopy.Add(copy);
+                pathCopy.Add(edge with { Flow = minFlow });
             }
-
             result.Add(pathCopy);
 
-            // Peel the bottleneck amount off; prune depleted edges from adjacency.
-            foreach (var edge in peel)
+            // Peel bottleneck flow; reset current-arc for nodes whose edge became depleted
+            foreach (var edge in pathStack)
             {
                 edge.Flow -= minFlow;
 
-                bool depleted = edge.Flow <= 0;
-                if (!depleted)
-                {
-                    continue;
-                }
-
-                if (adjacency.TryGetValue(edge.From, out var list))
+                if (edge.Flow <= 0 && adjacency.TryGetValue(edge.From, out var list))
                 {
                     list.Remove(edge);
-                    bool listEmpty = list.Count == 0;
-                    if (listEmpty)
+                    if (list.Count == 0)
                     {
                         adjacency.Remove(edge.From);
+                        currentArc.Remove(edge.From);
+                    }
+                    else
+                    {
+                        // Reset arc pointer so we re-check from the start of the (now shorter) list
+                        // This is safe because we only removed one element
+                        var arcIdx = currentArc.GetValueOrDefault(edge.From, 0);
+                        if (arcIdx >= list.Count)
+                            currentArc[edge.From] = 0;
                     }
                 }
             }
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Iterative DFS from <paramref name="node"/> to <paramref name="sink"/> using current-arc pointers.
+    /// Returns true if sink was reached; <paramref name="pathStack"/> contains the path (source→sink order).
+    /// </summary>
+    private static bool DfsToSink(
+        int node,
+        int sink,
+        Dictionary<int, List<SimpleEdge>> adjacency,
+        Dictionary<int, int> currentArc,
+        List<SimpleEdge> pathStack,
+        HashSet<int> onStack)
+    {
+        // Iterative DFS using the pathStack itself as the "call stack"
+        while (true)
+        {
+            if (node == sink)
+                return true;
+
+            if (!adjacency.TryGetValue(node, out var outgoing))
+            {
+                // Dead end — backtrack
+                if (pathStack.Count == 0)
+                    return false;
+
+                onStack.Remove(node);
+                var lastEdge = pathStack[^1];
+                pathStack.RemoveAt(pathStack.Count - 1);
+                // Advance arc pointer past the failed edge
+                currentArc[lastEdge.From] = currentArc.GetValueOrDefault(lastEdge.From, 0) + 1;
+                node = lastEdge.From;
+                continue;
+            }
+
+            int arcIdx = currentArc.GetValueOrDefault(node, 0);
+            bool advanced = false;
+
+            while (arcIdx < outgoing.Count)
+            {
+                var edge = outgoing[arcIdx];
+
+                if (edge.Flow > 0 && onStack.Add(edge.To))
+                {
+                    // Found a usable edge — push and recurse
+                    currentArc[node] = arcIdx;
+                    pathStack.Add(edge);
+                    node = edge.To;
+                    advanced = true;
+                    break;
+                }
+
+                arcIdx++;
+            }
+
+            if (!advanced)
+            {
+                // All edges from this node exhausted — backtrack
+                currentArc[node] = arcIdx; // Mark as exhausted
+
+                if (pathStack.Count == 0)
+                    return false;
+
+                onStack.Remove(node);
+                var lastEdge = pathStack[^1];
+                pathStack.RemoveAt(pathStack.Count - 1);
+                currentArc[lastEdge.From] = currentArc.GetValueOrDefault(lastEdge.From, 0) + 1;
+                node = lastEdge.From;
+            }
+        }
     }
 
     /// <summary>

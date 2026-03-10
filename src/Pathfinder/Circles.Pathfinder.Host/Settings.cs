@@ -61,4 +61,34 @@ public class Settings : Pathfinder.Settings
     public string RouterAddress =>
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    /// <summary>
+    /// When true, the pathfinder refreshes materialized views (BalancesByAccountAndToken, TrustScores)
+    /// periodically during full refresh cycles. Default: true.
+    /// </summary>
+    public bool MaterializedViewRefreshEnabled =>
+        Environment.GetEnvironmentVariable("MATVIEW_REFRESH_ENABLED")?.ToLowerInvariant() switch
+        {
+            "false" or "0" => false,
+            _ => true
+        };
+
+    /// <summary>
+    /// Minimum number of blocks between materialized view refreshes.
+    /// Default: 720 (~1 hour on Gnosis with 5s blocks).
+    /// Set to 0 to refresh on every full refresh cycle.
+    /// </summary>
+    public int MaterializedViewRefreshIntervalBlocks =>
+        int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_INTERVAL_BLOCKS"), out var val)
+            ? val
+            : 720;
+
+    /// <summary>
+    /// Database connection string for materialized view refreshes.
+    /// Uses the same DB as the indexer (needs write access for REFRESH MATERIALIZED VIEW).
+    /// Falls back to IndexReadonlyDbConnectionString if not set.
+    /// </summary>
+    public string MaterializedViewDbConnectionString =>
+        Environment.GetEnvironmentVariable("MATVIEW_DB_CONNECTION_STRING")
+        ?? IndexReadonlyDbConnectionString;
 }

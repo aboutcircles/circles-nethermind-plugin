@@ -190,4 +190,29 @@ internal static class GraphUpdateMetrics
     public static readonly Gauge DbPoolMaxConnections = Metrics.CreateGauge(
         "circles_db_pool_max_connections",
         "Maximum pool size configured for the Npgsql pool");
+
+    // ─── Materialized view refresh metrics ──────────────────────────────
+
+    public static readonly Histogram MatViewRefreshDuration = Metrics.CreateHistogram(
+        "circles_matview_refresh_duration_seconds",
+        "Materialized view refresh duration in seconds",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "view" },
+            Buckets = Histogram.ExponentialBuckets(0.1, 2, 12) // 0.1s to ~410s
+        });
+
+    public static readonly Counter MatViewRefreshTotal = Metrics.CreateCounter(
+        "circles_matview_refresh_total",
+        "Total materialized view refreshes",
+        new CounterConfiguration { LabelNames = new[] { "view" } });
+
+    public static readonly Counter MatViewRefreshErrors = Metrics.CreateCounter(
+        "circles_matview_refresh_errors_total",
+        "Total materialized view refresh errors",
+        new CounterConfiguration { LabelNames = new[] { "view" } });
+
+    public static readonly Gauge LastMatViewRefreshBlock = Metrics.CreateGauge(
+        "circles_matview_last_refresh_block",
+        "Block number of last materialized view refresh");
 }
