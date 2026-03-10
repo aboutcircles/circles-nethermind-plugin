@@ -313,7 +313,7 @@ public partial class CirclesRpcModule
         }
 
         // 2. Check for V2 Avatar/Group token
-        const string v2AvatarSql = @"SELECT avatar, type FROM ""M_CrcV2_Avatars"" WHERE avatar = @tokenAddress LIMIT 1";
+        const string v2AvatarSql = @"SELECT avatar, type FROM ""V_CrcV2_Avatars"" WHERE avatar = @tokenAddress LIMIT 1";
         await using (var cmd = new NpgsqlCommand(v2AvatarSql, connection))
         {
             cmd.Parameters.AddWithValue("tokenAddress", lowerTokenAddress);
