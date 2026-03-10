@@ -413,12 +413,14 @@ public class KpiRepository
     public async Task<long> GetAccountsWithoutIncomingTrustAsync(CancellationToken ct = default)
     {
         // Accounts that no one else trusts (excluding self-trust)
+        // LEFT JOIN instead of NOT IN for hash join optimization
         const string sql = """
             SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
-            WHERE h."avatar" NOT IN (
+            LEFT JOIN (
                 SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
                 WHERE "truster" != "trustee"
-            )
+            ) t ON h."avatar" = t."trustee"
+            WHERE t."trustee" IS NULL
             """;
 
         try
@@ -457,14 +459,16 @@ public class KpiRepository
     public async Task<long> GetMintAndDrainAccountsAsync(TimeSpan window, CancellationToken ct = default)
     {
         // Accounts that minted in the window but have zero balance now
+        // LEFT JOIN instead of NOT IN for hash join optimization
         var sql = $"""
             SELECT COUNT(DISTINCT pm."human")
             FROM "CrcV2_PersonalMint" pm
-            WHERE pm."timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
-            AND pm."human" NOT IN (
+            LEFT JOIN (
                 SELECT DISTINCT "account" FROM "V_CrcV2_BalancesByAccountAndToken"
                 WHERE "totalBalance" > 0
-            )
+            ) b ON pm."human" = b."account"
+            WHERE pm."timestamp" > EXTRACT(EPOCH FROM NOW()) - {(int)window.TotalSeconds}
+            AND b."account" IS NULL
             """;
 
         try
@@ -506,18 +510,20 @@ public class KpiRepository
     {
         // Accounts matching multiple sybil indicators:
         // - No profile AND no incoming trust AND minted
+        // LEFT JOIN instead of NOT IN/IN for hash join optimization
         const string sql = """
             SELECT COUNT(DISTINCT h."avatar")
             FROM "CrcV2_RegisterHuman" h
             LEFT JOIN "CrcV2_UpdateMetadataDigest" m ON h."avatar" = m."avatar"
-            WHERE m."avatar" IS NULL
-            AND h."avatar" NOT IN (
+            LEFT JOIN (
                 SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
                 WHERE "truster" != "trustee"
-            )
-            AND h."avatar" IN (
+            ) t ON h."avatar" = t."trustee"
+            INNER JOIN (
                 SELECT DISTINCT "human" FROM "CrcV2_PersonalMint"
-            )
+            ) p ON h."avatar" = p."human"
+            WHERE m."avatar" IS NULL
+            AND t."trustee" IS NULL
             """;
 
         try
@@ -695,11 +701,12 @@ public class KpiRepository
                 SELECT vault as address FROM "CrcV2_CreateVault"
             ),
             balances AS (
-                SELECT SUM(("demurragedTotalBalance"::float8) / 1e18) as balance
-                FROM "V_CrcV2_BalancesByAccountAndToken"
-                WHERE "demurragedTotalBalance" > 0
-                AND "account" NOT IN (SELECT address FROM infrastructure_addresses)
-                GROUP BY "account"
+                SELECT SUM((b."demurragedTotalBalance"::float8) / 1e18) as balance
+                FROM "V_CrcV2_BalancesByAccountAndToken" b
+                LEFT JOIN infrastructure_addresses ia ON b."account" = ia.address
+                WHERE b."demurragedTotalBalance" > 0
+                AND ia.address IS NULL
+                GROUP BY b."account"
                 ORDER BY balance
             ),
             indexed AS (
@@ -1262,10 +1269,11 @@ public class KpiRepository
             ),
             economic_actors_total AS (
                 SELECT
-                    COALESCE(SUM(balance), 0) as total,
+                    COALESCE(SUM(ab.balance), 0) as total,
                     COUNT(*) as addr_count
-                FROM all_balances
-                WHERE "account" NOT IN (SELECT address FROM infrastructure_addresses)
+                FROM all_balances ab
+                LEFT JOIN infrastructure_addresses ia ON ab."account" = ia.address
+                WHERE ia.address IS NULL
             ),
             grand_total AS (
                 SELECT COALESCE(SUM(balance), 0) as total FROM all_balances
@@ -1699,18 +1707,22 @@ public class KpiRepository
             )
             SELECT
                 (SELECT COUNT(*) FROM profile_status WHERE NOT has_profile) as no_profile,
-                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h WHERE h."avatar" NOT IN (SELECT avatar FROM trust_status)) as no_incoming_trust,
-                (SELECT COUNT(DISTINCT p."avatar")
-                 FROM profile_status p
-                 WHERE NOT p.has_profile
-                 AND p."avatar" NOT IN (SELECT avatar FROM trust_status)
-                 AND p."avatar" IN (SELECT avatar FROM mint_status)) as suspicious,
-                (SELECT COUNT(DISTINCT p."avatar")
-                 FROM profile_status p
-                 WHERE p.has_profile
-                 AND p."avatar" IN (SELECT avatar FROM trust_status)) as organic,
                 (SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
-                 WHERE h."avatar" NOT IN (SELECT avatar FROM all_trust_participants)) as isolated
+                 LEFT JOIN trust_status ts ON h."avatar" = ts.avatar
+                 WHERE ts.avatar IS NULL) as no_incoming_trust,
+                (SELECT COUNT(DISTINCT p."avatar")
+                 FROM profile_status p
+                 LEFT JOIN trust_status ts ON p."avatar" = ts.avatar
+                 INNER JOIN mint_status ms ON p."avatar" = ms.avatar
+                 WHERE NOT p.has_profile
+                 AND ts.avatar IS NULL) as suspicious,
+                (SELECT COUNT(DISTINCT p."avatar")
+                 FROM profile_status p
+                 INNER JOIN trust_status ts ON p."avatar" = ts.avatar
+                 WHERE p.has_profile) as organic,
+                (SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
+                 LEFT JOIN all_trust_participants atp ON h."avatar" = atp.avatar
+                 WHERE atp.avatar IS NULL) as isolated
             """;
 
         try
@@ -1761,13 +1773,16 @@ public class KpiRepository
     public async Task<long> GetIsolatedAccountsAsync(CancellationToken ct = default)
     {
         // Accounts with zero trust connections (neither trusting nor trusted)
+        // LEFT JOIN instead of NOT IN for hash join optimization
         const string sql = """
-            SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
-            WHERE h."avatar" NOT IN (
-                SELECT DISTINCT "truster" FROM "V_CrcV2_TrustRelations"
+            WITH all_trust_participants AS (
+                SELECT DISTINCT "truster" as avatar FROM "V_CrcV2_TrustRelations"
                 UNION
-                SELECT DISTINCT "trustee" FROM "V_CrcV2_TrustRelations"
+                SELECT DISTINCT "trustee" as avatar FROM "V_CrcV2_TrustRelations"
             )
+            SELECT COUNT(*) FROM "CrcV2_RegisterHuman" h
+            LEFT JOIN all_trust_participants atp ON h."avatar" = atp.avatar
+            WHERE atp.avatar IS NULL
             """;
 
         try
