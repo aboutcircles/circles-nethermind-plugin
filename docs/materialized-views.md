@@ -109,11 +109,40 @@ SELECT 'M_CrcV2_Avatars', count(*) FROM "M_CrcV2_Avatars";
 
 ### Initial Population
 
-Matviews are created with `WITH NO DATA` (except `V_TrustScores_Current` and `M_CrcV2_BalancesByAccountAndToken`). On first refresh, `REFRESH CONCURRENTLY` will fail with error `55000` — both the Pathfinder and Docker cron automatically fall back to a blocking `REFRESH` for initial population.
+All matviews are populated on creation (no `WITH NO DATA`). This means migrations block briefly while the initial query runs, but eliminates the `55000` error fallback dance on first refresh. The `55000` catch in `NetworkStateUpdaterService` and the Docker cron is retained as a safety net for manual matview recreation.
 
 ### Monitoring
 
-Watch for:
+#### Prometheus Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `circles_matview_refresh_duration_seconds` | Histogram | `view` | Time taken per matview refresh |
+| `circles_matview_refresh_total` | Counter | `view` | Total successful refreshes |
+| `circles_matview_refresh_errors_total` | Counter | `view` | Total refresh failures |
+| `circles_matview_last_refresh_block` | Gauge | `tier` | Block number of last refresh (fast/slow) |
+
+#### Alertmanager Rules
+
+Defined in `aboutcircles-infrastructure/observability/prometheus/alerts/prometheus-alerts-matview.yml`:
+
+| Alert | Condition | Severity |
+|-------|-----------|----------|
+| `MatviewRefreshFailing` | Error rate > 0 for 15min | warning |
+| `MatviewRefreshStale` | No fast-tier refresh for 30min | critical |
+| `MatviewTrustScoresStale` | No slow-tier refresh for 3h | warning |
+| `MatviewRefreshSlow` | p95 refresh > 120s | warning |
+
+#### Grafana Dashboard
+
+Panel "45 Materialized Views" at `/grafana/d/circles-matviews` in the pathfinder dashboard group. Shows:
+- Refresh duration per view (time series)
+- Refresh errors per view (stat)
+- Last refresh block per tier (stat with thresholds)
+- Refresh success rate (gauge)
+
+#### What to Watch
+
 - `circles_matview_refresh_errors_total` increasing → check Postgres logs
 - `circles_matview_last_refresh_block{tier="fast"}` not advancing → Pathfinder may be stuck
 - `ispopulated = false` in `pg_matviews` → matview never populated, needs manual refresh
