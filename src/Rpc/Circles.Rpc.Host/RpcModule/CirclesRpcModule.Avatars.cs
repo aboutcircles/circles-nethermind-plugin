@@ -138,7 +138,7 @@ public partial class CirclesRpcModule
         var v2AvatarMap = new Dictionary<string, AvatarInfo>();
         const string v2Sql = @"
             SELECT a.avatar, a.""timestamp"", a.name, a.type, rn.""metadataDigest"", rsn.""shortName"", a.""cidV0Digest""
-            FROM ""V_CrcV2_Avatars"" a
+            FROM ""M_CrcV2_Avatars"" a
             LEFT JOIN ""CrcV2_UpdateMetadataDigest"" rn ON rn.avatar = a.avatar
             LEFT JOIN ""CrcV2_RegisterShortName"" rsn ON rsn.avatar = a.avatar
             WHERE a.avatar = ANY(@addresses)";
