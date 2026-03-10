@@ -111,22 +111,20 @@ jobs:
           # This correctly handles: single commits, multi-commit pushes, and PR merges
           base: ${{ github.event.before }}
           filters: |
-            # GNOSIS: Index, Pathfinder, Rpc, Cache services
+            # GNOSIS: Index, Pathfinder, Rpc, Cache, Metrics services
+            # Note: metrics-exporter moved to gnosis stack (PR #58 infra, PR #226 plugin)
             gnosis_src:
               - 'src/Index/**'
               - 'src/Pathfinder/**'
               - 'src/Rpc/**'
               - 'src/Cache/**'
+              - 'src/Metrics/**'
             gnosis_docker:
               - 'docker/docker-compose.gnosis.yml'
               - 'docker/Index.Dockerfile'
               - 'docker/pathfinder-host.Dockerfile'
               - 'docker/rpc-host.Dockerfile'
               - 'docker/cache-service.Dockerfile'
-            # OBSERVABILITY: Metrics exporter source only (configs moved to infrastructure repo)
-            observability_src:
-              - 'src/Metrics/**'
-            observability_docker:
               - 'docker/metrics-exporter.Dockerfile'
             # GRAFANA: Dashboards now managed in infrastructure repo
             # grafana path filter removed - dashboards deployed from infrastructure repo
@@ -146,9 +144,6 @@ jobs:
           # Path filter results
           FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
-          FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
-          FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
-          # Note: Grafana dashboards are now managed in infrastructure repo
         run: |
           # Handle workflow_dispatch (manual trigger from UI)
           if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
@@ -166,34 +161,20 @@ jobs:
             OBS="false"
             GRAFANA="false"
 
-            # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache + docker files
+            # GNOSIS: src/Index, src/Pathfinder, src/Rpc, src/Cache, src/Metrics + docker files
+            # metrics-exporter is part of gnosis stack since PR #58/226
             if [ "$FILTER_GNOSIS_SRC" == "true" ]; then
               GNOSIS="true"
-              echo "::notice::Gnosis source (Index/Pathfinder/Rpc/Cache) changed - will deploy gnosis"
+              echo "::notice::Gnosis source changed - will deploy gnosis"
             fi
             if [ "$FILTER_GNOSIS_DOCKER" == "true" ]; then
               GNOSIS="true"
               echo "::notice::Gnosis docker files changed - will deploy gnosis"
             fi
-
-            # OBSERVABILITY: src/Metrics + docker/metrics-exporter.Dockerfile only
-            # Note: Observability configs and Grafana dashboards are now in infrastructure repo
-            if [ "$FILTER_OBS_SRC" == "true" ]; then
-              OBS="true"
-              echo "::notice::Metrics source changed - will deploy observability"
-            fi
-            if [ "$FILTER_OBS_DOCKER" == "true" ]; then
-              OBS="true"
-              echo "::notice::Metrics exporter Dockerfile changed - will deploy observability"
-            fi
-
-            # GRAFANA: Dashboards now managed in infrastructure repo
-            # Manual trigger via workflow_dispatch still available if needed
           fi
 
           # Debug: log resolved values for diagnosability
           echo "::debug::EVENT_NAME=$EVENT_NAME GNOSIS=$GNOSIS OBS=$OBS GRAFANA=$GRAFANA"
-          echo "::debug::FILTER_GNOSIS_SRC=$FILTER_GNOSIS_SRC FILTER_OBS_SRC=$FILTER_OBS_SRC"
 
           echo "deploy_gnosis=$GNOSIS" >> $GITHUB_OUTPUT
           echo "deploy_observability=$OBS" >> $GITHUB_OUTPUT
@@ -211,8 +192,6 @@ jobs:
         env:
           FILTER_GNOSIS_SRC: ${{ steps.filter.outputs.gnosis_src }}
           FILTER_GNOSIS_DOCKER: ${{ steps.filter.outputs.gnosis_docker }}
-          FILTER_OBS_SRC: ${{ steps.filter.outputs.observability_src }}
-          FILTER_OBS_DOCKER: ${{ steps.filter.outputs.observability_docker }}
           DEPLOY_GNOSIS: ${{ steps.set-flags.outputs.deploy_gnosis }}
           DEPLOY_OBS: ${{ steps.set-flags.outputs.deploy_observability }}
           DEPLOY_GRAFANA: ${{ steps.set-flags.outputs.deploy_grafana }}
@@ -221,9 +200,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Source Changed | Docker Changed | Will Deploy |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|----------------|----------------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Gnosis (Index/Pathfinder/Rpc/Cache) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Observability (Metrics Exporter) | $FILTER_OBS_SRC | $FILTER_OBS_DOCKER | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
-          echo "| Grafana | (managed in infrastructure repo) | - | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gnosis (Index/Pathfinder/Rpc/Cache/Metrics) | $FILTER_GNOSIS_SRC | $FILTER_GNOSIS_DOCKER | $DEPLOY_GNOSIS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Observability (managed in infrastructure repo) | - | - | $DEPLOY_OBS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grafana (managed in infrastructure repo) | - | - | $DEPLOY_GRAFANA |" >> $GITHUB_STEP_SUMMARY
 
   # Trigger Ansible deployment on the infrastructure repo.
   # Ansible SSHes into the target host, pulls the latest source, and builds images on-server.
