@@ -100,8 +100,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS "M_CrcV2_Groups" AS
     LEFT JOIN  erc20_demurraged         ed ON ed.avatar  = c."group"
     LEFT JOIN  erc20_static             es ON es.avatar  = c."group"
     LEFT JOIN  "CrcV2_CMGroupCreated"   cm ON cm.proxy   = c."group"
-    LEFT JOIN  "CrcV2_BaseGroupCreated" bg ON bg."group" = c."group"
-WITH NO DATA;
+    LEFT JOIN  "CrcV2_BaseGroupCreated" bg ON bg."group" = c."group";
 
 -- Unique index required for REFRESH MATERIALIZED VIEW CONCURRENTLY
 CREATE UNIQUE INDEX IF NOT EXISTS "idx_M_CrcV2_Groups_pk"
