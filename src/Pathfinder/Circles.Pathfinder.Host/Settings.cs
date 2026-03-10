@@ -74,14 +74,27 @@ public class Settings : Pathfinder.Settings
         };
 
     /// <summary>
-    /// Minimum number of blocks between materialized view refreshes.
-    /// Default: 720 (~1 hour on Gnosis with 5s blocks).
-    /// Set to 0 to refresh on every full refresh cycle.
+    /// Minimum blocks between fast-tier matview refreshes (balances, avatars, groups, receive counts).
+    /// Default: 60 (~5 min on Gnosis with 5s blocks).
     /// </summary>
-    public int MaterializedViewRefreshIntervalBlocks =>
-        int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_INTERVAL_BLOCKS"), out var val)
-            ? val
-            : 720;
+    public int MaterializedViewRefreshFastBlocks =>
+        // Legacy override: MATVIEW_REFRESH_INTERVAL_BLOCKS overrides both tiers if set
+        int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_INTERVAL_BLOCKS"), out var legacy)
+            ? legacy
+            : int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_FAST_BLOCKS"), out var fast)
+                ? fast
+                : 60;
+
+    /// <summary>
+    /// Minimum blocks between slow-tier matview refreshes (trust scores).
+    /// Default: 720 (~1 hour on Gnosis with 5s blocks).
+    /// </summary>
+    public int MaterializedViewRefreshSlowBlocks =>
+        int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_INTERVAL_BLOCKS"), out var legacy)
+            ? legacy
+            : int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_SLOW_BLOCKS"), out var slow)
+                ? slow
+                : 720;
 
     /// <summary>
     /// Database connection string for materialized view refreshes.

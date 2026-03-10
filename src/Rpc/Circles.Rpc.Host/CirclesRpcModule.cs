@@ -2868,11 +2868,6 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                        ) AS query
                 FROM input
             ),
-            recv AS (
-                SELECT ""to""::text AS avatar, COUNT(*) AS receive_count
-                FROM   ""CrcV2_TransferSummary""
-                GROUP  BY ""to""
-            ),
             w_profile AS (
                 SELECT  a.avatar, a.""timestamp"", a.name AS avatar_name, rs.""shortName"" AS short_name,
                         a.type AS avatar_type, f.cid AS cid, f.metadata_digest, f.payload,
@@ -2923,7 +2918,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         FROM   (SELECT * FROM w_profile
                 UNION ALL
                 SELECT * FROM wo_profile) p
-        LEFT JOIN recv r USING (avatar)
+        LEFT JOIN ""M_CrcV2_ReceiveCount"" r USING (avatar)
         WHERE 1=1 {cursorFilterClause}
         ORDER BY COALESCE(r.receive_count, 0) DESC, p.rank DESC, p.avatar ASC
         LIMIT  @limit;";

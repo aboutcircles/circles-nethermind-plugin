@@ -33,7 +33,8 @@ public class NetworkStateUpdaterService : BackgroundService
     internal long _lastFullRefreshBlock = -1;
     internal long _lastProcessedBlock = -1;
     internal string? _lastProcessedBlockHash;  // D10: reorg detection
-    internal long _lastMatViewRefreshBlock = -1;
+    internal long _lastFastMatViewRefreshBlock = -1;
+    internal long _lastSlowMatViewRefreshBlock = -1;
 
     // Cache-source state (only used when UseCacheGraphSource=true)
     private CacheGraphClient? _cacheGraphClient;
@@ -716,7 +717,9 @@ public class NetworkStateUpdaterService : BackgroundService
     }
 
     /// <summary>
-    /// Refreshes materialized views if enough blocks have elapsed since the last refresh.
+    /// Refreshes materialized views on two cadences:
+    /// - Fast tier (~5 min): balances, avatars, groups, receive counts
+    /// - Slow tier (~1 hour): trust scores (expensive window function)
     /// Uses CONCURRENTLY to avoid blocking readers. Failures are logged but do not crash the service.
     /// </summary>
     internal void RefreshMaterializedViewsIfDue(long currentBlock)
@@ -724,46 +727,90 @@ public class NetworkStateUpdaterService : BackgroundService
         if (!_settings.MaterializedViewRefreshEnabled)
             return;
 
-        if (_lastMatViewRefreshBlock >= 0 &&
-            (currentBlock - _lastMatViewRefreshBlock) < _settings.MaterializedViewRefreshIntervalBlocks)
+        bool fastDue = _lastFastMatViewRefreshBlock < 0
+            || (currentBlock - _lastFastMatViewRefreshBlock) >= _settings.MaterializedViewRefreshFastBlocks;
+
+        bool slowDue = _lastSlowMatViewRefreshBlock < 0
+            || (currentBlock - _lastSlowMatViewRefreshBlock) >= _settings.MaterializedViewRefreshSlowBlocks;
+
+        if (!fastDue && !slowDue)
             return;
 
-        var matViews = new[]
-        {
-            "M_CrcV2_BalancesByAccountAndToken",
-            "V_TrustScores_Current",
-            "M_CrcV2_Avatars",
-            "M_CrcV2_ReceiveCount"
-        };
+        using var conn = new NpgsqlConnection(_settings.MaterializedViewDbConnectionString);
+        conn.Open();
 
-        foreach (var viewName in matViews)
+        if (fastDue)
         {
+            var fastViews = new[]
+            {
+                "M_CrcV2_BalancesByAccountAndToken",
+                "M_CrcV2_Avatars",
+                "M_CrcV2_ReceiveCount",
+                "M_CrcV2_Groups"
+            };
+
+            foreach (var viewName in fastViews)
+                RefreshSingleMatView(conn, viewName);
+
+            _lastFastMatViewRefreshBlock = currentBlock;
+            GraphUpdateMetrics.LastMatViewRefreshBlock.WithLabels("fast").Set(currentBlock);
+        }
+
+        if (slowDue)
+        {
+            RefreshSingleMatView(conn, "V_TrustScores_Current");
+            _lastSlowMatViewRefreshBlock = currentBlock;
+            GraphUpdateMetrics.LastMatViewRefreshBlock.WithLabels("slow").Set(currentBlock);
+        }
+    }
+
+    private void RefreshSingleMatView(NpgsqlConnection conn, string viewName)
+    {
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"REFRESH MATERIALIZED VIEW CONCURRENTLY \"{viewName}\"";
+            cmd.CommandTimeout = 300; // 5 minutes max
+            cmd.ExecuteNonQuery();
+            sw.Stop();
+
+            GraphUpdateMetrics.MatViewRefreshDuration.WithLabels(viewName).Observe(sw.Elapsed.TotalSeconds);
+            GraphUpdateMetrics.MatViewRefreshTotal.WithLabels(viewName).Inc();
+
+            _log.LogInformation("Refreshed materialized view {View} in {Ms} ms", viewName, sw.ElapsedMilliseconds);
+        }
+        catch (PostgresException pex) when (pex.SqlState == "55000")
+        {
+            // WITH NO DATA matview has never been populated — CONCURRENTLY requires prior data.
+            // Fall back to blocking REFRESH for initial population.
+            _log.LogInformation(
+                "Materialized view {View} has no data yet, falling back to blocking REFRESH", viewName);
             try
             {
                 var sw = Stopwatch.StartNew();
-                using var conn = Npgsql.NpgsqlDataSource
-                    .Create(_settings.MaterializedViewDbConnectionString)
-                    .OpenConnection();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"REFRESH MATERIALIZED VIEW CONCURRENTLY \"{viewName}\"";
-                cmd.CommandTimeout = 300; // 5 minutes max
-                cmd.ExecuteNonQuery();
+                using var fallbackCmd = conn.CreateCommand();
+                fallbackCmd.CommandText = $"REFRESH MATERIALIZED VIEW \"{viewName}\"";
+                fallbackCmd.CommandTimeout = 300;
+                fallbackCmd.ExecuteNonQuery();
                 sw.Stop();
 
                 GraphUpdateMetrics.MatViewRefreshDuration.WithLabels(viewName).Observe(sw.Elapsed.TotalSeconds);
                 GraphUpdateMetrics.MatViewRefreshTotal.WithLabels(viewName).Inc();
 
-                _log.LogInformation("Refreshed materialized view {View} in {Ms} ms", viewName, sw.ElapsedMilliseconds);
+                _log.LogInformation("Initial population of {View} completed in {Ms} ms", viewName, sw.ElapsedMilliseconds);
             }
-            catch (Exception ex)
+            catch (Exception fallbackEx)
             {
                 GraphUpdateMetrics.MatViewRefreshErrors.WithLabels(viewName).Inc();
-                _log.LogWarning(ex, "Failed to refresh materialized view {View} — stale data until next refresh", viewName);
+                _log.LogWarning(fallbackEx, "Failed to populate materialized view {View} — stale data until next refresh", viewName);
             }
         }
-
-        _lastMatViewRefreshBlock = currentBlock;
-        GraphUpdateMetrics.LastMatViewRefreshBlock.Set(currentBlock);
+        catch (Exception ex)
+        {
+            GraphUpdateMetrics.MatViewRefreshErrors.WithLabels(viewName).Inc();
+            _log.LogWarning(ex, "Failed to refresh materialized view {View} — stale data until next refresh", viewName);
+        }
     }
 
     /// <summary>
@@ -779,7 +826,7 @@ public class NetworkStateUpdaterService : BackgroundService
         _lastFullRefreshBlock = -1;
         _lastProcessedBlock = -1;
         _lastProcessedBlockHash = null;
-        // Note: don't reset _lastMatViewRefreshBlock — matview refresh cadence is independent
+        // Note: don't reset matview refresh blocks — matview refresh cadence is independent
     }
 
     private async Task<long> WaitForNextBlock(CancellationToken stoppingToken, long lastBlock)

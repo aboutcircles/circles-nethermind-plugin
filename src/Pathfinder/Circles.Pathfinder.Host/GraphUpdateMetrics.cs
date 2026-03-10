@@ -214,5 +214,6 @@ internal static class GraphUpdateMetrics
 
     public static readonly Gauge LastMatViewRefreshBlock = Metrics.CreateGauge(
         "circles_matview_last_refresh_block",
-        "Block number of last materialized view refresh");
+        "Block number of last materialized view refresh",
+        new GaugeConfiguration { LabelNames = new[] { "tier" } });
 }
