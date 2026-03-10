@@ -87,14 +87,16 @@ public class Settings : Pathfinder.Settings
 
     /// <summary>
     /// Minimum blocks between slow-tier matview refreshes (trust scores).
-    /// Default: 720 (~1 hour on Gnosis with 5s blocks).
+    /// Default: 180 (~15 min on Gnosis with 5s blocks).
+    /// Trust scores use network-wide aggregation so delta is not feasible;
+    /// reduced from 720 to 180 as a practical freshness compromise.
     /// </summary>
     public int MaterializedViewRefreshSlowBlocks =>
         int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_INTERVAL_BLOCKS"), out var legacy)
             ? legacy
             : int.TryParse(Environment.GetEnvironmentVariable("MATVIEW_REFRESH_SLOW_BLOCKS"), out var slow)
                 ? slow
-                : 720;
+                : 180;
 
     /// <summary>
     /// Database connection string for materialized view refreshes.

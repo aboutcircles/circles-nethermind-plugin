@@ -30,6 +30,9 @@ public class DatabaseSchema : IDatabaseSchema
         ("V_CrcV1", "BalancesByAccountAndToken"),
         ("V_CrcV2", "BalancesByAccountAndToken"),
 
+        // Receive count (depends on M_CrcV2_ReceiveCount matview)
+        ("V_CrcV2", "ReceiveCount"),
+
         // Other views
         ("V_CrcV2", "Groups"),
         ("V_CrcV2", "GroupMemberships"),
