@@ -148,14 +148,15 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
         _lock.EnterWriteLock();
         try
         {
-            var diff = GetOrCreateDiffBucket(blockNo);
             var hadPrev = _current.TryGetValue(key, out var prevVal);
-
-            if (!diff.ContainsKey(key))
-                diff[key] = new Change(hadPrev, prevVal!);
 
             if (!hadPrev)
                 return false;
+
+            var diff = GetOrCreateDiffBucket(blockNo);
+
+            if (!diff.ContainsKey(key))
+                diff[key] = new Change(hadPrev, prevVal!);
 
             _current.Remove(key);
             return true;

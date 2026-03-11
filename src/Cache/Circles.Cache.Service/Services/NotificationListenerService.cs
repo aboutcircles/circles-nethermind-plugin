@@ -294,6 +294,7 @@ public class NotificationListenerService : BackgroundService
         _caches.V2LastActivity.Seed(new Dictionary<string, long>());
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
+        _caches.ConsentedFlowFlags.Seed(new Dictionary<string, byte[]>());
 
         _caches.RebuildSecondaryIndexes();
     }

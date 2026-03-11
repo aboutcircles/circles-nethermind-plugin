@@ -143,10 +143,14 @@ public static class CirclesConverter
     private static ulong Today() =>
         DayFromTimestamp(DateTimeOffset.UtcNow, V2_INFLATION_DAY_ZERO_UNIX);
 
-    /// <summary>Unix timestamp → Circles day index.</summary>
+    /// <summary>Unix timestamp → Circles day index. Returns 0 for pre-epoch timestamps.</summary>
     public static ulong DayFromTimestamp(DateTimeOffset ts, uint inflationDayZeroUnix)
     {
-        ulong seconds = (ulong)(ts.ToUnixTimeSeconds() - inflationDayZeroUnix);
+        var unix = ts.ToUnixTimeSeconds();
+        if (unix < inflationDayZeroUnix)
+            return 0;
+
+        ulong seconds = (ulong)(unix - inflationDayZeroUnix);
         return seconds / SECONDS_PER_DAY;
     }
 

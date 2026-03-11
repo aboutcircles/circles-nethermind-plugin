@@ -215,10 +215,10 @@ public class NumericPrecisionTests
 
         var day = CirclesConverter.DayFromTimestamp(beforeStart, inflationStart);
 
-        // Due to uint/ulong underflow, result will be a very large number (not 0)
-        // This documents expected behavior - callers must ensure ts >= inflationDayZeroUnix
-        Assert.That(day, Is.GreaterThan(0UL),
-            "Timestamps before epoch underflow - callers must validate input");
+        // Pre-epoch timestamps now clamp to day 0 instead of underflowing to a huge number.
+        // This prevents accidental destruction of balances via astronomical demurrage.
+        Assert.That(day, Is.EqualTo(0UL),
+            "Pre-epoch timestamps should return day 0, not underflow");
     }
 
     [Test]
