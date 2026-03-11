@@ -380,10 +380,25 @@ public class V2Pathfinder
             int resolvedToken = ctx.Graph.WrapperToAvatar.TryGetValue(e.Token, out int avatarId)
                 ? avatarId : e.Token;
 
+            // Also resolve From/To — wrapper addresses can leak into the graph as avatar
+            // nodes via trust query UNION 2 and appear as flow intermediaries
+            int resolvedFrom = ctx.Graph.WrapperToAvatar.TryGetValue(e.From, out int fromAvatarId)
+                ? fromAvatarId : e.From;
+            int resolvedTo = ctx.Graph.WrapperToAvatar.TryGetValue(e.To, out int toAvatarId)
+                ? toAvatarId : e.To;
+
+            if (resolvedFrom != e.From || resolvedTo != e.To)
+            {
+                _logger?.LogWarning(
+                    "Resolved wrapper address in flow vertex: From={OrigFrom}→{ResFrom}, To={OrigTo}→{ResTo}",
+                    AddressIdPool.StringOf(e.From), AddressIdPool.StringOf(resolvedFrom),
+                    AddressIdPool.StringOf(e.To), AddressIdPool.StringOf(resolvedTo));
+            }
+
             ctx.Transfers.Add(new TransferPathStep
             {
-                From = AddressIdPool.StringOf(e.From),
-                To = AddressIdPool.StringOf(e.To),
+                From = AddressIdPool.StringOf(resolvedFrom),
+                To = AddressIdPool.StringOf(resolvedTo),
                 TokenOwner = AddressIdPool.StringOf(resolvedToken),
                 Value = CirclesConverter
                     .BlowUpToUInt256(e.Flow)
@@ -1401,49 +1416,118 @@ public class V2Pathfinder
             if (!visited.Add(vertex)) continue;
             if (vertex == sourceId) continue; // Source net flow is allowed to change
 
-            // Compute current total outflow
+            if (!incomingEdges.TryGetValue(vertex, out var inIndices) || inIndices.Count == 0)
+                continue; // No incoming edges — this is a source vertex
+
+            // Determine if this is a token-converting vertex (e.g., group minting).
+            // At groups: collateral tokens come in, group tokens go out — different types.
+            // At normal intermediaries: same token types flow through.
+            var inTokenTypes = new HashSet<int>();
+            foreach (int idx in inIndices)
+                inTokenTypes.Add(edges[idx].Token);
+
+            var outTokenTypes = new HashSet<int>();
             long totalOut = 0;
             if (outgoingEdges.TryGetValue(vertex, out var outIndices))
             {
                 foreach (int idx in outIndices)
+                {
+                    outTokenTypes.Add(edges[idx].Token);
                     totalOut += edges[idx].Flow;
+                }
             }
 
-            // Compute current total inflow
             long totalIn = 0;
-            if (!incomingEdges.TryGetValue(vertex, out var inIndices) || inIndices.Count == 0)
-                continue; // No incoming edges — this is a source vertex
-
             foreach (int idx in inIndices)
                 totalIn += edges[idx].Flow;
 
-            if (totalIn <= totalOut) continue; // Already balanced or underflow (shouldn't happen)
+            if (totalIn <= totalOut) continue; // Already balanced
 
-            // Scale incoming edges to match outflow
-            long allocated = 0;
-            for (int j = 0; j < inIndices.Count; j++)
+            // Token conversion: outflow contains token types not present in inflow.
+            // This happens at group minting vertices (collateral in → group token out).
+            // When quantization zeroes a token, in={A,B} out={A} — out IS a subset of in,
+            // so per-token scaling correctly handles it (token B gets scaled to 0).
+            bool isTokenConverting = !outTokenTypes.IsSubsetOf(inTokenTypes);
+
+            if (isTokenConverting)
             {
-                int idx = inIndices[j];
-                var e = edges[idx];
-                long newFlow;
-
-                if (j == inIndices.Count - 1)
+                // Token-converting vertex (group minting): use total-based scaling.
+                // Per-token conservation doesn't apply here — token types change.
+                long allocated = 0;
+                for (int j = 0; j < inIndices.Count; j++)
                 {
-                    // Last edge gets remainder for exact conservation
-                    newFlow = totalOut - allocated;
+                    int idx = inIndices[j];
+                    var e = edges[idx];
+                    long newFlow;
+
+                    if (j == inIndices.Count - 1)
+                        newFlow = totalOut - allocated;
+                    else
+                        newFlow = totalIn > 0 ? (e.Flow * totalOut) / totalIn : 0;
+
+                    if (newFlow < 0) newFlow = 0;
+                    e.Flow = newFlow;
+                    allocated += newFlow;
+                    queue.Enqueue(e.From);
                 }
-                else
+            }
+            else
+            {
+                // Same token types in/out: scale per-token independently.
+                // This preserves per-token flow conservation — total-based scaling
+                // would redistribute flow between token types, violating Hub.sol's
+                // per-token NettedFlowMismatch check.
+                var outflowByToken = new Dictionary<int, long>();
+                if (outIndices != null)
                 {
-                    // Proportional scaling
-                    newFlow = (e.Flow * totalOut) / totalIn;
+                    foreach (int idx in outIndices)
+                    {
+                        var e = edges[idx];
+                        outflowByToken.TryGetValue(e.Token, out long current);
+                        outflowByToken[e.Token] = current + e.Flow;
+                    }
                 }
 
-                if (newFlow < 0) newFlow = 0;
-                e.Flow = newFlow;
-                allocated += newFlow;
+                var inByToken = new Dictionary<int, List<int>>();
+                foreach (int idx in inIndices)
+                {
+                    int token = edges[idx].Token;
+                    if (!inByToken.TryGetValue(token, out var list))
+                    {
+                        list = new List<int>();
+                        inByToken[token] = list;
+                    }
+                    list.Add(idx);
+                }
 
-                // Enqueue the predecessor vertex
-                queue.Enqueue(e.From);
+                foreach (var (token, tokenInIndices) in inByToken)
+                {
+                    outflowByToken.TryGetValue(token, out long tokenOut);
+
+                    long tokenIn = 0;
+                    foreach (int idx in tokenInIndices)
+                        tokenIn += edges[idx].Flow;
+
+                    if (tokenIn <= tokenOut) continue;
+
+                    long allocated = 0;
+                    for (int j = 0; j < tokenInIndices.Count; j++)
+                    {
+                        int idx = tokenInIndices[j];
+                        var e = edges[idx];
+                        long newFlow;
+
+                        if (j == tokenInIndices.Count - 1)
+                            newFlow = tokenOut - allocated;
+                        else
+                            newFlow = tokenIn > 0 ? (e.Flow * tokenOut) / tokenIn : 0;
+
+                        if (newFlow < 0) newFlow = 0;
+                        e.Flow = newFlow;
+                        allocated += newFlow;
+                        queue.Enqueue(e.From);
+                    }
+                }
             }
         }
     }

@@ -271,6 +271,23 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                                          .ToHashSet()
                                      ?? new HashSet<int>();
 
+        // STEP 1h: Expand filters with wrapper IDs when withWrap is enabled.
+        // User-provided filters contain avatar addresses, but wrapped balances use wrapper
+        // contract addresses as token IDs. Without expansion, inclusion filters (toTokens,
+        // fromTokens) block wrapped tokens, and exclusion filters (excludedFromTokens,
+        // excludedToTokens) fail to exclude them.
+        if (request?.WithWrap ?? false)
+        {
+            var wrapperMap = capacityGraph.WrapperToAvatar;
+            if (wrapperMap.Count > 0)
+            {
+                ExpandFilterWithWrapperIds(toTokensFilter, wrapperMap, "toTokensFilter");
+                ExpandFilterWithWrapperIds(fromTokensFilter, wrapperMap, "fromTokensFilter");
+                ExpandFilterWithWrapperIds(excludedFromTokensFilter, wrapperMap, "excludedFromTokensFilter");
+                ExpandFilterWithWrapperIds(excludedToTokensFilter, wrapperMap, "excludedToTokensFilter");
+            }
+        }
+
         // STEP 2: Validate source and sink are not groups or router
         int? sourceId = !string.IsNullOrWhiteSpace(request?.Source) ? AddressIdPool.IdOf(request.Source) : null;
         int? sinkId = !string.IsNullOrWhiteSpace(request?.Sink) ? AddressIdPool.IdOf(request.Sink) : null;
@@ -339,6 +356,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 if (balanceNode.Holder != sourceId.Value)
                     continue;
 
+                // Skip wrapped balances unless WithWrap is enabled — their supply edges
+                // won't be created (line 708), so adding them to toTokensFilter would
+                // produce silent zero-flow
+                if (balanceNode.IsWrapped && !(request?.WithWrap ?? false))
+                    continue;
+
                 // Check if sink trusts this token AND balance is sufficient
                 if (sinkTrusts.Contains(balanceNode.Token) && balanceNode.Amount >= QuantizedMinBalance)
                 {
@@ -391,6 +414,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 capacityGraph,
                 sourceId!.Value,
                 effectiveToTokensFilter,
+                excludedToTokensFilter,
                 balanceGraph,
                 wrappedTokensInSim,
                 mergedTrust,
@@ -936,6 +960,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         CapacityGraph capacityGraph,
         int sourceAddress,
         HashSet<int> toTokensFilter,
+        HashSet<int> excludedToTokensFilter,
         BalanceGraph balanceGraph,
         HashSet<int> wrappedTokensInSim,
         IReadOnlyDictionary<int, HashSet<int>> mergedTrust,
@@ -968,6 +993,10 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         var virtualSinkTrustedTokens = new HashSet<int>();
         foreach (var token in toTokensFilter)
         {
+            // Apply excludedToTokensFilter — previously only applied at real sink (AddTokenPoolOutEdges)
+            if (excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(token))
+                continue;
+
             // In quantizedMode: accept all specified tokens (trust validation happens post-path)
             // In regular mode: require source trust
             if (!quantizedMode && !sourceTrustedTokens.Contains(token))
@@ -989,6 +1018,32 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
 
         return (virtualSinkAddressId, virtualSinkTrustedTokens);
+    }
+
+    /// <summary>
+    /// Expands a token filter to include wrapper IDs for any avatar IDs already in the filter.
+    /// This bridges the avatar-address / wrapper-contract-address namespace gap so that
+    /// user-provided filters (which use avatar addresses) also match wrapped token flows
+    /// (which use wrapper contract addresses as token IDs in the graph).
+    /// </summary>
+    private void ExpandFilterWithWrapperIds(
+        HashSet<int> filter,
+        Dictionary<int, int> wrapperToAvatar,
+        string filterName)
+    {
+        if (filter.Count == 0)
+            return;
+
+        int added = 0;
+        foreach (var (wrapperId, avatarId) in wrapperToAvatar)
+        {
+            if (filter.Contains(avatarId) && filter.Add(wrapperId))
+                added++;
+        }
+
+        if (added > 0)
+            _logger.LogDebug("Expanded {FilterName} with {Count} wrapper ID(s) for withWrap=true",
+                filterName, added);
     }
 
     #endregion
