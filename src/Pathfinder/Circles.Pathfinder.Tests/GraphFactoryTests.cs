@@ -23,6 +23,9 @@ public class GraphFactoryTests
     private static readonly string TokenB = "0xf10b000000000000000000000000000000000006";
     private static readonly string GroupG = "0xf199000000000000000000000000000000000007";
     private static readonly string GroupH = "0xf198000000000000000000000000000000000008";
+    // Wrapper contract addresses for testing wrapper filter expansion
+    private static readonly string WrapperA = "0xf1ea000000000000000000000000000000000011";
+    private static readonly string WrapperB = "0xf1eb000000000000000000000000000000000012";
 
     /// <summary>Creates a factory with a mock ILoadGraph (no groups, no consent by default).</summary>
     private static GraphFactory MakeFactory(MockLoadGraph? mock = null)
@@ -922,6 +925,263 @@ public class GraphFactoryTests
         // No outbound edges from router to token pools
         Assert.That(cg.Edges.Any(e => e.From == routerId), Is.False,
             "Router should have no outbound token pool edges");
+    }
+
+    #endregion
+
+    #region Wrapper Filter Expansion (withWrap + toTokens/fromTokens/excluded)
+
+    /// <summary>
+    /// Main bug: withWrap=true + toTokens=[avatarAddr] should expand toTokensFilter
+    /// to include wrapper IDs, allowing wrapped token flow to reach the sink.
+    /// Without expansion, TokenPool(wrapper)→Sink edge is blocked.
+    /// </summary>
+    [Test]
+    public void WithWrap_ToTokens_ExpandsFilterWithWrapperIds()
+    {
+        var mock = new HelperMock();
+        // WrapperA wraps TokenA's underlying avatar
+        mock.AddWrapperMapping(WrapperA, TokenA);
+        // Alice holds wrapped balance (token = wrapper contract addr)
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperA.ToLowerInvariant()),
+            500_000_000, isWrapped: true);
+        // Bob trusts both TokenA (native) and WrapperA (via trust query UNION 2)
+        mock.AddTrust(Bob, TokenA);
+        mock.AddTrust(Bob, WrapperA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            WithWrap = true,
+            ToTokens = new List<string> { TokenA } // avatar address, not wrapper
+        };
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int bobId = AddressIdPool.IdOf(Bob.ToLowerInvariant());
+        int wrapperId = AddressIdPool.IdOf(WrapperA.ToLowerInvariant());
+        int wrapperPool = AddressIdPool.TokenPoolIdOf(wrapperId);
+
+        // TokenPool(wrapper)→Bob edge should exist because toTokensFilter was expanded
+        Assert.That(cg.Edges.Any(e => e.From == wrapperPool && e.To == bobId && e.Token == wrapperId), Is.True,
+            "Wrapper token pool→sink edge should exist when toTokensFilter is expanded with wrapper IDs");
+    }
+
+    /// <summary>
+    /// withWrap=false should NOT expand filters — wrapped balances are excluded entirely.
+    /// </summary>
+    [Test]
+    public void WithWrapFalse_ToTokens_NoExpansion()
+    {
+        var mock = new HelperMock();
+        mock.AddWrapperMapping(WrapperA, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperA.ToLowerInvariant()),
+            500_000_000, isWrapped: true);
+        mock.AddTrust(Bob, TokenA);
+        mock.AddTrust(Bob, WrapperA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            WithWrap = false,
+            ToTokens = new List<string> { TokenA }
+        };
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int wrapperId = AddressIdPool.IdOf(WrapperA.ToLowerInvariant());
+        int wrapperPool = AddressIdPool.TokenPoolIdOf(wrapperId);
+
+        // No wrapper edges at all — wrapped balances skipped
+        Assert.That(cg.Edges.Any(e => e.From == aliceId && e.To == wrapperPool), Is.False,
+            "Wrapped balance should not produce source edge when withWrap=false");
+    }
+
+    /// <summary>
+    /// Multiple wrappers for different avatars should all be expanded.
+    /// </summary>
+    [Test]
+    public void WithWrap_ToTokens_MultipleWrappers_AllExpanded()
+    {
+        var mock = new HelperMock();
+        mock.AddWrapperMapping(WrapperA, TokenA);
+        mock.AddWrapperMapping(WrapperB, TokenB);
+        // Alice holds both wrapped tokens
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperA.ToLowerInvariant()),
+            300_000_000, isWrapped: true);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperB.ToLowerInvariant()),
+            400_000_000, isWrapped: true);
+        // Bob trusts everything
+        mock.AddTrust(Bob, TokenA);
+        mock.AddTrust(Bob, TokenB);
+        mock.AddTrust(Bob, WrapperA);
+        mock.AddTrust(Bob, WrapperB);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            WithWrap = true,
+            ToTokens = new List<string> { TokenA, TokenB }
+        };
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int bobId = AddressIdPool.IdOf(Bob.ToLowerInvariant());
+        int wrapperAId = AddressIdPool.IdOf(WrapperA.ToLowerInvariant());
+        int wrapperBId = AddressIdPool.IdOf(WrapperB.ToLowerInvariant());
+        int poolA = AddressIdPool.TokenPoolIdOf(wrapperAId);
+        int poolB = AddressIdPool.TokenPoolIdOf(wrapperBId);
+
+        Assert.That(cg.Edges.Any(e => e.From == poolA && e.To == bobId), Is.True,
+            "WrapperA pool→sink should exist");
+        Assert.That(cg.Edges.Any(e => e.From == poolB && e.To == bobId), Is.True,
+            "WrapperB pool→sink should exist");
+    }
+
+    /// <summary>
+    /// withWrap=true but empty toTokens → no expansion needed, no crash.
+    /// </summary>
+    [Test]
+    public void WithWrap_EmptyToTokens_NoExpansion_NoCrash()
+    {
+        var mock = new HelperMock();
+        mock.AddWrapperMapping(WrapperA, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperA.ToLowerInvariant()),
+            500_000_000, isWrapped: true);
+        mock.AddTrust(Bob, WrapperA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            WithWrap = true
+            // No ToTokens — no whitelist active
+        };
+
+        Assert.DoesNotThrow(() => factory.CreateCapacityGraph(bg, trustLookup, request));
+    }
+
+    /// <summary>
+    /// fromTokens=[avatarAddr] with withWrap=true should also allow the wrapper balance.
+    /// Without expansion, the wrapper is blocked at source because fromTokensFilter
+    /// doesn't contain the wrapper ID.
+    /// </summary>
+    [Test]
+    public void WithWrap_FromTokens_ExpandsFilterWithWrapperIds()
+    {
+        var mock = new HelperMock();
+        mock.AddWrapperMapping(WrapperA, TokenA);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperA.ToLowerInvariant()),
+            500_000_000, isWrapped: true);
+        mock.AddTrust(Bob, WrapperA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            WithWrap = true,
+            FromTokens = new List<string> { TokenA } // avatar address
+        };
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int wrapperId = AddressIdPool.IdOf(WrapperA.ToLowerInvariant());
+        int wrapperPool = AddressIdPool.TokenPoolIdOf(wrapperId);
+
+        // Source→TokenPool(wrapper) edge should exist
+        Assert.That(cg.Edges.Any(e => e.From == aliceId && e.To == wrapperPool), Is.True,
+            "Wrapped source balance should be allowed when fromTokensFilter is expanded");
+    }
+
+    /// <summary>
+    /// excludedFromTokens=[avatarAddr] with withWrap=true should also exclude the wrapper.
+    /// Without expansion, the wrapper leaks through as a source edge.
+    /// </summary>
+    [Test]
+    public void WithWrap_ExcludedFromTokens_ExpandsFilterWithWrapperIds()
+    {
+        var mock = new HelperMock();
+        mock.AddWrapperMapping(WrapperA, TokenA);
+        // Alice holds both native AND wrapped token
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            300_000_000, isWrapped: false);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Alice.ToLowerInvariant()),
+            AddressIdPool.IdOf(WrapperA.ToLowerInvariant()),
+            500_000_000, isWrapped: true);
+        mock.AddTrust(Bob, TokenA);
+        mock.AddTrust(Bob, WrapperA);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Bob,
+            WithWrap = true,
+            ExcludedFromTokens = new List<string> { TokenA } // exclude avatar → should also exclude wrapper
+        };
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int wrapperId = AddressIdPool.IdOf(WrapperA.ToLowerInvariant());
+        int poolNative = AddressIdPool.TokenPoolIdOf(tokenAId);
+        int poolWrapper = AddressIdPool.TokenPoolIdOf(wrapperId);
+
+        // Both native and wrapped should be excluded from source
+        Assert.That(cg.Edges.Any(e => e.From == aliceId && e.To == poolNative), Is.False,
+            "Native token should be excluded by excludedFromTokens");
+        Assert.That(cg.Edges.Any(e => e.From == aliceId && e.To == poolWrapper), Is.False,
+            "Wrapped token should also be excluded when excludedFromTokens is expanded");
     }
 
     #endregion
