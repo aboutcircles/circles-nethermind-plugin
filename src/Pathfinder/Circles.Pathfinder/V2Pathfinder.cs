@@ -375,13 +375,9 @@ public class V2Pathfinder
             if (e.From == ctx.SinkId && e.To == ctx.SinkId)
                 continue;
 
-            // Resolve wrapper contract address → underlying registered avatar
-            // Hub.sol rejects wrapper addresses as flow vertices (CirclesAvatarMustBeRegistered)
-            int resolvedToken = ctx.Graph.WrapperToAvatar.TryGetValue(e.Token, out int avatarId)
-                ? avatarId : e.Token;
-
-            // Also resolve From/To — wrapper addresses can leak into the graph as avatar
-            // nodes via trust query UNION 2 and appear as flow intermediaries
+            // Resolve From/To — wrapper addresses can leak into the graph as avatar
+            // nodes via trust query UNION 2 and appear as flow intermediaries.
+            // Hub.sol rejects wrapper addresses as flow vertices (CirclesAvatarMustBeRegistered).
             int resolvedFrom = ctx.Graph.WrapperToAvatar.TryGetValue(e.From, out int fromAvatarId)
                 ? fromAvatarId : e.From;
             int resolvedTo = ctx.Graph.WrapperToAvatar.TryGetValue(e.To, out int toAvatarId)
@@ -395,11 +391,14 @@ public class V2Pathfinder
                     AddressIdPool.StringOf(e.To), AddressIdPool.StringOf(resolvedTo));
             }
 
+            // TokenOwner: keep the original token ID (wrapper address for wrapped tokens).
+            // Callers use this to determine if unwrapping is needed before Hub.sol submission.
+            // For native CRC tokens, e.Token is already the avatar address.
             ctx.Transfers.Add(new TransferPathStep
             {
                 From = AddressIdPool.StringOf(resolvedFrom),
                 To = AddressIdPool.StringOf(resolvedTo),
-                TokenOwner = AddressIdPool.StringOf(resolvedToken),
+                TokenOwner = AddressIdPool.StringOf(e.Token),
                 Value = CirclesConverter
                     .BlowUpToUInt256(e.Flow)
                     .ToString(CultureInfo.InvariantCulture)

@@ -18,10 +18,16 @@ internal static class MaxFlowSolver
          * Arc-id 1..N   : real capacity edges (same order as edgesList)
          * ---------------------------------------------------------------- */
         int n = capacityEdges.Count;
-        int maxVertex = sourceAvatar;
+
+        // Source must have at least one outgoing edge — otherwise flow is impossible.
+        bool sourceHasOutgoing = false;
+        int maxVertex = Math.Max(sourceAvatar, sinkAvatar);
         for (int i = 0; i < n; i++)
         {
             var e = capacityEdges[i];
+            if (e.From == sourceAvatar)
+                sourceHasOutgoing = true;
+
             if (e.From > maxVertex)
             {
                 maxVertex = e.From;
@@ -33,7 +39,12 @@ internal static class MaxFlowSolver
             }
         }
 
-        // Super-source is always one past the max vertex id (works for empty lists too).
+        if (!sourceHasOutgoing)
+            throw new InvalidOperationException("Max-flow failed: source has no outgoing edges");
+
+        // Super-source is always one past the max vertex id.
+        // maxVertex includes both sourceAvatar and sinkAvatar to prevent
+        // superSource from colliding with the sink node.
         int superSource = maxVertex + 1;
         maxFlow.AddArcWithCapacity(superSource, sourceAvatar, targetFlow);
 

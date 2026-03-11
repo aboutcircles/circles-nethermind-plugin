@@ -641,7 +641,7 @@ public class FlagInteractionTests
     [Test]
     public void E004_SourceHasNoBalance_ThrowsException()
     {
-        // Arrange: Source with no balance results in BAD_INPUT from OR-Tools solver
+        // Arrange: Source with no balance → no outgoing edges → solver throws
         var source = Node(1);
         var sink = Node(2);
 

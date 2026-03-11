@@ -80,9 +80,9 @@ public class MaxFlowAndCollapseTests
     }
 
     [Test]
-    public void ComputeMaxFlow_DisconnectedGraph_ThrowsBadInput()
+    public void ComputeMaxFlow_DisconnectedGraph_ThrowsNoOutgoingEdges()
     {
-        // A and B exist but no edges between them → OR-Tools reports BAD_INPUT
+        // A and B exist but no edges from source → throws before OR-Tools
         var graph = new CapacityGraph();
         int a = AddressIdPool.IdOf(AddrA);
         int b = AddressIdPool.IdOf(AddrB);
@@ -96,7 +96,7 @@ public class MaxFlowAndCollapseTests
 
         var ex = Assert.Throws<InvalidOperationException>(
             () => pf.ComputeMaxFlow(graph, request, target));
-        Assert.That(ex!.Message, Does.Contain("BAD_INPUT"));
+        Assert.That(ex!.Message, Does.Contain("no outgoing edges"));
     }
 
     [Test]
