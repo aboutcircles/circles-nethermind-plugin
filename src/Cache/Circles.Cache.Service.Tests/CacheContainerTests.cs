@@ -43,11 +43,11 @@ public class CacheContainerTests
         var tokenAddress = "0x42cedde51198d1773590311e2a340dc06b24cb37";
 
         // Act
-        _cache.V1Avatars.Add(1000, address, ("Human", tokenAddress));
+        _cache.V1Avatars.Add(1000, address, ("CrcV1_Signup", tokenAddress));
 
         // Assert
         _cache.V1Avatars.TryGetValue(address, out var info).Should().BeTrue();
-        info.Type.Should().Be("Human");
+        info.Type.Should().Be("CrcV1_Signup");
         info.TokenAddress.Should().Be(tokenAddress);
     }
 
@@ -58,11 +58,11 @@ public class CacheContainerTests
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
 
         // Act
-        _cache.V1Avatars.Add(1000, address, ("Organization", null));
+        _cache.V1Avatars.Add(1000, address, ("CrcV1_OrganizationSignup", null));
 
         // Assert
         _cache.V1Avatars.TryGetValue(address, out var info).Should().BeTrue();
-        info.Type.Should().Be("Organization");
+        info.Type.Should().Be("CrcV1_OrganizationSignup");
         info.TokenAddress.Should().BeNull();
     }
 
@@ -74,11 +74,11 @@ public class CacheContainerTests
         var timestamp = 1704067200L; // 2024-01-01
 
         // Act
-        _cache.V2Avatars.Add(2000, address, ("Human", timestamp));
+        _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterHuman", timestamp));
 
         // Assert
         _cache.V2Avatars.TryGetValue(address, out var info).Should().BeTrue();
-        info.Type.Should().Be("Human");
+        info.Type.Should().Be("CrcV2_RegisterHuman");
         info.RegisteredAt.Should().Be(timestamp);
     }
 
@@ -144,13 +144,13 @@ public class CacheContainerTests
     {
         // Arrange - Add data at block 1000
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        _cache.V1Avatars.Add(1000, address, ("Human", "0xtoken"));
-        _cache.V2Avatars.Add(1000, address, ("Human", 12345L));
+        _cache.V1Avatars.Add(1000, address, ("CrcV1_Signup", "0xtoken"));
+        _cache.V2Avatars.Add(1000, address, ("CrcV2_RegisterHuman", 12345L));
 
         // Add more data at block 2000
         var address2 = "0x1234567890abcdef1234567890abcdef12345678";
-        _cache.V1Avatars.Add(2000, address2, ("Organization", null));
-        _cache.V2Avatars.Add(2000, address2, ("Organization", 67890L));
+        _cache.V1Avatars.Add(2000, address2, ("CrcV1_OrganizationSignup", null));
+        _cache.V2Avatars.Add(2000, address2, ("CrcV2_RegisterOrganization", 67890L));
 
         // Act - Rollback to block 1500
         _cache.RollbackAll(1500);
@@ -168,9 +168,9 @@ public class CacheContainerTests
     public void GetStatistics_ShouldReturnCorrectCounts()
     {
         // Arrange
-        _cache.V1Avatars.Add(1000, "0xaddr1", ("Human", "0xtoken1"));
-        _cache.V1Avatars.Add(1000, "0xaddr2", ("Human", "0xtoken2"));
-        _cache.V2Avatars.Add(2000, "0xaddr3", ("Human", 12345L));
+        _cache.V1Avatars.Add(1000, "0xaddr1", ("CrcV1_Signup", "0xtoken1"));
+        _cache.V1Avatars.Add(1000, "0xaddr2", ("CrcV1_Signup", "0xtoken2"));
+        _cache.V2Avatars.Add(2000, "0xaddr3", ("CrcV2_RegisterHuman", 12345L));
 
         // Act
         var stats = _cache.GetStatistics();

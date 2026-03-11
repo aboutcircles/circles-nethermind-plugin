@@ -53,7 +53,7 @@ public partial class CirclesRpcModule
                     {
                         cacheResult[i] = new AvatarInfo(
                             Version: cacheInfo.Version,
-                            Type: cacheInfo.Type,
+                            Type: NormalizeAvatarType(cacheInfo.Type),
                             Avatar: cacheInfo.Avatar,
                             TokenId: cacheInfo.TokenId ?? cacheInfo.Avatar,
                             HasV1: cacheInfo.HasV1,

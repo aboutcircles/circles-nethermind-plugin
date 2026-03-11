@@ -103,7 +103,7 @@ public partial class CirclesRpcModule
             try
             {
                 var avatarInfo = await _cacheServiceClient.GetAvatarInfoAsync(address);
-                return avatarInfo is { Version: 2, Type: "Human" };
+                return avatarInfo is { Version: 2, Type: "CrcV2_RegisterHuman" };
             }
             catch (Exception ex)
             {
@@ -163,13 +163,10 @@ public partial class CirclesRpcModule
                     for (int i = 0; i < counterpartAddresses.Length; i++)
                     {
                         var info = avatarInfos[i];
-                        avatarTypeMap[counterpartAddresses[i]] = info?.Type switch
-                        {
-                            "Human" => "Human",
-                            "Organization" => "Organization",
-                            "Group" => "Group",
-                            _ => null
-                        };
+                        // Normalize cache short names to full canonical format
+                        avatarTypeMap[counterpartAddresses[i]] = info?.Type != null
+                            ? NormalizeAvatarType(info.Type)
+                            : null;
                     }
 
                     // Build aggregated relations
@@ -300,14 +297,11 @@ public partial class CirclesRpcModule
                 throw new InvalidOperationException($"Unexpected number of trust rows for counterpart: {rows.Count}");
             }
 
-            // Map avatar type to simple format
-            string? objectAvatarType = avatarType switch
-            {
-                "Human" => "Human",
-                "Organization" => "Organization",
-                "Group" => "Group",
-                _ => null
-            };
+            // Normalize avatar type to full canonical format (CrcV2_RegisterHuman etc.)
+            // DB already stores full names. Cache stores short names → normalize.
+            string? objectAvatarType = avatarType != null
+                ? NormalizeAvatarType(avatarType)
+                : null;
 
             result.Add(new AggregatedTrustRelation(
                 SubjectAvatar: normalizedAvatar,

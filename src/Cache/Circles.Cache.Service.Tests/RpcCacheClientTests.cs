@@ -98,7 +98,7 @@ public class RpcCacheClientTests
         {
             Avatar = "0xde374ece6fa50e781e81aac78e811b33d16912c7",
             Version = 2,
-            Type = "Human",
+            Type = "CrcV2_RegisterHuman",
             TokenId = (string?)null,
             HasV1 = false,
             V1Token = (string?)null,
@@ -118,7 +118,7 @@ public class RpcCacheClientTests
         // Assert
         avatar.Should().NotBeNull();
         avatar!.Version.Should().Be(2);
-        avatar.Type.Should().Be("Human");
+        avatar.Type.Should().Be("CrcV2_RegisterHuman");
         avatar.IsHuman.Should().BeTrue();
         avatar.CidV0.Should().Be("QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE");
         avatar.RegisteredAt.Should().Be(1704067200L);
@@ -134,7 +134,7 @@ public class RpcCacheClientTests
             {
                 Avatar = "0xaddr1",
                 Version = 2,
-                Type = "Human",
+                Type = "CrcV2_RegisterHuman",
                 IsHuman = true
             },
             null, // Not found
@@ -142,7 +142,7 @@ public class RpcCacheClientTests
             {
                 Avatar = "0xaddr3",
                 Version = 1,
-                Type = "Human",
+                Type = "CrcV1_Signup",
                 HasV1 = true,
                 V1Token = "0xtoken3"
             }
@@ -237,14 +237,14 @@ public class RpcCacheClientTests
         var cacheResponse = new Circles.Cache.Service.Models.AvatarInfoResponse(
             Avatar: "0xtest",
             Version: 2,
-            Type: "Human",
+            Type: "CrcV2_RegisterHuman",
             ShortName: "zAlice" // This field exists in cache response
         );
 
         var rpcModel = new AvatarInfoResponse(
             Avatar: "0xtest",
             Version: 2,
-            Type: "Human"
+            Type: "CrcV2_RegisterHuman"
             // ShortName property does not exist!
         );
 

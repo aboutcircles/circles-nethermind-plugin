@@ -253,7 +253,7 @@ public class ControllerTests
     {
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        _cache.V2Avatars.Add(2000, address, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2AvatarToCidMap.Add(2000, address, "QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE");
 
         var controller = CreateAvatarsController();
@@ -267,7 +267,7 @@ public class ControllerTests
         var avatar = okResult!.Value as AvatarInfoResponse;
         avatar.Should().NotBeNull();
         avatar!.Version.Should().Be(2);
-        avatar.Type.Should().Be("Human");
+        avatar.Type.Should().Be("CrcV2_RegisterHuman");
         avatar.IsHuman.Should().BeTrue();
         avatar.CidV0.Should().Be("QmYxivS5DXZgDUgLE8YTZV9AnFKPSLvd5R5sWEyWAJKXWE");
         avatar.RegisteredAt.Should().Be(1704067200L);
@@ -279,7 +279,7 @@ public class ControllerTests
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
         var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
-        _cache.V1Avatars.Add(1000, address, ("Human", token));
+        _cache.V1Avatars.Add(1000, address, ("CrcV1_Signup", token));
 
         var controller = CreateAvatarsController();
 
@@ -292,7 +292,7 @@ public class ControllerTests
         var avatar = okResult!.Value as AvatarInfoResponse;
         avatar.Should().NotBeNull();
         avatar!.Version.Should().Be(1);
-        avatar.Type.Should().Be("Human");
+        avatar.Type.Should().Be("CrcV1_Signup");
         avatar.HasV1.Should().BeTrue();
         avatar.V1Token.Should().Be(token);
         avatar.TokenId.Should().Be(token);
@@ -316,7 +316,7 @@ public class ControllerTests
     {
         // Arrange
         var address = "0x1234567890abcdef1234567890abcdef12345678";
-        _cache.V2Avatars.Add(2000, address, ("Group", 1704067200L));
+        _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterGroup", 1704067200L));
         _cache.Groups.Add(2000, address, ("Community DAO", "0xmint", "CDAO"));
 
         var controller = CreateAvatarsController();
@@ -329,7 +329,7 @@ public class ControllerTests
         okResult.Should().NotBeNull();
         var avatar = okResult!.Value as AvatarInfoResponse;
         avatar.Should().NotBeNull();
-        avatar!.Type.Should().Be("Group");
+        avatar!.Type.Should().Be("CrcV2_RegisterGroup");
         avatar.Name.Should().Be("Community DAO");
         avatar.Symbol.Should().Be("CDAO");
         avatar.IsHuman.Should().BeFalse();
@@ -343,8 +343,8 @@ public class ControllerTests
         var addr2 = "0x1234567890abcdef1234567890abcdef12345678";
         var addr3 = "0xnonexistent0000000000000000000000000000";
 
-        _cache.V2Avatars.Add(2000, addr1, ("Human", 1704067200L));
-        _cache.V1Avatars.Add(1000, addr2, ("Organization", null));
+        _cache.V2Avatars.Add(2000, addr1, ("CrcV2_RegisterHuman", 1704067200L));
+        _cache.V1Avatars.Add(1000, addr2, ("CrcV1_OrganizationSignup", null));
 
         var controller = CreateAvatarsController();
 

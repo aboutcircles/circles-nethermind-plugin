@@ -180,9 +180,9 @@ public class BalancesController : ControllerBase
 
                         if (_caches.V2Avatars.TryGetValue(tokenAddress, out var avatarInfo))
                         {
-                            // V2Avatars stores "Human" / "Organization" — groups are in the Groups cache
+                            // V2Avatars stores full type names (CrcV2_RegisterHuman / CrcV2_RegisterOrganization)
                             isGroup = false;
-                            tokenType = avatarInfo.Type == "Human" ? "CrcV2_RegisterHuman" : "CrcV2_RegisterOrganization";
+                            tokenType = avatarInfo.Type;
                         }
                         else if (_caches.Groups.TryGetValue(tokenAddress, out _))
                         {

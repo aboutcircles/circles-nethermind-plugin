@@ -148,14 +148,23 @@ public partial class CirclesRpcModule
                         .ToList();
 
                     var hasMore = allMembers.Count > limit;
-                    var resultItems = allMembers.Take(limit).ToArray();
 
-                    // Cache-based results don't support pagination via cursor
-                    return new PagedResponse<GroupMembershipRow>(
-                        Results: resultItems,
-                        HasMore: hasMore,
-                        NextCursor: null // Cache doesn't support cursor pagination
-                    );
+                    // If cache has more results than requested, fall through to DB
+                    // which supports proper cursor pagination. Otherwise clients get
+                    // HasMore:true but NextCursor:null and can't page further.
+                    if (hasMore)
+                    {
+                        _logger?.LogDebug("Cache has more group members than limit ({Limit}), falling through to DB for pagination support", limit);
+                        // Fall through to DB path below
+                    }
+                    else
+                    {
+                        return new PagedResponse<GroupMembershipRow>(
+                            Results: allMembers.ToArray(),
+                            HasMore: false,
+                            NextCursor: null
+                        );
+                    }
                 }
             }
             catch (Exception ex)
@@ -196,13 +205,22 @@ public partial class CirclesRpcModule
                         .ToList();
 
                     var hasMore = allGroups.Count > limit;
-                    var resultItems = allGroups.Take(limit).ToArray();
 
-                    return new PagedResponse<GroupMembershipRow>(
-                        Results: resultItems,
-                        HasMore: hasMore,
-                        NextCursor: null // Cache doesn't support cursor pagination
-                    );
+                    // If cache has more results than requested, fall through to DB
+                    // which supports proper cursor pagination
+                    if (hasMore)
+                    {
+                        _logger?.LogDebug("Cache has more group memberships than limit ({Limit}), falling through to DB for pagination support", limit);
+                        // Fall through to DB path below
+                    }
+                    else
+                    {
+                        return new PagedResponse<GroupMembershipRow>(
+                            Results: allGroups.ToArray(),
+                            HasMore: false,
+                            NextCursor: null
+                        );
+                    }
                 }
             }
             catch (Exception ex)

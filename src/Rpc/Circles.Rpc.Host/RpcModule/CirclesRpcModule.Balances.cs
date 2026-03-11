@@ -65,8 +65,14 @@ public partial class CirclesRpcModule
     }
 
     /// <summary>
-    /// Optimized query for raw (static) total balance.
+    /// Optimized query for raw total balance (asTimeCircles=false path).
     /// Uses direct SQL aggregation instead of fetching all token details.
+    /// WARNING: The V2 result mixes unit systems and is an APPROXIMATION:
+    /// - V2 ERC1155: totalBalance = static transfer aggregate (demurrage not applied)
+    /// - V2 wrapped inflationary: static/inflationary transfer aggregate
+    /// - V2 wrapped demurraged: raw demurraged transfer sums (each transfer in its own time-specific denomination)
+    /// Summing these values is not mathematically precise. For accurate balances, use asTimeCircles=true
+    /// which converts all values to a common unit via GetTokenBalancesForAccount.
     /// </summary>
     private async Task<string> GetRawTotalBalanceAsync(string address, int version)
     {

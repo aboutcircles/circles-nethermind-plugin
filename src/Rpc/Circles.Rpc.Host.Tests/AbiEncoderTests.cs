@@ -97,6 +97,101 @@ public class AbiEncoderTests
         Assert.That(result[1], Is.EqualTo(new BigInteger(2)));
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Edge case tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Test]
+    public void DecodeUint256_OnlyPrefix_ReturnsZero()
+    {
+        var result = AbiEncoder.DecodeUint256("0x");
+        Assert.That(result, Is.EqualTo(BigInteger.Zero));
+    }
+
+    [Test]
+    public void DecodeUint256Array_EmptyPayload_ReturnsEmptyArray()
+    {
+        var result = AbiEncoder.DecodeUint256Array("");
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void DecodeUint256Array_OnlyPrefix_ReturnsEmptyArray()
+    {
+        var result = AbiEncoder.DecodeUint256Array("0x");
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void DecodeUint256Array_TruncatedPayload_TooShortForOffset_Throws()
+    {
+        // offset=0x20 points to position 64, but payload has no data there
+        // This is a bounds violation — the decoder throws ArgumentOutOfRangeException
+        Assert.That(() => AbiEncoder.DecodeUint256Array("0x" + FormatHex(0x20)),
+            Throws.InstanceOf<ArgumentOutOfRangeException>(),
+            "Truncated payload should throw when array length cannot be read");
+    }
+
+    [Test]
+    public void DecodeUint256Array_ZeroLengthArray_ReturnsEmptyArray()
+    {
+        // Valid encoding of an empty array: offset(32) + length(0)
+        var payload = "0x" + FormatHex(0x20) + FormatHex(0);
+        var result = AbiEncoder.DecodeUint256Array(payload);
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void DecodeUint256Array_SingleElement_ParsesCorrectly()
+    {
+        var payload = BuildUint256ArrayPayload(new[] { new BigInteger(42) });
+        var result = AbiEncoder.DecodeUint256Array(payload);
+
+        Assert.That(result.Length, Is.EqualTo(1));
+        Assert.That(result[0], Is.EqualTo(new BigInteger(42)));
+    }
+
+    [Test]
+    public void DecodeUint256_MaxUint256_ParsesCorrectly()
+    {
+        // Max uint256: 2^256 - 1
+        var maxHex = new string('f', 64);
+        var result = AbiEncoder.DecodeUint256("0x" + maxHex);
+
+        var expected = BigInteger.Pow(2, 256) - 1;
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void EncodeBalanceOfErc20_WithoutPrefix_Works()
+    {
+        const string address = "1234567890abcdef1234567890abcdef12345678";
+        var calldata = AbiEncoder.EncodeBalanceOfErc20(address);
+
+        // Should handle address without 0x prefix
+        Assert.That(calldata, Does.StartWith("0x70a08231"));
+        Assert.That(calldata, Does.Contain(address));
+    }
+
+    [Test]
+    public void EncodeBalanceOfBatch_EmptyArrays_ReturnsValidEncoding()
+    {
+        var calldata = AbiEncoder.EncodeBalanceOfBatch(
+            Array.Empty<string>(),
+            Array.Empty<BigInteger>());
+
+        Assert.That(calldata, Does.StartWith("0x4e1273f4"));
+    }
+
+    [Test]
+    public void EncodeBalanceOfBatch_MismatchedLengths_ThrowsArgumentException()
+    {
+        Assert.That(() => AbiEncoder.EncodeBalanceOfBatch(
+            new[] { "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            Array.Empty<BigInteger>()),
+            Throws.InstanceOf<ArgumentException>());
+    }
+
     private static string FormatHex(long value)
     {
         return value.ToString("X").PadLeft(64, '0');
