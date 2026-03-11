@@ -21,7 +21,11 @@ public class CacheWarmupServiceTests
         var service = new TestWarmupService(settings, state, caches, failuresBeforeSuccess: 2);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await service.ExecuteOnceAsync(cts.Token);
+        var executeTask = service.ExecuteOnceAsync(cts.Token);
+
+        await WaitForWarmupCompleteAsync(state);
+        cts.Cancel();
+        await executeTask;
 
         service.AttemptCount.Should().Be(3);
         service.DelayCount.Should().Be(2);
@@ -46,6 +50,17 @@ public class CacheWarmupServiceTests
 
         service.AttemptCount.Should().BeGreaterOrEqualTo(2);
         state.WarmupComplete.Should().BeFalse();
+    }
+
+    private static async Task WaitForWarmupCompleteAsync(CacheServiceState state)
+    {
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (!state.WarmupComplete && DateTime.UtcNow < timeout)
+        {
+            await Task.Delay(10);
+        }
+
+        state.WarmupComplete.Should().BeTrue();
     }
 
     private static async Task WaitForAttemptsAsync(TestWarmupService service, int minimumAttempts)
@@ -102,7 +117,7 @@ public class CacheWarmupServiceTests
         protected override Task DelayAfterFailureAsync(CancellationToken ct)
         {
             DelayCount++;
-            return Task.CompletedTask;
+            return Task.Delay(1, ct);
         }
     }
 }
@@ -139,6 +154,7 @@ public class NotificationListenerServiceTests
 
         service.ProcessedRanges.Should().Equal(new[] { (6L, 7L) });
         state.LastProcessedBlock.Should().Be(7);
+        state.CurrentBlockTimestamp.Should().Be(7000);
         state.BlockRingBuffer.LatestBlockNumber.Should().Be(7);
     }
 
@@ -154,6 +170,7 @@ public class NotificationListenerServiceTests
         {
             LastProcessedBlock = 10
         };
+        state.WarmupTargetBlock = 8;
         state.BlockRingBuffer.UpdateFromBlocks(new[]
         {
             (8L, "0x08"),
@@ -193,6 +210,55 @@ public class NotificationListenerServiceTests
         caches.V1Avatars.ContainsKey(dummyAvatarKey).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ReorgCrossingWarmupSeedBoundary_TriggersFullRewarmup()
+    {
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 5,
+            PostgresConnectionString = "Host=localhost"
+        };
+        var state = new CacheServiceState(settings.RollbackCapacity)
+        {
+            LastProcessedBlock = 102,
+            WarmupComplete = true,
+            WarmupTargetBlock = 100,
+            CurrentBlockTimestamp = 12345
+        };
+
+        state.BlockRingBuffer.UpdateFromBlocks(new[]
+        {
+            (98L, "0x98"),
+            (99L, "0x99"),
+            (100L, "0x100-old"),
+            (101L, "0x101-old"),
+            (102L, "0x102-old")
+        });
+
+        var caches = new CacheContainer(settings.RollbackCapacity);
+        SeedAllCachesAtBlock(caches, 100);
+        caches.V1Avatars.Add(101, "0xuser", ("Human", "0xtoken"));
+
+        var blocks = new List<(long BlockNumber, string BlockHash)>
+        {
+            (98L, "0x98"),
+            (99L, "0x99"),
+            (100L, "0x100-new"),
+            (101L, "0x101-new"),
+            (102L, "0x102-new")
+        };
+
+        var service = new TestNotificationListenerService(settings, state, caches, blocks);
+
+        await service.InvokeHandleAsync("{}", CancellationToken.None);
+
+        service.ProcessedRanges.Should().BeEmpty();
+        state.WarmupComplete.Should().BeFalse();
+        state.LastProcessedBlock.Should().Be(0);
+        state.CurrentBlockTimestamp.Should().Be(0);
+        caches.V1Avatars.Count.Should().Be(0);
+    }
+
     private sealed class TestNotificationListenerService : NotificationListenerService
     {
         private readonly List<(long BlockNumber, string BlockHash)> _blocks;
@@ -226,6 +292,9 @@ public class NotificationListenerServiceTests
             _processedRanges.Add((fromBlock, toBlock));
             return Task.CompletedTask;
         }
+
+        protected override Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
+            => Task.FromResult(blockNumber * 1000);
     }
 
     [Fact]
@@ -384,6 +453,9 @@ public class NotificationListenerServiceTests
             }
             return Task.CompletedTask;
         }
+
+        protected override Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
+            => Task.FromResult(blockNumber * 1000);
     }
 
     /// <summary>

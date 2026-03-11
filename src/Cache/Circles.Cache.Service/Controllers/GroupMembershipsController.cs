@@ -38,8 +38,10 @@ public class GroupMembershipsController : ControllerBase
             var groupLower = groupAddress.ToLowerInvariant();
             var lastBlock = _state.LastProcessedBlock;
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
             var members = _caches.GetGroupMembers(groupLower)
+                .Where(m => m.ExpiryTime > currentBlockTimestamp)
                 .Select(m => new GroupMembershipResponse(
                     Group: groupLower,
                     Member: m.Member,
@@ -77,8 +79,10 @@ public class GroupMembershipsController : ControllerBase
             var memberLower = memberAddress.ToLowerInvariant();
             var lastBlock = _state.LastProcessedBlock;
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
             var groups = _caches.GetMemberGroups(memberLower)
+                .Where(g => g.ExpiryTime > currentBlockTimestamp)
                 .Select(g => new GroupMembershipResponse(
                     Group: g.Group,
                     Member: memberLower,

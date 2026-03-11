@@ -82,13 +82,15 @@ public partial class CirclesRpcModule
             var canSendTo = reader.GetString(1);
             // V1 trust limits are percentages (0-100), stored as uint256 in contract but always fit in int32
             var limit = Convert.ToInt32(reader.GetValue(2));
-            if (user.Equals(address, StringComparison.OrdinalIgnoreCase))
+
+            // V1 Trust semantics: canSendTo = truster, user = trustee
+            if (canSendTo.Equals(address, StringComparison.OrdinalIgnoreCase))
             {
-                trusts.Add(new TrustRelation(User: canSendTo, Limit: limit));
+                trusts.Add(new TrustRelation(User: user, Limit: limit));
             }
             else
             {
-                trustedBy.Add(new TrustRelation(User: user, Limit: limit));
+                trustedBy.Add(new TrustRelation(User: canSendTo, Limit: limit));
             }
         }
         return new TrustRelationsResponse(User: address.ToLower(), Trusts: trusts.ToArray(), TrustedBy: trustedBy.ToArray());

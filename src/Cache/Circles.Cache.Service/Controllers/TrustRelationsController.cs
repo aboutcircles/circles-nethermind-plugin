@@ -38,6 +38,7 @@ public class TrustRelationsController : ControllerBase
             var addressLower = address.ToLowerInvariant();
             var lastBlock = _state.LastProcessedBlock;
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
             var trusts = new List<TrustRelationResponse>();
             var trustedBy = new List<TrustRelationResponse>();
@@ -75,6 +76,9 @@ public class TrustRelationsController : ControllerBase
             {
                 foreach (var (trustee, expiryTime) in _caches.GetTrustsFor(addressLower, isV1: false))
                 {
+                    if (expiryTime <= currentBlockTimestamp)
+                        continue;
+
                     trusts.Add(new TrustRelationResponse(
                         Truster: addressLower,
                         Trustee: trustee,
@@ -87,6 +91,9 @@ public class TrustRelationsController : ControllerBase
 
                 foreach (var (truster, expiryTime) in _caches.GetTrustedByFor(addressLower, isV1: false))
                 {
+                    if (expiryTime <= currentBlockTimestamp)
+                        continue;
+
                     trustedBy.Add(new TrustRelationResponse(
                         Truster: truster,
                         Trustee: addressLower,

@@ -1,6 +1,8 @@
 using System.Numerics;
+using System.Data;
 using Circles.Cache.Service.Caches;
 using Circles.Common;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace Circles.Cache.Service.Services;
@@ -16,6 +18,7 @@ public class CacheWarmupService : BackgroundService
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
     private readonly NpgsqlDataSource _readonlyDataSource;
+    private readonly GapReplayNotificationListener _gapReplayProcessor;
 
     protected CacheServiceSettings Settings => _settings;
     protected CacheServiceState State => _state;
@@ -37,6 +40,7 @@ public class CacheWarmupService : BackgroundService
         _state = state;
         _caches = caches;
         _readonlyDataSource = readonlyDataSource;
+        _gapReplayProcessor = new GapReplayNotificationListener(settings, state, caches, readonlyDataSource);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -45,32 +49,50 @@ public class CacheWarmupService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Wait for warmup to be needed (either initially or after a recovery reset)
-            while (_state.WarmupComplete && !stoppingToken.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            }
-
-            if (stoppingToken.IsCancellationRequested)
-                break;
-
             try
             {
-                await RunWarmupIterationAsync(stoppingToken);
-                // Don't break - keep monitoring for re-warmup requests
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Cache warmup failed");
-
-                var now = DateTime.UtcNow;
-                if (now - _lastReminderLogTime >= _reminderInterval)
+                // Wait for warmup to be needed (either initially or after a recovery reset)
+                while (_state.WarmupComplete && !stoppingToken.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Cache warmup failed. Service will remain unhealthy until manual restart or DB issue is resolved.");
-                    _lastReminderLogTime = now;
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 }
 
-                await DelayAfterFailureAsync(stoppingToken);
+                if (stoppingToken.IsCancellationRequested)
+                    break;
+
+                try
+                {
+                    await RunWarmupIterationAsync(stoppingToken);
+                    // Don't break - keep monitoring for re-warmup requests
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Cache warmup failed");
+
+                    var now = DateTime.UtcNow;
+                    if (now - _lastReminderLogTime >= _reminderInterval)
+                    {
+                        _logger.LogWarning("Cache warmup failed. Service will remain unhealthy until manual restart or DB issue is resolved.");
+                        _lastReminderLogTime = now;
+                    }
+
+                    try
+                    {
+                        await DelayAfterFailureAsync(stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
         }
 
@@ -99,24 +121,36 @@ public class CacheWarmupService : BackgroundService
         // Phase 2: Load all data in parallel — each task opens its own pooled connection
         var warmupSw = System.Diagnostics.Stopwatch.StartNew();
 
-        await Task.WhenAll(
-            TimedLoadAsync("V1 events", ct => WithReadonlyConnectionAsync(
-                (c, t) => ReplayV1EventsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("V2 events", ct => WithReadonlyConnectionAsync(
-                (c, t) => ReplayV2EventsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("group memberships", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadGroupMembershipsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("trust relations", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadTrustRelationsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("consented flow flags", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadConsentedFlowFlagsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("avatar metadata", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadAvatarMetadataAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("short names", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadV2ShortNamesAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("balances", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadBalancesAsync(c, t), ct), stoppingToken)
-        );
+        long warmupTargetTimestamp = 0;
+
+        await using (var snapshot = await CreateWarmupSnapshotAsync(stoppingToken))
+        {
+            await Task.WhenAll(
+                TimedLoadAsync("V1 events", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => ReplayV1EventsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("V2 events", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => ReplayV2EventsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("group memberships", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadGroupMembershipsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("trust relations", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadTrustRelationsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("consented flow flags", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadConsentedFlowFlagsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("avatar metadata", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadAvatarMetadataAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("short names", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadV2ShortNamesAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("balances", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadBalancesAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("warmup target timestamp", async ct =>
+                {
+                    await WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId, async (c, t) =>
+                    {
+                        warmupTargetTimestamp = await GetMaxTimestampUpToBlockAsync(c, warmupTarget, t);
+                    }, ct);
+                }, stoppingToken)
+            );
+        }
 
         warmupSw.Stop();
         _logger.LogInformation("All data loaded in {Elapsed:n1}s (parallel)", warmupSw.Elapsed.TotalSeconds);
@@ -131,6 +165,7 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("========================================");
 
         // Phase 3: Initialize ring buffer and catch up on a shared connection
+        var finalHeadTimestamp = warmupTargetTimestamp;
         await WithReadonlyConnectionAsync(async (conn, token) =>
         {
             await InitializeBlockRingBufferAsync(conn, warmupTarget, token);
@@ -145,6 +180,7 @@ public class CacheWarmupService : BackgroundService
                 await ProcessBlockGapAsync(conn, warmupTarget + 1, currentHead, token);
 
                 _state.LastProcessedBlock = currentHead;
+                finalHeadTimestamp = await GetMaxTimestampUpToBlockAsync(conn, currentHead, token);
                 _logger.LogInformation("Processed {Count} blocks that arrived during warmup",
                     currentHead - warmupTarget);
             }
@@ -153,6 +189,8 @@ public class CacheWarmupService : BackgroundService
                 _logger.LogInformation("No new blocks arrived during warmup");
             }
         }, stoppingToken);
+
+        _state.CurrentBlockTimestamp = finalHeadTimestamp;
 
         _state.WarmupComplete = true;
         _lastReminderLogTime = DateTime.MinValue;
@@ -166,6 +204,46 @@ public class CacheWarmupService : BackgroundService
     {
         await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
         await action(conn, ct);
+    }
+
+    protected virtual async Task<WarmupSnapshotContext> CreateWarmupSnapshotAsync(CancellationToken ct)
+    {
+        var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
+        var tx = await conn.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+
+        await using var cmd = new NpgsqlCommand("SELECT pg_export_snapshot()", conn, tx);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        var snapshotId = result?.ToString();
+
+        if (string.IsNullOrWhiteSpace(snapshotId))
+        {
+            await tx.DisposeAsync();
+            await conn.DisposeAsync();
+            throw new InvalidOperationException("Failed to export PostgreSQL snapshot for warmup.");
+        }
+
+        return new WarmupSnapshotContext(conn, tx, snapshotId);
+    }
+
+    protected virtual async Task WithSnapshotReadonlyConnectionAsync(
+        string snapshotId,
+        Func<NpgsqlConnection, CancellationToken, Task> action,
+        CancellationToken ct)
+    {
+        await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+
+        // snapshotId comes from PostgreSQL pg_export_snapshot() (not user input).
+        // PostgreSQL does not allow parameterization for SET TRANSACTION SNAPSHOT,
+        // so we keep interpolation local and escape defensively.
+        var escapedSnapshotId = snapshotId.Replace("'", "''");
+        await using (var setSnapshotCmd = new NpgsqlCommand($"SET TRANSACTION SNAPSHOT '{escapedSnapshotId}'", conn, tx))
+        {
+            await setSnapshotCmd.ExecuteNonQueryAsync(ct);
+        }
+
+        await action(conn, ct);
+        await tx.CommitAsync(ct);
     }
 
     private async Task TimedLoadAsync(string name, Func<CancellationToken, Task> load, CancellationToken ct)
@@ -519,18 +597,18 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loaded {Count} V2 ERC20 wrapper deployments", wrappers.Count);
     }
 
-    protected virtual async Task LoadBalancesAsync(NpgsqlConnection conn, CancellationToken ct)
+    protected virtual async Task LoadBalancesAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Loading balances from pre-computed views (fast path)...");
 
         // Load V1 balances directly from the balance view
-        await LoadV1BalancesFromViewAsync(conn, ct);
+        await LoadV1BalancesFromViewAsync(conn, toBlock, ct);
 
         // Load V2 balances directly from the balance view
-        await LoadV2BalancesFromViewAsync(conn, ct);
+        await LoadV2BalancesFromViewAsync(conn, toBlock, ct);
 
         // Load ERC20 wrapper balances from view (or aggregated query)
-        await LoadErc20WrapperBalancesFromViewAsync(conn, ct);
+        await LoadErc20WrapperBalancesFromViewAsync(conn, toBlock, ct);
 
         _logger.LogInformation("Balance loading completed");
     }
@@ -539,21 +617,37 @@ public class CacheWarmupService : BackgroundService
     /// Loads V1 balances directly from the pre-computed V_CrcV1_BalancesByAccountAndToken view.
     /// This is much faster than replaying all transfers since the view already aggregates them.
     /// </summary>
-    private async Task LoadV1BalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task LoadV1BalancesFromViewAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Loading V1 balances from view...");
 
-        // The view returns pre-aggregated balances - just load them directly
-        // Note: We use totalBalance (raw attoCrc) divided by 10^18 to get decimal
+        // Build balances from transfers bounded to the warmup target block.
         const string sql = @"
-            SELECT
-                account,
-                ""tokenAddress"",
-                ""totalBalance""
-            FROM ""V_CrcV1_BalancesByAccountAndToken""
-            WHERE ""totalBalance"" > 0";
+            WITH account_balances AS (
+                SELECT
+                    account,
+                    ""tokenAddress"",
+                    SUM(delta) as balance
+                FROM (
+                    SELECT ""from"" AS account, ""tokenAddress"", -amount AS delta
+                    FROM ""CrcV1_Transfer""
+                    WHERE ""blockNumber"" <= @toBlock
+
+                    UNION ALL
+
+                    SELECT ""to"" AS account, ""tokenAddress"", amount AS delta
+                    FROM ""CrcV1_Transfer""
+                    WHERE ""blockNumber"" <= @toBlock
+                ) t
+                GROUP BY account, ""tokenAddress""
+                HAVING SUM(delta) > 0
+            )
+            SELECT account, ""tokenAddress"", balance
+            FROM account_balances
+            WHERE account != '0x0000000000000000000000000000000000000000'";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
         cmd.CommandTimeout = 300; // 5 minutes should be plenty
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
@@ -604,22 +698,50 @@ public class CacheWarmupService : BackgroundService
     /// Loads V2 balances directly from the pre-computed V_CrcV2_BalancesByAccountAndToken view.
     /// Uses totalBalance (not demurragedTotalBalance) for cache storage since demurrage is time-dependent.
     /// </summary>
-    private async Task LoadV2BalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task LoadV2BalancesFromViewAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Loading V2 balances from view...");
 
-        // Load ERC1155 balances from the view
-        // Use totalBalance for storage - demurrage is applied at query time using lastActivity
+        // Build balances from transfers bounded to the warmup target block.
         const string sql = @"
-            SELECT
-                account,
-                ""tokenAddress"",
-                ""totalBalance"",
-                ""lastActivity""
-            FROM ""V_CrcV2_BalancesByAccountAndToken""
-            WHERE ""totalBalance"" > 0";
+            WITH account_balances AS (
+                SELECT
+                    account,
+                    ""tokenAddress"",
+                    SUM(delta) as balance,
+                    MAX(ts) as last_activity
+                FROM (
+                    SELECT ""from"" AS account, ""tokenAddress"", -value AS delta, ""timestamp"" AS ts
+                    FROM ""CrcV2_TransferSingle""
+                    WHERE ""blockNumber"" <= @toBlock
+
+                    UNION ALL
+
+                    SELECT ""to"" AS account, ""tokenAddress"", value AS delta, ""timestamp"" AS ts
+                    FROM ""CrcV2_TransferSingle""
+                    WHERE ""blockNumber"" <= @toBlock
+
+                    UNION ALL
+
+                    SELECT ""from"" AS account, ""tokenAddress"", -value AS delta, ""timestamp"" AS ts
+                    FROM ""CrcV2_TransferBatch""
+                    WHERE ""blockNumber"" <= @toBlock
+
+                    UNION ALL
+
+                    SELECT ""to"" AS account, ""tokenAddress"", value AS delta, ""timestamp"" AS ts
+                    FROM ""CrcV2_TransferBatch""
+                    WHERE ""blockNumber"" <= @toBlock
+                ) t
+                GROUP BY account, ""tokenAddress""
+                HAVING SUM(delta) > 0
+            )
+            SELECT account, ""tokenAddress"", balance, last_activity
+            FROM account_balances
+            WHERE account != '0x0000000000000000000000000000000000000000'";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
         cmd.CommandTimeout = 300;
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
@@ -667,11 +789,8 @@ public class CacheWarmupService : BackgroundService
         // Seed the cache with all balances at once at the warmup target block
         _caches.V2BalancesByAccountAndToken.Seed(balances, _state.WarmupTargetBlock);
 
-        // Populate V2LastActivity for demurrage calculation at query time
-        foreach (var (key, ts) in lastActivities)
-        {
-            _caches.V2LastActivity[key] = ts;
-        }
+        // Seed matching V2LastActivity snapshot at the same warmup block.
+        _caches.V2LastActivity.Seed(lastActivities, _state.WarmupTargetBlock);
 
         _logger.LogInformation("Loaded {Count} V2 ERC1155 balances from view", balances.Count);
     }
@@ -681,11 +800,9 @@ public class CacheWarmupService : BackgroundService
     /// Since there's no pre-computed view for wrapper balances, we use an aggregation query.
     /// Wrapper balances are merged into the existing V2 cache using Seed() to avoid Add() issues.
     /// </summary>
-    private async Task LoadErc20WrapperBalancesFromViewAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task LoadErc20WrapperBalancesFromViewAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
         _logger.LogInformation("Loading ERC20 wrapper balances...");
-
-        var warmupBlock = _state.WarmupTargetBlock;
 
         // Aggregate wrapper transfers up to the warmup target block.
         // Without the block filter, transfers arriving during warmup would be double-counted
@@ -703,7 +820,7 @@ public class CacheWarmupService : BackgroundService
                     SELECT DISTINCT x FROM (VALUES (t.""to""), (t.""from"")) AS v(x)
                     WHERE x != '0x0000000000000000000000000000000000000000'
                 ) AS accounts(account)
-                WHERE t.""blockNumber"" <= @warmupBlock
+                WHERE t.""blockNumber"" <= @toBlock
                 GROUP BY account, ""tokenAddress""
                 HAVING SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
@@ -712,7 +829,7 @@ public class CacheWarmupService : BackgroundService
             FROM account_balances";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("warmupBlock", warmupBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
         cmd.CommandTimeout = 300;
 
         try
@@ -752,11 +869,13 @@ public class CacheWarmupService : BackgroundService
             // Merge wrapper balances into existing V2 cache by re-seeding with combined data
             MergeWrapperBalancesIntoV2Cache(wrapperBalances);
 
-            // Populate V2LastActivity for wrapper entries
+            // Merge wrapper last-activity into existing V2 last-activity snapshot.
+            var mergedLastActivities = new Dictionary<string, long>(_caches.V2LastActivity.ReadOnlyDictionary);
             foreach (var (key, ts) in wrapperLastActivities)
             {
-                _caches.V2LastActivity[key] = ts;
+                mergedLastActivities[key] = ts;
             }
+            _caches.V2LastActivity.Seed(mergedLastActivities, _state.WarmupTargetBlock);
 
             _logger.LogInformation("Loaded {Count} ERC20 wrapper balances", wrapperBalances.Count);
         }
@@ -764,7 +883,7 @@ public class CacheWarmupService : BackgroundService
         {
             // If the complex query fails, fall back to simpler approach
             _logger.LogWarning(ex, "Complex wrapper balance query failed, using simple aggregation");
-            await LoadErc20WrapperBalancesSimpleAsync(conn, ct);
+            await LoadErc20WrapperBalancesSimpleAsync(conn, toBlock, ct);
         }
     }
 
@@ -795,17 +914,15 @@ public class CacheWarmupService : BackgroundService
     /// <summary>
     /// Simple fallback for loading ERC20 wrapper balances - aggregates in memory.
     /// </summary>
-    private async Task LoadErc20WrapperBalancesSimpleAsync(NpgsqlConnection conn, CancellationToken ct)
+    private async Task LoadErc20WrapperBalancesSimpleAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
     {
-        var warmupBlock = _state.WarmupTargetBlock;
-
         const string sql = @"
             SELECT ""from"", ""to"", ""tokenAddress"", amount, ""timestamp""
             FROM ""CrcV2_Erc20WrapperTransfer""
-            WHERE ""blockNumber"" <= @warmupBlock";
+            WHERE ""blockNumber"" <= @toBlock";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("warmupBlock", warmupBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
         cmd.CommandTimeout = 300;
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
@@ -854,14 +971,16 @@ public class CacheWarmupService : BackgroundService
         // Merge wrapper balances into existing V2 cache
         MergeWrapperBalancesIntoV2Cache(wrapperBalances);
 
-        // Populate V2LastActivity for wrapper entries with positive balances
+        // Merge wrapper last-activity into existing V2 last-activity snapshot.
+        var mergedLastActivities = new Dictionary<string, long>(_caches.V2LastActivity.ReadOnlyDictionary);
         foreach (var key in wrapperBalances.Keys)
         {
             if (maxTimestamps.TryGetValue(key, out var ts))
             {
-                _caches.V2LastActivity[key] = ts;
+                mergedLastActivities[key] = ts;
             }
         }
+        _caches.V2LastActivity.Seed(mergedLastActivities, _state.WarmupTargetBlock);
 
         _logger.LogInformation("Loaded {Count} ERC20 wrapper balances (simple method)", wrapperBalances.Count);
     }
@@ -1173,17 +1292,41 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading group memberships...");
 
-        // Load group memberships using Seed() for efficiency
+        var targetTimestamp = await GetMaxTimestampUpToBlockAsync(conn, toBlock, ct);
+
+        // Load group memberships using block-bounded latest trust state.
         const string sql = @"
+            WITH latest_trust AS (
+                SELECT
+                    ct.truster,
+                    ct.trustee,
+                    ct.""expiryTime"",
+                    ROW_NUMBER() OVER (
+                        PARTITION BY ct.truster, ct.trustee
+                        ORDER BY ct.""blockNumber"" DESC, ct.""transactionIndex"" DESC, ct.""logIndex"" DESC
+                    ) AS rn
+                FROM ""CrcV2_Trust"" ct
+                WHERE ct.""blockNumber"" <= @toBlock
+            )
             SELECT
-                ""group"",
-                ""member"",
-                ""expiryTime""
-            FROM ""V_CrcV2_GroupMemberships""";
+                lt.truster AS ""group"",
+                lt.trustee AS ""member"",
+                lt.""expiryTime""
+            FROM latest_trust lt
+            WHERE lt.rn = 1
+              AND lt.""expiryTime"" > @targetTimestamp
+              AND EXISTS (
+                  SELECT 1
+                  FROM ""CrcV2_RegisterGroup"" g
+                  WHERE g.""group"" = lt.truster
+                    AND g.""blockNumber"" <= @toBlock
+              )";
 
         var memberships = new Dictionary<string, (string Member, long ExpiryTime)>();
 
         await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+        cmd.Parameters.AddWithValue("targetTimestamp", targetTimestamp);
         cmd.CommandTimeout = 300;
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
@@ -1209,17 +1352,20 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading trust relations...");
 
+        var targetTimestamp = await GetMaxTimestampUpToBlockAsync(conn, toBlock, ct);
+
         // Load V1 trust relations using Seed() for efficiency
         // V1 trust has a "limit" field (0-100 percentage) that we store as the value
         // Filter out limit=0 entries (untrusts) to match incremental path behavior
         // (NotificationListenerService.ProcessV1TrustAsync removes limit=0 entries)
         const string v1Sql = @"
-            SELECT ""user"" as truster, ""canSendTo"" as trustee, ""limit""
+            SELECT ""canSendTo"" as truster, ""user"" as trustee, ""limit""
             FROM (
                 SELECT ""user"", ""canSendTo"", ""limit"",
                        ROW_NUMBER() OVER (PARTITION BY ""user"", ""canSendTo""
                                           ORDER BY ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC) as rn
                 FROM ""CrcV1_Trust""
+                WHERE ""blockNumber"" <= @toBlock
             ) t
             WHERE rn = 1 AND ""limit"" > 0";
 
@@ -1227,6 +1373,7 @@ public class CacheWarmupService : BackgroundService
 
         await using (var v1Cmd = new NpgsqlCommand(v1Sql, conn))
         {
+            v1Cmd.Parameters.AddWithValue("toBlock", toBlock);
             v1Cmd.CommandTimeout = 300;
             await using var v1Reader = await v1Cmd.ExecuteReaderAsync(ct);
 
@@ -1246,15 +1393,31 @@ public class CacheWarmupService : BackgroundService
         _caches.V1TrustRelations.Seed(v1TrustData, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V1 trust relations", v1TrustData.Count);
 
-        // Load V2 trust relations using Seed() for efficiency
+        // Load V2 trust relations using block-bounded latest trust state.
         const string v2Sql = @"
+            WITH latest_trust AS (
+                SELECT
+                    ct.truster,
+                    ct.trustee,
+                    ct.""expiryTime"",
+                    ROW_NUMBER() OVER (
+                        PARTITION BY ct.truster, ct.trustee
+                        ORDER BY ct.""blockNumber"" DESC, ct.""transactionIndex"" DESC, ct.""logIndex"" DESC
+                    ) AS rn
+                FROM ""CrcV2_Trust"" ct
+                WHERE ct.""blockNumber"" <= @toBlock
+            )
             SELECT truster, trustee, ""expiryTime""
-            FROM ""V_CrcV2_TrustRelations""";
+            FROM latest_trust
+            WHERE rn = 1
+              AND ""expiryTime"" > @targetTimestamp";
 
         var v2TrustData = new Dictionary<string, long>();
 
         await using (var v2Cmd = new NpgsqlCommand(v2Sql, conn))
         {
+            v2Cmd.Parameters.AddWithValue("toBlock", toBlock);
+            v2Cmd.Parameters.AddWithValue("targetTimestamp", targetTimestamp);
             v2Cmd.CommandTimeout = 300;
             await using var v2Reader = await v2Cmd.ExecuteReaderAsync(ct);
 
@@ -1273,6 +1436,25 @@ public class CacheWarmupService : BackgroundService
 
         _caches.V2TrustRelations.Seed(v2TrustData, _state.WarmupTargetBlock);
         _logger.LogInformation("Loaded {Count} V2 trust relations", v2TrustData.Count);
+    }
+
+    private static async Task<long> GetMaxTimestampUpToBlockAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT COALESCE(MAX(""timestamp""), 0)
+            FROM ""System_Block""
+            WHERE ""blockNumber"" <= @toBlock";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+        var result = await cmd.ExecuteScalarAsync(ct);
+
+        return result switch
+        {
+            long l => l,
+            int i => i,
+            _ => 0L
+        };
     }
 
     protected virtual async Task LoadConsentedFlowFlagsAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
@@ -1484,6 +1666,17 @@ public class CacheWarmupService : BackgroundService
 
         if (reorgPoint.HasValue)
         {
+            if (reorgPoint.Value <= _state.WarmupTargetBlock)
+            {
+                _logger.LogWarning(
+                    "Reorg at block {ReorgBlock} during gap processing crossed warmup seed boundary {WarmupTarget}; restarting warmup.",
+                    reorgPoint.Value,
+                    _state.WarmupTargetBlock);
+
+                RewarmupReset.Trigger(_state, ClearCaches);
+                throw new InvalidOperationException("Warmup gap replay crossed warmup seed boundary due to reorg.");
+            }
+
             _logger.LogWarning("Reorg detected at block {ReorgBlock} during gap processing! Rolling back caches...",
                 reorgPoint.Value);
 
@@ -1498,11 +1691,8 @@ public class CacheWarmupService : BackgroundService
             fromBlock = reorgPoint.Value;
         }
 
-        // Process V1 events in this range
-        await ProcessV1EventsInRangeAsync(conn, fromBlock, toBlock, ct);
-
-        // Process V2 events in this range
-        await ProcessV2EventsInRangeAsync(conn, fromBlock, toBlock, ct);
+        // Replay all domains via the same processor used by the live notification listener.
+        await _gapReplayProcessor.ReplayRangeAsync(fromBlock, toBlock, ct);
 
         _logger.LogInformation("Successfully processed block gap {FromBlock} to {ToBlock}", fromBlock, toBlock);
     }
@@ -1669,7 +1859,7 @@ public class CacheWarmupService : BackgroundService
                 // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                 var wrapperKey = erc20Wrapper.ToLowerInvariant();
 
-                _caches.Erc20WrapperAddresses.Add(blockNumber, wrapperKey, (avatar.ToLowerInvariant(), circlesType));
+                _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
             }
         }
     }
@@ -1694,8 +1884,47 @@ public class CacheWarmupService : BackgroundService
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
         _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
         _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
-        _caches.V2LastActivity.Clear();
+        _caches.V2LastActivity.Seed(new Dictionary<string, long>());
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
+    }
+
+    /// <summary>
+    /// Adapter that exposes NotificationListenerService block-range processing
+    /// so warmup gap replay can reuse the exact same per-domain logic.
+    /// </summary>
+    private sealed class GapReplayNotificationListener : NotificationListenerService
+    {
+        public GapReplayNotificationListener(
+            CacheServiceSettings settings,
+            CacheServiceState state,
+            CacheContainer caches,
+            NpgsqlDataSource readonlyDataSource)
+            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches, readonlyDataSource)
+        {
+        }
+
+        public Task ReplayRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
+            => ProcessBlockRangeAsync(fromBlock, toBlock, ct);
+    }
+
+    protected sealed class WarmupSnapshotContext : IAsyncDisposable
+    {
+        public NpgsqlConnection ExportConnection { get; }
+        public NpgsqlTransaction ExportTransaction { get; }
+        public string SnapshotId { get; }
+
+        public WarmupSnapshotContext(NpgsqlConnection exportConnection, NpgsqlTransaction exportTransaction, string snapshotId)
+        {
+            ExportConnection = exportConnection;
+            ExportTransaction = exportTransaction;
+            SnapshotId = snapshotId;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await ExportTransaction.DisposeAsync();
+            await ExportConnection.DisposeAsync();
+        }
     }
 }

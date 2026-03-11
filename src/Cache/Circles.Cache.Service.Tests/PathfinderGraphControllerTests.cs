@@ -134,7 +134,7 @@ public class PathfinderGraphControllerTests
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token}", 1.5m);
         // Set a recent lastActivity so demurrage is minimal
         var recentTimestamp = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
-        _cache.V2LastActivity[$"{account}:{token}"] = recentTimestamp;
+        _cache.V2LastActivity.Add(1000, $"{account}:{token}", recentTimestamp);
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "balances");
@@ -198,8 +198,8 @@ public class PathfinderGraphControllerTests
         _cache.V2Avatars.Add(1000, underlyingAvatar, ("Human", 1704067200L));
         _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (underlyingAvatar, 0)); // 0 = demurraged
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
-        _cache.V2LastActivity[$"{account}:{wrapperAddress}"] =
-            (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        _cache.V2LastActivity.Add(1000, $"{account}:{wrapperAddress}",
+            (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "balances");
@@ -547,7 +547,7 @@ public class PathfinderGraphControllerTests
 
         // lastActivity 30 days ago — should show noticeable demurrage
         var thirtyDaysAgo = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (30 * 86400);
-        _cache.V2LastActivity[$"{account}:{token}"] = thirtyDaysAgo;
+        _cache.V2LastActivity.Add(1000, $"{account}:{token}", thirtyDaysAgo);
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "balances");
@@ -581,7 +581,7 @@ public class PathfinderGraphControllerTests
         _cache.V2Avatars.Add(1000, group, ("Group", 1704067200L));
 
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{alice}:{bob}", 100m);
-        _cache.V2LastActivity[$"{alice}:{bob}"] = now;
+        _cache.V2LastActivity.Add(1000, $"{alice}:{bob}", now);
 
         _cache.V2TrustRelations.Add(1000, $"{alice}:{bob}", 9999999999L);
         _cache.V2TrustRelations.Add(1000, $"{group}:{alice}", 9999999999L);
@@ -662,8 +662,8 @@ public class PathfinderGraphControllerTests
         _cache.V2Avatars.Add(1000, account, ("Human", 1704067200L));
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token1}", 1.0m);
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token2}", 2.0m);
-        _cache.V2LastActivity[$"{account}:{token1}"] = now;
-        _cache.V2LastActivity[$"{account}:{token2}"] = now;
+        _cache.V2LastActivity.Add(1000, $"{account}:{token1}", now);
+        _cache.V2LastActivity.Add(1000, $"{account}:{token2}", now);
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "balances");

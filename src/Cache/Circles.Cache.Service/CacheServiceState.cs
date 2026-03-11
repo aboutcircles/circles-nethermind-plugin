@@ -9,6 +9,7 @@ public class CacheServiceState
     private readonly object _lock = new();
     private long _lastProcessedBlock = -1;
     private long _warmupTargetBlock = -1;
+    private long _currentBlockTimestamp = 0;
     private bool _warmupComplete = false;
     private bool _listenerConnected = false;
 
@@ -62,6 +63,29 @@ public class CacheServiceState
             lock (_lock)
             {
                 _lastProcessedBlock = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Timestamp (unix seconds) of the latest canonical block the cache has processed.
+    /// Used for evaluating time-dependent state (e.g. V2 trust expiry) against chain time,
+    /// not wall-clock time.
+    /// </summary>
+    public long CurrentBlockTimestamp
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _currentBlockTimestamp;
+            }
+        }
+        set
+        {
+            lock (_lock)
+            {
+                _currentBlockTimestamp = value;
             }
         }
     }

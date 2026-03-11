@@ -154,6 +154,18 @@ public class NotificationListenerService : BackgroundService
 
         if (reorgPoint.HasValue)
         {
+            if (reorgPoint.Value <= _state.WarmupTargetBlock)
+            {
+                _logger.LogWarning(
+                    "Detected reorg at block {ReorgBlock} crossing warmup seed boundary {WarmupTarget}. Triggering full re-warmup.",
+                    reorgPoint.Value,
+                    _state.WarmupTargetBlock);
+
+                CacheMetrics.ReorgsDetected.Inc();
+                TriggerFullRewarmup();
+                return;
+            }
+
             _logger.LogWarning(
                 "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
                 reorgPoint.Value, reorgPoint.Value);
@@ -191,6 +203,7 @@ public class NotificationListenerService : BackgroundService
                 await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
 
                 _state.LastProcessedBlock = latestBlock;
+                _state.CurrentBlockTimestamp = await GetBlockTimestampAsync(latestBlock, ct);
 
                 // Track blocks processed
                 CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
@@ -242,13 +255,7 @@ public class NotificationListenerService : BackgroundService
                 "Cannot rollback to block {Block} - beyond rollback capacity. Triggering full re-warmup...",
                 rollbackToBlock);
 
-            // Signal that warmup needs to be redone
-            // This will cause the service to be unhealthy and the warmup service to restart
-            _state.WarmupComplete = false;
-            _state.LastProcessedBlock = 0;
-
-            // Clear all caches to force clean re-warmup
-            ClearAllCaches();
+            TriggerFullRewarmup();
 
             _logger.LogWarning("Caches cleared. Service will re-warmup on next iteration.");
         }
@@ -257,9 +264,7 @@ public class NotificationListenerService : BackgroundService
             // Unexpected error during rollback - still try to trigger re-warmup
             _logger.LogError(ex, "Unexpected error during recovery rollback. Triggering full re-warmup...");
 
-            _state.WarmupComplete = false;
-            _state.LastProcessedBlock = 0;
-            ClearAllCaches();
+            TriggerFullRewarmup();
         }
 
         return Task.CompletedTask;
@@ -286,11 +291,41 @@ public class NotificationListenerService : BackgroundService
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
         _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
         _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
-        _caches.V2LastActivity.Clear();
+        _caches.V2LastActivity.Seed(new Dictionary<string, long>());
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
 
         _caches.RebuildSecondaryIndexes();
+    }
+
+    private void TriggerFullRewarmup()
+    {
+        RewarmupReset.Trigger(_state, ClearAllCaches);
+    }
+
+    protected virtual async Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
+    {
+        long timestamp = 0;
+
+        await WithReadonlyConnectionAsync(async (conn, token) =>
+        {
+            const string sql = @"
+                SELECT COALESCE(MAX(""timestamp""), 0)
+                FROM ""System_Block""
+                WHERE ""blockNumber"" <= @blockNumber";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("blockNumber", blockNumber);
+            var result = await cmd.ExecuteScalarAsync(token);
+            timestamp = result switch
+            {
+                long l => l,
+                int i => i,
+                _ => 0L
+            };
+        }, ct);
+
+        return timestamp;
     }
 
     protected virtual async Task WithReadonlyConnectionAsync(
@@ -564,9 +599,9 @@ public class NotificationListenerService : BackgroundService
 
     private async Task ProcessV2TrustAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
-        // Process all V2 Trust events - update both V2TrustRelations cache and GroupMemberships (when trustee is a group)
+        // Process all V2 Trust events - update both V2TrustRelations cache and GroupMemberships (when truster is a group)
         const string sql = @"
-            SELECT 
+            SELECT
                 t.""blockNumber"",
                 t.""truster"",
                 t.""trustee"",
@@ -600,27 +635,27 @@ public class NotificationListenerService : BackgroundService
                 // Always update V2TrustRelations cache
                 if (expiryTimeBig == 0)
                 {
-                    _caches.V2TrustRelations.Remove(trustKey);
+                    _caches.RemoveV2Trust(blockNumber, trusterKey, trusteeKey);
                 }
                 else
                 {
-                    _caches.V2TrustRelations.Add(blockNumber, trustKey, expiryLong);
+                    _caches.UpsertV2Trust(blockNumber, trusterKey, trusteeKey, expiryLong);
                 }
                 trustCount++;
 
-                // Also update GroupMemberships if trustee is a group
-                if (_caches.Groups.ContainsKey(trusteeKey))
+                // Also update GroupMemberships if truster is a group
+                if (_caches.Groups.ContainsKey(trusterKey))
                 {
                     // Composite key: group:member
-                    var membershipKey = $"{trusteeKey}:{trusterKey}";
+                    var membershipKey = $"{trusterKey}:{trusteeKey}";
 
                     if (expiryTimeBig == 0)
                     {
-                        _caches.GroupMemberships.Remove(membershipKey);
+                        _caches.RemoveGroupMembership(blockNumber, trusterKey, trusteeKey);
                     }
                     else
                     {
-                        _caches.GroupMemberships.Add(blockNumber, membershipKey, (truster, expiryLong));
+                        _caches.UpsertGroupMembership(blockNumber, trusterKey, trusteeKey, expiryLong);
                     }
                     membershipCount++;
                 }
@@ -660,7 +695,7 @@ public class NotificationListenerService : BackgroundService
                     // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                     var wrapperKey = erc20Wrapper.ToLowerInvariant();
 
-                    _caches.Erc20WrapperAddresses.Add(blockNumber, wrapperKey, (avatar.ToLowerInvariant(), circlesType));
+                    _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
                     count++;
                 }
             }
@@ -866,7 +901,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[fromKey] = existingBalance;
                     }
                     currentBalances[fromKey] -= amount;
-                    _caches.V2LastActivity[fromKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
                 // Update receiver balance and last activity
@@ -880,7 +915,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[toKey] = existingBalance;
                     }
                     currentBalances[toKey] += amount;
-                    _caches.V2LastActivity[toKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, toKey, timestamp);
                 }
 
                 transferCount++;
@@ -970,7 +1005,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[fromKey] = existingBalance;
                     }
                     currentBalances[fromKey] -= amount;
-                    _caches.V2LastActivity[fromKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
                 // Update receiver balance and last activity
@@ -984,7 +1019,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[toKey] = existingBalance;
                     }
                     currentBalances[toKey] += amount;
-                    _caches.V2LastActivity[toKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, toKey, timestamp);
                 }
 
                 transferCount++;
@@ -1029,18 +1064,19 @@ public class NotificationListenerService : BackgroundService
                 var truster = reader.GetString(1);
                 var trustee = reader.GetString(2);
                 var limitBig = reader.GetFieldValue<BigInteger>(3);
+                long limitLong = limitBig > long.MaxValue ? long.MaxValue : (long)limitBig;
 
                 var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
 
                 // If limit is 0, remove the trust relation; otherwise add/update it
                 if (limitBig == 0)
                 {
-                    _caches.V1TrustRelations.Remove(key);
+                    _caches.RemoveV1Trust(blockNumber, truster, trustee);
                 }
                 else
                 {
-                    // V1 trust doesn't have expiry, store 0 as indicator of active trust
-                    _caches.V1TrustRelations.Add(blockNumber, key, 0L);
+                    // V1 trust stores the trust limit (0-100)
+                    _caches.UpsertV1Trust(blockNumber, truster, trustee, limitLong);
                 }
 
                 count++;

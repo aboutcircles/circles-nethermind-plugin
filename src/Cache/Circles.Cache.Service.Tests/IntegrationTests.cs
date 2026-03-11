@@ -3,6 +3,10 @@ using FluentAssertions;
 using Testcontainers.PostgreSql;
 using Npgsql;
 using System.Numerics;
+using Circles.Cache.Service;
+using Circles.Cache.Service.Caches;
+using Circles.Cache.Service.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Circles.Cache.Service.Tests;
 
@@ -89,6 +93,36 @@ public class IntegrationTests : IAsyncLifetime
                 amount NUMERIC NOT NULL
             );
 
+            CREATE TABLE ""CrcV1_OrganizationSignup"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                ""organization"" TEXT NOT NULL
+            );
+
+            CREATE TABLE ""CrcV1_Trust"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                ""canSendTo"" TEXT NOT NULL,
+                ""user"" TEXT NOT NULL,
+                ""limit"" NUMERIC NOT NULL
+            );
+
+            CREATE TABLE ""CrcV1_UpdateMetadataDigest"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                avatar TEXT NOT NULL,
+                ""metadataDigest"" BYTEA NOT NULL
+            );
+
             CREATE TABLE ""CrcV2_RegisterHuman"" (
                 ""blockNumber"" BIGINT NOT NULL,
                 ""timestamp"" BIGINT NOT NULL,
@@ -97,6 +131,38 @@ public class IntegrationTests : IAsyncLifetime
                 ""transactionHash"" TEXT NOT NULL,
                 ""avatar"" TEXT NOT NULL,
                 ""inviter"" TEXT NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_RegisterOrganization"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                ""organization"" TEXT NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_RegisterGroup"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                ""group"" TEXT NOT NULL,
+                name TEXT NOT NULL,
+                mint TEXT NOT NULL,
+                symbol TEXT NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_ERC20WrapperDeployed"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                avatar TEXT NOT NULL,
+                ""erc20Wrapper"" TEXT NOT NULL,
+                ""circlesType"" INTEGER NOT NULL
             );
 
             CREATE TABLE ""CrcV2_TransferSingle"" (
@@ -113,6 +179,61 @@ public class IntegrationTests : IAsyncLifetime
                 ""tokenAddress"" TEXT NOT NULL
             );
 
+            CREATE TABLE ""CrcV2_TransferBatch"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                ""operator"" TEXT NOT NULL,
+                ""from"" TEXT NOT NULL,
+                ""to"" TEXT NOT NULL,
+                value NUMERIC NOT NULL,
+                ""tokenAddress"" TEXT NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_Erc20WrapperTransfer"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                ""tokenAddress"" TEXT NOT NULL,
+                ""from"" TEXT NOT NULL,
+                ""to"" TEXT NOT NULL,
+                amount NUMERIC NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_UpdateMetadataDigest"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                avatar TEXT NOT NULL,
+                ""metadataDigest"" BYTEA NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_RegisterShortName"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                avatar TEXT NOT NULL,
+                ""shortName"" NUMERIC NOT NULL
+            );
+
+            CREATE TABLE ""CrcV2_SetAdvancedUsageFlag"" (
+                ""blockNumber"" BIGINT NOT NULL,
+                ""timestamp"" BIGINT NOT NULL,
+                ""transactionIndex"" BIGINT NOT NULL,
+                ""logIndex"" BIGINT NOT NULL,
+                ""transactionHash"" TEXT NOT NULL,
+                avatar TEXT NOT NULL,
+                flag BYTEA NOT NULL
+            );
+
             CREATE TABLE ""CrcV2_Trust"" (
                 ""blockNumber"" BIGINT NOT NULL,
                 ""timestamp"" BIGINT NOT NULL,
@@ -123,6 +244,10 @@ public class IntegrationTests : IAsyncLifetime
                 trustee TEXT NOT NULL,
                 ""expiryTime"" NUMERIC NOT NULL
             );
+
+            CREATE OR REPLACE VIEW ""V_CrcV2_TrustRelations"" AS
+            SELECT truster, trustee, ""expiryTime""
+            FROM ""CrcV2_Trust"";
         ";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -341,6 +466,228 @@ public class IntegrationTests : IAsyncLifetime
         // Should cap to long.MaxValue when converting
         long safeLong = expiryResult > long.MaxValue ? long.MaxValue : (long)expiryResult;
         safeLong.Should().Be(long.MaxValue);
+    }
+
+    [RequiresDockerFact]
+    public async Task NotificationListener_V1Trust_UsesCanSendToAsTruster_AndStoresLimit()
+    {
+        const long block = 9100;
+        var canSendTo = "0x00000000000000000000000000000000000000a1";
+        var user = "0x00000000000000000000000000000000000000b1";
+
+        await using (var conn = new NpgsqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+            var insertSql = @"
+                INSERT INTO ""CrcV1_Trust""
+                (""blockNumber"", ""timestamp"", ""transactionIndex"", ""logIndex"", ""transactionHash"", ""canSendTo"", ""user"", ""limit"")
+                VALUES (@blockNumber, 12345, 0, 0, '0xv1trust', @canSendTo, @user, 70)";
+
+            await using var insertCmd = new NpgsqlCommand(insertSql, conn);
+            insertCmd.Parameters.AddWithValue("blockNumber", block);
+            insertCmd.Parameters.AddWithValue("canSendTo", canSendTo);
+            insertCmd.Parameters.AddWithValue("user", user);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 8);
+        var caches = new CacheContainer(rollbackCapacity: 8);
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var listener = new TestableNotificationListenerService(settings, state, caches, dataSource);
+
+        await listener.ProcessRangeAsync(block, block, CancellationToken.None);
+
+        caches.V1TrustRelations.TryGetValue($"{canSendTo}:{user}", out var storedLimit).Should().BeTrue();
+        storedLimit.Should().Be(70);
+        caches.V1TrustRelations.ContainsKey($"{user}:{canSendTo}").Should().BeFalse();
+    }
+
+    [RequiresDockerFact]
+    public async Task NotificationListener_V2Trust_GroupMembership_UsesGroupAsTruster()
+    {
+        const long block = 9200;
+        var group = "0x00000000000000000000000000000000000000c1";
+        var includedMember = "0x00000000000000000000000000000000000000d1";
+        var excludedMember = "0x00000000000000000000000000000000000000e1";
+
+        await using (var conn = new NpgsqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+
+            var insertSql = @"
+                INSERT INTO ""CrcV2_Trust""
+                (""blockNumber"", ""timestamp"", ""transactionIndex"", ""logIndex"", ""transactionHash"", truster, trustee, ""expiryTime"")
+                VALUES
+                (@blockNumber, 12345, 0, 0, '0xv2trust1', @group, @includedMember, 999999),
+                (@blockNumber, 12345, 0, 1, '0xv2trust2', @excludedMember, @group, 999999)";
+
+            await using var insertCmd = new NpgsqlCommand(insertSql, conn);
+            insertCmd.Parameters.AddWithValue("blockNumber", block);
+            insertCmd.Parameters.AddWithValue("group", group);
+            insertCmd.Parameters.AddWithValue("includedMember", includedMember);
+            insertCmd.Parameters.AddWithValue("excludedMember", excludedMember);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 8);
+        var caches = new CacheContainer(rollbackCapacity: 8);
+        caches.Groups.Add(1, group, ("Test Group", "0xmint", "TG"));
+
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var listener = new TestableNotificationListenerService(settings, state, caches, dataSource);
+
+        await listener.ProcessRangeAsync(block, block, CancellationToken.None);
+
+        caches.GroupMemberships.ContainsKey($"{group}:{includedMember}").Should().BeTrue();
+        caches.GroupMemberships.ContainsKey($"{group}:{excludedMember}").Should().BeFalse();
+    }
+
+    [RequiresDockerFact]
+    public async Task CacheWarmup_V1Trust_WarmupUsesCanSendToAsTruster_AndHonorsToBlock()
+    {
+        const long olderBlock = 9300;
+        const long newerBlock = 9301;
+        var canSendTo = "0x00000000000000000000000000000000000000f1";
+        var user = "0x00000000000000000000000000000000000000aa";
+
+        await using (var conn = new NpgsqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+
+            var insertSql = @"
+                INSERT INTO ""CrcV1_Trust""
+                (""blockNumber"", ""timestamp"", ""transactionIndex"", ""logIndex"", ""transactionHash"", ""canSendTo"", ""user"", ""limit"")
+                VALUES
+                (@olderBlock, 12345, 0, 0, '0xwarmup1', @canSendTo, @user, 70),
+                (@newerBlock, 12346, 0, 0, '0xwarmup2', @canSendTo, @user, 90)";
+
+            await using var insertCmd = new NpgsqlCommand(insertSql, conn);
+            insertCmd.Parameters.AddWithValue("olderBlock", olderBlock);
+            insertCmd.Parameters.AddWithValue("newerBlock", newerBlock);
+            insertCmd.Parameters.AddWithValue("canSendTo", canSendTo);
+            insertCmd.Parameters.AddWithValue("user", user);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 8) { WarmupTargetBlock = olderBlock };
+        var caches = new CacheContainer(rollbackCapacity: 8);
+
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var warmup = new TestableCacheWarmupService(settings, state, caches, dataSource);
+
+        await using (var conn = new NpgsqlConnection(_connectionString))
+        {
+            await conn.OpenAsync();
+            await warmup.LoadTrustRelationsForTestAsync(conn, olderBlock, CancellationToken.None);
+        }
+
+        caches.V1TrustRelations.TryGetValue($"{canSendTo}:{user}", out var storedLimit).Should().BeTrue();
+        storedLimit.Should().Be(70);
+    }
+
+    [RequiresDockerFact]
+    public async Task WarmupSnapshotHelpers_KeepReadsConsistentAcrossWorkers()
+    {
+        await using var setupConn = new NpgsqlConnection(_connectionString);
+        await setupConn.OpenAsync();
+
+        const string setupSql = @"
+            DROP TABLE IF EXISTS ""SnapshotProbe"";
+            CREATE TABLE ""SnapshotProbe"" (
+                id INTEGER PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            INSERT INTO ""SnapshotProbe"" (id, value) VALUES (1, 'before');";
+
+        await using (var setupCmd = new NpgsqlCommand(setupSql, setupConn))
+        {
+            await setupCmd.ExecuteNonQueryAsync();
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 8);
+        var caches = new CacheContainer(rollbackCapacity: 8);
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var warmup = new TestableCacheWarmupService(settings, state, caches, dataSource);
+
+        string? worker1Value = null;
+        string? worker2Value = null;
+
+        await warmup.WithExportedSnapshotForTestAsync(async snapshotId =>
+        {
+            await warmup.WithSnapshotConnectionForTestAsync(snapshotId, async (conn, ct) =>
+            {
+                await using var cmd = new NpgsqlCommand("SELECT value FROM \"SnapshotProbe\" WHERE id = 1", conn);
+                worker1Value = (string?)await cmd.ExecuteScalarAsync(ct);
+            }, CancellationToken.None);
+
+            await using (var mutateConn = new NpgsqlConnection(_connectionString))
+            {
+                await mutateConn.OpenAsync();
+                await using var mutateCmd = new NpgsqlCommand("UPDATE \"SnapshotProbe\" SET value = 'after' WHERE id = 1", mutateConn);
+                await mutateCmd.ExecuteNonQueryAsync();
+            }
+
+            await warmup.WithSnapshotConnectionForTestAsync(snapshotId, async (conn, ct) =>
+            {
+                await using var cmd = new NpgsqlCommand("SELECT value FROM \"SnapshotProbe\" WHERE id = 1", conn);
+                worker2Value = (string?)await cmd.ExecuteScalarAsync(ct);
+            }, CancellationToken.None);
+        }, CancellationToken.None);
+
+        await using var verifyConn = new NpgsqlConnection(_connectionString);
+        await verifyConn.OpenAsync();
+        await using var verifyCmd = new NpgsqlCommand("SELECT value FROM \"SnapshotProbe\" WHERE id = 1", verifyConn);
+        var latestValue = (string?)await verifyCmd.ExecuteScalarAsync();
+
+        worker1Value.Should().Be("before");
+        worker2Value.Should().Be("before");
+        latestValue.Should().Be("after");
+    }
+
+    private sealed class TestableNotificationListenerService : NotificationListenerService
+    {
+        public TestableNotificationListenerService(
+            CacheServiceSettings settings,
+            CacheServiceState state,
+            CacheContainer caches,
+            NpgsqlDataSource readonlyDataSource)
+            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches, readonlyDataSource)
+        {
+        }
+
+        public Task ProcessRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
+            => ProcessBlockRangeAsync(fromBlock, toBlock, ct);
+    }
+
+    private sealed class TestableCacheWarmupService : CacheWarmupService
+    {
+        public TestableCacheWarmupService(
+            CacheServiceSettings settings,
+            CacheServiceState state,
+            CacheContainer caches,
+            NpgsqlDataSource readonlyDataSource)
+            : base(NullLogger<CacheWarmupService>.Instance, settings, state, caches, readonlyDataSource)
+        {
+        }
+
+        public Task LoadTrustRelationsForTestAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
+            => LoadTrustRelationsAsync(conn, toBlock, ct);
+
+        public async Task WithExportedSnapshotForTestAsync(Func<string, Task> action, CancellationToken ct)
+        {
+            await using var snapshot = await CreateWarmupSnapshotAsync(ct);
+            await action(snapshot.SnapshotId);
+        }
+
+        public Task WithSnapshotConnectionForTestAsync(
+            string snapshotId,
+            Func<NpgsqlConnection, CancellationToken, Task> action,
+            CancellationToken ct)
+            => WithSnapshotReadonlyConnectionAsync(snapshotId, action, ct);
     }
 }
 

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Circles.Common;
 
 namespace Circles.Cache.Service.Caches;
@@ -38,7 +37,7 @@ public class CacheContainer : IDisposable
 
     // V2 last activity timestamps for demurrage calculation at query time
     // Key: "account:tokenId" (same as V2BalancesByAccountAndToken), Value: unix timestamp
-    public ConcurrentDictionary<string, long> V2LastActivity { get; private set; } = new();
+    public RollbackCache<string, long> V2LastActivity { get; private set; } = null!;
 
     // Trust Relations Caches (key: "truster:trustee", value: expiryTime)
     public RollbackCache<string, long> V1TrustRelations { get; private set; } = null!;
@@ -91,6 +90,7 @@ public class CacheContainer : IDisposable
         V2AvatarToShortNameMap,
         V1BalancesByAccountAndToken,
         V2BalancesByAccountAndToken,
+        V2LastActivity,
         V1TrustRelations,
         V2TrustRelations,
         ConsentedFlowFlags
@@ -99,24 +99,24 @@ public class CacheContainer : IDisposable
     private void InitializeCaches()
     {
         // V1 Caches
-        V1Avatars = new RollbackCache<string, (string Type, string? TokenAddress)>("V1Avatars");
-        V1TokenOwnerByToken = new RollbackCache<string, string>("V1TokenOwnerByToken");
-        V1AvatarToCidMap = new RollbackCache<string, string>("V1AvatarToCidMap");
+        V1Avatars = new RollbackCache<string, (string Type, string? TokenAddress)>("V1Avatars", _rollbackCapacity);
+        V1TokenOwnerByToken = new RollbackCache<string, string>("V1TokenOwnerByToken", _rollbackCapacity);
+        V1AvatarToCidMap = new RollbackCache<string, string>("V1AvatarToCidMap", _rollbackCapacity);
         // V2 Caches
-        V2Avatars = new RollbackCache<string, (string Type, long RegisteredAt)>("V2Avatars");
-        Erc20WrapperAddresses = new RollbackCache<string, (string Avatar, int CirclesType)>("Erc20WrapperAddresses");
-        Groups = new RollbackCache<string, (string Name, string Mint, string Symbol)>("Groups");
-        GroupMemberships = new RollbackCache<string, (string Member, long ExpiryTime)>("GroupMemberships");
-        V2AvatarToCidMap = new RollbackCache<string, string>("V2AvatarToCidMap");
-        V2AvatarToShortNameMap = new RollbackCache<string, string>("V2AvatarToShortNameMap");
+        V2Avatars = new RollbackCache<string, (string Type, long RegisteredAt)>("V2Avatars", _rollbackCapacity);
+        Erc20WrapperAddresses = new RollbackCache<string, (string Avatar, int CirclesType)>("Erc20WrapperAddresses", _rollbackCapacity);
+        Groups = new RollbackCache<string, (string Name, string Mint, string Symbol)>("Groups", _rollbackCapacity);
+        GroupMemberships = new RollbackCache<string, (string Member, long ExpiryTime)>("GroupMemberships", _rollbackCapacity);
+        V2AvatarToCidMap = new RollbackCache<string, string>("V2AvatarToCidMap", _rollbackCapacity);
+        V2AvatarToShortNameMap = new RollbackCache<string, string>("V2AvatarToShortNameMap", _rollbackCapacity);
 
-        V1BalancesByAccountAndToken = new RollbackCache<string, decimal>("V1BalancesByAccountAndToken");
-        V2BalancesByAccountAndToken = new RollbackCache<string, decimal>("V2BalancesByAccountAndToken");
-        V2LastActivity = new ConcurrentDictionary<string, long>();
+        V1BalancesByAccountAndToken = new RollbackCache<string, decimal>("V1BalancesByAccountAndToken", _rollbackCapacity);
+        V2BalancesByAccountAndToken = new RollbackCache<string, decimal>("V2BalancesByAccountAndToken", _rollbackCapacity);
+        V2LastActivity = new RollbackCache<string, long>("V2LastActivity", _rollbackCapacity);
 
-        V1TrustRelations = new RollbackCache<string, long>("V1TrustRelations");
-        V2TrustRelations = new RollbackCache<string, long>("V2TrustRelations");
-        ConsentedFlowFlags = new RollbackCache<string, byte[]>("ConsentedFlowFlags");
+        V1TrustRelations = new RollbackCache<string, long>("V1TrustRelations", _rollbackCapacity);
+        V2TrustRelations = new RollbackCache<string, long>("V2TrustRelations", _rollbackCapacity);
+        ConsentedFlowFlags = new RollbackCache<string, byte[]>("ConsentedFlowFlags", _rollbackCapacity);
     }
 
 
@@ -126,17 +126,166 @@ public class CacheContainer : IDisposable
         {
             cache.DeleteAllGreaterOrEqualBlock(toBlock);
         }
+    }
 
-        // Prune V2LastActivity entries whose balance was rolled away.
-        // V2LastActivity is not a RollbackCache (timestamps change every transfer —
-        // tracking full history per-key would be too memory-intensive).
-        // Instead, we remove entries for keys no longer in the balance cache so stale
-        // timestamps from rolled-back blocks don't cause wrong demurrage calculations.
-        var balanceKeys = V2BalancesByAccountAndToken.ReadOnlyDictionary;
-        var staleKeys = V2LastActivity.Keys.Where(k => !balanceKeys.ContainsKey(k)).ToList();
-        foreach (var key in staleKeys)
+    public void UpsertV1Trust(long blockNo, string truster, string trustee, long limit)
+    {
+        var trusterLower = truster.ToLowerInvariant();
+        var trusteeLower = trustee.ToLowerInvariant();
+        var key = $"{trusterLower}:{trusteeLower}";
+
+        V1TrustRelations.Add(blockNo, key, limit);
+
+        _trustLock.EnterWriteLock();
+        try
         {
-            V2LastActivity.TryRemove(key, out _);
+            AddTrustIndexEntry(_v1TrustsByTruster, trusterLower, key);
+            AddTrustIndexEntry(_v1TrustsByTrustee, trusteeLower, key);
+        }
+        finally
+        {
+            _trustLock.ExitWriteLock();
+        }
+    }
+
+    public void RemoveV1Trust(long blockNo, string truster, string trustee)
+    {
+        var trusterLower = truster.ToLowerInvariant();
+        var trusteeLower = trustee.ToLowerInvariant();
+        var key = $"{trusterLower}:{trusteeLower}";
+
+        V1TrustRelations.Remove(blockNo, key);
+
+        _trustLock.EnterWriteLock();
+        try
+        {
+            RemoveTrustIndexEntry(_v1TrustsByTruster, trusterLower, key);
+            RemoveTrustIndexEntry(_v1TrustsByTrustee, trusteeLower, key);
+        }
+        finally
+        {
+            _trustLock.ExitWriteLock();
+        }
+    }
+
+    public void UpsertV2Trust(long blockNo, string truster, string trustee, long expiryTime)
+    {
+        var trusterLower = truster.ToLowerInvariant();
+        var trusteeLower = trustee.ToLowerInvariant();
+        var key = $"{trusterLower}:{trusteeLower}";
+
+        V2TrustRelations.Add(blockNo, key, expiryTime);
+
+        _trustLock.EnterWriteLock();
+        try
+        {
+            AddTrustIndexEntry(_v2TrustsByTruster, trusterLower, key);
+            AddTrustIndexEntry(_v2TrustsByTrustee, trusteeLower, key);
+        }
+        finally
+        {
+            _trustLock.ExitWriteLock();
+        }
+    }
+
+    public void RemoveV2Trust(long blockNo, string truster, string trustee)
+    {
+        var trusterLower = truster.ToLowerInvariant();
+        var trusteeLower = trustee.ToLowerInvariant();
+        var key = $"{trusterLower}:{trusteeLower}";
+
+        V2TrustRelations.Remove(blockNo, key);
+
+        _trustLock.EnterWriteLock();
+        try
+        {
+            RemoveTrustIndexEntry(_v2TrustsByTruster, trusterLower, key);
+            RemoveTrustIndexEntry(_v2TrustsByTrustee, trusteeLower, key);
+        }
+        finally
+        {
+            _trustLock.ExitWriteLock();
+        }
+    }
+
+    public void UpsertGroupMembership(long blockNo, string group, string member, long expiryTime)
+    {
+        var groupLower = group.ToLowerInvariant();
+        var memberLower = member.ToLowerInvariant();
+        var key = $"{groupLower}:{memberLower}";
+
+        GroupMemberships.Add(blockNo, key, (memberLower, expiryTime));
+
+        _trustLock.EnterWriteLock();
+        try
+        {
+            AddTrustIndexEntry(_membershipsByGroup, groupLower, key);
+            AddTrustIndexEntry(_membershipsByMember, memberLower, key);
+        }
+        finally
+        {
+            _trustLock.ExitWriteLock();
+        }
+    }
+
+    public void RemoveGroupMembership(long blockNo, string group, string member)
+    {
+        var groupLower = group.ToLowerInvariant();
+        var memberLower = member.ToLowerInvariant();
+        var key = $"{groupLower}:{memberLower}";
+
+        GroupMemberships.Remove(blockNo, key);
+
+        _trustLock.EnterWriteLock();
+        try
+        {
+            RemoveTrustIndexEntry(_membershipsByGroup, groupLower, key);
+            RemoveTrustIndexEntry(_membershipsByMember, memberLower, key);
+        }
+        finally
+        {
+            _trustLock.ExitWriteLock();
+        }
+    }
+
+    public void UpsertWrapper(long blockNo, string wrapperAddress, string avatar, int circlesType)
+    {
+        var wrapperLower = wrapperAddress.ToLowerInvariant();
+        var avatarLower = avatar.ToLowerInvariant();
+
+        Erc20WrapperAddresses.Add(blockNo, wrapperLower, (avatarLower, circlesType));
+
+        _wrapperLock.EnterWriteLock();
+        try
+        {
+            _erc20WrapperToAvatar[wrapperLower] = (avatarLower, circlesType);
+        }
+        finally
+        {
+            _wrapperLock.ExitWriteLock();
+        }
+    }
+
+    private static void AddTrustIndexEntry(Dictionary<string, HashSet<string>> index, string indexKey, string valueKey)
+    {
+        if (!index.TryGetValue(indexKey, out var keys))
+        {
+            keys = new HashSet<string>();
+            index[indexKey] = keys;
+        }
+
+        keys.Add(valueKey);
+    }
+
+    private static void RemoveTrustIndexEntry(Dictionary<string, HashSet<string>> index, string indexKey, string valueKey)
+    {
+        if (!index.TryGetValue(indexKey, out var keys))
+            return;
+
+        keys.Remove(valueKey);
+        if (keys.Count == 0)
+        {
+            index.Remove(indexKey);
         }
     }
 
