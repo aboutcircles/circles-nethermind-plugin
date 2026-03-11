@@ -1,5 +1,3 @@
-using Circles.Cache.Service.Caches;
-
 namespace Circles.Cache.Service.Services;
 
 internal static class RewarmupReset
@@ -13,6 +11,11 @@ internal static class RewarmupReset
         state.WarmupComplete = false;
         state.LastProcessedBlock = 0;
         state.CurrentBlockTimestamp = 0;
+
+        // Always clear ring buffer as part of the canonical reset state,
+        // independent of caller-specific cache clearing details.
+        state.BlockRingBuffer.Clear();
+
         clearCaches();
     }
 }
