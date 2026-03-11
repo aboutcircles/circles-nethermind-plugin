@@ -286,7 +286,7 @@ public class NotificationListenerService : BackgroundService
         _caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>());
         _caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
         _caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>());
-        _caches.V2LastActivity.Clear();
+        _caches.V2LastActivity.Seed(new Dictionary<string, long>());
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
 
@@ -564,9 +564,9 @@ public class NotificationListenerService : BackgroundService
 
     private async Task ProcessV2TrustAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
-        // Process all V2 Trust events - update both V2TrustRelations cache and GroupMemberships (when trustee is a group)
+        // Process all V2 Trust events - update both V2TrustRelations cache and GroupMemberships (when truster is a group)
         const string sql = @"
-            SELECT 
+            SELECT
                 t.""blockNumber"",
                 t.""truster"",
                 t.""trustee"",
@@ -600,27 +600,27 @@ public class NotificationListenerService : BackgroundService
                 // Always update V2TrustRelations cache
                 if (expiryTimeBig == 0)
                 {
-                    _caches.V2TrustRelations.Remove(trustKey);
+                    _caches.RemoveV2Trust(blockNumber, trusterKey, trusteeKey);
                 }
                 else
                 {
-                    _caches.V2TrustRelations.Add(blockNumber, trustKey, expiryLong);
+                    _caches.UpsertV2Trust(blockNumber, trusterKey, trusteeKey, expiryLong);
                 }
                 trustCount++;
 
-                // Also update GroupMemberships if trustee is a group
-                if (_caches.Groups.ContainsKey(trusteeKey))
+                // Also update GroupMemberships if truster is a group
+                if (_caches.Groups.ContainsKey(trusterKey))
                 {
                     // Composite key: group:member
-                    var membershipKey = $"{trusteeKey}:{trusterKey}";
+                    var membershipKey = $"{trusterKey}:{trusteeKey}";
 
                     if (expiryTimeBig == 0)
                     {
-                        _caches.GroupMemberships.Remove(membershipKey);
+                        _caches.RemoveGroupMembership(blockNumber, trusterKey, trusteeKey);
                     }
                     else
                     {
-                        _caches.GroupMemberships.Add(blockNumber, membershipKey, (truster, expiryLong));
+                        _caches.UpsertGroupMembership(blockNumber, trusterKey, trusteeKey, expiryLong);
                     }
                     membershipCount++;
                 }
@@ -660,7 +660,7 @@ public class NotificationListenerService : BackgroundService
                     // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                     var wrapperKey = erc20Wrapper.ToLowerInvariant();
 
-                    _caches.Erc20WrapperAddresses.Add(blockNumber, wrapperKey, (avatar.ToLowerInvariant(), circlesType));
+                    _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
                     count++;
                 }
             }
@@ -866,7 +866,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[fromKey] = existingBalance;
                     }
                     currentBalances[fromKey] -= amount;
-                    _caches.V2LastActivity[fromKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
                 // Update receiver balance and last activity
@@ -880,7 +880,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[toKey] = existingBalance;
                     }
                     currentBalances[toKey] += amount;
-                    _caches.V2LastActivity[toKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, toKey, timestamp);
                 }
 
                 transferCount++;
@@ -970,7 +970,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[fromKey] = existingBalance;
                     }
                     currentBalances[fromKey] -= amount;
-                    _caches.V2LastActivity[fromKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
                 // Update receiver balance and last activity
@@ -984,7 +984,7 @@ public class NotificationListenerService : BackgroundService
                         currentBalances[toKey] = existingBalance;
                     }
                     currentBalances[toKey] += amount;
-                    _caches.V2LastActivity[toKey] = timestamp;
+                    _caches.V2LastActivity.Add(blockNumber, toKey, timestamp);
                 }
 
                 transferCount++;
@@ -1029,18 +1029,19 @@ public class NotificationListenerService : BackgroundService
                 var truster = reader.GetString(1);
                 var trustee = reader.GetString(2);
                 var limitBig = reader.GetFieldValue<BigInteger>(3);
+                long limitLong = limitBig > long.MaxValue ? long.MaxValue : (long)limitBig;
 
                 var key = $"{truster.ToLowerInvariant()}:{trustee.ToLowerInvariant()}";
 
                 // If limit is 0, remove the trust relation; otherwise add/update it
                 if (limitBig == 0)
                 {
-                    _caches.V1TrustRelations.Remove(key);
+                    _caches.RemoveV1Trust(blockNumber, truster, trustee);
                 }
                 else
                 {
-                    // V1 trust doesn't have expiry, store 0 as indicator of active trust
-                    _caches.V1TrustRelations.Add(blockNumber, key, 0L);
+                    // V1 trust stores the trust limit (0-100)
+                    _caches.UpsertV1Trust(blockNumber, truster, trustee, limitLong);
                 }
 
                 count++;

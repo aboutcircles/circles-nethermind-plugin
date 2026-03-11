@@ -21,7 +21,11 @@ public class CacheWarmupServiceTests
         var service = new TestWarmupService(settings, state, caches, failuresBeforeSuccess: 2);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await service.ExecuteOnceAsync(cts.Token);
+        var executeTask = service.ExecuteOnceAsync(cts.Token);
+
+        await WaitForWarmupCompleteAsync(state);
+        cts.Cancel();
+        await executeTask;
 
         service.AttemptCount.Should().Be(3);
         service.DelayCount.Should().Be(2);
@@ -46,6 +50,17 @@ public class CacheWarmupServiceTests
 
         service.AttemptCount.Should().BeGreaterOrEqualTo(2);
         state.WarmupComplete.Should().BeFalse();
+    }
+
+    private static async Task WaitForWarmupCompleteAsync(CacheServiceState state)
+    {
+        var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (!state.WarmupComplete && DateTime.UtcNow < timeout)
+        {
+            await Task.Delay(10);
+        }
+
+        state.WarmupComplete.Should().BeTrue();
     }
 
     private static async Task WaitForAttemptsAsync(TestWarmupService service, int minimumAttempts)
@@ -102,7 +117,7 @@ public class CacheWarmupServiceTests
         protected override Task DelayAfterFailureAsync(CancellationToken ct)
         {
             DelayCount++;
-            return Task.CompletedTask;
+            return Task.Delay(1, ct);
         }
     }
 }

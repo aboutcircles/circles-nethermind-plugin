@@ -123,24 +123,7 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
         _lock.EnterWriteLock();
         try
         {
-            if (blockNo < _lastBlockNo)
-                throw new ArgumentException("Block number must be monotonically increasing.", nameof(blockNo));
-
-            if (blockNo > _lastBlockNo)
-            {
-                _lastBlockNo = blockNo;
-                _blockDiffs[blockNo] = new Dictionary<TKey, Change>();
-                _blockOrder.AddLast(blockNo);
-
-                if (_blockOrder.Count > RollbackCapacity)
-                {
-                    var oldest = _blockOrder.First!.Value;
-                    _blockOrder.RemoveFirst();
-                    _blockDiffs.Remove(oldest);
-                }
-            }
-
-            var diff = _blockDiffs[blockNo];
+            var diff = GetOrCreateDiffBucket(blockNo);
             var hadPrev = _current.TryGetValue(key, out var prevVal);
 
             if (!diff.ContainsKey(key))
@@ -156,6 +139,34 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     }
 
     /// <summary>
+    /// Removes <paramref name="key"/> at <paramref name="blockNo"/> and records rollback history.
+    /// </summary>
+    public bool Remove(long blockNo, TKey key)
+    {
+        if (key is null) throw new ArgumentNullException(nameof(key));
+
+        _lock.EnterWriteLock();
+        try
+        {
+            var diff = GetOrCreateDiffBucket(blockNo);
+            var hadPrev = _current.TryGetValue(key, out var prevVal);
+
+            if (!diff.ContainsKey(key))
+                diff[key] = new Change(hadPrev, prevVal!);
+
+            if (!hadPrev)
+                return false;
+
+            _current.Remove(key);
+            return true;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
     /// Deletes the state of every block whose number is <b>greater than</b> <paramref name="toBlockNo"/>.
     /// The cache is left in the exact state it had after finishing block <paramref name="toBlockNo"/>.
     /// The target block must still be within the retained history window.
@@ -163,9 +174,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     /// <summary>
     /// Deletes every block whose number is <b>&gt;=</b> <paramref name="toBlockNo"/>.
     /// After the call, the cache looks exactly as it did after finishing the block
-    /// immediately preceding <paramref name="toBlockNo"/>.  
+    /// immediately preceding <paramref name="toBlockNo"/>.
     /// If <paramref name="toBlockNo"/> is greater than the current head, the call
-    /// is a no-op.  
+    /// is a no-op.
     /// If the target precedes the retained history window an exception is thrown.
     /// </summary>
     public RollbackStats DeleteAllGreaterOrEqualBlock(long toBlockNo)
@@ -244,6 +255,42 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
         {
             _lock.ExitWriteLock();
         }
+    }
+
+    private Dictionary<TKey, Change> GetOrCreateDiffBucket(long blockNo)
+    {
+        if (blockNo < _lastBlockNo)
+            throw new ArgumentException("Block number must be monotonically increasing.", nameof(blockNo));
+
+        if (blockNo > _lastBlockNo)
+        {
+            _lastBlockNo = blockNo;
+            _blockDiffs[blockNo] = new Dictionary<TKey, Change>();
+            _blockOrder.AddLast(blockNo);
+
+            if (_blockOrder.Count > RollbackCapacity)
+            {
+                var oldest = _blockOrder.First!.Value;
+                _blockOrder.RemoveFirst();
+                _blockDiffs.Remove(oldest);
+            }
+        }
+
+        if (!_blockDiffs.TryGetValue(blockNo, out var diff))
+        {
+            diff = new Dictionary<TKey, Change>();
+            _blockDiffs[blockNo] = diff;
+            _blockOrder.AddLast(blockNo);
+
+            if (_blockOrder.Count > RollbackCapacity)
+            {
+                var oldest = _blockOrder.First!.Value;
+                _blockOrder.RemoveFirst();
+                _blockDiffs.Remove(oldest);
+            }
+        }
+
+        return diff;
     }
 
     public bool ContainsKey(TKey key)
