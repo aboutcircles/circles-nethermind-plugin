@@ -17,10 +17,9 @@ public class MaxFlowSolverTests
     #region Empty / degenerate graphs
 
     [Test]
-    public void Solve_EmptyEdges_ThrowsBadInput()
+    public void Solve_EmptyEdges_ThrowsNoOutgoingEdges()
     {
-        // No edges at all. The only arc is super-source -> source.
-        // Sink node has no arcs, so OR-Tools returns BAD_INPUT.
+        // No edges at all — source has no outgoing capacity edges.
         var edges = new List<CapacityEdge>();
         int source = 0;
         int sink = 1;
@@ -29,7 +28,7 @@ public class MaxFlowSolverTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => MaxFlowSolver.Solve(edges, source, sink, target));
 
-        Assert.That(ex!.Message, Does.Contain("BAD_INPUT"));
+        Assert.That(ex!.Message, Does.Contain("no outgoing edges"));
     }
 
     #endregion

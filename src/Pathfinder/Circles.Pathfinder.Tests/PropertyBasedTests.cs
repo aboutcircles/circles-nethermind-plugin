@@ -293,7 +293,7 @@ public class PropertyBasedTests
     /// This is expected — the pathfinder requires at least some edges.
     /// </summary>
     [Test]
-    public void MinimalGraph_TwoAvatars_NoTrust_ThrowsBadInput()
+    public void MinimalGraph_TwoAvatars_NoTrust_ThrowsNoOutgoingEdges()
     {
         var graph = new CapacityGraph();
         int a = AddressIdPool.IdOf("0xfzmin1" + new string('0', 34));
@@ -309,10 +309,10 @@ public class PropertyBasedTests
             Sink = AddressIdPool.StringOf(b),
         };
 
-        // No edges → solver reports BAD_INPUT
+        // No edges → solver detects source has no outgoing edges before calling OR-Tools
         var ex = Assert.Throws<InvalidOperationException>(() =>
             pathfinder.ComputeMaxFlowWithPath(graph, request, UInt256.One));
-        Assert.That(ex!.Message, Does.Contain("BAD_INPUT"));
+        Assert.That(ex!.Message, Does.Contain("no outgoing edges"));
     }
 
     #endregion
