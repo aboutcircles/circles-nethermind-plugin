@@ -32,7 +32,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     private readonly NpgsqlDataSource _dataSource;
     private readonly MemoryCache _profileByCidCache;
     private readonly MemoryCache _tokenExposureCache;
-    private static readonly HttpClient HttpClient = new();
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly NethermindRpcClient? _nethermindRpcClient;
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly ILogger<CirclesRpcModule>? _logger;

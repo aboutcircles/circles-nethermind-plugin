@@ -11,6 +11,8 @@ public partial class CirclesRpcModule
 {
     public async Task<AvatarInfo> GetAvatarInfo(string address)
     {
+        address = ValidateAndNormalizeAddress(address);
+
         var results = await GetAvatarInfoBatchInternal(new[] { address });
         var result = results[0];
 
@@ -24,6 +26,9 @@ public partial class CirclesRpcModule
 
     public async Task<AvatarInfo[]> GetAvatarInfoBatch(string[] addresses)
     {
+        for (int i = 0; i < addresses.Length; i++)
+            addresses[i] = ValidateAndNormalizeAddress(addresses[i], $"addresses[{i}]");
+
         var results = await GetAvatarInfoBatchInternal(addresses);
         return results.Where(r => r != null).ToArray()!;
     }

@@ -39,6 +39,28 @@ public partial class CirclesRpcModule
     }
 
     /// <summary>
+    /// Escapes ILIKE/LIKE special characters (%, _, \) in user-provided input
+    /// before appending a trailing wildcard. Prevents wildcard injection.
+    /// </summary>
+    private static string EscapeLikePattern(string input)
+        => input.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
+
+    /// <summary>
+    /// Validates that an address is a well-formed Ethereum address (0x + 40 hex chars)
+    /// and returns it lowercased.
+    /// </summary>
+    private static string ValidateAndNormalizeAddress(string address, string parameterName = "address")
+    {
+        if (string.IsNullOrEmpty(address))
+            throw new ArgumentException($"{parameterName} must not be empty.");
+
+        if (!Regex.IsMatch(address, @"^0x[0-9a-fA-F]{40}$"))
+            throw new ArgumentException($"{parameterName} is not a valid Ethereum address: {address}");
+
+        return address.ToLowerInvariant();
+    }
+
+    /// <summary>
     /// Validates that an identifier contains only safe characters (letters, digits, underscore).
     /// </summary>
     private static string ValidateIdentifier(string identifier, string identifierType)

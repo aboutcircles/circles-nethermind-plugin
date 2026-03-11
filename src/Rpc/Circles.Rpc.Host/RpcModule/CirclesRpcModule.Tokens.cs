@@ -85,7 +85,7 @@ public partial class CirclesRpcModule
 
     private async Task<Dictionary<string, TokenExposureInfo>> GetTokenExposureIdsAsync(string address)
     {
-        var lowerAddress = address.ToLower();
+        var lowerAddress = address; // already validated and lowered by caller
         var cacheKey = $"tokenExposure:{lowerAddress}";
 
         // Check cache first (5 minute TTL for token exposure data)
@@ -250,7 +250,7 @@ public partial class CirclesRpcModule
 
     public async Task<TokenInfo?> GetTokenInfo(string tokenAddress)
     {
-        var lowerTokenAddress = tokenAddress.ToLower();
+        var lowerTokenAddress = ValidateAndNormalizeAddress(tokenAddress, nameof(tokenAddress));
 
         // If cache service is enabled, try using it first
         if (_settings.UseCacheService && _cacheServiceClient != null)
@@ -379,6 +379,9 @@ public partial class CirclesRpcModule
 
     public async Task<TokenInfo?[]> GetTokenInfoBatch(string[] tokenAddresses)
     {
+        for (int i = 0; i < tokenAddresses.Length; i++)
+            tokenAddresses[i] = ValidateAndNormalizeAddress(tokenAddresses[i], $"tokenAddresses[{i}]");
+
         if (tokenAddresses.Length > 1000)
         {
             throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
@@ -457,7 +460,7 @@ public partial class CirclesRpcModule
 
     public async Task<PagedResponse<TokenHolderRow>> GetTokenHolders(string tokenAddress, int limit = 100, string? cursor = null)
     {
-        var normalizedToken = tokenAddress.ToLower();
+        var normalizedToken = ValidateAndNormalizeAddress(tokenAddress, nameof(tokenAddress));
         await using var connection = await CreateConnectionAsync();
 
         // Build query with cursor pagination - UNION both V1 and V2 views

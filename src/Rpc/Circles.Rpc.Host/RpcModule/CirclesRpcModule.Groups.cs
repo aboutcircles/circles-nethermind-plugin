@@ -39,14 +39,14 @@ public partial class CirclesRpcModule
         {
             if (!string.IsNullOrEmpty(queryParams.NameStartsWith))
             {
-                sql.Append(" AND r.name ILIKE @namePrefix");
-                parameters.Add(new NpgsqlParameter("namePrefix", queryParams.NameStartsWith + "%"));
+                sql.Append(@" AND r.name ILIKE @namePrefix ESCAPE '\'");
+                parameters.Add(new NpgsqlParameter("namePrefix", EscapeLikePattern(queryParams.NameStartsWith) + "%"));
             }
 
             if (!string.IsNullOrEmpty(queryParams.SymbolStartsWith))
             {
-                sql.Append(" AND r.symbol ILIKE @symbolPrefix");
-                parameters.Add(new NpgsqlParameter("symbolPrefix", queryParams.SymbolStartsWith + "%"));
+                sql.Append(@" AND r.symbol ILIKE @symbolPrefix ESCAPE '\'");
+                parameters.Add(new NpgsqlParameter("symbolPrefix", EscapeLikePattern(queryParams.SymbolStartsWith) + "%"));
             }
 
             if (queryParams.OwnerIn != null && queryParams.OwnerIn.Length > 0)
@@ -121,6 +121,8 @@ public partial class CirclesRpcModule
 
     public async Task<PagedResponse<GroupMembershipRow>> GetGroupMembers(string groupAddress, int limit = 100, string? cursor = null)
     {
+        groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
+
         // If cache service is enabled and no cursor (first page), try cache first
         if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
         {
@@ -179,6 +181,8 @@ public partial class CirclesRpcModule
 
     public async Task<PagedResponse<GroupMembershipRow>> GetGroupMemberships(string memberAddress, int limit = 50, string? cursor = null)
     {
+        memberAddress = ValidateAndNormalizeAddress(memberAddress, nameof(memberAddress));
+
         // If cache service is enabled and no cursor (first page), try cache first
         if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
         {
@@ -239,7 +243,7 @@ public partial class CirclesRpcModule
         string? cursor,
         bool filterByGroup)
     {
-        var normalizedAddress = address.ToLower();
+        var normalizedAddress = address; // already validated and lowered by caller
         await using var connection = await CreateConnectionAsync();
 
         // Decode cursor if provided
