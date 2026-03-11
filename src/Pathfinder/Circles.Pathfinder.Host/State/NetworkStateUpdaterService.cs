@@ -226,8 +226,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
-        // Pre-build wrapped snapshot so withWrap=true requests hit the cache
-        BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
+        // NOTE: Pre-built wrapped snapshot disabled — IsWrapOnly() always returns false.
+        // The snapshot lacks source-specific wrapped supply edges, causing maxFlow=0.
+        // All withWrap=true requests now build ad-hoc graphs with proper source context.
 
         // Refresh materialized views periodically (non-fatal if DB unavailable)
         try { RefreshMaterializedViewsIfDue(lastBlock); }
@@ -453,8 +454,8 @@ public class NetworkStateUpdaterService : BackgroundService
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
-        // Pre-build wrapped snapshot so withWrap=true requests hit the cache
-        BuildAndPublishWrappedSnapshot(incLoadGraph, lastBlock, groupData);
+        // NOTE: Pre-built wrapped snapshot disabled — IsWrapOnly() always returns false.
+        // See CapacityGraphPool.IsWrapOnly() for details.
 
         // Refresh materialized views periodically (non-fatal if DB unavailable)
         try { RefreshMaterializedViewsIfDue(lastBlock); }
@@ -679,8 +680,9 @@ public class NetworkStateUpdaterService : BackgroundService
 
         _pool.UpdateSnapshot(new CapacityGraphSnapshot(lastBlock, cap), groupData);
 
-        // Pre-build wrapped snapshot so withWrap=true requests hit the cache
-        BuildAndPublishWrappedSnapshot(loadGraph, lastBlock, groupData);
+        // NOTE: Pre-built wrapped snapshot disabled — IsWrapOnly() always returns false.
+        // The snapshot lacks source-specific wrapped supply edges, causing maxFlow=0.
+        // All withWrap=true requests now build ad-hoc graphs with proper source context.
 
         // Refresh materialized views periodically (non-fatal if DB unavailable)
         try { RefreshMaterializedViewsIfDue(lastBlock); }
