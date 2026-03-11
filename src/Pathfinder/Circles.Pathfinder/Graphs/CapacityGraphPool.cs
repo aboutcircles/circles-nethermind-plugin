@@ -136,25 +136,14 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
 
     /// <summary>
     /// Returns true when the ONLY reason a request needs filtering is WithWrap=true.
-    /// These requests can use the pre-built wrapped snapshot instead of rebuilding.
+    /// DISABLED: The pre-built wrapped snapshot lacks source-specific wrapped supply edges.
+    /// Line 733 of AddHolderToTokenEdges_Pooled skips all wrapped balances when sourceId
+    /// is null (pre-build mode), because only the source can supply wrapped tokens (the
+    /// caller initiates the ERC20 unwrap). This means the pre-built snapshot has zero
+    /// wrapped supply edges, causing maxFlow=0 for users whose balance is in wrappers.
+    /// Always return false to force ad-hoc graph building with proper source context.
     /// </summary>
-    public static bool IsWrapOnly(FlowRequest r)
-    {
-        if (r.WithWrap != true)
-            return false;
-
-        bool hasOtherFilters =
-            (r.FromTokens?.Any() ?? false) ||
-            (r.ToTokens?.Any() ?? false) ||
-            (r.ExcludedFromTokens?.Any() ?? false) ||
-            (r.ExcludedToTokens?.Any() ?? false) ||
-            (r.SimulatedBalances?.Any() ?? false) ||
-            (r.SimulatedTrusts?.Any() ?? false) ||
-            (r.SimulatedConsentedAvatars?.Any() ?? false) ||
-            (r.QuantizedMode == true);
-
-        return !hasOtherFilters;
-    }
+    public static bool IsWrapOnly(FlowRequest r) => false;
 }
 
 public sealed class CapacityGraphSnapshot(long block, CapacityGraph @base)

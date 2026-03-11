@@ -71,11 +71,13 @@ public class WrappedSnapshotRegressionTests
     // ----------------------------------------------------------------
 
     [Test]
-    public void IsWrapOnly_WithOnlyWrap_ReturnsTrue()
+    public void IsWrapOnly_AlwaysReturnsFalse_DueToMissingSourceContext()
     {
+        // IsWrapOnly is disabled because the pre-built wrapped snapshot lacks
+        // source-specific wrapped supply edges (line 733 of AddHolderToTokenEdges_Pooled).
         var request = new FlowRequest { WithWrap = true };
-        Assert.That(CapacityGraphPool.IsWrapOnly(request), Is.True,
-            "Request with only WithWrap=true should be classified as wrap-only.");
+        Assert.That(CapacityGraphPool.IsWrapOnly(request), Is.False,
+            "IsWrapOnly always returns false — pre-built snapshot can't have source-specific wrapped supply edges.");
     }
 
     [Test]
@@ -188,9 +190,9 @@ public class WrappedSnapshotRegressionTests
     }
 
     [Test]
-    public void IsWrapOnly_WithWrapAndEmptyLists_ReturnsTrue()
+    public void IsWrapOnly_WithWrapAndEmptyLists_ReturnsFalse()
     {
-        // Empty (non-null) lists should not prevent wrap-only classification
+        // IsWrapOnly is disabled — always returns false regardless of input
         var request = new FlowRequest
         {
             WithWrap = true,
@@ -203,7 +205,7 @@ public class WrappedSnapshotRegressionTests
             SimulatedConsentedAvatars = new List<string>(),
             QuantizedMode = false
         };
-        Assert.That(CapacityGraphPool.IsWrapOnly(request), Is.True);
+        Assert.That(CapacityGraphPool.IsWrapOnly(request), Is.False);
     }
 
     // ----------------------------------------------------------------
@@ -250,8 +252,10 @@ public class WrappedSnapshotRegressionTests
     // ----------------------------------------------------------------
 
     [Test]
-    public async Task Rent_WrapOnly_ReturnsWrappedSnapshot()
+    public async Task Rent_WrapOnly_BuildsAdHocGraph()
     {
+        // After the IsWrapOnly fix, wrap-only requests build ad-hoc graphs
+        // (not the pre-built snapshot which lacks wrapped supply edges).
         var pool = CreatePool();
         var baseGraph = BuildMinimalGraph();
         var wrappedGraph = BuildMinimalGraph();
@@ -264,10 +268,10 @@ public class WrappedSnapshotRegressionTests
 
         using var handle = await pool.Rent(request, balances, trust);
 
-        Assert.That(handle.Graph, Is.SameAs(wrappedGraph),
-            "Wrap-only request should return the pre-built wrapped snapshot, not rebuild ad-hoc.");
+        Assert.That(handle.Graph, Is.Not.SameAs(wrappedGraph),
+            "Wrap-only request should NOT use pre-built snapshot (lacks source-specific wrapped edges).");
         Assert.That(handle.Graph, Is.Not.SameAs(baseGraph),
-            "Should return wrapped graph, not base graph.");
+            "Should build ad-hoc graph, not return base graph.");
     }
 
     [Test]
