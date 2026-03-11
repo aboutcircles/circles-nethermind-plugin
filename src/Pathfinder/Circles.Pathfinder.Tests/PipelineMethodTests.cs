@@ -538,5 +538,65 @@ public class PipelineMethodTests
         Assert.That(edges[3].Flow, Is.EqualTo(192), "D→Sink unchanged");
     }
 
+    /// <summary>
+    /// Regression: when an intermediary vertex handles two tokens and quantization reduces
+    /// them by different amounts, backward propagation must scale per-token independently.
+    /// The old code summed all tokens and scaled proportionally, which redistributed flow
+    /// between token types — violating Hub.sol's per-token NettedFlowMismatch check.
+    /// </summary>
+    [Test]
+    public void PropagateBackwards_MultiToken_ScalesPerTokenIndependently()
+    {
+        int source = 1, intermediary = 2, sink = 3;
+        int tokenA = 10, tokenB = 20;
+
+        var edges = new List<FlowEdge>
+        {
+            // Source → Intermediary (two tokens)
+            new(source, intermediary, tokenA, 200) { Flow = 200 },
+            new(source, intermediary, tokenB, 50) { Flow = 50 },
+            // Intermediary → Sink (after quantization: TokenA reduced, TokenB zeroed)
+            new(intermediary, sink, tokenA, 192) { Flow = 192 },
+            // TokenB→Sink was 50, quantized to 0 (below 96 CRC quantum) — edge removed
+        };
+
+        V2Pathfinder.PropagateQuantizationBackwards(edges, sink, source);
+
+        // Per-token conservation at intermediary:
+        // TokenA: in should match out (192)
+        Assert.That(edges[0].Flow, Is.EqualTo(192),
+            "TokenA inflow at intermediary should match TokenA outflow (192)");
+        // TokenB: out is 0 (no edge to sink), so in should be scaled to 0
+        Assert.That(edges[1].Flow, Is.EqualTo(0),
+            "TokenB inflow should be 0 because TokenB outflow was zeroed by quantization");
+
+        // Sink-bound edges unchanged
+        Assert.That(edges[2].Flow, Is.EqualTo(192), "TokenA→Sink unchanged");
+    }
+
+    /// <summary>
+    /// When both tokens are reduced proportionally (same percentage), per-token scaling
+    /// should produce the same result as the old total-based scaling.
+    /// </summary>
+    [Test]
+    public void PropagateBackwards_MultiToken_EqualReduction_PreservesRatio()
+    {
+        int source = 1, mid = 2, sink = 3;
+        int tokenA = 10, tokenB = 20;
+
+        var edges = new List<FlowEdge>
+        {
+            new(source, mid, tokenA, 200) { Flow = 200 },
+            new(source, mid, tokenB, 100) { Flow = 100 },
+            new(mid, sink, tokenA, 192) { Flow = 192 },
+            new(mid, sink, tokenB, 96) { Flow = 96 },
+        };
+
+        V2Pathfinder.PropagateQuantizationBackwards(edges, sink, source);
+
+        Assert.That(edges[0].Flow, Is.EqualTo(192), "TokenA: 200 → 192");
+        Assert.That(edges[1].Flow, Is.EqualTo(96), "TokenB: 100 → 96");
+    }
+
     #endregion
 }

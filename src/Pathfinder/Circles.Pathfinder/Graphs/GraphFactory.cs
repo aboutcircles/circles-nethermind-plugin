@@ -414,6 +414,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 capacityGraph,
                 sourceId!.Value,
                 effectiveToTokensFilter,
+                excludedToTokensFilter,
                 balanceGraph,
                 wrappedTokensInSim,
                 mergedTrust,
@@ -959,6 +960,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         CapacityGraph capacityGraph,
         int sourceAddress,
         HashSet<int> toTokensFilter,
+        HashSet<int> excludedToTokensFilter,
         BalanceGraph balanceGraph,
         HashSet<int> wrappedTokensInSim,
         IReadOnlyDictionary<int, HashSet<int>> mergedTrust,
@@ -991,6 +993,10 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         var virtualSinkTrustedTokens = new HashSet<int>();
         foreach (var token in toTokensFilter)
         {
+            // Apply excludedToTokensFilter — previously only applied at real sink (AddTokenPoolOutEdges)
+            if (excludedToTokensFilter.Count > 0 && excludedToTokensFilter.Contains(token))
+                continue;
+
             // In quantizedMode: accept all specified tokens (trust validation happens post-path)
             // In regular mode: require source trust
             if (!quantizedMode && !sourceTrustedTokens.Contains(token))

@@ -1184,6 +1184,61 @@ public class GraphFactoryTests
             "Wrapped token should also be excluded when excludedFromTokens is expanded");
     }
 
+    /// <summary>
+    /// B7: excludedToTokens must also be applied to the virtual sink in swap mode.
+    /// Without this fix, excludedToTokens had no effect on what the virtual sink accepted.
+    /// </summary>
+    [Test]
+    public void SwapMode_ExcludedToTokens_AppliedToVirtualSink()
+    {
+        var mock = new HelperMock();
+        // Alice holds some other token (not in toTokens) to generate outbound supply
+        // Bob holds TokenA and TokenB so pool nodes get created (Alice's are excluded in swap mode)
+        mock.AddBalance(
+            AddressIdPool.IdOf(Bob.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenA.ToLowerInvariant()),
+            500_000_000);
+        mock.AddBalance(
+            AddressIdPool.IdOf(Bob.ToLowerInvariant()),
+            AddressIdPool.IdOf(TokenB.ToLowerInvariant()),
+            300_000_000);
+        // Alice trusts both (needed for swap/virtual sink to accept)
+        mock.AddTrust(Alice, TokenA);
+        mock.AddTrust(Alice, TokenB);
+        // Bob trusts Alice's tokens too (needed for pool outbound edges)
+        mock.AddTrust(Bob, TokenA);
+        mock.AddTrust(Bob, TokenB);
+
+        var factory = new GraphFactory(RouterAddr, mock);
+        var bg = factory.V2BalanceGraph();
+        var tg = factory.V2TrustGraph();
+        var trustLookup = GraphFactory.BuildTrustLookup(tg);
+
+        var request = new FlowRequest
+        {
+            Source = Alice,
+            Sink = Alice,
+            ToTokens = new List<string> { TokenA, TokenB },
+            ExcludedToTokens = new List<string> { TokenB } // exclude TokenB from receiving
+        };
+
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        Assert.That(cg.VirtualSinkAddress, Is.Not.Null, "Virtual sink should be created for swap mode");
+
+        int virtualSinkId = cg.VirtualSinkAddress!.Value;
+        int tokenAId = AddressIdPool.IdOf(TokenA.ToLowerInvariant());
+        int tokenBId = AddressIdPool.IdOf(TokenB.ToLowerInvariant());
+        int poolA = AddressIdPool.TokenPoolIdOf(tokenAId);
+        int poolB = AddressIdPool.TokenPoolIdOf(tokenBId);
+
+        // Virtual sink should accept TokenA but NOT TokenB
+        Assert.That(cg.Edges.Any(e => e.From == poolA && e.To == virtualSinkId), Is.True,
+            "TokenA pool→virtualSink edge should exist");
+        Assert.That(cg.Edges.Any(e => e.From == poolB && e.To == virtualSinkId), Is.False,
+            "TokenB pool→virtualSink should be excluded by excludedToTokens");
+    }
+
     #endregion
 
     #region Mock
