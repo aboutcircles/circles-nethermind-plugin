@@ -244,7 +244,7 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
         }
     }
 
-    public bool Remove(TKey key)
+    internal bool RemoveWithoutHistory(TKey key)
     {
         _lock.EnterWriteLock();
         try

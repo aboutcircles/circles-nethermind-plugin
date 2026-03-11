@@ -168,7 +168,7 @@ public sealed class RollbackCacheTests
     }
 
     [Test]
-    public void Remove_ReturnsCorrectFlag()
+    public void RemoveWithHistory_ReturnsCorrectFlag()
     {
         var cache = new RollbackCache<string, int>("Test");
 
@@ -176,8 +176,8 @@ public sealed class RollbackCacheTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(cache.Remove("x"), Is.True);
-            Assert.That(cache.Remove("x"), Is.False);
+            Assert.That(cache.Remove(2, "x"), Is.True);
+            Assert.That(cache.Remove(2, "x"), Is.False);
             Assert.That(cache.ContainsKey("x"), Is.False);
         });
     }

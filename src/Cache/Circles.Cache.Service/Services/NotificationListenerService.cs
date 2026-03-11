@@ -154,6 +154,18 @@ public class NotificationListenerService : BackgroundService
 
         if (reorgPoint.HasValue)
         {
+            if (reorgPoint.Value <= _state.WarmupTargetBlock)
+            {
+                _logger.LogWarning(
+                    "Detected reorg at block {ReorgBlock} crossing warmup seed boundary {WarmupTarget}. Triggering full re-warmup.",
+                    reorgPoint.Value,
+                    _state.WarmupTargetBlock);
+
+                CacheMetrics.ReorgsDetected.Inc();
+                TriggerFullRewarmup();
+                return;
+            }
+
             _logger.LogWarning(
                 "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
                 reorgPoint.Value, reorgPoint.Value);
@@ -191,6 +203,7 @@ public class NotificationListenerService : BackgroundService
                 await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
 
                 _state.LastProcessedBlock = latestBlock;
+                _state.CurrentBlockTimestamp = await GetBlockTimestampAsync(latestBlock, ct);
 
                 // Track blocks processed
                 CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
@@ -242,13 +255,7 @@ public class NotificationListenerService : BackgroundService
                 "Cannot rollback to block {Block} - beyond rollback capacity. Triggering full re-warmup...",
                 rollbackToBlock);
 
-            // Signal that warmup needs to be redone
-            // This will cause the service to be unhealthy and the warmup service to restart
-            _state.WarmupComplete = false;
-            _state.LastProcessedBlock = 0;
-
-            // Clear all caches to force clean re-warmup
-            ClearAllCaches();
+            TriggerFullRewarmup();
 
             _logger.LogWarning("Caches cleared. Service will re-warmup on next iteration.");
         }
@@ -257,9 +264,7 @@ public class NotificationListenerService : BackgroundService
             // Unexpected error during rollback - still try to trigger re-warmup
             _logger.LogError(ex, "Unexpected error during recovery rollback. Triggering full re-warmup...");
 
-            _state.WarmupComplete = false;
-            _state.LastProcessedBlock = 0;
-            ClearAllCaches();
+            TriggerFullRewarmup();
         }
 
         return Task.CompletedTask;
@@ -291,6 +296,36 @@ public class NotificationListenerService : BackgroundService
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
 
         _caches.RebuildSecondaryIndexes();
+    }
+
+    private void TriggerFullRewarmup()
+    {
+        RewarmupReset.Trigger(_state, ClearAllCaches);
+    }
+
+    protected virtual async Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
+    {
+        long timestamp = 0;
+
+        await WithReadonlyConnectionAsync(async (conn, token) =>
+        {
+            const string sql = @"
+                SELECT COALESCE(MAX(""timestamp""), 0)
+                FROM ""System_Block""
+                WHERE ""blockNumber"" <= @blockNumber";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("blockNumber", blockNumber);
+            var result = await cmd.ExecuteScalarAsync(token);
+            timestamp = result switch
+            {
+                long l => l,
+                int i => i,
+                _ => 0L
+            };
+        }, ct);
+
+        return timestamp;
     }
 
     protected virtual async Task WithReadonlyConnectionAsync(

@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Data;
 using Circles.Cache.Service.Caches;
 using Circles.Common;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -120,24 +121,36 @@ public class CacheWarmupService : BackgroundService
         // Phase 2: Load all data in parallel — each task opens its own pooled connection
         var warmupSw = System.Diagnostics.Stopwatch.StartNew();
 
-        await Task.WhenAll(
-            TimedLoadAsync("V1 events", ct => WithReadonlyConnectionAsync(
-                (c, t) => ReplayV1EventsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("V2 events", ct => WithReadonlyConnectionAsync(
-                (c, t) => ReplayV2EventsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("group memberships", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadGroupMembershipsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("trust relations", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadTrustRelationsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("consented flow flags", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadConsentedFlowFlagsAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("avatar metadata", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadAvatarMetadataAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("short names", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadV2ShortNamesAsync(c, warmupTarget, t), ct), stoppingToken),
-            TimedLoadAsync("balances", ct => WithReadonlyConnectionAsync(
-                (c, t) => LoadBalancesAsync(c, warmupTarget, t), ct), stoppingToken)
-        );
+        long warmupTargetTimestamp = 0;
+
+        await using (var snapshot = await CreateWarmupSnapshotAsync(stoppingToken))
+        {
+            await Task.WhenAll(
+                TimedLoadAsync("V1 events", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => ReplayV1EventsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("V2 events", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => ReplayV2EventsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("group memberships", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadGroupMembershipsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("trust relations", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadTrustRelationsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("consented flow flags", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadConsentedFlowFlagsAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("avatar metadata", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadAvatarMetadataAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("short names", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadV2ShortNamesAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("balances", ct => WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId,
+                    (c, t) => LoadBalancesAsync(c, warmupTarget, t), ct), stoppingToken),
+                TimedLoadAsync("warmup target timestamp", async ct =>
+                {
+                    await WithSnapshotReadonlyConnectionAsync(snapshot.SnapshotId, async (c, t) =>
+                    {
+                        warmupTargetTimestamp = await GetMaxTimestampUpToBlockAsync(c, warmupTarget, t);
+                    }, ct);
+                }, stoppingToken)
+            );
+        }
 
         warmupSw.Stop();
         _logger.LogInformation("All data loaded in {Elapsed:n1}s (parallel)", warmupSw.Elapsed.TotalSeconds);
@@ -152,6 +165,7 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("========================================");
 
         // Phase 3: Initialize ring buffer and catch up on a shared connection
+        var finalHeadTimestamp = warmupTargetTimestamp;
         await WithReadonlyConnectionAsync(async (conn, token) =>
         {
             await InitializeBlockRingBufferAsync(conn, warmupTarget, token);
@@ -166,6 +180,7 @@ public class CacheWarmupService : BackgroundService
                 await ProcessBlockGapAsync(conn, warmupTarget + 1, currentHead, token);
 
                 _state.LastProcessedBlock = currentHead;
+                finalHeadTimestamp = await GetMaxTimestampUpToBlockAsync(conn, currentHead, token);
                 _logger.LogInformation("Processed {Count} blocks that arrived during warmup",
                     currentHead - warmupTarget);
             }
@@ -174,6 +189,8 @@ public class CacheWarmupService : BackgroundService
                 _logger.LogInformation("No new blocks arrived during warmup");
             }
         }, stoppingToken);
+
+        _state.CurrentBlockTimestamp = finalHeadTimestamp;
 
         _state.WarmupComplete = true;
         _lastReminderLogTime = DateTime.MinValue;
@@ -187,6 +204,46 @@ public class CacheWarmupService : BackgroundService
     {
         await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
         await action(conn, ct);
+    }
+
+    protected virtual async Task<WarmupSnapshotContext> CreateWarmupSnapshotAsync(CancellationToken ct)
+    {
+        var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
+        var tx = await conn.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+
+        await using var cmd = new NpgsqlCommand("SELECT pg_export_snapshot()", conn, tx);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        var snapshotId = result?.ToString();
+
+        if (string.IsNullOrWhiteSpace(snapshotId))
+        {
+            await tx.DisposeAsync();
+            await conn.DisposeAsync();
+            throw new InvalidOperationException("Failed to export PostgreSQL snapshot for warmup.");
+        }
+
+        return new WarmupSnapshotContext(conn, tx, snapshotId);
+    }
+
+    protected virtual async Task WithSnapshotReadonlyConnectionAsync(
+        string snapshotId,
+        Func<NpgsqlConnection, CancellationToken, Task> action,
+        CancellationToken ct)
+    {
+        await using var conn = await _readonlyDataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+
+        // snapshotId comes from PostgreSQL pg_export_snapshot() (not user input).
+        // PostgreSQL does not allow parameterization for SET TRANSACTION SNAPSHOT,
+        // so we keep interpolation local and escape defensively.
+        var escapedSnapshotId = snapshotId.Replace("'", "''");
+        await using (var setSnapshotCmd = new NpgsqlCommand($"SET TRANSACTION SNAPSHOT '{escapedSnapshotId}'", conn, tx))
+        {
+            await setSnapshotCmd.ExecuteNonQueryAsync(ct);
+        }
+
+        await action(conn, ct);
+        await tx.CommitAsync(ct);
     }
 
     private async Task TimedLoadAsync(string name, Func<CancellationToken, Task> load, CancellationToken ct)
@@ -1609,6 +1666,17 @@ public class CacheWarmupService : BackgroundService
 
         if (reorgPoint.HasValue)
         {
+            if (reorgPoint.Value <= _state.WarmupTargetBlock)
+            {
+                _logger.LogWarning(
+                    "Reorg at block {ReorgBlock} during gap processing crossed warmup seed boundary {WarmupTarget}; restarting warmup.",
+                    reorgPoint.Value,
+                    _state.WarmupTargetBlock);
+
+                RewarmupReset.Trigger(_state, ClearCaches);
+                throw new InvalidOperationException("Warmup gap replay crossed warmup seed boundary due to reorg.");
+            }
+
             _logger.LogWarning("Reorg detected at block {ReorgBlock} during gap processing! Rolling back caches...",
                 reorgPoint.Value);
 
@@ -1838,5 +1906,25 @@ public class CacheWarmupService : BackgroundService
 
         public Task ReplayRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
             => ProcessBlockRangeAsync(fromBlock, toBlock, ct);
+    }
+
+    protected sealed class WarmupSnapshotContext : IAsyncDisposable
+    {
+        public NpgsqlConnection ExportConnection { get; }
+        public NpgsqlTransaction ExportTransaction { get; }
+        public string SnapshotId { get; }
+
+        public WarmupSnapshotContext(NpgsqlConnection exportConnection, NpgsqlTransaction exportTransaction, string snapshotId)
+        {
+            ExportConnection = exportConnection;
+            ExportTransaction = exportTransaction;
+            SnapshotId = snapshotId;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await ExportTransaction.DisposeAsync();
+            await ExportConnection.DisposeAsync();
+        }
     }
 }

@@ -565,5 +565,76 @@ public class ControllerTests
         response.Trusts[0].Trustee.Should().Be("0xv1trust");
     }
 
+    [Fact]
+    public void GetTrustRelations_ShouldFilterExpiredV2ByCurrentBlockTimestamp()
+    {
+        // Arrange
+        var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2TrustRelations.Add(2000, $"{address}:0xactive", 2000L);
+        _cache.V2TrustRelations.Add(2000, $"{address}:0xexpired", 1000L);
+        _cache.V2TrustRelations.Add(2000, $"0xincomingactive:{address}", 3000L);
+        _cache.V2TrustRelations.Add(2000, $"0xincomingexpired:{address}", 1000L);
+        _cache.RebuildSecondaryIndexes();
+        var controller = CreateTrustRelationsController();
+
+        // Act / Assert - before expiry of active trust
+        _state.CurrentBlockTimestamp = 1500;
+        var resultAt1500 = controller.GetTrustRelations(address, version: 2);
+        var okAt1500 = resultAt1500.Result as OkObjectResult;
+        okAt1500.Should().NotBeNull();
+        var responseAt1500 = okAt1500!.Value as TrustRelationsResponse;
+        responseAt1500.Should().NotBeNull();
+        responseAt1500!.Trusts.Should().ContainSingle(t => t.Trustee == "0xactive");
+        responseAt1500.Trusts.Should().NotContain(t => t.Trustee == "0xexpired");
+        responseAt1500.TrustedBy.Should().ContainSingle(t => t.Truster == "0xincomingactive");
+        responseAt1500.TrustedBy.Should().NotContain(t => t.Truster == "0xincomingexpired");
+
+        // Act / Assert - after expiry
+        _state.CurrentBlockTimestamp = 2500;
+        var resultAt2500 = controller.GetTrustRelations(address, version: 2);
+        var okAt2500 = resultAt2500.Result as OkObjectResult;
+        okAt2500.Should().NotBeNull();
+        var responseAt2500 = okAt2500!.Value as TrustRelationsResponse;
+        responseAt2500.Should().NotBeNull();
+        responseAt2500!.Trusts.Should().BeEmpty();
+        responseAt2500.TrustedBy.Should().ContainSingle(t => t.Truster == "0xincomingactive");
+    }
+
+    [Fact]
+    public void GroupMemberships_ShouldFilterExpiredByCurrentBlockTimestamp()
+    {
+        // Arrange
+        var group = "0xgroup000000000000000000000000000000000000";
+        var member = "0xmember0000000000000000000000000000000000";
+        _cache.GroupMemberships.Add(1200, $"{group}:{member}", (member, 2000L));
+        _cache.GroupMemberships.Add(1200, $"{group}:0xexpiredmember", ("0xexpiredmember", 1000L));
+        _cache.GroupMemberships.Add(1200, $"0xothergroup:{member}", (member, 1000L));
+        _cache.RebuildSecondaryIndexes();
+        var controller = CreateGroupMembershipsController();
+
+        // Act / Assert - before expiry
+        _state.CurrentBlockTimestamp = 1500;
+        var membersAt1500 = controller.GetGroupMembers(group).Result as OkObjectResult;
+        membersAt1500.Should().NotBeNull();
+        var membersResponseAt1500 = membersAt1500!.Value as GroupMembersResponse;
+        membersResponseAt1500.Should().NotBeNull();
+        membersResponseAt1500!.Members.Should().ContainSingle(m => m.Member == member);
+        membersResponseAt1500.Members.Should().NotContain(m => m.Member == "0xexpiredmember");
+
+        // Act / Assert - after expiry
+        _state.CurrentBlockTimestamp = 2500;
+        var membersAt2500 = controller.GetGroupMembers(group).Result as OkObjectResult;
+        membersAt2500.Should().NotBeNull();
+        var membersResponseAt2500 = membersAt2500!.Value as GroupMembersResponse;
+        membersResponseAt2500.Should().NotBeNull();
+        membersResponseAt2500!.Members.Should().BeEmpty();
+
+        var groupsAt2500 = controller.GetMemberGroups(member).Result as OkObjectResult;
+        groupsAt2500.Should().NotBeNull();
+        var groupsResponseAt2500 = groupsAt2500!.Value as MemberGroupsResponse;
+        groupsResponseAt2500.Should().NotBeNull();
+        groupsResponseAt2500!.Groups.Should().BeEmpty();
+    }
+
     #endregion
 }

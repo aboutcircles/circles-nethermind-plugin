@@ -588,6 +588,66 @@ public class IntegrationTests : IAsyncLifetime
         storedLimit.Should().Be(70);
     }
 
+    [RequiresDockerFact]
+    public async Task WarmupSnapshotHelpers_KeepReadsConsistentAcrossWorkers()
+    {
+        await using var setupConn = new NpgsqlConnection(_connectionString);
+        await setupConn.OpenAsync();
+
+        const string setupSql = @"
+            DROP TABLE IF EXISTS ""SnapshotProbe"";
+            CREATE TABLE ""SnapshotProbe"" (
+                id INTEGER PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            INSERT INTO ""SnapshotProbe"" (id, value) VALUES (1, 'before');";
+
+        await using (var setupCmd = new NpgsqlCommand(setupSql, setupConn))
+        {
+            await setupCmd.ExecuteNonQueryAsync();
+        }
+
+        var settings = new CacheServiceSettings { PostgresConnectionString = _connectionString! };
+        var state = new CacheServiceState(rollbackCapacity: 8);
+        var caches = new CacheContainer(rollbackCapacity: 8);
+        await using var dataSource = NpgsqlDataSource.Create(_connectionString!);
+        var warmup = new TestableCacheWarmupService(settings, state, caches, dataSource);
+
+        string? worker1Value = null;
+        string? worker2Value = null;
+
+        await warmup.WithExportedSnapshotForTestAsync(async snapshotId =>
+        {
+            await warmup.WithSnapshotConnectionForTestAsync(snapshotId, async (conn, ct) =>
+            {
+                await using var cmd = new NpgsqlCommand("SELECT value FROM \"SnapshotProbe\" WHERE id = 1", conn);
+                worker1Value = (string?)await cmd.ExecuteScalarAsync(ct);
+            }, CancellationToken.None);
+
+            await using (var mutateConn = new NpgsqlConnection(_connectionString))
+            {
+                await mutateConn.OpenAsync();
+                await using var mutateCmd = new NpgsqlCommand("UPDATE \"SnapshotProbe\" SET value = 'after' WHERE id = 1", mutateConn);
+                await mutateCmd.ExecuteNonQueryAsync();
+            }
+
+            await warmup.WithSnapshotConnectionForTestAsync(snapshotId, async (conn, ct) =>
+            {
+                await using var cmd = new NpgsqlCommand("SELECT value FROM \"SnapshotProbe\" WHERE id = 1", conn);
+                worker2Value = (string?)await cmd.ExecuteScalarAsync(ct);
+            }, CancellationToken.None);
+        }, CancellationToken.None);
+
+        await using var verifyConn = new NpgsqlConnection(_connectionString);
+        await verifyConn.OpenAsync();
+        await using var verifyCmd = new NpgsqlCommand("SELECT value FROM \"SnapshotProbe\" WHERE id = 1", verifyConn);
+        var latestValue = (string?)await verifyCmd.ExecuteScalarAsync();
+
+        worker1Value.Should().Be("before");
+        worker2Value.Should().Be("before");
+        latestValue.Should().Be("after");
+    }
+
     private sealed class TestableNotificationListenerService : NotificationListenerService
     {
         public TestableNotificationListenerService(
@@ -616,6 +676,18 @@ public class IntegrationTests : IAsyncLifetime
 
         public Task LoadTrustRelationsForTestAsync(NpgsqlConnection conn, long toBlock, CancellationToken ct)
             => LoadTrustRelationsAsync(conn, toBlock, ct);
+
+        public async Task WithExportedSnapshotForTestAsync(Func<string, Task> action, CancellationToken ct)
+        {
+            await using var snapshot = await CreateWarmupSnapshotAsync(ct);
+            await action(snapshot.SnapshotId);
+        }
+
+        public Task WithSnapshotConnectionForTestAsync(
+            string snapshotId,
+            Func<NpgsqlConnection, CancellationToken, Task> action,
+            CancellationToken ct)
+            => WithSnapshotReadonlyConnectionAsync(snapshotId, action, ct);
     }
 }
 
