@@ -511,6 +511,188 @@ public class ControllerTests
 
     #endregion
 
+    #region TokensController Tests
+
+    /// <summary>
+    /// Creates a TokensController with mocked HttpContext.
+    /// </summary>
+    private TokensController CreateTokensController()
+    {
+        var logger = new Mock<ILogger<TokensController>>();
+        var controller = new TokensController(_cache, _state, logger.Object);
+        controller.ControllerContext = new ControllerContext { HttpContext = CreateHttpContext() };
+        return controller;
+    }
+
+    [Fact]
+    public void TokensController_V1Token_ReturnsInfo()
+    {
+        var tokenAddr = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        var owner = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V1TokenOwnerByToken.Add(1000, tokenAddr, owner);
+
+        var controller = CreateTokensController();
+        var result = controller.GetTokenInfo(tokenAddr);
+
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var info = okResult!.Value as TokenInfoResponse;
+        info.Should().NotBeNull();
+        info!.Version.Should().Be(1);
+        info.TokenType.Should().Be("CrcV1_Signup");
+        info.TokenOwner.Should().Be(owner);
+        info.IsErc20.Should().BeTrue();
+        info.IsErc1155.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TokensController_V2Avatar_ReturnsInfo()
+    {
+        var addr = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        _cache.V2Avatars.Add(2000, addr, ("Human", 1704067200L));
+
+        var controller = CreateTokensController();
+        var result = controller.GetTokenInfo(addr);
+
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var info = okResult!.Value as TokenInfoResponse;
+        info.Should().NotBeNull();
+        info!.Version.Should().Be(2);
+        info.TokenType.Should().Be("CrcV2_RegisterHuman");
+        info.IsErc1155.Should().BeTrue();
+        info.IsGroup.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TokensController_ERC20Wrapper_ReturnsInfo()
+    {
+        var wrapper = "0xwrapper0000000000000000000000000000000000";
+        var avatar = "0xavatar00000000000000000000000000000000000";
+        _cache.UpsertWrapper(2000, wrapper, avatar, 1); // inflationary
+
+        var controller = CreateTokensController();
+        var result = controller.GetTokenInfo(wrapper);
+
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var info = okResult!.Value as TokenInfoResponse;
+        info.Should().NotBeNull();
+        info!.Version.Should().Be(2);
+        info.IsWrapped.Should().BeTrue();
+        info.IsErc20.Should().BeTrue();
+        info.IsInflationary.Should().BeTrue();
+        info.TokenType.Should().Contain("Inflationary");
+        info.TokenOwner.Should().Be(avatar.ToLowerInvariant());
+    }
+
+    [Fact]
+    public void TokensController_Group_ReturnsInfo()
+    {
+        var groupAddr = "0xgroup000000000000000000000000000000000000";
+        _cache.Groups.Add(2000, groupAddr, ("MyGroup", "0xmint", "MG"));
+
+        var controller = CreateTokensController();
+        var result = controller.GetTokenInfo(groupAddr);
+
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var info = okResult!.Value as TokenInfoResponse;
+        info.Should().NotBeNull();
+        info!.Version.Should().Be(2);
+        info.TokenType.Should().Be("CrcV2_RegisterGroup");
+        info.IsGroup.Should().BeTrue();
+        info.IsErc1155.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TokensController_NotFound_Returns404()
+    {
+        var controller = CreateTokensController();
+        var result = controller.GetTokenInfo("0xnonexistent0000000000000000000000000000");
+
+        result.Result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public void TokensController_Batch_ReturnsMultiple()
+    {
+        var v1Token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        var v2Addr = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var unknown = "0xnonexistent0000000000000000000000000000";
+
+        _cache.V1TokenOwnerByToken.Add(1000, v1Token, "0xowner");
+        _cache.V2Avatars.Add(2000, v2Addr, ("Human", 12345L));
+
+        var controller = CreateTokensController();
+        var request = new TokenInfoBatchRequest(new[] { v1Token, v2Addr, unknown });
+        var result = controller.GetTokenInfoBatch(request);
+
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var infos = okResult!.Value as TokenInfoResponse?[];
+        infos.Should().NotBeNull();
+        infos!.Length.Should().Be(3);
+        infos[0].Should().NotBeNull();
+        infos[0]!.Version.Should().Be(1);
+        infos[1].Should().NotBeNull();
+        infos[1]!.Version.Should().Be(2);
+        infos[2].Should().BeNull();
+    }
+
+    [Fact]
+    public void TokensController_BatchLimit_Rejects()
+    {
+        var controller = CreateTokensController();
+        var addresses = Enumerable.Range(0, 1001).Select(i => $"0x{i:X40}").ToArray();
+
+        var request = new TokenInfoBatchRequest(addresses);
+        var result = controller.GetTokenInfoBatch(request);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public void BalancesController_V2ERC20Wrapper_IdentifiedCorrectly()
+    {
+        // Guards the old StartsWith("0x") bug: both ERC1155 and wrapper tokens
+        // can have hex addresses as keys. The fix uses GetWrapperInfo() lookup instead.
+        var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var wrapperAddr = "0xwrapper0000000000000000000000000000000000";
+        var erc1155Id = "0xavatar00000000000000000000000000000000000";
+
+        // Register wrapper and avatar
+        _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", 0); // demurraged wrapper
+        _cache.V2Avatars.Add(2000, erc1155Id, ("Human", 12345L));
+
+        // Add balances for both — both are hex addresses starting with "0x"
+        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{wrapperAddr}", 100m);
+        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{erc1155Id}", 200m);
+        _cache.RebuildSecondaryIndexes();
+
+        var controller = CreateBalancesController();
+        var result = controller.GetTokenBalances(address);
+
+        var okResult = result.Result as OkObjectResult;
+        okResult.Should().NotBeNull();
+        var balances = okResult!.Value as TokenBalanceResponse[];
+        balances.Should().NotBeNull();
+        balances!.Length.Should().Be(2);
+
+        // One should be wrapped ERC20, the other ERC1155
+        var wrapper = balances.SingleOrDefault(b => b.TokenId == wrapperAddr);
+        wrapper.Should().NotBeNull();
+        wrapper!.IsWrapped.Should().BeTrue();
+        wrapper.IsErc20.Should().BeTrue();
+
+        var erc1155 = balances.SingleOrDefault(b => b.TokenId == erc1155Id);
+        erc1155.Should().NotBeNull();
+        erc1155!.IsWrapped.Should().BeFalse();
+        erc1155.IsErc1155.Should().BeTrue();
+    }
+
+    #endregion
+
     #region TrustRelationsController Tests
 
     [Fact]

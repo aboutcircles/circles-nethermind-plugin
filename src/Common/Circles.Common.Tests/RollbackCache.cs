@@ -220,4 +220,128 @@ public sealed class RollbackCacheTests
 
         await Task.WhenAll(readers.Append(writer));
     }
+
+    /* ----------------------------------------------------------------- */
+    /*  SEED EDGE CASES                                                  */
+    /* ----------------------------------------------------------------- */
+
+    [Test]
+    public void Seed_WithBlockNo_SetsLastBlock()
+    {
+        var cache = new RollbackCache<string, int>("Test");
+
+        cache.Seed(new Dictionary<string, int> { ["a"] = 1 }, atBlockNo: 500);
+
+        Assert.That(cache.LastBlockNo, Is.EqualTo(500));
+        Assert.That(cache.Get("a"), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Seed_AfterRollback_ClearsHistory()
+    {
+        var cache = new RollbackCache<string, int>("Test");
+
+        cache.Add(1, "x", 10);
+        cache.Add(2, "x", 20);
+
+        // Rollback to block 1
+        cache.DeleteAllGreaterOrEqualBlock(2);
+        Assert.That(cache.Get("x"), Is.EqualTo(10));
+
+        // Seed replaces everything
+        cache.Seed(new Dictionary<string, int> { ["y"] = 99 }, atBlockNo: 50);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.ContainsKey("x"), Is.False);
+            Assert.That(cache.Get("y"), Is.EqualTo(99));
+            Assert.That(cache.LastBlockNo, Is.EqualTo(50));
+        });
+    }
+
+    /* ----------------------------------------------------------------- */
+    /*  READ-ONLY DICTIONARY                                             */
+    /* ----------------------------------------------------------------- */
+
+    [Test]
+    public void ReadOnlyDictionary_ReturnsShallowCopy()
+    {
+        var cache = new RollbackCache<string, int>("Test");
+        cache.Add(1, "a", 1);
+        cache.Add(1, "b", 2);
+
+        var snapshot = cache.ReadOnlyDictionary;
+
+        // Mutating the cache should not affect the snapshot
+        cache.Add(2, "c", 3);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(snapshot.Count, Is.EqualTo(2));
+            Assert.That(snapshot.ContainsKey("c"), Is.False);
+            Assert.That(cache.Count, Is.EqualTo(3));
+        });
+    }
+
+    /* ----------------------------------------------------------------- */
+    /*  REMOVE WITH HISTORY                                              */
+    /* ----------------------------------------------------------------- */
+
+    [Test]
+    public void Remove_WithBlockNo_RecordsHistory_ForRollback()
+    {
+        var cache = new RollbackCache<string, int>("Test");
+
+        cache.Add(1, "x", 42);
+        Assert.That(cache.Get("x"), Is.EqualTo(42));
+
+        // Remove at block 2 — should record history
+        cache.Remove(2, "x");
+        Assert.That(cache.ContainsKey("x"), Is.False);
+
+        // Rollback block 2 — should restore x
+        cache.DeleteAllGreaterOrEqualBlock(2);
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.ContainsKey("x"), Is.True);
+            Assert.That(cache.Get("x"), Is.EqualTo(42));
+        });
+    }
+
+    [Test]
+    public void DeleteAllGreater_NoOp_WhenEmpty()
+    {
+        var cache = new RollbackCache<string, int>("Test");
+
+        // No data at all — should be a no-op
+        var stats = cache.DeleteAllGreaterOrEqualBlock(100);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats.Removed, Is.EqualTo(0));
+            Assert.That(stats.Restored, Is.EqualTo(0));
+            Assert.That(cache.Count, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void DeleteAllGreater_NoOp_WhenBeyondHead()
+    {
+        var cache = new RollbackCache<string, int>("Test");
+
+        cache.Add(1, "a", 1);
+        cache.Add(2, "b", 2);
+
+        // Delete at block 100 — way beyond head (block 2)
+        var stats = cache.DeleteAllGreaterOrEqualBlock(100);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats.Removed, Is.EqualTo(0));
+            Assert.That(stats.Restored, Is.EqualTo(0));
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(cache.Get("a"), Is.EqualTo(1));
+            Assert.That(cache.Get("b"), Is.EqualTo(2));
+        });
+    }
 }

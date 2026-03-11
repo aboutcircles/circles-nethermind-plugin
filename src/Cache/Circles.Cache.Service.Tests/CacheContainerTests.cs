@@ -215,4 +215,199 @@ public class CacheContainerTests
         info.Member.Should().Be(member);
         info.ExpiryTime.Should().Be(expiryTime);
     }
+
+    // --- Phase 2: Secondary Index Consistency Tests ---
+
+    [Fact]
+    public void V2BalanceIndex_TracksByAddress()
+    {
+        var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var token1 = "0xtoken1";
+        var token2 = "0xtoken2";
+
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{address}:{token1}", 100m);
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{address}:{token2}", 200m);
+        _cache.RebuildSecondaryIndexes();
+
+        var tokens = _cache.GetTokenIdsForAddress(address, isV1: false).ToList();
+        tokens.Should().HaveCount(2);
+        tokens.Should().Contain(token1);
+        tokens.Should().Contain(token2);
+    }
+
+    [Fact]
+    public void TrustIndex_V1_TracksByTruster()
+    {
+        var truster = "0xaaa0000000000000000000000000000000000000";
+        var trustee1 = "0xbbb0000000000000000000000000000000000000";
+        var trustee2 = "0xccc0000000000000000000000000000000000000";
+
+        _cache.V1TrustRelations.Add(100, $"{truster}:{trustee1}", 50L);
+        _cache.V1TrustRelations.Add(100, $"{truster}:{trustee2}", 75L);
+        _cache.RebuildSecondaryIndexes();
+
+        var trusts = _cache.GetTrustsFor(truster, isV1: true).ToList();
+        trusts.Should().HaveCount(2);
+        trusts.Select(t => t.Trustee).Should().Contain(trustee1);
+        trusts.Select(t => t.Trustee).Should().Contain(trustee2);
+    }
+
+    [Fact]
+    public void TrustIndex_V1_TracksByTrustee()
+    {
+        var truster1 = "0xaaa0000000000000000000000000000000000000";
+        var truster2 = "0xbbb0000000000000000000000000000000000000";
+        var trustee = "0xccc0000000000000000000000000000000000000";
+
+        _cache.V1TrustRelations.Add(100, $"{truster1}:{trustee}", 50L);
+        _cache.V1TrustRelations.Add(100, $"{truster2}:{trustee}", 75L);
+        _cache.RebuildSecondaryIndexes();
+
+        var trustedBy = _cache.GetTrustedByFor(trustee, isV1: true).ToList();
+        trustedBy.Should().HaveCount(2);
+        trustedBy.Select(t => t.Truster).Should().Contain(truster1);
+        trustedBy.Select(t => t.Truster).Should().Contain(truster2);
+    }
+
+    [Fact]
+    public void TrustIndex_V2_TracksByTruster()
+    {
+        var truster = "0xaaa0000000000000000000000000000000000000";
+        var trustee = "0xbbb0000000000000000000000000000000000000";
+
+        _cache.V2TrustRelations.Add(100, $"{truster}:{trustee}", 999999L);
+        _cache.RebuildSecondaryIndexes();
+
+        _cache.GetTrustsFor(truster, isV1: false).Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void TrustIndex_V2_TracksByTrustee()
+    {
+        var truster = "0xaaa0000000000000000000000000000000000000";
+        var trustee = "0xbbb0000000000000000000000000000000000000";
+
+        _cache.V2TrustRelations.Add(100, $"{truster}:{trustee}", 999999L);
+        _cache.RebuildSecondaryIndexes();
+
+        _cache.GetTrustedByFor(trustee, isV1: false).Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void MembershipIndex_TracksByGroup()
+    {
+        var group = "0xgroup000000000000000000000000000000000000";
+        var member1 = "0xmember1000000000000000000000000000000000";
+        var member2 = "0xmember2000000000000000000000000000000000";
+
+        _cache.GroupMemberships.Add(100, $"{group}:{member1}", (member1, 999999L));
+        _cache.GroupMemberships.Add(100, $"{group}:{member2}", (member2, 888888L));
+        _cache.RebuildSecondaryIndexes();
+
+        var members = _cache.GetGroupMembers(group).ToList();
+        members.Should().HaveCount(2);
+        members.Select(m => m.Member).Should().Contain(member1);
+        members.Select(m => m.Member).Should().Contain(member2);
+    }
+
+    [Fact]
+    public void MembershipIndex_TracksByMember()
+    {
+        var group1 = "0xgroup1000000000000000000000000000000000000";
+        var group2 = "0xgroup2000000000000000000000000000000000000";
+        var member = "0xmember0000000000000000000000000000000000";
+
+        _cache.GroupMemberships.Add(100, $"{group1}:{member}", (member, 999999L));
+        _cache.GroupMemberships.Add(100, $"{group2}:{member}", (member, 888888L));
+        _cache.RebuildSecondaryIndexes();
+
+        var groups = _cache.GetMemberGroups(member).ToList();
+        groups.Should().HaveCount(2);
+        groups.Select(g => g.Group).Should().Contain(group1);
+        groups.Select(g => g.Group).Should().Contain(group2);
+    }
+
+    [Fact]
+    public void WrapperReverseIndex_MapsWrapperToAvatar()
+    {
+        var wrapper = "0xwrapper0000000000000000000000000000000000";
+        var avatar = "0xavatar00000000000000000000000000000000000";
+
+        _cache.Erc20WrapperAddresses.Add(100, wrapper, (avatar, 0));
+        _cache.RebuildSecondaryIndexes();
+
+        var info = _cache.GetWrapperInfo(wrapper);
+        info.Should().NotBeNull();
+        info!.Value.Avatar.Should().Be(avatar);
+        info.Value.CirclesType.Should().Be(0);
+    }
+
+    [Fact]
+    public void WrapperReverseIndex_NullForUnknown()
+    {
+        _cache.GetWrapperInfo("0xnonexistent0000000000000000000000000000").Should().BeNull();
+        _cache.GetAvatarForWrapper("0xnonexistent0000000000000000000000000000").Should().BeNull();
+    }
+
+    [Fact]
+    public void RollbackAll_ThenRebuild_RestoresIndexConsistency()
+    {
+        var addr = "0xholder00000000000000000000000000000000000";
+        var token1 = "0xtoken1";
+        var token2 = "0xtoken2";
+
+        // Block 100
+        _cache.V2BalancesByAccountAndToken.Add(100, $"{addr}:{token1}", 100m);
+        _cache.RebuildSecondaryIndexes();
+
+        // Block 101
+        _cache.V2BalancesByAccountAndToken.Add(101, $"{addr}:{token2}", 200m);
+        _cache.RebuildSecondaryIndexes();
+        _cache.GetTokenIdsForAddress(addr, isV1: false).Should().HaveCount(2);
+
+        // Rollback to block 100
+        _cache.RollbackAll(101);
+        _cache.RebuildSecondaryIndexes();
+
+        _cache.GetTokenIdsForAddress(addr, isV1: false).Should().HaveCount(1);
+        _cache.GetTokenIdsForAddress(addr, isV1: false).Should().Contain(token1);
+    }
+
+    [Fact]
+    public void V2LastActivity_RolledBackWithBalance()
+    {
+        var key = "0xaddr:0xtoken";
+
+        // Block 100 - initial activity
+        _cache.V2BalancesByAccountAndToken.Add(100, key, 100m);
+        _cache.V2LastActivity.Add(100, key, 1000L);
+
+        // Block 101 - update
+        _cache.V2BalancesByAccountAndToken.Add(101, key, 200m);
+        _cache.V2LastActivity.Add(101, key, 2000L);
+
+        // Rollback block 101
+        _cache.RollbackAll(101);
+
+        // V2LastActivity (now a RollbackCache) should be rolled back too
+        _cache.V2LastActivity.TryGetValue(key, out var restoredTs).Should().BeTrue();
+        restoredTs.Should().Be(1000L);
+    }
+
+    [Fact]
+    public void MultipleTokens_SameAddress_AllTracked()
+    {
+        var address = "0xholder00000000000000000000000000000000000";
+
+        // Add 5 different V2 tokens for the same address
+        for (int i = 1; i <= 5; i++)
+        {
+            var token = $"0xtoken{i:d38}";
+            _cache.V2BalancesByAccountAndToken.Add(100, $"{address}:{token}", i * 100m);
+        }
+        _cache.RebuildSecondaryIndexes();
+
+        var tokens = _cache.GetTokenIdsForAddress(address, isV1: false).ToList();
+        tokens.Should().HaveCount(5);
+    }
 }

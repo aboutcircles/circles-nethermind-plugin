@@ -1,5 +1,5 @@
-using System.Numerics;
 using System.Data;
+using System.Numerics;
 using Circles.Cache.Service.Caches;
 using Circles.Common;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -1887,6 +1887,7 @@ public class CacheWarmupService : BackgroundService
         _caches.V2LastActivity.Seed(new Dictionary<string, long>());
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
+        _caches.ConsentedFlowFlags.Seed(new Dictionary<string, byte[]>());
     }
 
     /// <summary>
