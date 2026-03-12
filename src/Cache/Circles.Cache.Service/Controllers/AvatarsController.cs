@@ -52,7 +52,7 @@ public class AvatarsController : ControllerBase
                     Version: 2,
                     Type: v2Info.Type,
                     CidV0: cid,
-                    IsHuman: v2Info.Type.Contains("Human"),
+                    IsHuman: v2Info.Type == "CrcV2_RegisterHuman",
                     Name: isGroup ? groupInfo.Name : null,
                     Symbol: isGroup ? groupInfo.Symbol : null,
                     ShortName: shortName,
@@ -75,7 +75,7 @@ public class AvatarsController : ControllerBase
                     HasV1: true,
                     V1Token: v1Info.TokenAddress,
                     CidV0: cid,
-                    IsHuman: v1Info.Type.Contains("Human"),
+                    IsHuman: v1Info.Type == "CrcV1_Signup",
                     LastProcessedBlock: lastBlock,
                     Timestamp: timestamp
                 ));
@@ -90,7 +90,7 @@ public class AvatarsController : ControllerBase
                 return Ok(new AvatarInfoResponse(
                     Avatar: address,
                     Version: 2,
-                    Type: "Group",
+                    Type: "CrcV2_RegisterGroup",
                     CidV0: cid,
                     IsHuman: false,
                     Name: groupOnlyInfo.Name,
@@ -149,7 +149,7 @@ public class AvatarsController : ControllerBase
                         Version: 2,
                         Type: v2Info.Type,
                         CidV0: cid,
-                        IsHuman: v2Info.Type.Contains("Human"),
+                        IsHuman: v2Info.Type == "CrcV2_RegisterHuman",
                         Name: isGroup ? groupInfo.Name : null,
                         Symbol: isGroup ? groupInfo.Symbol : null,
                         ShortName: shortName,
@@ -171,7 +171,7 @@ public class AvatarsController : ControllerBase
                         HasV1: true,
                         V1Token: v1Info.TokenAddress,
                         CidV0: cid,
-                        IsHuman: v1Info.Type.Contains("Human"),
+                        IsHuman: v1Info.Type == "CrcV1_Signup",
                         LastProcessedBlock: lastBlock,
                         Timestamp: timestamp
                     ));
@@ -185,7 +185,7 @@ public class AvatarsController : ControllerBase
                     results.Add(new AvatarInfoResponse(
                         Avatar: address,
                         Version: 2,
-                        Type: "Group",
+                        Type: "CrcV2_RegisterGroup",
                         CidV0: cid,
                         IsHuman: false,
                         Name: groupOnlyInfo.Name,

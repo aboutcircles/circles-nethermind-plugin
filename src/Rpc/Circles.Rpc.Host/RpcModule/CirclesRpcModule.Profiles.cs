@@ -14,6 +14,8 @@ public partial class CirclesRpcModule
 {
     public async Task<ProfileCidResponse> GetProfileCid(string address)
     {
+        address = ValidateAndNormalizeAddress(address);
+
         var results = await GetProfileCidBatchInternal(new[] { address });
         return new ProfileCidResponse(results[0]);
     }

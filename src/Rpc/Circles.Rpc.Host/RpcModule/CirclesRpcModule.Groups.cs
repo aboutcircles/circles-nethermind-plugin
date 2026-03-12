@@ -39,14 +39,14 @@ public partial class CirclesRpcModule
         {
             if (!string.IsNullOrEmpty(queryParams.NameStartsWith))
             {
-                sql.Append(" AND r.name ILIKE @namePrefix");
-                parameters.Add(new NpgsqlParameter("namePrefix", queryParams.NameStartsWith + "%"));
+                sql.Append(@" AND r.name ILIKE @namePrefix ESCAPE '\'");
+                parameters.Add(new NpgsqlParameter("namePrefix", EscapeLikePattern(queryParams.NameStartsWith) + "%"));
             }
 
             if (!string.IsNullOrEmpty(queryParams.SymbolStartsWith))
             {
-                sql.Append(" AND r.symbol ILIKE @symbolPrefix");
-                parameters.Add(new NpgsqlParameter("symbolPrefix", queryParams.SymbolStartsWith + "%"));
+                sql.Append(@" AND r.symbol ILIKE @symbolPrefix ESCAPE '\'");
+                parameters.Add(new NpgsqlParameter("symbolPrefix", EscapeLikePattern(queryParams.SymbolStartsWith) + "%"));
             }
 
             if (queryParams.OwnerIn != null && queryParams.OwnerIn.Length > 0)
@@ -121,6 +121,8 @@ public partial class CirclesRpcModule
 
     public async Task<PagedResponse<GroupMembershipRow>> GetGroupMembers(string groupAddress, int limit = 100, string? cursor = null)
     {
+        groupAddress = ValidateAndNormalizeAddress(groupAddress, nameof(groupAddress));
+
         // If cache service is enabled and no cursor (first page), try cache first
         if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
         {
@@ -148,14 +150,23 @@ public partial class CirclesRpcModule
                         .ToList();
 
                     var hasMore = allMembers.Count > limit;
-                    var resultItems = allMembers.Take(limit).ToArray();
 
-                    // Cache-based results don't support pagination via cursor
-                    return new PagedResponse<GroupMembershipRow>(
-                        Results: resultItems,
-                        HasMore: hasMore,
-                        NextCursor: null // Cache doesn't support cursor pagination
-                    );
+                    // If cache has more results than requested, fall through to DB
+                    // which supports proper cursor pagination. Otherwise clients get
+                    // HasMore:true but NextCursor:null and can't page further.
+                    if (hasMore)
+                    {
+                        _logger?.LogDebug("Cache has more group members than limit ({Limit}), falling through to DB for pagination support", limit);
+                        // Fall through to DB path below
+                    }
+                    else
+                    {
+                        return new PagedResponse<GroupMembershipRow>(
+                            Results: allMembers.ToArray(),
+                            HasMore: false,
+                            NextCursor: null
+                        );
+                    }
                 }
             }
             catch (Exception ex)
@@ -170,6 +181,8 @@ public partial class CirclesRpcModule
 
     public async Task<PagedResponse<GroupMembershipRow>> GetGroupMemberships(string memberAddress, int limit = 50, string? cursor = null)
     {
+        memberAddress = ValidateAndNormalizeAddress(memberAddress, nameof(memberAddress));
+
         // If cache service is enabled and no cursor (first page), try cache first
         if (_settings.UseCacheService && _cacheServiceClient != null && string.IsNullOrEmpty(cursor))
         {
@@ -196,13 +209,22 @@ public partial class CirclesRpcModule
                         .ToList();
 
                     var hasMore = allGroups.Count > limit;
-                    var resultItems = allGroups.Take(limit).ToArray();
 
-                    return new PagedResponse<GroupMembershipRow>(
-                        Results: resultItems,
-                        HasMore: hasMore,
-                        NextCursor: null // Cache doesn't support cursor pagination
-                    );
+                    // If cache has more results than requested, fall through to DB
+                    // which supports proper cursor pagination
+                    if (hasMore)
+                    {
+                        _logger?.LogDebug("Cache has more group memberships than limit ({Limit}), falling through to DB for pagination support", limit);
+                        // Fall through to DB path below
+                    }
+                    else
+                    {
+                        return new PagedResponse<GroupMembershipRow>(
+                            Results: allGroups.ToArray(),
+                            HasMore: false,
+                            NextCursor: null
+                        );
+                    }
                 }
             }
             catch (Exception ex)
@@ -221,7 +243,7 @@ public partial class CirclesRpcModule
         string? cursor,
         bool filterByGroup)
     {
-        var normalizedAddress = address.ToLower();
+        var normalizedAddress = address; // already validated and lowered by caller
         await using var connection = await CreateConnectionAsync();
 
         // Decode cursor if provided

@@ -464,7 +464,7 @@ public record AggregatedTrustRelation(
     [property: JsonPropertyName("objectAvatar")] string ObjectAvatar,
     [property: JsonPropertyName("timestamp")] long Timestamp,
     [property: JsonPropertyName("expiryTime")] long ExpiryTime,
-    [property: JsonPropertyName("objectAvatarType")] string? ObjectAvatarType  // "Human" | "Group" | "Organization"
+    [property: JsonPropertyName("objectAvatarType")] string? ObjectAvatarType  // "CrcV2_RegisterHuman" | "CrcV2_RegisterGroup" | "CrcV2_RegisterOrganization" | "CrcV1_Signup" | "CrcV1_OrganizationSignup"
 );
 
 /// <summary>

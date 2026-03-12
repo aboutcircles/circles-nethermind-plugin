@@ -54,7 +54,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 ""from"",
                 ""to"",
                 NULL::text as id,
-                amount as value
+                amount as value,
+                0 as ""isInflationary""
             FROM ""CrcV1_TransferSummary""
             WHERE (""from"" = @address OR ""to"" = @address)
               {(hasCursor ? @"AND (
@@ -88,7 +89,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     ""from"",
                     ""to"",
                     ""tokenAddress"" as id,
-                    amount as value
+                    amount as value,
+                    0 as ""isInflationary""
                 FROM ""CrcV1_Transfer""
                 WHERE (""from"" = @address OR ""to"" = @address)
                 UNION ALL
@@ -104,7 +106,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     ""from"",
                     ""to"",
                     NULL::text as id,
-                    amount as value
+                    amount as value,
+                    0 as ""isInflationary""
                 FROM ""CrcV1_HubTransfer""
                 WHERE (""from"" = @address OR ""to"" = @address)
             ) AS v1_transfers
@@ -137,7 +140,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 ""from"",
                 ""to"",
                 NULL::text as id,
-                amount as value
+                amount as value,
+                0 as ""isInflationary""
             FROM ""CrcV2_TransferSummary""
             WHERE (""from"" = @address OR ""to"" = @address)
               {(hasCursor ? @"AND (
@@ -170,7 +174,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     ""from"",
                     ""to"",
                     id::text,
-                    value
+                    value,
+                    0 as ""isInflationary""
                 FROM ""CrcV2_TransferSingle""
                 WHERE (""from"" = @address OR ""to"" = @address)
                 UNION ALL
@@ -186,25 +191,28 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     ""from"",
                     ""to"",
                     id::text,
-                    value
+                    value,
+                    0 as ""isInflationary""
                 FROM ""CrcV2_TransferBatch""
                 WHERE (""from"" = @address OR ""to"" = @address)
                 UNION ALL
                 SELECT
-                    ""blockNumber"",
-                    timestamp,
-                    ""transactionIndex"",
-                    ""logIndex"",
+                    wt.""blockNumber"",
+                    wt.timestamp,
+                    wt.""transactionIndex"",
+                    wt.""logIndex"",
                     0 as ""batchIndex"",
-                    ""transactionHash"",
+                    wt.""transactionHash"",
                     2 as version,
                     NULL::text as operator,
-                    ""from"",
-                    ""to"",
-                    ""tokenAddress"" as id,
-                    amount as value
-                FROM ""CrcV2_Erc20WrapperTransfer""
-                WHERE (""from"" = @address OR ""to"" = @address)
+                    wt.""from"",
+                    wt.""to"",
+                    wt.""tokenAddress"" as id,
+                    wt.amount as value,
+                    CASE WHEN wd.""circlesType"" = 1 THEN 1 ELSE 0 END as ""isInflationary""
+                FROM ""CrcV2_Erc20WrapperTransfer"" wt
+                INNER JOIN ""CrcV2_ERC20WrapperDeployed"" wd ON wd.""erc20Wrapper"" = wt.""tokenAddress""
+                WHERE (wt.""from"" = @address OR wt.""to"" = @address)
             ) AS v2_transfers
             WHERE true
               {(hasCursor ? @"AND (
@@ -272,6 +280,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         var to = reader.GetString(9);
         var id = reader.IsDBNull(10) ? null : reader.GetString(10);
         var valueRaw = reader.GetFieldValue<System.Numerics.BigInteger>(11);
+        var isInflationary = reader.GetInt32(12);
 
         // Calculate all circle amount formats
         BigInteger attoCirclesDemurraged;
@@ -285,9 +294,18 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             attoCirclesDemurraged = CirclesConverter.AttoCrcToAttoCircles(attoCrc, (ulong)timestamp);
             staticAttoCircles = CirclesConverter.AttoCirclesToAttoStaticCircles(attoCirclesDemurraged);
         }
+        else if (isInflationary == 1)
+        {
+            // V2 inflationary wrapper: value is static (inflationary) attoCircles
+            staticAttoCircles = valueRaw;
+            var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000);
+            attoCirclesDemurraged = CirclesConverter.InflationaryToDemurrage(staticAttoCircles, day);
+            attoCrc = CirclesConverter.AttoCirclesToAttoCrc(attoCirclesDemurraged, (ulong)timestamp);
+        }
         else
         {
-            // V2: value is demurraged attoCircles
+            // V2 demurraged: value is demurraged attoCircles
             attoCirclesDemurraged = valueRaw;
             var timestampUtc = DateTimeOffset.FromUnixTimeSeconds(timestamp);
             var day = CirclesConverter.DayFromTimestamp(timestampUtc, 1_602_720_000);
@@ -329,7 +347,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         int? version = null,
         bool excludeIntermediary = true)
     {
-        var normalizedAddress = avatarAddress.ToLower();
+        var normalizedAddress = ValidateAndNormalizeAddress(avatarAddress, nameof(avatarAddress));
         await using var connection = await CreateConnectionAsync();
 
         var (cursorBlock, cursorTxIndex, cursorLogIndex, cursorBatchIndex) = CursorUtils.DecodeCursorWithBatch(cursor);
@@ -414,7 +432,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         int limit = 50,
         string? cursor = null)
     {
-        var addr = address.ToLower();
+        var addr = ValidateAndNormalizeAddress(address);
         limit = Math.Clamp(limit, 1, 1000);
 
         if (direction != null && direction != "sent" && direction != "received")
@@ -634,6 +652,12 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         int? limit = null,
         string? cursor = null)
     {
+        // Validate address if provided (nullable — null means "all addresses")
+        if (address != null)
+        {
+            address = ValidateAndNormalizeAddress(address);
+        }
+
         // Apply pagination limits
         const int defaultLimit = 100;
         const int maxLimit = 1000;
@@ -2012,7 +2036,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         int? version = null,
         bool excludeIntermediary = true)
     {
-        var normalizedAddress = address.ToLower();
+        var normalizedAddress = ValidateAndNormalizeAddress(address);
         await using var connection = await CreateConnectionAsync();
 
         var (cursorBlock, cursorTxIndex, cursorLogIndex) = CursorUtils.DecodeCursor(cursor);
@@ -3010,8 +3034,13 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         var fullTableName = $"{validatedNamespace}_{validatedTable}";
         var tableName = $"\"{fullTableName}\"";
 
-        // Check if the table has event columns for cursor-based pagination
+        // Security: Only allow querying tables that exist in the known schema.
+        // Without this check, users could probe system tables like pg_catalog.
         var tableColumns = DatabaseSchemaMap.GetTableColumns(fullTableName);
+        if (tableColumns == null)
+        {
+            throw new ArgumentException($"Table '{fullTableName}' is not a known Circles table.");
+        }
         var hasEventColumns = tableColumns != null &&
             tableColumns.ContainsKey("blockNumber") &&
             tableColumns.ContainsKey("transactionIndex") &&

@@ -85,7 +85,7 @@ public partial class CirclesRpcModule
 
     private async Task<Dictionary<string, TokenExposureInfo>> GetTokenExposureIdsAsync(string address)
     {
-        var lowerAddress = address.ToLower();
+        var lowerAddress = address; // already validated and lowered by caller
         var cacheKey = $"tokenExposure:{lowerAddress}";
 
         // Check cache first (5 minute TTL for token exposure data)
@@ -250,7 +250,7 @@ public partial class CirclesRpcModule
 
     public async Task<TokenInfo?> GetTokenInfo(string tokenAddress)
     {
-        var lowerTokenAddress = tokenAddress.ToLower();
+        var lowerTokenAddress = ValidateAndNormalizeAddress(tokenAddress, nameof(tokenAddress));
 
         // If cache service is enabled, try using it first
         if (_settings.UseCacheService && _cacheServiceClient != null)
@@ -379,6 +379,9 @@ public partial class CirclesRpcModule
 
     public async Task<TokenInfo?[]> GetTokenInfoBatch(string[] tokenAddresses)
     {
+        for (int i = 0; i < tokenAddresses.Length; i++)
+            tokenAddresses[i] = ValidateAndNormalizeAddress(tokenAddresses[i], $"tokenAddresses[{i}]");
+
         if (tokenAddresses.Length > 1000)
         {
             throw new ArgumentOutOfRangeException(nameof(tokenAddresses), "Batch size exceeds 1000");
@@ -423,22 +426,33 @@ public partial class CirclesRpcModule
             }
         }
 
-        // Fallback: Execute all lookups in parallel using database
+        // Fallback: Execute lookups with bounded concurrency to prevent connection pool exhaustion
+        // Each GetTokenInfo opens up to 3 sequential DB connections (V1, V2 avatar, V2 wrapper)
         _logger?.LogDebug("Using database for token info batch query ({Count} addresses)", tokenAddresses.Length);
-        var getTokenInfoTasks = tokenAddresses.Select(async tokenAddress =>
+
+        const int maxConcurrency = 10;
+        var dbResults = new TokenInfo?[tokenAddresses.Length];
+        using var semaphore = new SemaphoreSlim(maxConcurrency);
+
+        var tasks = tokenAddresses.Select(async (tokenAddress, index) =>
         {
+            await semaphore.WaitAsync();
             try
             {
-                return await GetTokenInfo(tokenAddress);
+                dbResults[index] = await GetTokenInfo(tokenAddress);
             }
-            catch
+            catch (Exception ex)
             {
-                // Return null for tokens that don't exist or fail to load
-                return null;
+                _logger?.LogWarning(ex, "Failed to load token info for {TokenAddress}", tokenAddress);
+                dbResults[index] = null;
+            }
+            finally
+            {
+                semaphore.Release();
             }
         }).ToArray();
 
-        var dbResults = await Task.WhenAll(getTokenInfoTasks);
+        await Task.WhenAll(tasks);
 
         // Return array with same length as input, preserving positions
         return dbResults;
@@ -446,22 +460,24 @@ public partial class CirclesRpcModule
 
     public async Task<PagedResponse<TokenHolderRow>> GetTokenHolders(string tokenAddress, int limit = 100, string? cursor = null)
     {
-        var normalizedToken = tokenAddress.ToLower();
+        var normalizedToken = ValidateAndNormalizeAddress(tokenAddress, nameof(tokenAddress));
         await using var connection = await CreateConnectionAsync();
 
         // Build query with cursor pagination - UNION both V1 and V2 views
+        // V1: totalBalance is the raw ERC20 balance (matches on-chain balanceOf)
+        // V2: demurragedTotalBalance matches Hub.sol balanceOf() (totalBalance is static/raw)
         var sql = @$"
             SELECT
                 account,
-                ""totalBalance"",
+                balance,
                 ""tokenAddress"",
                 version
             FROM (
-                SELECT account, ""totalBalance"", ""tokenAddress"", 1 as version
+                SELECT account, ""totalBalance"" as balance, ""tokenAddress"", 1 as version
                 FROM ""V_CrcV1_BalancesByAccountAndToken""
                 WHERE ""tokenAddress"" = @tokenAddress AND ""totalBalance"" > 0
                 UNION ALL
-                SELECT account, ""totalBalance"", ""tokenAddress"", 2 as version
+                SELECT account, ""demurragedTotalBalance"" as balance, ""tokenAddress"", 2 as version
                 FROM ""V_CrcV2_BalancesByAccountAndToken""
                 WHERE ""tokenAddress"" = @tokenAddress AND ""totalBalance"" > 0
             ) AS combined_balances

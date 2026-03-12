@@ -188,8 +188,8 @@ public class NotificationListenerServiceTests
 
         // Add data at block 9 so it exists in the rollback history
         // (rollback to block 9 requires block 9 to be in _blockOrder)
-        caches.V1Avatars.Add(9, dummyAvatarKey, ("Human", "0xdummy"));
-        caches.V1Avatars.Add(10, avatarKey, ("Human", "0xtoken"));
+        caches.V1Avatars.Add(9, dummyAvatarKey, ("CrcV1_Signup", "0xdummy"));
+        caches.V1Avatars.Add(10, avatarKey, ("CrcV1_Signup", "0xtoken"));
 
         var blocks = new List<(long BlockNumber, string BlockHash)>
         {
@@ -237,7 +237,7 @@ public class NotificationListenerServiceTests
 
         var caches = new CacheContainer(settings.RollbackCapacity);
         SeedAllCachesAtBlock(caches, 100);
-        caches.V1Avatars.Add(101, "0xuser", ("Human", "0xtoken"));
+        caches.V1Avatars.Add(101, "0xuser", ("CrcV1_Signup", "0xtoken"));
 
         var blocks = new List<(long BlockNumber, string BlockHash)>
         {
@@ -383,7 +383,7 @@ public class NotificationListenerServiceTests
         // by adding data at blocks that push the oldest block out of the window
         for (int i = 101; i <= 120; i++)
         {
-            caches.V1Avatars.Add(i, $"0xuser{i}", ("Human", $"0xtoken{i}"));
+            caches.V1Avatars.Add(i, $"0xuser{i}", ("CrcV1_Signup", $"0xtoken{i}"));
         }
 
         // Now the cache's oldest block is around 116 (120 - 5 + 1)

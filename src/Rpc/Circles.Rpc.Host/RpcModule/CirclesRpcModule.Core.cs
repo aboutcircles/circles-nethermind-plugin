@@ -32,7 +32,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
     private readonly NpgsqlDataSource _dataSource;
     private readonly MemoryCache _profileByCidCache;
     private readonly MemoryCache _tokenExposureCache;
-    private static readonly HttpClient HttpClient = new();
+    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly NethermindRpcClient? _nethermindRpcClient;
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly ILogger<CirclesRpcModule>? _logger;
@@ -79,6 +79,24 @@ public partial class CirclesRpcModule : ICirclesRpcModule
             }
         }
     }
+
+    /// <summary>
+    /// Normalizes avatar type names to canonical full format.
+    /// Both cache and DB now store full names. Legacy short names mapped as safety net.
+    /// V2: CrcV2_RegisterHuman, CrcV2_RegisterOrganization, CrcV2_RegisterGroup
+    /// V1: CrcV1_Signup, CrcV1_OrganizationSignup
+    /// </summary>
+    public static string NormalizeAvatarType(string? type) => type switch
+    {
+        // Legacy short names (safety net — cache now stores full names)
+        "Human" => "CrcV2_RegisterHuman",
+        "Organization" => "CrcV2_RegisterOrganization",
+        "Group" => "CrcV2_RegisterGroup",
+        // Full names pass through
+        "CrcV2_RegisterHuman" or "CrcV2_RegisterOrganization" or "CrcV2_RegisterGroup"
+            or "CrcV1_Signup" or "CrcV1_OrganizationSignup" => type,
+        _ => type ?? "Unknown"
+    };
 
     private async Task<NpgsqlConnection> CreateConnectionAsync()
     {

@@ -118,11 +118,11 @@ public class TokensController : ControllerBase
         }
 
         // 2. Check V2 Avatar token (ERC1155) - avatar address IS the token address
-        // V2Avatars stores "Human" / "Organization" (groups are in the Groups cache)
+        // V2Avatars stores full type names (CrcV2_RegisterHuman / CrcV2_RegisterOrganization)
         if (_caches.V2Avatars.TryGetValue(tokenAddressLower, out var v2Avatar))
         {
             var isGroup = false; // V2Avatars only contains humans and organizations, not groups
-            var tokenType = v2Avatar.Type == "Human" ? "CrcV2_RegisterHuman" : "CrcV2_RegisterOrganization";
+            var tokenType = v2Avatar.Type;
             return new TokenInfoResponse(
                 TokenAddress: tokenAddressLower,
                 TokenOwner: tokenAddressLower, // For V2, token owner is the avatar itself

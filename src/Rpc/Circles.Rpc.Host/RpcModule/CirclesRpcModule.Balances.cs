@@ -11,8 +11,17 @@ namespace Circles.Rpc.Host;
 /// </summary>
 public partial class CirclesRpcModule
 {
+    /// <summary>
+    /// Three query paths with intentionally different semantics:
+    /// 1. Cache (asTimeCircles=true): Returns time-circles value from cache service (pre-computed demurraged balance)
+    /// 2. Raw (asTimeCircles=false): Returns static (non-demurraged) transfer sum via GetRawTotalBalanceAsync
+    /// 3. DB fallback (asTimeCircles=true, cache unavailable): Computes from GetTokenBalancesForAccount (per-token demurraged sum)
+    /// Note: Path 1 and 3 may differ slightly due to caching delays and rounding differences.
+    /// </summary>
     public async Task<TotalBalanceResponse> GetTotalBalance(string address, int version, bool? asTimeCircles = true)
     {
+        address = ValidateAndNormalizeAddress(address);
+
         // If cache service is enabled and asTimeCircles is true (or null), use cache for performance
         if (_settings.UseCacheService && _cacheServiceClient != null && (asTimeCircles == null || asTimeCircles == true))
         {
@@ -65,12 +74,17 @@ public partial class CirclesRpcModule
     }
 
     /// <summary>
-    /// Optimized query for raw (static) total balance.
+    /// Optimized query for raw total balance (asTimeCircles=false path).
     /// Uses direct SQL aggregation instead of fetching all token details.
+    /// All V2 token types return static (non-demurraged) transfer sums:
+    /// - V2 ERC1155: totalBalance from view (static transfer aggregate)
+    /// - V2 wrapped inflationary: raw transfer sum (already static/inflationary)
+    /// - V2 wrapped demurraged: raw transfer sum (no demurrage applied — consistent with "raw" semantics)
+    /// For time-circles (demurraged) balances, use asTimeCircles=true.
     /// </summary>
     private async Task<string> GetRawTotalBalanceAsync(string address, int version)
     {
-        var lowerAddress = address.ToLower();
+        var lowerAddress = address; // already validated and lowered by caller
         await using var connection = await CreateConnectionAsync();
 
         string sql;
@@ -202,6 +216,8 @@ public partial class CirclesRpcModule
 
     public async Task<CirclesTokenBalance[]> GetTokenBalances(string address)
     {
+        address = ValidateAndNormalizeAddress(address);
+
         // If cache service is enabled, use it (no DB fallback needed)
         if (_settings.UseCacheService && _cacheServiceClient != null)
         {

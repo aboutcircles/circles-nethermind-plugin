@@ -406,7 +406,7 @@ public class NotificationListenerService : BackgroundService
                 var userKey = user.ToLowerInvariant();
                 var tokenKey = token.ToLowerInvariant();
 
-                _caches.V1Avatars.Add(blockNumber, userKey, ("Human", token));
+                _caches.V1Avatars.Add(blockNumber, userKey, ("CrcV1_Signup", token));
                 _caches.V1TokenOwnerByToken.Add(blockNumber, tokenKey, user);
                 count++;
             }
@@ -439,7 +439,7 @@ public class NotificationListenerService : BackgroundService
 
                 var orgKey = organization.ToLowerInvariant();
 
-                _caches.V1Avatars.Add(blockNumber, orgKey, ("Organization", null));
+                _caches.V1Avatars.Add(blockNumber, orgKey, ("CrcV1_OrganizationSignup", null));
                 orgCount++;
             }
         }
@@ -515,7 +515,7 @@ public class NotificationListenerService : BackgroundService
 
                 var avatarKey = avatar.ToLowerInvariant();
 
-                _caches.V2Avatars.Add(blockNumber, avatarKey, ("Human", timestamp));
+                _caches.V2Avatars.Add(blockNumber, avatarKey, ("CrcV2_RegisterHuman", timestamp));
                 count++;
             }
         }
@@ -549,7 +549,7 @@ public class NotificationListenerService : BackgroundService
 
                 var orgKey = organization.ToLowerInvariant();
 
-                _caches.V2Avatars.Add(blockNumber, orgKey, ("Organization", timestamp));
+                _caches.V2Avatars.Add(blockNumber, orgKey, ("CrcV2_RegisterOrganization", timestamp));
                 count++;
             }
         }

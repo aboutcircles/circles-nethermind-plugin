@@ -11,6 +11,8 @@ public partial class CirclesRpcModule
 {
     public async Task<TrustRelationsResponse> GetTrustRelations(string address)
     {
+        address = ValidateAndNormalizeAddress(address);
+
         // If cache service is enabled, try using it first (V1 only for backward compatibility)
         if (_settings.UseCacheService && _cacheServiceClient != null)
         {
@@ -32,7 +34,7 @@ public partial class CirclesRpcModule
                         .ToArray();
 
                     return new TrustRelationsResponse(
-                        User: address.ToLower(),
+                        User: address,
                         Trusts: cacheTrusts,
                         TrustedBy: cacheTrustedBy
                     );
@@ -72,7 +74,7 @@ public partial class CirclesRpcModule
                or ""canSendTo"" = @address)
         ";
         await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address", address.ToLower());
+        command.Parameters.AddWithValue("address", address);
         var trusts = new List<TrustRelation>();
         var trustedBy = new List<TrustRelation>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -93,7 +95,7 @@ public partial class CirclesRpcModule
                 trustedBy.Add(new TrustRelation(User: canSendTo, Limit: limit));
             }
         }
-        return new TrustRelationsResponse(User: address.ToLower(), Trusts: trusts.ToArray(), TrustedBy: trustedBy.ToArray());
+        return new TrustRelationsResponse(User: address, Trusts: trusts.ToArray(), TrustedBy: trustedBy.ToArray());
     }
 
     private async Task<bool> IsV2Human(string address)
@@ -103,7 +105,7 @@ public partial class CirclesRpcModule
             try
             {
                 var avatarInfo = await _cacheServiceClient.GetAvatarInfoAsync(address);
-                return avatarInfo is { Version: 2, Type: "Human" };
+                return avatarInfo is { Version: 2, Type: "CrcV2_RegisterHuman" };
             }
             catch (Exception ex)
             {
@@ -114,14 +116,14 @@ public partial class CirclesRpcModule
         await using var connection = await CreateConnectionAsync();
         const string sql = @"SELECT 1 FROM ""CrcV2_RegisterHuman"" WHERE avatar = @address";
         await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address", address.ToLower());
+        command.Parameters.AddWithValue("address", address);
         var result = await command.ExecuteScalarAsync();
         return result != null;
     }
 
     public async Task<AggregatedTrustRelation[]> GetAggregatedTrustRelations(string avatar)
     {
-        var normalizedAvatar = avatar.ToLower();
+        var normalizedAvatar = ValidateAndNormalizeAddress(avatar, nameof(avatar));
 
         if (_settings.UseCacheService && _cacheServiceClient != null)
         {
@@ -163,13 +165,10 @@ public partial class CirclesRpcModule
                     for (int i = 0; i < counterpartAddresses.Length; i++)
                     {
                         var info = avatarInfos[i];
-                        avatarTypeMap[counterpartAddresses[i]] = info?.Type switch
-                        {
-                            "Human" => "Human",
-                            "Organization" => "Organization",
-                            "Group" => "Group",
-                            _ => null
-                        };
+                        // Normalize cache short names to full canonical format
+                        avatarTypeMap[counterpartAddresses[i]] = info?.Type != null
+                            ? NormalizeAvatarType(info.Type)
+                            : null;
                     }
 
                     // Build aggregated relations
@@ -300,14 +299,11 @@ public partial class CirclesRpcModule
                 throw new InvalidOperationException($"Unexpected number of trust rows for counterpart: {rows.Count}");
             }
 
-            // Map avatar type to simple format
-            string? objectAvatarType = avatarType switch
-            {
-                "Human" => "Human",
-                "Organization" => "Organization",
-                "Group" => "Group",
-                _ => null
-            };
+            // Normalize avatar type to full canonical format (CrcV2_RegisterHuman etc.)
+            // DB already stores full names. Cache stores short names → normalize.
+            string? objectAvatarType = avatarType != null
+                ? NormalizeAvatarType(avatarType)
+                : null;
 
             result.Add(new AggregatedTrustRelation(
                 SubjectAvatar: normalizedAvatar,
@@ -324,13 +320,16 @@ public partial class CirclesRpcModule
 
     public async Task<CommonTrustResponse> GetCommonTrust(string address1, string address2, int? version = null)
     {
+        address1 = ValidateAndNormalizeAddress(address1, nameof(address1));
+        address2 = ValidateAndNormalizeAddress(address2, nameof(address2));
+
         if (_settings.UseCacheService && _cacheServiceClient != null)
         {
             try
             {
                 _logger?.LogDebug("Using Cache Service for common trust between {A1} and {A2}", address1, address2);
-                var addr1 = address1.ToLower();
-                var addr2 = address2.ToLower();
+                var addr1 = address1;
+                var addr2 = address2;
 
                 // Determine if address2 is V2 human (uses cache internally)
                 var isAddr2V2Human = await IsV2Human(addr2);
@@ -445,8 +444,8 @@ public partial class CirclesRpcModule
 
         await using var connection = await CreateConnectionAsync();
         await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("address1", address1.ToLower());
-        command.Parameters.AddWithValue("address2", address2.ToLower());
+        command.Parameters.AddWithValue("address1", address1);
+        command.Parameters.AddWithValue("address2", address2);
 
         var commonTrusts = new List<string>();
         await using var reader = await command.ExecuteReaderAsync();
@@ -454,7 +453,7 @@ public partial class CirclesRpcModule
         {
             commonTrusts.Add(reader.GetString(0));
         }
-        return new CommonTrustResponse(Address1: address1.ToLower(), Address2: address2.ToLower(), CommonTrusts: commonTrusts.ToArray());
+        return new CommonTrustResponse(Address1: address1, Address2: address2, CommonTrusts: commonTrusts.ToArray());
     }
 
     /// <summary>

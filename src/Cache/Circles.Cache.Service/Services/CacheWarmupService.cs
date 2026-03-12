@@ -407,7 +407,7 @@ public class CacheWarmupService : BackgroundService
             SELECT
                 s.""user"" as address,
                 s.""token"",
-                'Human' as type
+                'CrcV1_Signup' as type
             FROM ""CrcV1_Signup"" s
             WHERE s.""blockNumber"" <= @toBlock
 
@@ -416,7 +416,7 @@ public class CacheWarmupService : BackgroundService
             SELECT
                 o.""organization"" as address,
                 NULL as token,
-                'Organization' as type
+                'CrcV1_OrganizationSignup' as type
             FROM ""CrcV1_OrganizationSignup"" o
             WHERE o.""blockNumber"" <= @toBlock";
 
@@ -438,16 +438,16 @@ public class CacheWarmupService : BackgroundService
 
             var addressKey = address.ToLowerInvariant();
 
-            if (type == "Human")
+            if (type == "CrcV1_Signup")
             {
                 var tokenKey = token!.ToLowerInvariant();
-                avatars[addressKey] = ("Human", token!);
+                avatars[addressKey] = ("CrcV1_Signup", token!);
                 tokenOwners[tokenKey] = address;
                 humanCount++;
             }
             else
             {
-                avatars[addressKey] = ("Organization", null);
+                avatars[addressKey] = ("CrcV1_OrganizationSignup", null);
                 orgCount++;
             }
         }
@@ -483,7 +483,7 @@ public class CacheWarmupService : BackgroundService
             SELECT
                 r.""avatar"" as address,
                 r.""timestamp"",
-                'Human' as type
+                'CrcV2_RegisterHuman' as type
             FROM ""CrcV2_RegisterHuman"" r
             WHERE r.""blockNumber"" <= @toBlock
 
@@ -492,7 +492,7 @@ public class CacheWarmupService : BackgroundService
             SELECT
                 r.""organization"" as address,
                 r.""timestamp"",
-                'Organization' as type
+                'CrcV2_RegisterOrganization' as type
             FROM ""CrcV2_RegisterOrganization"" r
             WHERE r.""blockNumber"" <= @toBlock";
 
@@ -515,7 +515,7 @@ public class CacheWarmupService : BackgroundService
                 var addressKey = address.ToLowerInvariant();
                 v2Avatars[addressKey] = (type, timestamp);
 
-                if (type == "Human")
+                if (type == "CrcV2_RegisterHuman")
                     humanCount++;
                 else
                     orgCount++;
@@ -1724,7 +1724,7 @@ public class CacheWarmupService : BackgroundService
                 var userKey = user.ToLowerInvariant();
                 var tokenKey = token.ToLowerInvariant();
 
-                _caches.V1Avatars.Add(blockNumber, userKey, ("Human", token));
+                _caches.V1Avatars.Add(blockNumber, userKey, ("CrcV1_Signup", token));
                 _caches.V1TokenOwnerByToken.Add(blockNumber, tokenKey, user);
             }
         }
@@ -1749,7 +1749,7 @@ public class CacheWarmupService : BackgroundService
 
                 var orgKey = organization.ToLowerInvariant();
 
-                _caches.V1Avatars.Add(blockNumber, orgKey, ("Organization", null));
+                _caches.V1Avatars.Add(blockNumber, orgKey, ("CrcV1_OrganizationSignup", null));
             }
         }
     }
@@ -1780,7 +1780,7 @@ public class CacheWarmupService : BackgroundService
 
                 var avatarKey = avatar.ToLowerInvariant();
 
-                _caches.V2Avatars.Add(blockNumber, avatarKey, ("Human", timestamp));
+                _caches.V2Avatars.Add(blockNumber, avatarKey, ("CrcV2_RegisterHuman", timestamp));
             }
         }
 
@@ -1805,7 +1805,7 @@ public class CacheWarmupService : BackgroundService
 
                 var orgKey = organization.ToLowerInvariant();
 
-                _caches.V2Avatars.Add(blockNumber, orgKey, ("Organization", timestamp));
+                _caches.V2Avatars.Add(blockNumber, orgKey, ("CrcV2_RegisterOrganization", timestamp));
             }
         }
 
