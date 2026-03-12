@@ -145,6 +145,16 @@ public static class CirclesConverter
     public static BigInteger AttoStaticCirclesToAttoCircles(BigInteger attoStaticCircles) =>
         InflationaryToDemurrage(attoStaticCircles, Today());
 
+    /// <summary>V2 Static (inflationary) Circles → V2 demurraged Circles, at a specific block timestamp.</summary>
+    /// <remarks>
+    /// Use this overload when the conversion must be deterministic (e.g., indexing).
+    /// The <paramref name=”blockTimestampUnix”/> should be the block's timestamp, not <c>Now()</c>,
+    /// so that re-indexing the same block always produces the same result.
+    /// </remarks>
+    public static BigInteger AttoStaticCirclesToAttoCircles(BigInteger attoStaticCircles, long blockTimestampUnix) =>
+        InflationaryToDemurrage(attoStaticCircles,
+            DayFromTimestamp(DateTimeOffset.FromUnixTimeSeconds(blockTimestampUnix), V2_INFLATION_DAY_ZERO_UNIX));
+
     private static ulong Today() =>
         DayFromTimestamp(DateTimeOffset.UtcNow, V2_INFLATION_DAY_ZERO_UNIX);
 

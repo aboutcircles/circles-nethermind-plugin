@@ -1,3 +1,4 @@
+using System.Numerics;
 using Circles.Common;
 using Nethermind.Int256;
 
@@ -23,6 +24,8 @@ public class TransferSummaryAggregatorTests
     private const string WrapperInflationary = "0x4444444444444444444444444444444444444444";
     private const string ZeroAddress = "0x0000000000000000000000000000000000000000";
     private const string HubAddress = "0x5555555555555555555555555555555555555555";
+    // Fixed block timestamp for deterministic tests: 2023-11-14 22:13:20 UTC
+    private const long BlockTimestamp = 1_700_000_000;
 
     [SetUp]
     public void SetUp()
@@ -305,10 +308,106 @@ public class TransferSummaryAggregatorTests
             CreateErc20WrapperTransfer(Alice, Bob, 1_000_000_000_000_000_000UL, WrapperInflationary)
         };
 
-        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache);
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
 
         var total = result.NonStreamTransfers.Totals.First();
         Assert.That(total.Value.ToString(), Is.Not.EqualTo("1000000000000000000"));
+    }
+
+    [Test]
+    public void AggregateAll_Erc20InflationaryTransfer_DeterministicWithBlockTimestamp()
+    {
+        // The same block timestamp must always produce the same conversion result.
+        // This guards against the old Now()-based bug where re-indexing changed values.
+        var events = new IIndexedEventV2[]
+        {
+            CreateErc20WrapperTransfer(Alice, Bob, 1_000_000_000_000_000_000UL, WrapperInflationary)
+        };
+
+        var result1 = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
+        var result2 = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
+
+        var total1 = result1.NonStreamTransfers.Totals.First();
+        var total2 = result2.NonStreamTransfers.Totals.First();
+        Assert.That(total1.Value, Is.EqualTo(total2.Value),
+            "Same block timestamp must produce identical conversion — no Now() dependency");
+    }
+
+    [Test]
+    public void AggregateAll_Erc20InflationaryTransfer_DifferentTimestamps_DifferentValues()
+    {
+        // Different block timestamps should produce different demurraged values
+        var events = new IIndexedEventV2[]
+        {
+            CreateErc20WrapperTransfer(Alice, Bob, 1_000_000_000_000_000_000UL, WrapperInflationary)
+        };
+
+        var resultEarly = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
+        // 365 days later
+        var resultLater = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp + 365 * 86400);
+
+        var totalEarly = resultEarly.NonStreamTransfers.Totals.First();
+        var totalLater = resultLater.NonStreamTransfers.Totals.First();
+        Assert.That(totalLater.Value, Is.LessThan(totalEarly.Value),
+            "Later timestamp should apply more demurrage (smaller value)");
+    }
+
+    [Test]
+    public void AggregateAll_Erc20InflationaryTransfer_BitIdenticalToCirclesConverter()
+    {
+        // The aggregator's result must be bit-identical to calling CirclesConverter directly
+        // with the same timestamp. This prevents formula drift between the two code paths.
+        const ulong rawValue = 1_000_000_000_000_000_000UL;
+        var events = new IIndexedEventV2[]
+        {
+            CreateErc20WrapperTransfer(Alice, Bob, rawValue, WrapperInflationary)
+        };
+
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
+        var aggregatorValue = result.NonStreamTransfers.Totals.First().Value;
+
+        // Compute expected value directly via CirclesConverter
+        var expected = CirclesConverter.AttoStaticCirclesToAttoCircles(
+            new System.Numerics.BigInteger(rawValue), BlockTimestamp);
+
+        Assert.That(aggregatorValue, Is.EqualTo(expected),
+            "Aggregator must produce bit-identical result to CirclesConverter.AttoStaticCirclesToAttoCircles(val, timestamp)");
+    }
+
+    [Test]
+    public void AggregateAll_Erc20InflationaryTransfer_ZeroTimestamp_FallsBackToNow()
+    {
+        // When blockTimestamp=0 (default), falls back to Now()-based conversion.
+        // This preserves backward compatibility for callers that don't pass a timestamp.
+        var events = new IIndexedEventV2[]
+        {
+            CreateErc20WrapperTransfer(Alice, Bob, 1_000_000_000_000_000_000UL, WrapperInflationary)
+        };
+
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, 0);
+
+        var total = result.NonStreamTransfers.Totals.First();
+        // Should still convert (not crash, not return raw value)
+        Assert.That(total.Value.ToString(), Is.Not.EqualTo("1000000000000000000"),
+            "Zero timestamp fallback should still apply conversion via Now()");
+    }
+
+    [Test]
+    public void AggregateAll_Erc20DemurragedTransfer_UnaffectedByTimestamp()
+    {
+        // Demurraged wrapper transfers must NOT be affected by the timestamp parameter.
+        // Only inflationary wrappers get converted.
+        const ulong rawValue = 1_000_000_000_000_000_000UL;
+        var events = new IIndexedEventV2[]
+        {
+            CreateErc20WrapperTransfer(Alice, Bob, rawValue, WrapperDemurraged)
+        };
+
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
+
+        var total = result.NonStreamTransfers.Totals.First();
+        Assert.That(total.Value.ToString(), Is.EqualTo("1000000000000000000"),
+            "Demurraged wrapper value must pass through unchanged regardless of timestamp");
     }
 
     [Test]
@@ -511,10 +610,10 @@ public class TransferSummaryAggregatorTests
             CreateStreamCompleted(Alice, Bob, 1_000_000_000_000_000_000UL)
         };
 
-        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache);
+        var result = TransferSummaryAggregator.AggregateAll(events, _erc20WrapperCache, BlockTimestamp);
 
         var total = result.NonStreamTransfers.Totals.First();
-        // Inflationary → AttoStaticCircles conversion should change the value
+        // Inflationary → demurraged conversion should change the value
         Assert.That(total.Value.ToString(), Is.Not.EqualTo("1000000000000000000"));
     }
 
@@ -914,5 +1013,79 @@ public class TransferSummaryAggregatorTests
             Trustee: trustee,
             ExpiryTime: UInt256.MaxValue
         );
+    }
+}
+
+/// <summary>
+/// Tests for <see cref="CirclesConverter.AttoStaticCirclesToAttoCircles(BigInteger, long)"/>
+/// — the timestamp-based overload added to fix the Now()-dependent demurrage bug.
+/// </summary>
+[TestFixture]
+public class CirclesConverterTimestampOverloadTests
+{
+    // V2 epoch: 2020-10-15 00:00 UTC
+    private const long V2Epoch = 1_602_720_000;
+
+    [Test]
+    public void TimestampOverload_MatchesManualDayComputation()
+    {
+        // Manually compute day index, then verify the overload produces the same result
+        const long timestamp = 1_700_000_000; // 2023-11-14
+        var expectedDay = (ulong)((timestamp - V2Epoch) / 86_400);
+        var value = BigInteger.Parse("1000000000000000000");
+
+        var viaOverload = CirclesConverter.AttoStaticCirclesToAttoCircles(value, timestamp);
+        var viaManual = CirclesConverter.InflationaryToDemurrage(value, expectedDay);
+
+        Assert.That(viaOverload, Is.EqualTo(viaManual),
+            "Timestamp overload must produce identical result to manual day computation");
+    }
+
+    [Test]
+    public void TimestampOverload_AtEpoch_NoDecay()
+    {
+        // At the epoch itself (day 0), no demurrage should be applied
+        var value = BigInteger.Parse("1000000000000000000");
+
+        var result = CirclesConverter.AttoStaticCirclesToAttoCircles(value, V2Epoch);
+
+        Assert.That(result, Is.EqualTo(value),
+            "Day 0 should produce no decay");
+    }
+
+    [Test]
+    public void TimestampOverload_OneYearLater_About7PercentDecay()
+    {
+        var value = BigInteger.Parse("1000000000000000000"); // 1 CRC
+        long oneYearLater = V2Epoch + 365 * 86_400;
+
+        var result = CirclesConverter.AttoStaticCirclesToAttoCircles(value, oneYearLater);
+
+        double ratio = (double)result / (double)value;
+        Assert.That(ratio, Is.InRange(0.925, 0.935),
+            "1 year of demurrage should be approximately 7% decay");
+    }
+
+    [TestCase(1_602_720_000L, 1_602_720_000L)]   // Same timestamp = same result
+    [TestCase(1_700_000_000L, 1_700_000_000L)]   // Same timestamp = same result
+    public void TimestampOverload_SameInput_SameOutput(long ts1, long ts2)
+    {
+        var value = BigInteger.Parse("5000000000000000000");
+        var r1 = CirclesConverter.AttoStaticCirclesToAttoCircles(value, ts1);
+        var r2 = CirclesConverter.AttoStaticCirclesToAttoCircles(value, ts2);
+        Assert.That(r1, Is.EqualTo(r2));
+    }
+
+    [Test]
+    public void TimestampOverload_LaterTimestamp_SmallerResult()
+    {
+        var value = BigInteger.Parse("1000000000000000000");
+        long t1 = V2Epoch + 100 * 86_400;
+        long t2 = V2Epoch + 200 * 86_400;
+
+        var r1 = CirclesConverter.AttoStaticCirclesToAttoCircles(value, t1);
+        var r2 = CirclesConverter.AttoStaticCirclesToAttoCircles(value, t2);
+
+        Assert.That(r2, Is.LessThan(r1), "More days = more decay");
     }
 }
