@@ -207,7 +207,7 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
             yield break;
         }
 
-        var result = TransferSummaryAggregator.AggregateAll(eventsv2, Erc20WrapperAddresses);
+        var result = TransferSummaryAggregator.AggregateAll(eventsv2, Erc20WrapperAddresses, (long)block.Timestamp);
         int syntheticLogIndex = -(result.StreamTransfers.Totals.Count() + result.NonStreamTransfers.Totals.Count());
 
         if (result.StreamTransfers.Totals.Any())

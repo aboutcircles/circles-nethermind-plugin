@@ -33,7 +33,8 @@ public record AggregationResult(
 public static class TransferSummaryAggregator
 {
     public static AggregationResult AggregateAll(IEnumerable<IIndexedEventV2> events,
-        RollbackCache<string, (string, TokenValueRepresentation)> erc20WrapperAddresses)
+        RollbackCache<string, (string, TokenValueRepresentation)> erc20WrapperAddresses,
+        long blockTimestamp = 0)
     {
         var streamSums = new Dictionary<TransferKey, TransferTotal>();
         var nonStreamSums = new Dictionary<TransferKey, TransferTotal>();
@@ -72,14 +73,14 @@ public static class TransferSummaryAggregator
                 // Aggregate them separately so they appear in TransferSummary.
                 if (e is Erc20WrapperTransfer)
                 {
-                    AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses);
+                    AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses, blockTimestamp);
                     nonStreamEvents.Add(e);
                 }
             }
             else
             {
                 nonStreamEvents.Add(e);
-                AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses);
+                AddNonStreamTransfers(nonStreamSums, e, erc20WrapperAddresses, blockTimestamp);
             }
         }
 
@@ -112,7 +113,8 @@ public static class TransferSummaryAggregator
     }
 
     static void AddNonStreamTransfers(Dictionary<TransferKey, TransferTotal> sums, IIndexedEventV2 e,
-        RollbackCache<string, (string, TokenValueRepresentation)> erc20WrapperAddresses)
+        RollbackCache<string, (string, TokenValueRepresentation)> erc20WrapperAddresses,
+        long blockTimestamp)
     {
         if (e is TransferSingle ts)
         {
@@ -128,7 +130,11 @@ public static class TransferSummaryAggregator
             if (erc20WrapperAddresses.TryGetValue(ewt.TokenAddress, out var wrapperType) &&
                 wrapperType.Item2 == TokenValueRepresentation.Inflationary)
             {
-                val = CirclesConverter.AttoStaticCirclesToAttoCircles(val);
+                // Use block timestamp for deterministic conversion — not Now().
+                // This ensures re-indexing the same block always produces identical results.
+                val = blockTimestamp > 0
+                    ? CirclesConverter.AttoStaticCirclesToAttoCircles(val, blockTimestamp)
+                    : CirclesConverter.AttoStaticCirclesToAttoCircles(val);
             }
 
             AddSum(sums, ewt.From, ewt.To, val, ewt.TokenAddress);
