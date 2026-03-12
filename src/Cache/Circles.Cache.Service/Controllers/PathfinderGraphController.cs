@@ -28,8 +28,8 @@ public class PathfinderGraphController : ControllerBase
 
     private const int SchemaVersion = 1;
 
-    /// <summary>V2 Hub epoch: 2023-02-01 00:00 UTC</summary>
-    private const uint V2InflationDayZero = 1_675_209_600;
+    /// <summary>V2 Hub epoch on gnosis mainnet: 2020-10-15 00:00 UTC (same as V1).</summary>
+    private const uint V2InflationDayZero = 1_602_720_000;
     private const long SecondsPerDay = 86_400;
 
     public PathfinderGraphController(

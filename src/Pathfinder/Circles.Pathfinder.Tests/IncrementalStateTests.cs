@@ -495,8 +495,8 @@ public class IncrementalLoadGraphTests
     private const string TokenA = "0x0000000000000000000000000000000000inc00a";
     private const string GroupAddr = "0x0000000000000000000000000000000000inc099";
 
-    // Circles V2 epoch: Feb 1, 2023 00:00 UTC
-    private const uint InflationDayZeroUnix = 1_675_209_600;
+    // V2 Hub epoch on gnosis mainnet (same as V1): 2020-10-15 00:00 UTC
+    private const uint InflationDayZeroUnix = 1_602_720_000;
 
     private InMemoryBalanceState CreateBalanceState(
         params (string Balance, string Account, string TokenAddress, long LastActivity)[] rows)

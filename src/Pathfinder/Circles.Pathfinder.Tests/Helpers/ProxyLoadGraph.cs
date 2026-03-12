@@ -18,8 +18,8 @@ public class ProxyLoadGraph : ILoadGraph
     private readonly TestEnvironmentClient _client;
     private readonly Settings _settings;
 
-    // Demurrage constants (same as CirclesConverter)
-    private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
+    // V2 Hub epoch on gnosis mainnet: Hub(0x5524...).inflationDayZero() == 1_602_720_000
+    private const uint InflationDayZeroUnix = 1_602_720_000;
     private const ulong SecondsPerDay = 86_400;
 
     /// <summary>

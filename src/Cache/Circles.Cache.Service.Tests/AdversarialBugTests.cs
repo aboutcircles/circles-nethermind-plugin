@@ -216,22 +216,22 @@ public class AdversarialBugTests
     [Fact]
     public void BUG6_DayFromTimestamp_PreEpochTimestamp_ShouldNotWrap()
     {
-        // V2_INFLATION_DAY_ZERO = 1_675_209_600 (2023-02-01 00:00 UTC)
+        // V2 Hub epoch on gnosis mainnet = 1_602_720_000 (2020-10-15 00:00 UTC, same as V1)
         // If a timestamp is before this (e.g., from corrupt DB data or migration artifact),
         // DayFromTimestamp does: (ulong)(ts - epochZero) — negative → wraps to huge number
         // → demurrage applies with enormous day delta → balance decays to ~0
 
-        uint v2EpochZero = 1_675_209_600;
-        var preEpochTimestamp = DateTimeOffset.FromUnixTimeSeconds(1_675_000_000); // ~2.4 days before epoch
+        uint v2EpochZero = 1_602_720_000;
+        var preEpochTimestamp = DateTimeOffset.FromUnixTimeSeconds(1_602_000_000); // ~8.3 days before epoch
 
         // This should return 0 (or throw), not a huge number
         var day = CirclesConverter.DayFromTimestamp(preEpochTimestamp, v2EpochZero);
 
         // BUG: day wraps to a huge number because:
-        //   ulong seconds = (ulong)(1_675_000_000 - 1_675_209_600)
-        //                 = (ulong)(-209_600)
-        //                 = 18446744073709342016  (unsigned wrap!)
-        //   day = 18446744073709342016 / 86400 = ~213_503_982_334_601
+        //   ulong seconds = (ulong)(1_602_000_000 - 1_602_720_000)
+        //                 = (ulong)(-720_000)
+        //                 = 18446744073708831616  (unsigned wrap!)
+        //   day = 18446744073708831616 / 86400 = ~213_503_982_328_699
         day.Should().Be(0,
             "BUG #6: Pre-epoch timestamps should clamp to day 0, not wrap to ~2^64 " +
             "which destroys balances via astronomical demurrage");

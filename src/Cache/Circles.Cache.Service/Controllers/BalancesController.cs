@@ -26,7 +26,8 @@ public class BalancesController : ControllerBase
         _logger = logger;
     }
 
-    private const uint V2_INFLATION_DAY_ZERO = 1_675_209_600; // 2023-02-01 00:00 UTC
+    // On-chain: Hub(0x5524...).inflationDayZero() == 1_602_720_000 (Oct 15, 2020, same as V1)
+    private const uint V2_INFLATION_DAY_ZERO = 1_602_720_000;
 
     private string GetRemoteIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 

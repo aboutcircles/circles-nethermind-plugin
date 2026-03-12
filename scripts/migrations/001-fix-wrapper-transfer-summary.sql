@@ -37,13 +37,13 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 -- Step 2: Compute the V2 day from a block timestamp
--- V2_INFLATION_DAY_ZERO_UNIX = 1675209600 (2023-02-01 00:00 UTC)
+-- V2_INFLATION_DAY_ZERO_UNIX = 1602720000 (2023-02-01 00:00 UTC)
 -- Uses the block timestamp (not NOW()) so the conversion matches what the
 -- indexer would have computed at the time the block was processed.
 CREATE OR REPLACE FUNCTION pg_temp.v2_day_from_timestamp(block_timestamp bigint)
 RETURNS integer AS $$
 BEGIN
-    RETURN floor((block_timestamp - 1675209600) / 86400)::integer;
+    RETURN floor((block_timestamp - 1602720000) / 86400)::integer;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 

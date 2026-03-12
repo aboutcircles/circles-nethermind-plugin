@@ -21,7 +21,8 @@ namespace Circles.Cache.Service.Tests;
 public class PathfinderGraphControllerTests
 {
     private const string StandardTreasuryMint = "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
-    private const uint V2InflationDayZero = 1_675_209_600;
+    // V2 Hub epoch on gnosis mainnet (same as V1): 2020-10-15 00:00 UTC
+    private const uint V2InflationDayZero = 1_602_720_000;
 
     private readonly CacheContainer _cache;
     private readonly CacheServiceState _state;

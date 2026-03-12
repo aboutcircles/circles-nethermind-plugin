@@ -14,7 +14,8 @@ public class Phase3RegressionTests
 {
     // Demurrage gamma constant that must appear in inline expressions
     private const string Gamma = "0.9998013320085989574306481700129226782902039065082930593676448873";
-    private const string InflationDayZero = "1675209600";
+    // V2 Hub epoch on gnosis mainnet (same as V1). Differential usage in SQL views — epoch cancels.
+    private const string InflationDayZero = "1602720000";
 
     private Dictionary<string, string> _viewSql = null!;
 
