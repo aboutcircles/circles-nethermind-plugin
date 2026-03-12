@@ -453,10 +453,10 @@ public class ArithmeticSafetyTests
     [Test]
     public void DemurrageDay_LastActivityBeforeEpoch_GuardPreventsWrap()
     {
-        const uint InflationDayZeroUnix = 1_675_209_600;
+        const uint InflationDayZeroUnix = 1_602_720_000; // gnosis mainnet V2 Hub epoch
         long lastActivity = 1_000_000_000; // Well before epoch (Sept 2001)
 
-        // Without guard: (ulong)(1_000_000_000 - 1_675_209_600) wraps to huge positive
+        // Without guard: (ulong)(1_000_000_000 - 1_602_720_000) wraps to huge positive
         // With guard: should be caught
         bool isCorrupted = lastActivity < InflationDayZeroUnix;
         Assert.That(isCorrupted, Is.True,

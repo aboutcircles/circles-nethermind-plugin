@@ -48,8 +48,13 @@ public static class CirclesConverter
 
     private static readonly BigInteger BETA_64 = BigInteger.Parse("18450409579521241655"); // 1 / GAMMA
     private const long SECONDS_PER_DAY = 86_400;
+    // Both V1 and V2 Hubs share the SAME inflation day zero: midnight UTC, 15 October 2020.
+    // The V2 Hub constructor receives this as _inflationDayZero and stores it in Demurrage.sol.
+    // On gnosis mainnet: Hub(0x5524...).inflationDayZero() == 1_602_720_000.
+    // The chiado TESTNET uses 1_675_209_600 (Feb 2023) — that value is NOT the production epoch.
+    // See: circles-contracts-v2/src/hub/Hub.sol:172-173, deployment artifact constructorArgs_Hub.txt
     private const uint INFLATION_DAY_ZERO_UNIX = 1_602_720_000; // 2020-10-15 00:00 UTC  (V1 Hub epoch)
-    private const uint V2_INFLATION_DAY_ZERO_UNIX = 1_675_209_600; // 2023-02-01 00:00 UTC  (V2 Hub epoch)
+    private const uint V2_INFLATION_DAY_ZERO_UNIX = 1_602_720_000; // 2020-10-15 00:00 UTC  (V2 Hub epoch on gnosis mainnet)
     private const decimal ATTO_FACTOR_DEC = 1_000_000_000_000_000_000m; // 1e18
 
     private static readonly UInt256 FactorA = UInt256.Parse("1000000000000"); // 10^12

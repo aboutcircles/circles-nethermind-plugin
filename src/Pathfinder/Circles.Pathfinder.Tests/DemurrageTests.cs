@@ -20,42 +20,38 @@ namespace Circles.Pathfinder.Tests;
 [TestFixture, Parallelizable]
 public class DemurrageTests
 {
-    // V2 Hub contract epoch (must match LoadGraph.cs and DiscountedBalances.sol)
-    private const uint V2_INFLATION_DAY_ZERO = 1_675_209_600; // Feb 1, 2023 00:00 UTC
+    // V2 Hub epoch on gnosis mainnet (same as V1): Hub(0x5524...).inflationDayZero() == 1_602_720_000
+    private const uint V2_INFLATION_DAY_ZERO = 1_602_720_000; // Oct 15, 2020 00:00 UTC
 
-    // V1 Hub epoch (used by CirclesConverter.Today())
+    // V1 Hub epoch — identical to V2 on gnosis mainnet (shared inflation curve)
     private const uint V1_INFLATION_DAY_ZERO = 1_602_720_000; // Oct 15, 2020 00:00 UTC
 
     private const long SECONDS_PER_DAY = 86_400;
 
-    #region V1 vs V2 Epoch Divergence
+    #region V1 vs V2 Epoch Consistency (gnosis mainnet)
 
     /// <summary>
-    /// Verifies the two epochs produce different day indices for the same timestamp,
+    /// On gnosis mainnet, V1 and V2 Hubs share the same inflationDayZero (1602720000).
+    /// Verifies the two epochs produce identical day indices for the same timestamp,
     /// confirming that using the wrong one is a real bug.
     /// </summary>
     [Test]
-    public void EpochDivergence_SameTimestamp_DifferentDayIndices()
+    public void EpochConsistency_SameTimestamp_IdenticalDayIndices()
     {
         var now = DateTimeOffset.UtcNow;
         var v1Day = CirclesConverter.DayFromTimestamp(now, V1_INFLATION_DAY_ZERO);
         var v2Day = CirclesConverter.DayFromTimestamp(now, V2_INFLATION_DAY_ZERO);
 
-        // V1 epoch is 839 days earlier: (1_675_209_600 - 1_602_720_000) / 86_400 = 839
-        ulong dayDiff = v1Day - v2Day;
-        Assert.That(dayDiff, Is.EqualTo(839UL),
-            $"V1 vs V2 epoch difference should be exactly 839 days (got {dayDiff})");
-
-        // This confirms that using V1 epoch for V2 conversion applies 839 extra days of decay
-        Assert.That(v1Day, Is.GreaterThan(v2Day));
+        // On gnosis mainnet, V1 and V2 share the same inflationDayZero = 1_602_720_000
+        Assert.That(v1Day, Is.EqualTo(v2Day),
+            "V1 and V2 day indices should be identical (shared epoch on gnosis mainnet)");
     }
 
     /// <summary>
-    /// Quantifies the impact: using V1 epoch instead of V2 for demurrage conversion
-    /// produces ~16% more decay on a 1 CRC balance.
+    /// V1 and V2 conversions produce identical results since both use the same epoch.
     /// </summary>
     [Test]
-    public void EpochDivergence_V1Epoch_Causes16PercentExtraDecay()
+    public void EpochConsistency_V1AndV2_ProduceIdenticalDemurrage()
     {
         var balance = BigInteger.Parse("1000000000000000000"); // 1 CRC
 
@@ -66,14 +62,8 @@ public class DemurrageTests
         var withV1 = CirclesConverter.InflationaryToDemurrage(balance, v1Day);
         var withV2 = CirclesConverter.InflationaryToDemurrage(balance, v2Day);
 
-        // V1 should produce more decay (smaller result)
-        Assert.That(withV1, Is.LessThan(withV2),
-            "V1 epoch should produce more decay than V2");
-
-        // The extra decay from V1 should be roughly 16% (857 days * ~0.02%/day)
-        double extraDecayPct = 100.0 * (1.0 - (double)withV1 / (double)withV2);
-        Assert.That(extraDecayPct, Is.InRange(13.0, 19.0),
-            $"Extra decay from V1 epoch should be ~16% (got {extraDecayPct:F2}%)");
+        Assert.That(withV1, Is.EqualTo(withV2),
+            "V1 and V2 epochs are identical on gnosis mainnet — demurrage must match");
     }
 
     /// <summary>
@@ -436,20 +426,19 @@ public class DemurrageTests
     /// </summary>
     [TestCase(0L)]                    // Unix epoch
     [TestCase(1_000_000_000L)]        // Sept 2001
-    [TestCase(1_602_720_000L)]        // V1 epoch (Oct 2020)
-    [TestCase(1_675_209_599L)]        // 1 second before V2 epoch
+    [TestCase(1_602_719_999L)]        // 1 second before epoch
     public void EpochGuard_LastActivityBeforeV2Epoch_DetectedAsCorrupted(long lastActivity)
     {
         bool isCorrupted = lastActivity < V2_INFLATION_DAY_ZERO;
         Assert.That(isCorrupted, Is.True,
-            $"lastActivity={lastActivity} should be detected as before V2 epoch");
+            $"lastActivity={lastActivity} should be detected as before epoch");
     }
 
     /// <summary>
-    /// lastActivity at or after V2 epoch should NOT be flagged as corrupted.
+    /// lastActivity at or after epoch should NOT be flagged as corrupted.
     /// </summary>
-    [TestCase(1_675_209_600L)]        // Exactly V2 epoch
-    [TestCase(1_675_209_601L)]        // 1 second after
+    [TestCase(1_602_720_000L)]        // Exactly at epoch
+    [TestCase(1_602_720_001L)]        // 1 second after
     [TestCase(1_700_000_000L)]        // Nov 2023
     public void EpochGuard_LastActivityAtOrAfterV2Epoch_NotCorrupted(long lastActivity)
     {

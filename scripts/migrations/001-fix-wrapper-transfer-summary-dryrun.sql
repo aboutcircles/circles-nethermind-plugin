@@ -25,7 +25,7 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 CREATE OR REPLACE FUNCTION pg_temp.v2_day_from_timestamp(block_timestamp bigint)
 RETURNS integer AS $$
 BEGIN
-    RETURN floor((block_timestamp - 1675209600) / 86400)::integer;
+    RETURN floor((block_timestamp - 1602720000) / 86400)::integer;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 

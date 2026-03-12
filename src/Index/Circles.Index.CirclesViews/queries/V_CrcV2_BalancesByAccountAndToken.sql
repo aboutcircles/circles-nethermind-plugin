@@ -127,8 +127,8 @@ merged AS (
 SELECT account, "tokenId", "tokenAddress", "lastActivity", "totalBalance",
        floor("totalBalance" * POWER(
            0.9998013320085989574306481700129226782902039065082930593676448873,
-           (EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
-           - ("lastActivity" - 1675209600) / 86400
+           (EXTRACT(EPOCH FROM NOW())::bigint - 1602720000) / 86400
+           - ("lastActivity" - 1602720000) / 86400
        )) AS "demurragedTotalBalance"
 FROM merged
 WHERE account <> '0x0000000000000000000000000000000000000000' AND "totalBalance" > 0;

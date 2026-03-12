@@ -135,8 +135,8 @@ public partial class CirclesRpcModule
                              ELSE 0
                          END)
                          * POWER(0.9998013320085989574306481700129226782902039065082930593676448873,
-                             (EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
-                             - (MAX(wt.""timestamp"") - 1675209600) / 86400
+                             (EXTRACT(EPOCH FROM NOW())::bigint - 1602720000) / 86400
+                             - (MAX(wt.""timestamp"") - 1602720000) / 86400
                          )
                        ) as balance
                 FROM public.""CrcV2_Erc20WrapperTransfer"" wt

@@ -298,7 +298,7 @@ public class DemurrageCalculatorTests
         BigInteger balanceValue, string type, ulong targetDay, long lastActivity,
         bool applyMargin, double safetyMargin)
     {
-        const uint inflationDayZeroUnix = 1_675_209_600;
+        const uint inflationDayZeroUnix = 1_602_720_000;
         const ulong secondsPerDay = 86_400;
 
         if (type == "static")
@@ -337,7 +337,7 @@ public class DemurrageCalculatorTests
         BigInteger inflationaryBalance, ulong targetDay, long lastActivity,
         bool applyMargin, double safetyMargin)
     {
-        const uint inflationDayZeroUnix = 1_675_209_600;
+        const uint inflationDayZeroUnix = 1_602_720_000;
         const ulong secondsPerDay = 86_400;
 
         if (lastActivity < inflationDayZeroUnix) return null;

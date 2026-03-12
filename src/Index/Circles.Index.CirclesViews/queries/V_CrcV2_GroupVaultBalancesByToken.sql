@@ -62,8 +62,8 @@ SELECT
     FLOOR(
         balance * POWER(
             0.9998013320085989574306481700129226782902039065082930593676448873,
-            (EXTRACT(EPOCH FROM NOW())::bigint - 1675209600) / 86400
-            - ("lastActivity" - 1675209600) / 86400
+            (EXTRACT(EPOCH FROM NOW())::bigint - 1602720000) / 86400
+            - ("lastActivity" - 1602720000) / 86400
         )
     ) AS "balance"
 FROM grouped

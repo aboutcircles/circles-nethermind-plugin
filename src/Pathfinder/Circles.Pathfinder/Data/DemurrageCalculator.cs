@@ -11,8 +11,9 @@ namespace Circles.Pathfinder.Data;
 /// </summary>
 public static class DemurrageCalculator
 {
-    // V2 Hub epoch — MUST match CirclesConverter.V2_INFLATION_DAY_ZERO_UNIX
-    internal const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
+    // V2 Hub epoch on gnosis mainnet — MUST match CirclesConverter.V2_INFLATION_DAY_ZERO_UNIX
+    // On-chain: Hub(0x5524...).inflationDayZero() == 1_602_720_000 (Oct 15, 2020)
+    internal const uint InflationDayZeroUnix = 1_602_720_000;
     internal const ulong SecondsPerDay = 86_400;
 
     /// <summary>

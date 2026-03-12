@@ -13,8 +13,8 @@ public class FixtureLoadGraph : ILoadGraph
 {
     private readonly FixtureSubgraph _subgraph;
 
-    // V2 Hub contract epoch — must match LoadGraph.cs and DiscountedBalances.sol
-    private const uint InflationDayZeroUnix = 1_675_209_600; // Feb 1, 2023 00:00 UTC
+    // V2 Hub epoch on gnosis mainnet (same as V1): Hub(0x5524...).inflationDayZero() == 1_602_720_000
+    private const uint InflationDayZeroUnix = 1_602_720_000;
 
     public FixtureLoadGraph(FixtureSubgraph subgraph)
     {
@@ -33,9 +33,7 @@ public class FixtureLoadGraph : ILoadGraph
         {
             var amount = balance.Amount;
 
-            // Handle static token conversion using V2 epoch (same as LoadGraph.cs)
-            // NOTE: Cannot use CirclesConverter.AttoStaticCirclesToAttoCircles() here because
-            // that function uses the V1 epoch (Oct 2020), producing ~16% more decay than correct.
+            // Handle static token conversion: inflationary → demurraged at today's day index
             if (balance.IsStatic)
             {
                 var staticAttoCircles = BigInteger.Parse(amount);
