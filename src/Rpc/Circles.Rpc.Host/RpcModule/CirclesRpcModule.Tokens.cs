@@ -157,6 +157,7 @@ public partial class CirclesRpcModule
                      , 'CrcV1_Signup' as ""type""
                      , s.""user"" as ""tokenOwner""
                      , v1.""totalBalance"" as balance
+                     , false as ""isGroup""
                 FROM  public.""V_CrcV1_BalancesByAccountAndToken"" v1
                 JOIN  public.""CrcV1_Signup"" s ON s.token = v1.""tokenAddress""
                 WHERE v1.account = @address
@@ -175,6 +176,7 @@ public partial class CirclesRpcModule
                        END as ""type""
                      , v2.""tokenAddress"" as ""tokenOwner""
                      , v2.""demurragedTotalBalance"" as balance
+                     , rh.avatar IS NULL as ""isGroup""
                 FROM  public.""V_CrcV2_BalancesByAccountAndToken"" v2
                 LEFT JOIN ""CrcV2_RegisterHuman"" rh ON rh.avatar = v2.""tokenAddress""
                 WHERE v2.account = @address
@@ -183,14 +185,18 @@ public partial class CirclesRpcModule
                 UNION ALL
 
                 -- V2 wrapped ERC20 inflationary tokens (balance calculated from transfers)
-                SELECT * FROM static_wrapped_balances
+                SELECT swb.*, rg.""group"" IS NOT NULL as ""isGroup""
+                FROM static_wrapped_balances swb
+                LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = swb.""tokenOwner""
 
                 UNION ALL
 
                 -- V2 wrapped ERC20 demurraged tokens (balance calculated with demurrage)
-                SELECT * FROM demurraged_wrapped_balances
+                SELECT dwb.*, rg.""group"" IS NOT NULL as ""isGroup""
+                FROM demurraged_wrapped_balances dwb
+                LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = dwb.""tokenOwner""
             )
-            SELECT ""tokenAddress"", ""type"", ""tokenOwner"", balance
+            SELECT ""tokenAddress"", ""type"", ""tokenOwner"", balance, ""isGroup""
             FROM tokens
             WHERE balance > 0
         ";
@@ -212,11 +218,13 @@ public partial class CirclesRpcModule
             var balanceDecimal = reader.GetDecimal(3);
             BigInteger? balance = (BigInteger)balanceDecimal;
 
+            // Read isGroup from column 4 (computed in SQL via LEFT JOIN on CrcV2_RegisterGroup)
+            var isGroup = reader.GetBoolean(4);
+
             var isWrapped = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary"
                 or "CrcV2_ERC20WrapperDeployed_Demurraged";
 
             var isInflationary = tokenType is "CrcV2_ERC20WrapperDeployed_Inflationary" || tokenType is "CrcV1_Signup";
-            var isGroup = tokenType is "CrcV2_RegisterGroup";
 
             var isErc20 = tokenType == "CrcV1_Signup" || isWrapped;
             var isErc1155 = tokenType is "CrcV2_RegisterHuman" or "CrcV2_RegisterGroup";
@@ -338,8 +346,10 @@ public partial class CirclesRpcModule
 
         // 3. Check for V2 Wrapped ERC20 token
         const string v2WrappedSql = @"
-            SELECT wd.""erc20Wrapper"", wd.avatar, wd.""circlesType""
+            SELECT wd.""erc20Wrapper"", wd.avatar, wd.""circlesType"",
+                   (rg.""group"" IS NOT NULL) as ""isGroup""
             FROM ""CrcV2_ERC20WrapperDeployed"" wd
+            LEFT JOIN ""CrcV2_RegisterGroup"" rg ON rg.""group"" = wd.avatar
             WHERE wd.""erc20Wrapper"" = @tokenAddress LIMIT 1";
         await using (var cmd = new NpgsqlCommand(v2WrappedSql, connection))
         {
@@ -350,6 +360,7 @@ public partial class CirclesRpcModule
                 {
                     var tokenOwner = reader.GetString(1);
                     var circlesType = reader.GetInt32(2);
+                    var isGroupToken = reader.GetBoolean(3);
 
                     // Determine token type based on circlesType
                     // circlesType = 0 for demurraged, 1 for inflationary
@@ -367,7 +378,7 @@ public partial class CirclesRpcModule
                         IsErc1155: false,
                         IsWrapped: true,
                         IsInflationary: isInflationary,
-                        IsGroup: false
+                        IsGroup: isGroupToken
                     );
                 }
             }

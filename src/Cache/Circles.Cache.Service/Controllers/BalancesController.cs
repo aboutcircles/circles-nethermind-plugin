@@ -170,6 +170,8 @@ public class BalancesController : ControllerBase
                         tokenType = isInflationary
                             ? "CrcV2_ERC20WrapperDeployed_Inflationary"
                             : "CrcV2_ERC20WrapperDeployed_Demurraged";
+                        // Check if the underlying avatar is a group
+                        isGroup = _caches.Groups.TryGetValue(tokenOwner, out _);
                     }
                     else
                     {
