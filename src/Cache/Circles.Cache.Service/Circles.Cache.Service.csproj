@@ -23,7 +23,7 @@
     <PackageReference Include="Npgsql" Version="9.0.3" />
 
     <!-- Dependency Injection -->
-    <PackageReference Include="Autofac" Version="9.0.0" />
+    <PackageReference Include="Autofac" Version="9.1.0" />
     <PackageReference Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
 
     <!-- Monitoring -->
