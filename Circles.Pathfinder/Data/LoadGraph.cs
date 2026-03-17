@@ -16,6 +16,7 @@ namespace Circles.Pathfinder.Data
 
         IEnumerable<string> LoadGroups();
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
+        IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings();
     }
 
     public class LoadGraph(Settings settings) : ILoadGraph
@@ -138,6 +139,23 @@ namespace Circles.Pathfinder.Data
                 var groupAddress = reader.GetString(0);
                 var trustedToken = reader.GetString(1);
                 yield return (groupAddress, trustedToken);
+            }
+        }
+        public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
+        {
+            var query = LoadQueryFromResource("wrapperMappingQuery.sql");
+
+            using var connection = new NpgsqlConnection(settings.IndexReadonlyDbConnectionString);
+            connection.Open();
+
+            using var command = new NpgsqlCommand(query, connection);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                var wrapperAddress = reader.GetString(0);
+                var avatar = reader.GetString(1);
+                yield return (wrapperAddress, avatar);
             }
         }
     }

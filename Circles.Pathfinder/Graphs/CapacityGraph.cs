@@ -18,6 +18,9 @@ public class CapacityGraph : IGraph<CapacityEdge>
     
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
+
+    // Wrapper contract address → underlying avatar address (for filter expansion)
+    public Dictionary<int, int> WrapperToAvatar { get; } = new Dictionary<int, int>();
     
     public void AddTokenNode(int tokenId, int? poolNodeId = null)
     {

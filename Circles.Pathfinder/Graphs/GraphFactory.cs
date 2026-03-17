@@ -128,6 +128,9 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
         // STEP 1d: Load groups and track router node for post-processing
         LoadGroupsAndTrackRouter(capacityGraph);
 
+        // STEP 1e: Load wrapper→avatar mappings for filter expansion
+        LoadWrapperMappings(capacityGraph);
+
         var mergedTrust = simulatedTrust.Count == 0 ? trustLookup : MergeTrust(trustLookup, simulatedTrust);
 
         int? virtualSinkAddress = null;
@@ -155,6 +158,21 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
                                          .Select(AddressIdPool.IdOf)
                                          .ToHashSet()
                                      ?? new HashSet<int>();
+
+        // Expand filters with wrapper IDs when withWrap is enabled.
+        // User-provided filters contain avatar addresses, but wrapped balances use wrapper
+        // contract addresses as token IDs. Without expansion, toTokens blocks wrapped tokens.
+        if (request?.WithWrap ?? false)
+        {
+            var wrapperMap = capacityGraph.WrapperToAvatar;
+            if (wrapperMap.Count > 0)
+            {
+                ExpandFilterWithWrapperIds(toTokensFilter, wrapperMap);
+                ExpandFilterWithWrapperIds(fromTokensFilter, wrapperMap);
+                ExpandFilterWithWrapperIds(excludedFromTokensFilter, wrapperMap);
+                ExpandFilterWithWrapperIds(excludedToTokensFilter, wrapperMap);
+            }
+        }
 
         // STEP 2: Validate source and sink are not groups or router
         int? sourceId = !string.IsNullOrWhiteSpace(request?.Source) ? AddressIdPool.IdOf(request.Source) : null;
@@ -710,6 +728,38 @@ public class GraphFactory(Settings settings, LoadGraph loadGraph)
         }
 
         return (virtualSinkAddressId, virtualSinkTrustedTokens);
+    }
+
+    private void LoadWrapperMappings(CapacityGraph capacityGraph)
+    {
+        try
+        {
+            foreach (var (wrapperAddr, avatarAddr) in loadGraph.LoadWrapperMappings())
+            {
+                int wrapperId = AddressIdPool.IdOf(wrapperAddr.ToLowerInvariant());
+                int avatarId = AddressIdPool.IdOf(avatarAddr.ToLowerInvariant());
+                capacityGraph.WrapperToAvatar[wrapperId] = avatarId;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Could not load wrapper mappings: {ex.Message}");
+        }
+    }
+
+    private static void ExpandFilterWithWrapperIds(
+        HashSet<int> filter,
+        Dictionary<int, int> wrapperToAvatar)
+    {
+        if (filter.Count == 0)
+            return;
+
+        // For each wrapper→avatar pair, if the avatar is in the filter, add the wrapper too
+        foreach (var (wrapperId, avatarId) in wrapperToAvatar)
+        {
+            if (filter.Contains(avatarId))
+                filter.Add(wrapperId);
+        }
     }
 
     #endregion
