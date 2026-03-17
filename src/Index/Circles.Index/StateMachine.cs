@@ -53,6 +53,12 @@ public class StateMachine(
     // Track if REINDEX_FROM_BLOCK cleanup was already performed (to avoid re-running on retries)
     private bool _reindexCleanupDone;
 
+    // Transient sync error tracking (block/receipts not yet available during node sync).
+    // Tracked separately from Errors list so transient retries don't count toward the
+    // permanent error limit and vice versa.
+    private int _consecutiveTransientErrors;
+    private DateTime? _transientErrorStartedAt;
+
     // Track if we've sent at least one pg_notify to signal "live mode" to subscribers (e.g., cache service).
     // During initial sync, large batches (>1000 blocks) skip notifications to avoid flooding.
     // This flag ensures we send at least one notification when entering WaitForNewBlock,
@@ -268,6 +274,8 @@ public class StateMachine(
                             context.Logger.Debug($"Imported blocks from {importedBlockRange.Min} " +
                                                  $"to {importedBlockRange.Max}");
                             Errors.Clear();
+                            _consecutiveTransientErrors = 0;
+                            _transientErrorStartedAt = null;
 
                             await TransitionTo(State.NotifySubscribers, importedBlockRange);
                             return;
@@ -312,68 +320,80 @@ public class StateMachine(
                     switch (e)
                     {
                         case EnterState:
-                            // Check if the last error was a transient "not available yet" error
                             var lastError = Errors.LastOrDefault();
                             bool isTransientError = IsTransientSyncError(lastError);
 
-                            // Max retry limit to prevent infinite loops
-                            const int maxConsecutiveErrors = 10;
-                            if (Errors.Count >= maxConsecutiveErrors)
-                            {
-                                context.Logger.Error(
-                                    $"CRITICAL: Reached maximum consecutive error limit ({maxConsecutiveErrors}). " +
-                                    $"The indexer will stop retrying. Manual intervention required. " +
-                                    $"Last error: {lastError?.Message ?? "unknown"}");
-
-                                // Log all errors for debugging
-                                for (int i = 0; i < Errors.Count; i++)
-                                {
-                                    context.Logger.Error($"  Error {i + 1}: {Errors[i].Message}");
-                                }
-
-                                // Stay in Error state but don't retry - requires manual restart
-                                // The state machine will remain in Error state, blocking new processing
-                                return;
-                            }
-
-                            // Exponential backoff based on the number of errors
-                            var delay = Errors.Count * Errors.Count * 1000;
-
-                            // Cap the delay at 60 seconds
-                            if (delay > 60000)
-                            {
-                                delay = 60000;
-                            }
-
-                            // Add some jitter to the delay
-                            var jitter = new Random((int)DateTime.Now.TimeOfDay.TotalSeconds).Next(0, 1000);
-                            delay += jitter;
-
-                            // Wait 'delay' ms
-                            context.Logger.Info($"Waiting {delay} ms before retrying after error {Errors.Count}/{maxConsecutiveErrors}...");
-                            await Task.Delay(delay, cancellationToken);
-
                             if (isTransientError)
                             {
-                                // For transient errors (block/receipts not yet available), we still need to
-                                // clean up caches because the dataflow pipeline may have processed blocks
-                                // that weren't flushed to DB yet.
-                                //
-                                // We use Reorg starting from (LatestBlock + 1) to:
-                                // 1. Clean up any partially-processed blocks from caches
-                                // 2. Skip the expensive cache re-initialization from Initial state
-                                // 3. Avoid deleting data from DB (LatestBlock+1 means nothing gets deleted)
+                                // --- Transient path: block/receipts not yet synced by Nethermind ---
+                                // Retry indefinitely — Nethermind may need hours to sync historical blocks.
+                                // Do NOT add to Errors list (keeps permanent error counter clean).
+                                _consecutiveTransientErrors++;
+                                _transientErrorStartedAt ??= DateTime.UtcNow;
+
+                                // Remove from Errors list since we tracked it separately
+                                if (Errors.Count > 0 && ReferenceEquals(Errors[^1], lastError))
+                                    Errors.RemoveAt(Errors.Count - 1);
+
+                                var blockNumber = GetTransientErrorBlockNumber(lastError);
+                                var waitingDuration = DateTime.UtcNow - _transientErrorStartedAt.Value;
+
+                                // Log escalation: Info for first 10, Warn every 10th after
+                                if (_consecutiveTransientErrors <= 10)
+                                {
+                                    context.Logger.Info(
+                                        $"Waiting for Nethermind to sync block {blockNumber:N0}... " +
+                                        $"(attempt {_consecutiveTransientErrors}, waiting {waitingDuration.TotalMinutes:F0}min)");
+                                }
+                                else if (_consecutiveTransientErrors % 10 == 0)
+                                {
+                                    context.Logger.Warn(
+                                        $"Still waiting for Nethermind to sync block {blockNumber:N0}. " +
+                                        $"Attempt {_consecutiveTransientErrors}, waiting {waitingDuration.TotalHours:F1}h. " +
+                                        $"This is normal during initial node sync.");
+                                }
+
+                                // Linear backoff: count * 5s, capped at 120s, plus jitter
+                                var transientDelay = Math.Min(_consecutiveTransientErrors * 5000, 120_000);
+                                var jitter = Random.Shared.Next(0, 2000);
+                                transientDelay += jitter;
+
+                                await Task.Delay(transientDelay, cancellationToken);
+
+                                // Clean up caches via Reorg(LatestBlock+1) — same recovery as before
                                 var latestFlushed = context.Database.LatestBlock() ?? 0;
                                 var cleanupFrom = latestFlushed + 1;
-
-                                context.Logger.Info(
-                                    $"Transient error (block/receipts not available). " +
-                                    $"Cleaning up caches from block {cleanupFrom:N0} via Reorg, then retrying...");
                                 await TransitionTo(State.Reorg, cleanupFrom);
                             }
                             else
                             {
-                                // For other errors, do full reinitialization
+                                // --- Non-transient path: DB errors, parser bugs, etc. ---
+                                // Keep existing behavior: 10-error limit, quadratic backoff, terminal failure.
+                                const int maxConsecutiveErrors = 10;
+                                if (Errors.Count >= maxConsecutiveErrors)
+                                {
+                                    context.Logger.Error(
+                                        $"CRITICAL: Reached maximum consecutive error limit ({maxConsecutiveErrors}). " +
+                                        $"The indexer will stop retrying. Manual intervention required. " +
+                                        $"Last error: {lastError?.Message ?? "unknown"}");
+
+                                    for (int i = 0; i < Errors.Count; i++)
+                                    {
+                                        context.Logger.Error($"  Error {i + 1}: {Errors[i].Message}");
+                                    }
+
+                                    return;
+                                }
+
+                                var delay = Errors.Count * Errors.Count * 1000;
+                                if (delay > 60000) delay = 60000;
+
+                                var jitter = Random.Shared.Next(0, 1000);
+                                delay += jitter;
+
+                                context.Logger.Info($"Waiting {delay} ms before retrying after error {Errors.Count}/{maxConsecutiveErrors}...");
+                                await Task.Delay(delay, cancellationToken);
+
                                 context.Logger.Info("Transitioning to 'Initial' state after an error...");
                                 await TransitionTo(State.Initial);
                             }
@@ -533,5 +553,28 @@ public class StateMachine(
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Extracts the block number from a transient sync error for logging.
+    /// Unwraps AggregateException and InnerException as needed.
+    /// </summary>
+    private static long GetTransientErrorBlockNumber(Exception? ex)
+    {
+        if (ex is BlockNotAvailableException bna) return bna.BlockNumber;
+        if (ex is ReceiptsNotAvailableException rna) return rna.BlockNumber;
+        if (ex?.InnerException is BlockNotAvailableException innerBna) return innerBna.BlockNumber;
+        if (ex?.InnerException is ReceiptsNotAvailableException innerRna) return innerRna.BlockNumber;
+
+        if (ex is AggregateException ae)
+        {
+            foreach (var inner in ae.Flatten().InnerExceptions)
+            {
+                if (inner is BlockNotAvailableException agBna) return agBna.BlockNumber;
+                if (inner is ReceiptsNotAvailableException agRna) return agRna.BlockNumber;
+            }
+        }
+
+        return -1;
     }
 }
