@@ -306,8 +306,10 @@ public class ImportFlow(
         {
             await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
             {
-                // Check if the pipeline has faulted before sending more blocks
-                if (sourceBlock.Completion.IsFaulted)
+                // Check if any pipeline stage has faulted before sending more blocks.
+                // Must check both source (BlockNotAvailable) AND sink (ReceiptsNotAvailable,
+                // parser errors) because faults propagate forward via PropagateCompletion.
+                if (sourceBlock.Completion.IsFaulted || sinkBlock.Completion.IsFaulted)
                 {
                     context.Logger.Warn($"Pipeline faulted at block {blockNo:N0}, stopping enumeration.");
                     break;
