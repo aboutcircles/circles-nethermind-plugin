@@ -296,6 +296,12 @@ public class ImportFlow(
     {
         var (sourceBlock, sinkBlock) = BuildPipeline(cancellationToken ?? CancellationToken.None);
 
+        // Cancel SendAsync when ANY pipeline stage faults, preventing deadlock.
+        // Without this, SendAsync blocks forever when a downstream stage (e.g. receiptsSourceBlock)
+        // faults but sourceBlock's output buffer is full.
+        using var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken ?? CancellationToken.None);
+        sinkBlock.Completion.ContinueWith(_ => pipelineCts.Cancel(), TaskContinuationOptions.NotOnRanToCompletion);
+
         long min = long.MaxValue;
         long max = long.MinValue;
         long count = 0;
@@ -304,18 +310,16 @@ public class ImportFlow(
 
         try
         {
-            await foreach (var blockNo in blocksToIndex.WithCancellation(cancellationToken ?? CancellationToken.None))
+            await foreach (var blockNo in blocksToIndex.WithCancellation(pipelineCts.Token))
             {
                 // Check if any pipeline stage has faulted before sending more blocks.
-                // Must check both source (BlockNotAvailable) AND sink (ReceiptsNotAvailable,
-                // parser errors) because faults propagate forward via PropagateCompletion.
                 if (sourceBlock.Completion.IsFaulted || sinkBlock.Completion.IsFaulted)
                 {
                     context.Logger.Warn($"Pipeline faulted at block {blockNo:N0}, stopping enumeration.");
                     break;
                 }
 
-                await sourceBlock.SendAsync(blockNo, cancellationToken ?? CancellationToken.None);
+                await sourceBlock.SendAsync(blockNo, pipelineCts.Token);
 
                 min = Math.Min(min, blockNo);
                 max = Math.Max(max, blockNo);
@@ -341,6 +345,13 @@ public class ImportFlow(
                     lastLogTime = now;
                 }
             }
+        }
+        catch (OperationCanceledException) when (pipelineCts.IsCancellationRequested
+                                                   && !(cancellationToken?.IsCancellationRequested ?? false))
+        {
+            // Pipeline faulted and cancelled our SendAsync/enumeration — not an external cancellation.
+            // Fall through to sinkBlock.Completion which will throw the actual pipeline exception.
+            context.Logger.Warn("Pipeline fault detected, stopping block enumeration.");
         }
         finally
         {
