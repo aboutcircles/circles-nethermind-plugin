@@ -58,6 +58,14 @@ public class LogParser(Address v2HubAddress, Address erc20LiftAddress) : ILogPar
         V2Avatars
     ];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.RegisterHuman.Topic),
+        new(DatabaseSchema.RegisterGroup.Topic),
+        new(DatabaseSchema.RegisterOrganization.Topic),
+        new(DatabaseSchema.ERC20WrapperDeployed.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         InitErc20WrapperCache(logger, database);

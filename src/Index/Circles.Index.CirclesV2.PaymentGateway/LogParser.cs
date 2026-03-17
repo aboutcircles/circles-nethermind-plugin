@@ -23,6 +23,11 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
     public IRollbackCache[] Caches { get; } = [Gateways];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.GatewayCreated.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         var seeds = new Dictionary<Address, object?>();

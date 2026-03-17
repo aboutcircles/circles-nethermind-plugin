@@ -65,6 +65,13 @@ public class StateMachine(
     // so subscribers know sync is complete and they can start warming up.
     private bool _hasSentLiveNotification;
 
+    // Bulk sync mode: when the gap between chain head and indexer head is large (>10K blocks),
+    // caches operate in BulkMode (no locks, no diff tracking) for maximum throughput.
+    // On transition to live mode, caches are re-seeded from DB and BulkMode is disabled.
+    private bool _inBulkSyncMode;
+    private const long BulkSyncThreshold = 10_000;
+    private const long BulkSyncExitThreshold = 1_000;
+
     public async Task HandleEvent(IEvent e)
     {
         try
@@ -162,34 +169,48 @@ public class StateMachine(
                             await context.Database.DeleteAllGreaterOrEqualBlock(enterState.Arg);
 
 
-                            context.Logger.Info(
-                                $"Reorg at {enterState.Arg}. Removing objects from caches...");
-
-                            try
+                            // In BulkMode, caches have no diff history — rollback is impossible.
+                            // Re-seed from DB instead (DB was already cleaned above).
+                            if (_inBulkSyncMode)
                             {
-                                var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
-                                foreach (var cache in allCaches)
-                                {
-                                    var countBefore = cache.Count;
-                                    var stats = cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
-                                    var removed = stats.Removed;
-                                    var restored = stats.Restored;
-                                    var deleted = countBefore - cache.Count;
-                                    context.Logger.Info(
-                                        $"Cache '{cache.Name}' maintenance: removed {removed}, restored {restored}, count delta {deleted}.");
-                                }
-
-                                context.Logger.Info("Reorg cleanup complete. Ready to process new blocks.");
+                                context.Logger.Warn(
+                                    $"Reorg during bulk sync at {enterState.Arg}. " +
+                                    $"Re-seeding all caches from DB (rollback not available in BulkMode)...");
+                                await InitializeCaches(context.Database.LatestBlock() ?? 0);
+                                context.Logger.Info("Reorg cleanup complete (bulk re-seed). Ready to process new blocks.");
                                 await TransitionTo(State.WaitForNewBlock);
                             }
-                            catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot roll back beyond stored history"))
+                            else
                             {
-                                // Cache rollback capacity exceeded - we can't roll back this far.
-                                // Need to reinitialize caches from database.
-                                context.Logger.Warn(
-                                    $"Cache rollback capacity exceeded at block {enterState.Arg}. " +
-                                    $"Reinitializing caches from database...");
-                                await TransitionTo(State.Initial);
+                                context.Logger.Info(
+                                    $"Reorg at {enterState.Arg}. Removing objects from caches...");
+
+                                try
+                                {
+                                    var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
+                                    foreach (var cache in allCaches)
+                                    {
+                                        var countBefore = cache.Count;
+                                        var stats = cache.DeleteAllGreaterOrEqualBlock(enterState.Arg);
+                                        var removed = stats.Removed;
+                                        var restored = stats.Restored;
+                                        var deleted = countBefore - cache.Count;
+                                        context.Logger.Info(
+                                            $"Cache '{cache.Name}' maintenance: removed {removed}, restored {restored}, count delta {deleted}.");
+                                    }
+
+                                    context.Logger.Info("Reorg cleanup complete. Ready to process new blocks.");
+                                    await TransitionTo(State.WaitForNewBlock);
+                                }
+                                catch (InvalidOperationException ex) when (ex.Message.Contains("Cannot roll back beyond stored history"))
+                                {
+                                    // Cache rollback capacity exceeded - we can't roll back this far.
+                                    // Need to reinitialize caches from database.
+                                    context.Logger.Warn(
+                                        $"Cache rollback capacity exceeded at block {enterState.Arg}. " +
+                                        $"Reinitializing caches from database...");
+                                    await TransitionTo(State.Initial);
+                                }
                             }
                             return;
                     }
@@ -222,6 +243,13 @@ public class StateMachine(
                                 return;
                             }
 
+                            // Enable bulk sync mode when the gap is large
+                            var gap = newHead.Head - (latestBlock ?? 0);
+                            if (!_inBulkSyncMode && gap > BulkSyncThreshold)
+                            {
+                                SetBulkMode(true);
+                            }
+
                             await TransitionTo(State.Syncing, newHead.Head);
                             return;
                     }
@@ -233,6 +261,17 @@ public class StateMachine(
                     {
                         case EnterState<long> enterSyncing:
                             var importedBlockRange = await Sync(enterSyncing.Arg);
+
+                            // Check if bulk sync mode should be exited
+                            if (_inBulkSyncMode)
+                            {
+                                var latestIndexed = context.Database.LatestBlock() ?? 0;
+                                var remainingGap = enterSyncing.Arg - latestIndexed;
+                                if (remainingGap <= BulkSyncExitThreshold)
+                                {
+                                    await TransitionToLiveMode();
+                                }
+                            }
 
                             // Track blocks processed for status logging
                             if (importedBlockRange.Min.HasValue && importedBlockRange.Max.HasValue)
@@ -447,6 +486,41 @@ public class StateMachine(
                 context.Logger,
                 context.Database,
                 context.Settings)));
+    }
+
+    private void SetBulkMode(bool enabled)
+    {
+        var allCaches = context.LogParsers.SelectMany(o => o.Caches).ToArray();
+        foreach (var cache in allCaches)
+        {
+            cache.BulkMode = enabled;
+        }
+
+        _inBulkSyncMode = enabled;
+        context.Logger.Info(enabled
+            ? $"Bulk sync mode ENABLED — cache locks and diff tracking disabled for {allCaches.Length} caches"
+            : $"Bulk sync mode DISABLED — cache rollback capability restored for {allCaches.Length} caches");
+    }
+
+    private async Task TransitionToLiveMode()
+    {
+        context.Logger.Info("Transitioning from bulk sync to live mode — re-seeding caches from DB...");
+
+        // Disable BulkMode first so Seed() uses proper locking
+        SetBulkMode(false);
+
+        try
+        {
+            // Re-seed all caches from DB to get clean state with rollback capability
+            await InitializeCaches(context.Database.LatestBlock() ?? 0);
+        }
+        catch (Exception ex)
+        {
+            // Restore BulkMode to maintain consistent state — let error handler retry
+            context.Logger.Error($"Failed to re-seed caches during live mode transition: {ex.Message}");
+            SetBulkMode(true);
+            throw;
+        }
     }
 
     private async IAsyncEnumerable<long> GetBlocksToSync(long toBlock)

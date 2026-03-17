@@ -98,6 +98,16 @@ public class Sink(
         }
     }
 
+    public async Task AddEvents(IReadOnlyList<object> indexEvents)
+    {
+        _insertBuffer.AddRange(indexEvents);
+
+        if (_insertBuffer.Length >= batchSize)
+        {
+            await Flush();
+        }
+    }
+
     public async Task Flush()
     {
         var snapshot = _insertBuffer.TakeSnapshot();

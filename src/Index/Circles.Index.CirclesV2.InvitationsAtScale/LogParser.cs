@@ -50,6 +50,12 @@ public class LogParser(
 
     public IRollbackCache[] Caches { get; } = [Farms, InvitationModules, ReferralsModules, QuotaGrantModules];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.AdminSet.Topic),
+        new(DatabaseSchema.InvitationModuleUpdated.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         // Farm emitters

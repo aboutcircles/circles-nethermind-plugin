@@ -50,6 +50,11 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
     public IRollbackCache[] Caches { get; } = [KnownSafeProxies];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.ProxyCreation.Topic)
+    };
+
     private readonly Hash256 _proxyCreationTopic = new(DatabaseSchema.ProxyCreation.Topic);
     private readonly byte[] _legacyCrcProxyCreationTopic = KeccakHelper.ComputeHash("ProxyCreation(address)");
     private readonly Hash256 _safeSetupTopic = new(DatabaseSchema.SafeSetup.Topic);

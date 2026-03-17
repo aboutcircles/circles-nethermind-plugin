@@ -34,6 +34,12 @@ public class LogParser(Address v1HubAddress) : ILogParser
         CirclesV1TokenOwnersByToken, CirclesV1TokensByTokenOwner, V1Avatars
     ];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.Signup.Topic),
+        new(DatabaseSchema.OrganizationSignup.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         InitV1TokenAddresses(logger, database);

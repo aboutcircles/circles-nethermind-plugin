@@ -29,6 +29,12 @@ public class LogParser(Address nameRegistryAddress) : ILogParser
 
     public IRollbackCache[] Caches { get; } = [V2AvatarToCidMap, V2AvatarToShortNameMap, V2AShortNameToAvatarMap];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.RegisterShortName.Topic),
+        new(DatabaseSchema.UpdateMetadataDigest.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         var selectSignups = new Select(

@@ -10,6 +10,13 @@ public interface IRollbackCache
     int Count { get; }
 
     string Name { get; }
+
+    /// <summary>
+    /// When true, skips locking and diff tracking for maximum throughput during initial sync.
+    /// Rollback capability is lost — <see cref="DeleteAllGreaterOrEqualBlock"/> becomes a no-op.
+    /// Must call <see cref="RollbackCache{TKey,TValue}.Seed"/> to rebuild state before disabling.
+    /// </summary>
+    bool BulkMode { get; set; }
 }
 
 public readonly struct RollbackStats
@@ -49,10 +56,16 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     private readonly Dictionary<long, Dictionary<TKey, Change>> _blockDiffs = new();
     private readonly LinkedList<long> _blockOrder = new();
 
+    /// <inheritdoc />
+    public bool BulkMode { get; set; }
+
     public IReadOnlyDictionary<TKey, TValue> ReadOnlyDictionary
     {
         get
         {
+            if (BulkMode)
+                return new Dictionary<TKey, TValue>(_current);
+
             _lock.EnterReadLock();
             try
             {
@@ -92,6 +105,16 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     {
         if (seedData is null) throw new ArgumentNullException(nameof(seedData));
 
+        if (BulkMode)
+        {
+            _current.Clear();
+            foreach (var (k, v) in seedData) _current[k] = v;
+            _blockDiffs.Clear();
+            _blockOrder.Clear();
+            _lastBlockNo = atBlockNo;
+            return;
+        }
+
         _lock.EnterWriteLock();
         try
         {
@@ -120,6 +143,13 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     {
         if (key is null) throw new ArgumentNullException(nameof(key));
 
+        if (BulkMode)
+        {
+            var isNew = !_current.ContainsKey(key);
+            _current[key] = value;
+            return isNew;
+        }
+
         _lock.EnterWriteLock();
         try
         {
@@ -144,6 +174,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     public bool Remove(long blockNo, TKey key)
     {
         if (key is null) throw new ArgumentNullException(nameof(key));
+
+        if (BulkMode)
+            return _current.Remove(key);
 
         _lock.EnterWriteLock();
         try
@@ -182,6 +215,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     /// </summary>
     public RollbackStats DeleteAllGreaterOrEqualBlock(long toBlockNo)
     {
+        if (BulkMode)
+            return new RollbackStats(0, 0);
+
         _lock.EnterWriteLock();
         try
         {
@@ -233,6 +269,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
     {
         get
         {
+            if (BulkMode)
+                return _current.Count;
+
             _lock.EnterReadLock();
             try
             {
@@ -247,6 +286,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
 
     internal bool RemoveWithoutHistory(TKey key)
     {
+        if (BulkMode)
+            return _current.Remove(key);
+
         _lock.EnterWriteLock();
         try
         {
@@ -296,6 +338,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
 
     public bool ContainsKey(TKey key)
     {
+        if (BulkMode)
+            return _current.ContainsKey(key);
+
         _lock.EnterReadLock();
         try
         {
@@ -309,6 +354,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
 
     public TValue Get(TKey key)
     {
+        if (BulkMode)
+            return _current[key];
+
         _lock.EnterReadLock();
         try
         {
@@ -322,6 +370,9 @@ public sealed class RollbackCache<TKey, TValue> : IRollbackCache where TKey : no
 
     public bool TryGetValue(TKey key, out TValue value)
     {
+        if (BulkMode)
+            return _current.TryGetValue(key, out value!);
+
         _lock.EnterReadLock();
         try
         {
