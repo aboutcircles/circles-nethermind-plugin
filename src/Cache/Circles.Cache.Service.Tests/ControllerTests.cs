@@ -559,7 +559,7 @@ public class ControllerTests
         var info = okResult!.Value as TokenInfoResponse;
         info.Should().NotBeNull();
         info!.Version.Should().Be(2);
-        info.TokenType.Should().Be("CrcV2_RegisterHuman");
+        info.TokenType.Should().Be("Human");
         info.IsErc1155.Should().BeTrue();
         info.IsGroup.Should().BeFalse();
     }
