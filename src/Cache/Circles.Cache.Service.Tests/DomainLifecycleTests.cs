@@ -364,7 +364,7 @@ public class DomainLifecycleTests
     {
         // Populate multiple domains at block 100
         _cache.V1Avatars.Add(100, "0xaaa", ("Human", "0xtoken"));
-        _cache.V2Avatars.Add(100, "0xbbb", ("Human", 12345L));
+        _cache.V2Avatars.Add(100, "0xbbb", ("CrcV2_RegisterHuman", 12345L));
         _cache.V1BalancesByAccountAndToken.Add(100, "0xaaa:0xtoken", 100m);
         _cache.V2BalancesByAccountAndToken.Add(100, "0xbbb:0xerc1155", 200m);
         _cache.UpsertV1Trust(100, "0xaaa", "0xbbb", 50);

@@ -542,14 +542,15 @@ public class StateMachine(
         if (ex.InnerException is BlockNotAvailableException || ex.InnerException is ReceiptsNotAvailableException)
             return true;
 
-        // Check AggregateException (from dataflow pipeline)
+        // Check AggregateException (from dataflow pipeline).
+        // Only transient if ALL inner exceptions are transient — a mixed bag containing
+        // e.g. NpgsqlException should NOT be routed to the unlimited-retry path.
         if (ex is AggregateException ae)
         {
-            foreach (var inner in ae.Flatten().InnerExceptions)
-            {
-                if (inner is BlockNotAvailableException || inner is ReceiptsNotAvailableException)
-                    return true;
-            }
+            var inners = ae.Flatten().InnerExceptions;
+            if (inners.Count > 0 && inners.All(inner =>
+                    inner is BlockNotAvailableException || inner is ReceiptsNotAvailableException))
+                return true;
         }
 
         return false;

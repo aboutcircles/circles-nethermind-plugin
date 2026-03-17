@@ -622,7 +622,7 @@ public class ControllerTests
         var unknown = "0xnonexistent0000000000000000000000000000";
 
         _cache.V1TokenOwnerByToken.Add(1000, v1Token, "0xowner");
-        _cache.V2Avatars.Add(2000, v2Addr, ("Human", 12345L));
+        _cache.V2Avatars.Add(2000, v2Addr, ("CrcV2_RegisterHuman", 12345L));
 
         var controller = CreateTokensController();
         var request = new TokenInfoBatchRequest(new[] { v1Token, v2Addr, unknown });
@@ -663,7 +663,7 @@ public class ControllerTests
 
         // Register wrapper and avatar
         _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", 0); // demurraged wrapper
-        _cache.V2Avatars.Add(2000, erc1155Id, ("Human", 12345L));
+        _cache.V2Avatars.Add(2000, erc1155Id, ("CrcV2_RegisterHuman", 12345L));
 
         // Add balances for both — both are hex addresses starting with "0x"
         _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{wrapperAddr}", 100m);

@@ -81,7 +81,7 @@ public class CrossDomainTests
         var avatar1 = "0xhuman00000000000000000000000000000000000";
         var avatar2 = "0xhuman20000000000000000000000000000000000";
 
-        _cache.V2Avatars.Add(100, avatar1, ("Human", 12345L));
+        _cache.V2Avatars.Add(100, avatar1, ("CrcV2_RegisterHuman", 12345L));
         _cache.UpsertV2Trust(100, avatar1, avatar2, 999999L);
 
         // Only trust, no membership
