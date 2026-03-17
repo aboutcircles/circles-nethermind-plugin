@@ -549,7 +549,7 @@ public class ControllerTests
     public void TokensController_V2Avatar_ReturnsInfo()
     {
         var addr = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        _cache.V2Avatars.Add(2000, addr, ("Human", 1704067200L));
+        _cache.V2Avatars.Add(2000, addr, ("CrcV2_RegisterHuman", 1704067200L));
 
         var controller = CreateTokensController();
         var result = controller.GetTokenInfo(addr);
@@ -559,7 +559,7 @@ public class ControllerTests
         var info = okResult!.Value as TokenInfoResponse;
         info.Should().NotBeNull();
         info!.Version.Should().Be(2);
-        info.TokenType.Should().Be("Human");
+        info.TokenType.Should().Be("CrcV2_RegisterHuman");
         info.IsErc1155.Should().BeTrue();
         info.IsGroup.Should().BeFalse();
     }
