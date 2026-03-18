@@ -358,6 +358,8 @@ services:
       retries: 3
 
   metrics-exporter:
+    profiles:
+      - metrics
     container_name: metrics-exporter
     dns:
       - 8.8.8.8
