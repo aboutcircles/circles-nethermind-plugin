@@ -293,7 +293,7 @@ public class EdgeOrderingTests
         };
 
         // Act/Assert - call REAL V2Pathfinder implementation
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph), Is.Null);
     }
 
     /// <summary>
@@ -359,7 +359,7 @@ public class EdgeOrderingTests
         };
 
         // Act/Assert - call REAL V2Pathfinder implementation
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph), Is.Null);
     }
 
     /// <summary>
@@ -376,7 +376,7 @@ public class EdgeOrderingTests
         };
 
         // Act/Assert - call REAL V2Pathfinder implementation
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph), Is.Null);
     }
 
     /// <summary>
@@ -393,7 +393,7 @@ public class EdgeOrderingTests
         };
 
         // Act/Assert - call REAL V2Pathfinder implementation
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph), Is.Null);
     }
 
     /// <summary>
@@ -740,7 +740,7 @@ public class EdgeOrderingTests
             "Bug fix: All 3 collateral edges must precede mint edge");
 
         // Assert: Validation passes using REAL V2Pathfinder
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(sorted, capacityGraph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(sorted, capacityGraph), Is.Null);
     }
 
     /// <summary>

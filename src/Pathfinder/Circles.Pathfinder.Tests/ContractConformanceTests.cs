@@ -225,7 +225,7 @@ public class ContractConformanceTests
             new(Group1, Sink, Group1, 100) { Flow = 100 },
         };
 
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, graph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(edges, graph), Is.Null);
     }
 
     /// <summary>
@@ -275,7 +275,7 @@ public class ContractConformanceTests
         };
 
         var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, graph);
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(sorted, graph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(sorted, graph), Is.Null);
     }
 
     #endregion
