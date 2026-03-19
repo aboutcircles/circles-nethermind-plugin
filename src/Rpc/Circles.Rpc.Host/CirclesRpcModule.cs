@@ -634,10 +634,10 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogError("Pathfinder returned {StatusCode}: {ErrorBody}", response.StatusCode, errorContent);
+            _logger?.LogError("Pathfinder returned {StatusCode}: {ErrorBody}", response.StatusCode, errorContent);
 
             if ((int)response.StatusCode == 400)
-                throw new ArgumentException($"Invalid request: {errorContent}");
+                throw new ArgumentException("Invalid request parameters");
 
             throw new InvalidOperationException("Pathfinder service error");
         }
