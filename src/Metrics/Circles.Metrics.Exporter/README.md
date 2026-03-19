@@ -94,6 +94,25 @@ Data source: `CrcV2_Erc20WrapperTransfer` table
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `ConnectionStrings__CirclesDb` | PostgreSQL connection string for Circles indexer | Yes |
+| `CoinGecko__ApiKey` | CoinGecko API key for CRC price data | No |
+| `Pricing__FallbackCrcPriceUsd` | Fallback CRC price when CoinGecko unavailable (default: `0.01`) | No |
+| `Pricing__CacheExpiryMinutes` | Price cache TTL in minutes (default: `5`) | No |
+
+In `docker-compose.gnosis.yml`, the metrics exporter supports a separate database connection via `METRICS_DB_HOST`, `METRICS_DB_USER`, and `METRICS_DB_PASSWORD` variables (falls back to the main `POSTGRES_*` vars if unset).
+
+### Docker Compose Profile
+
+The metrics exporter is **opt-in** via the `metrics` compose profile:
+
+```bash
+# Start with metrics exporter enabled
+docker compose -f docker/docker-compose.gnosis.yml --profile metrics up -d
+
+# Without metrics exporter (default)
+docker compose -f docker/docker-compose.gnosis.yml up -d
+```
+
+Resource limits: 1 CPU, 512 MB RAM.
 
 ### appsettings.json
 
@@ -174,6 +193,7 @@ dotnet run
 Access:
 - http://localhost:9100/metrics - Prometheus metrics
 - http://localhost:9100/health - Health check
+- http://localhost:9100/ready - Readiness check (used by Docker healthcheck)
 - http://localhost:9100/ - Service info
 
 ### Docker

@@ -42,6 +42,16 @@ export BALANCE_MODE="live"  # "live" (eth_call) or "database" (fast but stale)
 export DATABASE_QUERY_TIMEOUT_SECONDS=30
 export PROFILE_SEARCH_TIMEOUT_SECONDS=30
 export EXTERNAL_PATHFINDER_URL="http://localhost:8080"
+
+# Cache Service (optional — enables fast balance/avatar/profile queries)
+export USE_CACHE_SERVICE=true
+export CACHE_SERVICE_URL="http://cache-service:3001"
+
+# Profile Pinning Service (optional — fast profile search proxy, falls back to SQL)
+export PROFILE_PINNING_SERVICE_URL="http://profile-pinning:3000"
+
+# CORS
+export CORS_ALLOWED_ORIGINS="*"
 ```
 
 See `.env.example` for full configuration options.
