@@ -222,9 +222,8 @@ services:
       retries: 3
       start_period: 60s
 
-  # NOTE: profile-service removed - now deployed separately via Ansible
-  # See: aboutcircles-infrastructure/indexer_ansible/roles/profile_pinning_service
-  # Container name: profile-pinning, routes via /profiles/* in Caddy
+  # NOTE: profile-service removed - now deployed separately
+  # Profile pinning service (configured externally), routes via /profiles/* in Caddy
 
   postgres-gnosis:
     container_name: postgres-gnosis

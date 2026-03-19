@@ -123,10 +123,10 @@ cd src/Cache/Circles.Cache.Service
 dotnet run
 
 # Or use script (if available)
-./scripts/run-cache.sh
+./scripts/run-cache-service.sh
 ```
 
-Default URL: `http://localhost:5002`
+Default URL: `http://localhost:3001`
 
 ### Configuration
 
@@ -148,8 +148,8 @@ export ROLLBACK_CAPACITY=12
 # Optional - max lag before service is "not ready" (default: 10)
 export MAX_CATCHUP_LAG=10
 
-# Optional - HTTP port (default: 5002)
-export PORT=5002
+# Optional - HTTP port (default: 3001)
+export PORT=3001
 
 # Optional - max IPFS profile content cache entries (default: 50000)
 export IPFS_CACHE_MAX_ENTRIES=50000
@@ -167,7 +167,7 @@ Get all token balances for an address.
 GET /api/balances/{address}
 
 # Example
-curl http://localhost:5002/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7
+curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7
 ```
 
 **Response:**
@@ -191,7 +191,7 @@ curl http://localhost:5002/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912
 GET /api/balances/{address}/total/v1
 
 # Example
-curl http://localhost:5002/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7/total/v1
+curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7/total/v1
 ```
 
 **Response:**
@@ -216,7 +216,7 @@ GET /api/balances/{address}/total/v2
 GET /api/balances/{address}/total
 
 # Example
-curl http://localhost:5002/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7/total
+curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7/total
 ```
 
 ### Avatar Endpoints
@@ -229,7 +229,7 @@ Get avatar information for an address.
 GET /api/avatars/{address}
 
 # Example
-curl http://localhost:5002/api/avatars/0xde374ece6fa50e781e81aac78e811b33d16912c7
+curl http://localhost:3001/api/avatars/0xde374ece6fa50e781e81aac78e811b33d16912c7
 ```
 
 **Response:**
@@ -265,7 +265,7 @@ Content-Type: application/json
 }
 
 # Example
-curl -X POST http://localhost:5002/api/avatars/batch \
+curl -X POST http://localhost:3001/api/avatars/batch \
   -H 'Content-Type: application/json' \
   -d '{"addresses": ["0xde374ece6fa50e781e81aac78e811b33d16912c7"]}'
 ```
@@ -284,7 +284,7 @@ Get IPFS CID for an avatar's profile.
 GET /api/profiles/{address}/cid
 
 # Example
-curl http://localhost:5002/api/profiles/0xde374ece6fa50e781e81aac78e811b33d16912c7/cid
+curl http://localhost:3001/api/profiles/0xde374ece6fa50e781e81aac78e811b33d16912c7/cid
 ```
 
 **Response:**
@@ -320,7 +320,7 @@ Get IPFS profile content (JSON payload) by CID. The content is cached in an LRU 
 GET /api/profiles/content/{cid}
 
 # Example
-curl http://localhost:5002/api/profiles/content/QmX...
+curl http://localhost:3001/api/profiles/content/QmX...
 ```
 
 **Response:**
@@ -362,7 +362,7 @@ Content-Type: application/json
 GET /live
 
 # Example
-curl http://localhost:5002/live
+curl http://localhost:3001/live
 ```
 
 Returns `200 OK` if service is running.
@@ -373,7 +373,7 @@ Returns `200 OK` if service is running.
 GET /ready
 
 # Example
-curl http://localhost:5002/ready
+curl http://localhost:3001/ready
 ```
 
 Returns `200 OK` if service is ready to handle requests. Checks:
@@ -403,7 +403,7 @@ Returns `503 Service Unavailable` if not ready.
 GET /cache/stats
 
 # Example
-curl http://localhost:5002/cache/stats
+curl http://localhost:3001/cache/stats
 ```
 
 **Response:**
@@ -440,7 +440,7 @@ curl http://localhost:5002/cache/stats
 GET /metrics
 
 # Example
-curl http://localhost:5002/metrics
+curl http://localhost:3001/metrics
 ```
 
 Returns Prometheus-formatted metrics for monitoring.
@@ -451,7 +451,7 @@ Returns Prometheus-formatted metrics for monitoring.
 GET /
 
 # Example
-curl http://localhost:5002/
+curl http://localhost:3001/
 ```
 
 Returns service information and available endpoints.
@@ -714,7 +714,7 @@ export POSTGRES_READONLY_CONNECTION_STRING="Host=localhost;Port=5432;Database=po
 
 ### Prerequisites
 
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - PostgreSQL 15+ (with indexed Circles data)
 - Running Circles Index plugin
 
@@ -732,10 +732,10 @@ dotnet build
 dotnet run
 
 # Test endpoints
-curl http://localhost:5002/live
-curl http://localhost:5002/ready
-curl http://localhost:5002/cache/stats
-curl http://localhost:5002/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7/total
+curl http://localhost:3001/live
+curl http://localhost:3001/ready
+curl http://localhost:3001/cache/stats
+curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912c7/total
 ```
 
 ### Project Structure
@@ -792,13 +792,13 @@ http_request_duration_seconds
 
 ```bash
 # Check if service is up
-curl http://localhost:5002/live
+curl http://localhost:3001/live
 
 # Check if service is ready to serve traffic
-curl http://localhost:5002/ready
+curl http://localhost:3001/ready
 
 # Get cache statistics
-curl http://localhost:5002/cache/stats
+curl http://localhost:3001/cache/stats
 ```
 
 ### Logs
@@ -828,7 +828,7 @@ The service logs important events:
 
 ```bash
 # Check if listener is connected
-curl http://localhost:5002/cache/stats | jq '.listenerConnected'
+curl http://localhost:3001/cache/stats | jq '.listenerConnected'
 
 # Check PostgreSQL notifications are being sent
 # (from Index plugin logs)
@@ -849,7 +849,7 @@ curl http://localhost:5002/cache/stats | jq '.listenerConnected'
 
 ```bash
 # Check cache sizes
-curl http://localhost:5002/cache/stats | jq '.total_entries'
+curl http://localhost:3001/cache/stats | jq '.total_entries'
 
 # Monitor memory
 docker stats circles-cache
@@ -869,7 +869,7 @@ docker stats circles-cache
 
 ```bash
 # Check warmup completed
-curl http://localhost:5002/cache/stats | jq '.warmupComplete'
+curl http://localhost:3001/cache/stats | jq '.warmupComplete'
 
 # Check for large number of tokens per address
 ```
@@ -888,7 +888,7 @@ curl http://localhost:5002/cache/stats | jq '.warmupComplete'
 
 ```bash
 # Check reorg metrics
-curl http://localhost:5002/metrics | grep reorgs_detected
+curl http://localhost:3001/metrics | grep reorgs_detected
 
 # Check logs for reorg warnings
 ```
@@ -903,10 +903,10 @@ curl http://localhost:5002/metrics | grep reorgs_detected
 
 ```bash
 # Use different port
-PORT=5003 dotnet run
+PORT=3002 dotnet run
 
 # Or set in environment
-export PORT=5003
+export PORT=3002
 ```
 
 ## Deployment
@@ -914,9 +914,9 @@ export PORT=5003
 ### Docker
 
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/aspnet:9.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-COPY bin/Release/net9.0/publish/ .
+COPY bin/Release/net10.0/publish/ .
 ENTRYPOINT ["dotnet", "Circles.Cache.Service.dll"]
 ```
 
@@ -928,14 +928,14 @@ services:
   cache:
     build: ./src/Cache/Circles.Cache.Service
     ports:
-      - "5002:5002"
+      - "3001:3001"
     environment:
       - POSTGRES_CONNECTION_STRING=Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
       - POSTGRES_READONLY_CONNECTION_STRING=${POSTGRES_CONNECTION_STRING}
       - CIRCLES_PG_NOTIFY_CHANNEL=circles_index_events
       - ROLLBACK_CAPACITY=12
       - MAX_CATCHUP_LAG=10
-      - PORT=5002
+      - PORT=3001
     depends_on:
       - postgres
     restart: unless-stopped
@@ -957,7 +957,7 @@ curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
 }'
 
 # Cache Service (in-memory - faster, near real-time)
-curl http://localhost:5002/api/balances/0xaddr.../total
+curl http://localhost:3001/api/balances/0xaddr.../total
 ```
 
 **Use Cases:**
@@ -971,7 +971,7 @@ The Cache Service can provide fast balance lookups for pathfinding:
 
 ```bash
 # 1. Get source address balances from cache
-curl http://localhost:5002/api/balances/0xsource.../
+curl http://localhost:3001/api/balances/0xsource.../
 
 # 2. Use pathfinder to find path
 curl -X POST http://localhost:8080/flow -d '{
