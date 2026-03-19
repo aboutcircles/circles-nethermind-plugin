@@ -297,11 +297,11 @@ public class EdgeOrderingTests
     }
 
     /// <summary>
-    /// Mint edge appears before collateral - should throw.
+    /// Mint edge appears before collateral - should return error string.
     /// This triggers "insufficient collateral" because 0 inbound when mint is processed.
     /// </summary>
     [Test]
-    public void ValidateOrdering_MintBeforeCollateral_ThrowsException()
+    public void ValidateOrdering_MintBeforeCollateral_ReturnsError()
     {
         var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
         var edges = new List<FlowEdge>
@@ -310,20 +310,20 @@ public class EdgeOrderingTests
             new(Router, Group1, Token1, 100) { Flow = 100 },     // Collateral after
         };
 
-        // Act/Assert - call REAL V2Pathfinder implementation
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act - call REAL V2Pathfinder implementation
+        var error = V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph);
 
-        // Either "ordering violation" or "insufficient collateral" is valid
-        Assert.That(ex!.Message, Does.Contain("collateral").Or.Contain("ordering"));
+        // Assert: non-null error string mentioning collateral or ordering
+        Assert.That(error, Is.Not.Null);
+        Assert.That(error, Does.Contain("collateral").Or.Contain("ordering"));
     }
 
     /// <summary>
-    /// Partial collateral received before mint - should throw.
+    /// Partial collateral received before mint - should return error string.
     /// Group needs 100 but only 50 deposited when mint edge is processed.
     /// </summary>
     [Test]
-    public void ValidateOrdering_PartialCollateral_ThrowsException()
+    public void ValidateOrdering_PartialCollateral_ReturnsError()
     {
         var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
         var edges = new List<FlowEdge>
@@ -333,11 +333,12 @@ public class EdgeOrderingTests
             new(Router, Group1, Token2, 50) { Flow = 50 },       // Too late
         };
 
-        // Act/Assert - call REAL V2Pathfinder implementation
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act - call REAL V2Pathfinder implementation
+        var error = V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph);
 
-        Assert.That(ex!.Message, Does.Contain("insufficient collateral"));
+        // Assert: non-null error string mentioning insufficient collateral
+        Assert.That(error, Is.Not.Null);
+        Assert.That(error, Does.Contain("insufficient collateral").IgnoreCase);
     }
 
     /// <summary>
@@ -399,7 +400,7 @@ public class EdgeOrderingTests
     /// Collateral appearing after we've already seen outbound from group - ordering violation.
     /// </summary>
     [Test]
-    public void ValidateOrdering_CollateralAfterMint_ThrowsOrderingViolation()
+    public void ValidateOrdering_CollateralAfterMint_ReturnsOrderingViolation()
     {
         var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
         // First mint (with some collateral), then more collateral arrives
@@ -410,11 +411,12 @@ public class EdgeOrderingTests
             new(Router, Group1, Token2, 50) { Flow = 50 },       // More collateral AFTER mint - WRONG!
         };
 
-        // Act/Assert
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph));
+        // Act - call REAL V2Pathfinder implementation
+        var error = V2Pathfinder.ValidateMintEdgeOrdering(edges, capacityGraph);
 
-        Assert.That(ex!.Message, Does.Contain("ordering violation").IgnoreCase);
+        // Assert: non-null error string mentioning ordering violation
+        Assert.That(error, Is.Not.Null);
+        Assert.That(error, Does.Contain("ordering violation").IgnoreCase);
     }
 
     #endregion
@@ -759,10 +761,10 @@ public class EdgeOrderingTests
         };
 
         // This should fail with insufficient collateral using REAL V2Pathfinder
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => V2Pathfinder.ValidateMintEdgeOrdering(buggyOrder, capacityGraph));
+        var error = V2Pathfinder.ValidateMintEdgeOrdering(buggyOrder, capacityGraph);
 
-        Assert.That(ex!.Message, Does.Contain("insufficient collateral"));
+        Assert.That(error, Is.Not.Null);
+        Assert.That(error, Does.Contain("insufficient collateral"));
     }
 
     /// <summary>
@@ -785,8 +787,8 @@ public class EdgeOrderingTests
         // Sort then validate
         var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, capacityGraph);
 
-        // Should not throw
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(sorted, capacityGraph));
+        // Should not return an error
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(sorted, capacityGraph), Is.Null);
     }
 
     #endregion

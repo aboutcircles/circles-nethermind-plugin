@@ -639,9 +639,9 @@ public class FlagInteractionTests
     }
 
     [Test]
-    public void E004_SourceHasNoBalance_ThrowsException()
+    public void E004_SourceHasNoBalance_ReturnsZeroFlow()
     {
-        // Arrange: Source with no balance → no outgoing edges → solver throws
+        // Arrange: Source with no balance → no outgoing edges → returns zero flow
         var source = Node(1);
         var sink = Node(2);
 
@@ -663,16 +663,15 @@ public class FlagInteractionTests
         // Act
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
         var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
 
-        // Assert: Throws InvalidOperationException when source has no outgoing edges
-        Assert.Throws<InvalidOperationException>(() =>
-        {
-            pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
-        });
+        // Assert: Returns zero flow instead of throwing
+        AssertMaxFlowZero(result.MaxFlow, "Source with no balance should return zero flow");
+        Assert.That(result.Transfers, Is.Empty);
     }
 
     [Test]
-    public void E005_SinkTrustsNothing_ThrowsArgumentException()
+    public void E005_SinkTrustsNothing_ReturnsZeroFlow()
     {
         // Arrange: Sink with no trust relationships won't be in the graph
         var source = Node(1);
@@ -697,12 +696,11 @@ public class FlagInteractionTests
         // Act
         var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
         var pathfinder = new V2Pathfinder();
+        var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
 
-        // Assert: Throws ArgumentException when sink isn't in the graph
-        Assert.Throws<ArgumentException>(() =>
-        {
-            pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
-        });
+        // Assert: Returns zero flow instead of throwing
+        AssertMaxFlowZero(result.MaxFlow, "Sink that trusts nothing should return zero flow");
+        Assert.That(result.Transfers, Is.Empty);
     }
 
     // ─────────────────────── GROUP MINTING ───────────────────────

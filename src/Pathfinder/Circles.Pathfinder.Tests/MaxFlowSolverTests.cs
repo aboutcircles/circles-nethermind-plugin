@@ -17,18 +17,17 @@ public class MaxFlowSolverTests
     #region Empty / degenerate graphs
 
     [Test]
-    public void Solve_EmptyEdges_ThrowsNoOutgoingEdges()
+    public void Solve_EmptyEdges_ReturnsEmpty()
     {
-        // No edges at all — source has no outgoing capacity edges.
+        // No edges at all — source has no outgoing capacity edges → empty result.
         var edges = new List<CapacityEdge>();
         int source = 0;
         int sink = 1;
         long target = 100;
 
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => MaxFlowSolver.Solve(edges, source, sink, target));
+        var result = MaxFlowSolver.Solve(edges, source, sink, target);
 
-        Assert.That(ex!.Message, Does.Contain("no outgoing edges"));
+        Assert.That(result, Is.Empty, "Empty graph should return empty result");
     }
 
     #endregion
@@ -292,6 +291,54 @@ public class MaxFlowSolverTests
             Assert.That(edgeSA.Token, Is.EqualTo(token1));
             Assert.That(edgeAT.Token, Is.EqualTo(token2));
         });
+    }
+
+    #endregion
+
+    #region Graceful zero-flow regression tests
+
+    /// <summary>
+    /// Source has edges but none are outgoing from source → returns empty.
+    /// </summary>
+    [Test]
+    public void MaxFlowSolver_NoOutgoingEdges_ReturnsEmpty()
+    {
+        // Source=0 has no outgoing edges (edge goes from 2 to 3)
+        int source = 0;
+        int sink = 1;
+        var edges = new List<CapacityEdge>
+        {
+            new(2, 3, TokenId, 100),
+            new(3, sink, TokenId, 100)
+        };
+
+        var result = MaxFlowSolver.Solve(edges, source, sink, targetFlow: 100);
+
+        Assert.That(result, Is.Empty,
+            "Source with no outgoing edges should return empty result");
+    }
+
+    /// <summary>
+    /// Solver finds no feasible flow (status != OPTIMAL) → returns empty.
+    /// Source has outgoing edge but it doesn't reach the sink.
+    /// </summary>
+    [Test]
+    public void MaxFlowSolver_Infeasible_ReturnsEmpty()
+    {
+        // Source → A, but A is disconnected from sink
+        int source = 0;
+        int a = 1;
+        int sink = 2;
+        var edges = new List<CapacityEdge>
+        {
+            new(source, a, TokenId, 100)
+            // No edge from A to sink → infeasible
+        };
+
+        var result = MaxFlowSolver.Solve(edges, source, sink, targetFlow: 100);
+
+        Assert.That(result, Is.Empty,
+            "Infeasible flow should return empty result");
     }
 
     #endregion

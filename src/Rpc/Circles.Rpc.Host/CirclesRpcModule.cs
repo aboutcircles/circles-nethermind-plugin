@@ -634,7 +634,12 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Pathfinder service returned {response.StatusCode}: {errorContent}");
+            _logger.LogError("Pathfinder returned {StatusCode}: {ErrorBody}", response.StatusCode, errorContent);
+
+            if ((int)response.StatusCode == 400)
+                throw new ArgumentException($"Invalid request: {errorContent}");
+
+            throw new InvalidOperationException("Pathfinder service error");
         }
 
         var responseString = await response.Content.ReadAsStringAsync();

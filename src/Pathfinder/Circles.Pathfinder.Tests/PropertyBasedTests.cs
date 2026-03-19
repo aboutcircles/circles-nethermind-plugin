@@ -289,11 +289,11 @@ public class PropertyBasedTests
     }
 
     /// <summary>
-    /// Empty graph (no edges) causes MaxFlowSolver to report BAD_INPUT.
-    /// This is expected — the pathfinder requires at least some edges.
+    /// Empty graph (no edges) returns zero flow gracefully.
+    /// No edges → solver returns empty → pathfinder returns zero flow.
     /// </summary>
     [Test]
-    public void MinimalGraph_TwoAvatars_NoTrust_ThrowsNoOutgoingEdges()
+    public void MinimalGraph_TwoAvatars_NoTrust_ReturnsZeroFlow()
     {
         var graph = new CapacityGraph();
         int a = AddressIdPool.IdOf("0xfzmin1" + new string('0', 34));
@@ -309,10 +309,10 @@ public class PropertyBasedTests
             Sink = AddressIdPool.StringOf(b),
         };
 
-        // No edges → solver detects source has no outgoing edges before calling OR-Tools
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            pathfinder.ComputeMaxFlowWithPath(graph, request, UInt256.One));
-        Assert.That(ex!.Message, Does.Contain("no outgoing edges"));
+        // No edges → solver returns empty → zero flow response
+        var result = pathfinder.ComputeMaxFlowWithPath(graph, request, UInt256.One);
+        Assert.That(result.MaxFlow, Is.EqualTo("0"), "No-edge graph should return zero flow");
+        Assert.That(result.Transfers, Is.Empty, "No-edge graph should return empty transfers");
     }
 
     #endregion
@@ -459,7 +459,7 @@ public class PropertyBasedTests
                 long.Parse(t.Value!))
             { Flow = long.Parse(t.Value!) }).ToList();
 
-            Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(flowEdges, graph));
+            Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(flowEdges, graph), Is.Null);
         }
     }
 
