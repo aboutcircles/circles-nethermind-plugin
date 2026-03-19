@@ -52,7 +52,7 @@ public class MaxFlowAndCollapseTests
     }
 
     [Test]
-    public void ComputeMaxFlow_MissingSource_Throws()
+    public void ComputeMaxFlow_MissingSource_ReturnsZero()
     {
         var graph = new CapacityGraph();
         int b = AddressIdPool.IdOf(AddrB);
@@ -62,11 +62,12 @@ public class MaxFlowAndCollapseTests
         var request = new FlowRequest { Source = AddrA, Sink = AddrB };
         var target = CirclesConverter.BlowUpToUInt256(100L);
 
-        Assert.Throws<ArgumentException>(() => pf.ComputeMaxFlow(graph, request, target));
+        long flow = pf.ComputeMaxFlow(graph, request, target);
+        Assert.That(flow, Is.EqualTo(0), "Missing source should return zero flow");
     }
 
     [Test]
-    public void ComputeMaxFlow_MissingSink_Throws()
+    public void ComputeMaxFlow_MissingSink_ReturnsZero()
     {
         var graph = new CapacityGraph();
         int a = AddressIdPool.IdOf(AddrA);
@@ -76,13 +77,14 @@ public class MaxFlowAndCollapseTests
         var request = new FlowRequest { Source = AddrA, Sink = AddrB };
         var target = CirclesConverter.BlowUpToUInt256(100L);
 
-        Assert.Throws<ArgumentException>(() => pf.ComputeMaxFlow(graph, request, target));
+        long flow = pf.ComputeMaxFlow(graph, request, target);
+        Assert.That(flow, Is.EqualTo(0), "Missing sink should return zero flow");
     }
 
     [Test]
-    public void ComputeMaxFlow_DisconnectedGraph_ThrowsNoOutgoingEdges()
+    public void ComputeMaxFlow_DisconnectedGraph_ReturnsZero()
     {
-        // A and B exist but no edges from source → throws before OR-Tools
+        // A and B exist but no edges from source → returns zero
         var graph = new CapacityGraph();
         int a = AddressIdPool.IdOf(AddrA);
         int b = AddressIdPool.IdOf(AddrB);
@@ -94,9 +96,8 @@ public class MaxFlowAndCollapseTests
         var request = new FlowRequest { Source = AddrA, Sink = AddrB };
         var target = CirclesConverter.BlowUpToUInt256(100L);
 
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => pf.ComputeMaxFlow(graph, request, target));
-        Assert.That(ex!.Message, Does.Contain("no outgoing edges"));
+        long flow = pf.ComputeMaxFlow(graph, request, target);
+        Assert.That(flow, Is.EqualTo(0), "Disconnected graph should return zero flow");
     }
 
     [Test]
@@ -134,6 +135,44 @@ public class MaxFlowAndCollapseTests
         var target = CirclesConverter.BlowUpToUInt256(100L);
 
         Assert.Throws<ArgumentNullException>(() => pf.ComputeMaxFlow(graph, request, target));
+    }
+
+    [Test]
+    public void ComputeMaxFlowWithPath_MissingSource_ReturnsZeroFlow()
+    {
+        // Source address not in graph → graceful zero-flow response
+        var graph = new CapacityGraph();
+        int b = AddressIdPool.IdOf(AddrB);
+        graph.AddAvatar(b);
+
+        var pf = new V2Pathfinder();
+        var request = new FlowRequest { Source = AddrA, Sink = AddrB };
+        var target = CirclesConverter.BlowUpToUInt256(100L);
+
+        var result = pf.ComputeMaxFlowWithPath(graph, request, target);
+
+        Assert.That(result.MaxFlow, Is.EqualTo("0"), "Missing source should return zero flow");
+        Assert.That(result.Transfers, Is.Empty, "Missing source should return empty transfers");
+        Assert.That(result.Debug, Is.Null, "No debug output expected");
+    }
+
+    [Test]
+    public void ComputeMaxFlowWithPath_MissingSink_ReturnsZeroFlow()
+    {
+        // Sink address not in graph → graceful zero-flow response
+        var graph = new CapacityGraph();
+        int a = AddressIdPool.IdOf(AddrA);
+        graph.AddAvatar(a);
+
+        var pf = new V2Pathfinder();
+        var request = new FlowRequest { Source = AddrA, Sink = AddrB };
+        var target = CirclesConverter.BlowUpToUInt256(100L);
+
+        var result = pf.ComputeMaxFlowWithPath(graph, request, target);
+
+        Assert.That(result.MaxFlow, Is.EqualTo("0"), "Missing sink should return zero flow");
+        Assert.That(result.Transfers, Is.Empty, "Missing sink should return empty transfers");
+        Assert.That(result.Debug, Is.Null, "No debug output expected");
     }
 
     #endregion

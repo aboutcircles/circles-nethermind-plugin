@@ -225,11 +225,11 @@ public class ContractConformanceTests
             new(Group1, Sink, Group1, 100) { Flow = 100 },
         };
 
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(edges, graph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(edges, graph), Is.Null);
     }
 
     /// <summary>
-    /// Mint edge before all collateral → validation must fail.
+    /// Mint edge before all collateral → validation must return error string.
     /// </summary>
     [Test]
     public void CollateralBeforeMint_WrongOrder_ValidationFails()
@@ -247,8 +247,8 @@ public class ContractConformanceTests
             new(Router, Group1, Token2, 50) { Flow = 50 },
         };
 
-        Assert.Throws<InvalidOperationException>(
-            () => V2Pathfinder.ValidateMintEdgeOrdering(edges, graph));
+        var error = V2Pathfinder.ValidateMintEdgeOrdering(edges, graph);
+        Assert.That(error, Is.Not.Null, "Wrong ordering should return error string");
     }
 
     /// <summary>
@@ -275,7 +275,7 @@ public class ContractConformanceTests
         };
 
         var sorted = V2Pathfinder.SortEdgesForMintDependencies(edges, graph);
-        Assert.DoesNotThrow(() => V2Pathfinder.ValidateMintEdgeOrdering(sorted, graph));
+        Assert.That(V2Pathfinder.ValidateMintEdgeOrdering(sorted, graph), Is.Null);
     }
 
     #endregion

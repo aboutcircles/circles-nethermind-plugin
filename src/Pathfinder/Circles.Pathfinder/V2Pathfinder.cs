@@ -35,16 +35,16 @@ public class V2Pathfinder
         int effSink = vs ?? sinkId;
         int sourceId = AddressIdPool.IdOf(flowRequest.Source ?? throw new ArgumentNullException(nameof(flowRequest.Source)));
 
-        bool sourceMissing = !capacityGraph.AvatarNodes.ContainsKey(sourceId);
-        if (sourceMissing)
+        if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
         {
-            throw new ArgumentException($"Source '{flowRequest.Source}' isn't in the graph snapshot.");
+            _logger.LogWarning("ComputeMaxFlow: Source '{Source}' not in graph snapshot — returning zero", flowRequest.Source);
+            return 0;
         }
 
-        bool sinkMissing = !capacityGraph.AvatarNodes.ContainsKey(effSink);
-        if (sinkMissing)
+        if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
         {
-            throw new ArgumentException($"Sink '{flowRequest.Sink}' isn't in the graph snapshot.");
+            _logger.LogWarning("ComputeMaxFlow: Sink '{Sink}' not in graph snapshot — returning zero", flowRequest.Sink);
+            return 0;
         }
 
         /* --------------------------------------------------------------------
@@ -84,6 +84,9 @@ public class V2Pathfinder
         UInt256 targetFlow)
     {
         var ctx = ResolveAndGuard(capacityGraph, request, targetFlow);
+        if (ctx is null)
+            return new MaxFlowResponse("0", new List<TransferPathStep>(), null);
+
         SolveAndExtractPaths(ctx);
         PruneByMaxTransfers(ctx);
         ConvertToFlowEdges(ctx);
@@ -129,7 +132,7 @@ public class V2Pathfinder
      * Stage 1: Resolve IDs and validate source/sink
      * ====================================================================== */
 
-    private PipelineContext ResolveAndGuard(
+    private PipelineContext? ResolveAndGuard(
         CapacityGraph capacityGraph,
         FlowRequest request,
         UInt256 targetFlow)
@@ -138,12 +141,18 @@ public class V2Pathfinder
         int effSink = capacityGraph.VirtualSinkAddress ?? sinkId;
         int sourceId = AddressIdPool.IdOf(request.Source ?? throw new ArgumentNullException(nameof(request.Source)));
 
-        if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
-            throw new ArgumentException($"Source '{request.Source}' isn't in the graph snapshot.");
-        if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
-            throw new ArgumentException($"Sink '{request.Sink}' isn't in the graph snapshot.");
-
         var reqId = Guid.NewGuid().ToString("N")[..8];
+
+        if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
+        {
+            _logger.LogWarning("[{ReqId}] Source '{Source}' not in graph snapshot — returning zero flow", reqId, request.Source);
+            return null;
+        }
+        if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
+        {
+            _logger.LogWarning("[{ReqId}] Sink '{Sink}' not in graph snapshot — returning zero flow", reqId, request.Sink);
+            return null;
+        }
 
         _logger.LogInformation("[{ReqId}] Graph: avatars={Avatars}, groups={Groups}, edges={Edges}",
             reqId, capacityGraph.AvatarNodes.Count, capacityGraph.GroupNodes.Count, capacityGraph.Edges.Count);
@@ -320,7 +329,7 @@ public class V2Pathfinder
     private void SortForMintDependencies(PipelineContext ctx)
     {
         ctx.Edges = SortEdgesForMintDependencies(ctx.Edges, ctx.Graph);
-        ValidateMintEdgeOrdering(ctx.Edges, ctx.Graph);
+        ValidateMintEdgeOrdering(ctx);
 
         {
             int groupMints = ctx.Edges.Count(e => ctx.Graph.IsGroup(e.From));
@@ -345,7 +354,7 @@ public class V2Pathfinder
 
         ctx.Edges = QuantizeSinkBoundEdgesByToken(ctx.Edges, ctx.SinkId, InvitationQuanta, ctx.Target);
         PropagateQuantizationBackwards(ctx.Edges, ctx.SinkId, ctx.SourceId);
-        ValidateQuantizedSinkTransfers(ctx.Edges, ctx.SinkId, InvitationQuanta);
+        ValidateQuantizedSinkTransfers(ctx, InvitationQuanta);
         ctx.Edges = AddSinkSelfLoopAggregation(ctx.Edges, ctx.SinkId);
 
         _logger.LogInformation("[{ReqId}] Quantized: before={Before}, after={After}, quanta={Quanta}",
@@ -1165,12 +1174,22 @@ public class V2Pathfinder
      *
      * This validation ensures the contract won't revert with ERC1155InsufficientBalance.
      * --------------------------------------------------------------------- */
-    internal static void ValidateMintEdgeOrdering(List<FlowEdge> edges, CapacityGraph capacityGraph)
+    private void ValidateMintEdgeOrdering(PipelineContext ctx)
+    {
+        var error = ValidateMintEdgeOrdering(ctx.Edges, ctx.Graph);
+        if (error != null)
+        {
+            _logger.LogError("[{ReqId}] {Error}", ctx.ReqId, error);
+            ctx.Edges.Clear();
+        }
+    }
+
+    internal static string? ValidateMintEdgeOrdering(List<FlowEdge> edges, CapacityGraph capacityGraph)
     {
         if (capacityGraph.RouterNode == null || capacityGraph.GroupNodes.Count == 0)
         {
             // No router or no groups - nothing to validate
-            return;
+            return null;
         }
 
         // Track which groups have had their outbound edge seen
@@ -1199,10 +1218,9 @@ public class V2Pathfinder
                 if (groupsWithOutboundSeen.Contains(groupId))
                 {
                     string groupAddr = AddressIdPool.StringOf(groupId);
-                    throw new InvalidOperationException(
-                        $"Edge ordering violation: Router → Group edge for group {groupAddr} " +
+                    return $"Edge ordering violation: Router → Group edge for group {groupAddr} " +
                         $"appears after Group → Avatar edge at index {i}. " +
-                        "All collateral must be deposited before minting.");
+                        "All collateral must be deposited before minting.";
                 }
 
                 groupInboundFlow.TryGetValue(groupId, out long current);
@@ -1222,13 +1240,13 @@ public class V2Pathfinder
                 if (inbound < groupOutboundFlow[groupId])
                 {
                     string groupAddr = AddressIdPool.StringOf(groupId);
-                    throw new InvalidOperationException(
-                        $"Flow violation: Group {groupAddr} has insufficient collateral at edge index {i}. " +
-                        $"Cumulative inbound: {inbound}, cumulative outbound required: {groupOutboundFlow[groupId]}. " +
-                        "Ensure all Router → Group edges precede Group → Avatar edges.");
+                    return $"Flow violation: Group {groupAddr} has insufficient collateral at edge index {i}. " +
+                        $"Cumulative inbound: {inbound}, cumulative outbound required: {groupOutboundFlow[groupId]}.";
                 }
             }
         }
+
+        return null;
     }
 
     /* ------------------------------------------------------------------------
@@ -1536,8 +1554,10 @@ public class V2Pathfinder
      * Individual edges may have non-quantized flows, but their sum per token must be.
      * Used as a safety check after quantization to ensure correctness.
      * --------------------------------------------------------------------- */
-    private static void ValidateQuantizedSinkTransfers(List<FlowEdge> edges, int sinkId, long quantaSize)
+    private void ValidateQuantizedSinkTransfers(PipelineContext ctx, long quantaSize)
     {
+        var edges = ctx.Edges;
+        int sinkId = ctx.SinkId;
         // Group sink-bound edges by token and sum flows
         var flowByToken = new Dictionary<int, long>();
 
@@ -1557,10 +1577,12 @@ public class V2Pathfinder
             if (!isQuantized)
             {
                 string tokenAddr = AddressIdPool.StringOf(token);
-                throw new InvalidOperationException(
-                    $"Quantization violation: Total flow of token {tokenAddr} to sink is {totalFlow}, " +
-                    $"which is not a multiple of {quantaSize} (96 CRC). " +
-                    "Total per token type must be exact 96 CRC multiples in quantized mode.");
+                _logger.LogError(
+                    "[{ReqId}] Quantization violation: Total flow of token {Token} to sink is {Flow}, " +
+                    "not a multiple of {Quanta} (96 CRC).",
+                    ctx.ReqId, tokenAddr, totalFlow, quantaSize);
+                ctx.Edges.Clear();
+                return;
             }
         }
     }

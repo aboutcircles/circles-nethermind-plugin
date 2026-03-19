@@ -158,6 +158,12 @@ internal sealed class FindPathHandler(
                 route, settings.SolverTimeoutSeconds, request.Source, request.Sink, request.TargetFlow);
             return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
         }
+        catch (ArgumentException ex)
+        {
+            FindPathMetrics.SolverStatusTotal.WithLabels("bad_request").Inc();
+            log.LogWarning(ex, "{Route} validation error: {Message}", route, ex.Message);
+            return Results.BadRequest(ex.Message);
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();

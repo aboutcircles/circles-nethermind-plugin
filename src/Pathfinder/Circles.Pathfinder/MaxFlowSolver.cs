@@ -40,7 +40,7 @@ internal static class MaxFlowSolver
         }
 
         if (!sourceHasOutgoing)
-            throw new InvalidOperationException("Max-flow failed: source has no outgoing edges");
+            return Array.Empty<SimpleEdge>();
 
         // Super-source is always one past the max vertex id.
         // maxVertex includes both sourceAvatar and sinkAvatar to prevent
@@ -58,7 +58,7 @@ internal static class MaxFlowSolver
         /* --------------------------- solve ------------------------------ */
         var status = maxFlow.Solve(superSource, sinkAvatar);
         if (status != MaxFlow.Status.OPTIMAL)
-            throw new InvalidOperationException($"Max-flow failed: {status}");
+            return Array.Empty<SimpleEdge>();
 
         /* ---------------- write back only the arcs with flow ------------ */
         const int arcOffset = 1; // skip the super-source arc (id 0)
