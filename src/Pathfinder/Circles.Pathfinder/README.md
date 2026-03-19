@@ -187,3 +187,46 @@ The pathfinder enforces correct ordering via two methods in `V2Pathfinder.cs`:
 The production router is: `0xdc287474114cc0551a81ddc2eb51783fbf34802f`
 
 Configure via environment variable: `V2_BASE_GROUP_ROUTER`
+
+## Configuration
+
+All configuration is via environment variables. See `Settings.cs` for the full list.
+
+### Graph Source
+
+The pathfinder can load its trust graph from the **Cache Service** (recommended) or directly from PostgreSQL.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_CACHE_GRAPH_SOURCE` | auto (true if `CACHE_SERVICE_URL` set) | Load graph from Cache Service instead of DB |
+| `CACHE_SERVICE_URL` | (unset) | Cache Service URL (e.g. `http://cache-service:3001`) |
+| `CACHE_GRAPH_FALLBACK_TO_DB` | `true` | Fall back to DB if cache is unavailable |
+| `CACHE_GRAPH_REQUEST_TIMEOUT_SECONDS` | `60` | Timeout for cache graph fetch |
+
+### Solver
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_CONCURRENT_REQUESTS` | `max(CPUCount × 2, 8)` | Max concurrent pathfinder requests |
+| `PATHFINDER_SOLVER_TIMEOUT_SECONDS` | `10` | MaxFlow solver timeout per request |
+| `PATHFINDER_DEMURRAGE_SAFETY_MARGIN` | `0.9995` | 0.05% haircut on demurraged balances to avoid rounding reverts |
+| `PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES` | `true` | Exclude consented avatars from intermediary positions in paths |
+
+### Materialized View Refresh
+
+The pathfinder refreshes materialized views in-process as a primary mechanism (the Docker cron `matview-refresh` container is the backup).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MATVIEW_REFRESH_ENABLED` | `true` | Enable in-process matview refreshes |
+| `MATVIEW_REFRESH_FAST_BLOCKS` | `60` | Blocks between fast-tier refreshes (~5 min on Gnosis) |
+| `MATVIEW_REFRESH_SLOW_BLOCKS` | `180` | Blocks between slow-tier refreshes (~15 min on Gnosis) |
+| `MATVIEW_REFRESH_INTERVAL_BLOCKS` | (unset) | Legacy: overrides both tiers if set |
+| `MATVIEW_DB_CONNECTION_STRING` | falls back to `POSTGRES_CONNECTION_STRING` | Separate write connection for matview refreshes |
+
+### Incremental Updates
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PATHFINDER_INCREMENTAL_ENABLED` | `true` | Use incremental graph updates vs full refresh each block |
+| `PATHFINDER_FULL_REFRESH_INTERVAL_BLOCKS` | `200` | Blocks between full DB refreshes (drift correction) |

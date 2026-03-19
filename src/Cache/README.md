@@ -354,6 +354,122 @@ Content-Type: application/json
 
 **Limits:** Max 100 CIDs per request
 
+### Token Endpoints
+
+#### Get Token Info
+
+Get metadata for a token address (type, version, owner, flags).
+
+```bash
+GET /api/tokens/{tokenAddress}
+
+# Example
+curl http://localhost:3001/api/tokens/0x1234567890123456789012345678901234567890
+```
+
+**Response:**
+
+```json
+{
+  "tokenAddress": "0x1234...",
+  "tokenOwner": "0x5678...",
+  "tokenType": "CrcV2_RegisterHuman",
+  "version": 2,
+  "isErc20": false,
+  "isErc1155": true,
+  "isWrapped": false,
+  "isInflationary": false,
+  "isGroup": false,
+  "lastProcessedBlock": 31234567,
+  "timestamp": 1638360000
+}
+```
+
+Returns `404` if the token is not found.
+
+#### Get Token Info Batch
+
+```bash
+POST /api/tokens/batch
+Content-Type: application/json
+
+{
+  "tokenAddresses": ["0x1234...", "0x5678..."]
+}
+```
+
+**Limits:** Max 1000 token addresses per request
+
+### Trust Endpoints
+
+#### Get Trust Relations
+
+Get trust relationships for an address from cache.
+
+```bash
+GET /api/trust/{address}?version=2
+
+# Example (all versions)
+curl http://localhost:3001/api/trust/0xde374ece6fa50e781e81aac78e811b33d16912c7
+
+# Example (V2 only)
+curl http://localhost:3001/api/trust/0xde374ece6fa50e781e81aac78e811b33d16912c7?version=2
+```
+
+**Query Parameters:**
+- `version` (optional) — Filter by Circles version (1 or 2)
+
+### Group Membership Endpoints
+
+#### Get Group Members
+
+Get all non-expired members of a group.
+
+```bash
+GET /api/groups/{groupAddress}/members
+
+# Example
+curl http://localhost:3001/api/groups/0xGroupAddress.../members
+```
+
+#### Get Member Groups
+
+Get all groups a member belongs to (non-expired only).
+
+```bash
+GET /api/groups/memberships/{memberAddress}
+
+# Example
+curl http://localhost:3001/api/groups/memberships/0xMemberAddress...
+```
+
+### Pathfinder Graph Endpoint
+
+#### Get Graph Snapshot
+
+Returns the full trust graph and balance data for the pathfinder, served directly from cache (zero SQL queries). Supports ETag-based conditional requests.
+
+```bash
+GET /api/pathfinder/graph
+
+# Full graph
+curl http://localhost:3001/api/pathfinder/graph
+
+# Selective sections
+curl http://localhost:3001/api/pathfinder/graph?include=balances,trust
+
+# Conditional request (304 if unchanged)
+curl -H 'If-None-Match: "31234567"' http://localhost:3001/api/pathfinder/graph
+```
+
+**Query Parameters:**
+- `include` (optional) — Comma-separated sections to include. Default: all sections (`balances,trust,groups,groupTrusts,consentedFlow,avatars,wrapperMappings`)
+
+**Response Headers:**
+- `ETag: "{blockNumber}"` — Use with `If-None-Match` for efficient polling
+- Returns `304 Not Modified` when graph hasn't changed
+- Returns `503 Service Unavailable` if cache warmup is not complete
+
 ### System Endpoints
 
 #### Health Check
@@ -922,24 +1038,39 @@ ENTRYPOINT ["dotnet", "Circles.Cache.Service.dll"]
 
 ### Docker Compose
 
+The cache service is defined in `docker/docker-compose.gnosis.yml`:
+
 ```yaml
-version: "3.8"
-services:
-  cache:
-    build: ./src/Cache/Circles.Cache.Service
-    ports:
-      - "3001:3001"
-    environment:
-      - POSTGRES_CONNECTION_STRING=Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
-      - POSTGRES_READONLY_CONNECTION_STRING=${POSTGRES_CONNECTION_STRING}
-      - CIRCLES_PG_NOTIFY_CHANNEL=circles_index_events
-      - ROLLBACK_CAPACITY=12
-      - MAX_CATCHUP_LAG=10
-      - PORT=3001
-    depends_on:
-      - postgres
-    restart: unless-stopped
+cache-service:
+  container_name: cache-service
+  build:
+    context: ..
+    dockerfile: docker/cache-service.Dockerfile
+  depends_on:
+    postgres-gnosis:
+      condition: service_healthy
+  restart: unless-stopped
+  expose:
+    - 3001
+  env_file:
+    - ../.env
+  environment:
+    - PORT=3001
+    - POSTGRES_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;Tcp Keepalive=true;Keepalive=300;
+    - POSTGRES_READONLY_CONNECTION_STRING=Server=postgres-gnosis;Port=5432;Database=postgres;User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Application Name=cache-service;Tcp Keepalive=true;Keepalive=300;
+    - PG_NOTIFY_CHANNEL=circles_index_events
+    - ROLLBACK_CAPACITY=12
+    - MAX_CATCHUP_LAG=100
+    - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/3001'"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 600s
 ```
+
+**Note:** The `Tcp Keepalive=true;Keepalive=300;` parameters (5 min) prevent PostgreSQL's `idle_session_timeout` (10 min) from killing the long-lived LISTEN/NOTIFY connection.
 
 ## Integration
 
@@ -967,19 +1098,9 @@ curl http://localhost:3001/api/balances/0xaddr.../total
 
 ### Using with Pathfinder
 
-The Cache Service can provide fast balance lookups for pathfinding:
+The Pathfinder can load its entire trust graph from the Cache Service instead of SQL (zero-query mode). Set `USE_CACHE_GRAPH_SOURCE=true` and `CACHE_SERVICE_URL=http://cache-service:3001` in the Pathfinder environment.
 
-```bash
-# 1. Get source address balances from cache
-curl http://localhost:3001/api/balances/0xsource.../
-
-# 2. Use pathfinder to find path
-curl -X POST http://localhost:8080/flow -d '{
-  "source": "0xsource...",
-  "sink": "0xsink...",
-  "targetFlow": "1000000000000000000"
-}'
-```
+The graph endpoint (`/api/pathfinder/graph`) serves the complete trust graph with ETag caching — the Pathfinder polls this and only re-downloads when the block number changes.
 
 ## Related Documentation
 
@@ -1008,3 +1129,9 @@ curl -X POST http://localhost:8080/flow -d '{
 | `/api/profiles/cid/batch`          | POST   | Get profile CIDs (batch)         |
 | `/api/profiles/content/{cid}`      | GET    | Get profile content by CID       |
 | `/api/profiles/content/batch`      | POST   | Get profile content (batch)      |
+| `/api/tokens/{tokenAddress}`       | GET    | Get token metadata               |
+| `/api/tokens/batch`                | POST   | Get token metadata (batch)       |
+| `/api/trust/{address}`             | GET    | Get trust relations              |
+| `/api/groups/{group}/members`      | GET    | Get group members                |
+| `/api/groups/memberships/{member}` | GET    | Get member's groups              |
+| `/api/pathfinder/graph`            | GET    | Full graph snapshot (ETag-aware) |
