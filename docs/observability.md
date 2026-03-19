@@ -1,9 +1,8 @@
 # Observability Stack
 
-> **Note**: The observability stack configuration has been migrated to the
-> [aboutcircles-infrastructure](https://github.com/aboutcircles/aboutcircles-infrastructure)
-> repository. The canonical source for Prometheus configs, Grafana dashboards, and alert rules
-> is now in `aboutcircles-infrastructure/observability/`.
+> **Note**: The observability stack configuration has been migrated to a separate private
+> infrastructure repository. The canonical source for Prometheus configs, Grafana dashboards,
+> and alert rules is maintained there.
 >
 > The Metrics Exporter (`src/Metrics/Circles.Metrics.Exporter/`) remains in this repository
 > due to its tight coupling with the Circles database schema.

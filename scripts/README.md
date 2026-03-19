@@ -638,7 +638,7 @@ Builds and runs Nethermind with the Circles Index plugin for local development.
 
 - Nethermind source code cloned to `src/nethermind/` or set `NETHERMIND_SOURCE`
 - PostgreSQL running (via Docker or locally)
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 
 **When to use:**
 
@@ -977,9 +977,9 @@ RegressionTestResults/     # Regression test results (created by rpc-regression.
 
 ## Additional Resources
 
-- [Circles Protocol Documentation](https://docs.circles.garden/)
+- [Circles Protocol Documentation](https://docs.aboutcircles.com/)
 - [Nethermind Documentation](https://docs.nethermind.io/)
-- [.NET 9 Documentation](https://docs.microsoft.com/en-us/dotnet/)
+- [.NET 10 Documentation](https://docs.microsoft.com/en-us/dotnet/)
 - [Docker Documentation](https://docs.docker.com/)
 - [NuGet Documentation](https://docs.microsoft.com/en-us/nuget/)
 

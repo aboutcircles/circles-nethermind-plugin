@@ -172,9 +172,9 @@ dotnet run
 ```
 
 Access:
-- http://localhost:5000/metrics - Prometheus metrics
-- http://localhost:5000/health - Health check
-- http://localhost:5000/ - Service info
+- http://localhost:9100/metrics - Prometheus metrics
+- http://localhost:9100/health - Health check
+- http://localhost:9100/ - Service info
 
 ### Docker
 

@@ -268,7 +268,7 @@ NETHERMIND_SOURCE=~/path/to/nethermind ./scripts/run-index.sh
 **Prerequisites:**
 - Nethermind source in `src/nethermind/` (git submodule)
 - PostgreSQL 15+ running
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - ~700GB+ disk space for blockchain data
 
 ## Configuration

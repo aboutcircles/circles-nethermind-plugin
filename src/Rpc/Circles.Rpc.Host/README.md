@@ -603,7 +603,7 @@ JSON-RPC 2.0 Response
 
 ### Prerequisites
 
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - PostgreSQL 15+ (with indexed Circles data)
 - Nethermind RPC endpoint (optional, for live mode)
 - Pathfinder service (optional, for pathfinding methods)

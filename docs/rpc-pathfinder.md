@@ -39,7 +39,7 @@ Find the maximum possible transfer from source to sink.
 **Request:**
 
 ```bash
-curl -X POST http://localhost:5000/ \
+curl -X POST http://localhost:8081/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -96,7 +96,7 @@ Calculate a path that swaps one token for another. This creates a circular path 
 **Request:**
 
 ```bash
-curl -X POST http://localhost:5000/ \
+curl -X POST http://localhost:8081/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -272,7 +272,7 @@ curl -i http://localhost:8080/snapshot -H 'If-None-Match: "31234567"'
 The snapshot is also accessible via the RPC host:
 
 ```bash
-curl -X POST http://localhost:5000/ \
+curl -X POST http://localhost:8081/ \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",

@@ -124,7 +124,7 @@ All matviews are populated on creation (no `WITH NO DATA`). This means migration
 
 #### Alertmanager Rules
 
-Defined in `aboutcircles-infrastructure/observability/prometheus/alerts/prometheus-alerts-matview.yml`:
+Alertmanager rules are defined in the infrastructure repository (not included in this repo):
 
 | Alert | Condition | Severity |
 |-------|-----------|----------|

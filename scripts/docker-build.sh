@@ -37,7 +37,7 @@ echo -e "${BLUE}Building all Docker images...${NC}\n"
 cd "$DOCKER_DIR"
 
 # Array of core images to build
-# Note: caddy Dockerfile moved to aboutcircles-infrastructure repo
+# Note: Caddy is built from a separate infrastructure repo
 # Note: test-environment image is built by circles-test-environment repo CI
 IMAGES=(
   "cache-service:cache-service.Dockerfile"
@@ -68,7 +68,7 @@ for arg in "$@"; do
       echo "  pathfinder        Build Pathfinder host (pathfinder-host.Dockerfile)"
       echo "  rpc               Build RPC host (rpc-host.Dockerfile)"
       echo ""
-      echo "Note: Caddy is built from aboutcircles-infrastructure repo"
+      echo "Note: Caddy is built from a separate infrastructure repo"
       echo "Note: Test environment image is built by circles-test-environment repo CI"
       echo ""
       echo "Platform detection:"

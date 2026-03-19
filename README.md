@@ -12,6 +12,8 @@ If you're developing the plugin, building packages, or running services locally,
 - **[Indexer](src/Index/README.md)** - Indexer service
 - **[Pathfinder](src/Pathfinder/Circles.Pathfinder/README.md)** - Pathfinding service
 - **[Rpc](src/Rpc/Circles.Rpc.Host/README.md)** - Rpc service
+- **[Cache](src/Cache/README.md)** - Cache service
+- **[Metrics Exporter](src/Metrics/Circles.Metrics.Exporter/README.md)** - Prometheus metrics exporter
 
 Quick commands for developers:
 
@@ -187,6 +189,10 @@ at the same RPC endpoint.
 - `9000/tcp` (consensus p2p)
 - `9000/udp` (consensus p2p)
 - `5054/tcp` (consensus metrics)
+- `8080/tcp` (pathfinder REST API)
+- `8080/tcp` (rpc host — mapped to 8081 locally via `run-rpc.sh`)
+- `3001/tcp` (cache service)
+- `9100/tcp` (metrics exporter)
 
 ##### Volumes
 

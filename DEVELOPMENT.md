@@ -100,9 +100,14 @@ src/
 ├── Rpc/                             # JSON-RPC (2 projects)
 │   ├── Circles.Rpc.Host/           # RPC service
 │   └── Circles.Rpc.Host.Tests/     # Tests
-└── Cache/                           # Caching layer (2 projects)
-    ├── Circles.Cache.Service/       # Cache service
-    └── Circles.Cache.Service.Tests/ # Tests
+├── Cache/                           # Caching layer (2 projects)
+│   ├── Circles.Cache.Service/       # Cache service
+│   └── Circles.Cache.Service.Tests/ # Tests
+├── Common/                          # Shared utilities (1 project + tests)
+│   ├── Circles.Common/             # Demurrage math, numeric types
+│   └── Circles.Common.Tests/       # Common utility tests
+└── Metrics/                         # Observability (1 project)
+    └── Circles.Metrics.Exporter/   # Prometheus metrics exporter
 
 docker/
 ├── Index.Dockerfile                 # Nethermind plugin
@@ -504,7 +509,7 @@ ls -la nupkgs/
 ## Additional Resources
 
 - **Full Script Documentation**: [scripts/README.md](scripts/README.md)
-- **Circles Protocol**: https://docs.circles.garden/
+- **Circles Protocol**: https://docs.aboutcircles.com/
 - **Nethermind**: https://docs.nethermind.io/
 - **.NET 10**: https://docs.microsoft.com/en-us/dotnet/
 

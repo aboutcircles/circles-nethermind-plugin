@@ -523,8 +523,7 @@ The test environment is an independent repository ([circles-test-environment](ht
 # Run locally (from circles-test-environment repo)
 cd circles-test-environment/docker && docker compose up -d --build
 
-# Deploy via Ansible (from aboutcircles-infrastructure repo)
-make deploy HOST=indexer-staging2 -e deploy_test_environment=true
+# Deployment is managed via a separate infrastructure repository
 ```
 
 ---
