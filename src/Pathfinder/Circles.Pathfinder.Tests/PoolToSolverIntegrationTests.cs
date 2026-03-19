@@ -149,25 +149,24 @@ public class PoolToSolverIntegrationTests
     public void WithWrapFalse_WrappedBalance_NoFlow()
     {
         // Without withWrap, wrapped balances should NOT create supply edges.
-        // Source has ONLY wrapped balance → no outgoing edges → solver throws.
-        Assert.Throws<InvalidOperationException>(() =>
+        // Source has ONLY wrapped balance → no outgoing edges → returns zero flow.
+        var result = RunFullPipeline(mock =>
         {
-            RunFullPipeline(mock =>
-            {
-                mock.AddRegisteredAvatar(SourceAddr);
-                mock.AddRegisteredAvatar(SinkAddr);
-                mock.AddRegisteredAvatar(TokenAddr);
-                mock.AddBalanceWei(SourceAddr, WrapperAddr, "200000000000000000000", isWrapped: true);
-                mock.AddWrapperMapping(WrapperAddr, TokenAddr);
-                mock.AddTrust(SinkAddr, TokenAddr);
-                mock.AddTrust(SinkAddr, WrapperAddr);
-            }, new FlowRequest
-            {
-                Source = SourceAddr,
-                Sink = SinkAddr,
-                WithWrap = false
-            });
+            mock.AddRegisteredAvatar(SourceAddr);
+            mock.AddRegisteredAvatar(SinkAddr);
+            mock.AddRegisteredAvatar(TokenAddr);
+            mock.AddBalanceWei(SourceAddr, WrapperAddr, "200000000000000000000", isWrapped: true);
+            mock.AddWrapperMapping(WrapperAddr, TokenAddr);
+            mock.AddTrust(SinkAddr, TokenAddr);
+            mock.AddTrust(SinkAddr, WrapperAddr);
+        }, new FlowRequest
+        {
+            Source = SourceAddr,
+            Sink = SinkAddr,
+            WithWrap = false
         });
+        Assert.That(result.MaxFlow, Is.EqualTo("0"));
+        Assert.That(result.Transfers, Is.Empty);
     }
 
     // ----------------------------------------------------------------
