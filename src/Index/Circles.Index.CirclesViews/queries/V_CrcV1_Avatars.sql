@@ -9,8 +9,10 @@
 -- token:ValueTypes.Address:true
 -- cidV0Digest:ValueTypes.Bytes:false
 
-create or replace view "V_CrcV1_Avatars" 
-    ("blockNumber", timestamp, "transactionIndex", "logIndex", 
+drop view if exists "V_CrcV1_Avatars" cascade;
+
+create or replace view "V_CrcV1_Avatars"
+    ("blockNumber", timestamp, "transactionIndex", "logIndex",
     "transactionHash", type, avatar, token, "cidV0Digest") as
 with signup as (               -- your signup / organisation append
     select  s."blockNumber",
