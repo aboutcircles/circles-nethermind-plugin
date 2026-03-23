@@ -260,7 +260,7 @@ curl http://localhost:3001/api/balances/0xde374ece6fa50e781e81aac78e811b33d16912
 
 - Balances are returned in Circles (not attoCircles)
 - V1 tokens include `tokenOwner` field (the avatar that minted the token)
-- V2 ERC1155 tokens use the token's lowercase hex address as `tokenId`
+- All V2 tokens use the token's lowercase hex address as `tokenId` (ERC1155 and ERC20 wrappers alike)
 - Empty array `[]` returned if address has no balances
 
 ---
