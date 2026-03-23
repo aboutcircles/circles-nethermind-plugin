@@ -38,6 +38,15 @@ public class LogParser(ImmutableHashSet<Address> factoryAddresses) : ILogParser
 
     public IRollbackCache[] Caches { get; } = [OfferCycles, TokenOffers, AccountWeightProviders];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.ERC20TokenOfferCycleCreated.Topic),
+        new(DatabaseSchema.ERC20TokenOfferCreated.Topic),
+        new(DatabaseSchema.NextOfferCreated.Topic),
+        new(DatabaseSchema.AccountWeightProviderCreated.Topic),
+        new(DatabaseSchema.CycleConfiguration.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         // Seed from previously indexed tables

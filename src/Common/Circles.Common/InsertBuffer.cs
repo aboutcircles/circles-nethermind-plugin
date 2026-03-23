@@ -10,5 +10,11 @@ public class InsertBuffer<T>
 
     public void Add(T item) => _currentSegment.Enqueue(item);
 
+    public void AddRange(IReadOnlyList<T> items)
+    {
+        for (int i = 0; i < items.Count; i++)
+            _currentSegment.Enqueue(items[i]);
+    }
+
     public ConcurrentQueue<T> TakeSnapshot() => Interlocked.Exchange(ref _currentSegment, new ConcurrentQueue<T>());
 }

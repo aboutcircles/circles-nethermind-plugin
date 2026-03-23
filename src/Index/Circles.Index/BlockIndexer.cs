@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
 using Circles.Common;
 using Nethermind.Blockchain;
@@ -63,6 +64,124 @@ public class ImportFlow(
     private long _totalBlocksWithMissingReceipts = 0;
     private long _totalBlocksWithReceipts = 0;
 
+    // Combined set of all cache-writing topics from all parsers (built once, reused per block)
+    private HashSet<Hash256>? _cacheWritingTopics;
+
+    private HashSet<Hash256> GetCacheWritingTopics()
+    {
+        if (_cacheWritingTopics != null) return _cacheWritingTopics;
+        _cacheWritingTopics = new HashSet<Hash256>();
+        foreach (var parser in context.LogParsers)
+        {
+            // Safety check: parsers with caches MUST declare their cache-writing topics,
+            // otherwise their cache-mutating receipts will be processed in parallel (data race).
+            if (parser.Caches.Length > 0 && parser.CacheWritingTopics.Count == 0)
+            {
+                context.Logger.Warn(
+                    $"{parser.GetType().Name} has {parser.Caches.Length} cache(s) but declares no CacheWritingTopics " +
+                    $"— cache writes may race with parallel parsing!");
+            }
+
+            foreach (var topic in parser.CacheWritingTopics)
+                _cacheWritingTopics.Add(topic);
+        }
+        return _cacheWritingTopics;
+    }
+
+    /// <summary>
+    /// Checks if a receipt contains any log that could trigger a cache write.
+    /// </summary>
+    private bool ReceiptHasCacheWritingLogs(TxReceipt receipt, HashSet<Hash256> cacheTopics)
+    {
+        if (receipt.Logs == null || cacheTopics.Count == 0) return false;
+        for (int i = 0; i < receipt.Logs.Length; i++)
+        {
+            var log = receipt.Logs[i];
+            if (log.Topics.Length > 0 && cacheTopics.Contains(log.Topics[0]))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Parse all logs and transactions for a single receipt, returning the collected events.
+    /// </summary>
+    private List<IIndexEvent> ParseReceipt(
+        BlockWithReceipts blockWithReceipts,
+        TxReceipt receipt,
+        Transaction transaction,
+        int transactionIndex)
+    {
+        var blockNum = blockWithReceipts.Block.Number;
+        var parserToEvents = new Dictionary<ILogParser, List<IIndexEvent>>(context.LogParsers.Length);
+        foreach (var parser in context.LogParsers)
+            parserToEvents[parser] = new List<IIndexEvent>();
+
+        // 1) Parse logs
+        if (receipt.Logs != null)
+        {
+            for (int logIndex = 0; logIndex < receipt.Logs.Length; logIndex++)
+            {
+                var logEntry = receipt.Logs[logIndex];
+                foreach (var parser in context.LogParsers)
+                {
+                    try
+                    {
+                        var parsedLogEvents = parser.ParseLog(
+                            blockWithReceipts.Block, transaction, receipt, logEntry, logIndex);
+                        parserToEvents[parser].AddRange(parsedLogEvents);
+                    }
+                    catch (Exception e)
+                    {
+                        context.Logger.Error($"Error parsing log at block {blockNum:N0}, tx {receipt.TxHash}, log {logIndex}: {e.Message}");
+                        throw;
+                    }
+                }
+            }
+        }
+
+        // 2) ParseTransaction for each parser
+        foreach (var parser in context.LogParsers)
+        {
+            try
+            {
+                var parserName = parser.GetType().Name;
+                var eventCount = parserToEvents[parser].Count;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                using var watchdog = new Timer(_ =>
+                {
+                    context.Logger.Warn(
+                        $"SLOW: {parserName}.ParseTransaction running for {sw.Elapsed.TotalSeconds:F1}s " +
+                        $"on block {blockNum:N0}, tx {receipt.TxHash}, {eventCount} events");
+                }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
+
+                var txEvents = parser.ParseTransaction(
+                    blockWithReceipts.Block, transactionIndex, transaction, receipt, parserToEvents[parser]);
+
+                sw.Stop();
+                if (sw.Elapsed.TotalSeconds > 1)
+                {
+                    context.Logger.Warn(
+                        $"{parserName}.ParseTransaction took {sw.Elapsed.TotalSeconds:F2}s " +
+                        $"on block {blockNum:N0}, tx {receipt.TxHash}, {eventCount} events");
+                }
+
+                parserToEvents[parser].AddRange(txEvents);
+            }
+            catch (Exception e)
+            {
+                context.Logger.Error($"Error in {parser.GetType().Name}.ParseTransaction at block {blockNum:N0}, tx {receipt.TxHash}: {e.Message}");
+                throw;
+            }
+        }
+
+        // 3) Combine events from all parsers
+        var events = new List<IIndexEvent>();
+        foreach (var kvp in parserToEvents)
+            events.AddRange(kvp.Value);
+        return events;
+    }
+
     private ExecutionDataflowBlockOptions CreateOptions(
         CancellationToken cancellationToken
         , int boundedCapacity = -1
@@ -79,15 +198,20 @@ public class ImportFlow(
     private async Task Sink((BlockWithReceipts, IEnumerable<IIndexEvent>) data)
     {
         Dictionary<string, int> eventCounts = new();
-        var allEvents = data.Item2.ToList();
+        var allEvents = data.Item2 as IReadOnlyList<IIndexEvent> ?? data.Item2.ToList();
 
+        // Build event counts and collect boxed events for bulk enqueue
+        var boxedEvents = new List<object>(allEvents.Count);
         foreach (var indexEvent in allEvents)
         {
-            await context.Sink.AddEvent(indexEvent);
+            boxedEvents.Add(indexEvent);
             var tableName = context.Database.Schema.EventDtoTableMap.Map[indexEvent.GetType()];
             var tableNameString = $"{tableName.Namespace}_{tableName.Table}";
             eventCounts[tableNameString] = eventCounts.GetValueOrDefault(tableNameString) + 1;
         }
+
+        // Bulk enqueue — single buffer-length check instead of N
+        await context.Sink.AddEvents(boxedEvents);
 
         var block = data.Item1.Block;
         await AddBlock(new BlockWithEventCounts(
@@ -110,7 +234,7 @@ public class ImportFlow(
                 }
                 return block;
             },
-            CreateOptions(cancellationToken, 3, 3));
+            CreateOptions(cancellationToken, Environment.ProcessorCount, Environment.ProcessorCount));
 
         TransformBlock<Block, BlockWithReceipts> receiptsSourceBlock =
             new(block =>
@@ -169,7 +293,6 @@ public class ImportFlow(
         TransformBlock<BlockWithReceipts, (BlockWithReceipts, IEnumerable<IIndexEvent>)> parserBlock = new(
             blockWithReceipts =>
             {
-                var blockNum = blockWithReceipts.Block.Number;
                 Dictionary<Hash256, Transaction> transactionsByHash = new();
                 Dictionary<Hash256, int> transactionIndexByHash = new();
 
@@ -183,104 +306,71 @@ public class ImportFlow(
                     transactionIndexByHash[tx.Hash] = i;
                 }
 
-                // We'll collect final events for the entire block in 'allEvents'
-                List<IIndexEvent> allEvents = new();
+                // Build receipt work items with their original indices for ordered merging
+                var cacheTopics = GetCacheWritingTopics();
+                var unsafeReceipts = new List<(int Index, TxReceipt Receipt, Transaction Tx, int TxIndex)>();
+                var safeReceipts = new List<(int Index, TxReceipt Receipt, Transaction Tx, int TxIndex)>();
 
-                // Go through every receipt (which belongs to a transaction).
+                int receiptIdx = 0;
                 foreach (var receipt in blockWithReceipts.Receipts)
                 {
                     var txHash = receipt.TxHash;
                     if (txHash == null || !transactionsByHash.TryGetValue(txHash, out var transaction))
+                    {
+                        receiptIdx++;
                         continue;
-
-                    var transactionIndex = transactionIndexByHash[txHash];
-
-                    // A dictionary mapping each parser -> the events it produced from logs
-                    var parserToEvents = new Dictionary<ILogParser, List<IIndexEvent>>(context.LogParsers.Length);
-                    foreach (var parser in context.LogParsers)
-                    {
-                        parserToEvents[parser] = new List<IIndexEvent>();
                     }
 
-                    // 1) Parse logs with each parser; each parser only stores in its own list
-                    if (receipt.Logs != null)
-                    {
-                        for (int logIndex = 0; logIndex < receipt.Logs.Length; logIndex++)
-                        {
-                            var logEntry = receipt.Logs[logIndex];
-                            foreach (var parser in context.LogParsers)
-                            {
-                                try
-                                {
-                                    var parsedLogEvents = parser.ParseLog(
-                                        blockWithReceipts.Block,
-                                        transaction,
-                                        receipt,
-                                        logEntry,
-                                        logIndex);
+                    var txIndex = transactionIndexByHash[txHash];
+                    var item = (receiptIdx, receipt, transaction, txIndex);
 
-                                    parserToEvents[parser].AddRange(parsedLogEvents);
-                                }
-                                catch (Exception e)
-                                {
-                                    context.Logger.Error($"Error parsing log at block {blockNum:N0}, tx {receipt.TxHash}, log {logIndex}: {e.Message}");
-                                    throw;
-                                }
-                            }
-                        }
-                    }
+                    if (ReceiptHasCacheWritingLogs(receipt, cacheTopics))
+                        unsafeReceipts.Add(item);
+                    else
+                        safeReceipts.Add(item);
 
-                    // 2) For each parser, call ParseTransaction with the events from that parser only
-                    foreach (var parser in context.LogParsers)
-                    {
-                        try
-                        {
-                            // Watchdog: log warning if ParseTransaction takes too long
-                            var parserName = parser.GetType().Name;
-                            var eventCount = parserToEvents[parser].Count;
-                            var sw = System.Diagnostics.Stopwatch.StartNew();
-                            using var watchdog = new Timer(_ =>
-                            {
-                                context.Logger.Warn(
-                                    $"SLOW: {parserName}.ParseTransaction running for {sw.Elapsed.TotalSeconds:F1}s " +
-                                    $"on block {blockNum:N0}, tx {receipt.TxHash}, {eventCount} events");
-                            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
-
-                            var txEvents = parser.ParseTransaction(
-                                blockWithReceipts.Block,
-                                transactionIndex,
-                                transaction,
-                                receipt,
-                                parserToEvents[parser]);
-
-                            sw.Stop();
-                            if (sw.Elapsed.TotalSeconds > 1)
-                            {
-                                context.Logger.Warn(
-                                    $"{parserName}.ParseTransaction took {sw.Elapsed.TotalSeconds:F2}s " +
-                                    $"on block {blockNum:N0}, tx {receipt.TxHash}, {eventCount} events");
-                            }
-
-                            // Add these newly derived events to that parser's list
-                            parserToEvents[parser].AddRange(txEvents);
-                        }
-                        catch (Exception e)
-                        {
-                            context.Logger.Error($"Error in {parser.GetType().Name}.ParseTransaction at block {blockNum:N0}, tx {receipt.TxHash}: {e.Message}");
-                            throw;
-                        }
-                    }
-
-                    // 3) Combine everything from parserToEvents into our final block-level list
-                    foreach (var kvp in parserToEvents)
-                    {
-                        allEvents.AddRange(kvp.Value);
-                    }
+                    receiptIdx++;
                 }
 
-                return (blockWithReceipts, allEvents);
+                // Allocate result slots indexed by receipt position for ordered merging
+                var totalReceipts = receiptIdx;
+                var eventsByReceipt = new List<IIndexEvent>[totalReceipts];
+
+                // 1) Process unsafe receipts sequentially (cache writes must be ordered)
+                foreach (var (idx, receipt, tx, txIdx) in unsafeReceipts)
+                {
+                    eventsByReceipt[idx] = ParseReceipt(blockWithReceipts, receipt, tx, txIdx);
+                }
+
+                // Ensure cache writes from sequential phase are visible to parallel threads.
+                // Required because BulkMode bypasses locks — Dictionary writes on the calling
+                // thread need a memory barrier before pool threads read from the same Dictionary.
+                if (unsafeReceipts.Count > 0 && safeReceipts.Count > 0)
+                    Thread.MemoryBarrier();
+
+                // 2) Process safe receipts in parallel (no cache mutations)
+                if (safeReceipts.Count > 0)
+                {
+                    Parallel.ForEach(safeReceipts,
+                        new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                        item =>
+                        {
+                            var events = ParseReceipt(blockWithReceipts, item.Receipt, item.Tx, item.TxIndex);
+                            eventsByReceipt[item.Index] = events;
+                        });
+                }
+
+                // 3) Merge events in original receipt order
+                var allEvents = new List<IIndexEvent>();
+                for (int i = 0; i < totalReceipts; i++)
+                {
+                    if (eventsByReceipt[i] != null)
+                        allEvents.AddRange(eventsByReceipt[i]);
+                }
+
+                return (blockWithReceipts, (IEnumerable<IIndexEvent>)allEvents);
             },
-            CreateOptions(cancellationToken, 1, 1));
+            CreateOptions(cancellationToken, Environment.ProcessorCount * 2, 1));
 
 
         receiptsSourceBlock.LinkTo(parserBlock, new DataflowLinkOptions { PropagateCompletion = true });

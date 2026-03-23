@@ -17,6 +17,11 @@ public class LogParser(Address deployerAddress) : ILogParser
     public static readonly RollbackCache<Address, object?> BaseGroupsCreated = new("BaseGroupsCreated");
     public IRollbackCache[] Caches { get; } = [BaseGroupsCreated];
 
+    public IReadOnlySet<Hash256> CacheWritingTopics { get; } = new HashSet<Hash256>
+    {
+        new(DatabaseSchema.BaseGroupCreated.Topic)
+    };
+
     public Task InitCaches(InterfaceLogger logger, IDatabase database, Settings settings)
     {
         if (settings.BaseGroupDeployer != null)
