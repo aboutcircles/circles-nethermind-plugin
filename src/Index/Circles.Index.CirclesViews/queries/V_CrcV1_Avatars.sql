@@ -6,6 +6,7 @@
 -- transactionHash:ValueTypes.String:true
 -- type:ValueTypes.String:true
 -- avatar:ValueTypes.Address:true
+-- user:ValueTypes.Address:true
 -- token:ValueTypes.Address:true
 -- cidV0Digest:ValueTypes.Bytes:false
 
@@ -13,7 +14,7 @@ drop view if exists "V_CrcV1_Avatars" cascade;
 
 create or replace view "V_CrcV1_Avatars"
     ("blockNumber", timestamp, "transactionIndex", "logIndex",
-    "transactionHash", type, avatar, token, "cidV0Digest") as
+    "transactionHash", type, avatar, "user", token, "cidV0Digest") as
 with signup as (               -- your signup / organisation append
     select  s."blockNumber",
             s."timestamp",
@@ -22,6 +23,7 @@ with signup as (               -- your signup / organisation append
             s."transactionHash",
             s.type,
             s.avatar,
+            s.avatar as "user",
             s.token
     from   (
                select 'CrcV1_Signup'               as type,
