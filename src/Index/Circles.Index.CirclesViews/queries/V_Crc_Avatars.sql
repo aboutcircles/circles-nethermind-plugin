@@ -38,7 +38,7 @@ SELECT "V_CrcV1_Avatars"."blockNumber",
        1                        AS version,
        "V_CrcV1_Avatars".type,
        NULL::text               AS "invitedBy",
-       "V_CrcV1_Avatars"."user" AS avatar,
+       "V_CrcV1_Avatars".avatar,
        "V_CrcV1_Avatars".token  AS "tokenId",
        NULL::text               AS name,
        "cidV0Digest"            AS "cidV0Digest"

@@ -428,7 +428,7 @@ public partial class CirclesRpcModule
             }
 
             var tokenId = token.IsErc1155
-                ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
+                ? token.TokenAddress.ToLowerInvariant()
                 : token.TokenAddress;
 
             tokenBalances.Add(new CirclesTokenBalance(
@@ -552,7 +552,7 @@ public partial class CirclesRpcModule
             }
 
             var tokenId = token.IsErc1155
-                ? AddressToTokenIdBigInt(token.TokenAddress).ToString(CultureInfo.InvariantCulture)
+                ? token.TokenAddress.ToLowerInvariant()
                 : token.TokenAddress;
 
             return new CirclesTokenBalance(

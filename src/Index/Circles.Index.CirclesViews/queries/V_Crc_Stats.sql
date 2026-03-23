@@ -3,14 +3,14 @@
 -- value:ValueTypes.Int:false
 
 create or replace view "V_Crc_Stats"("measure", "value") as
-select 'avatar_count_v1' as measure, count("user") as value
+select 'avatar_count_v1' as measure, count(avatar) as value
 from "V_CrcV1_Avatars"
 union all
-select 'organization_count_v1' as measure, count("user") as value
+select 'organization_count_v1' as measure, count(avatar) as value
 from "V_CrcV1_Avatars"
 where token is null
 union all
-select 'human_count_v1' as measure, count("user") as value
+select 'human_count_v1' as measure, count(avatar) as value
 from "V_CrcV1_Avatars"
 where token is not null
 union all
