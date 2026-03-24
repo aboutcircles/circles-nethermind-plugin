@@ -365,22 +365,49 @@ public class ImportFlow(
         }
         catch (AggregateException ae)
         {
-            // Log and rethrow - the actual exception from the pipeline
-            foreach (var ex in ae.Flatten().InnerExceptions)
+            // Transient sync errors (missing blocks/receipts) are expected during
+            // Nethermind sync and handled by StateMachine with unlimited retries + backoff.
+            // Log them at Info to avoid alarming operators; genuine errors stay at Error.
+            var inners = ae.Flatten().InnerExceptions;
+            bool allTransient = inners.Count > 0 && inners.All(ex =>
+                ex is BlockNotAvailableException || ex is ReceiptsNotAvailableException);
+
+            if (allTransient)
             {
-                context.Logger.Error($"Pipeline error: {ex.Message}");
+                foreach (var ex in inners)
+                {
+                    context.Logger.Info($"Pipeline: {ex.Message}");
+                }
             }
+            else
+            {
+                foreach (var ex in inners)
+                {
+                    context.Logger.Error($"Pipeline error: {ex.Message}", ex);
+                }
+            }
+
             throw;
         }
 
-        // Also check if source block faulted (might not propagate to sink)
+        // Source block faults may not propagate to the sink (TPL Dataflow quirk).
+        // Same transient-vs-error classification: BlockNotAvailableException /
+        // ReceiptsNotAvailableException are logged at Info, everything else at Error.
         if (sourceBlock.Completion.IsFaulted)
         {
             var sourceEx = sourceBlock.Completion.Exception;
             if (sourceEx != null)
             {
-                context.Logger.Error($"Source block faulted: {sourceEx.Flatten().Message}");
-                throw sourceEx.Flatten();
+                var flat = sourceEx.Flatten();
+                bool allTransient = flat.InnerExceptions.Count > 0 && flat.InnerExceptions.All(ex =>
+                    ex is BlockNotAvailableException || ex is ReceiptsNotAvailableException);
+
+                if (allTransient)
+                    context.Logger.Info($"Source block waiting for sync: {flat.Message}");
+                else
+                    context.Logger.Error($"Source block faulted: {flat.Message}", flat);
+
+                throw flat;
             }
         }
 
