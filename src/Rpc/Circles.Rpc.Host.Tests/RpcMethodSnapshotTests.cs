@@ -287,6 +287,17 @@ public class RpcMethodSnapshotTests
         Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
     }
 
+    [Test]
+    public async Task GetEventsPaginated_WithAddressFilter_ReturnsPagedResponse()
+    {
+        var result = await CallRpc("circles_events_paginated", KnownV2Human, null, null, null, null, false);
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Object));
+        Assert.That(result.TryGetProperty("events", out var events), Is.True);
+        Assert.That(events.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(result.TryGetProperty("hasMore", out _), Is.True);
+        Assert.That(result.TryGetProperty("nextCursor", out _), Is.True);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Profile queries
     // ═══════════════════════════════════════════════════════════════════════

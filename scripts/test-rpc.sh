@@ -925,6 +925,8 @@ run_test_json "query" "circles_paginated_query (CrcV2_TransferSingle)" '{
 
 run_test "events" "circles_events (basic)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38001000,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "events" "circles_events (sort ascending)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,38000000,38001000,[\"CrcV1_Trust\"],null,true]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events_paginated (basic)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events_paginated\",\"params\":[null,38000000,38001000,[\"CrcV1_Trust\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "events" "circles_events_paginated (with limit)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events_paginated\",\"params\":[null,38000000,38001000,[\"CrcV1_Trust\"],null,false,10]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 if [[ ${#EVENT_TABLE_NAMES[@]} -gt 0 ]]; then
     if [[ "$OUTPUT_MODE" != "json" ]]; then

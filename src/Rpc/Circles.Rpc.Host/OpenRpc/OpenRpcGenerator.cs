@@ -137,8 +137,12 @@ public static class OpenRpcGenerator
 
         // ── Events & Query ───────────────────────────────────────────────────
         ("circles_events", "GetEvents", "Events",
-            "Query indexed blockchain events with filters",
-            "Returns Circles protocol events (trust changes, transfers, registrations, group operations, etc.) with flexible filtering. Supports address filtering, block range, event type filtering, and advanced filter predicates for complex queries.\n\n**Common use case**: Real-time feed of protocol activity, or monitoring specific addresses for trust/transfer events.\n\n**Event types include**: CrcV1_Trust, CrcV1_Transfer, CrcV2_Trust, CrcV2_TransferSingle, CrcV2_TransferBatch, CrcV2_RegisterHuman, CrcV2_RegisterGroup, CrcV2_RegisterOrganization, and many more.\n\n**Params used together**:\n- `address` + `eventTypes`: Monitor specific events for an address\n- `fromBlock` + `toBlock`: Time-range queries\n- `filterPredicates`: Advanced SQL-like filtering (see FilterPredicateDto schema)\n- `sortAscending` + `limit` + `cursor`: Pagination control"),
+            "Query indexed blockchain events (flat array, backwards compatible)",
+            "Returns Circles protocol events as a **plain JSON array** for backwards compatibility with existing consumers. Same parameters and filtering as `circles_events_paginated` but without pagination metadata.\n\n**For paginated results**, use `circles_events_paginated` which returns `{events, hasMore, nextCursor}`.\n\n**Event types include**: CrcV1_Trust, CrcV1_Transfer, CrcV2_Trust, CrcV2_TransferSingle, CrcV2_TransferBatch, CrcV2_RegisterHuman, CrcV2_RegisterGroup, CrcV2_RegisterOrganization, and many more."),
+
+        ("circles_events_paginated", "GetEvents", "Events",
+            "Query indexed blockchain events with cursor pagination",
+            "Returns Circles protocol events with cursor-based pagination. Response includes `{events, hasMore, nextCursor}` for iterating through large result sets.\n\n**Parameters**: Same as `circles_events`.\n\n**Params used together**:\n- `address` + `eventTypes`: Monitor specific events for an address\n- `fromBlock` + `toBlock`: Time-range queries\n- `filterPredicates`: Advanced SQL-like filtering (see FilterPredicateDto schema)\n- `sortAscending` + `limit` + `cursor`: Pagination control"),
 
         ("circles_query", "Query", "Query",
             "Execute a structured database query (non-paginated)",
@@ -319,6 +323,26 @@ public static class OpenRpcGenerator
                 "Filter by protocol version: 1 = V1 only, 2 = V2 only, null/omit = both versions. V1 and V2 trust graphs are independent.")
         ],
         ["circles_events"] =
+        [
+            Param("address", false, "string",
+                "Filter events by this address (as sender, receiver, or involved party). Null = all addresses. Case-insensitive.",
+                pattern: AddrPattern),
+            Param("fromBlock", false, "integer",
+                "Starting block number (inclusive). Combine with toBlock for time-range queries. Gnosis Chain produces ~1 block per 5 seconds."),
+            Param("toBlock", false, "integer",
+                "Ending block number (inclusive). Null = up to the latest indexed block."),
+            ParamArray("eventTypes", false, "string",
+                "Filter by event types. Examples: ['CrcV2_TransferSingle','CrcV2_Trust'], ['CrcV1_Transfer'], ['CrcV2_RegisterHuman']. Null = all event types. Use circles_tables to discover all event types."),
+            ParamRef("filterPredicates", false, "FilterPredicateDto",
+                "Advanced filter predicates for SQL-like filtering. Supports AND/OR conjunctions, column-level filters with operators (equals, greaterThan, lessThan, like, in). See FilterPredicateDto schema."),
+            Param("sortAscending", false, "boolean",
+                "Sort order by block number. Default: false (newest first). Set true for chronological order."),
+            Param("limit", false, "integer",
+                "Maximum events to return per page. Default: 100, maximum: 1000."),
+            Param("cursor", false, "string",
+                "Opaque cursor from a previous response's nextCursor field for pagination. Do not construct manually.")
+        ],
+        ["circles_events_paginated"] =
         [
             Param("address", false, "string",
                 "Filter events by this address (as sender, receiver, or involved party). Null = all addresses. Case-insensitive.",
@@ -727,6 +751,33 @@ public static class OpenRpcGenerator
                     new() { Name = "fromBlock", Value = 35000000 },
                     new() { Name = "toBlock", Value = 35100000 },
                     new() { Name = "eventTypes", Value = new[] { "CrcV2_RegisterHuman" } },
+                ],
+            }
+        ],
+        ["circles_events_paginated"] =
+        [
+            new()
+            {
+                Name = "Recent transfers for an address (paginated)",
+                Description = "Get the 50 most recent V2 transfers involving an address with pagination metadata",
+                Params =
+                [
+                    new() { Name = "address", Value = ExampleAddr1 },
+                    new() { Name = "eventTypes", Value = new[] { "CrcV2_TransferSingle" } },
+                    new() { Name = "sortAscending", Value = false },
+                    new() { Name = "limit", Value = 50 },
+                ],
+            },
+            new()
+            {
+                Name = "Paginate through registrations",
+                Description = "Iterate through V2 human registrations with cursor-based pagination",
+                Params =
+                [
+                    new() { Name = "fromBlock", Value = 35000000 },
+                    new() { Name = "toBlock", Value = 35100000 },
+                    new() { Name = "eventTypes", Value = new[] { "CrcV2_RegisterHuman" } },
+                    new() { Name = "limit", Value = 100 },
                 ],
             }
         ],
@@ -1571,6 +1622,12 @@ public static class OpenRpcGenerator
 
     private static readonly Dictionary<string, JsonSchemaObject> ResultOverrides = new()
     {
+        ["circles_events"] = new JsonSchemaObject
+        {
+            Type = "array",
+            Description = "Flat array of event objects. Each element has blockNumber, transactionHash, logIndex, event (type name), and payload. For paginated results with hasMore/nextCursor, use circles_events_paginated.",
+            Items = new JsonSchemaObject { Type = "object" }
+        },
         ["circlesV2_findPath"] = new JsonSchemaObject
         {
             Ref = "#/components/schemas/MaxFlowResponse"

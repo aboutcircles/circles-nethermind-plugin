@@ -40,6 +40,7 @@ Complete reference for all Circles JSON-RPC methods.
     - [circles\_getGroupMemberships](#circles_getgroupmemberships)
   - [Event \& Query Methods](#event--query-methods)
     - [circles\_events](#circles_events)
+    - [circles\_events\_paginated](#circles_events_paginated)
     - [circles\_query](#circles_query)
     - [circles\_tables](#circles_tables)
   - [Transaction History](#transaction-history)
@@ -1474,7 +1475,7 @@ curl -X POST http://localhost:8081 \
 
 ### circles_events
 
-Query all events that involve a specific address. Returns paginated results with cursor-based navigation.
+Query all events that involve a specific address. Returns a **flat array** of events for backwards compatibility. For paginated results with `hasMore`/`nextCursor`, use [`circles_events_paginated`](#circles_events_paginated).
 
 **Signature:** `circles_events(address, fromBlock, toBlock?, eventTypes?, filterPredicates?, sortAscending?, limit?, cursor?)`
 
@@ -1608,6 +1609,43 @@ curl -X POST http://localhost:8081 \
 - `Like`, `ILike`, `NotLike`
 - `In`, `NotIn`
 - `IsNull`, `IsNotNull`
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "event": "CrcV1_Trust",
+      "values": {
+        "blockNumber": 30282299,
+        "timestamp": 1715978910,
+        "transactionIndex": 0,
+        "logIndex": 2,
+        "transactionHash": "0x9d5e2ac..."
+      }
+    }
+  ],
+  "id": 1
+}
+```
+
+**Response Fields:**
+
+- `result`: Flat array of event objects (no pagination wrapper)
+
+> **Note:** For paginated results with `hasMore`/`nextCursor`, use `circles_events_paginated`.
+
+---
+
+### circles_events_paginated
+
+Same as `circles_events` but returns paginated results with cursor-based navigation.
+
+**Signature:** `circles_events_paginated(address, fromBlock, toBlock?, eventTypes?, filterPredicates?, sortAscending?, limit?, cursor?)`
+
+**Parameters:** Same as [`circles_events`](#circles_events).
 
 **Response:**
 
@@ -1922,7 +1960,7 @@ curl -X POST ... -d '{"params": ["0x...", 50, "MzY1MDAwMDA6MTA6Mw=="]}'
 **Cursor Formats:**
 
 - Most methods: Base64 encoded `blockNumber:transactionIndex:logIndex`
-- `circles_events`: Base64 encoded `blockNumber:transactionIndex:logIndex`
+- `circles_events` / `circles_events_paginated`: Base64 encoded `blockNumber:transactionIndex:logIndex`
 - `circles_getTransactionHistory`: Base64 encoded `blockNumber:transactionIndex:logIndex:batchIndex`
 - `circles_getTokenHolders`: Raw account address string
 
