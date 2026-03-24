@@ -65,6 +65,12 @@ public class StateMachine(
     // so subscribers know sync is complete and they can start warming up.
     private bool _hasSentLiveNotification;
 
+    // pg_notify failure tracking — escalate logging if notifications are persistently broken
+    // (cache service would serve stale data without them).
+    private int _consecutiveNotifyFailures;
+    private const int NotifyFailureWarnThreshold = 3;
+    private const int NotifyFailureErrorThreshold = 10;
+
     public async Task HandleEvent(IEvent e)
     {
         try
@@ -486,7 +492,7 @@ public class StateMachine(
             await context.Sink.Flush();
             await flow.FlushBlocks();
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             context.Logger.Info("Cancelled indexing blocks.");
         }
@@ -519,10 +525,36 @@ public class StateMachine(
 
             await command.ExecuteNonQueryAsync(cancellationToken);
             context.Logger.Debug($"Sent {context.Settings.PgNotifyChannel} notification for blocks {range.Min}-{range.Max}.");
+
+            if (_consecutiveNotifyFailures > 0)
+            {
+                context.Logger.Info($"pg_notify recovered after {_consecutiveNotifyFailures} consecutive failure(s).");
+                _consecutiveNotifyFailures = 0;
+            }
         }
         catch (Exception ex)
         {
-            context.Logger.Error($"Failed to send {context.Settings.PgNotifyChannel} notification for blocks {range.Min}-{range.Max}: {ex.Message}");
+            _consecutiveNotifyFailures++;
+
+            if (_consecutiveNotifyFailures >= NotifyFailureErrorThreshold)
+            {
+                // Persistent failure — cache service is likely serving stale data
+                context.Logger.Error(
+                    $"pg_notify has failed {_consecutiveNotifyFailures} consecutive times! " +
+                    $"Cache subscribers may be stale. Latest: {ex.Message}");
+            }
+            else if (_consecutiveNotifyFailures >= NotifyFailureWarnThreshold)
+            {
+                context.Logger.Warn(
+                    $"pg_notify failed {_consecutiveNotifyFailures} consecutive times for blocks " +
+                    $"{range.Min}-{range.Max}: {ex.Message}");
+            }
+            else
+            {
+                context.Logger.Error(
+                    $"Failed to send {context.Settings.PgNotifyChannel} notification for blocks " +
+                    $"{range.Min}-{range.Max}: {ex.Message}");
+            }
         }
     }
 
