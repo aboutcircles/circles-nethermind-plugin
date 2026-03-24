@@ -83,6 +83,9 @@ CATEGORY_KEYS=(
     "query"
     "events"
     "consistency"
+    "pagination"
+    "precision"
+    "edgecases"
 )
 
 CATEGORY_LABELS=(
@@ -94,6 +97,9 @@ CATEGORY_LABELS=(
     "Query Methods"
     "Events Methods"
     "Data Consistency Tests"
+    "Pagination Deep Comparison Tests"
+    "Balance Precision Tests"
+    "Edge Case & Error Handling Tests"
 )
 
 CATEGORY_FILE_NAMES=(
@@ -105,6 +111,9 @@ CATEGORY_FILE_NAMES=(
     "06-query-methods.jsonl"
     "07-events-methods.jsonl"
     "08-consistency-tests.jsonl"
+    "09-pagination-tests.jsonl"
+    "10-precision-tests.jsonl"
+    "11-edgecase-tests.jsonl"
 )
 
 CATEGORY_COUNT=${#CATEGORY_KEYS[@]}
@@ -446,6 +455,8 @@ declare -a EVENT_TABLE_NAMES=()
 ######################################################################
 
 run_test "system" "circles_health" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_health\",\"params\":[]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "system" "rpc.discover" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"rpc.discover\",\"params\":[],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+# circles_tables MUST be last in system — its response is parsed for schema metadata below
 run_test "system" "circles_tables" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circles_tables\",\"params\":[]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 if [[ -n "$RUN_TEST_LAST_RESPONSE" ]]; then
@@ -605,6 +616,53 @@ run_test "trust" "circlesV2_findPath (quantizedMode=true, partial balance rounds
 # Test 8: Without quantizedMode but same params - compare behavior
 run_test "trust" "circlesV2_findPath (no quantizedMode, same params as test 7)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"192000000000000000000\",\"simulatedBalances\":[{\"Holder\":\"$TEST_ADDR_1\",\"Token\":\"$TOKEN_ADDR_1\",\"Amount\":\"100000000000000000000\",\"IsWrapped\":false}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
+# B. Trust Method Coverage Enhancements
+
+# B1. Verify limit=0 entries are NOT returned (revoked trusts)
+# circles_getTrustRelations should exclude trusts with limit=0
+run_test "trust" "circles_getTrustRelations (stopped avatar - revoked)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustRelations\",\"params\":[\"$STOPPED_AVATAR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Trust relations for group (groups trust members)
+run_test "trust" "circles_getTrustRelations (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustRelations\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Trust relations for organization
+run_test "trust" "circles_getTrustRelations (organization)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustRelations\",\"params\":[\"$ORG_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Trust for V1-only user
+run_test "trust" "circles_getTrustRelations (v1 user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustRelations\",\"params\":[\"$V1_USER_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# B2. Query V2 trust relations and verify no limit=0 entries appear
+run_test_json "trust" "circles_query (V_CrcV2_TrustRelations - verify no limit=0)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [{
+    "Namespace": "V_CrcV2",
+    "Table": "TrustRelations",
+    "Columns": [],
+    "Filter": [{
+      "Type": "Conjunction",
+      "ConjunctionType": "And",
+      "Predicates": [
+        {"Type": "FilterPredicate", "FilterType": "Equals", "Column": "truster", "Value": ["'"$STOPPED_AVATAR"'"]},
+        {"Type": "FilterPredicate", "FilterType": "Equals", "Column": "expiryTime", "Value": 0}
+      ]
+    }],
+    "Limit": 10
+  }]
+}'
+
+# B3. Common trust with high-activity address
+run_test "trust" "circles_getCommonTrust (high-activity pair)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_getCommonTrust\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",\"$HIGH_ACTIVITY_ADDR_2\"]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# B4. Common trust with group and user
+run_test "trust" "circles_getCommonTrust (group+user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_getCommonTrust\",\"params\":[\"$GROUP_ADDR_1\",\"$GROUPMINT_USER\"]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getAggregatedTrustRelations (non-enriched version)
+run_test "trust" "circles_getAggregatedTrustRelations (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelations\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "trust" "circles_getAggregatedTrustRelations (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelations\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "trust" "circles_getAggregatedTrustRelations (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelations\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
 ######################################################################
 # SDK Enablement Methods
 ######################################################################
@@ -688,6 +746,52 @@ run_test "sdk" "circles_getTransferData (received)" "curl -s -X POST --data '{\"
 
 run_test "sdk" "circles_getTransferData (with counterparty)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",\"sent\",\"$HIGH_ACTIVITY_ADDR_2\",null,null,10],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
+# D. New Method Smoke Tests - extended entity type coverage
+
+# circles_getAggregatedTrustRelationsEnriched - groups and orgs
+run_test "sdk" "circles_getAggregatedTrustRelationsEnriched (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelationsEnriched\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getAggregatedTrustRelationsEnriched (org)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelationsEnriched\",\"params\":[\"$ORG_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getAggregatedTrustRelationsEnriched (v1 user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelationsEnriched\",\"params\":[\"$V1_USER_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getAggregatedTrustRelationsEnriched (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelationsEnriched\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getAllInvitations - extended
+run_test "sdk" "circles_getAllInvitations (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAllInvitations\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getAllInvitations (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAllInvitations\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getProfileView - extended entity types
+run_test "sdk" "circles_getProfileView (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getProfileView (org)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$ORG_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getProfileView (v1 user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$V1_USER_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getProfileView (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getTrustNetworkSummary - extended
+run_test "sdk" "circles_getTrustNetworkSummary (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustNetworkSummary\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTrustNetworkSummary (org)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustNetworkSummary\",\"params\":[\"$ORG_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getTransactionHistoryEnriched - extended entity types
+run_test "sdk" "circles_getTransactionHistoryEnriched (group, recent)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$GROUP_ADDR_1\",30282299],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTransactionHistoryEnriched (high-activity, limited)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistoryEnriched\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",30282299,null,5],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getValidInviters - extended
+run_test "sdk" "circles_getValidInviters (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getValidInviters\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_searchProfileByAddressOrName - extended
+run_test "sdk" "circles_searchProfileByAddressOrName (by name prefix)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_searchProfileByAddressOrName\",\"params\":[\"Fruter\",5,0],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_searchProfileByAddressOrName (empty search)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_searchProfileByAddressOrName\",\"params\":[\"zzzznonexistent99999\",10,0],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# circles_getTransferData - extended
+run_test "sdk" "circles_getTransferData (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTransferData (with limit)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",null,null,null,null,5],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Invitation sub-type methods
+run_test "sdk" "circles_getTrustInvitations (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustInvitations\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getTrustInvitations (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustInvitations\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getEscrowInvitations (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getEscrowInvitations\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getAtScaleInvitations (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAtScaleInvitations\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getInvitationsFrom (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationsFrom\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getInvitationsFrom (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationsFrom\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "sdk" "circles_getInvitationsFrom (accepted only)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationsFrom\",\"params\":[\"$TEST_ADDR_1\",true],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
 ######################################################################
 # Query Methods
 ######################################################################
@@ -768,6 +872,52 @@ run_test "query" "circles_query (empty result - nonexistent avatar)" "curl -s -X
 
 # Large number tests (attocircles - 18 decimals)
 run_test "query" "circles_query (large numbers - balances with totalBalance filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_CrcV2\",\"Table\":\"BalancesByAccountAndToken\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"GreaterThan\",\"Column\":\"totalBalance\",\"Value\":\"1000000000000000000\"}],\"Limit\":5}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Group discovery and membership methods
+run_test "query" "circles_findGroups (default)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_findGroups\",\"params\":[10],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_findGroups (with name filter)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_findGroups\",\"params\":[10,{\"nameContains\":\"Circles\"}],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getGroupMembers (group1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getGroupMembers\",\"params\":[\"$GROUP_ADDR_1\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getGroupMembers (group3 Frutero)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getGroupMembers\",\"params\":[\"$GROUP_ADDR_3\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getGroupMemberships (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getGroupMemberships\",\"params\":[\"$TEST_ADDR_1\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getGroupMemberships (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getGroupMemberships\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getGroupMemberships (groupmint user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getGroupMemberships\",\"params\":[\"$GROUPMINT_USER\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Transaction history (non-enriched)
+run_test "query" "circles_getTransactionHistory (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistory\",\"params\":[\"$TEST_ADDR_1\",10],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getTransactionHistory (high-activity, limited)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistory\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\",5],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getTransactionHistory (group)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransactionHistory\",\"params\":[\"$GROUP_ADDR_1\",10],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Token holders
+run_test "query" "circles_getTokenHolders (token1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenHolders\",\"params\":[\"$TOKEN_ADDR_1\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_getTokenHolders (group token)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenHolders\",\"params\":[\"$GROUP_ADDR_1\",20],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# Paginated query (vs legacy circles_query)
+run_test_json "query" "circles_paginated_query (V_CrcV2_TrustRelations)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_paginated_query",
+  "params": [{
+    "Namespace": "V_CrcV2",
+    "Table": "TrustRelations",
+    "Columns": [],
+    "Filter": [{"Type": "FilterPredicate", "FilterType": "Equals", "Column": "truster", "Value": ["'"$TEST_ADDR_1"'"]}],
+    "Limit": 10,
+    "Order": [{"Column": "blockNumber", "SortOrder": "DESC"}]
+  }]
+}'
+run_test_json "query" "circles_paginated_query (CrcV2_TransferSingle)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_paginated_query",
+  "params": [{
+    "Namespace": "CrcV2",
+    "Table": "TransferSingle",
+    "Columns": [],
+    "Filter": [{"Type": "FilterPredicate", "FilterType": "Equals", "Column": "from", "Value": ["'"$HIGH_ACTIVITY_ADDR_1"'"]}],
+    "Limit": 5,
+    "Order": [{"Column": "blockNumber", "SortOrder": "DESC"}]
+  }]
+}'
 
 ######################################################################
 # Events Methods
@@ -1401,6 +1551,214 @@ run_test_json "consistency" "consistency: all transfer events recent (43.5M-43.5
   "method": "circles_events",
   "params": [null, 43500000, 43510000, ["CrcV1_HubTransfer", "CrcV1_Transfer", "CrcV2_TransferSingle", "CrcV2_TransferBatch", "CrcV2_Erc20WrapperTransfer"], null, false]
 }'
+
+######################################################################
+# A. Events Pagination Deep Comparison Tests
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- Pagination Deep Comparison Tests ---${NC}\n"
+fi
+
+# A1. Paginated events - page 1 with small limit (tests cursor generation)
+run_test_json "pagination" "pagination: events page1 (CrcV2_Trust, limit 10)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [null, 43500000, 43520000, ["CrcV2_Trust"], null, false]
+}'
+
+# A2. Paginated events - different event types with pagination
+run_test_json "pagination" "pagination: events page1 (CrcV2_TransferSingle, limit 10)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [null, 43580000, 43590000, ["CrcV2_TransferSingle"], null, false]
+}'
+
+# A3. Paginated events - ascending sort (tests cursor direction)
+run_test_json "pagination" "pagination: events ascending (CrcV2_Trust)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [null, 43500000, 43520000, ["CrcV2_Trust"], null, true]
+}'
+
+# A4. Paginated events - single address filter
+run_test_json "pagination" "pagination: events for address (CrcV2_TransferSingle)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": ["'"$HIGH_ACTIVITY_ADDR_1"'", 43500000, 43600000, ["CrcV2_TransferSingle"], null, false]
+}'
+
+# A5. Paginated query - V_CrcV2_TrustRelations small limit
+run_test_json "pagination" "pagination: query V_CrcV2_TrustRelations (limit 5)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [{
+    "Namespace": "V_CrcV2",
+    "Table": "TrustRelations",
+    "Columns": [],
+    "Filter": [{"Type": "FilterPredicate", "FilterType": "Equals", "Column": "truster", "Value": ["'"$TEST_ADDR_1"'"]}],
+    "Limit": 5,
+    "Order": [{"Column": "blockNumber", "SortOrder": "DESC"}]
+  }]
+}'
+
+# A6. Paginated query - larger limit for count comparison
+run_test_json "pagination" "pagination: query V_CrcV2_TrustRelations (limit 50)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [{
+    "Namespace": "V_CrcV2",
+    "Table": "TrustRelations",
+    "Columns": [],
+    "Filter": [{"Type": "FilterPredicate", "FilterType": "Equals", "Column": "truster", "Value": ["'"$TEST_ADDR_1"'"]}],
+    "Limit": 50,
+    "Order": [{"Column": "blockNumber", "SortOrder": "DESC"}]
+  }]
+}'
+
+# A7. Events for multiple types - tests combined pagination
+run_test_json "pagination" "pagination: events multi-type (registration events)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [null, 43580000, 43590000, ["CrcV2_RegisterHuman", "CrcV2_RegisterGroup", "CrcV2_RegisterOrganization"], null, false]
+}'
+
+# A8. Events - narrow block range to test small result sets
+run_test_json "pagination" "pagination: events narrow range (10 blocks)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_events",
+  "params": [null, 43580000, 43580010, ["CrcV2_TransferSingle"], null, false]
+}'
+
+######################################################################
+# C. Balance Precision Tests
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- Balance Precision Tests ---${NC}\n"
+fi
+
+# C1. Token balances - compare staticAttoCircles (should be exact match between envs)
+run_test "precision" "precision: getTokenBalances (addr1 - static values)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$TEST_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "precision" "precision: getTokenBalances (addr2 - static values)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$TEST_ADDR_2\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "precision" "precision: getTokenBalances (high-activity - static values)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# C2. Raw (non-demurraged) balance should be exact match
+run_test "precision" "precision: getTotalBalance raw (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[\"$TEST_ADDR_1\", false],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "precision" "precision: getTotalBalance raw (addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[\"$TEST_ADDR_2\", false],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "precision" "precision: getTotalBalance raw (high-activity)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[\"$HIGH_ACTIVITY_ADDR_1\", false],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# C3. V2 raw balance should be exact
+run_test "precision" "precision: V2 getTotalBalance raw (addr1)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circlesV2_getTotalBalance\",\"params\":[\"$TEST_ADDR_1\", false],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "precision" "precision: V2 getTotalBalance raw (addr2)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circlesV2_getTotalBalance\",\"params\":[\"$TEST_ADDR_2\", false],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# C4. V_CrcV2_BalancesByAccountAndToken - query static balances directly
+run_test_json "precision" "precision: V_CrcV2_BalancesByAccountAndToken (addr1)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [{
+    "Namespace": "V_CrcV2",
+    "Table": "BalancesByAccountAndToken",
+    "Columns": ["account", "tokenAddress", "tokenId", "totalBalance"],
+    "Filter": [{"Type": "FilterPredicate", "FilterType": "Equals", "Column": "account", "Value": ["'"$TEST_ADDR_1"'"]}]
+  }]
+}'
+
+run_test_json "precision" "precision: V_CrcV2_BalancesByAccountAndToken (high-activity)" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [{
+    "Namespace": "V_CrcV2",
+    "Table": "BalancesByAccountAndToken",
+    "Columns": ["account", "tokenAddress", "tokenId", "totalBalance"],
+    "Filter": [{"Type": "FilterPredicate", "FilterType": "Equals", "Column": "account", "Value": ["'"$HIGH_ACTIVITY_ADDR_1"'"]}]
+  }]
+}'
+
+# C5. Group balance (groups hold collateral)
+run_test "precision" "precision: getTokenBalances (group - collateral)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$GROUP_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# C6. Wrapper user balance
+run_test "precision" "precision: getTokenBalances (wrapper user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$WRAPPER_ADDR_1\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# E. Edge Case & Error Handling Tests
+######################################################################
+
+if [[ "$OUTPUT_MODE" != "json" ]]; then
+    echo -e "${BLUE}--- Edge Case & Error Handling Tests ---${NC}\n"
+fi
+
+# E1. Empty results - nonexistent addresses across all major methods
+ZERO_ADDR="0x0000000000000000000000000000000000000001"
+
+run_test "edgecases" "edgecase: getTotalBalance (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: V2 getTotalBalance (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circlesV2_getTotalBalance\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getTokenBalances (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getAvatarInfo (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfo\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getTrustRelations (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustRelations\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getProfileView (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getTrustNetworkSummary (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustNetworkSummary\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getAggregatedTrustRelationsEnriched (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAggregatedTrustRelationsEnriched\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getInvitationOrigin (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getInvitationOrigin\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getAllInvitations (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAllInvitations\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getTransferData (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTransferData\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getProfileByAddress (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileByAddress\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getProfileCid (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileCid\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: searchProfiles (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_searchProfiles\",\"params\":[\"$ZERO_ADDR\",10,0]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getTokenInfo (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfo\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getCommonTrust (zero+zero)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_getCommonTrust\",\"params\":[\"$ZERO_ADDR\",\"$ZERO_ADDR\"]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# E2. Error handling - invalid params
+run_test "edgecases" "edgecase: missing params" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: null address param" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[null],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: invalid address format" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfo\",\"params\":[\"not_an_address\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: short address" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfo\",\"params\":[\"0x1234\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# E3. Error handling - invalid JSON-RPC
+run_test "edgecases" "edgecase: nonexistent method" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_nonExistentMethod\",\"params\":[],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# E4. Error handling - query with invalid namespace/table
+run_test_json "edgecases" "edgecase: query invalid namespace" '{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "circles_query",
+  "params": [{
+    "Namespace": "NonExistent",
+    "Table": "FakeTable",
+    "Columns": [],
+    "Limit": 1
+  }]
+}'
+
+# E5. Batch requests - empty batch
+run_test "edgecases" "edgecase: getAvatarInfoBatch (empty array)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfoBatch\",\"params\":[[]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getTokenInfoBatch (empty array)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfoBatch\",\"params\":[[]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getProfileCidBatch (empty array)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileCidBatch\",\"params\":[[]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: getProfileByAddressBatch (empty array)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileByAddressBatch\",\"params\":[[]],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# E6. findPath edge cases
+run_test "edgecases" "edgecase: findPath source=sink (self-transfer)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_1\",\"targetFlow\":\"1000000000000000000\"}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: findPath zero target flow" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_2\",\"targetFlow\":\"0\"}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: findPath nonexistent source" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$ZERO_ADDR\",\"sink\":\"$TEST_ADDR_2\",\"targetFlow\":\"1000000000000000000\"}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: findPath nonexistent sink" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$ZERO_ADDR\",\"targetFlow\":\"1000000000000000000\"}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: findPath max uint256 target flow" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"115792089237316195423570985008687907853269984665640564039457584007913129639935\"}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: findPath maxTransfers=1" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"circlesV2_findPath\",\"params\":[{\"source\":\"$TEST_ADDR_1\",\"sink\":\"$TEST_ADDR_3\",\"targetFlow\":\"1000000000000000000\",\"maxTransfers\":1}]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+# E7. Events edge cases
+run_test "edgecases" "edgecase: events inverted block range (from > to)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43590000,43580000,[\"CrcV2_TransferSingle\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: events null event types" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43580010,null,null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "edgecases" "edgecase: events empty event types array" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43580010,[],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then
     echo -e "${BLUE}All tests completed.${NC}\n"
