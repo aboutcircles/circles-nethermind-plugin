@@ -595,12 +595,49 @@ structures_compatible() {
     return 1
 }
 
+# Function to unwrap events pagination wrapper
+# If result is {events:[...], hasMore, nextCursor}, extract just the events array
+# This handles the case where one endpoint returns wrapped and the other returns raw array
+unwrap_events_pagination() {
+    local response=$1
+    local result_type
+    result_type=$(echo "$response" | jq -r '.result | type' 2>/dev/null)
+
+    if [[ "$result_type" == "object" ]]; then
+        # Check if it has events key (pagination wrapper)
+        local has_events
+        has_events=$(echo "$response" | jq -r '.result | has("events")' 2>/dev/null)
+        if [[ "$has_events" == "true" ]]; then
+            # Replace .result with .result.events (unwrap the wrapper)
+            echo "$response" | jq -c '.result = .result.events' 2>/dev/null || echo "$response"
+            return
+        fi
+    fi
+    echo "$response"
+}
+
 # Function to compare responses with normalization and tolerance
 # Returns: exact|tolerance|empty_both|empty_a|empty_b|structure_mismatch|different
 compare_responses() {
     local resp1=$1
     local resp2=$2
     local tolerance=$3
+
+    # Pre-processing: unwrap events pagination wrapper if present
+    # This handles the case where one env returns {events:[...], hasMore, nextCursor}
+    # and the other returns [...] directly
+    local struct1_raw=$(echo "$resp1" | jq -r '.result | type' 2>/dev/null)
+    local struct2_raw=$(echo "$resp2" | jq -r '.result | type' 2>/dev/null)
+
+    if [[ "$struct1_raw" != "$struct2_raw" ]]; then
+        # Structure mismatch - try unwrapping events pagination on both sides
+        resp1=$(unwrap_events_pagination "$resp1")
+        resp2=$(unwrap_events_pagination "$resp2")
+    elif [[ "$struct1_raw" == "object" && "$struct2_raw" == "object" ]]; then
+        # Both are objects - both might have pagination wrappers, unwrap both
+        resp1=$(unwrap_events_pagination "$resp1")
+        resp2=$(unwrap_events_pagination "$resp2")
+    fi
 
     local resp1_size=${#resp1}
     local resp2_size=${#resp2}

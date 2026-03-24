@@ -6,7 +6,11 @@
     "circlesV2_getTotalBalance": 0.1,
     "circles_getTokenBalances": 0.1,
     "circlesV2_findPath": 0.1,
-    "circles_query": 0.05
+    "circles_query": 0.05,
+    "precision: getTotalBalance": 0.001,
+    "precision: V2 getTotalBalance": 0.001,
+    "precision: getTokenBalances": 0.001,
+    "precision: V_CrcV2_BalancesByAccountAndToken": 0.001
   },
   "normalizeFields": [
     "timestamp",
@@ -14,7 +18,9 @@
     "transactionIndex",
     "logIndex",
     "transactionHash",
-    "lastUpdatedAt"
+    "lastUpdatedAt",
+    "hasMore",
+    "nextCursor"
   ],
   "expectedFailures": [],
   "expectedFailureReasons": {},
@@ -26,8 +32,8 @@
   },
   "comments": {
     "defaultTolerance": "Default tolerance in percentage for numeric comparisons (0.001 = 0.001%)",
-    "methodTolerances": "Method-specific tolerances override the default. Balance methods use 0.1% tolerance to accommodate real-time inflationary calculations between environments.",
-    "normalizeFields": "Fields to remove before comparison. Includes dynamic data (timestamp, blockNumber, lastUpdatedAt) that inherently differ between systems.",
+    "methodTolerances": "Method-specific tolerances override the default. Balance methods use 0.1% for demurrage drift. Precision tests use 0.001% because they compare static/raw values that should be exact.",
+    "normalizeFields": "Fields to remove before comparison. Includes dynamic data (timestamp, blockNumber, lastUpdatedAt) and pagination metadata (hasMore, nextCursor) that inherently differ between systems.",
     "expectedFailures": "Tests that are expected to fail. These won't count as regression failures.",
     "expectedFailureReasons": "Reasons why each test is expected to fail - helps understand which failures are acceptable",
     "subscriptionTest": "Optional WebSocket subscription testing. Exits when minEvents are received OR duration seconds elapse (whichever comes first). filterAddress=null receives ALL events (recommended). Set enabled=true to test real-time subscriptions (Env A endpoint only)."
