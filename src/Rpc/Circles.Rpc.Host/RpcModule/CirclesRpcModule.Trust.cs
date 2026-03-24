@@ -51,10 +51,8 @@ public partial class CirclesRpcModule
         _logger?.LogDebug("Using database for trust relations query for {Address}", address);
 
         await using var connection = await CreateConnectionAsync();
-        // NOTE: This query intentionally includes limit=0 entries (untrusts) to match production behavior.
-        // Semantically, limit=0 means "untrusted" and arguably shouldn't be returned as a trust relation.
-        // Both this fallback and the cache warmup (CacheWarmupService.LoadTrustRelationsAsync) now include
-        // limit=0 entries for production parity. TODO: Consider filtering limit=0 in both places in future.
+        // Filter out limit=0 entries (untrusts) to match cache warmup behavior
+        // (CacheWarmupService.LoadTrustRelationsAsync also uses AND "limit" > 0)
         const string sql = @"
             select ""user"",
                    ""canSendTo"",
@@ -70,6 +68,7 @@ public partial class CirclesRpcModule
                      from ""CrcV1_Trust""
                  ) t
             where rn = 1
+              and ""limit"" > 0
               and (""user"" = @address
                or ""canSendTo"" = @address)
         ";
