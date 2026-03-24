@@ -159,8 +159,8 @@ app.MapGet("/docs", (HttpContext ctx) =>
           <h2><span class="badge badge-rest">REST</span> Marketplace API</h2>
           <p>Product catalogs, shopping carts, checkout, order fulfillment, and seller management. Supports Odoo and CodeDispenser adapters.</p>
           <div class="links">
-            <a href="/market/swagger">Swagger UI</a>
-            <a href="/market/swagger/v1/swagger.json">openapi.json</a>
+            <a href="/market/docs">Swagger UI</a>
+            <a href="/market/docs/v1/swagger.json">openapi.json</a>
           </div>
         </div>
         <div class="card">
