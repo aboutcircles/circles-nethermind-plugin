@@ -364,7 +364,14 @@ public class NetworkStateUpdaterService : BackgroundService
 
         foreach (var t in transfers)
         {
-            _balanceState!.ApplyTransfer(t.From, t.To, t.TokenAddress, t.Value, t.Timestamp);
+            _balanceState!.ApplyTransfer(
+                t.From,
+                t.To,
+                t.TokenAddress,
+                t.Value,
+                t.Timestamp,
+                t.IsWrapped,
+                t.IsStatic);
             transferCount++;
         }
 

@@ -28,6 +28,25 @@ public class InMemoryBalanceStateTests
     }
 
     [Test]
+    public void InitializeFromFullLoad_WithWrapperMetadata_PreservesFlags()
+    {
+        var state = new InMemoryBalanceState();
+        state.InitializeFromFullLoad(new[]
+        {
+            ("1000", Alice, TokenA, 100L, true, true),
+            ("2000", Bob, TokenB, 200L, true, false),
+        });
+
+        Assert.That(state.TryGet((Alice, TokenA), out var staticWrapped), Is.True);
+        Assert.That(staticWrapped.IsWrapped, Is.True);
+        Assert.That(staticWrapped.IsStatic, Is.True);
+
+        Assert.That(state.TryGet((Bob, TokenB), out var demurragedWrapped), Is.True);
+        Assert.That(demurragedWrapped.IsWrapped, Is.True);
+        Assert.That(demurragedWrapped.IsStatic, Is.False);
+    }
+
+    [Test]
     public void InitializeFromFullLoad_SkipsZeroBalances()
     {
         var state = new InMemoryBalanceState();
@@ -151,6 +170,62 @@ public class InMemoryBalanceStateTests
         Assert.That(a.Balance, Is.EqualTo(new BigInteger(100)));
         Assert.That(state.TryGet((Alice, TokenB), out var b), Is.True);
         Assert.That(b.Balance, Is.EqualTo(new BigInteger(200)));
+    }
+
+    [Test]
+    public void ApplyTransfer_NewReceiver_PreservesProvidedWrapperMetadata()
+    {
+        var state = new InMemoryBalanceState();
+
+        state.ApplyTransfer(ZeroAddr, Alice, TokenA, "100", 100L, isWrapped: true, isStatic: true);
+
+        Assert.That(state.TryGet((Alice, TokenA), out var entry), Is.True);
+        Assert.That(entry.Balance, Is.EqualTo(new BigInteger(100)));
+        Assert.That(entry.IsWrapped, Is.True);
+        Assert.That(entry.IsStatic, Is.True);
+    }
+
+    [Test]
+    public void ApplyTransfer_SameTimestamp_ReceiveThenSend_Native_PreservesExpectedFinalBalance()
+    {
+        var state = new InMemoryBalanceState();
+
+        // Canonical order within a block/window: receive first, then send.
+        state.ApplyTransfer(ZeroAddr, Alice, TokenA, "10", 100L, isWrapped: false, isStatic: false);
+        state.ApplyTransfer(Alice, Bob, TokenA, "4", 100L, isWrapped: false, isStatic: false);
+
+        Assert.That(state.TryGet((Alice, TokenA), out var aliceEntry), Is.True);
+        Assert.That(aliceEntry.Balance, Is.EqualTo(new BigInteger(6)));
+    }
+
+    [Test]
+    public void ApplyTransfer_SameTimestamp_ReceiveThenSend_WrappedDemurraged_PreservesExpectedFinalBalance()
+    {
+        var state = new InMemoryBalanceState();
+
+        // Canonical order within a block/window: receive first, then send.
+        state.ApplyTransfer(ZeroAddr, Alice, TokenA, "10", 100L, isWrapped: true, isStatic: false);
+        state.ApplyTransfer(Alice, Bob, TokenA, "4", 100L, isWrapped: true, isStatic: false);
+
+        Assert.That(state.TryGet((Alice, TokenA), out var aliceEntry), Is.True);
+        Assert.That(aliceEntry.Balance, Is.EqualTo(new BigInteger(6)));
+        Assert.That(aliceEntry.IsWrapped, Is.True);
+        Assert.That(aliceEntry.IsStatic, Is.False);
+    }
+
+    [Test]
+    public void ApplyTransfer_SameTimestamp_ReceiveThenSend_WrappedStatic_PreservesExpectedFinalBalance()
+    {
+        var state = new InMemoryBalanceState();
+
+        // Canonical order within a block/window: receive first, then send.
+        state.ApplyTransfer(ZeroAddr, Alice, TokenA, "10", 100L, isWrapped: true, isStatic: true);
+        state.ApplyTransfer(Alice, Bob, TokenA, "4", 100L, isWrapped: true, isStatic: true);
+
+        Assert.That(state.TryGet((Alice, TokenA), out var aliceEntry), Is.True);
+        Assert.That(aliceEntry.Balance, Is.EqualTo(new BigInteger(6)));
+        Assert.That(aliceEntry.IsWrapped, Is.True);
+        Assert.That(aliceEntry.IsStatic, Is.True);
     }
 
     [Test]
@@ -494,6 +569,8 @@ public class IncrementalLoadGraphTests
     private const string Bob = "0x0000000000000000000000000000000000inc002";
     private const string TokenA = "0x0000000000000000000000000000000000inc00a";
     private const string GroupAddr = "0x0000000000000000000000000000000000inc099";
+    private const string Wrapper1 = "0x0000000000000000000000000000000000inc0w1";
+    private const string Wrapper2 = "0x0000000000000000000000000000000000inc0w2";
 
     // V2 Hub epoch on gnosis mainnet (same as V1): 2020-10-15 00:00 UTC
     private const uint InflationDayZeroUnix = 1_602_720_000;
@@ -604,6 +681,29 @@ public class IncrementalLoadGraphTests
     }
 
     [Test]
+    public void LoadV2Balances_PreservesWrappedMetadata()
+    {
+        var balances = new InMemoryBalanceState();
+        balances.InitializeFromFullLoad(new[]
+        {
+            ("1000000000000000000", Alice, TokenA, (long)InflationDayZeroUnix + 100, true, true)
+        });
+
+        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"));
+        var trusts = CreateTrustState();
+
+        var targetTime = DateTimeOffset.FromUnixTimeSeconds(InflationDayZeroUnix + 100);
+        var settings = new Settings { TargetDemurrageTimestamp = targetTime };
+        var stubInner = new StubLoadGraph();
+        var incGraph = new IncrementalLoadGraph(balances, trusts, avatars, stubInner, settings, 0);
+
+        var results = incGraph.LoadV2Balances().ToList();
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].IsWrapped, Is.True);
+        Assert.That(results[0].IsStatic, Is.True);
+    }
+
+    [Test]
     public void LoadV2Trust_FiltersCorrectly()
     {
         var trusts = CreateTrustState(
@@ -629,6 +729,49 @@ public class IncrementalLoadGraphTests
         Assert.That(results[0].Truster, Is.EqualTo(Alice));
         Assert.That(results[0].Trustee, Is.EqualTo(Bob));
         Assert.That(results[0].Limit, Is.EqualTo(100));
+    }
+
+    [Test]
+    public void LoadV2Trust_IncludesWrapperDerivedTrust()
+    {
+        var trusts = CreateTrustState(
+            (Alice, Bob, 999999L, 100L, 0, 0)
+        );
+
+        var avatars = CreateAvatarState(
+            (Alice, "CrcV2_RegisterHuman"),
+            (Bob, "CrcV2_RegisterHuman"));
+
+        var balances = CreateBalanceState();
+        var settings = new Settings();
+        var stubInner = new StubLoadGraph();
+        stubInner.WrapperMappings.Add((Wrapper1, Bob));
+        stubInner.WrapperMappings.Add((Wrapper2, Bob));
+
+        var incGraph = new IncrementalLoadGraph(balances, trusts, avatars, stubInner, settings, 0);
+        var results = incGraph.LoadV2Trust().ToList();
+
+        Assert.That(results.Any(x => x.Truster == Alice && x.Trustee == Bob), Is.True);
+        Assert.That(results.Any(x => x.Truster == Alice && x.Trustee == Wrapper1), Is.True);
+        Assert.That(results.Any(x => x.Truster == Alice && x.Trustee == Wrapper2), Is.True);
+    }
+
+    [Test]
+    public void LoadRegisteredAvatars_ExcludesStoppedAvatars()
+    {
+        var avatars = CreateAvatarState(
+            (Alice, "CrcV2_RegisterHuman"),
+            (Bob, "CrcV2_RegisterHuman"));
+        avatars.MarkStopped(Bob);
+
+        var incGraph = new IncrementalLoadGraph(
+            CreateBalanceState(), CreateTrustState(), avatars,
+            new StubLoadGraph(), new Settings(), 0);
+
+        var registered = incGraph.LoadRegisteredAvatars().ToHashSet();
+
+        Assert.That(registered.Contains(Alice), Is.True);
+        Assert.That(registered.Contains(Bob), Is.False);
     }
 
     [Test]
@@ -694,6 +837,7 @@ public class IncrementalLoadGraphTests
         public List<string> Groups { get; } = new();
         public List<(string GroupAddress, string TrustedToken)> GroupTrustEntries { get; } = new();
         public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; } = new();
+        public List<(string WrapperAddress, string UnderlyingAvatar)> WrapperMappings { get; } = new();
 
         public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
             LoadV2Balances() => Enumerable.Empty<(string, int, int, bool, bool)>();
@@ -708,6 +852,6 @@ public class IncrementalLoadGraphTests
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
         public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-            => Array.Empty<(string, string)>();
+            => WrapperMappings;
     }
 }

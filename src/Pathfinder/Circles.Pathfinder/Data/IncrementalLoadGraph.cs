@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Linq;
-using System.Numerics;
 using Circles.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -55,14 +54,13 @@ public class IncrementalLoadGraph : ILoadGraph
         foreach (var kv in _balanceState.GetAll())
         {
             var (account, tokenAddress) = kv.Key;
-            var (inflationaryBalance, lastActivity) = kv.Value;
+            var (rawBalance, lastActivity, isWrapped, isStatic) = kv.Value;
 
             // Filter: must be a registered avatar
             if (!_avatarState.Contains(account)) continue;
 
-            // All in-memory balances are stored as inflationary (type="demurraged")
             var adjusted = DemurrageCalculator.Apply(
-                inflationaryBalance, lastActivity, isStatic: false, ctx,
+                rawBalance, lastActivity, isStatic, ctx,
                 _logger, account.Length >= 10 ? account[..10] : account);
 
             if (adjusted == null) continue;
@@ -70,8 +68,8 @@ public class IncrementalLoadGraph : ILoadGraph
             results.Add((adjusted.Value.ToString(CultureInfo.InvariantCulture),
                 AddressIdPool.IdOf(account.ToLowerInvariant()),
                 AddressIdPool.IdOf(tokenAddress.ToLowerInvariant()),
-                false,  // isWrapped: full-state query doesn't load wrapped balances
-                false));  // isStatic: in-memory stores inflationary balances (type="demurraged")
+                isWrapped,
+                isStatic));
         }
 
         return results;
@@ -79,10 +77,38 @@ public class IncrementalLoadGraph : ILoadGraph
 
     public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
     {
-        return _trustState.GetActiveTrusts(
-            _maxBlockTimestamp,
-            _avatarState.AvatarSet,
-            _avatarState.GetGroupSet());
+        var activeAvatars = _avatarState.GetActiveAvatarSet();
+        var groups = _avatarState.GetGroupSet();
+
+        var directTrusts = _trustState.GetActiveTrusts(
+                _maxBlockTimestamp,
+                activeAvatars,
+                groups)
+            .ToList();
+
+        foreach (var trust in directTrusts)
+        {
+            yield return trust;
+        }
+
+        var wrapperMappingsByAvatar = _inner.LoadWrapperMappings()
+            .GroupBy(x => x.UnderlyingAvatar.ToLowerInvariant())
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(x => x.WrapperAddress.ToLowerInvariant()).Distinct().ToArray());
+
+        foreach (var (truster, trustee, limit) in directTrusts)
+        {
+            if (!wrapperMappingsByAvatar.TryGetValue(trustee.ToLowerInvariant(), out var wrappers))
+            {
+                continue;
+            }
+
+            foreach (var wrapper in wrappers)
+            {
+                yield return (truster, wrapper, limit);
+            }
+        }
     }
 
     /// <summary>
@@ -113,7 +139,7 @@ public class IncrementalLoadGraph : ILoadGraph
     /// </summary>
     public IEnumerable<string> LoadRegisteredAvatars()
     {
-        foreach (var avatar in _avatarState.AvatarSet)
+        foreach (var avatar in _avatarState.GetActiveAvatarSet())
             yield return avatar;
     }
 

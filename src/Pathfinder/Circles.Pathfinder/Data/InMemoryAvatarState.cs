@@ -21,6 +21,12 @@ public class InMemoryAvatarState
     /// <summary>Only registered groups (subset of avatars).</summary>
     public HashSet<string> GetGroupSet() => _groups;
 
+    /// <summary>All registered avatars excluding stopped avatars.</summary>
+    public HashSet<string> GetActiveAvatarSet()
+    {
+        return _avatars.Where(a => !_stopped.Contains(a)).ToHashSet();
+    }
+
     /// <summary>Returns true if address is a registered, non-stopped avatar.</summary>
     public bool Contains(string address)
     {

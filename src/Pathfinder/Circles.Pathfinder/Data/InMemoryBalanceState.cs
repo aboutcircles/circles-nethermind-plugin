@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,7 +16,7 @@ public class InMemoryBalanceState
 {
     private static readonly string ZeroAddress = "0x0000000000000000000000000000000000000000";
 
-    private readonly Dictionary<(string Account, string TokenAddress), (BigInteger Balance, long LastActivity)> _state = new();
+    private readonly Dictionary<(string Account, string TokenAddress), (BigInteger Balance, long LastActivity, bool IsWrapped, bool IsStatic)> _state = new();
     private readonly ILogger _logger;
 
     public InMemoryBalanceState(ILogger? logger = null)
@@ -23,16 +26,20 @@ public class InMemoryBalanceState
 
     public int Count => _state.Count;
 
-    public IEnumerable<KeyValuePair<(string Account, string TokenAddress), (BigInteger Balance, long LastActivity)>> GetAll()
+    public IEnumerable<KeyValuePair<(string Account, string TokenAddress), (BigInteger Balance, long LastActivity, bool IsWrapped, bool IsStatic)>> GetAll()
         => _state;
 
     public IEnumerable<(string Account, string TokenAddress)> Keys => _state.Keys;
 
-    public bool TryGet((string Account, string TokenAddress) key, out (BigInteger Balance, long LastActivity) entry)
+    public bool TryGet((string Account, string TokenAddress) key, out (BigInteger Balance, long LastActivity, bool IsWrapped, bool IsStatic) entry)
         => _state.TryGetValue(key, out entry);
 
     public void InitializeFromFullLoad(
         IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)> rows)
+        => InitializeFromFullLoad(rows.Select(r => (r.Balance, r.Account, r.TokenAddress, r.LastActivity, false, false)));
+
+    public void InitializeFromFullLoad(
+        IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity, bool IsWrapped, bool IsStatic)> rows)
     {
         _state.Clear();
         foreach (var row in rows)
@@ -46,7 +53,7 @@ public class InMemoryBalanceState
             if (balance <= 0) continue;
 
             var key = (row.Account.ToLowerInvariant(), row.TokenAddress.ToLowerInvariant());
-            _state[key] = (balance, row.LastActivity);
+            _state[key] = (balance, row.LastActivity, row.IsWrapped, row.IsStatic);
         }
     }
 
@@ -54,7 +61,8 @@ public class InMemoryBalanceState
     /// Apply a single transfer event to the in-memory state.
     /// Zero-address sides are skipped (mint/burn) — only the non-zero side is processed.
     /// </summary>
-    public void ApplyTransfer(string from, string to, string tokenAddress, string value, long timestamp)
+    public void ApplyTransfer(string from, string to, string tokenAddress, string value, long timestamp,
+        bool isWrapped = false, bool isStatic = false)
     {
         if (!BigInteger.TryParse(value, out var amount))
         {
@@ -73,7 +81,7 @@ public class InMemoryBalanceState
         {
             var key = (from, tokenAddress);
             if (_state.TryGetValue(key, out var entry))
-                _state[key] = (entry.Balance, Math.Max(entry.LastActivity, timestamp));
+                _state[key] = (entry.Balance, Math.Max(entry.LastActivity, timestamp), entry.IsWrapped, entry.IsStatic);
             return;
         }
 
@@ -91,12 +99,12 @@ public class InMemoryBalanceState
                 if (newBalance <= 0)
                     _state.Remove(senderKey);
                 else
-                    _state[senderKey] = (newBalance, newLastActivity);
+                    _state[senderKey] = (newBalance, newLastActivity, senderEntry.IsWrapped, senderEntry.IsStatic);
             }
             // If sender not in state: transfer of tokens we don't track (e.g. already-zero balance).
-            // D7 safety: this is safe because balanceDeltaQuery.sql uses ORDER BY timestamp ASC,
-            // so credits always arrive before debits within the same delta window. Within a single
-            // block, BigInteger arithmetic is commutative so ordering doesn't matter.
+            // Correctness relies on deltas being applied in canonical chain order so receive/send
+            // events within the same block are not reordered. balanceDeltaQuery.sql enforces this via
+            // ORDER BY blockNumber, transactionIndex, logIndex, batchIndex.
         }
 
         // Add to receiver (unless zero-address = burn)
@@ -107,11 +115,11 @@ public class InMemoryBalanceState
             {
                 var newBalance = receiverEntry.Balance + amount;
                 var newLastActivity = Math.Max(receiverEntry.LastActivity, timestamp);
-                _state[receiverKey] = (newBalance, newLastActivity);
+                _state[receiverKey] = (newBalance, newLastActivity, receiverEntry.IsWrapped, receiverEntry.IsStatic);
             }
             else
             {
-                _state[receiverKey] = (amount, timestamp);
+                _state[receiverKey] = (amount, timestamp, isWrapped, isStatic);
             }
         }
     }
@@ -124,6 +132,11 @@ public class InMemoryBalanceState
     public void BackfillAvatars(
         IEnumerable<string> avatarAddresses,
         IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)> freshBalances)
+        => BackfillAvatars(avatarAddresses, freshBalances.Select(r => (r.Balance, r.Account, r.TokenAddress, r.LastActivity, false, false)));
+
+    public void BackfillAvatars(
+        IEnumerable<string> avatarAddresses,
+        IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity, bool IsWrapped, bool IsStatic)> freshBalances)
     {
         // Remove all existing entries for these avatars (may have partial data from deltas)
         var avatarsToBackfill = new HashSet<string>(avatarAddresses.Select(a => a.ToLowerInvariant()));
@@ -143,7 +156,7 @@ public class InMemoryBalanceState
             if (balance <= 0) continue;
 
             var key = (row.Account.ToLowerInvariant(), row.TokenAddress.ToLowerInvariant());
-            _state[key] = (balance, row.LastActivity);
+            _state[key] = (balance, row.LastActivity, row.IsWrapped, row.IsStatic);
         }
     }
 

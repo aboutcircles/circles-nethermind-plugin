@@ -468,14 +468,14 @@ namespace Circles.Pathfinder.Data
         /// </summary>
         public NpgsqlDataSource DataSource => _dataSource;
 
-        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
+        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity, bool IsWrapped, bool IsStatic)>
             LoadRawBalances() => LoadRawBalances(null, null);
 
-        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
+        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity, bool IsWrapped, bool IsStatic)>
             LoadRawBalances(NpgsqlConnection? sharedConn, NpgsqlTransaction? sharedTx)
         {
             var query = LoadQueryFromResource("balanceFullStateQuery.sql");
-            var results = new List<(string, string, string, long)>();
+            var results = new List<(string, string, string, long, bool, bool)>();
 
             var sw = Stopwatch.StartNew();
             var conn = sharedConn ?? _dataSource.CreateConnection();
@@ -493,7 +493,9 @@ namespace Circles.Pathfinder.Data
                         reader.GetString(0),  // balance
                         reader.GetString(1),  // account
                         reader.GetString(2),  // tokenAddress
-                        reader.GetInt64(3)    // lastActivity
+                        reader.GetInt64(3),   // lastActivity
+                        reader.GetBoolean(4), // isWrapped
+                        reader.GetBoolean(5)  // isStatic
                     ));
                 }
             }
@@ -581,11 +583,11 @@ namespace Circles.Pathfinder.Data
             return results;
         }
 
-        public IEnumerable<(long Timestamp, string From, string To, string TokenAddress, string Value)>
+        public IEnumerable<(long Timestamp, string From, string To, string TokenAddress, string Value, bool IsWrapped, bool IsStatic)>
             LoadTransfersSince(long lastBlock)
         {
             var query = LoadQueryFromResource("balanceDeltaQuery.sql");
-            var results = new List<(long, string, string, string, string)>();
+            var results = new List<(long, string, string, string, string, bool, bool)>();
 
             var sw = Stopwatch.StartNew();
             using var connection = _dataSource.OpenConnection();
@@ -602,7 +604,9 @@ namespace Circles.Pathfinder.Data
                     reader.GetString(1),  // from
                     reader.GetString(2),  // to
                     reader.GetString(3),  // tokenAddress
-                    reader.GetString(4)   // value
+                    reader.GetString(4),  // value
+                    reader.GetBoolean(5), // isWrapped
+                    reader.GetBoolean(6)  // isStatic
                 ));
             }
 
@@ -720,14 +724,14 @@ namespace Circles.Pathfinder.Data
         /// Load complete balances for specific avatar addresses.
         /// Used to backfill balances when new avatars are detected during incremental updates.
         /// </summary>
-        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity)>
+        public IEnumerable<(string Balance, string Account, string TokenAddress, long LastActivity, bool IsWrapped, bool IsStatic)>
             LoadBalancesForAvatars(IEnumerable<string> avatarAddresses)
         {
             var avatarList = avatarAddresses.ToArray();
-            if (avatarList.Length == 0) return Array.Empty<(string, string, string, long)>();
+            if (avatarList.Length == 0) return Array.Empty<(string, string, string, long, bool, bool)>();
 
             var query = LoadQueryFromResource("avatarBalancesQuery.sql");
-            var results = new List<(string, string, string, long)>();
+            var results = new List<(string, string, string, long, bool, bool)>();
 
             var sw = Stopwatch.StartNew();
             using var connection = _dataSource.OpenConnection();
@@ -743,7 +747,9 @@ namespace Circles.Pathfinder.Data
                     reader.GetString(0),  // balance
                     reader.GetString(1),  // account
                     reader.GetString(2),  // tokenAddress
-                    reader.GetInt64(3)    // lastActivity
+                    reader.GetInt64(3),   // lastActivity
+                    reader.GetBoolean(4), // isWrapped
+                    reader.GetBoolean(5)  // isStatic
                 ));
             }
 
