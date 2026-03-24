@@ -1,6 +1,13 @@
 with requested_avatars as (
     select unnest(@avatars::text[]) as avatar
 ),
+registered_avatars as materialized (
+    select organization as avatar from "CrcV2_RegisterOrganization"
+    union all
+    select "group" as avatar from "CrcV2_RegisterGroup"
+    union all
+    select avatar from "CrcV2_RegisterHuman"
+),
 static_wrapper_transfers as (
     select t."timestamp"
          , t."tokenAddress"
@@ -10,6 +17,7 @@ static_wrapper_transfers as (
     from "CrcV2_Erc20WrapperTransfer" t
     join "CrcV2_ERC20WrapperDeployed" d
         on d."circlesType" = 1 and d."erc20Wrapper" = t."tokenAddress"
+    join registered_avatars a on a.avatar = d.avatar
 ),
 static_sum as (
     select sum(diff) as balance
@@ -38,6 +46,7 @@ demurraged_wrapper_transfers as (
     from "CrcV2_Erc20WrapperTransfer" t
     join "CrcV2_ERC20WrapperDeployed" d
         on d."circlesType" = 0 and d."erc20Wrapper" = t."tokenAddress"
+    join registered_avatars a on a.avatar = d.avatar
 ),
 demurraged_sum as (
     select sum(diff) as balance
@@ -58,7 +67,7 @@ demurraged_sum as (
     group by account, "tokenAddress"
 ),
 native_sum as (
-    select b."totalBalance"::text as balance
+    select b."totalBalance" as balance
          , b."account"
          , b."tokenAddress"
          , b."lastActivity"
@@ -68,7 +77,7 @@ native_sum as (
     join requested_avatars ra on ra.avatar = b."account"
     where b."totalBalance" > 0
 )
-select balance
+select balance::text as balance
      , account
      , "tokenAddress"
      , "lastActivity"
@@ -81,4 +90,4 @@ from (
     union all
     select * from native_sum
 ) all_balances
-where balance::numeric > 0;
+where balance > 0;

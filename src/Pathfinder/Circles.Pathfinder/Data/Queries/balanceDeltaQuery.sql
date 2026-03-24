@@ -1,3 +1,10 @@
+WITH registered_avatars AS MATERIALIZED (
+    SELECT organization AS avatar FROM "CrcV2_RegisterOrganization"
+    UNION ALL
+    SELECT "group" AS avatar FROM "CrcV2_RegisterGroup"
+    UNION ALL
+    SELECT avatar FROM "CrcV2_RegisterHuman"
+)
 SELECT "timestamp", "from", "to", "tokenAddress", "value", "isWrapped", "isStatic"
 FROM (
     SELECT
@@ -48,6 +55,7 @@ FROM (
         (d."circlesType" = 1) AS "isStatic"
     FROM "CrcV2_Erc20WrapperTransfer" t
     JOIN "CrcV2_ERC20WrapperDeployed" d ON d."erc20Wrapper" = t."tokenAddress"
+    JOIN registered_avatars a ON a.avatar = d.avatar
     WHERE t."blockNumber" > @lastBlock
 ) deltas
 ORDER BY "blockNumber", "transactionIndex", "logIndex", "batchIndex";
