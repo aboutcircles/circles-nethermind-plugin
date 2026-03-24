@@ -424,7 +424,7 @@ Query indexed blockchain events with advanced filtering.
 - `filterPredicates` (FilterPredicate[], optional) - Advanced filters
 - `sortAscending` (boolean, optional) - Sort order (default: false)
 
-**Returns:** `EventsResponse` - Array of events
+**Returns:** `EventsResponse` - Flat array of events (backwards compatible). For paginated results, use `circles_events_paginated`.
 
 **Filter Predicates:**
 Supports complex filters:
@@ -448,6 +448,14 @@ curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
   "id": 1
 }'
 ```
+
+#### `circles_events_paginated`
+
+Same as `circles_events` but returns `{events, hasMore, nextCursor}` for cursor-based pagination.
+
+**Parameters:** Same as `circles_events`.
+
+**Returns:** `PagedEventsResponse` - `{events: [...], hasMore: boolean, nextCursor: string | null}`
 
 #### `circles_query`
 
@@ -725,7 +733,8 @@ All 15 core methods are implemented and accessible via RPC:
 | `circles_getTransactionHistory`       | ✅ Working | ❌            | With circle amounts |
 | `circles_getTokenHolders`             | ✅ Working | ❌            | Token distribution  |
 | `circles_getCommonTrust`              | ✅ Working | ❌            | V1/V2 support       |
-| `circles_events`                      | ✅ Working | ❌            | Advanced filtering  |
+| `circles_events`                      | ✅ Working | ❌            | Flat array (compat) |
+| `circles_events_paginated`            | ✅ Working | ❌            | Cursor pagination   |
 | `circles_query`                       | ✅ Working | ❌            | Generic DB query    |
 | `circlesV2_findPath`                  | ✅ Working | ❌            | Pathfinder proxy    |
 

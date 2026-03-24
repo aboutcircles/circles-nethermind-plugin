@@ -423,7 +423,10 @@ app.MapPost("/", async (
             "circles_getTokenHolders" => await ReflectionHandler(request, rpcModule),
             "circlesV2_findPath" => await HandleV2FindPath(request, rpcModule),
             // System & Query Methods
-            "circles_events" => await HandleEvents(request, rpcModule),
+            // Legacy non-paginated format (plain array) — kept for backwards compatibility
+            "circles_events" => await HandleEventsLegacy(request, rpcModule),
+            // Server-side cursor pagination ({events, hasMore, nextCursor})
+            "circles_events_paginated" => await HandleEventsPaginated(request, rpcModule),
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
             // Legacy non-paginated format ({columns, rows} only) — kept for non-paginating callers
@@ -1116,7 +1119,9 @@ static async Task<object> HandleV2FindPath(JsonRpcRequest request, CirclesRpcMod
     return await rpcModule.FindPathV2(flowRequest);
 }
 
-static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule rpcModule)
+static (string? Address, long? FromBlock, long? ToBlock, string[]? EventTypes,
+    IFilterPredicateDto[]? FilterPredicates, bool? SortAscending, int? Limit, string? Cursor)
+    ParseEventParameters(JsonRpcRequest request)
 {
     var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
 
@@ -1130,7 +1135,7 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
 
     if (parameters == null || parameters.Length == 0)
     {
-        return await rpcModule.GetEvents(null, null, null, null, null, false, null, null);
+        return (null, null, null, null, null, false, null, null);
     }
 
     if (parameters.Length > 0 && parameters[0].ValueKind != JsonValueKind.Null)
@@ -1161,7 +1166,6 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
         sortAscending = parameters[5].GetBoolean();
     }
 
-    // New pagination parameters
     if (parameters.Length > 6 && parameters[6].ValueKind != JsonValueKind.Null)
     {
         limit = parameters[6].GetInt32();
@@ -1172,7 +1176,24 @@ static async Task<object> HandleEvents(JsonRpcRequest request, CirclesRpcModule 
         cursor = parameters[7].GetString();
     }
 
-    return await rpcModule.GetEvents(address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit, cursor);
+    return (address, fromBlock, toBlock, eventTypes, filterPredicates, sortAscending, limit, cursor);
+}
+
+// Non-paginated events — returns plain array via EventsResponseJsonConverter for backwards compatibility.
+static async Task<object> HandleEventsLegacy(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    var p = ParseEventParameters(request);
+    var pagedResult = await rpcModule.GetEvents(p.Address, p.FromBlock, p.ToBlock,
+        p.EventTypes, p.FilterPredicates, p.SortAscending, p.Limit, p.Cursor);
+    return new EventsResponse(pagedResult.Events);
+}
+
+// Paginated events — returns {events, hasMore, nextCursor}.
+static async Task<object> HandleEventsPaginated(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    var p = ParseEventParameters(request);
+    return await rpcModule.GetEvents(p.Address, p.FromBlock, p.ToBlock,
+        p.EventTypes, p.FilterPredicates, p.SortAscending, p.Limit, p.Cursor);
 }
 
 static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcModule rpcModule)
