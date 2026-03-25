@@ -86,6 +86,7 @@ CATEGORY_KEYS=(
     "pagination"
     "precision"
     "edgecases"
+    "gas_estimation"
 )
 
 CATEGORY_LABELS=(
@@ -100,6 +101,7 @@ CATEGORY_LABELS=(
     "Pagination Deep Comparison Tests"
     "Balance Precision Tests"
     "Edge Case & Error Handling Tests"
+    "Gas Estimation Tests"
 )
 
 CATEGORY_FILE_NAMES=(
@@ -114,6 +116,7 @@ CATEGORY_FILE_NAMES=(
     "09-pagination-tests.jsonl"
     "10-precision-tests.jsonl"
     "11-edgecase-tests.jsonl"
+    "12-gas-estimation-tests.jsonl"
 )
 
 CATEGORY_COUNT=${#CATEGORY_KEYS[@]}
@@ -1761,6 +1764,84 @@ run_test "edgecases" "edgecase: findPath maxTransfers=1" "curl -s -X POST --data
 run_test "edgecases" "edgecase: events inverted block range (from > to)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43590000,43580000,[\"CrcV2_TransferSingle\"],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: events null event types" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43580010,null,null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: events empty event types array" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_events\",\"params\":[null,43580000,43580010,[],null,false]}' -H \"Content-Type: application/json\" $RPC_URL"
+
+######################################################################
+# Gas Estimation Tests (eth_estimateGas for group-tms transaction types)
+######################################################################
+# Verifies that eth_estimateGas works for the same transaction types
+# that group-tms submits on-chain. Catches RPC-level gas estimation
+# regressions (e.g. "Missing or invalid parameters" errors).
+#
+# `from` addresses use the on-chain owner() of each contract (publicly
+# readable via eth_call). No private keys or operational Safe addresses.
+#
+# Contract addresses (already public in this repo):
+#   Gnosis Group:  GROUP_ADDR_1 (0xc19bc204...)
+#   GP-CRC Group:  0xb629a1e86f3efada0f87c83494da8cc34c3f84ef
+#   Router:        0xdc287474114cc0551a81ddc2eb51783fbf34802f
+#
+# Function selectors:
+#   0x4141f954 = trustBatchWithConditions(address[],uint96)
+#   0x2c3df1de = enableCRCForRouting(address,address[])
+
+# Owner addresses (from on-chain owner() calls — publicly readable contract state)
+GNOSIS_GROUP_OWNER="0x7add2c8d1f7ce98ca9a6a7c0122916787988071f"
+GP_CRC_GROUP_OWNER="0x58e843c5caad0aa6d14609a365fdf6cebc80a1d2"  # owner() of gp-crc group
+GP_CRC_GROUP="0xb629a1e86f3efada0f87c83494da8cc34c3f84ef"
+ROUTER_CONTRACT="0xdc287474114cc0551a81ddc2eb51783fbf34802f"
+
+# G1. Baseline: simple eth_estimateGas (ETH transfer, no calldata)
+run_test_json "gas_estimation" "eth_estimateGas (baseline transfer)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$TEST_ADDR_2"'", "value": "0x0"}],
+  "id": 1
+}'
+
+# G2. trustBatchWithConditions — trust (expiry=MAX_UINT96)
+# Used by: gnosis-group, gp-crc, crc-backers
+# from = group owner (on-chain public), to = Gnosis Group contract
+run_test_json "gas_estimation" "eth_estimateGas (trustBatchWithConditions - trust)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$GNOSIS_GROUP_OWNER"'", "to": "'"$GROUP_ADDR_1"'", "data": "0x4141f95400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000ffffffffffffffffffffffff0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000'"${TEST_ADDR_2:2}"'"}],
+  "id": 1
+}'
+
+# G3. trustBatchWithConditions — untrust (expiry=0)
+# Used by: gnosis-group, gp-crc
+run_test_json "gas_estimation" "eth_estimateGas (trustBatchWithConditions - untrust)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$GNOSIS_GROUP_OWNER"'", "to": "'"$GROUP_ADDR_1"'", "data": "0x4141f954000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000'"${TEST_ADDR_2:2}"'"}],
+  "id": 1
+}'
+
+# G4. trustBatchWithConditions on GP-CRC group (different owner + group contract)
+# from = gp-crc group owner (on-chain public), to = GP-CRC Group contract
+run_test_json "gas_estimation" "eth_estimateGas (trustBatch - gp-crc group)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$GP_CRC_GROUP_OWNER"'", "to": "'"$GP_CRC_GROUP"'", "data": "0x4141f95400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000ffffffffffffffffffffffff0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000'"${TEST_ADDR_2:2}"'"}],
+  "id": 1
+}'
+
+# G5. enableCRCForRouting on Router contract (no access control — any from works)
+# Used by: router-tms
+run_test_json "gas_estimation" "eth_estimateGas (enableCRCForRouting)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37"}],
+  "id": 1
+}'
+
+# G6. eth_estimateGas with block parameter (latest) — tests param format compatibility
+run_test_json "gas_estimation" "eth_estimateGas (with block param)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$GNOSIS_GROUP_OWNER"'", "to": "'"$GROUP_ADDR_1"'", "data": "0x4141f95400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000ffffffffffffffffffffffff0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000'"${TEST_ADDR_2:2}"'"}, "latest"],
+  "id": 1
+}'
 
 if [[ "$OUTPUT_MODE" != "json" ]]; then
     echo -e "${BLUE}All tests completed.${NC}\n"
