@@ -384,8 +384,10 @@ app.Use(async (context, next) =>
                     var method = element.TryGetProperty("method", out var methodProp)
                         ? methodProp.GetString() : null;
                     var id = element.TryGetProperty("id", out var idProp) ? idProp : JsonRpcId.Null;
+                    var jsonrpc = element.TryGetProperty("jsonrpc", out var jsonrpcProp)
+                        ? jsonrpcProp.GetString() : null;
 
-                    if (string.IsNullOrEmpty(method))
+                    if (jsonrpc != "2.0" || string.IsNullOrEmpty(method))
                     {
                         responses[idx] = new JsonRpcErrorResponse
                         {
@@ -551,19 +553,23 @@ app.Use(async (context, next) =>
 
                 // Serialize each element by runtime type (System.Text.Json serializes object[] by
                 // declared type, which produces empty {} for JsonRpcResponse/JsonRpcErrorResponse)
+                // Serialize batch response into a buffer, then flush once.
+                // Each item is serialized by runtime type (System.Text.Json object[] bug workaround).
                 context.Response.ContentType = "application/json";
-                var stream = context.Response.Body;
-                await stream.WriteAsync(jsonArrayStart);
+                using var responseBuffer = new MemoryStream();
+                responseBuffer.Write(jsonArrayStart);
                 for (int k = 0; k < responses.Length; k++)
                 {
-                    if (k > 0) await stream.WriteAsync(jsonArraySep);
+                    if (k > 0) responseBuffer.Write(jsonArraySep);
                     var item = responses[k]!;
                     if (item is JsonElement je)
-                        await JsonSerializer.SerializeAsync(stream, je);
+                        JsonSerializer.Serialize(responseBuffer, je);
                     else
-                        await JsonSerializer.SerializeAsync(stream, item, item.GetType());
+                        JsonSerializer.Serialize(responseBuffer, item, item.GetType());
                 }
-                await stream.WriteAsync(jsonArrayEnd);
+                responseBuffer.Write(jsonArrayEnd);
+                responseBuffer.Position = 0;
+                await responseBuffer.CopyToAsync(context.Response.Body);
             }
             catch (JsonException jsonEx)
             {
@@ -633,7 +639,11 @@ app.MapPost("/", async (
     if (!await rpcSemaphore.WaitAsync(0))
     {
         RpcMetrics.RejectedTotal.Inc();
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        return Results.Json(new JsonRpcErrorResponse
+        {
+            Id = JsonRpcId.CoerceId(request.Id),
+            Error = new JsonRpcError { Code = -32000, Message = "Server busy" }
+        }, statusCode: 503);
     }
     var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
 
