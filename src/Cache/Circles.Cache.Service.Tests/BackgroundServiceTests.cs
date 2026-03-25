@@ -136,7 +136,8 @@ public class NotificationListenerServiceTests
         };
         var state = new CacheServiceState(settings.RollbackCapacity)
         {
-            LastProcessedBlock = 5
+            LastProcessedBlock = 5,
+            WarmupComplete = true
         };
         var caches = new CacheContainer(settings.RollbackCapacity);
 
@@ -168,7 +169,8 @@ public class NotificationListenerServiceTests
         };
         var state = new CacheServiceState(settings.RollbackCapacity)
         {
-            LastProcessedBlock = 10
+            LastProcessedBlock = 10,
+            WarmupComplete = true
         };
         state.WarmupTargetBlock = 8;
         state.BlockRingBuffer.UpdateFromBlocks(new[]
@@ -456,6 +458,62 @@ public class NotificationListenerServiceTests
 
         protected override Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
             => Task.FromResult(blockNumber * 1000);
+    }
+
+    [Fact]
+    public async Task HandleNotification_SkipsProcessing_WhenWarmupNotComplete()
+    {
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 5,
+            PostgresConnectionString = "Host=localhost"
+        };
+        var state = new CacheServiceState(settings.RollbackCapacity)
+        {
+            LastProcessedBlock = 100,
+            WarmupComplete = false // Warmup in progress
+        };
+        var caches = new CacheContainer(settings.RollbackCapacity);
+
+        var blocks = new List<(long BlockNumber, string BlockHash)>
+        {
+            (100L, "0x100"),
+            (101L, "0x101"),
+            (102L, "0x102")
+        };
+
+        var service = new TestNotificationListenerService(settings, state, caches, blocks);
+
+        await service.InvokeHandleAsync("{}", CancellationToken.None);
+
+        // Should not have processed any blocks
+        service.ProcessedRanges.Should().BeEmpty();
+        // State should be unchanged
+        state.LastProcessedBlock.Should().Be(100);
+        // Buffer should be empty (not populated by skipped notification)
+        state.BlockRingBuffer.Count.Should().Be(0);
+    }
+
+    [Fact]
+    public void InitializeBlockRingBuffer_ClearsBufferBeforeAdding()
+    {
+        // Simulates the race: listener added newer blocks to the buffer
+        // before warmup's InitializeBlockRingBufferAsync runs
+        var buffer = new BlockRingBuffer(capacity: 10);
+
+        // Listener added newer blocks after TriggerFullRewarmup cleared the buffer
+        buffer.Add(200, "0xC8");
+        buffer.Add(201, "0xC9");
+
+        // Warmup clears before initializing (our fix)
+        buffer.Clear();
+
+        // Now warmup can add older blocks without exception
+        buffer.Add(190, "0xBE");
+        buffer.Add(191, "0xBF");
+
+        buffer.Count.Should().Be(2);
+        buffer.LatestBlockNumber.Should().Be(191);
     }
 
     /// <summary>

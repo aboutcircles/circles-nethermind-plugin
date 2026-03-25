@@ -132,6 +132,17 @@ public class NotificationListenerService : BackgroundService
 
     protected internal virtual async Task HandleNotificationAsync(string payload, CancellationToken ct)
     {
+        // Skip processing if warmup is in progress. The async notification callback
+        // can fire even after TriggerFullRewarmup() sets WarmupComplete=false, because
+        // ListenForNotificationsAsync is still waiting on conn.WaitAsync(). Processing
+        // blocks now would race with InitializeBlockRingBufferAsync (adding newer blocks
+        // to the buffer that warmup will then fail to initialize with older blocks).
+        if (!_state.WarmupComplete)
+        {
+            _logger.LogDebug("Skipping notification - warmup in progress");
+            return;
+        }
+
         _logger.LogDebug("Received notification ping");
 
         // Treat the notification as a ping - don't trust the payload content

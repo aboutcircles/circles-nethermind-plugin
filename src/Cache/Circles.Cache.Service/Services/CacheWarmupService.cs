@@ -1599,6 +1599,15 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     protected virtual async Task InitializeBlockRingBufferAsync(NpgsqlConnection conn, long fromBlock, CancellationToken ct)
     {
+        // Clear the buffer before initialization to prevent race conditions.
+        // After TriggerFullRewarmup() clears the buffer, the notification listener's
+        // async callback can still fire and add newer blocks via UpdateFromBlocks()
+        // before we reach this point. Without this clear, Add() would throw
+        // "Block number must be greater than current latest" when we try to add
+        // blocks from the warmup target range (which are older than what the
+        // listener just added).
+        _state.BlockRingBuffer.Clear();
+
         var capacity = _settings.RollbackCapacity;
         var startBlock = Math.Max(0, fromBlock - capacity + 1);
 
