@@ -158,7 +158,10 @@ public class PathfinderGraphController : ControllerBase
             if (_caches.Erc20WrapperAddresses.TryGetValue(tokenAddress, out var wrapperInfo))
             {
                 isWrapped = true;
-                if (!_caches.V2Avatars.ContainsKey(wrapperInfo.Avatar))
+                // Wrapper underlying can be any registered avatar type, including groups.
+                // In cache state, groups are tracked in Groups cache and may be absent from V2Avatars.
+                if (!_caches.V2Avatars.ContainsKey(wrapperInfo.Avatar)
+                    && !_caches.Groups.ContainsKey(wrapperInfo.Avatar))
                     continue;
                 isStatic = wrapperInfo.CirclesType == 1;
             }
@@ -332,7 +335,9 @@ public class PathfinderGraphController : ControllerBase
         var mappings = new List<PathfinderWrapperMappingRow>();
         foreach (var kvp in _caches.Erc20WrapperAddresses.ReadOnlyDictionary)
         {
-            if (!_caches.V2Avatars.ContainsKey(kvp.Value.Avatar))
+            // Keep mappings for wrappers of humans/orgs and groups alike.
+            if (!_caches.V2Avatars.ContainsKey(kvp.Value.Avatar)
+                && !_caches.Groups.ContainsKey(kvp.Value.Avatar))
                 continue;
 
             mappings.Add(new PathfinderWrapperMappingRow(
