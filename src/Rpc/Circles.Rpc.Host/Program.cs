@@ -340,10 +340,15 @@ app.Use(async (context, next) =>
                     return;
                 }
 
+                // JSON-RPC 2.0 spec: empty array is invalid ("at least one value" required)
                 if (batchLen == 0)
                 {
+                    context.Response.StatusCode = 400;
                     context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync("[]");
+                    await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: empty batch" }
+                    });
                     return;
                 }
 
