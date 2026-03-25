@@ -10,7 +10,8 @@
     "precision: getTotalBalance": 0.001,
     "precision: V2 getTotalBalance": 0.001,
     "precision: getTokenBalances": 0.001,
-    "precision: V_CrcV2_BalancesByAccountAndToken": 0.001
+    "precision: V_CrcV2_BalancesByAccountAndToken": 0.001,
+    "eth_estimateGas": 5.0
   },
   "normalizeFields": [
     "timestamp",
