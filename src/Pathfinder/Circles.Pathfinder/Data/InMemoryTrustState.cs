@@ -65,7 +65,7 @@ public class InMemoryTrustState
     /// Filters: expiry > maxBlockTimestamp, both parties are avatars, truster is not a group.
     /// </summary>
     public IEnumerable<(string Truster, string Trustee, int Limit)> GetActiveTrusts(
-        long maxBlockTimestamp, HashSet<string> avatarSet, HashSet<string> groupSet)
+        long maxBlockTimestamp, IReadOnlySet<string> avatarSet, HashSet<string> groupSet)
     {
         foreach (var kv in _state)
         {

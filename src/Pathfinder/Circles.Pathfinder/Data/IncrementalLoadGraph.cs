@@ -21,6 +21,7 @@ public class IncrementalLoadGraph : ILoadGraph
     private readonly Settings _settings;
     private readonly long _maxBlockTimestamp;
     private readonly ILogger _logger;
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)>? _cachedWrapperMappings;
 
     public IncrementalLoadGraph(
         InMemoryBalanceState balanceState,
@@ -95,7 +96,7 @@ public class IncrementalLoadGraph : ILoadGraph
             yield return trust;
         }
 
-        var wrapperMappingsByAvatar = _inner.LoadWrapperMappings()
+        var wrapperMappingsByAvatar = GetCachedWrapperMappings()
             .GroupBy(x => x.UnderlyingAvatar.ToLowerInvariant())
             .ToDictionary(
                 g => g.Key,
@@ -148,8 +149,12 @@ public class IncrementalLoadGraph : ILoadGraph
     }
 
     /// <summary>
-    /// Delegates to inner LoadGraph — wrapper deployment table is append-only, fast query.
+    /// Returns cached wrapper mappings — loaded once per graph build from inner LoadGraph.
+    /// Wrapper deployments are append-only, so caching within a single build is safe.
     /// </summary>
     public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
-        => _inner.LoadWrapperMappings();
+        => GetCachedWrapperMappings();
+
+    private IReadOnlyList<(string WrapperAddress, string UnderlyingAvatar)> GetCachedWrapperMappings()
+        => _cachedWrapperMappings ??= _inner.LoadWrapperMappings().ToList();
 }
