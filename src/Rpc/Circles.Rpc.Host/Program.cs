@@ -443,7 +443,8 @@ app.Use(async (context, next) =>
                     }
                 });
 
-                // Proxy Nethermind items in a single batch call
+                // Proxy Nethermind items in a single batch call.
+                // JSON-RPC 2.0 batch responses are unordered — correlate by id, not position.
                 var nethermindTask = Task.Run(async () =>
                 {
                     if (nethermindItems.Count == 0) return;
@@ -456,21 +457,35 @@ app.Use(async (context, next) =>
 
                         if (result.ValueKind == JsonValueKind.Array)
                         {
-                            var resultArray = result.EnumerateArray().ToArray();
-                            for (int j = 0; j < nethermindItems.Count && j < resultArray.Length; j++)
+                            // Build id→response lookup from Nethermind's response array.
+                            // JSON-RPC ids can be string, number, or null — use raw JSON text as key.
+                            var responseById = new Dictionary<string, JsonElement>();
+                            foreach (var resp in result.EnumerateArray())
                             {
-                                responses[nethermindItems[j].Index] = resultArray[j];
+                                var idKey = resp.TryGetProperty("id", out var respId)
+                                    ? respId.GetRawText() : "null";
+                                responseById.TryAdd(idKey, resp); // first wins on duplicate ids
                             }
-                            // Fill gaps if Nethermind returned fewer responses than sent
-                            for (int j = resultArray.Length; j < nethermindItems.Count; j++)
+
+                            // Match each sent request to its response by id
+                            foreach (var (ni, raw) in nethermindItems)
                             {
-                                var raw = nethermindItems[j].Raw;
-                                var gapId = raw.TryGetProperty("id", out var gapIdProp) ? gapIdProp.Clone() : JsonRpcId.Null;
-                                responses[nethermindItems[j].Index] = new JsonRpcErrorResponse
+                                var reqIdKey = raw.TryGetProperty("id", out var reqId)
+                                    ? reqId.GetRawText() : "null";
+
+                                if (responseById.TryGetValue(reqIdKey, out var matched))
+                                    responses[ni] = matched;
+                                else
                                 {
-                                    Id = gapId,
-                                    Error = new JsonRpcError { Code = -32603, Message = "Missing proxy response" }
-                                };
+                                    // No response for this id — notification (no id) or dropped
+                                    var fallbackId = raw.TryGetProperty("id", out var fbId)
+                                        ? fbId.Clone() : JsonRpcId.Null;
+                                    responses[ni] = new JsonRpcErrorResponse
+                                    {
+                                        Id = fallbackId,
+                                        Error = new JsonRpcError { Code = -32603, Message = "Missing proxy response" }
+                                    };
+                                }
                             }
                         }
                         else
