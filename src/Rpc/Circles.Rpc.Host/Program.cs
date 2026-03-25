@@ -262,6 +262,8 @@ const int MaxBatchSize = 50; // Max items per batch
 var jsonArrayStart = "["u8.ToArray();
 var jsonArraySep = ","u8.ToArray();
 var jsonArrayEnd = "]"u8.ToArray();
+// Match the case-insensitive options configured in BuilderSetup.cs for MapPost deserialization
+var batchDeserializeOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
 app.Use(async (context, next) =>
 {
@@ -393,13 +395,25 @@ app.Use(async (context, next) =>
                     }
                     else if (IsCirclesMethod(method))
                     {
-                        var req = JsonSerializer.Deserialize<JsonRpcRequest>(element.GetRawText());
-                        if (req != null) circlesItems.Add((idx, req));
-                        else responses[idx] = new JsonRpcErrorResponse
+                        try
                         {
-                            Id = id,
-                            Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
-                        };
+                            var req = JsonSerializer.Deserialize<JsonRpcRequest>(
+                                element.GetRawText(), batchDeserializeOptions);
+                            if (req != null) circlesItems.Add((idx, req));
+                            else responses[idx] = new JsonRpcErrorResponse
+                            {
+                                Id = id,
+                                Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
+                            };
+                        }
+                        catch (JsonException)
+                        {
+                            responses[idx] = new JsonRpcErrorResponse
+                            {
+                                Id = id,
+                                Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: malformed item" }
+                            };
+                        }
                     }
                     else if (IsProxyAllowed(method))
                     {
@@ -720,7 +734,7 @@ static async Task<object> DispatchSingleRequest(
             "circles_getAtScaleInvitations" => await ReflectionHandler(request, rpcModule),
             "circles_getInvitationsFrom" => await ReflectionHandler(request, rpcModule),
 
-            _ => throw new RpcMethodNotFoundException(request.Method)
+            _ => throw new RpcMethodNotFoundException(request.Method ?? "<unknown>")
         };
 
         logger.LogInformation(
