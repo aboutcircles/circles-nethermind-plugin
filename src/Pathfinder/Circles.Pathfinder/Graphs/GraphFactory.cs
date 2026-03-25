@@ -320,7 +320,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             mergedTrust.TryGetValue(sinkId.Value, out var sinkTrustedTokens))
         {
             var originalCount = toTokensFilter.Count;
-            var effectiveToTokens = toTokensFilter.Intersect(sinkTrustedTokens).ToHashSet();
+            var effectiveToTokens = toTokensFilter
+                .Where(token => IsTokenTrustedBy(
+                    sinkTrustedTokens,
+                    token,
+                    request?.WithWrap ?? false,
+                    capacityGraph.WrapperToAvatar))
+                .ToHashSet();
 
             if (effectiveToTokens.Count < originalCount)
             {
@@ -363,7 +369,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                     continue;
 
                 // Check if sink trusts this token AND balance is sufficient
-                if (sinkTrusts.Contains(balanceNode.Token) && balanceNode.Amount >= QuantizedMinBalance)
+                if (IsTokenTrustedBy(sinkTrusts, balanceNode.Token, request?.WithWrap ?? false, capacityGraph.WrapperToAvatar)
+                    && balanceNode.Amount >= QuantizedMinBalance)
                 {
                     candidateTokens.Add((balanceNode.Token, balanceNode.Amount));
                 }
@@ -418,6 +425,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 balanceGraph,
                 wrappedTokensInSim,
                 mergedTrust,
+                request?.WithWrap ?? false,
                 isQuantizedSwapMode);
         }
 
@@ -964,6 +972,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         BalanceGraph balanceGraph,
         HashSet<int> wrappedTokensInSim,
         IReadOnlyDictionary<int, HashSet<int>> mergedTrust,
+        bool withWrap,
         bool quantizedMode = false)
     {
         var virtualSinkAddress = sourceAddress + VirtualSinkSuffix;
@@ -999,7 +1008,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
             // In quantizedMode: accept all specified tokens (trust validation happens post-path)
             // In regular mode: require source trust
-            if (!quantizedMode && !sourceTrustedTokens.Contains(token))
+            if (!quantizedMode && !IsTokenTrustedBy(sourceTrustedTokens, token, withWrap, capacityGraph.WrapperToAvatar))
             {
                 // Source doesn't trust this token and we're not in quantized mode
                 continue;
@@ -1044,6 +1053,22 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         if (added > 0)
             _logger.LogDebug("Expanded {FilterName} with {Count} wrapper ID(s) for withWrap=true",
                 filterName, added);
+    }
+
+    private static bool IsTokenTrustedBy(
+        HashSet<int> trustedTokens,
+        int token,
+        bool withWrap,
+        IReadOnlyDictionary<int, int> wrapperToAvatar)
+    {
+        if (trustedTokens.Contains(token))
+            return true;
+
+        if (!withWrap)
+            return false;
+
+        return wrapperToAvatar.TryGetValue(token, out var underlyingAvatarToken)
+            && trustedTokens.Contains(underlyingAvatarToken);
     }
 
     #endregion
