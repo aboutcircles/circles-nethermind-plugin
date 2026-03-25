@@ -259,6 +259,9 @@ var rpcRateLimiter = app.Services.GetRequiredService<RpcRateLimiter>();
 // Rate limit: entire batch costs N tokens (one per item) from the caller's per-IP bucket.
 const int MaxBatchBodySize = 1_048_576; // 1 MB
 const int MaxBatchSize = 50; // Max items per batch
+var jsonArrayStart = "["u8.ToArray();
+var jsonArraySep = ","u8.ToArray();
+var jsonArrayEnd = "]"u8.ToArray();
 
 app.Use(async (context, next) =>
 {
@@ -516,17 +519,17 @@ app.Use(async (context, next) =>
                 // declared type, which produces empty {} for JsonRpcResponse/JsonRpcErrorResponse)
                 context.Response.ContentType = "application/json";
                 var stream = context.Response.Body;
-                await stream.WriteAsync("["u8.ToArray());
+                await stream.WriteAsync(jsonArrayStart);
                 for (int k = 0; k < responses.Length; k++)
                 {
-                    if (k > 0) await stream.WriteAsync(","u8.ToArray());
+                    if (k > 0) await stream.WriteAsync(jsonArraySep);
                     var item = responses[k]!;
                     if (item is JsonElement je)
                         await JsonSerializer.SerializeAsync(stream, je);
                     else
                         await JsonSerializer.SerializeAsync(stream, item, item.GetType());
                 }
-                await stream.WriteAsync("]"u8.ToArray());
+                await stream.WriteAsync(jsonArrayEnd);
             }
             catch (JsonException jsonEx)
             {
@@ -593,7 +596,7 @@ app.MapPost("/", async (
     }
 
     // Concurrency guard — reject immediately when at capacity
-    if (!rpcSemaphore.Wait(0))
+    if (!await rpcSemaphore.WaitAsync(0))
     {
         RpcMetrics.RejectedTotal.Inc();
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
@@ -700,12 +703,9 @@ static async Task<object> DispatchSingleRequest(
             _ => throw new RpcMethodNotFoundException(request.Method)
         };
 
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-
         logger.LogInformation(
             "RPC {Method} (id={Id}) succeeded in {ElapsedMs} ms from {RemoteIp}",
-            methodName, request.Id, elapsed.TotalMilliseconds, remoteIp);
+            methodName, request.Id, Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds, remoteIp);
 
         return new JsonRpcResponse
         {
