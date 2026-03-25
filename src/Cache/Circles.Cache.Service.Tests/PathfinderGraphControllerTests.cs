@@ -251,6 +251,28 @@ public class PathfinderGraphControllerTests
         response!.Balances.Should().BeEmpty();
     }
 
+    [Fact]
+    public void BuildBalances_ShouldIncludeWrappersOfRegisteredGroups()
+    {
+        var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var wrapperAddress = "0xgroupwrapper0000000000000000000000000000";
+        var groupAvatar = "0xgroup000000000000000000000000000000000000";
+
+        _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
+        _cache.Groups.Add(1000, groupAvatar, ("Group", StandardTreasuryMint, "G"));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, 1)); // static wrapper
+        _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{wrapperAddress}", 50m);
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "balances");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.Balances.Should().HaveCount(1);
+        response.Balances![0].TokenAddress.Should().Be(wrapperAddress);
+        response.Balances[0].IsWrapped.Should().BeTrue();
+        response.Balances[0].CirclesType.Should().Be("static");
+    }
+
     // ── BuildTrust ─────────────────────────────────────────────────────
 
     [Fact]
@@ -641,6 +663,23 @@ public class PathfinderGraphControllerTests
         var response2 = ok2!.Value as PathfinderGraphResponse;
         response2!.Avatars.Should().NotBeNull();
         response2.Avatars!.Count.Should().Be(1);
+    }
+
+    [Fact]
+    public void BuildWrapperMappings_ShouldIncludeWrappersOfRegisteredGroups()
+    {
+        var wrapperAddress = "0xgroupwrapper0000000000000000000000000000";
+        var groupAvatar = "0xgroup000000000000000000000000000000000000";
+
+        _cache.Groups.Add(1000, groupAvatar, ("Group", StandardTreasuryMint, "G"));
+        _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, 0));
+
+        var controller = CreateController();
+        var result = controller.GetGraph(include: "wrapperMappings");
+        var response = ((OkObjectResult)result.Result!).Value as PathfinderGraphResponse;
+
+        response!.WrapperMappings.Should().ContainSingle(x =>
+            x.WrapperAddress == wrapperAddress && x.UnderlyingAvatar == groupAvatar);
     }
 
     // ── Regression: Cache Key Format Consistency (PR #188 / NotificationListener fix) ──
