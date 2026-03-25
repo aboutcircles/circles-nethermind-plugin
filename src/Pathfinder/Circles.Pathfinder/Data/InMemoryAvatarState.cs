@@ -10,6 +10,7 @@ public class InMemoryAvatarState
     private readonly HashSet<string> _avatars = new();
     private readonly HashSet<string> _groups = new();
     private readonly HashSet<string> _stopped = new();
+    private HashSet<string>? _cachedActiveSet;
 
     /// <summary>Total number of registered avatars (including stopped).</summary>
     public int Count => _avatars.Count;
@@ -24,10 +25,10 @@ public class InMemoryAvatarState
     /// <summary>Only registered groups (subset of avatars).</summary>
     public HashSet<string> GetGroupSet() => _groups;
 
-    /// <summary>All registered avatars excluding stopped avatars.</summary>
-    public HashSet<string> GetActiveAvatarSet()
+    /// <summary>All registered avatars excluding stopped avatars. Cached until mutation.</summary>
+    public IReadOnlySet<string> GetActiveAvatarSet()
     {
-        return _avatars.Where(a => !_stopped.Contains(a)).ToHashSet();
+        return _cachedActiveSet ??= _avatars.Where(a => !_stopped.Contains(a)).ToHashSet();
     }
 
     /// <summary>Returns true if address is a registered, non-stopped avatar.</summary>
@@ -46,6 +47,7 @@ public class InMemoryAvatarState
     /// </summary>
     public void InitializeFromFullLoad(IEnumerable<(string Avatar, string Type)> rows)
     {
+        _cachedActiveSet = null;
         _avatars.Clear();
         _groups.Clear();
         foreach (var row in rows)
@@ -61,6 +63,7 @@ public class InMemoryAvatarState
     /// </summary>
     public void InitializeStoppedAvatars(IEnumerable<string> stoppedAvatars)
     {
+        _cachedActiveSet = null;
         _stopped.Clear();
         foreach (var avatar in stoppedAvatars)
             _stopped.Add(avatar.ToLowerInvariant());
@@ -69,12 +72,14 @@ public class InMemoryAvatarState
     /// <summary>Mark an avatar as stopped (incremental delta).</summary>
     public void MarkStopped(string avatar)
     {
+        _cachedActiveSet = null;
         _stopped.Add(avatar.ToLowerInvariant());
     }
 
     /// <summary>Register a new avatar (incremental delta). Groups added to both sets.</summary>
     public void AddAvatar(string avatar, string type)
     {
+        _cachedActiveSet = null;
         avatar = avatar.ToLowerInvariant();
         _avatars.Add(avatar);
         if (type == "CrcV2_RegisterGroup")

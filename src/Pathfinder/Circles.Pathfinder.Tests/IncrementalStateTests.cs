@@ -560,6 +560,80 @@ public class InMemoryAvatarStateTests
         Assert.That(snapshot.Count, Is.EqualTo(1));
         Assert.That(snapshot.Contains(Bob), Is.False);
     }
+
+    // ── GetActiveAvatarSet cache invalidation ──────────────────────────
+
+    [Test]
+    public void GetActiveAvatarSet_AddAvatar_InvalidatesCache()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[] { (Alice, "CrcV2_RegisterHuman") });
+
+        var set1 = state.GetActiveAvatarSet();
+        Assert.That(set1, Has.Count.EqualTo(1));
+
+        state.AddAvatar(Bob, "CrcV2_RegisterHuman");
+
+        var set2 = state.GetActiveAvatarSet();
+        Assert.That(set2, Has.Count.EqualTo(2));
+        Assert.That(set2.Contains(Bob), Is.True);
+    }
+
+    [Test]
+    public void GetActiveAvatarSet_MarkStopped_InvalidatesCache()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[]
+        {
+            (Alice, "CrcV2_RegisterHuman"),
+            (Bob, "CrcV2_RegisterHuman"),
+        });
+
+        var set1 = state.GetActiveAvatarSet();
+        Assert.That(set1, Has.Count.EqualTo(2));
+
+        state.MarkStopped(Alice);
+
+        var set2 = state.GetActiveAvatarSet();
+        Assert.That(set2, Has.Count.EqualTo(1));
+        Assert.That(set2.Contains(Alice), Is.False);
+    }
+
+    [Test]
+    public void GetActiveAvatarSet_InitializeFromFullLoad_InvalidatesCache()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[] { (Alice, "CrcV2_RegisterHuman") });
+
+        var set1 = state.GetActiveAvatarSet();
+        Assert.That(set1.Contains(Alice), Is.True);
+
+        state.InitializeFromFullLoad(new[] { (Bob, "CrcV2_RegisterHuman") });
+
+        var set2 = state.GetActiveAvatarSet();
+        Assert.That(set2.Contains(Alice), Is.False);
+        Assert.That(set2.Contains(Bob), Is.True);
+    }
+
+    [Test]
+    public void GetActiveAvatarSet_InitializeStoppedAvatars_InvalidatesCache()
+    {
+        var state = new InMemoryAvatarState();
+        state.InitializeFromFullLoad(new[]
+        {
+            (Alice, "CrcV2_RegisterHuman"),
+            (Bob, "CrcV2_RegisterHuman"),
+        });
+
+        var set1 = state.GetActiveAvatarSet();
+        Assert.That(set1, Has.Count.EqualTo(2));
+
+        state.InitializeStoppedAvatars(new[] { Bob });
+
+        var set2 = state.GetActiveAvatarSet();
+        Assert.That(set2, Has.Count.EqualTo(1));
+        Assert.That(set2.Contains(Bob), Is.False);
+    }
 }
 
 [TestFixture, Parallelizable]

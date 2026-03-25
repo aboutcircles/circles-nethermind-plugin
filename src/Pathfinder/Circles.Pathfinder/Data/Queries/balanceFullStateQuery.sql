@@ -63,41 +63,16 @@ demurraged_sum as (
     ) as t
     group by account, "tokenAddress"
 ),
-native_tx as (
-    select "timestamp", "from" as account, "tokenAddress", -value as delta
-    from "CrcV2_TransferSingle"
-    where "from" <> '0x0000000000000000000000000000000000000000'
-    union all
-    select "timestamp", "to" as account, "tokenAddress", value as delta
-    from "CrcV2_TransferSingle"
-    where "to" <> '0x0000000000000000000000000000000000000000'
-    union all
-    select "timestamp", "from" as account, "tokenAddress", -value as delta
-    from "CrcV2_TransferBatch"
-    where "from" <> '0x0000000000000000000000000000000000000000'
-    union all
-    select "timestamp", "to" as account, "tokenAddress", value as delta
-    from "CrcV2_TransferBatch"
-    where "to" <> '0x0000000000000000000000000000000000000000'
-),
-native_agg as (
-    select account
-         , "tokenAddress"
-         , sum(delta) as balance
-         , max("timestamp") as "lastActivity"
-    from native_tx
-    group by account, "tokenAddress"
-    having sum(delta) > 0
-),
 native_sum as (
-    select balance
-         , n.account
-         , n."tokenAddress"
-         , n."lastActivity"
+    select b."totalBalance" as balance
+         , b."account"
+         , b."tokenAddress"
+         , b."lastActivity"
          , false as "isWrapped"
          , false as "isStatic"
-    from native_agg n
-    join registered_avatars ra on ra.avatar = n.account
+    from "V_CrcV2_BalancesByAccountAndToken" b
+    join registered_avatars ra on ra.avatar = b."account"
+    where b."totalBalance" > 0
 )
 select balance::text
      , account
