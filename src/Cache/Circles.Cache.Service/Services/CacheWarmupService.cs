@@ -1897,6 +1897,10 @@ public class CacheWarmupService : BackgroundService
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
         _caches.ConsentedFlowFlags.Seed(new Dictionary<string, byte[]>());
+
+        // Clear secondary indexes (plain Dictionaries, not RollbackCaches) to prevent
+        // stale phantom entries from being served during warmup Phase 2.
+        _caches.RebuildSecondaryIndexes();
     }
 
     /// <summary>

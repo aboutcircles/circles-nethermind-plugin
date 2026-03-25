@@ -256,7 +256,7 @@ public class NotificationListenerServiceTests
 
         service.ProcessedRanges.Should().BeEmpty();
         state.WarmupComplete.Should().BeFalse();
-        state.LastProcessedBlock.Should().Be(0);
+        state.LastProcessedBlock.Should().Be(-1);
         state.CurrentBlockTimestamp.Should().Be(0);
         caches.V1Avatars.Count.Should().Be(0);
     }
@@ -416,7 +416,7 @@ public class NotificationListenerServiceTests
         state.WarmupComplete.Should().BeFalse();
 
         // LastProcessedBlock should be reset
-        state.LastProcessedBlock.Should().Be(0);
+        state.LastProcessedBlock.Should().Be(-1);
     }
 
     private sealed class FailingNotificationListenerService : NotificationListenerService

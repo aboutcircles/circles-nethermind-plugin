@@ -9,7 +9,7 @@ internal static class RewarmupReset
     public static void Trigger(CacheServiceState state, Action clearCaches)
     {
         state.WarmupComplete = false;
-        state.LastProcessedBlock = 0;
+        state.LastProcessedBlock = -1;
         state.CurrentBlockTimestamp = 0;
 
         // Always clear ring buffer as part of the canonical reset state,
