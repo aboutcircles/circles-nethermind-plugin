@@ -19,6 +19,13 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheContainer _caches;
     private readonly NpgsqlDataSource _readonlyDataSource;
 
+    // Serializes notification handling — Npgsql's conn.Notification callback is async void,
+    // so overlapping notifications can fire concurrent HandleNotificationAsync calls. Without
+    // serialization, two handlers can read the same LastProcessedBlock, compute overlapping
+    // block ranges, and double-apply cache mutations (or trigger spurious re-warmups from
+    // RollbackCache.Add throwing on non-monotonic block numbers).
+    private readonly SemaphoreSlim _notificationGate = new(1, 1);
+
     protected CacheServiceSettings Settings => _settings;
     protected CacheServiceState State => _state;
     protected CacheContainer Caches => _caches;
@@ -143,6 +150,12 @@ public class NotificationListenerService : BackgroundService
             return;
         }
 
+        // Serialize notification handling. Npgsql's conn.Notification callback is async void,
+        // so a second notification can fire while we're awaiting DB queries in the first handler.
+        // Without this gate, concurrent handlers double-apply balance deltas and corrupt state.
+        await _notificationGate.WaitAsync(ct);
+        try
+        {
         _logger.LogDebug("Received notification ping");
 
         // Treat the notification as a ping - don't trust the payload content
@@ -184,18 +197,32 @@ public class NotificationListenerService : BackgroundService
             // Track reorg in metrics
             CacheMetrics.ReorgsDetected.Inc();
 
-            // Rollback all caches to the reorg point
-            _caches.RollbackAll(reorgPoint.Value);
+            // Rollback all caches to the reorg point. If the reorg is deeper than
+            // RollbackCapacity, RollbackAll throws InvalidOperationException — in that
+            // case the only safe recovery is a full re-warmup.
+            try
+            {
+                _caches.RollbackAll(reorgPoint.Value);
 
-            // Rebuild secondary indexes after rollback
-            _logger.LogInformation("Rebuilding secondary indexes after rollback...");
-            _caches.RebuildSecondaryIndexes();
+                // Rebuild secondary indexes after rollback
+                _logger.LogInformation("Rebuilding secondary indexes after rollback...");
+                _caches.RebuildSecondaryIndexes();
 
-            // Update state
-            _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
+                // Update state
+                _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
 
-            _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
-                reorgPoint.Value);
+                _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
+                    reorgPoint.Value);
+            }
+            catch (InvalidOperationException rollbackEx)
+            {
+                _logger.LogError(rollbackEx,
+                    "Reorg at block {ReorgBlock} exceeds rollback capacity. Triggering full re-warmup.",
+                    reorgPoint.Value);
+
+                TriggerFullRewarmup();
+                return;
+            }
         }
 
         // Process any new blocks that we haven't processed yet
@@ -238,6 +265,11 @@ public class NotificationListenerService : BackgroundService
         {
             _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
                 _state.LastProcessedBlock, latestBlock);
+        }
+        }
+        finally
+        {
+            _notificationGate.Release();
         }
     }
 

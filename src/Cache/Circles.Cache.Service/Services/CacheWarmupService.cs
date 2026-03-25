@@ -1696,6 +1696,11 @@ public class CacheWarmupService : BackgroundService
             _logger.LogInformation("Rebuilding secondary indexes after rollback...");
             _caches.RebuildSecondaryIndexes();
 
+            // Update state to reflect rolled-back position BEFORE replay.
+            // Without this, a failure in ReplayRangeAsync would leave LastProcessedBlock
+            // at warmupTarget while caches are actually rolled back to reorgPoint - 1.
+            _state.LastProcessedBlock = reorgPoint.Value - 1;
+
             // Adjust the fromBlock to start processing from the reorg point
             fromBlock = reorgPoint.Value;
         }
