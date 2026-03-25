@@ -75,6 +75,10 @@ public class IncrementalLoadGraph : ILoadGraph
         return results;
     }
 
+    /// <summary>
+    /// Load trust edges from in-memory state, enriched with wrapper-derived trust.
+    /// For each direct trust (A→B), also yields trust edges for B's ERC20 wrappers.
+    /// </summary>
     public IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust()
     {
         var activeAvatars = _avatarState.GetActiveAvatarSet();

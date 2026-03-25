@@ -9,17 +9,22 @@ public class InMemoryTrustState
 {
     private readonly Dictionary<(string Truster, string Trustee), (long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex)> _state = new();
 
+    /// <summary>Total number of trust edges stored.</summary>
     public int Count => _state.Count;
 
+    /// <summary>All stored trust edges with their metadata.</summary>
     public IEnumerable<KeyValuePair<(string Truster, string Trustee), (long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex)>> GetAll()
         => _state;
 
+    /// <summary>All (truster, trustee) key pairs.</summary>
     public IEnumerable<(string Truster, string Trustee)> Keys => _state.Keys;
 
+    /// <summary>Look up a specific trust edge by (truster, trustee).</summary>
     public bool TryGet((string Truster, string Trustee) key,
         out (long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex) entry)
         => _state.TryGetValue(key, out entry);
 
+    /// <summary>Replace all trust state from a full database load.</summary>
     public void InitializeFromFullLoad(
         IEnumerable<(string Truster, string Trustee, long ExpiryTime, long BlockNumber, int TxIndex, int LogIndex)> rows)
     {

@@ -262,8 +262,15 @@ const int MaxBatchSize = 50; // Max items per batch
 var jsonArrayStart = "["u8.ToArray();
 var jsonArraySep = ","u8.ToArray();
 var jsonArrayEnd = "]"u8.ToArray();
-// Match the case-insensitive options configured in BuilderSetup.cs for MapPost deserialization
-var batchDeserializeOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+// Match the case-insensitive options configured in BuilderSetup.cs for MapPost deserialization.
+// CamelCase naming ensures batch responses use lowercase property names (jsonrpc, result, error)
+// consistent with Nethermind's responses and the JSON-RPC 2.0 convention.
+var batchJsonOptions = new JsonSerializerOptions
+{
+    PropertyNameCaseInsensitive = true,
+    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+};
 
 app.Use(async (context, next) =>
 {
@@ -400,7 +407,7 @@ app.Use(async (context, next) =>
                         try
                         {
                             var req = JsonSerializer.Deserialize<JsonRpcRequest>(
-                                element.GetRawText(), batchDeserializeOptions);
+                                element.GetRawText(), batchJsonOptions);
                             if (req != null) circlesItems.Add((idx, req));
                             else responses[idx] = new JsonRpcErrorResponse
                             {
@@ -565,7 +572,7 @@ app.Use(async (context, next) =>
                     if (item is JsonElement je)
                         JsonSerializer.Serialize(responseBuffer, je);
                     else
-                        JsonSerializer.Serialize(responseBuffer, item, item.GetType());
+                        JsonSerializer.Serialize(responseBuffer, item, item.GetType(), batchJsonOptions);
                 }
                 responseBuffer.Write(jsonArrayEnd);
                 responseBuffer.Position = 0;
@@ -660,16 +667,10 @@ app.MapPost("/", async (
 }).DisableAntiforgery();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+// Method classification delegated to RpcMethodClassifier (testable public class).
 
-static bool IsCirclesMethod(string? method) =>
-    method != null && (method.StartsWith("circles_", StringComparison.Ordinal)
-        || method.StartsWith("circlesV2_", StringComparison.Ordinal)
-        || method == "rpc.discover");
-
-static bool IsProxyAllowed(string? method) =>
-    method != null && (method.StartsWith("eth_", StringComparison.Ordinal)
-        || method.StartsWith("net_", StringComparison.Ordinal)
-        || method.StartsWith("web3_", StringComparison.Ordinal));
+static bool IsCirclesMethod(string? method) => RpcMethodClassifier.IsCirclesMethod(method);
+static bool IsProxyAllowed(string? method) => RpcMethodClassifier.IsProxyAllowed(method);
 
 /// <summary>
 /// Dispatches a single JSON-RPC request. Handles circles_* locally, proxies eth_*/net_*/web3_* to Nethermind.
