@@ -161,7 +161,7 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildBalances_ShouldSkipUnregisteredAvatars()
     {
-        var unregistered = "0xunregistered000000000000000000000000000000";
+        var unregistered = "0xaaaa000000000000000000000000000000000001";
         var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
         // NOT in V2Avatars — should be skipped
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{unregistered}:{token}", 100m);
@@ -192,8 +192,8 @@ public class PathfinderGraphControllerTests
     public void BuildBalances_ShouldMarkWrappedTokens()
     {
         var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        var wrapperAddress = "0xwrapper00000000000000000000000000000000";
-        var underlyingAvatar = "0xunderlying0000000000000000000000000000";
+        var wrapperAddress = "0xbbbb000000000000000000000000000000000001";
+        var underlyingAvatar = "0xcccc000000000000000000000000000000000001";
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, underlyingAvatar, ("CrcV2_RegisterHuman", 1704067200L));
@@ -215,8 +215,8 @@ public class PathfinderGraphControllerTests
     public void BuildBalances_ShouldMarkStaticWrappedTokens()
     {
         var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        var wrapperAddress = "0xstaticwrap0000000000000000000000000000";
-        var underlyingAvatar = "0xunderlying0000000000000000000000000000";
+        var wrapperAddress = "0xbbbb000000000000000000000000000000000002";
+        var underlyingAvatar = "0xcccc000000000000000000000000000000000001";
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, underlyingAvatar, ("CrcV2_RegisterHuman", 1704067200L));
@@ -236,8 +236,8 @@ public class PathfinderGraphControllerTests
     public void BuildBalances_ShouldFilterWrappersOfUnregisteredAvatars()
     {
         var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        var wrapperAddress = "0xwrapper00000000000000000000000000000000";
-        var unregisteredAvatar = "0xunregistered000000000000000000000000000000";
+        var wrapperAddress = "0xbbbb000000000000000000000000000000000001";
+        var unregisteredAvatar = "0xaaaa000000000000000000000000000000000001";
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         // underlyingAvatar NOT registered in V2Avatars
@@ -255,8 +255,8 @@ public class PathfinderGraphControllerTests
     public void BuildBalances_ShouldIncludeWrappersOfRegisteredGroups()
     {
         var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        var wrapperAddress = "0xgroupwrapper0000000000000000000000000000";
-        var groupAvatar = "0xgroup000000000000000000000000000000000000";
+        var wrapperAddress = "0xee00ee00ee00ee00ee00ee00ee00ee00ee00ee00";
+        var groupAvatar = "0xaa00aa00aa00aa00aa00aa00aa00aa00aa00aa00";
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.Groups.Add(1000, groupAvatar, ("Group", StandardTreasuryMint, "G"));
@@ -315,7 +315,7 @@ public class PathfinderGraphControllerTests
     {
         var truster = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
         var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
-        var wrapperAddress = "0xwrapper00000000000000000000000000000000";
+        var wrapperAddress = "0xbbbb000000000000000000000000000000000001";
 
         _cache.V2Avatars.Add(1000, truster, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, trustee, ("CrcV2_RegisterHuman", 1704067200L));
@@ -338,8 +338,8 @@ public class PathfinderGraphControllerTests
     {
         var truster = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
         var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
-        var wrapper1 = "0xwrapper10000000000000000000000000000000";
-        var wrapper2 = "0xwrapper20000000000000000000000000000000";
+        var wrapper1 = "0xbbbb000000000000000000000000000000000003";
+        var wrapper2 = "0xbbbb000000000000000000000000000000000004";
 
         _cache.V2Avatars.Add(1000, truster, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, trustee, ("CrcV2_RegisterHuman", 1704067200L));
@@ -358,8 +358,8 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildTrust_ShouldIncludeEdgesWhereGroupIsTrustee()
     {
-        var org = "0xorg00000000000000000000000000000000000000";
-        var group = "0xgroup000000000000000000000000000000000000";
+        var org = "0xdddd000000000000000000000000000000000001";
+        var group = "0xaa00aa00aa00aa00aa00aa00aa00aa00aa00aa00";
 
         _cache.V2Avatars.Add(1000, org, ("CrcV2_RegisterOrganization", 1704067200L));
         // Group is NOT in V2Avatars — only in Groups cache (like production)
@@ -377,7 +377,7 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildTrust_ShouldExcludeGroupTrusters()
     {
-        var group = "0xgroup000000000000000000000000000000000000";
+        var group = "0xaa00aa00aa00aa00aa00aa00aa00aa00aa00aa00";
         var trustee = "0x42cedde51198d1773590311e2a340dc06b24cb37";
 
         _cache.V2Avatars.Add(1000, group, ("CrcV2_RegisterGroup", 1704067200L));
@@ -398,11 +398,11 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildGroups_ShouldOnlyIncludeRouterGroups()
     {
-        var routerGroup = "0xroutergroup000000000000000000000000000000";
-        var otherGroup = "0xothergroup0000000000000000000000000000000";
+        var routerGroup = "0xdddd000000000000000000000000000000000002";
+        var otherGroup = "0xdddd000000000000000000000000000000000003";
 
         _cache.Groups.Add(1000, routerGroup, ("Router Group", StandardTreasuryMint, "RG"));
-        _cache.Groups.Add(1000, otherGroup, ("Custom Group", "0xothermint", "CG"));
+        _cache.Groups.Add(1000, otherGroup, ("Custom Group", "0xffff000000000000000000000000000000000001", "CG"));
 
         var controller = CreateController();
         var result = controller.GetGraph(include: "groups");
@@ -417,8 +417,8 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildGroupTrusts_ShouldOnlyIncludeRouterGroupTrusters()
     {
-        var routerGroup = "0xroutergroup000000000000000000000000000000";
-        var member = "0xmember00000000000000000000000000000000000";
+        var routerGroup = "0xdddd000000000000000000000000000000000002";
+        var member = "0xeeee000000000000000000000000000000000001";
 
         _cache.V2Avatars.Add(1000, routerGroup, ("CrcV2_RegisterGroup", 1704067200L));
         _cache.V2Avatars.Add(1000, member, ("CrcV2_RegisterHuman", 1704067200L));
@@ -437,12 +437,12 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildGroupTrusts_ShouldExcludeNonRouterGroups()
     {
-        var nonRouterGroup = "0xnonrouter00000000000000000000000000000000";
-        var member = "0xmember00000000000000000000000000000000000";
+        var nonRouterGroup = "0xdddd000000000000000000000000000000000004";
+        var member = "0xeeee000000000000000000000000000000000001";
 
         _cache.V2Avatars.Add(1000, nonRouterGroup, ("CrcV2_RegisterGroup", 1704067200L));
         _cache.V2Avatars.Add(1000, member, ("CrcV2_RegisterHuman", 1704067200L));
-        _cache.Groups.Add(1000, nonRouterGroup, ("Custom Group", "0xothermint", "CG"));
+        _cache.Groups.Add(1000, nonRouterGroup, ("Custom Group", "0xffff000000000000000000000000000000000001", "CG"));
         _cache.V2TrustRelations.Add(1000, $"{nonRouterGroup}:{member}", 9999999999L);
 
         var controller = CreateController();
@@ -530,7 +530,7 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildConsentedFlow_ShouldSkipUnregisteredAvatars()
     {
-        var unregistered = "0xunregistered000000000000000000000000000000";
+        var unregistered = "0xaaaa000000000000000000000000000000000001";
         var flags = new byte[32];
         flags[31] = 0x01;
         _cache.ConsentedFlowFlags.Add(1000, unregistered, flags);
@@ -594,9 +594,9 @@ public class PathfinderGraphControllerTests
 
     private void SeedFullData()
     {
-        var alice = "0xalice000000000000000000000000000000000000";
-        var bob = "0xbob00000000000000000000000000000000000000";
-        var group = "0xgroup000000000000000000000000000000000000";
+        var alice = "0xaaaa000000000000000000000000000000000002";
+        var bob = "0xaaaa000000000000000000000000000000000003";
+        var group = "0xaa00aa00aa00aa00aa00aa00aa00aa00aa00aa00";
         var now = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         _cache.V2Avatars.Add(1000, alice, ("CrcV2_RegisterHuman", 1704067200L));
@@ -621,9 +621,9 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void GetGraph_ShouldIncludeAvatarsSection_WithAllRegisteredV2Avatars()
     {
-        var alice = "0xalice0000000000000000000000000000000000";
-        var bob = "0xbob00000000000000000000000000000000000000";
-        var lonely = "0xlonely00000000000000000000000000000000";
+        var alice = "0xaaaa000000000000000000000000000000000002";
+        var bob = "0xaaaa000000000000000000000000000000000003";
+        var lonely = "0xaaaa000000000000000000000000000000000004";
 
         _cache.V2Avatars.Add(1000, alice, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2Avatars.Add(1000, bob, ("CrcV2_RegisterHuman", 1704067200L));
@@ -646,7 +646,7 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void GetGraph_AvatarsInclude_ShouldBeFilterable()
     {
-        var alice = "0xalice0000000000000000000000000000000000";
+        var alice = "0xaaaa000000000000000000000000000000000002";
         _cache.V2Avatars.Add(1000, alice, ("CrcV2_RegisterHuman", 1704067200L));
 
         var controller = CreateController();
@@ -668,8 +668,8 @@ public class PathfinderGraphControllerTests
     [Fact]
     public void BuildWrapperMappings_ShouldIncludeWrappersOfRegisteredGroups()
     {
-        var wrapperAddress = "0xgroupwrapper0000000000000000000000000000";
-        var groupAvatar = "0xgroup000000000000000000000000000000000000";
+        var wrapperAddress = "0xee00ee00ee00ee00ee00ee00ee00ee00ee00ee00";
+        var groupAvatar = "0xaa00aa00aa00aa00aa00aa00aa00aa00aa00aa00";
 
         _cache.Groups.Add(1000, groupAvatar, ("Group", StandardTreasuryMint, "G"));
         _cache.Erc20WrapperAddresses.Add(1000, wrapperAddress, (groupAvatar, 0));
