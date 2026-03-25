@@ -11,8 +11,11 @@ public class InMemoryAvatarState
     private readonly HashSet<string> _groups = new();
     private readonly HashSet<string> _stopped = new();
 
+    /// <summary>Total number of registered avatars (including stopped).</summary>
     public int Count => _avatars.Count;
+    /// <summary>Number of registered groups.</summary>
     public int GroupCount => _groups.Count;
+    /// <summary>Number of stopped avatars.</summary>
     public int StoppedCount => _stopped.Count;
 
     /// <summary>All registered avatars (including groups), excluding stopped.</summary>
@@ -34,8 +37,13 @@ public class InMemoryAvatarState
         return _avatars.Contains(lower) && !_stopped.Contains(lower);
     }
 
+    /// <summary>Returns true if address is a registered group.</summary>
     public bool IsGroup(string address) => _groups.Contains(address.ToLowerInvariant());
 
+    /// <summary>
+    /// Replace all avatar/group state from a full database load.
+    /// Groups are identified by type "CrcV2_RegisterGroup".
+    /// </summary>
     public void InitializeFromFullLoad(IEnumerable<(string Avatar, string Type)> rows)
     {
         _avatars.Clear();
@@ -64,6 +72,7 @@ public class InMemoryAvatarState
         _stopped.Add(avatar.ToLowerInvariant());
     }
 
+    /// <summary>Register a new avatar (incremental delta). Groups added to both sets.</summary>
     public void AddAvatar(string avatar, string type)
     {
         avatar = avatar.ToLowerInvariant();
