@@ -246,14 +246,17 @@ async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionS
 app.Map("/ws/subscribe", HandleSubscriptionWebSocket).DisableAntiforgery();
 app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
 
-// ─── Concurrency guard ───────────────────────────────────────────────────────
-// Limits concurrent RPC requests to prevent DB pool exhaustion under load.
-// Returns 503 immediately when at capacity (same pattern as pathfinder).
+// ─── Concurrency & rate limiting ─────────────────────────────────────────────
+// Concurrency semaphore: limits simultaneous in-flight requests (prevents DB pool exhaustion).
+// Rate limiter: per-IP token bucket that counts batch items individually (prevents amplification).
+// Both are non-blocking: semaphore returns 503, rate limiter returns 429.
 var rpcSemaphore = app.Services.GetRequiredService<SemaphoreSlim>();
+var rpcRateLimiter = app.Services.GetRequiredService<RpcRateLimiter>();
 
 // ─── Batch JSON-RPC middleware ────────────────────────────────────────────────
 // Routes batch requests: circles_*/circlesV2_* handled locally, eth_*/net_*/web3_* proxied to Nethermind.
 // Each circles item acquires a semaphore slot; Nethermind items are batched in a single proxy call.
+// Rate limit: entire batch costs N tokens (one per item) from the caller's per-IP bucket.
 const int MaxBatchBodySize = 1_048_576; // 1 MB
 const int MaxBatchSize = 50; // Max items per batch
 
@@ -338,6 +341,21 @@ app.Use(async (context, next) =>
                 {
                     context.Response.ContentType = "application/json";
                     await context.Response.WriteAsync("[]");
+                    return;
+                }
+
+                // Per-IP rate limit: batch costs N tokens (one per item).
+                // Checked before any processing to fail fast on abusive callers.
+                if (!rpcRateLimiter.TryAcquire(remoteIp, batchLen))
+                {
+                    RpcMetrics.RateLimitedTotal.Inc();
+                    logger.LogWarning("Rate limited batch ({BatchSize} items) from {RemoteIp}", batchLen, remoteIp);
+                    context.Response.StatusCode = 429;
+                    context.Response.ContentType = "application/json";
+                    await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
+                    });
                     return;
                 }
 
@@ -561,14 +579,25 @@ app.MapPost("/", async (
         });
     }
 
+    var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    // Per-IP rate limit: single request costs 1 token
+    if (!rpcRateLimiter.TryAcquire(remoteIp))
+    {
+        RpcMetrics.RateLimitedTotal.Inc();
+        return Results.Json(new JsonRpcErrorResponse
+        {
+            Id = JsonRpcId.CoerceId(request.Id),
+            Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
+        }, statusCode: 429);
+    }
+
     // Concurrency guard — reject immediately when at capacity
     if (!rpcSemaphore.Wait(0))
     {
         RpcMetrics.RejectedTotal.Inc();
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     }
-
-    var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
 
     try

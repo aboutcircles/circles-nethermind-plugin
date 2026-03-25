@@ -34,6 +34,7 @@ public static class BuilderSetup
 
         Console.WriteLine("Starting Circles.Rpc service...");
         Console.WriteLine($"* RPC max concurrent requests: {settings.RpcMaxConcurrentRequests}");
+        Console.WriteLine($"* RPC rate limit: {(settings.RpcRateLimitPerSecond > 0 ? $"{settings.RpcRateLimitPerSecond}/s (burst {settings.RpcRateLimitBurst})" : "disabled")}");
 
         var csb = new NpgsqlConnectionStringBuilder(settings.IndexReadonlyDbConnectionString);
         Console.WriteLine($"* DB Host: {csb.Host}");
@@ -46,10 +47,12 @@ public static class BuilderSetup
         Console.WriteLine($"* Use Cache Service: {settings.UseCacheService}");
 
         var semaphore = new SemaphoreSlim(settings.RpcMaxConcurrentRequests, settings.RpcMaxConcurrentRequests);
+        var rateLimiter = new RpcRateLimiter(settings.RpcRateLimitPerSecond, settings.RpcRateLimitBurst);
 
         var builder = WebApplication.CreateSlimBuilder(args);
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(semaphore);
+        builder.Services.AddSingleton(rateLimiter);
 
         // NpgsqlDataSource for connection pooling + prepared statement caching
         var dataSource = NpgsqlDataSource.Create(settings.IndexReadonlyDbConnectionString);

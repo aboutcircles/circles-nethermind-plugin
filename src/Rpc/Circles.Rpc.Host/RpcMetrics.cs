@@ -78,6 +78,13 @@ public static class RpcMetrics
         });
 
     /// <summary>
+    /// Total requests rejected by per-IP rate limiting.
+    /// </summary>
+    public static readonly Counter RateLimitedTotal = Metrics.CreateCounter(
+        "circles_rpc_rate_limited_total",
+        "Total number of RPC requests rejected by per-IP rate limiting");
+
+    /// <summary>
     /// Total batch requests received.
     /// </summary>
     public static readonly Counter BatchTotal = Metrics.CreateCounter(
