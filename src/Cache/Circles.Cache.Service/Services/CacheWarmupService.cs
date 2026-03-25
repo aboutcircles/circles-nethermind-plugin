@@ -1883,9 +1883,8 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     protected virtual void ClearCaches()
     {
-        // Clear BlockRingBuffer to prevent "block must be > latest" errors during re-warmup
-        // (the buffer retains blocks from the previous run which would reject lower block numbers)
-        _state.BlockRingBuffer.Clear();
+        // Note: BlockRingBuffer is cleared by RewarmupReset.Trigger before this callback.
+        // Do not clear it here to avoid confusing double-clear.
 
         _caches.V1Avatars.Seed(new Dictionary<string, (string, string?)>());
         _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());

@@ -109,7 +109,11 @@ public class MetricsUpdateService : BackgroundService
                     int i => i,
                     _ => Convert.ToInt64(result)
                 };
-                var lag = _state.GetLag(dbHead);
+                // Only publish meaningful lag when warmup is complete. During warmup,
+                // LastProcessedBlock is -1 (sentinel), making lag = dbHead + 1 (~45M blocks).
+                // Publishing that would trigger IndexerLagCritical/CacheDatabaseLagCritical alerts
+                // on every re-warmup cycle.
+                var lag = _state.WarmupComplete ? _state.GetLag(dbHead) : 0;
                 CacheMetrics.DatabaseLag.Set(lag);
             }
         }
