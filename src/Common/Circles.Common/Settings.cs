@@ -113,6 +113,24 @@ public class Settings
             ? rpcMaxRequests
             : Math.Max(Environment.ProcessorCount * 4, 32);
 
+    /// <summary>
+    /// Per-IP rate limit: max RPC calls per second (batch items count individually).
+    /// Set to 0 to disable rate limiting. Default: 100/s.
+    /// </summary>
+    public readonly int RpcRateLimitPerSecond =
+        int.TryParse(Environment.GetEnvironmentVariable("RPC_RATE_LIMIT_PER_SECOND"), out var rateLimit)
+            ? rateLimit
+            : 100;
+
+    /// <summary>
+    /// Per-IP rate limit burst allowance. Permits short spikes above the sustained rate.
+    /// Default: 200 (allows a burst of 200 then refills at RpcRateLimitPerSecond).
+    /// </summary>
+    public readonly int RpcRateLimitBurst =
+        int.TryParse(Environment.GetEnvironmentVariable("RPC_RATE_LIMIT_BURST"), out var rateBurst)
+            ? rateBurst
+            : 200;
+
     #endregion
 
     #region Indexed contract addresses

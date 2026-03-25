@@ -76,4 +76,29 @@ public static class RpcMetrics
             LabelNames = new[] { "method" },
             Buckets = new[] { 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0 }
         });
+
+    /// <summary>
+    /// Total requests rejected by per-IP rate limiting.
+    /// </summary>
+    public static readonly Counter RateLimitedTotal = Metrics.CreateCounter(
+        "circles_rpc_rate_limited_total",
+        "Total number of RPC requests rejected by per-IP rate limiting");
+
+    /// <summary>
+    /// Total batch requests received.
+    /// </summary>
+    public static readonly Counter BatchTotal = Metrics.CreateCounter(
+        "circles_rpc_batch_total",
+        "Total number of batch JSON-RPC requests");
+
+    /// <summary>
+    /// Batch size distribution (items per batch).
+    /// </summary>
+    public static readonly Histogram BatchSize = Metrics.CreateHistogram(
+        "circles_rpc_batch_size",
+        "Number of items per batch request",
+        new HistogramConfiguration
+        {
+            Buckets = new[] { 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 50.0 }
+        });
 }

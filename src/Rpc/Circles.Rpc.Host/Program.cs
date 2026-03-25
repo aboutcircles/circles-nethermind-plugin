@@ -246,20 +246,29 @@ async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionS
 app.Map("/ws/subscribe", HandleSubscriptionWebSocket).DisableAntiforgery();
 app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
 
-// ─── Concurrency guard ───────────────────────────────────────────────────────
-// Limits concurrent RPC requests to prevent DB pool exhaustion under load.
-// Returns 503 immediately when at capacity (same pattern as pathfinder).
+// ─── Concurrency & rate limiting ─────────────────────────────────────────────
+// Concurrency semaphore: limits simultaneous in-flight requests (prevents DB pool exhaustion).
+// Rate limiter: per-IP token bucket that counts batch items individually (prevents amplification).
+// Both are non-blocking: semaphore returns 503, rate limiter returns 429.
 var rpcSemaphore = app.Services.GetRequiredService<SemaphoreSlim>();
+var rpcRateLimiter = app.Services.GetRequiredService<RpcRateLimiter>();
 
 // ─── Batch JSON-RPC middleware ────────────────────────────────────────────────
-// JSON-RPC batch requests (body is a JSON array) are forwarded entirely to Nethermind.
-// Nethermind has the Circles module loaded, so it can handle both circles_* and eth_* methods.
+// Routes batch requests: circles_*/circlesV2_* handled locally, eth_*/net_*/web3_* proxied to Nethermind.
+// Each circles item acquires a semaphore slot; Nethermind items are batched in a single proxy call.
+// Rate limit: entire batch costs N tokens (one per item) from the caller's per-IP bucket.
 const int MaxBatchBodySize = 1_048_576; // 1 MB
+const int MaxBatchSize = 50; // Max items per batch
+var jsonArrayStart = "["u8.ToArray();
+var jsonArraySep = ","u8.ToArray();
+var jsonArrayEnd = "]"u8.ToArray();
+// Match the case-insensitive options configured in BuilderSetup.cs for MapPost deserialization
+var batchDeserializeOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
 app.Use(async (context, next) =>
 {
     if (context.Request.Method == "POST" && context.Request.Path == "/")
     {
-        // Only intercept JSON content types
         var contentType = context.Request.ContentType;
         if (contentType == null || !contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
         {
@@ -267,7 +276,6 @@ app.Use(async (context, next) =>
             return;
         }
 
-        // Peek first byte to detect batch (JSON array) — only EnableBuffering for this peek
         context.Request.EnableBuffering();
         var buf = new byte[1];
         var bytesRead = await context.Request.Body.ReadAsync(buf, 0, 1);
@@ -278,24 +286,21 @@ app.Use(async (context, next) =>
         {
             var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
             var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
+            var rpcModule = context.RequestServices.GetRequiredService<CirclesRpcModule>();
             var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             var startTimestamp = Stopwatch.GetTimestamp();
 
-            // Enforce body size limit for batch requests
+            // Enforce body size limit
             if (context.Request.ContentLength > MaxBatchBodySize)
             {
                 context.Response.StatusCode = 413;
                 context.Response.ContentType = "application/json";
-                var tooLarge = new JsonRpcErrorResponse
+                await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
                     Error = new JsonRpcError { Code = -32600, Message = $"Batch request too large (max {MaxBatchBodySize / 1024}KB)" }
-                };
-                await JsonSerializer.SerializeAsync(context.Response.Body, tooLarge);
+                });
                 return;
             }
-
-            logger.LogInformation("Batch JSON-RPC request from {RemoteIp}, forwarding to Nethermind", remoteIp);
-            RpcMetrics.ProxiedTotal.WithLabels("batch").Inc();
 
             try
             {
@@ -306,39 +311,290 @@ app.Use(async (context, next) =>
                 {
                     context.Response.StatusCode = 413;
                     context.Response.ContentType = "application/json";
-                    var tooLarge = new JsonRpcErrorResponse
+                    await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
                         Error = new JsonRpcError { Code = -32600, Message = $"Batch request too large (max {MaxBatchBodySize / 1024}KB)" }
-                    };
-                    await JsonSerializer.SerializeAsync(context.Response.Body, tooLarge);
+                    });
                     return;
                 }
 
-                var body = ms.ToArray();
-                var result = await nethermindClient.ForwardRawRequest(body);
+                ms.Position = 0;
+                using var doc = await JsonDocument.ParseAsync(ms);
+                var batchArray = doc.RootElement;
+
+                if (batchArray.ValueKind != JsonValueKind.Array)
+                {
+                    await next();
+                    return;
+                }
+
+                var batchLen = batchArray.GetArrayLength();
+
+                // Enforce batch size limit
+                if (batchLen > MaxBatchSize)
+                {
+                    context.Response.StatusCode = 400;
+                    context.Response.ContentType = "application/json";
+                    await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32600, Message = $"Batch too large: {batchLen} items (max {MaxBatchSize})" }
+                    });
+                    return;
+                }
+
+                // JSON-RPC 2.0 spec: empty array is invalid ("at least one value" required)
+                if (batchLen == 0)
+                {
+                    context.Response.StatusCode = 400;
+                    context.Response.ContentType = "application/json";
+                    await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: empty batch" }
+                    });
+                    return;
+                }
+
+                // Per-IP rate limit: batch costs N tokens (one per item).
+                // Checked before any processing to fail fast on abusive callers.
+                if (!rpcRateLimiter.TryAcquire(remoteIp, batchLen))
+                {
+                    RpcMetrics.RateLimitedTotal.Inc();
+                    logger.LogWarning("Rate limited batch ({BatchSize} items) from {RemoteIp}", batchLen, remoteIp);
+                    context.Response.StatusCode = 429;
+                    context.Response.ContentType = "application/json";
+                    await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
+                    });
+                    return;
+                }
+
+                RpcMetrics.BatchTotal.Inc();
+                RpcMetrics.BatchSize.Observe(batchLen);
+                logger.LogInformation("Batch JSON-RPC ({BatchSize} items) from {RemoteIp}", batchLen, remoteIp);
+
+                // Classify each request
+                var responses = new object?[batchLen];
+                var circlesItems = new List<(int Index, JsonRpcRequest Request)>();
+                var nethermindItems = new List<(int Index, JsonElement Raw)>();
+
+                int idx = 0;
+                foreach (var element in batchArray.EnumerateArray())
+                {
+                    var method = element.TryGetProperty("method", out var methodProp)
+                        ? methodProp.GetString() : null;
+                    var id = element.TryGetProperty("id", out var idProp) ? idProp : JsonRpcId.Null;
+                    var jsonrpc = element.TryGetProperty("jsonrpc", out var jsonrpcProp)
+                        ? jsonrpcProp.GetString() : null;
+
+                    if (jsonrpc != "2.0" || string.IsNullOrEmpty(method))
+                    {
+                        responses[idx] = new JsonRpcErrorResponse
+                        {
+                            Id = id,
+                            Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
+                        };
+                    }
+                    else if (IsCirclesMethod(method))
+                    {
+                        try
+                        {
+                            var req = JsonSerializer.Deserialize<JsonRpcRequest>(
+                                element.GetRawText(), batchDeserializeOptions);
+                            if (req != null) circlesItems.Add((idx, req));
+                            else responses[idx] = new JsonRpcErrorResponse
+                            {
+                                Id = id,
+                                Error = new JsonRpcError { Code = -32600, Message = "Invalid Request" }
+                            };
+                        }
+                        catch (JsonException)
+                        {
+                            responses[idx] = new JsonRpcErrorResponse
+                            {
+                                Id = id,
+                                Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: malformed item" }
+                            };
+                        }
+                    }
+                    else if (IsProxyAllowed(method))
+                    {
+                        nethermindItems.Add((idx, element.Clone()));
+                    }
+                    else
+                    {
+                        responses[idx] = new JsonRpcErrorResponse
+                        {
+                            Id = id,
+                            Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {method}" }
+                        };
+                    }
+                    idx++;
+                }
+
+                // Process circles items sequentially with semaphore
+                var circlesTask = Task.Run(async () =>
+                {
+                    foreach (var (i, req) in circlesItems)
+                    {
+                        if (!await rpcSemaphore.WaitAsync(0))
+                        {
+                            RpcMetrics.RejectedTotal.Inc();
+                            responses[i] = new JsonRpcErrorResponse
+                            {
+                                Id = JsonRpcId.CoerceId(req.Id),
+                                Error = new JsonRpcError { Code = -32000, Message = "Server busy" }
+                            };
+                            continue;
+                        }
+                        try
+                        {
+                            responses[i] = await DispatchSingleRequest(
+                                req, rpcModule, nethermindClient, logger, remoteIp);
+                        }
+                        finally
+                        {
+                            rpcSemaphore.Release();
+                        }
+                    }
+                });
+
+                // Proxy Nethermind items in a single batch call.
+                // JSON-RPC 2.0 batch responses are unordered — correlate by id, not position.
+                var nethermindTask = Task.Run(async () =>
+                {
+                    if (nethermindItems.Count == 0) return;
+
+                    try
+                    {
+                        var subBatch = nethermindItems.Select(x => x.Raw).ToArray();
+                        var subBatchBytes = JsonSerializer.SerializeToUtf8Bytes(subBatch);
+                        var result = await nethermindClient.ForwardRawRequest(subBatchBytes);
+
+                        if (result.ValueKind == JsonValueKind.Array)
+                        {
+                            // Build id→response lookup from Nethermind's response array.
+                            // JSON-RPC ids can be string, number, or null — use raw JSON text as key.
+                            var responseById = new Dictionary<string, JsonElement>();
+                            foreach (var resp in result.EnumerateArray())
+                            {
+                                var idKey = resp.TryGetProperty("id", out var respId)
+                                    ? respId.GetRawText() : "null";
+                                responseById.TryAdd(idKey, resp); // first wins on duplicate ids
+                            }
+
+                            // Match each sent request to its response by id
+                            foreach (var (ni, raw) in nethermindItems)
+                            {
+                                var reqIdKey = raw.TryGetProperty("id", out var reqId)
+                                    ? reqId.GetRawText() : "null";
+
+                                if (responseById.TryGetValue(reqIdKey, out var matched))
+                                    responses[ni] = matched;
+                                else
+                                {
+                                    // No response for this id — notification (no id) or dropped
+                                    var fallbackId = raw.TryGetProperty("id", out var fbId)
+                                        ? fbId.Clone() : JsonRpcId.Null;
+                                    responses[ni] = new JsonRpcErrorResponse
+                                    {
+                                        Id = fallbackId,
+                                        Error = new JsonRpcError { Code = -32603, Message = "Missing proxy response" }
+                                    };
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Nethermind returned a non-array (single error object)
+                            logger.LogWarning("Nethermind returned non-array for batch of {Count} items", nethermindItems.Count);
+                            foreach (var (ni, raw) in nethermindItems)
+                            {
+                                var errId = raw.TryGetProperty("id", out var errIdProp) ? errIdProp.Clone() : JsonRpcId.Null;
+                                responses[ni] = new JsonRpcErrorResponse
+                                {
+                                    Id = errId,
+                                    Error = new JsonRpcError { Code = -32603, Message = "Unexpected proxy response" }
+                                };
+                            }
+                        }
+                    }
+                    catch (Exception proxyEx)
+                    {
+                        logger.LogError(proxyEx, "Failed to proxy Nethermind batch ({Count} items) from {RemoteIp}",
+                            nethermindItems.Count, remoteIp);
+                        foreach (var (i, raw) in nethermindItems)
+                        {
+                            var id = raw.TryGetProperty("id", out var idProp) ? idProp.Clone() : JsonRpcId.Null;
+                            responses[i] = new JsonRpcErrorResponse
+                            {
+                                Id = id,
+                                Error = new JsonRpcError { Code = -32603, Message = "Proxy error" }
+                            };
+                        }
+                    }
+                });
+
+                await Task.WhenAll(circlesTask, nethermindTask);
+
                 var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-                RpcMetrics.ProxyDuration.WithLabels("batch").Observe(elapsed.TotalSeconds);
+                logger.LogInformation(
+                    "Batch JSON-RPC completed in {ElapsedMs} ms ({CirclesCount} circles, {NethermindCount} proxied) from {RemoteIp}",
+                    elapsed.TotalMilliseconds, circlesItems.Count, nethermindItems.Count, remoteIp);
 
-                logger.LogInformation("Batch JSON-RPC proxied in {ElapsedMs} ms from {RemoteIp}",
-                    elapsed.TotalMilliseconds, remoteIp);
+                // Sweep for null slots (shouldn't happen, but safety net)
+                for (int k = 0; k < responses.Length; k++)
+                {
+                    responses[k] ??= new JsonRpcErrorResponse
+                    {
+                        Error = new JsonRpcError { Code = -32603, Message = "Internal error: no response generated" }
+                    };
+                }
 
+                // Serialize each element by runtime type (System.Text.Json serializes object[] by
+                // declared type, which produces empty {} for JsonRpcResponse/JsonRpcErrorResponse)
+                // Serialize batch response into a buffer, then flush once.
+                // Each item is serialized by runtime type (System.Text.Json object[] bug workaround).
                 context.Response.ContentType = "application/json";
-                await JsonSerializer.SerializeAsync(context.Response.Body, result);
+                using var responseBuffer = new MemoryStream();
+                responseBuffer.Write(jsonArrayStart);
+                for (int k = 0; k < responses.Length; k++)
+                {
+                    if (k > 0) responseBuffer.Write(jsonArraySep);
+                    var item = responses[k]!;
+                    if (item is JsonElement je)
+                        JsonSerializer.Serialize(responseBuffer, je);
+                    else
+                        JsonSerializer.Serialize(responseBuffer, item, item.GetType());
+                }
+                responseBuffer.Write(jsonArrayEnd);
+                responseBuffer.Position = 0;
+                await responseBuffer.CopyToAsync(context.Response.Body);
+            }
+            catch (JsonException jsonEx)
+            {
+                logger.LogWarning(jsonEx, "Malformed batch JSON-RPC request from {RemoteIp}", remoteIp);
+                RpcMetrics.ErrorsTotal.WithLabels("batch", "parse_error").Inc();
+                context.Response.StatusCode = 400;
+                context.Response.ContentType = "application/json";
+                await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
+                {
+                    Error = new JsonRpcError { Code = -32700, Message = "Parse error" }
+                });
             }
             catch (Exception ex)
             {
                 var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-                RpcMetrics.ErrorsTotal.WithLabels("batch", "proxy_error").Inc();
-                logger.LogError(ex, "Failed to proxy batch JSON-RPC from {RemoteIp} after {ElapsedMs} ms",
+                RpcMetrics.ErrorsTotal.WithLabels("batch", "internal_error").Inc();
+                logger.LogError(ex, "Batch handler error from {RemoteIp} after {ElapsedMs} ms",
                     remoteIp, elapsed.TotalMilliseconds);
 
-                context.Response.StatusCode = 502;
+                context.Response.StatusCode = 500;
                 context.Response.ContentType = "application/json";
-                var errorResponse = new JsonRpcErrorResponse
+                await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
-                    Error = new JsonRpcError { Code = -32603, Message = $"Batch proxy error: {ex.Message}" }
-                };
-                await JsonSerializer.SerializeAsync(context.Response.Body, errorResponse);
+                    Error = new JsonRpcError { Code = -32603, Message = "Internal batch error" }
+                });
             }
             return;
         }
@@ -366,34 +622,79 @@ app.MapPost("/", async (
         });
     }
 
-    // Concurrency guard — reject immediately when at capacity
-    if (!rpcSemaphore.Wait(0))
+    var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    // Per-IP rate limit: single request costs 1 token
+    if (!rpcRateLimiter.TryAcquire(remoteIp))
     {
-        RpcMetrics.RejectedTotal.Inc();
-        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        RpcMetrics.RateLimitedTotal.Inc();
+        return Results.Json(new JsonRpcErrorResponse
+        {
+            Id = JsonRpcId.CoerceId(request.Id),
+            Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
+        }, statusCode: 429);
     }
 
-    var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    // Concurrency guard — reject immediately when at capacity
+    if (!await rpcSemaphore.WaitAsync(0))
+    {
+        RpcMetrics.RejectedTotal.Inc();
+        return Results.Json(new JsonRpcErrorResponse
+        {
+            Id = JsonRpcId.CoerceId(request.Id),
+            Error = new JsonRpcError { Code = -32000, Message = "Server busy" }
+        }, statusCode: 503);
+    }
+    var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
+
+    try
+    {
+        var result = await DispatchSingleRequest(request, rpcModule, nethermindClient, logger, remoteIp);
+        return Results.Json(result);
+    }
+    finally
+    {
+        rpcSemaphore.Release();
+    }
+
+}).DisableAntiforgery();
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+static bool IsCirclesMethod(string? method) =>
+    method != null && (method.StartsWith("circles_", StringComparison.Ordinal)
+        || method.StartsWith("circlesV2_", StringComparison.Ordinal)
+        || method == "rpc.discover");
+
+static bool IsProxyAllowed(string? method) =>
+    method != null && (method.StartsWith("eth_", StringComparison.Ordinal)
+        || method.StartsWith("net_", StringComparison.Ordinal)
+        || method.StartsWith("web3_", StringComparison.Ordinal));
+
+/// <summary>
+/// Dispatches a single JSON-RPC request. Handles circles_* locally, proxies eth_*/net_*/web3_* to Nethermind.
+/// Returns JsonRpcResponse, JsonRpcErrorResponse, or JsonElement (for proxied responses).
+/// Tracks per-method metrics. Does NOT manage the concurrency semaphore.
+/// </summary>
+static async Task<object> DispatchSingleRequest(
+    JsonRpcRequest request,
+    CirclesRpcModule rpcModule,
+    NethermindRpcClient nethermindClient,
+    ILogger logger,
+    string remoteIp)
+{
     var methodName = request.Method ?? "<unknown>";
     var startTimestamp = Stopwatch.GetTimestamp();
 
-    // Track metrics
     RpcMetrics.RequestsTotal.WithLabels(methodName).Inc();
     RpcMetrics.InFlightRequests.WithLabels(methodName).Inc();
-
-    logger.LogInformation(
-        "RPC request {Method} (id={Id}) received from {RemoteIp}",
-        methodName,
-        request.Id,
-        remoteIp);
 
     try
     {
         object rpcResult = request.Method switch
         {
-            // OpenRPC discovery — returns the spec so playgrounds can auto-discover methods
+            // OpenRPC discovery
             "rpc.discover" => OpenRpcGenerator.Generate(),
-
             // Balance & Token Methods
             "circles_getTotalBalance" => await HandleGetTotalBalance(request, rpcModule),
             "circlesV2_getTotalBalance" => await HandleV2GetTotalBalance(request, rpcModule),
@@ -423,15 +724,11 @@ app.MapPost("/", async (
             "circles_getTokenHolders" => await ReflectionHandler(request, rpcModule),
             "circlesV2_findPath" => await HandleV2FindPath(request, rpcModule),
             // System & Query Methods
-            // Legacy non-paginated format (plain array) — kept for backwards compatibility
             "circles_events" => await HandleEventsLegacy(request, rpcModule),
-            // Server-side cursor pagination ({events, hasMore, nextCursor})
             "circles_events_paginated" => await HandleEventsPaginated(request, rpcModule),
             "circles_health" => await HandleHealth(request, rpcModule),
             "circles_tables" => await HandleTables(request, rpcModule),
-            // Legacy non-paginated format ({columns, rows} only) — kept for non-paginating callers
             "circles_query" => await HandleQuery(request, rpcModule),
-            // Server-side cursor pagination ({columns, rows, hasMore, nextCursor})
             "circles_paginated_query" => await HandleQuery2(request, rpcModule),
             // SDK Enablement Methods
             "circles_getProfileView" => await ReflectionHandler(request, rpcModule),
@@ -447,154 +744,89 @@ app.MapPost("/", async (
             "circles_getAtScaleInvitations" => await ReflectionHandler(request, rpcModule),
             "circles_getInvitationsFrom" => await ReflectionHandler(request, rpcModule),
 
-            _ => throw new RpcMethodNotFoundException(request.Method)
+            _ => throw new RpcMethodNotFoundException(request.Method ?? "<unknown>")
         };
 
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-
-        // Record successful request metrics
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
-
         logger.LogInformation(
-            "RPC request {Method} (id={Id}) succeeded in {ElapsedMs} ms (remote {RemoteIp})",
-            methodName,
-            request.Id,
-            elapsed.TotalMilliseconds,
-            remoteIp);
+            "RPC {Method} (id={Id}) succeeded in {ElapsedMs} ms from {RemoteIp}",
+            methodName, request.Id, Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds, remoteIp);
 
-        return Results.Ok(new JsonRpcResponse
+        return new JsonRpcResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
             Result = rpcResult
-        });
+        };
     }
     catch (RpcMethodNotFoundException)
     {
-        // Only proxy safe read-only Ethereum JSON-RPC methods to Nethermind.
-        // Block admin_*, debug_*, personal_*, miner_*, etc. to prevent node compromise.
-        var isProxyAllowed = methodName.StartsWith("eth_", StringComparison.Ordinal)
-            || methodName.StartsWith("net_", StringComparison.Ordinal)
-            || methodName.StartsWith("web3_", StringComparison.Ordinal);
-
-        if (!isProxyAllowed)
+        // Proxy safe read-only methods to Nethermind
+        if (!IsProxyAllowed(request.Method))
         {
-            var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-            RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-            RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
             RpcMetrics.ErrorsTotal.WithLabels(methodName, "method_not_found").Inc();
-
-            logger.LogWarning(
-                "RPC method not found (not proxyable): {Method} from {RemoteIp} after {ElapsedMs} ms",
-                methodName, remoteIp, elapsed.TotalMilliseconds);
-
-            return Results.Ok(new JsonRpcErrorResponse
+            return new JsonRpcErrorResponse
             {
                 Id = JsonRpcId.CoerceId(request.Id),
                 Error = new JsonRpcError { Code = -32601, Message = $"Method not found: {methodName}" }
-            });
+            };
         }
 
-        var nethermindClient = context.RequestServices.GetRequiredService<NethermindRpcClient>();
         try
         {
             RpcMetrics.ProxiedTotal.WithLabels(methodName).Inc();
-
-            logger.LogInformation(
-                "Proxying RPC request {Method} (id={Id}) to Nethermind from {RemoteIp}",
-                methodName, request.Id, remoteIp);
-
             var proxyResult = await nethermindClient.ForwardRpcRequest(
                 request.Method!, request.Id, request.Params);
-
             var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
             RpcMetrics.ProxyDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-            RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
-
-            logger.LogInformation(
-                "Proxied RPC request {Method} (id={Id}) completed in {ElapsedMs} ms from {RemoteIp}",
-                methodName, request.Id, elapsed.TotalMilliseconds, remoteIp);
-
-            // Return Nethermind's response verbatim (preserves result or error)
-            return Results.Json(proxyResult);
+            return proxyResult; // JsonElement — already a complete JSON-RPC response
         }
         catch (Exception proxyEx)
         {
-            var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-            RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
             RpcMetrics.ErrorsTotal.WithLabels(methodName, "proxy_error").Inc();
-
-            logger.LogError(proxyEx,
-                "Failed to proxy RPC request {Method} to Nethermind from {RemoteIp} after {ElapsedMs} ms",
-                methodName, remoteIp, elapsed.TotalMilliseconds);
-
-            return Results.Ok(new JsonRpcErrorResponse
+            logger.LogError(proxyEx, "Failed to proxy {Method} from {RemoteIp}",
+                methodName, remoteIp);
+            return new JsonRpcErrorResponse
             {
                 Id = JsonRpcId.CoerceId(request.Id),
-                Error = new JsonRpcError { Code = -32603, Message = $"Failed to proxy request to Nethermind: {proxyEx.Message}" }
-            });
+                Error = new JsonRpcError { Code = -32603, Message = "Proxy error" }
+            };
         }
     }
     catch (ArgumentException ex)
     {
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
         RpcMetrics.ErrorsTotal.WithLabels(methodName, "invalid_params").Inc();
-
-        logger.LogWarning(ex,
-            "Invalid params for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
-            methodName,
-            remoteIp,
-            elapsed.TotalMilliseconds);
-        return Results.Ok(new JsonRpcErrorResponse
+        return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32602, Message = ex.Message }
-        });
+        };
     }
-    catch (JsonException ex)
+    catch (JsonException)
     {
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
         RpcMetrics.ErrorsTotal.WithLabels(methodName, "invalid_json").Inc();
-
-        logger.LogWarning(ex,
-            "Invalid JSON params for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
-            methodName,
-            remoteIp,
-            elapsed.TotalMilliseconds);
-        return Results.Ok(new JsonRpcErrorResponse
+        return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
             Error = new JsonRpcError { Code = -32602, Message = "Invalid params" }
-        });
+        };
     }
     catch (Exception ex)
     {
-        var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
-        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
         RpcMetrics.ErrorsTotal.WithLabels(methodName, "internal_error").Inc();
-
-        logger.LogError(ex,
-            "Internal Server Error during RPC execution for method: {Method} from {RemoteIp} after {ElapsedMs} ms",
-            methodName,
-            remoteIp,
-            elapsed.TotalMilliseconds);
-        return Results.Ok(new JsonRpcErrorResponse
+        logger.LogError(ex, "Internal error for {Method} from {RemoteIp}",
+            methodName, remoteIp);
+        return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
-            Error = new JsonRpcError { Code = -32603, Message = $"Internal server error: {ex.Message}" }
-        });
+            Error = new JsonRpcError { Code = -32603, Message = "Internal server error" }
+        };
     }
     finally
     {
-        rpcSemaphore.Release();
+        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
+        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(
+            Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds);
     }
-
-}).DisableAntiforgery();
+}
 
 app.Run();
 
