@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
 using System.Threading.RateLimiting;
 
 namespace Circles.Rpc.Host;
@@ -49,10 +50,12 @@ public sealed class RpcRateLimiter : IDisposable
     /// <summary>
     /// Try to acquire <paramref name="permits"/> tokens for the given IP.
     /// Returns true if allowed, false if rate-limited (caller should return 429).
+    /// Internal Docker/private network callers (group-tms, cache-service, etc.) are exempt.
     /// </summary>
     public bool TryAcquire(string remoteIp, int permits = 1)
     {
         if (!IsEnabled || permits <= 0) return true;
+        if (IsPrivateNetwork(remoteIp)) return true;
 
         var (limiter, _) = _limiters.GetOrAdd(remoteIp, _ => (CreateLimiter(), Stopwatch.GetTimestamp()));
 
@@ -87,6 +90,34 @@ public sealed class RpcRateLimiter : IDisposable
                     removed.Limiter.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// Returns true for private/reserved IP ranges (RFC 1918, link-local, loopback).
+    /// These are internal Docker network callers that should bypass rate limiting.
+    /// Handles both raw IPs and IPv4-mapped IPv6 (::ffff:172.18.x.x).
+    /// </summary>
+    private static bool IsPrivateNetwork(string ipString)
+    {
+        // Strip ::ffff: prefix (IPv4-mapped IPv6, common in Kestrel)
+        if (ipString.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase))
+            ipString = ipString[7..];
+
+        if (!IPAddress.TryParse(ipString, out var ip))
+            return false;
+
+        var bytes = ip.GetAddressBytes();
+        if (bytes.Length != 4) return false; // Only handle IPv4
+
+        return bytes[0] switch
+        {
+            10 => true,                                          // 10.0.0.0/8
+            172 => bytes[1] >= 16 && bytes[1] <= 31,             // 172.16.0.0/12 (Docker default)
+            192 => bytes[1] == 168,                               // 192.168.0.0/16
+            127 => true,                                          // 127.0.0.0/8 (loopback)
+            169 => bytes[1] == 254,                               // 169.254.0.0/16 (link-local)
+            _ => false
+        };
     }
 
     public void Dispose()
