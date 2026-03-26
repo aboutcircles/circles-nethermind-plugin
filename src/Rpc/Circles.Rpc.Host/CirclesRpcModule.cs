@@ -920,10 +920,23 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     values.TryGetValue("transactionIndex", out var ti) &&
                     values.TryGetValue("logIndex", out var li))
                 {
-                    // Parse hex values back to numbers for the cursor
-                    lastBlockNumber = Convert.ToInt64(bn?.ToString()?.Replace("0x", ""), 16);
-                    lastTransactionIndex = Convert.ToInt32(ti?.ToString()?.Replace("0x", ""), 16);
-                    lastLogIndex = Convert.ToInt32(li?.ToString()?.Replace("0x", ""), 16);
+                    // Parse hex values back to numbers for the cursor.
+                    // Use Int64 intermediate to handle unsigned 32-bit hex (0x80000000+),
+                    // then checked narrowing to Int32 (throws on truly out-of-range values).
+                    try
+                    {
+                        lastBlockNumber = Convert.ToInt64(bn?.ToString()?.Replace("0x", ""), 16);
+                        lastTransactionIndex = checked((int)Convert.ToInt64(ti?.ToString()?.Replace("0x", ""), 16));
+                        lastLogIndex = checked((int)Convert.ToInt64(li?.ToString()?.Replace("0x", ""), 16));
+                    }
+                    catch (OverflowException)
+                    {
+                        _logger?.LogError(
+                            "Cursor hex overflow: bn={Bn} ti={Ti} li={Li} (raw types: bn={BnType} ti={TiType} li={LiType})",
+                            bn?.ToString(), ti?.ToString(), li?.ToString(),
+                            bn?.GetType().Name, ti?.GetType().Name, li?.GetType().Name);
+                        throw;
+                    }
                 }
             }
         }
