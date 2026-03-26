@@ -929,7 +929,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     }
                     catch (OverflowException)
                     {
-                        _logger.LogError(
+                        _logger?.LogError(
                             "Cursor hex overflow: bn={Bn} ti={Ti} li={Li} (raw types: bn={BnType} ti={TiType} li={LiType})",
                             bn?.ToString(), ti?.ToString(), li?.ToString(),
                             bn?.GetType().Name, ti?.GetType().Name, li?.GetType().Name);
