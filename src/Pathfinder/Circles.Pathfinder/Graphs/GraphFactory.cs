@@ -134,10 +134,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
 
         // Add ALL trust-based out-edges (no filters)
-        AddTokenPoolOutEdges(
+        var (totalGroupTokenEdges, routerFilteredCount) = AddTokenPoolOutEdges(
             capacityGraph, trustLookup,
             virtualSink: null, virtualSinkTrustedTokens: new HashSet<int>(),
             sinkId: null, new HashSet<int>(), new HashSet<int>());
+        capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
+        capacityGraph.RouterFilteredEdges = routerFilteredCount;
 
         // Add ALL group minting edges (no filters)
         AddGroupMintingEdges(
@@ -459,7 +461,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         // STEP 6/7/8: Add trust-based out-edges from TokenPool→avatars (+ virtual sink in swap mode)
         // Groups can now receive tokens directly
-        AddTokenPoolOutEdges(
+        var (totalGroupTokenEdges, routerFilteredCount) = AddTokenPoolOutEdges(
             capacityGraph,
             mergedTrust,
             virtualSinkAddress,
@@ -467,6 +469,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             sinkId,
             toTokensFilter,
             excludedToTokensFilter);
+        capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
+        capacityGraph.RouterFilteredEdges = routerFilteredCount;
 
         // STEP 8: Add Group minting edges (Group → Avatar with group token)
         AddGroupMintingEdges(
@@ -784,8 +788,9 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
     }
 
-    // Modified version of AddTokenPoolOutEdges that allows Groups to receive tokens directly
-    private void AddTokenPoolOutEdges(
+    // Modified version of AddTokenPoolOutEdges that allows Groups to receive tokens directly.
+    // Returns (totalGroupTokenEdges, routerFilteredCount) for metrics.
+    private (int TotalGroupTokenEdges, int RouterFilteredCount) AddTokenPoolOutEdges(
         CapacityGraph g,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         int? virtualSink,
@@ -831,12 +836,15 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
 
         int routerFilteredCount = 0;
+        int totalGroupTokenEdges = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
             {
                 foreach (var token in trustedTokens)
                 {
+                    totalGroupTokenEdges++;
+
                     // Fail-closed: if router trusts are unknown, block the edge.
                     // Missing router trust data would otherwise allow invalid paths
                     // that revert on-chain (the same bug this filter prevents).
@@ -878,6 +886,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
             }
         }
+
+        return (totalGroupTokenEdges, routerFilteredCount);
     }
 
     // Add Group → Avatar edges for group token minting

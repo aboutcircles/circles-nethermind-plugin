@@ -120,6 +120,22 @@ public class PropertyBasedTests
             }
         }
 
+        // Router must trust all tokens that groups trust as collateral.
+        // Hub.sol:665 checks trustMarkers[Router][tokenOwner] for every
+        // Avatar→Router edge in operateFlowMatrix.
+        if (withRouter && graph.RouterNode.HasValue)
+        {
+            var routerTrusts = new HashSet<int>();
+            foreach (var grp in groups)
+            {
+                if (graph.GroupTrustedTokens.TryGetValue(grp, out var gt))
+                    routerTrusts.UnionWith(gt);
+            }
+
+            if (routerTrusts.Count > 0)
+                trustLookup[graph.RouterNode.Value] = routerTrusts;
+        }
+
         graph.TrustLookup = trustLookup;
 
         // Each avatar holds their own personal token (balance)

@@ -79,6 +79,15 @@ internal static class GraphUpdateMetrics
         "circles_consented_avatars_count",
         "Number of consented avatars in the capacity graph");
 
+    // Router trust coverage: total group-token edge candidates vs filtered
+    public static readonly Gauge RouterTrustCoverageTotal = Metrics.CreateGauge(
+        "circles_router_trust_coverage_total",
+        "Total group-token collateral edge candidates in the capacity graph");
+
+    public static readonly Gauge RouterTrustFilteredCount = Metrics.CreateGauge(
+        "circles_router_trust_filtered_count",
+        "Group-token edges filtered due to missing Router trust");
+
     // O4: DB query duration — labeled by query name (balances, trust, groups, group_trusts, consented_flow)
     public static readonly Histogram DbQueryDuration = Metrics.CreateHistogram(
         "circles_db_query_duration_seconds",

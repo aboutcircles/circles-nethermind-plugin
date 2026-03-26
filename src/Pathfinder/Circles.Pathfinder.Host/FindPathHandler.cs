@@ -140,13 +140,28 @@ internal sealed class FindPathHandler(
 
             FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
 
-            // Record consent metrics if applicable
+            // Record consent + canary metrics if applicable
             if (result is MaxFlowResponse mfr)
             {
+                // Stamp graph block for staleness detection (use graph's own block, not
+                // state.Current.Block which may have advanced during solving)
+                mfr.GraphBlock = h.Graph.Block;
+
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
+
+                // Canary: record Hub.sol rule violations (observe-only)
+                if (mfr.ValidationErrors > 0)
+                {
+                    FindPathMetrics.CanaryValidationFailureTotal.WithLabels("any").Inc();
+                    if (mfr.ValidationViolationRules != null)
+                    {
+                        foreach (var rule in mfr.ValidationViolationRules)
+                            FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
+                    }
+                }
             }
 
             return Results.Ok(result);

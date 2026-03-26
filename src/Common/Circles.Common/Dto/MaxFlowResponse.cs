@@ -79,6 +79,29 @@ public class MaxFlowResponse
     [JsonIgnore]
     public int ConsentSafetyNetRejected { get; set; }
 
+    /// <summary>
+    /// Canary: number of Hub.sol rule violations detected by HubContractValidator.
+    /// Non-zero means the pathfinder produced output that would revert on-chain.
+    /// Not serialized — used internally for metrics.
+    /// </summary>
+    [JsonIgnore]
+    public int ValidationErrors { get; set; }
+
+    /// <summary>
+    /// Canary: rule names of validation violations, for per-rule metric labeling.
+    /// Not serialized — used internally for metrics.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string>? ValidationViolationRules { get; set; }
+
+    /// <summary>
+    /// Block number of the graph snapshot used for this computation.
+    /// Lets callers detect staleness by comparing to the current chain head.
+    /// </summary>
+    [JsonPropertyName("graphBlock")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long GraphBlock { get; set; }
+
     public MaxFlowResponse(string maxFlow, List<TransferPathStep> transfers, DebugPipelineStages? debug = null)
     {
         MaxFlow = maxFlow;

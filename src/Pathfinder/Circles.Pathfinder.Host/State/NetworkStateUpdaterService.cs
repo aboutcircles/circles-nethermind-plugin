@@ -144,6 +144,8 @@ public class NetworkStateUpdaterService : BackgroundService
                     GraphUpdateMetrics.EdgeCount.Set(currentSnap.Base.Edges.Count);
                     GraphUpdateMetrics.GroupCount.Set(currentSnap.Base.GroupNodes.Count);
                     GraphUpdateMetrics.ConsentedAvatarCount.Set(currentSnap.Base.ConsentedAvatars.Count);
+                    GraphUpdateMetrics.RouterTrustCoverageTotal.Set(currentSnap.Base.TotalGroupTokenEdges);
+                    GraphUpdateMetrics.RouterTrustFilteredCount.Set(currentSnap.Base.RouterFilteredEdges);
                 }
 
                 GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
@@ -636,6 +638,8 @@ public class NetworkStateUpdaterService : BackgroundService
                 GraphUpdateMetrics.EdgeCount.Set(currentSnap.Base.Edges.Count);
                 GraphUpdateMetrics.GroupCount.Set(currentSnap.Base.GroupNodes.Count);
                 GraphUpdateMetrics.ConsentedAvatarCount.Set(currentSnap.Base.ConsentedAvatars.Count);
+                GraphUpdateMetrics.RouterTrustCoverageTotal.Set(currentSnap.Base.TotalGroupTokenEdges);
+                GraphUpdateMetrics.RouterTrustFilteredCount.Set(currentSnap.Base.RouterFilteredEdges);
             }
             GraphUpdateMetrics.AddressPoolSize.Set(AddressIdPool.Count);
 
