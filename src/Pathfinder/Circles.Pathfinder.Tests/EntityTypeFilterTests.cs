@@ -45,6 +45,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10); // source's personal token used as collateral
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -81,6 +82,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -118,6 +120,7 @@ public class EntityTypeFilterTests
         var collateralB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateralA, 100_000_000);
         mock.AddBalance(source, collateralB, 200_000_000);
         mock.AddGroup(group);
@@ -159,6 +162,7 @@ public class EntityTypeFilterTests
         var wrongToken = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddBalance(source, wrongToken, 100_000_000);
         mock.AddGroup(group);
@@ -194,6 +198,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -228,6 +233,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -266,6 +272,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -304,6 +311,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 200_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -345,6 +353,7 @@ public class EntityTypeFilterTests
         var collateralB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateralA, 200_000_000);
         mock.AddBalance(source, collateralB, 100_000_000);
         mock.AddGroup(group);
@@ -386,6 +395,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -546,6 +556,7 @@ public class EntityTypeFilterTests
         var collateralB = Node(11); // 200 CRC
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateralA, 100_000_000);
         mock.AddBalance(source, collateralB, 200_000_000);
         mock.AddGroup(group);
@@ -585,6 +596,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -621,6 +633,7 @@ public class EntityTypeFilterTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 200_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);

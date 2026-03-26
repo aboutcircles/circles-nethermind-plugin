@@ -52,6 +52,7 @@ public class FlagInteractionTests
         var tokenB = Node(11); // Source has but excluded from ToTokens
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddBalance(source, tokenB, 100_000_000);
         mock.AddBalance(intermediary, tokenA, 100_000_000);
@@ -92,6 +93,7 @@ public class FlagInteractionTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddBalance(source, tokenB, 100_000_000);
         mock.AddTrust(sink, source);
@@ -129,6 +131,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, tokenA);
@@ -165,6 +168,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 200_000_000); // 200 CRC
         mock.AddTrust(source, tokenA);
 
@@ -197,6 +201,7 @@ public class FlagInteractionTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 200_000_000);
         mock.AddBalance(source, tokenB, 200_000_000);
         mock.AddTrust(sink, source);
@@ -233,6 +238,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // No natural balance - will be injected
         mock.AddTrust(sink, token);
         mock.AddTrust(sink, source);
@@ -275,6 +281,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000); // 100 CRC
         mock.AddTrust(source, tokenA);
 
@@ -306,6 +313,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000); // 100 CRC
         mock.AddTrust(sink, tokenA);
 
@@ -341,6 +349,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, tokenA);
@@ -374,6 +383,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, tokenA);
@@ -410,6 +420,7 @@ public class FlagInteractionTests
         var wrappedToken = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, wrappedToken);
@@ -446,6 +457,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
 
@@ -487,6 +499,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         // No trust relationship - will be injected
 
@@ -532,6 +545,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // Empty graph - everything simulated
 
         var factory = new GraphFactory(RouterAddress, mock);
@@ -579,6 +593,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -613,6 +628,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -646,6 +662,7 @@ public class FlagInteractionTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // No balance for source
         mock.AddTrust(sink, source);
 
@@ -679,6 +696,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         // Sink trusts nothing - won't appear in graph
 
@@ -715,6 +733,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, tokenA); // Group accepts tokenA as collateral
@@ -748,6 +767,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, tokenA);
@@ -784,6 +804,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -827,6 +848,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -862,6 +884,7 @@ public class FlagInteractionTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, tokenA);
@@ -907,6 +930,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -945,6 +969,7 @@ public class FlagInteractionTests
         var tokenB = Node(11); // Not in FromTokens
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000); // 100 CRC
         mock.AddBalance(source, tokenB, 200_000_000); // 200 CRC (ignored)
         mock.AddTrust(sink, source);
@@ -988,6 +1013,7 @@ public class FlagInteractionTests
         var tokenB = Node(11); // Available
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 200_000_000); // 200 CRC (excluded)
         mock.AddBalance(source, tokenB, 100_000_000); // 100 CRC
         mock.AddTrust(sink, source);
@@ -1029,6 +1055,7 @@ public class FlagInteractionTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 200_000_000); // 200 CRC
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -1069,6 +1096,7 @@ public class FlagInteractionTests
         var tokenB = Node(11); // Allowed at sink
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 200_000_000);
         mock.AddBalance(source, tokenB, 100_000_000);
         mock.AddTrust(sink, source);
@@ -1106,6 +1134,7 @@ public class FlagInteractionTests
         var wrappedToken = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
         // Consented flow requirements: source trusts sink, sink has consented flow
         mock.AddConsentedAvatar(source);
@@ -1152,6 +1181,7 @@ public class FlagInteractionTests
         var wrappedToken = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
         mock.AddConsentedAvatar(source);  // Source has consented flow
         // Sink does NOT have consented flow (violation)
@@ -1190,6 +1220,7 @@ public class FlagInteractionTests
         var wrappedToken = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrappedToken, 100_000_000, isWrapped: true);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, wrappedToken);
@@ -1227,6 +1258,7 @@ public class FlagInteractionTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 200_000_000);
         mock.AddBalance(source, tokenB, 50_000_000); // Below threshold
         mock.AddTrust(sink, source);

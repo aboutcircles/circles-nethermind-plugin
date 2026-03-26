@@ -395,6 +395,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_MaxTransfersZero_NoPruning()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -700,6 +701,7 @@ public class MutationKillerTests
     public void Kill_MaxFlowSolver_ZeroFlowEdgesExcluded()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -816,6 +818,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_OutputExcludesZeroFlowEdges()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -1016,6 +1019,7 @@ public class MutationKillerTests
     {
         // An unconsented sender should always pass validation
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -1044,6 +1048,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_ConsentedFlow_ConsentedSenderTrustsReceiver_Passes()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -1074,6 +1079,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_ConsentedFlow_ConsentedSenderDoesNotTrustReceiver_Blocked()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -1151,6 +1157,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_PrunePathBudget_ExactFit()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -1257,6 +1264,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_QuantizedMode_OutputIsMultipleOf96CRC()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);
@@ -1318,6 +1326,7 @@ public class MutationKillerTests
     public void Kill_V2Pathfinder_MintOrdering_ExactBalanceValid()
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         int source = AddressIdPool.IdOf(Alice);
         int sink = AddressIdPool.IdOf(Bob);
         int token = AddressIdPool.IdOf(TokenA);

@@ -824,7 +824,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         // revert on-chain even though the pathfinder found a valid flow.
         HashSet<int>? routerTrusts = null;
         if (g.RouterNode.HasValue)
+        {
             accountTrusts.TryGetValue(g.RouterNode.Value, out routerTrusts);
+            if (routerTrusts == null)
+                _logger.LogWarning("Router node is set but has no trust entries in accountTrusts — all group collateral edges will be blocked");
+        }
 
         int routerFilteredCount = 0;
         foreach (var groupId in g.GroupNodes)
@@ -833,7 +837,10 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             {
                 foreach (var token in trustedTokens)
                 {
-                    if (routerTrusts != null && !routerTrusts.Contains(token))
+                    // Fail-closed: if router trusts are unknown, block the edge.
+                    // Missing router trust data would otherwise allow invalid paths
+                    // that revert on-chain (the same bug this filter prevents).
+                    if (routerTrusts == null || !routerTrusts.Contains(token))
                     {
                         routerFilteredCount++;
                         continue;

@@ -1150,6 +1150,7 @@ public class QuantizedAggregationTests
         var tokenA = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // Source has 100 CRC of tokenA (needs 96+ for auto-discovery, but we use explicit ToTokens)
         mock.AddBalance(source, tokenA, 100_000_000);
 
@@ -1200,6 +1201,7 @@ public class QuantizedAggregationTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 60_000_000);  // < 96 CRC
         mock.AddBalance(source, tokenB, 100_000_000); // > 96 CRC
         mock.AddTrust(sink, source);
@@ -1239,6 +1241,7 @@ public class QuantizedAggregationTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 300_000_000); // 300 CRC = 3 invites
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -1279,6 +1282,7 @@ public class QuantizedAggregationTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 50_000_000); // 50 CRC < 96
         mock.AddBalance(source, tokenB, 40_000_000); // 40 CRC < 96
         mock.AddTrust(sink, source);
@@ -1321,6 +1325,7 @@ public class QuantizedAggregationTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 200_000_000); // 200 CRC = 2 invites
         mock.AddGroup(group);
         mock.AddGroupTrust(group, token);
@@ -1384,6 +1389,7 @@ public class QuantizedAggregationTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 200_000_000);
         mock.AddConsentedAvatar(source);
         // Consented flow requires: source trusts sink AND sink has consented flow
@@ -1426,6 +1432,7 @@ public class QuantizedAggregationTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 200_000_000);
         mock.AddConsentedAvatar(source);  // Source has consented flow
         mock.AddTrust(source, sink);       // Source trusts sink
@@ -1467,6 +1474,7 @@ public class QuantizedAggregationTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
