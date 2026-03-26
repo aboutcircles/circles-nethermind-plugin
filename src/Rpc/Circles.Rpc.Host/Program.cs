@@ -305,7 +305,7 @@ app.Use(async (context, next) =>
                 await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
                     Error = new JsonRpcError { Code = -32600, Message = $"Batch request too large (max {MaxBatchBodySize / 1024}KB)" }
-                });
+                }, batchJsonOptions);
                 return;
             }
 
@@ -321,7 +321,7 @@ app.Use(async (context, next) =>
                     await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
                         Error = new JsonRpcError { Code = -32600, Message = $"Batch request too large (max {MaxBatchBodySize / 1024}KB)" }
-                    });
+                    }, batchJsonOptions);
                     return;
                 }
 
@@ -345,7 +345,7 @@ app.Use(async (context, next) =>
                     await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
                         Error = new JsonRpcError { Code = -32600, Message = $"Batch too large: {batchLen} items (max {MaxBatchSize})" }
-                    });
+                    }, batchJsonOptions);
                     return;
                 }
 
@@ -357,7 +357,7 @@ app.Use(async (context, next) =>
                     await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
                         Error = new JsonRpcError { Code = -32600, Message = "Invalid Request: empty batch" }
-                    });
+                    }, batchJsonOptions);
                     return;
                 }
 
@@ -372,7 +372,7 @@ app.Use(async (context, next) =>
                     await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                     {
                         Error = new JsonRpcError { Code = -32000, Message = "Rate limit exceeded" }
-                    });
+                    }, batchJsonOptions);
                     return;
                 }
 
@@ -587,7 +587,7 @@ app.Use(async (context, next) =>
                 await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
                     Error = new JsonRpcError { Code = -32700, Message = "Parse error" }
-                });
+                }, batchJsonOptions);
             }
             catch (Exception ex)
             {
@@ -601,7 +601,7 @@ app.Use(async (context, next) =>
                 await JsonSerializer.SerializeAsync(context.Response.Body, new JsonRpcErrorResponse
                 {
                     Error = new JsonRpcError { Code = -32603, Message = "Internal batch error" }
-                });
+                }, batchJsonOptions);
             }
             return;
         }
@@ -685,10 +685,11 @@ static async Task<object> DispatchSingleRequest(
     string remoteIp)
 {
     var methodName = request.Method ?? "<unknown>";
+    var metricLabel = RpcMethodClassifier.SafeMetricLabel(request.Method);
     var startTimestamp = Stopwatch.GetTimestamp();
 
-    RpcMetrics.RequestsTotal.WithLabels(methodName).Inc();
-    RpcMetrics.InFlightRequests.WithLabels(methodName).Inc();
+    RpcMetrics.RequestsTotal.WithLabels(metricLabel).Inc();
+    RpcMetrics.InFlightRequests.WithLabels(metricLabel).Inc();
 
     try
     {
@@ -763,7 +764,7 @@ static async Task<object> DispatchSingleRequest(
         // Proxy safe read-only methods to Nethermind
         if (!IsProxyAllowed(request.Method))
         {
-            RpcMetrics.ErrorsTotal.WithLabels(methodName, "method_not_found").Inc();
+            RpcMetrics.ErrorsTotal.WithLabels(metricLabel, "method_not_found").Inc();
             return new JsonRpcErrorResponse
             {
                 Id = JsonRpcId.CoerceId(request.Id),
@@ -773,16 +774,16 @@ static async Task<object> DispatchSingleRequest(
 
         try
         {
-            RpcMetrics.ProxiedTotal.WithLabels(methodName).Inc();
+            RpcMetrics.ProxiedTotal.WithLabels(metricLabel).Inc();
             var proxyResult = await nethermindClient.ForwardRpcRequest(
                 request.Method!, request.Id, request.Params);
             var elapsed = Stopwatch.GetElapsedTime(startTimestamp);
-            RpcMetrics.ProxyDuration.WithLabels(methodName).Observe(elapsed.TotalSeconds);
+            RpcMetrics.ProxyDuration.WithLabels(metricLabel).Observe(elapsed.TotalSeconds);
             return proxyResult; // JsonElement — already a complete JSON-RPC response
         }
         catch (Exception proxyEx)
         {
-            RpcMetrics.ErrorsTotal.WithLabels(methodName, "proxy_error").Inc();
+            RpcMetrics.ErrorsTotal.WithLabels(metricLabel, "proxy_error").Inc();
             logger.LogError(proxyEx, "Failed to proxy {Method} from {RemoteIp}",
                 methodName, remoteIp);
             return new JsonRpcErrorResponse
@@ -794,7 +795,7 @@ static async Task<object> DispatchSingleRequest(
     }
     catch (ArgumentException ex)
     {
-        RpcMetrics.ErrorsTotal.WithLabels(methodName, "invalid_params").Inc();
+        RpcMetrics.ErrorsTotal.WithLabels(metricLabel, "invalid_params").Inc();
         return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
@@ -803,7 +804,7 @@ static async Task<object> DispatchSingleRequest(
     }
     catch (JsonException)
     {
-        RpcMetrics.ErrorsTotal.WithLabels(methodName, "invalid_json").Inc();
+        RpcMetrics.ErrorsTotal.WithLabels(metricLabel, "invalid_json").Inc();
         return new JsonRpcErrorResponse
         {
             Id = JsonRpcId.CoerceId(request.Id),
@@ -812,7 +813,7 @@ static async Task<object> DispatchSingleRequest(
     }
     catch (Exception ex)
     {
-        RpcMetrics.ErrorsTotal.WithLabels(methodName, "internal_error").Inc();
+        RpcMetrics.ErrorsTotal.WithLabels(metricLabel, "internal_error").Inc();
         logger.LogError(ex, "Internal error for {Method} from {RemoteIp}",
             methodName, remoteIp);
         return new JsonRpcErrorResponse
@@ -823,8 +824,8 @@ static async Task<object> DispatchSingleRequest(
     }
     finally
     {
-        RpcMetrics.InFlightRequests.WithLabels(methodName).Dec();
-        RpcMetrics.RequestDuration.WithLabels(methodName).Observe(
+        RpcMetrics.InFlightRequests.WithLabels(metricLabel).Dec();
+        RpcMetrics.RequestDuration.WithLabels(metricLabel).Observe(
             Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds);
     }
 }
