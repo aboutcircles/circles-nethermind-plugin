@@ -865,7 +865,7 @@ run_test "query" "circles_query (V_CrcV1_Avatars for v1 user)" "curl -s -X POST 
 run_test "query" "circles_query (V_Crc_Avatars combined for multiple)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Crc\",\"Table\":\"Avatars\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"In\",\"Column\":\"avatar\",\"Value\":[\"$TEST_ADDR_1\",\"$TEST_ADDR_2\",\"$GROUP_ADDR_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 # V_Safe_Owners
-run_test "query" "circles_query (V_Safe_Owners for safe)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Safe\",\"Table\":\"Owners\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"safe\",\"Value\":[\"$SAFE_PROXY_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
+run_test "query" "circles_query (V_Safe_Owners for safeAddress)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Safe\",\"Table\":\"Owners\",\"Columns\":[],\"Filter\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"safeAddress\",\"Value\":[\"$SAFE_PROXY_1\"]}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
 
 # V_Crc_Transfers
 run_test "query" "circles_query (V_Crc_Transfers for user)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_query\",\"params\":[{\"Namespace\":\"V_Crc\",\"Table\":\"Transfers\",\"Columns\":[],\"Filter\":[{\"Type\":\"Conjunction\",\"ConjunctionType\":\"Or\",\"Predicates\":[{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"from\",\"Value\":[\"$TEST_ADDR_1\"]},{\"Type\":\"FilterPredicate\",\"FilterType\":\"Equals\",\"Column\":\"to\",\"Value\":[\"$TEST_ADDR_1\"]}]}],\"Limit\":20,\"Order\":[{\"Column\":\"blockNumber\",\"SortOrder\":\"DESC\"}]}]}' -H \"Content-Type: application/json\" $RPC_URL"
@@ -1840,6 +1840,47 @@ run_test_json "gas_estimation" "eth_estimateGas (with block param)" '{
   "jsonrpc": "2.0",
   "method": "eth_estimateGas",
   "params": [{"from": "'"$GNOSIS_GROUP_OWNER"'", "to": "'"$GROUP_ADDR_1"'", "data": "0x4141f95400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000ffffffffffffffffffffffff0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000'"${TEST_ADDR_2:2}"'"}, "latest"],
+  "id": 1
+}'
+
+# G7. eth_estimateGas with EIP-1559 gas params (what viem/Safe SDK actually sends)
+# Without these, tests pass but production fails — the RPC may reject maxFeePerGas/maxPriorityFeePerGas.
+# Uses enableCRCForRouting (no access control) with TEST_ADDR_2 (has xDAI for balance check).
+run_test_json "gas_estimation" "eth_estimateGas (EIP-1559 gas params)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37", "maxFeePerGas": "0x1000", "maxPriorityFeePerGas": "0x36"}],
+  "id": 1
+}'
+
+# G8. eth_estimateGas with full viem params (EIP-1559 + nonce) — exact match of Safe SDK behavior
+run_test_json "gas_estimation" "eth_estimateGas (full viem params)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37", "maxFeePerGas": "0x1000", "maxPriorityFeePerGas": "0x36", "nonce": "0x1"}],
+  "id": 1
+}'
+
+# G9. Safe execTransaction wrapper — full production call path (no EIP-1559)
+# Uses HIGH_ACTIVITY_ADDR_1 as the Safe (has xDAI, threshold=1)
+# Owner 0xd55072d9... pre-approved signature (v=1, no private key needed)
+# Inner call: enableCRCForRouting via router
+SAFE_EXEC_OWNER="0xd55072d9826c798698e058bb3211b14f3a787cbb"
+SAFE_EXEC_TX="0x6a761202000000000000000000000000dc287474114cc0551a81ddc2eb51783fbf34802f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000842c3df1de000000000000000000000000c19bc204eb1c1d5b3fe500e5e5dfabab625f286c0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000d55072d9826c798698e058bb3211b14f3a787cbb00000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000"
+
+run_test_json "gas_estimation" "eth_estimateGas (Safe execTransaction)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$SAFE_EXEC_OWNER"'", "to": "'"$HIGH_ACTIVITY_ADDR_1"'", "data": "'"$SAFE_EXEC_TX"'"}],
+  "id": 1
+}'
+
+# G10. Safe execTransaction + EIP-1559 params — exact production replica
+# This is what crashed gp-crc on 2026-03-24: Safe SDK sends execTransaction with maxFeePerGas/nonce
+run_test_json "gas_estimation" "eth_estimateGas (Safe execTx + EIP-1559)" '{
+  "jsonrpc": "2.0",
+  "method": "eth_estimateGas",
+  "params": [{"from": "'"$SAFE_EXEC_OWNER"'", "to": "'"$HIGH_ACTIVITY_ADDR_1"'", "data": "'"$SAFE_EXEC_TX"'", "maxFeePerGas": "0x1000", "maxPriorityFeePerGas": "0x36"}],
   "id": 1
 }'
 
