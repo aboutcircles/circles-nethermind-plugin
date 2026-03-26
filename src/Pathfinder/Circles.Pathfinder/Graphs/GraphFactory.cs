@@ -817,13 +817,28 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             }
         }
 
-        // Groups can receive tokens they trust directly from token pools
+        // Groups can receive tokens they trust directly from token pools,
+        // but ONLY if the Router also trusts that token. Hub.sol line 665
+        // checks trustMarkers[router][token] for every Avatar→Router edge
+        // in operateFlowMatrix, so tokens not trusted by the Router would
+        // revert on-chain even though the pathfinder found a valid flow.
+        HashSet<int>? routerTrusts = null;
+        if (g.RouterNode.HasValue)
+            accountTrusts.TryGetValue(g.RouterNode.Value, out routerTrusts);
+
+        int routerFilteredCount = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
             {
                 foreach (var token in trustedTokens)
                 {
+                    if (routerTrusts != null && !routerTrusts.Contains(token))
+                    {
+                        routerFilteredCount++;
+                        continue;
+                    }
+
                     if (!tokenToAvatars.TryGetValue(token, out var list))
                         tokenToAvatars[token] = list = new List<int>();
                     if (!list.Contains(groupId))
@@ -831,6 +846,9 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 }
             }
         }
+
+        if (routerFilteredCount > 0)
+            _logger.LogInformation("Filtered {Count} group collateral edges where Router does not trust the token", routerFilteredCount);
 
         foreach (var (token, acceptors) in tokenToAvatars)
         {
