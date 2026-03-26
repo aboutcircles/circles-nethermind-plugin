@@ -20,7 +20,20 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Test result counters
+PASS_COUNT=0
+FAIL_COUNT=0
+SKIP_COUNT=0
+FAILURES=""
+
+# Assertion mode for current test (set before calling run_test/run_test_json):
+#   "result"        — expect .result field, fail on .error (default)
+#   "error:<code>"  — expect .error.code == <code>
+#   "any"           — accept either result or error (smoke test only)
+EXPECT=""
 
 # Test addresses - three known accounts for comprehensive testing
 TEST_ADDR_1="0x227642eBD3a801E7b44A5bb956c02C2d97Ca71F0"
@@ -350,6 +363,48 @@ run_test() {
 
     RUN_TEST_LAST_RESPONSE="$response_min"
 
+    # Assert response matches expectation
+    local assert_mode="${EXPECT:-result}"
+    local has_error
+    has_error=$(echo "$response_min" | jq -r 'if .error then "yes" else "no" end' 2>/dev/null)
+    local actual_code
+    actual_code=$(echo "$response_min" | jq -r '.error.code // empty' 2>/dev/null)
+
+    local test_passed=true
+    local fail_reason=""
+
+    case "$assert_mode" in
+        result)
+            if [[ "$has_error" == "yes" ]]; then
+                test_passed=false
+                local err_msg
+                err_msg=$(echo "$response_min" | jq -r '.error.message // "unknown"' 2>/dev/null)
+                fail_reason="expected result, got error $actual_code: $err_msg"
+            fi
+            ;;
+        error:*)
+            local expected_code="${assert_mode#error:}"
+            if [[ "$has_error" != "yes" ]]; then
+                test_passed=false
+                fail_reason="expected error $expected_code, got result"
+            elif [[ "$actual_code" != "$expected_code" ]]; then
+                test_passed=false
+                fail_reason="expected error $expected_code, got error $actual_code"
+            fi
+            ;;
+        any)
+            # Accept anything — smoke test only
+            ;;
+    esac
+    EXPECT=""  # Reset for next test
+
+    if [[ "$test_passed" == "true" ]]; then
+        PASS_COUNT=$((PASS_COUNT + 1))
+    else
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        FAILURES="${FAILURES}\n  ${RED}FAIL${NC} $test_name — $fail_reason"
+    fi
+
     # Extract the JSON payload from curl command for regression testing pagination support
     local request_payload=""
     if [[ "$curl_cmd" =~ --data[[:space:]]+\'([^\']+)\' ]]; then
@@ -378,7 +433,16 @@ run_test() {
             fi
         fi
     else
-        echo -e "${YELLOW}Testing: $test_name${NC} ${BLUE}[${time_total_ms}ms]${NC}"
+        local status_icon
+        if [[ "$test_passed" == "true" ]]; then
+            status_icon="${GREEN}PASS${NC}"
+        else
+            status_icon="${RED}FAIL${NC}"
+        fi
+        echo -e "[${status_icon}] ${YELLOW}$test_name${NC} ${BLUE}[${time_total_ms}ms]${NC}"
+        if [[ "$test_passed" != "true" ]]; then
+            echo -e "       ${RED}$fail_reason${NC}"
+        fi
         echo -e "${GREEN}Request:${NC}"
         echo "$curl_cmd"
         echo -e "${GREEN}Response:${NC}"
@@ -1705,11 +1769,13 @@ if [[ "$OUTPUT_MODE" != "json" ]]; then
 fi
 
 # E1. Empty results - nonexistent addresses across all major methods
+# Most return empty results (expect "result"). getAvatarInfo returns -32602.
 ZERO_ADDR="0x0000000000000000000000000000000000000001"
 
 run_test "edgecases" "edgecase: getTotalBalance (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: V2 getTotalBalance (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circlesV2_getTotalBalance\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: getTokenBalances (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenBalances\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+EXPECT="error:-32602"
 run_test "edgecases" "edgecase: getAvatarInfo (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfo\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: getTrustRelations (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTrustRelations\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: getProfileView (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getProfileView\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
@@ -1724,16 +1790,22 @@ run_test "edgecases" "edgecase: searchProfiles (zero address)" "curl -s -X POST 
 run_test "edgecases" "edgecase: getTokenInfo (zero address)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTokenInfo\",\"params\":[\"$ZERO_ADDR\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 run_test "edgecases" "edgecase: getCommonTrust (zero+zero)" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"circles_getCommonTrust\",\"params\":[\"$ZERO_ADDR\",\"$ZERO_ADDR\"]}' -H \"Content-Type: application/json\" $RPC_URL"
 
-# E2. Error handling - invalid params
+# E2. Error handling - invalid params (all expect -32602)
+EXPECT="error:-32602"
 run_test "edgecases" "edgecase: missing params" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+EXPECT="error:-32602"
 run_test "edgecases" "edgecase: null address param" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getTotalBalance\",\"params\":[null],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+EXPECT="error:-32602"
 run_test "edgecases" "edgecase: invalid address format" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfo\",\"params\":[\"not_an_address\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
+EXPECT="error:-32602"
 run_test "edgecases" "edgecase: short address" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_getAvatarInfo\",\"params\":[\"0x1234\"],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
-# E3. Error handling - invalid JSON-RPC
+# E3. Error handling - invalid JSON-RPC (expect -32601)
+EXPECT="error:-32601"
 run_test "edgecases" "edgecase: nonexistent method" "curl -s -X POST --data '{\"jsonrpc\":\"2.0\",\"method\":\"circles_nonExistentMethod\",\"params\":[],\"id\":1}' -H \"Content-Type: application/json\" $RPC_URL"
 
-# E4. Error handling - query with invalid namespace/table
+# E4. Error handling - query with invalid namespace/table (expect -32602)
+EXPECT="error:-32602"
 run_test_json "edgecases" "edgecase: query invalid namespace" '{
   "jsonrpc": "2.0",
   "id": 1,
@@ -1791,6 +1863,8 @@ GP_CRC_GROUP="0xb629a1e86f3efada0f87c83494da8cc34c3f84ef"
 ROUTER_CONTRACT="0xdc287474114cc0551a81ddc2eb51783fbf34802f"
 
 # G1. Baseline: simple eth_estimateGas (ETH transfer, no calldata)
+# Result depends on sender's balance/nonce — may return gas hex or -32000 out-of-gas
+EXPECT="any"
 run_test_json "gas_estimation" "eth_estimateGas (baseline transfer)" '{
   "jsonrpc": "2.0",
   "method": "eth_estimateGas",
@@ -1884,6 +1958,29 @@ run_test_json "gas_estimation" "eth_estimateGas (Safe execTx + EIP-1559)" '{
   "id": 1
 }'
 
-if [[ "$OUTPUT_MODE" != "json" ]]; then
-    echo -e "${BLUE}All tests completed.${NC}\n"
+# Print test summary
+TOTAL=$((PASS_COUNT + FAIL_COUNT))
+if [[ "$OUTPUT_MODE" == "json" ]]; then
+    echo "{\"summary\":{\"total\":$TOTAL,\"passed\":$PASS_COUNT,\"failed\":$FAIL_COUNT}}"
+else
+    echo ""
+    echo -e "${BOLD}══════════════════════════════════════════${NC}"
+    echo -e "${BOLD}  Test Summary${NC}"
+    echo -e "${BOLD}══════════════════════════════════════════${NC}"
+    echo -e "  Total:  $TOTAL"
+    echo -e "  ${GREEN}Passed: $PASS_COUNT${NC}"
+    if [[ $FAIL_COUNT -gt 0 ]]; then
+        echo -e "  ${RED}Failed: $FAIL_COUNT${NC}"
+        echo -e ""
+        echo -e "${BOLD}  Failures:${NC}"
+        echo -e "$FAILURES"
+    else
+        echo -e "  Failed: 0"
+    fi
+    echo -e "${BOLD}══════════════════════════════════════════${NC}"
+    echo ""
+fi
+
+if [[ $FAIL_COUNT -gt 0 ]]; then
+    exit 1
 fi
