@@ -921,9 +921,20 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                     values.TryGetValue("logIndex", out var li))
                 {
                     // Parse hex values back to numbers for the cursor
-                    lastBlockNumber = Convert.ToInt64(bn?.ToString()?.Replace("0x", ""), 16);
-                    lastTransactionIndex = checked((int)Convert.ToInt64(ti?.ToString()?.Replace("0x", ""), 16));
-                    lastLogIndex = checked((int)Convert.ToInt64(li?.ToString()?.Replace("0x", ""), 16));
+                    try
+                    {
+                        lastBlockNumber = Convert.ToInt64(bn?.ToString()?.Replace("0x", ""), 16);
+                        lastTransactionIndex = checked((int)Convert.ToInt64(ti?.ToString()?.Replace("0x", ""), 16));
+                        lastLogIndex = checked((int)Convert.ToInt64(li?.ToString()?.Replace("0x", ""), 16));
+                    }
+                    catch (OverflowException)
+                    {
+                        _logger.LogError(
+                            "Cursor hex overflow: bn={Bn} ti={Ti} li={Li} (raw types: bn={BnType} ti={TiType} li={LiType})",
+                            bn?.ToString(), ti?.ToString(), li?.ToString(),
+                            bn?.GetType().Name, ti?.GetType().Name, li?.GetType().Name);
+                        throw;
+                    }
                 }
             }
         }
