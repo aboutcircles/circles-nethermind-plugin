@@ -1599,6 +1599,15 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     protected virtual async Task InitializeBlockRingBufferAsync(NpgsqlConnection conn, long fromBlock, CancellationToken ct)
     {
+        // Clear the buffer before initialization to prevent race conditions.
+        // After TriggerFullRewarmup() clears the buffer, the notification listener's
+        // async callback can still fire and add newer blocks via UpdateFromBlocks()
+        // before we reach this point. Without this clear, Add() would throw
+        // "Block number must be greater than current latest" when we try to add
+        // blocks from the warmup target range (which are older than what the
+        // listener just added).
+        _state.BlockRingBuffer.Clear();
+
         var capacity = _settings.RollbackCapacity;
         var startBlock = Math.Max(0, fromBlock - capacity + 1);
 
@@ -1686,6 +1695,11 @@ public class CacheWarmupService : BackgroundService
             // Rebuild secondary indexes after rollback
             _logger.LogInformation("Rebuilding secondary indexes after rollback...");
             _caches.RebuildSecondaryIndexes();
+
+            // Update state to reflect rolled-back position BEFORE replay.
+            // Without this, a failure in ReplayRangeAsync would leave LastProcessedBlock
+            // at warmupTarget while caches are actually rolled back to reorgPoint - 1.
+            _state.LastProcessedBlock = reorgPoint.Value - 1;
 
             // Adjust the fromBlock to start processing from the reorg point
             fromBlock = reorgPoint.Value;
@@ -1869,9 +1883,8 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     protected virtual void ClearCaches()
     {
-        // Clear BlockRingBuffer to prevent "block must be > latest" errors during re-warmup
-        // (the buffer retains blocks from the previous run which would reject lower block numbers)
-        _state.BlockRingBuffer.Clear();
+        // Note: BlockRingBuffer is cleared by RewarmupReset.Trigger before this callback.
+        // Do not clear it here to avoid confusing double-clear.
 
         _caches.V1Avatars.Seed(new Dictionary<string, (string, string?)>());
         _caches.V1TokenOwnerByToken.Seed(new Dictionary<string, string>());
@@ -1888,6 +1901,10 @@ public class CacheWarmupService : BackgroundService
         _caches.V1TrustRelations.Seed(new Dictionary<string, long>());
         _caches.V2TrustRelations.Seed(new Dictionary<string, long>());
         _caches.ConsentedFlowFlags.Seed(new Dictionary<string, byte[]>());
+
+        // Clear secondary indexes (plain Dictionaries, not RollbackCaches) to prevent
+        // stale phantom entries from being served during warmup Phase 2.
+        _caches.RebuildSecondaryIndexes();
     }
 
     /// <summary>

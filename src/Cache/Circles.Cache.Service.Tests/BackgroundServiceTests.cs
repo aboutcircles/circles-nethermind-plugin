@@ -136,7 +136,8 @@ public class NotificationListenerServiceTests
         };
         var state = new CacheServiceState(settings.RollbackCapacity)
         {
-            LastProcessedBlock = 5
+            LastProcessedBlock = 5,
+            WarmupComplete = true
         };
         var caches = new CacheContainer(settings.RollbackCapacity);
 
@@ -168,7 +169,8 @@ public class NotificationListenerServiceTests
         };
         var state = new CacheServiceState(settings.RollbackCapacity)
         {
-            LastProcessedBlock = 10
+            LastProcessedBlock = 10,
+            WarmupComplete = true
         };
         state.WarmupTargetBlock = 8;
         state.BlockRingBuffer.UpdateFromBlocks(new[]
@@ -254,7 +256,7 @@ public class NotificationListenerServiceTests
 
         service.ProcessedRanges.Should().BeEmpty();
         state.WarmupComplete.Should().BeFalse();
-        state.LastProcessedBlock.Should().Be(0);
+        state.LastProcessedBlock.Should().Be(-1);
         state.CurrentBlockTimestamp.Should().Be(0);
         caches.V1Avatars.Count.Should().Be(0);
     }
@@ -414,7 +416,7 @@ public class NotificationListenerServiceTests
         state.WarmupComplete.Should().BeFalse();
 
         // LastProcessedBlock should be reset
-        state.LastProcessedBlock.Should().Be(0);
+        state.LastProcessedBlock.Should().Be(-1);
     }
 
     private sealed class FailingNotificationListenerService : NotificationListenerService
@@ -458,6 +460,230 @@ public class NotificationListenerServiceTests
             => Task.FromResult(blockNumber * 1000);
     }
 
+    [Fact]
+    public async Task HandleNotification_SkipsProcessing_WhenWarmupNotComplete()
+    {
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 5,
+            PostgresConnectionString = "Host=localhost"
+        };
+        var state = new CacheServiceState(settings.RollbackCapacity)
+        {
+            LastProcessedBlock = 100,
+            WarmupComplete = false // Warmup in progress
+        };
+        var caches = new CacheContainer(settings.RollbackCapacity);
+
+        var blocks = new List<(long BlockNumber, string BlockHash)>
+        {
+            (100L, "0x100"),
+            (101L, "0x101"),
+            (102L, "0x102")
+        };
+
+        var service = new TestNotificationListenerService(settings, state, caches, blocks);
+
+        await service.InvokeHandleAsync("{}", CancellationToken.None);
+
+        // Should not have processed any blocks
+        service.ProcessedRanges.Should().BeEmpty();
+        // State should be unchanged
+        state.LastProcessedBlock.Should().Be(100);
+        // Buffer should be empty (not populated by skipped notification)
+        state.BlockRingBuffer.Count.Should().Be(0);
+    }
+
+    [Fact]
+    public void InitializeBlockRingBuffer_ClearsBufferBeforeAdding()
+    {
+        // Simulates the race: listener added newer blocks to the buffer
+        // before warmup's InitializeBlockRingBufferAsync runs
+        var buffer = new BlockRingBuffer(capacity: 10);
+
+        // Listener added newer blocks after TriggerFullRewarmup cleared the buffer
+        buffer.Add(200, "0xC8");
+        buffer.Add(201, "0xC9");
+
+        // Warmup clears before initializing (our fix)
+        buffer.Clear();
+
+        // Now warmup can add older blocks without exception
+        buffer.Add(190, "0xBE");
+        buffer.Add(191, "0xBF");
+
+        buffer.Count.Should().Be(2);
+        buffer.LatestBlockNumber.Should().Be(191);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Critical regression tests for the race-condition fix (PR)
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ConcurrentNotifications_AreSerialized_NoDuplicateBlockProcessing()
+    {
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 5,
+            PostgresConnectionString = "Host=localhost"
+        };
+        var state = new CacheServiceState(settings.RollbackCapacity)
+        {
+            LastProcessedBlock = 5,
+            WarmupComplete = true
+        };
+        var caches = new CacheContainer(settings.RollbackCapacity);
+
+        var blocks = new List<(long BlockNumber, string BlockHash)>
+        {
+            (4, "0x04"), (5, "0x05"), (6, "0x06"), (7, "0x07")
+        };
+
+        // SlowNotificationListenerService introduces a delay in GetRecentBlocksAsync
+        // so that two concurrent handlers overlap in time.
+        var service = new SlowNotificationListenerService(settings, state, caches, blocks, delayMs: 50);
+
+        // Fire two concurrent notifications
+        var t1 = service.InvokeHandleAsync("{}", CancellationToken.None);
+        var t2 = service.InvokeHandleAsync("{}", CancellationToken.None);
+        await Task.WhenAll(t1, t2);
+
+        // The semaphore serializes: first handler processes 6→7, second sees
+        // LastProcessedBlock=7 and has nothing to do. Range must appear exactly once.
+        service.ProcessedRanges.Should().HaveCount(1);
+        service.ProcessedRanges[0].Should().Be((6L, 7L));
+        state.LastProcessedBlock.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task AfterRewarmup_FirstNotification_ProcessesFromBlock0()
+    {
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 5,
+            PostgresConnectionString = "Host=localhost"
+        };
+        // After TriggerFullRewarmup, LastProcessedBlock is -1.
+        // Warmup sets WarmupComplete=true once done. First notification
+        // should compute fromBlock = -1 + 1 = 0 and process from block 0.
+        var state = new CacheServiceState(settings.RollbackCapacity)
+        {
+            LastProcessedBlock = -1,
+            WarmupComplete = true,
+            WarmupTargetBlock = 0
+        };
+        var caches = new CacheContainer(settings.RollbackCapacity);
+
+        var blocks = new List<(long BlockNumber, string BlockHash)>
+        {
+            (0L, "0x00"), (1L, "0x01"), (2L, "0x02")
+        };
+
+        var service = new TestNotificationListenerService(settings, state, caches, blocks);
+
+        await service.InvokeHandleAsync("{}", CancellationToken.None);
+
+        // fromBlock = -1 + 1 = 0 — must not skip block 0
+        service.ProcessedRanges.Should().Equal(new[] { (0L, 2L) });
+        state.LastProcessedBlock.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task DeepReorg_ExceedsRollbackCapacity_TriggersFullRewarmup()
+    {
+        var settings = new CacheServiceSettings
+        {
+            RollbackCapacity = 10, // Used for ring buffer
+            PostgresConnectionString = "Host=localhost"
+        };
+        // Ring buffer capacity = 10 (detects reorgs within 10 blocks)
+        var state = new CacheServiceState(rollbackCapacity: 10)
+        {
+            LastProcessedBlock = 110,
+            WarmupComplete = true,
+            WarmupTargetBlock = 100
+        };
+
+        // Ring buffer has blocks 101-110 (capacity 10)
+        state.BlockRingBuffer.UpdateFromBlocks(
+            Enumerable.Range(101, 10).Select(i => ((long)i, $"0x{i:X}")).ToList());
+
+        // Cache capacity = 3 → only retains diffs for blocks 108-110
+        var caches = new CacheContainer(rollbackCapacity: 3);
+        SeedAllCachesAtBlock(caches, 100);
+        for (int i = 101; i <= 110; i++)
+            caches.V1Avatars.Add(i, $"0xuser{i}", ("CrcV1_Signup", $"0xtoken{i}"));
+
+        // Incoming blocks: hash mismatch at block 105 (detected by ring buffer),
+        // but rollback to 105 fails because cache only retains diffs for 108-110.
+        var blocks = new List<(long BlockNumber, string BlockHash)>
+        {
+            (105L, "0x69-new"), // reorg here — hash differs from "0x69"
+            (106L, "0x6A-new"),
+            (107L, "0x6B-new"),
+            (108L, "0x6C-new"),
+            (109L, "0x6D-new"),
+            (110L, "0x6E-new"),
+            (111L, "0x6F")
+        };
+
+        var service = new TestNotificationListenerService(settings, state, caches, blocks);
+
+        await service.InvokeHandleAsync("{}", CancellationToken.None);
+
+        // Deep reorg (105) exceeds cache rollback capacity (3, oldest=108)
+        // → InvalidOperationException caught → TriggerFullRewarmup
+        state.WarmupComplete.Should().BeFalse();
+        state.LastProcessedBlock.Should().Be(-1);
+        service.ProcessedRanges.Should().BeEmpty();
+    }
+
+    private sealed class SlowNotificationListenerService : NotificationListenerService
+    {
+        private readonly List<(long BlockNumber, string BlockHash)> _blocks;
+        private readonly List<(long From, long To)> _processedRanges = new();
+        private readonly int _delayMs;
+
+        public SlowNotificationListenerService(
+            CacheServiceSettings settings,
+            CacheServiceState state,
+            CacheContainer caches,
+            List<(long BlockNumber, string BlockHash)> blocks,
+            int delayMs)
+            : base(NullLogger<NotificationListenerService>.Instance, settings, state, caches, DummyDataSource)
+        {
+            _blocks = blocks;
+            _delayMs = delayMs;
+        }
+
+        public IReadOnlyList<(long From, long To)> ProcessedRanges => _processedRanges;
+
+        public Task InvokeHandleAsync(string payload, CancellationToken token) => HandleNotificationAsync(payload, token);
+
+        protected override Task WithReadonlyConnectionAsync(Func<NpgsqlConnection, CancellationToken, Task> action, CancellationToken ct)
+            => action(null!, ct);
+
+        protected override async Task<List<(long BlockNumber, string BlockHash)>> GetRecentBlocksAsync(
+            NpgsqlConnection conn,
+            int count,
+            CancellationToken ct)
+        {
+            // Delay to simulate DB query time, creating an overlap window
+            await Task.Delay(_delayMs, ct);
+            return _blocks;
+        }
+
+        protected override Task ProcessBlockRangeAsync(long fromBlock, long toBlock, CancellationToken ct)
+        {
+            _processedRanges.Add((fromBlock, toBlock));
+            return Task.CompletedTask;
+        }
+
+        protected override Task<long> GetBlockTimestampAsync(long blockNumber, CancellationToken ct)
+            => Task.FromResult(blockNumber * 1000);
+    }
+
     /// <summary>
     /// Seeds all caches in the container with empty data at the specified block.
     /// This establishes a rollback baseline for the RollbackAll operation.
@@ -475,7 +701,9 @@ public class NotificationListenerServiceTests
         caches.V2AvatarToShortNameMap.Seed(new Dictionary<string, string>(), blockNo);
         caches.V1BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>(), blockNo);
         caches.V2BalancesByAccountAndToken.Seed(new Dictionary<string, decimal>(), blockNo);
+        caches.V2LastActivity.Seed(new Dictionary<string, long>(), blockNo);
         caches.V1TrustRelations.Seed(new Dictionary<string, long>(), blockNo);
         caches.V2TrustRelations.Seed(new Dictionary<string, long>(), blockNo);
+        caches.ConsentedFlowFlags.Seed(new Dictionary<string, byte[]>(), blockNo);
     }
 }

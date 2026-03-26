@@ -20,10 +20,13 @@ static void AddConfigurableCors(IServiceCollection services)
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure host options to ignore background service exceptions
+// If a background service (warmup/listener) throws an unhandled exception past its
+// internal retry loops, stop the host so Docker restarts the container. The previous
+// Ignore behavior silently stopped the service, leaving the cache permanently stale
+// with no log or metric to diagnose why.
 builder.Services.Configure<HostOptions>(options =>
 {
-    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost;
 });
 
 // Load settings from environment
@@ -152,28 +155,26 @@ app.MapMetrics();
 app.MapHealthChecks("/live");
 app.MapGet("/ready", async (CacheServiceState state, NpgsqlDataSource dataSource) =>
 {
-    // Query actual DB head from database
-    long dbHead = state.LastProcessedBlock; // Default to current if query fails
+    // Query actual DB head from database — if this fails, the service is not ready
+    long dbHead;
 
     try
     {
         await using var conn = await dataSource.OpenConnectionAsync();
         await using var cmd = new Npgsql.NpgsqlCommand("SELECT COALESCE(MAX(\"blockNumber\"), 0) FROM \"System_Block\"", conn);
         var result = await cmd.ExecuteScalarAsync();
-        if (result != null && result != DBNull.Value)
+        dbHead = result switch
         {
-            // blockNumber is BIGINT, can be returned as int or long depending on value
-            dbHead = result switch
-            {
-                long l => l,
-                int i => i,
-                _ => Convert.ToInt64(result)
-            };
-        }
+            long l => l,
+            int i => i,
+            null or DBNull => 0,
+            _ => Convert.ToInt64(result)
+        };
     }
     catch (Exception ex)
     {
         app.Logger.LogWarning(ex, "Failed to query DB head for readiness check");
+        return Results.Json(new { status = "not_ready", error = "database unreachable" }, statusCode: 503);
     }
 
     var isReady = state.IsReady(dbHead, settings.MaxCatchupLag);
