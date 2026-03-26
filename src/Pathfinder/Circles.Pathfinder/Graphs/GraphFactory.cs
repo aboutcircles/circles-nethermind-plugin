@@ -817,13 +817,35 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             }
         }
 
-        // Groups can receive tokens they trust directly from token pools
+        // Groups can receive tokens they trust directly from token pools,
+        // but ONLY if the Router also trusts that token. Hub.sol line 665
+        // checks trustMarkers[router][token] for every Avatar→Router edge
+        // in operateFlowMatrix, so tokens not trusted by the Router would
+        // revert on-chain even though the pathfinder found a valid flow.
+        HashSet<int>? routerTrusts = null;
+        if (g.RouterNode.HasValue)
+        {
+            accountTrusts.TryGetValue(g.RouterNode.Value, out routerTrusts);
+            if (routerTrusts == null)
+                _logger.LogWarning("Router node is set but has no trust entries in accountTrusts — all group collateral edges will be blocked");
+        }
+
+        int routerFilteredCount = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
             {
                 foreach (var token in trustedTokens)
                 {
+                    // Fail-closed: if router trusts are unknown, block the edge.
+                    // Missing router trust data would otherwise allow invalid paths
+                    // that revert on-chain (the same bug this filter prevents).
+                    if (routerTrusts == null || !routerTrusts.Contains(token))
+                    {
+                        routerFilteredCount++;
+                        continue;
+                    }
+
                     if (!tokenToAvatars.TryGetValue(token, out var list))
                         tokenToAvatars[token] = list = new List<int>();
                     if (!list.Contains(groupId))
@@ -831,6 +853,9 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 }
             }
         }
+
+        if (routerFilteredCount > 0)
+            _logger.LogInformation("Filtered {Count} group collateral edges where Router does not trust the token", routerFilteredCount);
 
         foreach (var (token, acceptors) in tokenToAvatars)
         {

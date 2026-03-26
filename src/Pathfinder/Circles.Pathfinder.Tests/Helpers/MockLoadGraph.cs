@@ -16,6 +16,14 @@ public class MockLoadGraph : ILoadGraph
     private readonly List<(string Avatar, bool HasConsentedFlow)> _consentedFlags = new();
     private readonly List<string> _registeredAvatars = new();
     private readonly List<(string WrapperAddress, string UnderlyingAvatar)> _wrapperMappings = new();
+    private string? _routerAddress;
+
+    /// <summary>
+    /// Set the router address. When set, AddGroupTrust also registers
+    /// Router→token trust (mirrors Hub.sol: Router must trust collateral).
+    /// </summary>
+    public void SetRouterAddress(string routerAddress) =>
+        _routerAddress = routerAddress.ToLowerInvariant();
 
     /// <summary>
     /// Add a trust relationship using integer node IDs.
@@ -78,6 +86,8 @@ public class MockLoadGraph : ILoadGraph
     public void AddGroupTrust(int groupId, int trustedTokenId)
     {
         _groupTrusts.Add((AddressIdPool.StringOf(groupId), AddressIdPool.StringOf(trustedTokenId)));
+        if (_routerAddress != null)
+            _trusts.Add((_routerAddress, AddressIdPool.StringOf(trustedTokenId), 100));
     }
 
     /// <summary>
@@ -86,6 +96,8 @@ public class MockLoadGraph : ILoadGraph
     public void AddGroupTrust(string groupAddress, string trustedToken)
     {
         _groupTrusts.Add((groupAddress.ToLowerInvariant(), trustedToken.ToLowerInvariant()));
+        if (_routerAddress != null)
+            _trusts.Add((_routerAddress, trustedToken.ToLowerInvariant(), 100));
     }
 
     /// <summary>

@@ -45,6 +45,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000); // 100 CRC
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -81,6 +82,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddBalance(intermediate, token, 100_000_000);
         mock.AddTrust(intermediate, source);
@@ -121,6 +123,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -161,6 +164,7 @@ public class MaxTransfersTests
         var tokenB = Node(11);  // For multi-hop
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // Direct path possible with tokenA
         mock.AddBalance(source, tokenA, 100_000_000);
         mock.AddTrust(sink, source);
@@ -210,6 +214,7 @@ public class MaxTransfersTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // Direct path with tokenA (1 step, higher flow)
         mock.AddBalance(source, tokenA, 80_000_000);
         mock.AddTrust(sink, source);
@@ -254,6 +259,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -289,6 +295,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);
@@ -325,6 +332,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddBalance(intermediate, token, 100_000_000);
         mock.AddTrust(intermediate, source);
@@ -366,6 +374,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, token);
@@ -406,6 +415,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, token);
@@ -452,6 +462,7 @@ public class MaxTransfersTests
         var tokenB = Node(11); // Lower balance
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 100_000_000); // 100 CRC
         mock.AddBalance(source, tokenB, 20_000_000);  // 20 CRC
         mock.AddTrust(sink, source);
@@ -505,6 +516,7 @@ public class MaxTransfersTests
         var tokenB = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 50_000_000);
         mock.AddBalance(source, tokenB, 50_000_000);
         mock.AddTrust(sink, source);
@@ -544,6 +556,7 @@ public class MaxTransfersTests
         var token = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, token, 100_000_000);
         mock.AddTrust(sink, source);
         mock.AddTrust(sink, token);

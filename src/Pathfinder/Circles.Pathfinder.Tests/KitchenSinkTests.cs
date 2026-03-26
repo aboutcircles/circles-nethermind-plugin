@@ -35,6 +35,7 @@ public class KitchenSinkTests
         var wrapper = Node(50);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrapper, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(wrapper), AddressIdPool.StringOf(avatar));
         mock.AddTrust(sink, source);
@@ -80,6 +81,7 @@ public class KitchenSinkTests
         var group = Node(100);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrapper, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(wrapper), AddressIdPool.StringOf(avatar));
         mock.AddGroup(group);
@@ -124,6 +126,7 @@ public class KitchenSinkTests
         var wrapper = Node(50);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrapper, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(wrapper), AddressIdPool.StringOf(avatar));
         mock.AddTrust(sink, source);
@@ -164,6 +167,7 @@ public class KitchenSinkTests
         var collateralB = Node(11); // available
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateralA, 200_000_000);
         mock.AddBalance(source, collateralB, 100_000_000);
         mock.AddGroup(group);
@@ -208,6 +212,7 @@ public class KitchenSinkTests
         var collateral = Node(10);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, collateral, 200_000_000);
         mock.AddGroup(group);
         mock.AddGroupTrust(group, collateral);
@@ -252,6 +257,7 @@ public class KitchenSinkTests
         var wrapper = Node(50);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, tokenA, 200_000_000);
         mock.AddBalance(source, wrapper, 100_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(wrapper), AddressIdPool.StringOf(tokenA));
@@ -325,6 +331,7 @@ public class KitchenSinkTests
         var group = Node(100);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, wrapper, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(wrapper), AddressIdPool.StringOf(avatar));
         mock.AddGroup(group);
@@ -362,6 +369,7 @@ public class KitchenSinkTests
         var wrapper = Node(50);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         // No real balances — everything simulated
         mock.AddWrapperMapping(AddressIdPool.StringOf(wrapper), AddressIdPool.StringOf(avatar));
         mock.AddConsentedAvatar(source);

@@ -41,6 +41,7 @@ public class PoolToSolverIntegrationTests
         UInt256? targetFlow = null)
     {
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddr);
         setupGraph(mock);
 
         var factory = new GraphFactory(RouterAddr, mock);

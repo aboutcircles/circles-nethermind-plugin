@@ -48,6 +48,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
         mock.AddTrust(sink, source);
@@ -85,6 +86,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddBalance(source, Node(11), 200_000_000); // Another token (not wrapped)
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -123,6 +125,7 @@ public class WrapperFilterMatrixTests
         var otherToken = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddBalance(source, otherToken, 100_000_000);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -163,6 +166,7 @@ public class WrapperFilterMatrixTests
         var otherToken = Node(11);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddBalance(source, otherToken, 100_000_000);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -201,6 +205,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperStatic, 100_000_000, isWrapped: true, isStatic: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperStatic), AddressIdPool.StringOf(AvatarA));
         mock.AddTrust(sink, source);
@@ -234,6 +239,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperStatic, 100_000_000, isWrapped: true, isStatic: true);
         mock.AddBalance(source, Node(12), 200_000_000); // Another token
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperStatic), AddressIdPool.StringOf(AvatarA));
@@ -270,6 +276,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddBalance(source, WrapperStatic, 50_000_000, isWrapped: true, isStatic: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -307,6 +314,7 @@ public class WrapperFilterMatrixTests
         var otherToken = Node(12);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddBalance(source, WrapperStatic, 50_000_000, isWrapped: true, isStatic: true);
         mock.AddBalance(source, otherToken, 30_000_000);
@@ -353,6 +361,7 @@ public class WrapperFilterMatrixTests
         var group = Node(100);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
         mock.AddGroup(group);
@@ -388,6 +397,7 @@ public class WrapperFilterMatrixTests
         var group = Node(100);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
         mock.AddGroup(group);
@@ -430,6 +440,7 @@ public class WrapperFilterMatrixTests
         var bob = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddBalance(bob, AvatarA, 50_000_000); // Bob holds native
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -463,6 +474,7 @@ public class WrapperFilterMatrixTests
         var tokenB = Node(12);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddBalance(source, tokenB, 50_000_000);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -505,6 +517,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddBalance(source, AvatarA, 100_000_000); // Native balance
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
@@ -544,6 +557,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 100_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
         mock.AddTrust(sink, source);
@@ -576,6 +590,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
         mock.AddTrust(sink, source);
@@ -611,6 +626,7 @@ public class WrapperFilterMatrixTests
         var sink = Node(2);
 
         var mock = new MockLoadGraph();
+        mock.SetRouterAddress(RouterAddress);
         mock.AddBalance(source, WrapperDemurraged, 200_000_000, isWrapped: true);
         mock.AddWrapperMapping(AddressIdPool.StringOf(WrapperDemurraged), AddressIdPool.StringOf(AvatarA));
         mock.AddTrust(sink, source);
