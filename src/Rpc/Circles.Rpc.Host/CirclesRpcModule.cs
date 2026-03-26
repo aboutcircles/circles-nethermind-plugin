@@ -922,8 +922,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 {
                     // Parse hex values back to numbers for the cursor
                     lastBlockNumber = Convert.ToInt64(bn?.ToString()?.Replace("0x", ""), 16);
-                    lastTransactionIndex = Convert.ToInt32(ti?.ToString()?.Replace("0x", ""), 16);
-                    lastLogIndex = Convert.ToInt32(li?.ToString()?.Replace("0x", ""), 16);
+                    lastTransactionIndex = (int)Convert.ToInt64(ti?.ToString()?.Replace("0x", ""), 16);
+                    lastLogIndex = (int)Convert.ToInt64(li?.ToString()?.Replace("0x", ""), 16);
                 }
             }
         }
