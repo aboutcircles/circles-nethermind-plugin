@@ -38,7 +38,9 @@ public sealed class CapacityGraphContractState : IContractState
 
     /// <summary>
     /// Hub.sol: isTrusted(truster, circlesId) — does truster accept circlesId's token?
-    /// Maps to CapacityGraph.TrustLookup[trusterId].Contains(circlesIdId).
+    /// Checks TrustLookup first (avatar trusts from trustQuery.sql).
+    /// Falls back to GroupTrustedTokens for group trusters (excluded from TrustLookup
+    /// by trustQuery.sql's WHERE group IS NULL filter, stored separately).
     /// Returns true (permissive) if TrustLookup is null to avoid false positives.
     /// </summary>
     public bool IsTrusted(string truster, string circlesId)
@@ -55,9 +57,15 @@ public sealed class CapacityGraphContractState : IContractState
         if (!AddressIdPool.TryIdOf(circlesIdLower, out int circlesIdId))
             return true;
 
-        if (!_graph.TrustLookup.TryGetValue(trusterId, out var trustedSet))
-            return false; // Truster exists but trusts nothing
+        if (_graph.TrustLookup.TryGetValue(trusterId, out var trustedSet))
+            return trustedSet.Contains(circlesIdId);
 
-        return trustedSet.Contains(circlesIdId);
+        // Groups are excluded from TrustLookup (trustQuery.sql filters them out).
+        // Their trust data lives in GroupTrustedTokens (from groupTrustQuery.sql).
+        if (_graph.IsGroup(trusterId))
+            return _graph.GroupTrustedTokens.TryGetValue(trusterId, out var groupTrusts)
+                   && groupTrusts.Contains(circlesIdId);
+
+        return false; // Truster exists but trusts nothing
     }
 }

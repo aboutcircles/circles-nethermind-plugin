@@ -656,4 +656,36 @@ public class HubContractValidatorTests
         Assert.That(errors, Is.Empty,
             $"Quantized+groups graph ({avatars} avatars, {groups} groups) validator errors:\n{string.Join("\n", errors)}");
     }
+
+    // ═══════════════════════════════════════════
+    // CapacityGraphContractState.IsTrusted — GroupTrustedTokens fallback
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void IsTrusted_GroupInGroupTrustedTokensOnly_ReturnsTrue()
+    {
+        // Groups are excluded from TrustLookup (trustQuery.sql WHERE group IS NULL).
+        // IsTrusted must fall back to GroupTrustedTokens for group trusters.
+        var graph = new CapacityGraph();
+        var groupId = AddressIdPool.IdOf("0xee00000000000000000000000000000000group1");
+        var tokenId = AddressIdPool.IdOf("0xee00000000000000000000000000000000token1");
+        var untrustedId = AddressIdPool.IdOf("0xee00000000000000000000000000000000token2");
+
+        graph.AddGroup(groupId);
+        graph.GroupTrustedTokens[groupId] = new HashSet<int> { tokenId };
+        // TrustLookup has NO entry for the group (matches production)
+        graph.TrustLookup = new Dictionary<int, HashSet<int>>();
+
+        var state = new CapacityGraphContractState(graph);
+
+        Assert.That(state.IsTrusted(
+            AddressIdPool.StringOf(groupId),
+            AddressIdPool.StringOf(tokenId)), Is.True,
+            "Group trusting token via GroupTrustedTokens should return true");
+
+        Assert.That(state.IsTrusted(
+            AddressIdPool.StringOf(groupId),
+            AddressIdPool.StringOf(untrustedId)), Is.False,
+            "Group not trusting token should return false");
+    }
 }
