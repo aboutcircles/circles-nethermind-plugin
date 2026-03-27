@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
 using Nethermind.Int256;
 using static Circles.Pathfinder.Tracing;
@@ -16,7 +17,8 @@ namespace Circles.Pathfinder.Host;
 internal sealed class FindPathHandler(
     Settings settings,
     SemaphoreSlim semaphore,
-    ILogger<FindPathHandler> log)
+    ILogger<FindPathHandler> log,
+    SimulationCanaryService? simulationCanary = null)
 {
     private const int MaxArrayEntries = 1000;
 
@@ -140,13 +142,42 @@ internal sealed class FindPathHandler(
 
             FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
 
-            // Record consent metrics if applicable
+            // Record consent + canary metrics if applicable
             if (result is MaxFlowResponse mfr)
             {
+                // Stamp graph block for staleness detection (use graph's own block, not
+                // state.Current.Block which may have advanced during solving)
+                mfr.GraphBlock = h.Graph.Block;
+
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
+
+                // Canary: record Hub.sol rule violations (observe-only)
+                if (mfr.ValidationErrors > 0)
+                {
+                    FindPathMetrics.CanaryValidationFailureTotal.WithLabels("any").Inc();
+                    if (mfr.ValidationViolationRules != null)
+                    {
+                        foreach (var rule in mfr.ValidationViolationRules)
+                            FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
+                    }
+                }
+
+                // Simulation canary: enqueue for async eth_call validation
+                if (simulationCanary != null
+                    && mfr.Transfers.Count > 0
+                    && !string.IsNullOrEmpty(request.Source)
+                    && !string.IsNullOrEmpty(request.Sink))
+                {
+                    simulationCanary.TryEnqueue(new CanaryWorkItem(
+                        ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
+                        Source: request.Source,
+                        Sink: request.Sink,
+                        GraphBlock: mfr.GraphBlock,
+                        Transfers: new List<TransferPathStep>(mfr.Transfers))); // defensive copy
+                }
             }
 
             return Results.Ok(result);
