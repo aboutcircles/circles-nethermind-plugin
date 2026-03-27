@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Circles.Common.Dto;
+using Circles.Pathfinder;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
@@ -171,12 +172,25 @@ internal sealed class FindPathHandler(
                     && !string.IsNullOrEmpty(request.Source)
                     && !string.IsNullOrEmpty(request.Sink))
                 {
+                    // Build wrapper→avatar string mapping for calldata encoding.
+                    // The SDK resolves wrappers before submitting to Hub.sol; the canary must do the same.
+                    Dictionary<string, string>? wrapperMap = null;
+                    if (h.Graph.WrapperToAvatar.Count > 0)
+                    {
+                        wrapperMap = new Dictionary<string, string>(
+                            h.Graph.WrapperToAvatar.Count, StringComparer.OrdinalIgnoreCase);
+                        foreach (var (wrapperId, avatarId) in h.Graph.WrapperToAvatar)
+                            wrapperMap[AddressIdPool.StringOf(wrapperId)]
+                                = AddressIdPool.StringOf(avatarId);
+                    }
+
                     simulationCanary.TryEnqueue(new CanaryWorkItem(
                         ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
                         Source: request.Source,
                         Sink: request.Sink,
                         GraphBlock: mfr.GraphBlock,
-                        Transfers: new List<TransferPathStep>(mfr.Transfers))); // defensive copy
+                        Transfers: new List<TransferPathStep>(mfr.Transfers),
+                        WrapperToAvatar: wrapperMap));
                 }
             }
 

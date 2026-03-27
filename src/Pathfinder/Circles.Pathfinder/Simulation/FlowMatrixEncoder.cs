@@ -27,11 +27,28 @@ public static class FlowMatrixEncoder
     /// <summary>
     /// Builds the ABI-encoded calldata for Hub.operateFlowMatrix from pathfinder transfer steps.
     /// </summary>
+    /// <summary>
+    /// Builds the ABI-encoded calldata for Hub.operateFlowMatrix from pathfinder transfer steps.
+    /// The wrapperToAvatar mapping resolves ERC20 wrapper addresses to their underlying avatar,
+    /// mirroring what the SDK does before submitting to Hub.sol (wrappers are not valid flow vertices).
+    /// </summary>
     public static string BuildCalldata(
         string sender,
         string receiver,
-        IReadOnlyList<TransferPathStep> transfers)
+        IReadOnlyList<TransferPathStep> transfers,
+        IReadOnlyDictionary<string, string>? wrapperToAvatar = null)
     {
+        // Resolve tokenOwner: SDK unwraps ERC20 wrappers before calling Hub.sol.
+        // The pathfinder intentionally keeps wrapper addresses so the SDK knows what to unwrap.
+        // For simulation we must do the same resolution.
+        string ResolveToken(string tokenOwner)
+        {
+            var lower = tokenOwner.ToLowerInvariant();
+            if (wrapperToAvatar != null && wrapperToAvatar.TryGetValue(lower, out var avatar))
+                return avatar;
+            return lower;
+        }
+
         // Step 1: Build sorted vertex list (all unique addresses)
         var vertexSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         vertexSet.Add(sender.ToLowerInvariant());
@@ -40,7 +57,7 @@ public static class FlowMatrixEncoder
         {
             vertexSet.Add(t.From.ToLowerInvariant());
             vertexSet.Add(t.To.ToLowerInvariant());
-            vertexSet.Add(t.TokenOwner.ToLowerInvariant());
+            vertexSet.Add(ResolveToken(t.TokenOwner));
         }
 
         // Sort by uint160 value for Hub.sol's _flowVertices ordering
@@ -78,7 +95,7 @@ public static class FlowMatrixEncoder
             if (streamSinkId == 1)
                 terminalEdgeIndices.Add(i);
 
-            coordinates.Add((ushort)idx[t.TokenOwner.ToLowerInvariant()]);
+            coordinates.Add((ushort)idx[ResolveToken(t.TokenOwner)]);
             coordinates.Add((ushort)idx[t.From.ToLowerInvariant()]);
             coordinates.Add((ushort)idx[toAddr]);
         }

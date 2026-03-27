@@ -15,7 +15,8 @@ internal sealed record CanaryWorkItem(
     string Source,
     string Sink,
     long GraphBlock,
-    List<TransferPathStep> Transfers);
+    List<TransferPathStep> Transfers,
+    IReadOnlyDictionary<string, string>? WrapperToAvatar = null);
 
 /// <summary>
 /// Background service that simulates pathfinder results via eth_call against the local
@@ -116,7 +117,7 @@ internal sealed class SimulationCanaryService : BackgroundService
         string calldata;
         try
         {
-            calldata = FlowMatrixEncoder.BuildCalldata(item.Source, item.Sink, item.Transfers);
+            calldata = FlowMatrixEncoder.BuildCalldata(item.Source, item.Sink, item.Transfers, item.WrapperToAvatar);
         }
         catch (Exception ex)
         {
