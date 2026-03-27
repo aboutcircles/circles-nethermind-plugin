@@ -1,10 +1,5 @@
 with registered_avatars as materialized (
-    select organization as avatar from "CrcV2_RegisterOrganization"
-    union all
-    select "group" as avatar from "CrcV2_RegisterGroup"
-    union all
-    select avatar from "CrcV2_RegisterHuman"
-),
+{{registered_avatars_cte_body}}),
 static_wrapper_transfers as (
     select t."timestamp"
          , t."tokenAddress"

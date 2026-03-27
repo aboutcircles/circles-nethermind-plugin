@@ -220,10 +220,18 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         LoadConsentedFlowFlags(capacityGraph, cachedGroupData);
 
         // STEP 1g: Add simulated consented avatars (for testing)
+        // Capped at 100 to limit AddressIdPool growth from user input
         if (request?.SimulatedConsentedAvatars != null && request.SimulatedConsentedAvatars.Count > 0)
         {
+            const int maxSimulatedConsentedAvatars = 100;
+            if (request.SimulatedConsentedAvatars.Count > maxSimulatedConsentedAvatars)
+            {
+                _logger.LogWarning("SimulatedConsentedAvatars count {Count} exceeds limit {Limit}, truncating",
+                    request.SimulatedConsentedAvatars.Count, maxSimulatedConsentedAvatars);
+            }
+
             int addedCount = 0;
-            foreach (var avatar in request.SimulatedConsentedAvatars)
+            foreach (var avatar in request.SimulatedConsentedAvatars.Take(maxSimulatedConsentedAvatars))
             {
                 if (string.IsNullOrWhiteSpace(avatar))
                     continue;
@@ -259,26 +267,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         var sourceEqualsSink = request?.Source?.Trim().ToLowerInvariant() == request?.Sink?.Trim().ToLowerInvariant();
 
-        // Setup key filters
-        var toTokensFilter = request?.ToTokens?
-                                 .Select(AddressIdPool.IdOf)
-                                 .ToHashSet()
-                             ?? new HashSet<int>();
-
-        var fromTokensFilter = request?.FromTokens?
-                                   .Select(AddressIdPool.IdOf)
-                                   .ToHashSet()
-                               ?? new HashSet<int>();
-
-        var excludedFromTokensFilter = request?.ExcludedFromTokens?
-                                           .Select(AddressIdPool.IdOf)
-                                           .ToHashSet()
-                                       ?? new HashSet<int>();
-
-        var excludedToTokensFilter = request?.ExcludedToTokens?
-                                         .Select(AddressIdPool.IdOf)
-                                         .ToHashSet()
-                                     ?? new HashSet<int>();
+        // Setup key filters — use TryIdOf to avoid permanently allocating unknown
+        // addresses in the global AddressIdPool (M2: unbounded memory growth).
+        // Addresses not already in the pool can't match any graph node.
+        var toTokensFilter = ResolveFilterAddresses(request?.ToTokens);
+        var fromTokensFilter = ResolveFilterAddresses(request?.FromTokens);
+        var excludedFromTokensFilter = ResolveFilterAddresses(request?.ExcludedFromTokens);
+        var excludedToTokensFilter = ResolveFilterAddresses(request?.ExcludedToTokens);
 
         // STEP 1h: Expand filters with wrapper IDs when withWrap is enabled.
         // User-provided filters contain avatar addresses, but wrapped balances use wrapper
@@ -303,22 +298,26 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         if (sourceId != null && capacityGraph.IsGroup(sourceId.Value))
         {
-            throw new ArgumentException($"Groups cannot be source. '{request!.Source}' is a group.");
+            _logger.LogWarning("Rejected source '{Source}': address is a group", request!.Source);
+            throw new ArgumentException("Invalid source address.");
         }
 
         if (sinkId != null && capacityGraph.IsGroup(sinkId.Value))
         {
-            throw new ArgumentException($"Groups cannot be sink. '{request!.Sink}' is a group.");
+            _logger.LogWarning("Rejected sink '{Sink}': address is a group", request!.Sink);
+            throw new ArgumentException("Invalid sink address.");
         }
 
         if (sourceId != null && capacityGraph.IsRouter(sourceId.Value))
         {
-            throw new ArgumentException($"Router cannot be source. '{request!.Source}' is the router.");
+            _logger.LogWarning("Rejected source '{Source}': address is the router", request!.Source);
+            throw new ArgumentException("Invalid source address.");
         }
 
         if (sinkId != null && capacityGraph.IsRouter(sinkId.Value))
         {
-            throw new ArgumentException($"Router cannot be sink. '{request!.Sink}' is the router.");
+            _logger.LogWarning("Rejected sink '{Sink}': address is the router", request!.Sink);
+            throw new ArgumentException("Invalid sink address.");
         }
 
         // STEP 2a: Filter ToTokens to only include tokens the sink actually trusts
@@ -972,22 +971,41 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         // every token that is trusted by somebody — only if registered
         // (defense-in-depth: SQL queries should already filter, but guard against leaks)
+        // Fail-closed: if RegisteredAvatarIds is empty, no trusted tokens are added.
         var registered = capacityGraph.RegisteredAvatarIds;
         if (registered.Count == 0)
         {
-            _logger.LogWarning("RegisteredAvatarIds is empty — skipping trusted-token registration filter");
+            _logger.LogError("RegisteredAvatarIds is empty — no trusted tokens will be added to graph");
         }
 
         foreach (var trustedSet in trustLookup.Values)
         {
             foreach (var tokenId in trustedSet)
             {
-                if (registered.Count == 0 || registered.Contains(tokenId))
+                if (registered.Contains(tokenId))
                 {
                     capacityGraph.AddAvatar(tokenId);
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Resolves user-supplied filter addresses to AddressIdPool IDs without allocating
+    /// new entries for unknown addresses (prevents unbounded memory growth from attacker input).
+    /// </summary>
+    private static HashSet<int> ResolveFilterAddresses(IReadOnlyList<string>? addresses)
+    {
+        if (addresses == null || addresses.Count == 0)
+            return new HashSet<int>();
+
+        var result = new HashSet<int>(addresses.Count);
+        foreach (var addr in addresses)
+        {
+            if (AddressIdPool.TryIdOf(addr, out var id))
+                result.Add(id);
+        }
+        return result;
     }
 
     /// <summary>

@@ -115,7 +115,8 @@ public class GraphFactoryTests
     [Test]
     public void CreateCapacityGraph_AddsAllAvatarNodesFromBalanceAndTrust()
     {
-        var factory = MakeFactory();
+        var mock = new MockLoadGraph { RegisteredAvatars = new List<string> { Alice, Bob, TokenA } };
+        var factory = MakeFactory(mock);
         var balance = MakeBalanceGraph((Alice, TokenA, 1000));
         var trust = MakeTrust((Bob, TokenA));
 
@@ -670,23 +671,22 @@ public class GraphFactoryTests
 
     /// <summary>
     /// Regression: a wrapper address for an unregistered avatar that enters through trust
-    /// should be in AvatarNodes (from AddAllAvatarNodes) but must NOT create capacity edges
-    /// if its wrapped balance is skipped (WithWrap=false). This means it cannot be a flow
-    /// intermediary — preventing AvatarMustBeRegistered contract reverts.
-    /// Bug: Trust query returned wrapper trustee → AddAllAvatarNodes added it → graph included
-    /// an unregistered vertex → Hub.sol rejected with 0xc14c0700.
+    /// must NOT appear in AvatarNodes at all (fail-closed registration filter).
+    /// Previously the empty RegisteredAvatarIds bypass allowed unregistered wrappers in,
+    /// which caused Hub.sol AvatarMustBeRegistered reverts.
     /// </summary>
     [Test]
     public void GraphFactory_UnregisteredWrapperTrustee_CannotBeFlowIntermediary()
     {
-        // WrapperAddr is trusted by Bob but has no balance and is unregistered
+        // WrapperAddr is trusted by Bob but is unregistered
         var WrapperAddr = "0xf1wr000000000000000000000000000000000009";
-        var factory = MakeFactory();
+        // Only register Alice, Bob, TokenA — NOT WrapperAddr
+        var mock = new MockLoadGraph { RegisteredAvatars = new List<string> { Alice, Bob, TokenA } };
+        var factory = MakeFactory(mock);
         var bg = new BalanceGraph();
         int aliceId = AddressIdPool.IdOf(Alice);
         int tokenAId = AddressIdPool.IdOf(TokenA);
         bg.AddAvatar(aliceId);
-        // Alice holds TokenA (not wrapped)
         bg.AddBalance(aliceId, tokenAId, 500, isWrapped: false, isStatic: false);
 
         // Bob trusts WrapperAddr token AND TokenA
@@ -696,15 +696,13 @@ public class GraphFactoryTests
         var cg = factory.CreateCapacityGraph(bg, trust, request);
 
         int wrapperId = AddressIdPool.IdOf(WrapperAddr);
-        // WrapperAddr should be in AvatarNodes (from trust lookup)
-        Assert.That(cg.AvatarNodes.ContainsKey(wrapperId), Is.True,
-            "Wrapper address should be registered as avatar node from trust");
+        // Unregistered wrapper must NOT be in AvatarNodes (fail-closed filter)
+        Assert.That(cg.AvatarNodes.ContainsKey(wrapperId), Is.False,
+            "Unregistered wrapper should be excluded from AvatarNodes");
 
-        // But it should have NO outbound capacity edges (no balance → no H→Pool edges)
-        // This means it can never be a flow intermediary
-        var wrapperOutbound = cg.Edges.Where(e => e.From == wrapperId).ToList();
-        Assert.That(wrapperOutbound, Is.Empty,
-            "Wrapper with no balance should have no outbound edges → cannot be intermediary");
+        // Registered TokenA should still be in AvatarNodes
+        Assert.That(cg.AvatarNodes.ContainsKey(tokenAId), Is.True,
+            "Registered token should be in AvatarNodes");
     }
 
     #endregion
