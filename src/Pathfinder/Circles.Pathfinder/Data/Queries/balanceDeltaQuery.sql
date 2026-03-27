@@ -15,11 +15,12 @@ FROM (
         "timestamp",
         "from",
         "to",
-        "tokenAddress",
+        ts."tokenAddress",
         "value"::text AS "value",
         false AS "isWrapped",
         false AS "isStatic"
-    FROM "CrcV2_TransferSingle"
+    FROM "CrcV2_TransferSingle" ts
+    JOIN registered_avatars ra_token ON ra_token.avatar = ts."tokenAddress"
     WHERE "blockNumber" > @lastBlock
 
     UNION ALL
@@ -32,11 +33,12 @@ FROM (
         "timestamp",
         "from",
         "to",
-        "tokenAddress",
+        tb."tokenAddress",
         "value"::text AS "value",
         false AS "isWrapped",
         false AS "isStatic"
-    FROM "CrcV2_TransferBatch"
+    FROM "CrcV2_TransferBatch" tb
+    JOIN registered_avatars ra_token ON ra_token.avatar = tb."tokenAddress"
     WHERE "blockNumber" > @lastBlock
 
     UNION ALL

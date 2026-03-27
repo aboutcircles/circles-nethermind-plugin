@@ -104,16 +104,16 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         var capacityGraph = new CapacityGraph();
 
-        // Add all avatar nodes from both graphs
-        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
-
-        // Ensure ALL registered avatars are valid source/sink candidates
+        // Build registered avatar set FIRST (needed for filtering in AddAllAvatarNodes)
         foreach (var avatar in loadGraph.LoadRegisteredAvatars())
         {
             var id = AddressIdPool.IdOf(avatar.ToLowerInvariant());
             capacityGraph.AddAvatar(id);
             capacityGraph.RegisteredAvatarIds.Add(id);
         }
+
+        // Add all avatar nodes from both graphs (filtered against registered set)
+        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
         // Load wrapper→avatar mappings (for DTO output resolution)
         LoadWrapperMappings(capacityGraph, cachedGroupData);
@@ -169,20 +169,27 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         var capacityGraph = new CapacityGraph();
 
-        // STEP 1: Add all avatar nodes from both graphs
-        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
-
-        // STEP 1a: Ensure ALL registered avatars are valid source/sink candidates
+        // STEP 1: Build registered avatar set FIRST (needed for filtering)
         if (cachedGroupData?.RegisteredAvatarIds != null)
         {
             foreach (var avatarId in cachedGroupData.RegisteredAvatarIds)
+            {
                 capacityGraph.AddAvatar(avatarId);
+                capacityGraph.RegisteredAvatarIds.Add(avatarId);
+            }
         }
         else
         {
             foreach (var avatar in loadGraph.LoadRegisteredAvatars())
-                capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
+            {
+                var id = AddressIdPool.IdOf(avatar.ToLowerInvariant());
+                capacityGraph.AddAvatar(id);
+                capacityGraph.RegisteredAvatarIds.Add(id);
+            }
         }
+
+        // STEP 1a: Add all avatar nodes from both graphs (filtered against registered set)
+        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
         // STEP 1b: Add avatars referenced by simulated balances (holders + tokens)
         var simulated = NormalizeSimulatedBalances(request.SimulatedBalances);
@@ -963,12 +970,22 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             capacityGraph.AddAvatar(truster);
         }
 
-        // every token that is trusted by somebody
+        // every token that is trusted by somebody — only if registered
+        // (defense-in-depth: SQL queries should already filter, but guard against leaks)
+        var registered = capacityGraph.RegisteredAvatarIds;
+        if (registered.Count == 0)
+        {
+            _logger.LogWarning("RegisteredAvatarIds is empty — skipping trusted-token registration filter");
+        }
+
         foreach (var trustedSet in trustLookup.Values)
         {
             foreach (var tokenId in trustedSet)
             {
-                capacityGraph.AddAvatar(tokenId);
+                if (registered.Count == 0 || registered.Contains(tokenId))
+                {
+                    capacityGraph.AddAvatar(tokenId);
+                }
             }
         }
     }

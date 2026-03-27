@@ -1251,6 +1251,7 @@ public class GraphFactoryTests
         public List<string> Groups { get; set; } = new();
         public List<(string GroupAddress, string TrustedToken)> GroupTrusts { get; set; } = new();
         public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; set; } = new();
+        public List<string> RegisteredAvatars { get; set; } = new();
 
         public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> LoadV2Balances()
             => Enumerable.Empty<(string, int, int, bool, bool)>();
@@ -1261,9 +1262,102 @@ public class GraphFactoryTests
         public IEnumerable<string> LoadGroups() => Groups;
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrusts;
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
-        public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();
+        public IEnumerable<string> LoadRegisteredAvatars() => RegisteredAvatars;
         public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)> LoadWrapperMappings()
             => Array.Empty<(string, string)>();
+    }
+
+    #endregion
+
+    #region Registration Filter Tests
+
+    // Unregistered token address used for filter tests
+    private static readonly string UnregisteredToken = "0xf1dd000000000000000000000000000000000099";
+
+    [Test]
+    public void AddAllAvatarNodes_UnregisteredTokenId_ExcludedFromGraph()
+    {
+        // Arrange: Alice trusts both TokenA (registered) and UnregisteredToken
+        var mock = new MockLoadGraph
+        {
+            RegisteredAvatars = new List<string> { Alice, Bob, TokenA }
+        };
+        var factory = MakeFactory(mock);
+        var bg = MakeBalanceGraph((Alice, TokenA, 1000));
+
+        var trustLookup = new Dictionary<int, HashSet<int>>
+        {
+            [AddressIdPool.IdOf(Alice)] = new HashSet<int>
+            {
+                AddressIdPool.IdOf(TokenA),
+                AddressIdPool.IdOf(UnregisteredToken)
+            }
+        };
+
+        // Act
+        var cg = factory.CreateBaseCapacityGraph(bg, trustLookup);
+
+        // Assert: registered token is an avatar node, unregistered is NOT
+        int tokenAId = AddressIdPool.IdOf(TokenA);
+        int unregId = AddressIdPool.IdOf(UnregisteredToken);
+
+        Assert.That(cg.AvatarNodes.ContainsKey(tokenAId), Is.True,
+            "Registered token should be an avatar node");
+        Assert.That(cg.AvatarNodes.ContainsKey(unregId), Is.False,
+            "Unregistered token must NOT be an avatar node");
+    }
+
+    [Test]
+    public void CreateBaseCapacityGraph_RegisteredSetPopulatedBeforeAvatarNodes()
+    {
+        // Arrange: set up registered avatars — ensure they appear in RegisteredAvatarIds
+        var mock = new MockLoadGraph
+        {
+            RegisteredAvatars = new List<string> { Alice, Bob, TokenA, TokenB }
+        };
+        var factory = MakeFactory(mock);
+        var bg = MakeBalanceGraph((Alice, TokenA, 500));
+        var trustLookup = new Dictionary<int, HashSet<int>>();
+
+        // Act
+        var cg = factory.CreateBaseCapacityGraph(bg, trustLookup);
+
+        // Assert: all registered avatars are in RegisteredAvatarIds
+        Assert.That(cg.RegisteredAvatarIds.Contains(AddressIdPool.IdOf(Alice)), Is.True);
+        Assert.That(cg.RegisteredAvatarIds.Contains(AddressIdPool.IdOf(Bob)), Is.True);
+        Assert.That(cg.RegisteredAvatarIds.Contains(AddressIdPool.IdOf(TokenA)), Is.True);
+        Assert.That(cg.RegisteredAvatarIds.Contains(AddressIdPool.IdOf(TokenB)), Is.True);
+    }
+
+    [Test]
+    public void CreateCapacityGraph_Filtered_UnregisteredTokenExcluded()
+    {
+        // Arrange: filtered path with cached group data
+        var mock = new MockLoadGraph
+        {
+            RegisteredAvatars = new List<string> { Alice, TokenA }
+        };
+        var factory = MakeFactory(mock);
+        var bg = MakeBalanceGraph((Alice, TokenA, 1000));
+
+        var trustLookup = new Dictionary<int, HashSet<int>>
+        {
+            [AddressIdPool.IdOf(Alice)] = new HashSet<int>
+            {
+                AddressIdPool.IdOf(TokenA),
+                AddressIdPool.IdOf(UnregisteredToken)
+            }
+        };
+
+        var request = new FlowRequest { Source = Alice, Sink = TokenA, TargetFlow = "1000" };
+
+        // Act
+        var cg = factory.CreateCapacityGraph(bg, trustLookup, request);
+
+        // Assert
+        int unregId = AddressIdPool.IdOf(UnregisteredToken);
+        Assert.That(cg.AvatarNodes.ContainsKey(unregId), Is.False,
+            "Unregistered token must NOT appear in filtered capacity graph");
     }
 
     #endregion
