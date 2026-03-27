@@ -975,11 +975,14 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance and last activity
-                if (from != "0x0000000000000000000000000000000000000000")
+                var fromLower = from.ToLowerInvariant();
+                var toLower = to.ToLowerInvariant();
+
+                // Update sender balance — only for registered avatars
+                if (from != "0x0000000000000000000000000000000000000000"
+                    && (_caches.V2Avatars.ContainsKey(fromLower) || _caches.Groups.ContainsKey(fromLower)))
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenAddress}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var fromKey = $"{fromLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(fromKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
@@ -989,11 +992,11 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance and last activity
-                if (to != "0x0000000000000000000000000000000000000000")
+                // Update receiver balance — only for registered avatars
+                if (to != "0x0000000000000000000000000000000000000000"
+                    && (_caches.V2Avatars.ContainsKey(toLower) || _caches.Groups.ContainsKey(toLower)))
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenAddress}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var toKey = $"{toLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(toKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
@@ -1079,11 +1082,14 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance and last activity
-                if (from != "0x0000000000000000000000000000000000000000")
+                var fromLower = from.ToLowerInvariant();
+                var toLower = to.ToLowerInvariant();
+
+                // Update sender balance — only for registered avatars
+                if (from != "0x0000000000000000000000000000000000000000"
+                    && (_caches.V2Avatars.ContainsKey(fromLower) || _caches.Groups.ContainsKey(fromLower)))
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var fromKey = $"{fromLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(fromKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
@@ -1093,11 +1099,11 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance and last activity
-                if (to != "0x0000000000000000000000000000000000000000")
+                // Update receiver balance — only for registered avatars
+                if (to != "0x0000000000000000000000000000000000000000"
+                    && (_caches.V2Avatars.ContainsKey(toLower) || _caches.Groups.ContainsKey(toLower)))
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var toKey = $"{toLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(toKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
