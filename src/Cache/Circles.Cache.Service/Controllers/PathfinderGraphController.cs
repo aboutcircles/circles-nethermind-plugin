@@ -147,8 +147,9 @@ public class PathfinderGraphController : ControllerBase
             var account = kvp.Key[..separatorIndex];
             var tokenAddress = kvp.Key[(separatorIndex + 1)..];
 
-            // Only include balances for registered V2 avatars
-            if (!_caches.V2Avatars.ContainsKey(account))
+            // Only include balances for registered V2 avatars (humans, orgs, or groups)
+            if (!_caches.V2Avatars.ContainsKey(account)
+                && !_caches.Groups.ContainsKey(account))
                 continue;
 
             // Determine if this is a wrapper token
