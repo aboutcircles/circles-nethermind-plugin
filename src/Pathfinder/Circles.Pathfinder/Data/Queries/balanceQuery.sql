@@ -121,6 +121,7 @@ native_sum as (
          , 'demurraged' as "circlesType"
     from native_agg n
     join registered_avatars ra on ra.avatar = n.account
+    join registered_avatars ra_token on ra_token.avatar = n."tokenAddress"
 )
 
 select balance::text

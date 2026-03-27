@@ -72,6 +72,7 @@ native_sum as (
          , false as "isStatic"
     from "V_CrcV2_BalancesByAccountAndToken" b
     join registered_avatars ra on ra.avatar = b."account"
+    join registered_avatars ra_token on ra_token.avatar = b."tokenAddress"
     where b."totalBalance" > 0
 )
 select balance::text

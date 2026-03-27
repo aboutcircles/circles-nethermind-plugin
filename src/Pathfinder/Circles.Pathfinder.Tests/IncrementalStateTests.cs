@@ -679,8 +679,8 @@ public class IncrementalLoadGraphTests
             ("1000000000000000000", Alice, TokenA, InflationDayZeroUnix + 1000),
             ("1000000000000000000", Bob, TokenA, InflationDayZeroUnix + 1000));
 
-        // Only Alice is registered
-        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"));
+        // Only Alice is registered (+ TokenA as token owner so it passes tokenAddress filter)
+        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"), (TokenA, "CrcV2_RegisterHuman"));
         var trusts = CreateTrustState();
 
         var settings = new Settings { TargetDemurrageTimestamp = DateTimeOffset.FromUnixTimeSeconds(InflationDayZeroUnix + 1000) };
@@ -716,7 +716,7 @@ public class IncrementalLoadGraphTests
         var balance = "1000000000000000000000"; // 1000 * 1e18
 
         var balances = CreateBalanceState((balance, Alice, TokenA, lastActivity));
-        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"));
+        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"), (TokenA, "CrcV2_RegisterHuman"));
         var trusts = CreateTrustState();
 
         var targetTime = DateTimeOffset.FromUnixTimeSeconds(InflationDayZeroUnix + 86400); // 1 day later
@@ -741,7 +741,7 @@ public class IncrementalLoadGraphTests
         var balance = "1000000000000000000000";
 
         var balances = CreateBalanceState((balance, Alice, TokenA, lastActivity));
-        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"));
+        var avatars = CreateAvatarState((Alice, "CrcV2_RegisterHuman"), (TokenA, "CrcV2_RegisterHuman"));
         var trusts = CreateTrustState();
 
         var targetTime = DateTimeOffset.FromUnixTimeSeconds(InflationDayZeroUnix + 200); // same day
@@ -858,6 +858,7 @@ public class IncrementalLoadGraphTests
         var avatars = CreateAvatarState(
             (Alice, "CrcV2_RegisterHuman"),
             (Bob, "CrcV2_RegisterHuman"),
+            (TokenA, "CrcV2_RegisterHuman"),
             (GroupAddr, "CrcV2_RegisterGroup"));
 
         var balances = CreateBalanceState();
