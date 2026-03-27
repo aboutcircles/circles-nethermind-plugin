@@ -217,18 +217,33 @@ public class PipelineMethodTests
     }
 
     [Test]
-    public void Consent_GroupEdge_Skipped()
+    public void Consent_ConsentedAvatarToGroup_DetectsViolation()
     {
         var graph = MakeGraph(
             groups: new[] { Group1 },
             consented: new[] { A },
             trustLookup: new() { { A, new HashSet<int>() } }); // A trusts nobody
 
-        // A(consented) → Group: should be skipped (group becomes router edge later)
+        // A(consented) → Group: NOT skipped — Router lacks advancedUsageFlags
+        var edges = new List<(int From, int To, int Token, long Flow)> { (A, Group1, TokenA, 100) };
+
+        Assert.That(_pathfinder.PathHasConsentViolation(edges, graph), Is.True,
+            "Consented Avatar→Group detected — Router lacks advancedUsageFlags");
+    }
+
+    [Test]
+    public void Consent_NonConsentedAvatarToGroup_Skipped()
+    {
+        var graph = MakeGraph(
+            groups: new[] { Group1 },
+            consented: new[] { B }, // B is consented, not A
+            trustLookup: new() { { A, new HashSet<int>() } });
+
+        // A(non-consented) → Group: skipped (standard trust applies after Router insertion)
         var edges = new List<(int From, int To, int Token, long Flow)> { (A, Group1, TokenA, 100) };
 
         Assert.That(_pathfinder.PathHasConsentViolation(edges, graph), Is.False,
-            "Group edges skipped — they become router edges");
+            "Non-consented Avatar→Group skipped — standard trust path");
     }
 
     [Test]

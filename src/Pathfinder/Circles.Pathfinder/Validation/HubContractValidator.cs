@@ -198,25 +198,19 @@ public static class HubContractValidator
     //       return isTrusted(_from, _to) && advancedUsageFlags[_to];
     //   }
     //
-    // Router edges bypass this check entirely (Hub.sol uses Router as _sender
-    // for group mints, not subject to isPermittedFlow).
+    // Hub.sol's _verifyFlowMatrix calls isPermittedFlow for ALL edges,
+    // including Router edges. No address is exempt.
     // ────────────────────────────────────────────
     internal static void ValidateIsPermittedFlow(
         IReadOnlyList<TransferPathStep> steps,
         IContractState state,
         List<ValidationViolation> violations)
     {
-        var router = state.RouterAddress?.ToLowerInvariant();
-
         for (int i = 0; i < steps.Count; i++)
         {
             var from = steps[i].From.ToLowerInvariant();
             var to = steps[i].To.ToLowerInvariant();
             var tokenOwner = steps[i].TokenOwner.ToLowerInvariant();
-
-            // Router bypasses isPermittedFlow
-            if (router != null && (from == router || to == router))
-                continue;
 
             if (!state.HasAdvancedUsageFlags(from))
             {

@@ -227,18 +227,62 @@ public class HubContractValidatorTests
     }
 
     [Test]
-    public void Rule4_RouterEdge_BypassesCheck()
+    public void Rule4_RouterEdge_WithTrust_Passes()
     {
-        var state = new MockContractState { Router = Router }; // No trusts at all
-        // Router → Group edge should be skipped entirely
+        // Hub.sol _verifyFlowMatrix calls isPermittedFlow on ALL edges including Router.
+        // Avatar→Router: isTrusted(Router, tokenOwner) must hold
+        // Router→Group: isTrusted(Group, tokenOwner) must hold
+        var state = new MockContractState
+        {
+            Router = Router,
+            Groups = { GroupA },
+            Trusts =
+            {
+                (Router.ToLower(), Alice.ToLower()),  // Router trusts Alice's token
+                (GroupA.ToLower(), Alice.ToLower()),   // GroupA trusts Alice's token
+            }
+        };
         var steps = new[]
         {
-            Step(Router, GroupA, Alice),
-            Step(Alice, Router, Alice),
+            Step(Alice, Router, Alice),   // Avatar→Router
+            Step(Router, GroupA, Alice),  // Router→Group
         };
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
-        Assert.That(violations, Is.Empty, "Router edges should bypass isPermittedFlow");
+        Assert.That(violations, Is.Empty, "Router edges with valid trust should pass");
+    }
+
+    [Test]
+    public void Rule4_AvatarToRouter_NoTrust_Fails()
+    {
+        // Avatar→Router: isTrusted(Router, tokenOwner) — Router must trust the token
+        var state = new MockContractState
+        {
+            Router = Router,
+            // No trusts — Router does NOT trust Alice's token
+        };
+        var steps = new[] { Step(Alice, Router, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        Assert.That(violations, Has.Count.EqualTo(1));
+        Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
+    }
+
+    [Test]
+    public void Rule4_RouterToGroup_NoTrust_Fails()
+    {
+        // Router→Group: isTrusted(Group, tokenOwner) — Group must trust the token
+        var state = new MockContractState
+        {
+            Router = Router,
+            Groups = { GroupA },
+            // No trusts — GroupA does NOT trust Alice's token
+        };
+        var steps = new[] { Step(Router, GroupA, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        Assert.That(violations, Has.Count.EqualTo(1));
+        Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
     }
 
     // ═══════════════════════════════════════════
@@ -596,5 +640,37 @@ public class HubContractValidatorTests
 
         Assert.That(errors, Is.Empty,
             $"Quantized+groups graph ({avatars} avatars, {groups} groups) validator errors:\n{string.Join("\n", errors)}");
+    }
+
+    // ═══════════════════════════════════════════
+    // CapacityGraphContractState.IsTrusted — GroupTrustedTokens fallback
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void IsTrusted_GroupInGroupTrustedTokensOnly_ReturnsTrue()
+    {
+        // Groups are excluded from TrustLookup (trustQuery.sql WHERE group IS NULL).
+        // IsTrusted must fall back to GroupTrustedTokens for group trusters.
+        var graph = new CapacityGraph();
+        var groupId = AddressIdPool.IdOf("0xee00000000000000000000000000000000group1");
+        var tokenId = AddressIdPool.IdOf("0xee00000000000000000000000000000000token1");
+        var untrustedId = AddressIdPool.IdOf("0xee00000000000000000000000000000000token2");
+
+        graph.AddGroup(groupId);
+        graph.GroupTrustedTokens[groupId] = new HashSet<int> { tokenId };
+        // TrustLookup has NO entry for the group (matches production)
+        graph.TrustLookup = new Dictionary<int, HashSet<int>>();
+
+        var state = new CapacityGraphContractState(graph);
+
+        Assert.That(state.IsTrusted(
+            AddressIdPool.StringOf(groupId),
+            AddressIdPool.StringOf(tokenId)), Is.True,
+            "Group trusting token via GroupTrustedTokens should return true");
+
+        Assert.That(state.IsTrusted(
+            AddressIdPool.StringOf(groupId),
+            AddressIdPool.StringOf(untrustedId)), Is.False,
+            "Group not trusting token should return false");
     }
 }
