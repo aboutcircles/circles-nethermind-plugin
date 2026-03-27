@@ -478,7 +478,8 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading V2 avatars...");
 
-        // Load V2 avatars (humans and organizations) using Seed() for efficiency
+        // Load V2 avatars (humans and organizations) using Seed() for efficiency.
+        // Excludes stopped avatars so downstream registration checks auto-exclude their data.
         const string avatarSql = @"
             SELECT
                 r.""avatar"" as address,
@@ -486,6 +487,11 @@ public class CacheWarmupService : BackgroundService
                 'CrcV2_RegisterHuman' as type
             FROM ""CrcV2_RegisterHuman"" r
             WHERE r.""blockNumber"" <= @toBlock
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_Stopped"" s
+                  WHERE s.""avatar"" = r.""avatar""
+                    AND s.""blockNumber"" <= @toBlock
+              )
 
             UNION ALL
 
@@ -494,7 +500,12 @@ public class CacheWarmupService : BackgroundService
                 r.""timestamp"",
                 'CrcV2_RegisterOrganization' as type
             FROM ""CrcV2_RegisterOrganization"" r
-            WHERE r.""blockNumber"" <= @toBlock";
+            WHERE r.""blockNumber"" <= @toBlock
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_Stopped"" s
+                  WHERE s.""avatar"" = r.""organization""
+                    AND s.""blockNumber"" <= @toBlock
+              )";
 
         var v2Avatars = new Dictionary<string, (string Type, long Timestamp)>();
         var humanCount = 0;
