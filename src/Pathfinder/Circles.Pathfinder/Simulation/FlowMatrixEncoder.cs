@@ -52,6 +52,13 @@ public static class FlowMatrixEncoder
         for (int i = 0; i < flowVertices.Count; i++)
             idx[flowVertices[i]] = i;
 
+        if (flowVertices.Count > ushort.MaxValue + 1)
+            throw new InvalidOperationException(
+                $"operateFlowMatrix supports at most {ushort.MaxValue + 1} vertices; got {flowVertices.Count}.");
+        if (transfers.Count > ushort.MaxValue + 1)
+            throw new InvalidOperationException(
+                $"operateFlowMatrix supports at most {ushort.MaxValue + 1} flow edges; got {transfers.Count}.");
+
         // Step 2: Build flow edges and coordinates
         var flowEdges = new List<(ushort streamSinkId, BigInteger amount)>();
         var coordinates = new List<ushort>();
@@ -76,11 +83,9 @@ public static class FlowMatrixEncoder
             coordinates.Add((ushort)idx[toAddr]);
         }
 
-        if (terminalEdgeIndices.Count == 0 && transfers.Count > 0)
-        {
-            flowEdges[transfers.Count - 1] = (1, flowEdges[transfers.Count - 1].amount);
-            terminalEdgeIndices.Add(transfers.Count - 1);
-        }
+        if (transfers.Count > 0 && terminalEdgeIndices.Count == 0)
+            throw new InvalidOperationException(
+                "Cannot build operateFlowMatrix calldata: no transfer terminates at the requested receiver.");
 
         var senderCoordinate = (ushort)idx[senderLower];
         var terminalEdgeIds = terminalEdgeIndices.Select(i => (ushort)i).ToArray();
