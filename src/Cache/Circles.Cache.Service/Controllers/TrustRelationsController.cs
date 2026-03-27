@@ -1,5 +1,6 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Circles.Cache.Service.Controllers;
@@ -74,9 +75,14 @@ public class TrustRelationsController : ControllerBase
             // Get V2 trust relations if version is null or 2
             if (version is null or 2)
             {
+                var registrations = new CacheRegistrationSet(_caches);
+
                 foreach (var (trustee, expiryTime) in _caches.GetTrustsFor(addressLower, isV1: false))
                 {
                     if (expiryTime <= currentBlockTimestamp)
+                        continue;
+                    // Defense-in-depth: counterparty must be registered
+                    if (!registrations.IsRegistered(trustee))
                         continue;
 
                     trusts.Add(new TrustRelationResponse(
@@ -92,6 +98,8 @@ public class TrustRelationsController : ControllerBase
                 foreach (var (truster, expiryTime) in _caches.GetTrustedByFor(addressLower, isV1: false))
                 {
                     if (expiryTime <= currentBlockTimestamp)
+                        continue;
+                    if (!registrations.IsRegistered(truster))
                         continue;
 
                     trustedBy.Add(new TrustRelationResponse(

@@ -1,5 +1,6 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Circles.Cache.Service.Controllers;
@@ -40,8 +41,9 @@ public class GroupMembershipsController : ControllerBase
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
+            var registrations = new CacheRegistrationSet(_caches);
             var members = _caches.GetGroupMembers(groupLower)
-                .Where(m => m.ExpiryTime > currentBlockTimestamp)
+                .Where(m => m.ExpiryTime > currentBlockTimestamp && registrations.IsRegistered(m.Member))
                 .Select(m => new GroupMembershipResponse(
                     Group: groupLower,
                     Member: m.Member,
@@ -81,8 +83,9 @@ public class GroupMembershipsController : ControllerBase
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
+            var registrations = new CacheRegistrationSet(_caches);
             var groups = _caches.GetMemberGroups(memberLower)
-                .Where(g => g.ExpiryTime > currentBlockTimestamp)
+                .Where(g => g.ExpiryTime > currentBlockTimestamp && registrations.IsRegistered(g.Group))
                 .Select(g => new GroupMembershipResponse(
                     Group: g.Group,
                     Member: memberLower,
