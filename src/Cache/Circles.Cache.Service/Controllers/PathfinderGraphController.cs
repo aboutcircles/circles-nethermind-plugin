@@ -147,8 +147,9 @@ public class PathfinderGraphController : ControllerBase
             var account = kvp.Key[..separatorIndex];
             var tokenAddress = kvp.Key[(separatorIndex + 1)..];
 
-            // Only include balances for registered V2 avatars
-            if (!_caches.V2Avatars.ContainsKey(account))
+            // Only include balances for registered V2 avatars (humans, orgs, or groups)
+            if (!_caches.V2Avatars.ContainsKey(account)
+                && !_caches.Groups.ContainsKey(account))
                 continue;
 
             // Determine if this is a wrapper token
@@ -164,6 +165,14 @@ public class PathfinderGraphController : ControllerBase
                     && !_caches.Groups.ContainsKey(wrapperInfo.Avatar))
                     continue;
                 isStatic = wrapperInfo.CirclesType == 1;
+            }
+            else
+            {
+                // Native ERC1155: tokenAddress IS the token owner's address.
+                // Must be a registered avatar — unregistered tokens cause on-chain reverts.
+                if (!_caches.V2Avatars.ContainsKey(tokenAddress)
+                    && !_caches.Groups.ContainsKey(tokenAddress))
+                    continue;
             }
 
             // Convert decimal Circles → attoCircles BigInteger
@@ -302,6 +311,11 @@ public class PathfinderGraphController : ControllerBase
 
             // Skip revoked trust
             if (expiryTime > 0 && expiryTime <= now)
+                continue;
+
+            // Trustee must be a registered avatar — unregistered tokens cause on-chain reverts
+            if (!_caches.V2Avatars.ContainsKey(trustee)
+                && !_caches.Groups.ContainsKey(trustee))
                 continue;
 
             groupTrusts.Add(new PathfinderGroupTrustRow(
