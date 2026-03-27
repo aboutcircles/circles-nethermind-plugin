@@ -13,6 +13,8 @@ public static class RevertClassifier
     private const string FlowEdgeIsNotPermitted = "0x5e418dba";
     // CirclesErrorOneAddressArg(address,uint8) — type 1 (0x20-0x3F)
     private const string AvatarMustBeRegistered = "0xc14c0700";
+    // Hub.sol flow matrix error
+    private const string NettedFlowMismatch = "0xb8c358de";
     // OpenZeppelin ERC1155 errors
     private const string ERC1155InsufficientBalance = "0x03dee4c5";
     private const string ERC1155InvalidReceiver = "0x57f447ce";
@@ -30,6 +32,9 @@ public static class RevertClassifier
 
         if (Contains(lower, AvatarMustBeRegistered))
             return ("bug", "avatar_not_registered");
+
+        if (Contains(lower, NettedFlowMismatch))
+            return ("bug", "netted_flow_mismatch");
 
         if (Contains(lower, ERC1155InsufficientBalance))
             return ("bug", "insufficient_balance");
