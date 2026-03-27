@@ -670,17 +670,20 @@ public class NotificationListenerService : BackgroundService
 
                 var trusterKey = truster.ToLowerInvariant();
                 var trusteeKey = trustee.ToLowerInvariant();
-                var trustKey = $"{trusterKey}:{trusteeKey}";
 
                 // Safely cast expiryTime to long
                 long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
 
-                // Always update V2TrustRelations cache
+                // Registration check: both truster and trustee must be registered avatars.
+                // Removals (expiryTime == 0) always proceed — safe to remove non-existent entries.
+                var trusterRegistered = _caches.V2Avatars.ContainsKey(trusterKey) || _caches.Groups.ContainsKey(trusterKey);
+                var trusteeRegistered = _caches.V2Avatars.ContainsKey(trusteeKey) || _caches.Groups.ContainsKey(trusteeKey);
+
                 if (expiryTimeBig == 0)
                 {
                     _caches.RemoveV2Trust(blockNumber, trusterKey, trusteeKey);
                 }
-                else
+                else if (trusterRegistered && trusteeRegistered)
                 {
                     _caches.UpsertV2Trust(blockNumber, trusterKey, trusteeKey, expiryLong);
                 }
@@ -689,14 +692,11 @@ public class NotificationListenerService : BackgroundService
                 // Also update GroupMemberships if truster is a group
                 if (_caches.Groups.ContainsKey(trusterKey))
                 {
-                    // Composite key: group:member
-                    var membershipKey = $"{trusterKey}:{trusteeKey}";
-
                     if (expiryTimeBig == 0)
                     {
                         _caches.RemoveGroupMembership(blockNumber, trusterKey, trusteeKey);
                     }
-                    else
+                    else if (trusteeRegistered)
                     {
                         _caches.UpsertGroupMembership(blockNumber, trusterKey, trusteeKey, expiryLong);
                     }
@@ -737,9 +737,14 @@ public class NotificationListenerService : BackgroundService
 
                     // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                     var wrapperKey = erc20Wrapper.ToLowerInvariant();
+                    var avatarKey = avatar.ToLowerInvariant();
 
-                    _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
-                    count++;
+                    // Registration check: underlying avatar must be registered
+                    if (_caches.V2Avatars.ContainsKey(avatarKey) || _caches.Groups.ContainsKey(avatarKey))
+                    {
+                        _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
+                        count++;
+                    }
                 }
             }
 
@@ -1266,8 +1271,12 @@ public class NotificationListenerService : BackgroundService
                 var avatar = reader.GetString(1).ToLowerInvariant();
                 var flag = (byte[])reader.GetValue(2);
 
-                _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
-                count++;
+                // Registration check: only store flags for registered avatars
+                if (_caches.V2Avatars.ContainsKey(avatar) || _caches.Groups.ContainsKey(avatar))
+                {
+                    _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
+                    count++;
+                }
             }
         }
 
