@@ -67,10 +67,9 @@ public class PropertyBasedTests
         }
 
         // Router (use 'b' prefix — valid hex)
-        int routerId = -1;
         if (withRouter)
         {
-            routerId = AddressIdPool.IdOf($"{prefix}b{0:d33}");
+            int routerId = AddressIdPool.IdOf($"{prefix}b{0:d33}");
             graph.SetRouter(routerId);
         }
 
@@ -125,7 +124,7 @@ public class PropertyBasedTests
         // Router trusts a subset of group-trusted tokens (controlled by routerTrustDensity).
         // At density=1.0 all group collateral edges pass; at <1.0 some are filtered,
         // exercising the routerFilteredCount code path in GraphFactory.AddTokenPoolOutEdges.
-        if (withRouter && routerId >= 0 && groups.Count > 0)
+        if (withRouter && graph.RouterNode.HasValue)
         {
             var routerTrusts = new HashSet<int>();
             foreach (var grp in groups)
@@ -141,7 +140,7 @@ public class PropertyBasedTests
             }
 
             if (routerTrusts.Count > 0)
-                trustLookup[routerId] = routerTrusts;
+                trustLookup[graph.RouterNode.Value] = routerTrusts;
         }
 
         graph.TrustLookup = trustLookup;

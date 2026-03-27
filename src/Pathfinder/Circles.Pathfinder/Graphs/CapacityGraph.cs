@@ -46,6 +46,13 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Trust lookup for consented flow validation (truster -> set of trustees)
     public IReadOnlyDictionary<int, HashSet<int>>? TrustLookup { get; set; }
 
+    // Router trust coverage metrics (set during graph build)
+    public int TotalGroupTokenEdges { get; set; }
+    public int RouterFilteredEdges { get; set; }
+
+    // Block number of the snapshot this graph was built from (for replay logging)
+    public long Block { get; set; }
+
     public void AddTokenNode(int tokenId, int? poolNodeId = null)
     {
         // Note: We deliberately create token pool ids via BalanceNodeIdOf(...) so they’re marked “balance‑ish”.

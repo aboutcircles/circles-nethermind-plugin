@@ -69,6 +69,7 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
 
             // build ad-hoc filtered graph, using cached group/consent data to skip DB queries
             var g = _gf.CreateCapacityGraph(balances, trust, r, _cachedGroupData);
+            g.Block = snap.Block; // propagate block for replay logging
             return Task.FromResult(new CapacityGraphHandle(g));
         }
 
@@ -146,10 +147,18 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
     public static bool IsWrapOnly(FlowRequest r) => false;
 }
 
-public sealed class CapacityGraphSnapshot(long block, CapacityGraph @base)
+public sealed class CapacityGraphSnapshot
 {
-    public long Block { get; } = block;
-    public CapacityGraph Base { get; } = @base;
+    public long Block { get; }
+    public CapacityGraph Base { get; }
+
+    public CapacityGraphSnapshot(long block, CapacityGraph @base)
+    {
+        Block = block;
+        Base = @base;
+        // Stamp block on the graph so V2Pathfinder can log it without access to the snapshot
+        @base.Block = block;
+    }
 }
 
 /// <summary>

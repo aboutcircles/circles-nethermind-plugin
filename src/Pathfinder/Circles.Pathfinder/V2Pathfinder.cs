@@ -126,6 +126,10 @@ public class V2Pathfinder
         public int ConsentDroppedPaths { get; set; }
         public int ConsentSafetyNetRejected { get; set; }
         public DebugPipelineStages? DebugStages { get; set; }
+
+        // Canary: HubContractValidator results (runs in Release mode)
+        public int ValidationErrors { get; set; }
+        public IReadOnlyList<string>? ValidationViolationRules { get; set; }
     }
 
     /* ======================================================================
@@ -145,13 +149,34 @@ public class V2Pathfinder
 
         if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
         {
-            _logger.LogWarning("[{ReqId}] Source '{Source}' not in graph snapshot — returning zero flow", reqId, request.Source);
+            _logger.LogWarning("[{ReqId}] Source '{Source}' not in graph snapshot (block={Block}) — returning zero flow",
+                reqId, request.Source, capacityGraph.Block);
             return null;
         }
         if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
         {
-            _logger.LogWarning("[{ReqId}] Sink '{Sink}' not in graph snapshot — returning zero flow", reqId, request.Sink);
+            _logger.LogWarning("[{ReqId}] Sink '{Sink}' not in graph snapshot (block={Block}) — returning zero flow",
+                reqId, request.Sink, capacityGraph.Block);
             return null;
+        }
+
+        // Replay log: everything needed to reconstruct this request against the test environment
+        {
+            var flags = new List<string>(4);
+            if (request.WithWrap == true) flags.Add("withWrap");
+            if (request.QuantizedMode == true) flags.Add("quantized");
+            if (request.MaxTransfers.HasValue) flags.Add($"maxTransfers={request.MaxTransfers}");
+            if (request.FromTokens?.Count > 0) flags.Add($"fromTokens={request.FromTokens.Count}");
+            if (request.ToTokens?.Count > 0) flags.Add($"toTokens={request.ToTokens.Count}");
+            if (request.ExcludedFromTokens?.Count > 0) flags.Add($"exclFrom={request.ExcludedFromTokens.Count}");
+            if (request.ExcludedToTokens?.Count > 0) flags.Add($"exclTo={request.ExcludedToTokens.Count}");
+            if (request.SimulatedBalances?.Count > 0) flags.Add($"simBal={request.SimulatedBalances.Count}");
+            if (request.SimulatedTrusts?.Count > 0) flags.Add($"simTrust={request.SimulatedTrusts.Count}");
+
+            _logger.LogInformation(
+                "[{ReqId}] Request: from={Source} to={Sink} amount={Amount} block={Block} flags=[{Flags}]",
+                reqId, request.Source, request.Sink, targetFlow, capacityGraph.Block,
+                flags.Count > 0 ? string.Join(",", flags) : "none");
         }
 
         _logger.LogInformation("[{ReqId}] Graph: avatars={Avatars}, groups={Groups}, edges={Edges}",
@@ -414,22 +439,44 @@ public class V2Pathfinder
             });
         }
 
-#if DEBUG
+        // Debug: compact transfer summary for replay analysis
+        if (ctx.Transfers.Count > 0 && _logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+        {
+            static string Trunc(string s) => s[..Math.Min(10, s.Length)];
+            var summary = string.Join(" | ", ctx.Transfers.Select(t =>
+                $"{Trunc(t.From)}→{Trunc(t.To)} token={Trunc(t.TokenOwner)} val={t.Value}"));
+            _logger.LogDebug("[{ReqId}] Transfers: {Summary}", ctx.ReqId, summary);
+        }
+
+        // Canary: run HubContractValidator on every response (observe-only, NEVER blocks)
         if (ctx.Transfers.Count > 0)
         {
-            var debugState = new Validation.CapacityGraphContractState(ctx.Graph);
-            var debugValidation = Validation.HubContractValidator.Validate(
-                ctx.Transfers, ctx.Request.Source!, ctx.Request.Sink!, debugState);
-            if (!debugValidation.IsValid)
+            try
             {
-                var errors = debugValidation.Violations
-                    .Where(v => v.Severity == "error")
-                    .Select(v => $"[{v.Rule}] {v.Message}");
-                _logger.LogError("[{ReqId}] HubContractValidator REJECTED output: {Violations}",
-                    ctx.ReqId, string.Join("; ", errors));
+                var contractState = new Validation.CapacityGraphContractState(ctx.Graph);
+                var validation = Validation.HubContractValidator.Validate(
+                    ctx.Transfers, ctx.Request.Source!, ctx.Request.Sink!, contractState);
+
+                var errorViolations = validation.Violations.Where(v => v.Severity == "error").ToList();
+                if (errorViolations.Count > 0)
+                {
+                    var errors = errorViolations.Select(v => $"[{v.Rule}] {v.Message}");
+                    _logger.LogError(
+                        "[{ReqId}] Canary: REJECTED from={Source} to={Sink} block={Block} violations: {Violations}",
+                        ctx.ReqId, ctx.Request.Source, ctx.Request.Sink, ctx.Graph.Block,
+                        string.Join("; ", errors));
+                }
+
+                ctx.ValidationErrors = errorViolations.Count;
+                ctx.ValidationViolationRules = errorViolations.Select(v => v.Rule).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[{ReqId}] Canary: validator threw unexpected exception (observe-only, not blocking response)",
+                    ctx.ReqId);
             }
         }
-#endif
     }
 
     /* ======================================================================
@@ -446,16 +493,21 @@ public class V2Pathfinder
         }
 
         ctx.TotalStopwatch.Stop();
-        _logger.LogInformation("[{ReqId}] Result: maxFlow={MaxFlow}, steps={Steps}, totalMs={TotalMs}",
-            ctx.ReqId, maxFlowWei, ctx.Transfers.Count, ctx.TotalStopwatch.ElapsedMilliseconds);
+        _logger.LogInformation(
+            "[{ReqId}] Result: from={Source} to={Sink} maxFlow={MaxFlow}, steps={Steps}, block={Block}, totalMs={TotalMs}",
+            ctx.ReqId, ctx.Request.Source, ctx.Request.Sink, maxFlowWei,
+            ctx.Transfers.Count, ctx.Graph.Block, ctx.TotalStopwatch.ElapsedMilliseconds);
 
         return new MaxFlowResponse(
             maxFlowWei.ToString(CultureInfo.InvariantCulture),
             ctx.Transfers,
             ctx.DebugStages)
         {
+            ReqId = ctx.ReqId,
             ConsentDroppedPaths = ctx.ConsentDroppedPaths,
-            ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected
+            ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected,
+            ValidationErrors = ctx.ValidationErrors,
+            ValidationViolationRules = ctx.ValidationViolationRules
         };
     }
 

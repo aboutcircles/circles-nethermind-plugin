@@ -198,19 +198,42 @@ public static class HubContractValidator
     //       return isTrusted(_from, _to) && advancedUsageFlags[_to];
     //   }
     //
-    // Hub.sol's _verifyFlowMatrix calls isPermittedFlow for ALL edges,
-    // including Router edges. No address is exempt.
+    // Router edge handling (Hub.sol:665, Hub.sol:723):
+    //   Router→Group: internal group mint — Router is _sender, isPermittedFlow N/A.
+    //   Avatar→Router: Hub.sol:665 checks trustMarkers[Router][tokenOwner].expiry.
+    //   Router→NonGroup: fall through to normal validation (fail-closed).
     // ────────────────────────────────────────────
     internal static void ValidateIsPermittedFlow(
         IReadOnlyList<TransferPathStep> steps,
         IContractState state,
         List<ValidationViolation> violations)
     {
+        var router = state.RouterAddress?.ToLowerInvariant();
+
         for (int i = 0; i < steps.Count; i++)
         {
             var from = steps[i].From.ToLowerInvariant();
             var to = steps[i].To.ToLowerInvariant();
             var tokenOwner = steps[i].TokenOwner.ToLowerInvariant();
+
+            // Router→Group: internal group mint — Hub.sol uses Router as _sender,
+            // isPermittedFlow does not apply (Hub.sol:723). Safe to skip.
+            if (router != null && from == router && state.IsGroup(to))
+                continue;
+
+            // Avatar→Router: Hub.sol:665 checks trustMarkers[Router][tokenOwner].expiry
+            // Router must trust the token owner for this transfer to succeed.
+            if (router != null && to == router)
+            {
+                if (!state.IsTrusted(router, tokenOwner))
+                {
+                    violations.Add(new ValidationViolation(
+                        "IsPermittedFlow",
+                        $"Edge {i}: Avatar→Router — Router does not trust token owner '{tokenOwner[..Math.Min(10, tokenOwner.Length)]}'",
+                        i, "error"));
+                }
+                continue;
+            }
 
             if (!state.HasAdvancedUsageFlags(from))
             {

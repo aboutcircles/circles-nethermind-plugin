@@ -227,35 +227,36 @@ public class HubContractValidatorTests
     }
 
     [Test]
-    public void Rule4_RouterEdge_WithTrust_Passes()
+    public void Rule4_RouterToGroup_BypassesCheck()
     {
-        // Hub.sol _verifyFlowMatrix calls isPermittedFlow on ALL edges including Router.
-        // Avatar→Router: isTrusted(Router, tokenOwner) must hold
-        // Router→Group: isTrusted(Group, tokenOwner) must hold
         var state = new MockContractState
         {
             Router = Router,
             Groups = { GroupA },
-            Trusts =
-            {
-                (Router.ToLower(), Alice.ToLower()),  // Router trusts Alice's token
-                (GroupA.ToLower(), Alice.ToLower()),   // GroupA trusts Alice's token
-            }
         };
-        var steps = new[]
-        {
-            Step(Alice, Router, Alice),   // Avatar→Router
-            Step(Router, GroupA, Alice),  // Router→Group
-        };
+        var steps = new[] { Step(Router, GroupA, Alice) };
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
-        Assert.That(violations, Is.Empty, "Router edges with valid trust should pass");
+        Assert.That(violations, Is.Empty, "Router→Group should bypass isPermittedFlow (internal group mint)");
     }
 
     [Test]
-    public void Rule4_AvatarToRouter_NoTrust_Fails()
+    public void Rule4_AvatarToRouter_Trusted_Passes()
     {
-        // Avatar→Router: isTrusted(Router, tokenOwner) — Router must trust the token
+        var state = new MockContractState
+        {
+            Router = Router,
+            Trusts = { (Router, Alice) }, // Router trusts Alice's token
+        };
+        var steps = new[] { Step(Alice, Router, Alice) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        Assert.That(violations, Is.Empty, "Avatar→Router should pass when Router trusts tokenOwner");
+    }
+
+    [Test]
+    public void Rule4_AvatarToRouter_Untrusted_Fails()
+    {
         var state = new MockContractState
         {
             Router = Router,
@@ -265,24 +266,38 @@ public class HubContractValidatorTests
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
         Assert.That(violations, Has.Count.EqualTo(1));
-        Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
+        Assert.That(violations[0].Message, Does.Contain("Avatar→Router"));
+        Assert.That(violations[0].Message, Does.Contain("does not trust token owner"));
     }
 
     [Test]
-    public void Rule4_RouterToGroup_NoTrust_Fails()
+    public void Rule4_RouterToNonGroup_FallsThrough_StandardValidation()
     {
-        // Router→Group: isTrusted(Group, tokenOwner) — Group must trust the token
         var state = new MockContractState
         {
             Router = Router,
-            Groups = { GroupA },
-            // No trusts — GroupA does NOT trust Alice's token
+            // Alice is NOT a group — Router→Alice falls through to standard isPermittedFlow
+            // Standard: isTrusted(to=Alice, tokenOwner=Bob)
+            Trusts = { (Alice.ToLowerInvariant(), Bob.ToLowerInvariant()) },
         };
-        var steps = new[] { Step(Router, GroupA, Alice) };
+        var steps = new[] { Step(Router, Alice, Bob) };
         var violations = new List<ValidationViolation>();
         HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
-        Assert.That(violations, Has.Count.EqualTo(1));
-        Assert.That(violations[0].Rule, Is.EqualTo("IsPermittedFlow"));
+        Assert.That(violations, Is.Empty, "Router→NonGroup should use standard validation and pass when trusted");
+    }
+
+    [Test]
+    public void Rule4_RouterToNonGroup_Untrusted_Fails()
+    {
+        var state = new MockContractState
+        {
+            Router = Router,
+            // Alice is NOT a group, Alice does NOT trust Bob's token
+        };
+        var steps = new[] { Step(Router, Alice, Bob) };
+        var violations = new List<ValidationViolation>();
+        HubContractValidator.ValidateIsPermittedFlow(steps, state, violations);
+        Assert.That(violations, Has.Count.EqualTo(1), "Router→NonGroup with no trust should fail standard validation");
     }
 
     // ═══════════════════════════════════════════
