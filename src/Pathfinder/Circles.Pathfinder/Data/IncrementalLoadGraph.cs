@@ -57,9 +57,10 @@ public class IncrementalLoadGraph : ILoadGraph
             var (account, tokenAddress) = kv.Key;
             var (rawBalance, lastActivity, isWrapped, isStatic) = kv.Value;
 
-            // Filter: both holder and token owner must be registered avatars
+            // Filter: holder must be active (registered + not stopped)
             if (!_avatarState.Contains(account)) continue;
-            if (!isWrapped && !_avatarState.Contains(tokenAddress)) continue;
+            // Token owner must be registered (stopped is OK — their tokens are still valid on-chain)
+            if (!isWrapped && !_avatarState.IsRegistered(tokenAddress)) continue;
 
             var adjusted = DemurrageCalculator.Apply(
                 rawBalance, lastActivity, isStatic, ctx,
@@ -131,7 +132,8 @@ public class IncrementalLoadGraph : ILoadGraph
     {
         // Use router-filtered groups from DB (matches groupQuery.sql parameterized by GroupRouterAddress)
         var routerGroups = new HashSet<string>(_inner.LoadGroups().Select(g => g.ToLowerInvariant()));
-        return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp, _avatarState.GetActiveAvatarSet());
+        // Use AvatarSet (includes stopped) — stopped avatars' tokens are still valid on-chain
+        return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp, _avatarState.AvatarSet);
     }
 
     /// <summary>

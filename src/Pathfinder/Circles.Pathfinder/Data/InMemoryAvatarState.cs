@@ -38,6 +38,13 @@ public class InMemoryAvatarState
         return _avatars.Contains(lower) && !_stopped.Contains(lower);
     }
 
+    /// <summary>Returns true if address was ever registered (including stopped avatars).
+    /// Use for tokenAddress validation — stopped avatars' tokens are still valid on-chain.</summary>
+    public bool IsRegistered(string address)
+    {
+        return _avatars.Contains(address.ToLowerInvariant());
+    }
+
     /// <summary>Returns true if address is a registered group.</summary>
     public bool IsGroup(string address) => _groups.Contains(address.ToLowerInvariant());
 
