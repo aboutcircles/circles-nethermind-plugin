@@ -35,11 +35,17 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     private const string RegisteredAvatarsCte = @"
             registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization""
+                WHERE ""blockNumber"" <= @toBlock
+                  AND NOT EXISTS (SELECT 1 FROM ""CrcV2_Stopped"" s WHERE s.""avatar"" = ""CrcV2_RegisterOrganization"".""organization"" AND s.""blockNumber"" <= @toBlock)
                 UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup""
+                WHERE ""blockNumber"" <= @toBlock
+                  AND NOT EXISTS (SELECT 1 FROM ""CrcV2_Stopped"" s WHERE s.""avatar"" = ""CrcV2_RegisterGroup"".""group"" AND s.""blockNumber"" <= @toBlock)
                 UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+                SELECT avatar FROM ""CrcV2_RegisterHuman""
+                WHERE ""blockNumber"" <= @toBlock
+                  AND NOT EXISTS (SELECT 1 FROM ""CrcV2_Stopped"" s WHERE s.""avatar"" = ""CrcV2_RegisterHuman"".""avatar"" AND s.""blockNumber"" <= @toBlock)
             )";
 
     public CacheWarmupService(
@@ -560,7 +566,12 @@ public class CacheWarmupService : BackgroundService
                 r.""mint"",
                 r.""symbol""
             FROM ""CrcV2_RegisterGroup"" r
-            WHERE r.""blockNumber"" <= @toBlock";
+            WHERE r.""blockNumber"" <= @toBlock
+              AND NOT EXISTS (
+                  SELECT 1 FROM ""CrcV2_Stopped"" s
+                  WHERE s.""avatar"" = r.""group""
+                    AND s.""blockNumber"" <= @toBlock
+              )";
 
         var groups = new Dictionary<string, (string Name, string Mint, string Symbol)>();
 
@@ -769,6 +780,7 @@ public class CacheWarmupService : BackgroundService
             SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
             FROM account_balances ab
             INNER JOIN registered_avatars ra_account ON ra_account.avatar = ab.account
+            INNER JOIN registered_avatars ra_token ON ra_token.avatar = ab.""tokenAddress""
             WHERE ab.account != '0x0000000000000000000000000000000000000000'";
 
         await using var cmd = new NpgsqlCommand(sql, conn);

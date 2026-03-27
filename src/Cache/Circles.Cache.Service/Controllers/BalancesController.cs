@@ -4,6 +4,7 @@ using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
 using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
+// CacheRegistrationSet + CacheWrapperLookup for invariant filtering
 
 namespace Circles.Cache.Service.Controllers;
 
@@ -142,11 +143,17 @@ public class BalancesController : ControllerBase
             }
 
             // Query V2 balances - use secondary index for O(1) lookup
+            var registrations = new CacheRegistrationSet(_caches);
+            var wrapperLookup = new CacheWrapperLookup(_caches);
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: false))
             {
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
+                    // Registration filter: both account and token must be registered
+                    if (!CirclesInvariants.IsValidBalance(addressLower, tokenId, registrations, wrapperLookup))
+                        continue;
+
                     // Classify by checking the wrapper index first (O(1)).
                     // Cache keys are hex addresses for BOTH ERC1155 and ERC20 wrappers,
                     // so we can't use string format to distinguish them.

@@ -79,7 +79,8 @@ public class TrustRelationsController : ControllerBase
 
                 foreach (var (trustee, expiryTime) in _caches.GetTrustsFor(addressLower, isV1: false))
                 {
-                    if (expiryTime <= currentBlockTimestamp)
+                    // expiryTime == 0 means indefinite (never-set); treat as active
+                    if (expiryTime > 0 && expiryTime <= currentBlockTimestamp)
                         continue;
                     // Defense-in-depth: counterparty must be registered
                     if (!registrations.IsRegistered(trustee))
@@ -97,7 +98,8 @@ public class TrustRelationsController : ControllerBase
 
                 foreach (var (truster, expiryTime) in _caches.GetTrustedByFor(addressLower, isV1: false))
                 {
-                    if (expiryTime <= currentBlockTimestamp)
+                    // expiryTime == 0 means indefinite (never-set); treat as active
+                    if (expiryTime > 0 && expiryTime <= currentBlockTimestamp)
                         continue;
                     if (!registrations.IsRegistered(truster))
                         continue;

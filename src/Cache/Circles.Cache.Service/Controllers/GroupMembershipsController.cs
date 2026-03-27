@@ -85,7 +85,7 @@ public class GroupMembershipsController : ControllerBase
 
             var registrations = new CacheRegistrationSet(_caches);
             var groups = _caches.GetMemberGroups(memberLower)
-                .Where(g => g.ExpiryTime > currentBlockTimestamp && registrations.IsRegistered(g.Group))
+                .Where(g => g.ExpiryTime > currentBlockTimestamp && registrations.IsGroup(g.Group))
                 .Select(g => new GroupMembershipResponse(
                     Group: g.Group,
                     Member: memberLower,

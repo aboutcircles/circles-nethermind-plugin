@@ -151,11 +151,13 @@ public class ControllerTests
     [Fact]
     public void GetTokenBalances_ShouldReturnV2Balances()
     {
-        // Arrange
+        // Arrange — use hex addresses so registration works (tokenId IS the token owner)
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        var tokenId = "123456789012345678901234567890";
+        var tokenId = "0x42cedde51198d1773590311e2a340dc06b24cb37";
         var balance = 1250.75m;
 
+        _cache.V2Avatars.Add(1000, address, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, tokenId, ("Human", 1000));
         _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{tokenId}", balance);
         _cache.RebuildSecondaryIndexes();
 
@@ -665,7 +667,9 @@ public class ControllerTests
         var wrapperAddr = "0xwrapper0000000000000000000000000000000000";
         var erc1155Id = "0xavatar00000000000000000000000000000000000";
 
-        // Register wrapper and avatar
+        // Register account, wrapper underlying, and ERC1155 token owner
+        _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterHuman", 12345L));
+        _cache.V2Avatars.Add(2000, "0xunderlying", ("CrcV2_RegisterHuman", 12345L));
         _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", 0); // demurraged wrapper
         _cache.V2Avatars.Add(2000, erc1155Id, ("CrcV2_RegisterHuman", 12345L));
 

@@ -18,6 +18,7 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
     private readonly NpgsqlDataSource _readonlyDataSource;
+    private readonly IRegistrationSet _registrations;
 
     // Serializes notification handling — Npgsql's conn.Notification callback is async void,
     // so overlapping notifications can fire concurrent HandleNotificationAsync calls. Without
@@ -42,6 +43,7 @@ public class NotificationListenerService : BackgroundService
         _state = state;
         _caches = caches;
         _readonlyDataSource = readonlyDataSource;
+        _registrations = new CacheRegistrationSet(caches);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -664,9 +666,11 @@ public class NotificationListenerService : BackgroundService
                 var blockNumber = reader.GetInt64(0);
                 var avatar = reader.GetString(1).ToLowerInvariant();
 
-                // Remove from V2Avatars — downstream registration checks will auto-exclude
-                // this avatar's trust, balances, wrappers, and consent flags from output.
+                // Remove from V2Avatars AND Groups — downstream registration checks will
+                // auto-exclude this avatar's trust, balances, wrappers, and consent flags.
+                // Groups can also be stopped (Hub.sol stop() works for any registered avatar).
                 _caches.V2Avatars.Remove(blockNumber, avatar);
+                _caches.Groups.Remove(blockNumber, avatar);
                 count++;
             }
         }
@@ -713,8 +717,8 @@ public class NotificationListenerService : BackgroundService
 
                 // Registration check: both truster and trustee must be registered avatars.
                 // Removals (expiryTime == 0) always proceed — safe to remove non-existent entries.
-                var trusterRegistered = _caches.V2Avatars.ContainsKey(trusterKey) || _caches.Groups.ContainsKey(trusterKey);
-                var trusteeRegistered = _caches.V2Avatars.ContainsKey(trusteeKey) || _caches.Groups.ContainsKey(trusteeKey);
+                var trusterRegistered = _registrations.IsRegistered(trusterKey);
+                var trusteeRegistered = _registrations.IsRegistered(trusteeKey);
 
                 if (expiryTimeBig == 0)
                 {
@@ -777,7 +781,7 @@ public class NotificationListenerService : BackgroundService
                     var avatarKey = avatar.ToLowerInvariant();
 
                     // Registration check: underlying avatar must be registered
-                    if (_caches.V2Avatars.ContainsKey(avatarKey) || _caches.Groups.ContainsKey(avatarKey))
+                    if (_registrations.IsRegistered(avatarKey))
                     {
                         _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
                         count++;
@@ -980,7 +984,7 @@ public class NotificationListenerService : BackgroundService
 
                 // Update sender balance — only for registered avatars
                 if (from != "0x0000000000000000000000000000000000000000"
-                    && (_caches.V2Avatars.ContainsKey(fromLower) || _caches.Groups.ContainsKey(fromLower)))
+                    && (_registrations.IsRegistered(fromLower)))
                 {
                     var fromKey = $"{fromLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(fromKey))
@@ -994,7 +998,7 @@ public class NotificationListenerService : BackgroundService
 
                 // Update receiver balance — only for registered avatars
                 if (to != "0x0000000000000000000000000000000000000000"
-                    && (_caches.V2Avatars.ContainsKey(toLower) || _caches.Groups.ContainsKey(toLower)))
+                    && (_registrations.IsRegistered(toLower)))
                 {
                     var toKey = $"{toLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(toKey))
@@ -1087,7 +1091,7 @@ public class NotificationListenerService : BackgroundService
 
                 // Update sender balance — only for registered avatars
                 if (from != "0x0000000000000000000000000000000000000000"
-                    && (_caches.V2Avatars.ContainsKey(fromLower) || _caches.Groups.ContainsKey(fromLower)))
+                    && (_registrations.IsRegistered(fromLower)))
                 {
                     var fromKey = $"{fromLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(fromKey))
@@ -1101,7 +1105,7 @@ public class NotificationListenerService : BackgroundService
 
                 // Update receiver balance — only for registered avatars
                 if (to != "0x0000000000000000000000000000000000000000"
-                    && (_caches.V2Avatars.ContainsKey(toLower) || _caches.Groups.ContainsKey(toLower)))
+                    && (_registrations.IsRegistered(toLower)))
                 {
                     var toKey = $"{toLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(toKey))
@@ -1315,7 +1319,7 @@ public class NotificationListenerService : BackgroundService
                 var flag = (byte[])reader.GetValue(2);
 
                 // Registration check: only store flags for registered avatars
-                if (_caches.V2Avatars.ContainsKey(avatar) || _caches.Groups.ContainsKey(avatar))
+                if (_registrations.IsRegistered(avatar))
                 {
                     _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
                     count++;
