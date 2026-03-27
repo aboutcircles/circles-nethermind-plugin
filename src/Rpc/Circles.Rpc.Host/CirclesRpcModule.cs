@@ -34,6 +34,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 {
     // Note: Fields, constructor, and CreateConnectionAsync are in RpcModule/CirclesRpcModule.Core.cs
 
+    private const int MaxInFilterElements = 1000;
+
     #region GetTransactionHistory - Version-specific query builders
 
     /// <summary>
@@ -1018,20 +1020,24 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 return $"{column} NOT LIKE {paramName}";
 
             case FilterType.In:
-                if (predicate.Value is Array arr)
-                {
-                    parameters.Add(new NpgsqlParameter(paramName, arr));
-                    return $"{column} = ANY({paramName})";
-                }
-                return "";
+            {
+                var inValues = TryExtractEnumerableFilterValues(predicate.Value);
+                if (inValues == null)
+                    throw new ArgumentException($"Value for 'In' filter on column '{predicate.Column}' must be an array.");
+                if (inValues.Count > MaxInFilterElements)
+                    throw new ArgumentException($"In filter exceeds maximum of {MaxInFilterElements} elements.");
+                return BuildInClause(column, paramName, inValues, parameters, negate: false);
+            }
 
             case FilterType.NotIn:
-                if (predicate.Value is Array arr2)
-                {
-                    parameters.Add(new NpgsqlParameter(paramName, arr2));
-                    return $"{column} != ALL({paramName})";
-                }
-                return "";
+            {
+                var notInValues = TryExtractEnumerableFilterValues(predicate.Value);
+                if (notInValues == null)
+                    throw new ArgumentException($"Value for 'NotIn' filter on column '{predicate.Column}' must be an array.");
+                if (notInValues.Count > MaxInFilterElements)
+                    throw new ArgumentException($"NotIn filter exceeds maximum of {MaxInFilterElements} elements.");
+                return BuildInClause(column, paramName, notInValues, parameters, negate: true);
+            }
 
             case FilterType.IsNull:
                 return $"{column} IS NULL";
