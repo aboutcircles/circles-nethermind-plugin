@@ -545,6 +545,11 @@ public class V2Pathfinder
      * Still removes edges for safety (better to produce reduced flow than
      * let the contract revert).
      * --------------------------------------------------------------------- */
+    /// <summary>
+    /// Safety-net consent validation on post-router-insertion edges.
+    /// Removes edges violating Hub.sol isPermittedFlow consent rules.
+    /// Should never filter anything if PathHasConsentViolation works correctly.
+    /// </summary>
     internal List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
     {
         // If no consent data available, pass all edges through
@@ -801,6 +806,10 @@ public class V2Pathfinder
      * Avatar→Router→Group after InsertRouterInTransfers.
      * Group→Avatar (mint) edges stay as-is and must be consent-checked.
      * --------------------------------------------------------------------- */
+    /// <summary>
+    /// Checks if a collapsed path has any consent rule violation per Hub.sol isPermittedFlow.
+    /// Consented sender→Group edges are not skipped (Router lacks advancedUsageFlags).
+    /// </summary>
     internal bool PathHasConsentViolation(
         List<(int From, int To, int Token, long Flow)> collapsedEdges,
         CapacityGraph capacityGraph)
@@ -847,6 +856,10 @@ public class V2Pathfinder
      * is true — instead of validating consent rules, we simply exclude
      * consented avatars from intermediary positions entirely.
      * --------------------------------------------------------------------- */
+    /// <summary>
+    /// Checks if a collapsed path routes through any consented avatar as an intermediary.
+    /// Used in ExcludeConsentedIntermediaries mode as a conservative alternative to consent validation.
+    /// </summary>
     internal bool PathHasConsentedIntermediary(
         List<(int From, int To, int Token, long Flow)> edges,
         CapacityGraph graph, int sourceId, int sinkId)

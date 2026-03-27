@@ -30,8 +30,10 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
 
-    // Track avatars that have enabled consented flow.
-    // Set during graph construction, immutable after publication to CapacityGraphPool.
+    /// <summary>
+    /// Avatars with Hub.sol advancedUsageFlags enabled (consented flow).
+    /// Set during graph construction, immutable after publication to CapacityGraphPool.
+    /// </summary>
     public HashSet<int> ConsentedAvatars { get; internal set; } = new HashSet<int>();
 
     // Track all registered V2 avatar IDs (cached to avoid per-request DB queries)

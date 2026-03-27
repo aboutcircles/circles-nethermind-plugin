@@ -1032,7 +1032,7 @@ public class PropertyBasedTests
         }
 
         // Must not crash. Flow conservation: if transfers exist, check balance at intermediaries.
-        if (result.Transfers != null && result.Transfers.Count > 0)
+        if (result.Transfers.Count > 0)
         {
             AssertFlowConservation(result.Transfers,
                 AddressIdPool.StringOf(source), AddressIdPool.StringOf(sink));
