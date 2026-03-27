@@ -1024,6 +1024,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 var inValues = TryExtractEnumerableFilterValues(predicate.Value);
                 if (inValues == null)
                     throw new ArgumentException($"Value for 'In' filter on column '{predicate.Column}' must be an array.");
+                if (inValues.Count == 0)
+                    return "1=0"; // empty IN matches nothing
                 if (inValues.Count > MaxInFilterElements)
                     throw new ArgumentException($"In filter exceeds maximum of {MaxInFilterElements} elements.");
                 return BuildInClause(column, paramName, inValues, parameters, negate: false);
@@ -1034,6 +1036,8 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 var notInValues = TryExtractEnumerableFilterValues(predicate.Value);
                 if (notInValues == null)
                     throw new ArgumentException($"Value for 'NotIn' filter on column '{predicate.Column}' must be an array.");
+                if (notInValues.Count == 0)
+                    return "1=1"; // empty NOT IN excludes nothing
                 if (notInValues.Count > MaxInFilterElements)
                     throw new ArgumentException($"NotIn filter exceeds maximum of {MaxInFilterElements} elements.");
                 return BuildInClause(column, paramName, notInValues, parameters, negate: true);
@@ -1274,7 +1278,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
                 if (notInValues.Count == 0)
                 {
-                    return "1=0 /* empty 'not in' filter */";
+                    return "1=1 /* empty 'not in' excludes nothing */";
                 }
 
                 return BuildInClause(column, paramName, notInValues, parameters, negate: true);
