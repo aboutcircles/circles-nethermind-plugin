@@ -80,6 +80,13 @@ public class MaxFlowResponse
     public int ConsentSafetyNetRejected { get; set; }
 
     /// <summary>
+    /// Pipeline request ID for log correlation across canary layers.
+    /// Not serialized — used internally for metrics and simulation canary.
+    /// </summary>
+    [JsonIgnore]
+    public string? ReqId { get; set; }
+
+    /// <summary>
     /// Canary: number of Hub.sol rule violations detected by HubContractValidator.
     /// Non-zero means the pathfinder produced output that would revert on-chain.
     /// Not serialized — used internally for metrics.

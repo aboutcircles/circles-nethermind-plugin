@@ -503,6 +503,7 @@ public class V2Pathfinder
             ctx.Transfers,
             ctx.DebugStages)
         {
+            ReqId = ctx.ReqId,
             ConsentDroppedPaths = ctx.ConsentDroppedPaths,
             ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected,
             ValidationErrors = ctx.ValidationErrors,

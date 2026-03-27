@@ -172,7 +172,7 @@ internal sealed class FindPathHandler(
                     && !string.IsNullOrEmpty(request.Sink))
                 {
                     simulationCanary.TryEnqueue(new CanaryWorkItem(
-                        ReqId: Guid.NewGuid().ToString("N")[..8],
+                        ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
                         Source: request.Source,
                         Sink: request.Sink,
                         GraphBlock: mfr.GraphBlock,
