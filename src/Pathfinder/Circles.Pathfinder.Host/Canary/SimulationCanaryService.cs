@@ -15,7 +15,8 @@ internal sealed record CanaryWorkItem(
     string Source,
     string Sink,
     long GraphBlock,
-    List<TransferPathStep> Transfers);
+    List<TransferPathStep> Transfers,
+    IReadOnlyDictionary<string, string>? WrapperToAvatar = null);
 
 /// <summary>
 /// Background service that simulates pathfinder results via eth_call against the local
@@ -116,7 +117,10 @@ internal sealed class SimulationCanaryService : BackgroundService
         string calldata;
         try
         {
-            calldata = FlowMatrixEncoder.BuildCalldata(item.Source, item.Sink, item.Transfers);
+            // Hub.sol expects avatar addresses as token owners, not wrapper contract addresses.
+            // The SDK does this conversion client-side; the canary must do it before simulation.
+            var transfers = ResolveWrapperTokenOwners(item.Transfers, item.WrapperToAvatar);
+            calldata = FlowMatrixEncoder.BuildCalldata(item.Source, item.Sink, transfers);
         }
         catch (Exception ex)
         {
@@ -171,6 +175,9 @@ internal sealed class SimulationCanaryService : BackgroundService
 
             if (json.ValueKind == JsonValueKind.Undefined || json.ValueKind == JsonValueKind.Null)
             {
+                _log.LogWarning(
+                    "[{ReqId}] SimulationCanary: empty/null response from eth_call — node may be misconfigured",
+                    item.ReqId);
                 SimulationTotal.WithLabels("rpc_empty_response").Inc();
                 return;
             }
@@ -218,5 +225,40 @@ internal sealed class SimulationCanaryService : BackgroundService
         }
 
         QueueDepth.Set(_channel.Reader.Count);
+    }
+
+    /// <summary>
+    /// Replaces wrapper contract addresses in TokenOwner fields with the underlying avatar address.
+    /// Hub.sol's operateFlowMatrix expects avatar addresses (circlesId), not wrapper contracts.
+    /// Returns the original list unchanged if no mapping is provided or no wrappers are found.
+    /// </summary>
+    private static IReadOnlyList<TransferPathStep> ResolveWrapperTokenOwners(
+        List<TransferPathStep> transfers,
+        IReadOnlyDictionary<string, string>? wrapperToAvatar)
+    {
+        if (wrapperToAvatar == null || wrapperToAvatar.Count == 0)
+            return transfers;
+
+        var resolved = new List<TransferPathStep>(transfers.Count);
+        foreach (var t in transfers)
+        {
+            var tokenOwner = t.TokenOwner.ToLowerInvariant();
+            if (wrapperToAvatar.TryGetValue(tokenOwner, out var avatar))
+            {
+                resolved.Add(new TransferPathStep
+                {
+                    From = t.From,
+                    To = t.To,
+                    TokenOwner = avatar,
+                    Value = t.Value
+                });
+            }
+            else
+            {
+                resolved.Add(t);
+            }
+        }
+
+        return resolved;
     }
 }
