@@ -165,18 +165,47 @@ internal sealed class FindPathHandler(
                     }
                 }
 
-                // Simulation canary: enqueue for async eth_call validation
+                // Simulation canary: enqueue for async eth_call validation.
+                // Skip when request has simulated inputs — those paths depend on
+                // state that doesn't exist on-chain, so eth_call would always revert.
+                bool hasSimulated = (request.SimulatedBalances?.Count > 0)
+                                    || (request.SimulatedTrusts?.Count > 0);
+
                 if (simulationCanary != null
                     && mfr.Transfers.Count > 0
                     && !string.IsNullOrEmpty(request.Source)
-                    && !string.IsNullOrEmpty(request.Sink))
+                    && !string.IsNullOrEmpty(request.Sink)
+                    && !hasSimulated)
                 {
+                    // Build wrapper→avatar string mapping for the canary to resolve
+                    // wrapper contract addresses back to avatar addresses before eth_call.
+                    // Wrapped in try-catch: canary is best-effort and must never affect the response.
+                    Dictionary<string, string>? wrapperMap = null;
+                    try
+                    {
+                        if (h.Graph.WrapperToAvatar.Count > 0)
+                        {
+                            wrapperMap = new Dictionary<string, string>(
+                                h.Graph.WrapperToAvatar.Count, StringComparer.OrdinalIgnoreCase);
+                            foreach (var kv in h.Graph.WrapperToAvatar)
+                            {
+                                wrapperMap[AddressIdPool.StringOf(kv.Key)] = AddressIdPool.StringOf(kv.Value);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "Failed to build wrapper map for canary — simulation will run without wrapper resolution");
+                        wrapperMap = null;
+                    }
+
                     simulationCanary.TryEnqueue(new CanaryWorkItem(
                         ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
                         Source: request.Source,
                         Sink: request.Sink,
                         GraphBlock: mfr.GraphBlock,
-                        Transfers: new List<TransferPathStep>(mfr.Transfers))); // defensive copy
+                        Transfers: new List<TransferPathStep>(mfr.Transfers), // defensive copy
+                        WrapperToAvatar: wrapperMap));
                 }
             }
 
