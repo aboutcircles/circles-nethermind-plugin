@@ -565,12 +565,21 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading V2 ERC20 wrappers...");
 
+        // Only load wrappers whose underlying avatar is registered (matches wrapperMappingQuery.sql)
         const string sql = @"
+            WITH registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            )
             SELECT
                 e.""avatar"",
                 e.""erc20Wrapper"",
                 e.""circlesType""
             FROM ""CrcV2_ERC20WrapperDeployed"" e
+            INNER JOIN registered_avatars ra ON ra.avatar = e.""avatar""
             WHERE e.""blockNumber"" <= @toBlock";
 
         // Key by wrapper address (not avatar) to support avatars with multiple wrappers
@@ -703,8 +712,16 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loading V2 balances from view...");
 
         // Build balances from transfers bounded to the warmup target block.
+        // Registration filter matches balanceQuery.sql: both account AND tokenAddress must be registered.
         const string sql = @"
-            WITH account_balances AS (
+            WITH registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            ),
+            account_balances AS (
                 SELECT
                     account,
                     ""tokenAddress"",
@@ -736,9 +753,10 @@ public class CacheWarmupService : BackgroundService
                 GROUP BY account, ""tokenAddress""
                 HAVING SUM(delta) > 0
             )
-            SELECT account, ""tokenAddress"", balance, last_activity
-            FROM account_balances
-            WHERE account != '0x0000000000000000000000000000000000000000'";
+            SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
+            FROM account_balances ab
+            INNER JOIN registered_avatars ra_account ON ra_account.avatar = ab.account
+            WHERE ab.account != '0x0000000000000000000000000000000000000000'";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -807,8 +825,17 @@ public class CacheWarmupService : BackgroundService
         // Aggregate wrapper transfers up to the warmup target block.
         // Without the block filter, transfers arriving during warmup would be double-counted
         // when gap processing re-applies them as deltas on top of the seeded balances.
+        // Registration filter: account must be registered (matches balanceQuery.sql).
+        // Wrapper deployer registration is already enforced by ReplayV2Erc20WrapperDeployedAsync.
         const string sql = @"
-            WITH account_balances AS (
+            WITH registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            ),
+            account_balances AS (
                 SELECT
                     account,
                     ""tokenAddress"",
@@ -825,8 +852,9 @@ public class CacheWarmupService : BackgroundService
                 HAVING SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
             )
-            SELECT account, ""tokenAddress"", balance, last_activity
-            FROM account_balances";
+            SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
+            FROM account_balances ab
+            INNER JOIN registered_avatars ra ON ra.avatar = ab.account";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -1295,8 +1323,16 @@ public class CacheWarmupService : BackgroundService
         var targetTimestamp = await GetMaxTimestampUpToBlockAsync(conn, toBlock, ct);
 
         // Load group memberships using block-bounded latest trust state.
+        // Registration filter: member (trustee) must be a registered avatar (matches groupTrustQuery.sql).
         const string sql = @"
-            WITH latest_trust AS (
+            WITH registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            ),
+            latest_trust AS (
                 SELECT
                     ct.truster,
                     ct.trustee,
@@ -1313,6 +1349,7 @@ public class CacheWarmupService : BackgroundService
                 lt.trustee AS ""member"",
                 lt.""expiryTime""
             FROM latest_trust lt
+            INNER JOIN registered_avatars ra ON ra.avatar = lt.trustee
             WHERE lt.rn = 1
               AND lt.""expiryTime"" > @targetTimestamp
               AND EXISTS (
@@ -1394,8 +1431,16 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loaded {Count} V1 trust relations", v1TrustData.Count);
 
         // Load V2 trust relations using block-bounded latest trust state.
+        // Registration filter: both truster and trustee must be registered avatars (matches trustQuery.sql).
         const string v2Sql = @"
-            WITH latest_trust AS (
+            WITH registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            ),
+            latest_trust AS (
                 SELECT
                     ct.truster,
                     ct.trustee,
@@ -1407,10 +1452,12 @@ public class CacheWarmupService : BackgroundService
                 FROM ""CrcV2_Trust"" ct
                 WHERE ct.""blockNumber"" <= @toBlock
             )
-            SELECT truster, trustee, ""expiryTime""
-            FROM latest_trust
-            WHERE rn = 1
-              AND ""expiryTime"" > @targetTimestamp";
+            SELECT lt.truster, lt.trustee, lt.""expiryTime""
+            FROM latest_trust lt
+            INNER JOIN registered_avatars ra1 ON ra1.avatar = lt.truster
+            INNER JOIN registered_avatars ra2 ON ra2.avatar = lt.trustee
+            WHERE lt.rn = 1
+              AND lt.""expiryTime"" > @targetTimestamp";
 
         var v2TrustData = new Dictionary<string, long>();
 
@@ -1461,11 +1508,20 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading consented flow flags...");
 
+        // Registration filter: only load flags for registered avatars (matches consentedFlowQuery.sql).
         const string sql = @"
-            SELECT DISTINCT ON (avatar) avatar, flag
-            FROM ""CrcV2_SetAdvancedUsageFlag""
-            WHERE ""blockNumber"" <= @toBlock
-            ORDER BY avatar, ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC";
+            WITH registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            )
+            SELECT DISTINCT ON (f.avatar) f.avatar, f.flag
+            FROM ""CrcV2_SetAdvancedUsageFlag"" f
+            INNER JOIN registered_avatars ra ON ra.avatar = f.avatar
+            WHERE f.""blockNumber"" <= @toBlock
+            ORDER BY f.avatar, f.""blockNumber"" DESC, f.""transactionIndex"" DESC, f.""logIndex"" DESC";
 
         var flags = new Dictionary<string, byte[]>();
 
