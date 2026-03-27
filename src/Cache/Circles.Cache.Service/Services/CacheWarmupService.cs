@@ -28,6 +28,20 @@ public class CacheWarmupService : BackgroundService
     private DateTime _lastReminderLogTime = DateTime.MinValue;
     private readonly TimeSpan _reminderInterval = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// SQL CTE that materializes all registered V2 avatars (humans, orgs, groups) up to @toBlock.
+    /// Used as a filter in warmup queries to ensure only registered addresses enter the cache.
+    /// Single source of truth — change here to update all warmup queries.
+    /// </summary>
+    private const string RegisteredAvatarsCte = @"
+            registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            )";
+
     public CacheWarmupService(
         ILogger<CacheWarmupService> logger,
         CacheServiceSettings settings,
@@ -578,13 +592,7 @@ public class CacheWarmupService : BackgroundService
 
         // Only load wrappers whose underlying avatar is registered (matches wrapperMappingQuery.sql)
         const string sql = @"
-            WITH registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
-            )
+            WITH " + RegisteredAvatarsCte + @"
             SELECT
                 e.""avatar"",
                 e.""erc20Wrapper"",
@@ -725,13 +733,7 @@ public class CacheWarmupService : BackgroundService
         // Build balances from transfers bounded to the warmup target block.
         // Registration filter matches balanceQuery.sql: both account AND tokenAddress must be registered.
         const string sql = @"
-            WITH registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
-            ),
+            WITH " + RegisteredAvatarsCte + @",
             account_balances AS (
                 SELECT
                     account,
@@ -839,13 +841,7 @@ public class CacheWarmupService : BackgroundService
         // Registration filter: account must be registered (matches balanceQuery.sql).
         // Wrapper deployer registration is already enforced by ReplayV2Erc20WrapperDeployedAsync.
         const string sql = @"
-            WITH registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
-            ),
+            WITH " + RegisteredAvatarsCte + @",
             account_balances AS (
                 SELECT
                     account,
@@ -1336,13 +1332,7 @@ public class CacheWarmupService : BackgroundService
         // Load group memberships using block-bounded latest trust state.
         // Registration filter: member (trustee) must be a registered avatar (matches groupTrustQuery.sql).
         const string sql = @"
-            WITH registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
-            ),
+            WITH " + RegisteredAvatarsCte + @",
             latest_trust AS (
                 SELECT
                     ct.truster,
@@ -1444,13 +1434,7 @@ public class CacheWarmupService : BackgroundService
         // Load V2 trust relations using block-bounded latest trust state.
         // Registration filter: both truster and trustee must be registered avatars (matches trustQuery.sql).
         const string v2Sql = @"
-            WITH registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
-            ),
+            WITH " + RegisteredAvatarsCte + @",
             latest_trust AS (
                 SELECT
                     ct.truster,
@@ -1521,13 +1505,7 @@ public class CacheWarmupService : BackgroundService
 
         // Registration filter: only load flags for registered avatars (matches consentedFlowQuery.sql).
         const string sql = @"
-            WITH registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
-                UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
-            )
+            WITH " + RegisteredAvatarsCte + @"
             SELECT DISTINCT ON (f.avatar) f.avatar, f.flag
             FROM ""CrcV2_SetAdvancedUsageFlag"" f
             INNER JOIN registered_avatars ra ON ra.avatar = f.avatar
