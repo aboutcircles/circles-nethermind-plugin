@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
 using Nethermind.Int256;
 using static Circles.Pathfinder.Tracing;
@@ -16,7 +17,8 @@ namespace Circles.Pathfinder.Host;
 internal sealed class FindPathHandler(
     Settings settings,
     SemaphoreSlim semaphore,
-    ILogger<FindPathHandler> log)
+    ILogger<FindPathHandler> log,
+    SimulationCanaryService? simulationCanary = null)
 {
     private const int MaxArrayEntries = 1000;
 
@@ -161,6 +163,20 @@ internal sealed class FindPathHandler(
                         foreach (var rule in mfr.ValidationViolationRules)
                             FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
                     }
+                }
+
+                // Simulation canary: enqueue for async eth_call validation
+                if (simulationCanary != null
+                    && mfr.Transfers.Count > 0
+                    && !string.IsNullOrEmpty(request.Source)
+                    && !string.IsNullOrEmpty(request.Sink))
+                {
+                    simulationCanary.TryEnqueue(new CanaryWorkItem(
+                        ReqId: Guid.NewGuid().ToString("N")[..8],
+                        Source: request.Source,
+                        Sink: request.Sink,
+                        GraphBlock: mfr.GraphBlock,
+                        Transfers: new List<TransferPathStep>(mfr.Transfers))); // defensive copy
                 }
             }
 
