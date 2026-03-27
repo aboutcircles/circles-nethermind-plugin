@@ -51,6 +51,7 @@ public static class RpcMethodClassifier
         "circles_getGroupMembers", "circles_getGroupMemberships",
         "circles_getTransactionHistory", "circles_getTransferData", "circles_getTokenHolders",
         "circlesV2_findPath",
+        "circles_getBlockByTimestamp",
         "circles_events", "circles_events_paginated",
         "circles_health", "circles_tables", "circles_query", "circles_paginated_query",
         "circles_getProfileView", "circles_getTrustNetworkSummary",

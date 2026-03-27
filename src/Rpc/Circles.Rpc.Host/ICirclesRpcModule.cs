@@ -355,6 +355,19 @@ public interface ICirclesRpcModule
         string? cursor = null);
 
     // ========================================================================
+    // Block Lookup
+    // ========================================================================
+
+    /// <summary>
+    /// Returns the block number closest to the given Unix timestamp.
+    /// Useful for converting human-readable date ranges into block ranges for event queries.
+    /// </summary>
+    /// <param name="timestamp">Unix timestamp (seconds since epoch)</param>
+    /// <param name="direction">"before" (default) = closest block at or before timestamp,
+    /// "after" = closest block at or after timestamp</param>
+    Task<BlockByTimestampResponse> GetBlockByTimestamp(long timestamp, string? direction = "before");
+
+    // ========================================================================
     // Generic Database Query
     // ========================================================================
 
@@ -648,6 +661,14 @@ public record HealthResponse(
     long Timestamp,
     string Database,
     string Index
+);
+
+/// <summary>
+/// Response for block-by-timestamp lookup.
+/// </summary>
+public record BlockByTimestampResponse(
+    [property: JsonPropertyName("blockNumber")] long BlockNumber,
+    [property: JsonPropertyName("timestamp")] long Timestamp
 );
 
 /// <summary>
