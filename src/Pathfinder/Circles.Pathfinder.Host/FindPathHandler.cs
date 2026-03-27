@@ -165,6 +165,8 @@ internal sealed class FindPathHandler(
                             FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
                     }
                 }
+                if (mfr.ValidatorException)
+                    FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
                 // Simulation canary: enqueue for async eth_call validation
                 if (simulationCanary != null

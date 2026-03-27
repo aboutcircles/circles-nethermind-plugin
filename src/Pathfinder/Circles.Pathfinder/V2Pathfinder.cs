@@ -130,6 +130,7 @@ public class V2Pathfinder
         // Canary: HubContractValidator results (runs in Release mode)
         public int ValidationErrors { get; set; }
         public IReadOnlyList<string>? ValidationViolationRules { get; set; }
+        public bool ValidatorException { get; set; }
     }
 
     /* ======================================================================
@@ -475,6 +476,7 @@ public class V2Pathfinder
                 _logger.LogError(ex,
                     "[{ReqId}] Canary: validator threw unexpected exception (observe-only, not blocking response)",
                     ctx.ReqId);
+                ctx.ValidatorException = true;
             }
         }
     }
@@ -507,7 +509,8 @@ public class V2Pathfinder
             ConsentDroppedPaths = ctx.ConsentDroppedPaths,
             ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected,
             ValidationErrors = ctx.ValidationErrors,
-            ValidationViolationRules = ctx.ValidationViolationRules
+            ValidationViolationRules = ctx.ValidationViolationRules,
+            ValidatorException = ctx.ValidatorException
         };
     }
 

@@ -102,6 +102,12 @@ public class MaxFlowResponse
     public IReadOnlyList<string>? ValidationViolationRules { get; set; }
 
     /// <summary>
+    /// Canary: true if HubContractValidator threw an exception (validator bug, not pathfinder bug).
+    /// </summary>
+    [JsonIgnore]
+    public bool ValidatorException { get; set; }
+
+    /// <summary>
     /// Block number of the graph snapshot used for this computation.
     /// Lets callers detect staleness by comparing to the current chain head.
     /// </summary>

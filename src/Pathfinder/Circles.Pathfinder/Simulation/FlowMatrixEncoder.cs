@@ -87,6 +87,9 @@ public static class FlowMatrixEncoder
         {
             var t = transfers[i];
             var amount = BigInteger.Parse(t.Value);
+            if (amount <= 0)
+                throw new InvalidOperationException(
+                    $"Transfer step [{i}] has non-positive amount '{t.Value}' (from={t.From}, to={t.To})");
             var toAddr = t.To.ToLowerInvariant();
 
             ushort streamSinkId = toAddr == receiverLower ? (ushort)1 : (ushort)0;
