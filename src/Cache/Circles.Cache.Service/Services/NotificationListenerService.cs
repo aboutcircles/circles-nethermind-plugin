@@ -18,6 +18,8 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
     private readonly NpgsqlDataSource _readonlyDataSource;
+    private readonly IRegistrationSet _registrations;
+    private readonly IWrapperLookup _wrapperLookup;
 
     // Serializes notification handling — Npgsql's conn.Notification callback is async void,
     // so overlapping notifications can fire concurrent HandleNotificationAsync calls. Without
@@ -42,6 +44,8 @@ public class NotificationListenerService : BackgroundService
         _state = state;
         _caches = caches;
         _readonlyDataSource = readonlyDataSource;
+        _registrations = new CacheRegistrationSet(caches);
+        _wrapperLookup = new CacheWrapperLookup(caches);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -512,6 +516,10 @@ public class NotificationListenerService : BackgroundService
         // Process V2 RegisterGroup
         await ProcessV2RegisterGroupAsync(conn, fromBlock, toBlock, ct);
 
+        // Process V2 Stopped (remove deregistered avatars — must run before trust/transfers
+        // so downstream registration checks exclude stopped avatars)
+        await ProcessV2StoppedAsync(conn, fromBlock, toBlock, ct);
+
         // Process V2 Trust (for group memberships)
         await ProcessV2TrustAsync(conn, fromBlock, toBlock, ct);
 
@@ -640,6 +648,41 @@ public class NotificationListenerService : BackgroundService
         }
     }
 
+    private async Task ProcessV2StoppedAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
+    {
+        const string sql = @"
+            SELECT s.""blockNumber"", s.""avatar""
+            FROM ""CrcV2_Stopped"" s
+            WHERE s.""blockNumber"" >= @fromBlock AND s.""blockNumber"" <= @toBlock
+            ORDER BY s.""blockNumber"", s.""transactionIndex"", s.""logIndex""";
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
+        cmd.Parameters.AddWithValue("toBlock", toBlock);
+
+        var count = 0;
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var blockNumber = reader.GetInt64(0);
+                var avatar = reader.GetString(1).ToLowerInvariant();
+
+                // Remove from V2Avatars AND Groups — downstream registration checks will
+                // auto-exclude this avatar's trust, balances, wrappers, and consent flags.
+                // Groups can also be stopped (Hub.sol stop() works for any registered avatar).
+                _caches.V2Avatars.Remove(blockNumber, avatar);
+                _caches.Groups.Remove(blockNumber, avatar);
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            _logger.LogInformation("Processed {Count} V2 stopped events (removed from V2Avatars)", count);
+        }
+    }
+
     private async Task ProcessV2TrustAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
     {
         // Process all V2 Trust events - update both V2TrustRelations cache and GroupMemberships (when truster is a group)
@@ -670,17 +713,20 @@ public class NotificationListenerService : BackgroundService
 
                 var trusterKey = truster.ToLowerInvariant();
                 var trusteeKey = trustee.ToLowerInvariant();
-                var trustKey = $"{trusterKey}:{trusteeKey}";
 
                 // Safely cast expiryTime to long
                 long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
 
-                // Always update V2TrustRelations cache
+                // Registration check: both truster and trustee must be registered avatars.
+                // Removals (expiryTime == 0) always proceed — safe to remove non-existent entries.
+                var trusterRegistered = _registrations.IsRegistered(trusterKey);
+                var trusteeRegistered = _registrations.IsRegistered(trusteeKey);
+
                 if (expiryTimeBig == 0)
                 {
                     _caches.RemoveV2Trust(blockNumber, trusterKey, trusteeKey);
                 }
-                else
+                else if (trusterRegistered && trusteeRegistered)
                 {
                     _caches.UpsertV2Trust(blockNumber, trusterKey, trusteeKey, expiryLong);
                 }
@@ -689,14 +735,11 @@ public class NotificationListenerService : BackgroundService
                 // Also update GroupMemberships if truster is a group
                 if (_caches.Groups.ContainsKey(trusterKey))
                 {
-                    // Composite key: group:member
-                    var membershipKey = $"{trusterKey}:{trusteeKey}";
-
                     if (expiryTimeBig == 0)
                     {
                         _caches.RemoveGroupMembership(blockNumber, trusterKey, trusteeKey);
                     }
-                    else
+                    else if (trusteeRegistered)
                     {
                         _caches.UpsertGroupMembership(blockNumber, trusterKey, trusteeKey, expiryLong);
                     }
@@ -737,9 +780,14 @@ public class NotificationListenerService : BackgroundService
 
                     // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                     var wrapperKey = erc20Wrapper.ToLowerInvariant();
+                    var avatarKey = avatar.ToLowerInvariant();
 
-                    _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
-                    count++;
+                    // Registration check: underlying avatar must be registered
+                    if (_registrations.IsRegistered(avatarKey))
+                    {
+                        _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
+                        count++;
+                    }
                 }
             }
 
@@ -933,11 +981,14 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance and last activity
-                if (from != "0x0000000000000000000000000000000000000000")
+                var fromLower = from.ToLowerInvariant();
+                var toLower = to.ToLowerInvariant();
+
+                // Update sender balance — account + token must be valid
+                if (from != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidBalance(fromLower, tokenAddress, _registrations, _wrapperLookup))
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenAddress}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var fromKey = $"{fromLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(fromKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
@@ -947,11 +998,11 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance and last activity
-                if (to != "0x0000000000000000000000000000000000000000")
+                // Update receiver balance — account + token must be valid
+                if (to != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidBalance(toLower, tokenAddress, _registrations, _wrapperLookup))
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenAddress}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var toKey = $"{toLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(toKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
@@ -1037,11 +1088,14 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance and last activity
-                if (from != "0x0000000000000000000000000000000000000000")
+                var fromLower = from.ToLowerInvariant();
+                var toLower = to.ToLowerInvariant();
+
+                // Update sender balance — account + token must be valid
+                if (from != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidBalance(fromLower, tokenKey, _registrations, _wrapperLookup))
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var fromKey = $"{fromLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(fromKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
@@ -1051,11 +1105,11 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance and last activity
-                if (to != "0x0000000000000000000000000000000000000000")
+                // Update receiver balance — account + token must be valid
+                if (to != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidBalance(toLower, tokenKey, _registrations, _wrapperLookup))
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var toKey = $"{toLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(toKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
@@ -1266,8 +1320,12 @@ public class NotificationListenerService : BackgroundService
                 var avatar = reader.GetString(1).ToLowerInvariant();
                 var flag = (byte[])reader.GetValue(2);
 
-                _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
-                count++;
+                // Registration check: only store flags for registered avatars
+                if (_registrations.IsRegistered(avatar))
+                {
+                    _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
+                    count++;
+                }
             }
         }
 
