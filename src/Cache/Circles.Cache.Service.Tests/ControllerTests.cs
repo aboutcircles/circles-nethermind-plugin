@@ -151,11 +151,13 @@ public class ControllerTests
     [Fact]
     public void GetTokenBalances_ShouldReturnV2Balances()
     {
-        // Arrange
+        // Arrange — use hex addresses so registration works (tokenId IS the token owner)
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
-        var tokenId = "123456789012345678901234567890";
+        var tokenId = "0x42cedde51198d1773590311e2a340dc06b24cb37";
         var balance = 1250.75m;
 
+        _cache.V2Avatars.Add(1000, address, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, tokenId, ("Human", 1000));
         _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{tokenId}", balance);
         _cache.RebuildSecondaryIndexes();
 
@@ -195,8 +197,11 @@ public class ControllerTests
     {
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var v2TokenOwner = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, address, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, v2TokenOwner, ("Human", 1000));
         _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken1", 100m); // V1 CRC (will be converted)
-        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:12345", 200m);    // V2 already in Circles
+        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{v2TokenOwner}", 200m); // V2 already in Circles
         _cache.RebuildSecondaryIndexes();
 
         var controller = CreateBalancesController();
@@ -469,6 +474,8 @@ public class ControllerTests
         // Arrange
         var group = "0xgroup000000000000000000000000000000000000";
         var member = "0xmember0000000000000000000000000000000000";
+        _cache.Groups.Add(1000, group, ("TestGroup", "0xmint", "TG"));
+        _cache.V2Avatars.Add(1000, member, ("Human", 1000));
         var key = $"{group}:{member}";
         _cache.GroupMemberships.Add(1200, key, (member, 1735689600L));
         _cache.RebuildSecondaryIndexes();
@@ -492,6 +499,8 @@ public class ControllerTests
         // Arrange
         var group = "0xgroup000000000000000000000000000000000000";
         var member = "0xmember0000000000000000000000000000000000";
+        _cache.Groups.Add(1000, group, ("TestGroup", "0xmint", "TG"));
+        _cache.V2Avatars.Add(1000, member, ("Human", 1000));
         var key = $"{group}:{member}";
         _cache.GroupMemberships.Add(1200, key, (member, 1735689600L));
         _cache.RebuildSecondaryIndexes();
@@ -661,7 +670,9 @@ public class ControllerTests
         var wrapperAddr = "0xwrapper0000000000000000000000000000000000";
         var erc1155Id = "0xavatar00000000000000000000000000000000000";
 
-        // Register wrapper and avatar
+        // Register account, wrapper underlying, and ERC1155 token owner
+        _cache.V2Avatars.Add(2000, address, ("CrcV2_RegisterHuman", 12345L));
+        _cache.V2Avatars.Add(2000, "0xunderlying", ("CrcV2_RegisterHuman", 12345L));
         _cache.UpsertWrapper(2000, wrapperAddr, "0xunderlying", 0); // demurraged wrapper
         _cache.V2Avatars.Add(2000, erc1155Id, ("CrcV2_RegisterHuman", 12345L));
 
@@ -702,6 +713,9 @@ public class ControllerTests
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
         var v1Trustee = "0xtrustee0000000000000000000000000000000000";
         var v2Trustee = "0xtrustee2000000000000000000000000000000000";
+        // Register V2 addresses for registration filter
+        _cache.V2Avatars.Add(1000, address, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, v2Trustee, ("Human", 1000));
         _cache.V1TrustRelations.Add(1000, $"{address}:{v1Trustee}", 42L);
         _cache.V2TrustRelations.Add(2000, $"{address}:{v2Trustee}", 1735689600L);
         _cache.V1TrustRelations.Add(1100, $"0xanother:{address}", 15L);
@@ -752,6 +766,12 @@ public class ControllerTests
     {
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        // Register all V2 addresses
+        _cache.V2Avatars.Add(1000, address, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, "0xactive", ("Human", 1000));
+        _cache.V2Avatars.Add(1000, "0xexpired", ("Human", 1000));
+        _cache.V2Avatars.Add(1000, "0xincomingactive", ("Human", 1000));
+        _cache.V2Avatars.Add(1000, "0xincomingexpired", ("Human", 1000));
         _cache.V2TrustRelations.Add(2000, $"{address}:0xactive", 2000L);
         _cache.V2TrustRelations.Add(2000, $"{address}:0xexpired", 1000L);
         _cache.V2TrustRelations.Add(2000, $"0xincomingactive:{address}", 3000L);
@@ -788,6 +808,11 @@ public class ControllerTests
         // Arrange
         var group = "0xgroup000000000000000000000000000000000000";
         var member = "0xmember0000000000000000000000000000000000";
+        // Register groups and members
+        _cache.Groups.Add(1000, group, ("TestGroup", "0xmint", "TG"));
+        _cache.Groups.Add(1000, "0xothergroup", ("OtherGroup", "0xmint", "OG"));
+        _cache.V2Avatars.Add(1000, member, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, "0xexpiredmember", ("Human", 1000));
         _cache.GroupMemberships.Add(1200, $"{group}:{member}", (member, 2000L));
         _cache.GroupMemberships.Add(1200, $"{group}:0xexpiredmember", ("0xexpiredmember", 1000L));
         _cache.GroupMemberships.Add(1200, $"0xothergroup:{member}", (member, 1000L));
