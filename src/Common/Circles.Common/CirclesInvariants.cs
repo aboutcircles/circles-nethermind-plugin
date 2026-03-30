@@ -103,7 +103,20 @@ public static class CirclesInvariants
         if (!registrations.IsRegistered(account))
             return false;
 
-        // Check token validity
+        return IsValidToken(tokenAddress, registrations, wrapperLookup);
+    }
+
+    /// <summary>
+    /// Checks whether a token is valid (owner is registered).
+    /// Does NOT check the holder — use this for informational endpoints where
+    /// stopped/unregistered avatars may still hold valid tokens.
+    /// Use <see cref="IsValidBalance"/> for pathfinder graph filtering (checks both).
+    /// </summary>
+    public static bool IsValidToken(
+        string tokenAddress,
+        IRegistrationSet registrations,
+        IWrapperLookup? wrapperLookup)
+    {
         if (wrapperLookup != null && wrapperLookup.TryGetUnderlyingAvatar(tokenAddress, out var underlyingAvatar))
         {
             // Wrapper token: underlying avatar must be registered
