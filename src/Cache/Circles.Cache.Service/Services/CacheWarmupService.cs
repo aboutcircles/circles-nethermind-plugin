@@ -28,6 +28,20 @@ public class CacheWarmupService : BackgroundService
     private DateTime _lastReminderLogTime = DateTime.MinValue;
     private readonly TimeSpan _reminderInterval = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// SQL CTE that materializes all registered V2 avatars (humans, orgs, groups) up to @toBlock.
+    /// Used as a filter in warmup queries to ensure only registered addresses enter the cache.
+    /// Single source of truth — change here to update all warmup queries.
+    /// </summary>
+    private const string RegisteredAvatarsCte = @"
+            registered_avatars AS MATERIALIZED (
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
+                UNION ALL
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
+            )";
+
     public CacheWarmupService(
         ILogger<CacheWarmupService> logger,
         CacheServiceSettings settings,
@@ -478,7 +492,9 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading V2 avatars...");
 
-        // Load V2 avatars (humans and organizations) using Seed() for efficiency
+        // Load V2 avatars (humans and organizations) using Seed() for efficiency.
+        // Stopped avatars are NOT excluded — Hub.sol stop() only prevents minting,
+        // it does not deregister the avatar. They can still transfer and be flow vertices.
         const string avatarSql = @"
             SELECT
                 r.""avatar"" as address,
@@ -565,12 +581,15 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading V2 ERC20 wrappers...");
 
+        // Only load wrappers whose underlying avatar is registered (matches wrapperMappingQuery.sql)
         const string sql = @"
+            WITH " + RegisteredAvatarsCte + @"
             SELECT
                 e.""avatar"",
                 e.""erc20Wrapper"",
                 e.""circlesType""
             FROM ""CrcV2_ERC20WrapperDeployed"" e
+            INNER JOIN registered_avatars ra ON ra.avatar = e.""avatar""
             WHERE e.""blockNumber"" <= @toBlock";
 
         // Key by wrapper address (not avatar) to support avatars with multiple wrappers
@@ -703,8 +722,12 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loading V2 balances from view...");
 
         // Build balances from transfers bounded to the warmup target block.
+        // Token-only filter: tokenAddress (= token owner) must be registered.
+        // Account is NOT filtered — stopped avatars can still hold valid tokens.
+        // (PathfinderGraphController applies the stricter IsValidBalance check at read time.)
         const string sql = @"
-            WITH account_balances AS (
+            WITH " + RegisteredAvatarsCte + @",
+            account_balances AS (
                 SELECT
                     account,
                     ""tokenAddress"",
@@ -736,9 +759,10 @@ public class CacheWarmupService : BackgroundService
                 GROUP BY account, ""tokenAddress""
                 HAVING SUM(delta) > 0
             )
-            SELECT account, ""tokenAddress"", balance, last_activity
-            FROM account_balances
-            WHERE account != '0x0000000000000000000000000000000000000000'";
+            SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
+            FROM account_balances ab
+            INNER JOIN registered_avatars ra_token ON ra_token.avatar = ab.""tokenAddress""
+            WHERE ab.account != '0x0000000000000000000000000000000000000000'";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -807,6 +831,9 @@ public class CacheWarmupService : BackgroundService
         // Aggregate wrapper transfers up to the warmup target block.
         // Without the block filter, transfers arriving during warmup would be double-counted
         // when gap processing re-applies them as deltas on top of the seeded balances.
+        // No registration filter here — wrapper token validity is enforced at read time
+        // via IsValidToken, and wrapper deployer registration is already enforced by
+        // ReplayV2Erc20WrapperDeployedAsync which filters by underlying avatar.
         const string sql = @"
             WITH account_balances AS (
                 SELECT
@@ -825,8 +852,8 @@ public class CacheWarmupService : BackgroundService
                 HAVING SUM(CASE WHEN account = t.""to"" THEN t.amount ELSE 0 END) -
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
             )
-            SELECT account, ""tokenAddress"", balance, last_activity
-            FROM account_balances";
+            SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
+            FROM account_balances ab";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
@@ -1295,8 +1322,10 @@ public class CacheWarmupService : BackgroundService
         var targetTimestamp = await GetMaxTimestampUpToBlockAsync(conn, toBlock, ct);
 
         // Load group memberships using block-bounded latest trust state.
+        // Registration filter: member (trustee) must be a registered avatar (matches groupTrustQuery.sql).
         const string sql = @"
-            WITH latest_trust AS (
+            WITH " + RegisteredAvatarsCte + @",
+            latest_trust AS (
                 SELECT
                     ct.truster,
                     ct.trustee,
@@ -1313,14 +1342,11 @@ public class CacheWarmupService : BackgroundService
                 lt.trustee AS ""member"",
                 lt.""expiryTime""
             FROM latest_trust lt
+            INNER JOIN registered_avatars ra_member ON ra_member.avatar = lt.trustee
+            INNER JOIN registered_avatars ra_group ON ra_group.avatar = lt.truster
+            INNER JOIN ""CrcV2_RegisterGroup"" g ON g.""group"" = lt.truster AND g.""blockNumber"" <= @toBlock
             WHERE lt.rn = 1
-              AND lt.""expiryTime"" > @targetTimestamp
-              AND EXISTS (
-                  SELECT 1
-                  FROM ""CrcV2_RegisterGroup"" g
-                  WHERE g.""group"" = lt.truster
-                    AND g.""blockNumber"" <= @toBlock
-              )";
+              AND lt.""expiryTime"" > @targetTimestamp";
 
         var memberships = new Dictionary<string, (string Member, long ExpiryTime)>();
 
@@ -1394,8 +1420,10 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loaded {Count} V1 trust relations", v1TrustData.Count);
 
         // Load V2 trust relations using block-bounded latest trust state.
+        // Registration filter: both truster and trustee must be registered avatars (matches trustQuery.sql).
         const string v2Sql = @"
-            WITH latest_trust AS (
+            WITH " + RegisteredAvatarsCte + @",
+            latest_trust AS (
                 SELECT
                     ct.truster,
                     ct.trustee,
@@ -1407,10 +1435,12 @@ public class CacheWarmupService : BackgroundService
                 FROM ""CrcV2_Trust"" ct
                 WHERE ct.""blockNumber"" <= @toBlock
             )
-            SELECT truster, trustee, ""expiryTime""
-            FROM latest_trust
-            WHERE rn = 1
-              AND ""expiryTime"" > @targetTimestamp";
+            SELECT lt.truster, lt.trustee, lt.""expiryTime""
+            FROM latest_trust lt
+            INNER JOIN registered_avatars ra1 ON ra1.avatar = lt.truster
+            INNER JOIN registered_avatars ra2 ON ra2.avatar = lt.trustee
+            WHERE lt.rn = 1
+              AND lt.""expiryTime"" > @targetTimestamp";
 
         var v2TrustData = new Dictionary<string, long>();
 
@@ -1461,11 +1491,14 @@ public class CacheWarmupService : BackgroundService
     {
         _logger.LogInformation("Loading consented flow flags...");
 
+        // Registration filter: only load flags for registered avatars (matches consentedFlowQuery.sql).
         const string sql = @"
-            SELECT DISTINCT ON (avatar) avatar, flag
-            FROM ""CrcV2_SetAdvancedUsageFlag""
-            WHERE ""blockNumber"" <= @toBlock
-            ORDER BY avatar, ""blockNumber"" DESC, ""transactionIndex"" DESC, ""logIndex"" DESC";
+            WITH " + RegisteredAvatarsCte + @"
+            SELECT DISTINCT ON (f.avatar) f.avatar, f.flag
+            FROM ""CrcV2_SetAdvancedUsageFlag"" f
+            INNER JOIN registered_avatars ra ON ra.avatar = f.avatar
+            WHERE f.""blockNumber"" <= @toBlock
+            ORDER BY f.avatar, f.""blockNumber"" DESC, f.""transactionIndex"" DESC, f.""logIndex"" DESC";
 
         var flags = new Dictionary<string, byte[]>();
 

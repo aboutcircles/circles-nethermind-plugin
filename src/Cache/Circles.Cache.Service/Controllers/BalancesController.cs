@@ -4,6 +4,7 @@ using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
 using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
+// CacheRegistrationSet + CacheWrapperLookup for invariant filtering
 
 namespace Circles.Cache.Service.Controllers;
 
@@ -142,11 +143,19 @@ public class BalancesController : ControllerBase
             }
 
             // Query V2 balances - use secondary index for O(1) lookup
+            var registrations = new CacheRegistrationSet(_caches);
+            var wrapperLookup = new CacheWrapperLookup(_caches);
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: false))
             {
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
+                    // Token-only filter: token owner must be registered.
+                    // Account is NOT checked — stopped avatars can still hold valid tokens.
+                    // Use IsValidBalance (checks both) only in pathfinder graph endpoints.
+                    if (!CirclesInvariants.IsValidToken(tokenId, registrations, wrapperLookup))
+                        continue;
+
                     // Classify by checking the wrapper index first (O(1)).
                     // Cache keys are hex addresses for BOTH ERC1155 and ERC20 wrappers,
                     // so we can't use string format to distinguish them.
@@ -309,14 +318,17 @@ public class BalancesController : ControllerBase
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             // Use secondary index for O(1) lookup
+            var registrations = new CacheRegistrationSet(_caches);
+            var wrapperLookup = new CacheWrapperLookup(_caches);
             var total = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: false))
             {
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    // Only inflationary wrappers skip demurrage (static amounts).
-                    // GetWrapperInfo returns null for ERC1155 tokens → isInflationary=false → demurrage applied correctly.
+                    if (!CirclesInvariants.IsValidToken(tokenId, registrations, wrapperLookup))
+                        continue;
+
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
                     var isInflationary = wrapperInfo?.CirclesType == 1;
 
@@ -360,14 +372,12 @@ public class BalancesController : ControllerBase
             var nowUnix = (ulong)timestamp;
 
             // Sum V1 balances using secondary index
-            // V1 balances are stored as raw CRC, need to convert to time-circles
             var v1Total = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: true))
             {
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V1BalancesByAccountAndToken.TryGetValue(key, out var crcBalance))
                 {
-                    // Convert from CRC (decimal) to Circles using time-based inflation
                     var attoCrc = CirclesConverter.CirclesToAttoCircles(crcBalance);
                     var attoCircles = CirclesConverter.AttoCrcToAttoCircles(attoCrc, nowUnix);
                     var circles = CirclesConverter.AttoCirclesToCircles(attoCircles);
@@ -376,14 +386,17 @@ public class BalancesController : ControllerBase
             }
 
             // Sum V2 balances using secondary index, applying demurrage at query time
+            var registrations = new CacheRegistrationSet(_caches);
+            var wrapperLookup = new CacheWrapperLookup(_caches);
             var v2Total = 0m;
             foreach (var tokenId in _caches.GetTokenIdsForAddress(addressLower, isV1: false))
             {
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    // Only inflationary wrappers skip demurrage (static amounts).
-                    // GetWrapperInfo returns null for ERC1155 tokens → isInflationary=false → demurrage applied correctly.
+                    if (!CirclesInvariants.IsValidToken(tokenId, registrations, wrapperLookup))
+                        continue;
+
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
                     var isInflationary = wrapperInfo?.CirclesType == 1;
 
