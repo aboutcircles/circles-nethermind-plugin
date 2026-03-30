@@ -24,6 +24,7 @@ public class NetworkStateUpdaterService : BackgroundService
     };
     private readonly ILogger<NetworkStateUpdaterService> _log;
     private readonly CapacityGraphPool _pool;
+    private readonly LoadGraph _loadGraph;
 
     // Incremental state (only used when IncrementalEnabled=true)
     // Internal for testability (InternalsVisibleTo: Circles.Pathfinder.Tests)
@@ -44,21 +45,19 @@ public class NetworkStateUpdaterService : BackgroundService
     public NetworkStateUpdaterService(NetworkState networkState,
         Circles.Pathfinder.Host.Settings settings,
         ILogger<NetworkStateUpdaterService> log,
-        CapacityGraphPool pool)
+        CapacityGraphPool pool,
+        LoadGraph loadGraph)
     {
         _networkState = networkState;
         _settings = settings;
         _log = log;
         _pool = pool;
+        _loadGraph = loadGraph;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var loadGraph = new LoadGraph(_settings);
-
-        // Wire DB query timing to Prometheus histogram
-        loadGraph.OnQueryCompleted = (queryName, elapsed) =>
-            GraphUpdateMetrics.DbQueryDuration.WithLabels(queryName).Observe(elapsed.TotalSeconds);
+        var loadGraph = _loadGraph;
 
         // Initialize cache graph client if enabled
         if (_settings.UseCacheGraphSource)
@@ -282,7 +281,19 @@ public class NetworkStateUpdaterService : BackgroundService
         }
         else
         {
-            await IncrementalUpdate(loadGraph, lastBlock, ct);
+            try
+            {
+                await IncrementalUpdate(loadGraph, lastBlock, ct);
+            }
+            catch (Exception ex)
+            {
+                // Partial delta application may have corrupted in-memory state
+                // (ApplyTransfer is not idempotent). Force a full refresh on the
+                // next cycle to rebuild from scratch.
+                _lastFullRefreshBlock = -1;
+                _log.LogWarning(ex, "Incremental update failed at block {Block}, forcing full refresh on next cycle", lastBlock);
+                throw;
+            }
         }
 
         _lastProcessedBlock = lastBlock;

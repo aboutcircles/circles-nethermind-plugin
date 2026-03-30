@@ -12,12 +12,7 @@
 --      blockNumber, transactionIndex, logIndex, transactionHash that were never read).
 
 with registered_avatars as materialized (
-    select organization as avatar from "CrcV2_RegisterOrganization"
-    union all
-    select "group" as avatar from "CrcV2_RegisterGroup"
-    union all
-    select avatar from "CrcV2_RegisterHuman"
-),
+{{registered_avatars_cte_body}}),
 
 -- Static ERC20 wrapper transfers (circlesType = 1)
 static_wrapper_transfers as (

@@ -31,7 +31,7 @@ public class CacheSourceDriftResetTests
         var pool = new CapacityGraphPool("0xf000000000000000000000000000000000000001", dummyLoadGraph);
         var state = new NetworkState();
         var log = NullLogger<NetworkStateUpdaterService>.Instance;
-        return new NetworkStateUpdaterService(state, hostSettings, log, pool);
+        return new NetworkStateUpdaterService(state, hostSettings, log, pool, dummyLoadGraph);
     }
 
     [Test]
