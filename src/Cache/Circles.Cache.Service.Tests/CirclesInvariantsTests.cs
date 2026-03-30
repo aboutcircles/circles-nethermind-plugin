@@ -50,7 +50,7 @@ public class CirclesInvariantsTests
     [Fact]
     public void IsValidTrustEdge_BothRegistered_NotExpired_NonGroup_ReturnsTrue()
     {
-        CirclesInvariants.IsValidTrustEdge(Human1, Human2, 0, 1000, Registrations)
+        CirclesInvariants.IsValidTrustEdge(Human1, Human2, 9999, 1000, Registrations)
             .Should().BeTrue();
     }
 
@@ -62,24 +62,24 @@ public class CirclesInvariantsTests
     }
 
     [Fact]
-    public void IsValidTrustEdge_ZeroExpiry_TreatedAsIndefinite()
+    public void IsValidTrustEdge_ZeroExpiry_TreatedAsUntrust()
     {
-        // expiryTime == 0 means never-set / indefinite → active
+        // expiryTime == 0 is explicit untrust in Hub.sol — write path removes these entries
         CirclesInvariants.IsValidTrustEdge(Human1, Human2, 0, 1000, Registrations)
-            .Should().BeTrue();
+            .Should().BeFalse();
     }
 
     [Fact]
     public void IsValidTrustEdge_UnregisteredTruster_ReturnsFalse()
     {
-        CirclesInvariants.IsValidTrustEdge(Unregistered, Human2, 0, 1000, Registrations)
+        CirclesInvariants.IsValidTrustEdge(Unregistered, Human2, 9999, 1000, Registrations)
             .Should().BeFalse();
     }
 
     [Fact]
     public void IsValidTrustEdge_UnregisteredTrustee_ReturnsFalse()
     {
-        CirclesInvariants.IsValidTrustEdge(Human1, Unregistered, 0, 1000, Registrations)
+        CirclesInvariants.IsValidTrustEdge(Human1, Unregistered, 9999, 1000, Registrations)
             .Should().BeFalse();
     }
 
@@ -87,7 +87,7 @@ public class CirclesInvariantsTests
     public void IsValidTrustEdge_GroupAsTruster_ReturnsFalse()
     {
         // Group trusters are excluded — handled separately as group trust edges
-        CirclesInvariants.IsValidTrustEdge(Group1, Human1, 0, 1000, Registrations)
+        CirclesInvariants.IsValidTrustEdge(Group1, Human1, 9999, 1000, Registrations)
             .Should().BeFalse();
     }
 
@@ -95,7 +95,7 @@ public class CirclesInvariantsTests
     public void IsValidTrustEdge_GroupAsTrustee_ReturnsTrue()
     {
         // Groups CAN be trustees (someone can trust a group's token)
-        CirclesInvariants.IsValidTrustEdge(Human1, Group1, 0, 1000, Registrations)
+        CirclesInvariants.IsValidTrustEdge(Human1, Group1, 9999, 1000, Registrations)
             .Should().BeTrue();
     }
 
@@ -104,7 +104,7 @@ public class CirclesInvariantsTests
     {
         // Non-router groups are still registered avatars — they can be trustees
         // BUG FIX: Old code checked routerGroups only, missing non-router groups
-        CirclesInvariants.IsValidTrustEdge(Human1, Group2, 0, 1000, Registrations)
+        CirclesInvariants.IsValidTrustEdge(Human1, Group2, 9999, 1000, Registrations)
             .Should().BeTrue();
     }
 
@@ -113,21 +113,21 @@ public class CirclesInvariantsTests
     [Fact]
     public void IsValidGroupTrustEdge_RouterGroup_RegisteredTrustee_ReturnsTrue()
     {
-        CirclesInvariants.IsValidGroupTrustEdge(Group1, Human1, 0, 1000, Registrations, RouterGroups)
+        CirclesInvariants.IsValidGroupTrustEdge(Group1, Human1, 9999, 1000, Registrations, RouterGroups)
             .Should().BeTrue();
     }
 
     [Fact]
     public void IsValidGroupTrustEdge_NonRouterGroup_ReturnsFalse()
     {
-        CirclesInvariants.IsValidGroupTrustEdge(Group2, Human1, 0, 1000, Registrations, RouterGroups)
+        CirclesInvariants.IsValidGroupTrustEdge(Group2, Human1, 9999, 1000, Registrations, RouterGroups)
             .Should().BeFalse();
     }
 
     [Fact]
     public void IsValidGroupTrustEdge_UnregisteredTrustee_ReturnsFalse()
     {
-        CirclesInvariants.IsValidGroupTrustEdge(Group1, Unregistered, 0, 1000, Registrations, RouterGroups)
+        CirclesInvariants.IsValidGroupTrustEdge(Group1, Unregistered, 9999, 1000, Registrations, RouterGroups)
             .Should().BeFalse();
     }
 
@@ -207,14 +207,14 @@ public class CirclesInvariantsTests
     [Fact]
     public void IsValidGroupMembership_RegisteredGroupAndMember_ReturnsTrue()
     {
-        CirclesInvariants.IsValidGroupMembership(Group1, Human1, 0, 1000, Registrations)
+        CirclesInvariants.IsValidGroupMembership(Group1, Human1, 9999, 1000, Registrations)
             .Should().BeTrue();
     }
 
     [Fact]
     public void IsValidGroupMembership_UnregisteredMember_ReturnsFalse()
     {
-        CirclesInvariants.IsValidGroupMembership(Group1, Unregistered, 0, 1000, Registrations)
+        CirclesInvariants.IsValidGroupMembership(Group1, Unregistered, 9999, 1000, Registrations)
             .Should().BeFalse();
     }
 
@@ -222,7 +222,7 @@ public class CirclesInvariantsTests
     public void IsValidGroupMembership_NonGroupAddress_ReturnsFalse()
     {
         // Human address as "group" — not a group
-        CirclesInvariants.IsValidGroupMembership(Human1, Human2, 0, 1000, Registrations)
+        CirclesInvariants.IsValidGroupMembership(Human1, Human2, 9999, 1000, Registrations)
             .Should().BeFalse();
     }
 

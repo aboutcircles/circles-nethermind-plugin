@@ -37,10 +37,9 @@ public static class CirclesInvariants
         long currentTimestamp,
         IRegistrationSet registrations)
     {
-        // Skip revoked/expired trust. In Hub.sol, expiryTime=0 is an explicit untrust —
-        // but the cache never stores 0 (incremental removes on 0, warmup SQL excludes 0).
-        // This predicate is unreachable with expiryTime=0 in practice.
-        if (expiryTime > 0 && expiryTime <= currentTimestamp)
+        // expiryTime=0 is an explicit untrust in Hub.sol. The write path (NotificationListenerService)
+        // removes entries on 0, so this is defensive — aligns the predicate with the write semantics.
+        if (expiryTime == 0 || expiryTime <= currentTimestamp)
             return false;
 
         // Both must be registered (humans + orgs + groups)
@@ -76,7 +75,7 @@ public static class CirclesInvariants
             return false;
 
         // Skip revoked/expired trust
-        if (expiryTime > 0 && expiryTime <= currentTimestamp)
+        if (expiryTime == 0 || expiryTime <= currentTimestamp)
             return false;
 
         // Trusted token must be a registered avatar (human, org, or group)
@@ -157,7 +156,7 @@ public static class CirclesInvariants
         IRegistrationSet registrations)
     {
         // Must not be expired
-        if (expiryTime > 0 && expiryTime <= currentTimestamp)
+        if (expiryTime == 0 || expiryTime <= currentTimestamp)
             return false;
 
         // Group must be registered as a group
