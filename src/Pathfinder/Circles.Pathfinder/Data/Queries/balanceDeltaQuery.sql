@@ -1,10 +1,5 @@
 WITH registered_avatars AS MATERIALIZED (
-    SELECT organization AS avatar FROM "CrcV2_RegisterOrganization"
-    UNION ALL
-    SELECT "group" AS avatar FROM "CrcV2_RegisterGroup"
-    UNION ALL
-    SELECT avatar FROM "CrcV2_RegisterHuman"
-)
+{{registered_avatars_cte_body}})
 SELECT "timestamp", "from", "to", "tokenAddress", "value", "isWrapped", "isStatic"
 FROM (
     SELECT
@@ -15,11 +10,12 @@ FROM (
         "timestamp",
         "from",
         "to",
-        "tokenAddress",
+        ts."tokenAddress",
         "value"::text AS "value",
         false AS "isWrapped",
         false AS "isStatic"
-    FROM "CrcV2_TransferSingle"
+    FROM "CrcV2_TransferSingle" ts
+    JOIN registered_avatars ra_token ON ra_token.avatar = ts."tokenAddress"
     WHERE "blockNumber" > @lastBlock
 
     UNION ALL
@@ -32,11 +28,12 @@ FROM (
         "timestamp",
         "from",
         "to",
-        "tokenAddress",
+        tb."tokenAddress",
         "value"::text AS "value",
         false AS "isWrapped",
         false AS "isStatic"
-    FROM "CrcV2_TransferBatch"
+    FROM "CrcV2_TransferBatch" tb
+    JOIN registered_avatars ra_token ON ra_token.avatar = tb."tokenAddress"
     WHERE "blockNumber" > @lastBlock
 
     UNION ALL

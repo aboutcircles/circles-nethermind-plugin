@@ -56,8 +56,9 @@ public class NetworkStateUpdaterServiceTests
         var mockLoadGraph = new MockLoadGraph();
         pool ??= new CapacityGraphPool(RouterAddr, mockLoadGraph);
         var logger = NullLogger<NetworkStateUpdaterService>.Instance;
+        var dummyLoadGraph = new LoadGraph("Host=localhost;Database=dummy;Username=x;Password=x", new Circles.Pathfinder.Settings());
 
-        return new NetworkStateUpdaterService(networkState, settings, logger, pool);
+        return new NetworkStateUpdaterService(networkState, settings, logger, pool, dummyLoadGraph);
     }
 
     #region ResetIncrementalState

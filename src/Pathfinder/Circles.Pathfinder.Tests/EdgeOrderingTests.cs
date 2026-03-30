@@ -441,7 +441,7 @@ public class EdgeOrderingTests
     /// edges exist when validation runs, allowing the router-skip logic to work.
     /// </summary>
     [Test]
-    public void ConsentedFlowAvatar_GroupMint_RouterEdgesShouldBeSkipped()
+    public void ConsentedFlowAvatar_GroupMint_ConsentedToRouterCaughtBySafetyNet()
     {
         // Arrange: Avatar with consented flow sends to Group
         var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
@@ -450,7 +450,6 @@ public class EdgeOrderingTests
         capacityGraph.ConsentedAvatars.Add(Source);
 
         // Set up trust lookup - Source does NOT trust Group directly
-        // (This would fail the consented flow check if not for the router skip)
         var trustLookup = new Dictionary<int, HashSet<int>>
         {
             [Source] = new HashSet<int>(), // Source trusts no one
@@ -470,15 +469,13 @@ public class EdgeOrderingTests
             ? InsertRouterInTransfersForTest(edgesBeforeRouterInsertion, capacityGraph)
             : edgesBeforeRouterInsertion;
 
-        // Now validate - router edges should be skipped
+        // Now validate - consented Avatar→Router is caught by safety net
         var validatedEdges = ValidateConsentedFlowForTest(edgesAfterRouterInsertion, capacityGraph);
 
-        // Assert: Both router edges should be present (router edges are skipped by validation)
-        Assert.That(validatedEdges.Count, Is.EqualTo(2),
-            "Both Avatar→Router and Router→Group edges should pass validation");
+        // Assert: Only Router→Group survives; consented Avatar→Router is rejected
+        Assert.That(validatedEdges.Count, Is.EqualTo(1),
+            "Consented Avatar→Router is caught by safety net; only Router→Group survives");
 
-        Assert.That(validatedEdges.Any(e => e.From == Source && e.To == Router),
-            "Avatar→Router edge should be present");
         Assert.That(validatedEdges.Any(e => e.From == Router && e.To == Group1),
             "Router→Group edge should be present");
     }
@@ -525,12 +522,12 @@ public class EdgeOrderingTests
     }
 
     /// <summary>
-    /// When an avatar with consented flow sends through the router,
-    /// the router edges (Avatar→Router and Router→Group) should bypass
-    /// consented flow validation.
+    /// When a consented avatar sends through the router, the Avatar→Router edge
+    /// is caught by the safety net (Router lacks advancedUsageFlags).
+    /// Only Router→Group survives.
     /// </summary>
     [Test]
-    public void ConsentedFlowAvatar_RouterEdgesExplicitly_AreNotFiltered()
+    public void ConsentedFlowAvatar_RouterEdgesExplicitly_ConsentedToRouterRejected()
     {
         // Arrange: Avatar with consented flow, edges already have router
         var capacityGraph = CreateCapacityGraphWithGroup(Group1, Router);
@@ -557,9 +554,9 @@ public class EdgeOrderingTests
         // Act: Validate with router edges
         var validatedEdges = ValidateConsentedFlowForTest(edgesWithRouter, capacityGraph);
 
-        // Assert: Both edges should pass (router edges are skipped)
-        Assert.That(validatedEdges.Count, Is.EqualTo(2),
-            "Router edges should bypass consented flow validation");
+        // Assert: Consented Avatar→Router is caught; only Router→Group survives
+        Assert.That(validatedEdges.Count, Is.EqualTo(1),
+            "Consented Avatar→Router is caught by safety net; only Router→Group survives");
     }
 
     /// <summary>
@@ -665,44 +662,11 @@ public class EdgeOrderingTests
         return result;
     }
 
-    // Test helper: Replicates ValidateConsentedFlow logic for testing
+    // Delegate to production method to avoid logic drift
+    private static readonly V2Pathfinder _consentValidator = new();
+
     private List<FlowEdge> ValidateConsentedFlowForTest(List<FlowEdge> edges, CapacityGraph capacityGraph)
-    {
-        if (capacityGraph.TrustLookup == null || capacityGraph.ConsentedAvatars.Count == 0)
-            return edges;
-
-        var validEdges = new List<FlowEdge>(edges.Count);
-
-        foreach (var edge in edges)
-        {
-            // Skip router edges
-            if (capacityGraph.IsRouter(edge.From) || capacityGraph.IsRouter(edge.To))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // If From doesn't have consented flow, standard trust is sufficient
-            if (!capacityGraph.ConsentedAvatars.Contains(edge.From))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // From has consented flow - check additional requirements
-            bool fromTrustsTo = capacityGraph.TrustLookup.TryGetValue(edge.From, out var fromTrusts)
-                               && fromTrusts.Contains(edge.To);
-            if (!fromTrustsTo)
-                continue;
-
-            if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
-                continue;
-
-            validEdges.Add(edge);
-        }
-
-        return validEdges;
-    }
+        => _consentValidator.ValidateConsentedFlow(edges, capacityGraph);
 
     #endregion
 

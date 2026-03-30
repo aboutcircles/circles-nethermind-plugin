@@ -8,6 +8,7 @@ using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
+using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
 using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -84,6 +85,18 @@ builder.Services.AddSingleton<CapacityGraphPool>(provider =>
 builder.Services.AddSingleton<V2Pathfinder>();
 builder.Services.AddSingleton<FindPathHandler>();
 builder.Services.AddHttpContextAccessor();
+
+// Simulation canary: async eth_call validation (opt-in via CANARY_SIMULATION_ENABLED=true)
+var canaryEnabled = string.Equals(
+    Environment.GetEnvironmentVariable("CANARY_SIMULATION_ENABLED"), "true",
+    StringComparison.OrdinalIgnoreCase);
+if (canaryEnabled)
+{
+    builder.Services.AddHttpClient("canary-simulation", c => c.Timeout = TimeSpan.FromSeconds(30));
+    builder.Services.AddSingleton<SimulationCanaryService>();
+    builder.Services.AddHostedService(p => p.GetRequiredService<SimulationCanaryService>());
+    Console.WriteLine("* Simulation canary enabled");
+}
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();

@@ -284,36 +284,31 @@ if [[ "$SUBSCRIPTION_ENABLED" == "true" ]]; then
 fi
 
 # Start both test runs simultaneously
+# test-rpc.sh exits 1 when individual tests fail — that's expected.
+# We only abort if the output files weren't created (real script failure).
 (
-    if ! "$SCRIPT_DIR/test-rpc.sh" "$ENV_A_URL" --json --json-dir "$ENV_A_OUTPUT_DIR" > "$ENV_A_LOG" 2>&1; then
-        echo -e "${RED}Error: Failed to run tests against ${LABEL_A}${NC}" >&2
-        exit 1
-    fi
+    "$SCRIPT_DIR/test-rpc.sh" "$ENV_A_URL" --json --json-dir "$ENV_A_OUTPUT_DIR" > "$ENV_A_LOG" 2>&1 || true
 ) &
 ENV_A_PID=$!
 
 (
-    if ! "$SCRIPT_DIR/test-rpc.sh" "$ENV_B_URL" --json --json-dir "$ENV_B_OUTPUT_DIR" > "$ENV_B_LOG" 2>&1; then
-        echo -e "${RED}Error: Failed to run tests against ${LABEL_B}${NC}" >&2
-        exit 1
-    fi
+    "$SCRIPT_DIR/test-rpc.sh" "$ENV_B_URL" --json --json-dir "$ENV_B_OUTPUT_DIR" > "$ENV_B_LOG" 2>&1 || true
 ) &
 ENV_B_PID=$!
 
 # Wait for both to complete
 wait $ENV_A_PID
-ENV_A_EXIT=$?
 wait $ENV_B_PID
-ENV_B_EXIT=$?
 
-if [[ $ENV_A_EXIT -ne 0 ]]; then
-    echo -e "${RED}Error: Failed to run tests against ${LABEL_A}${NC}"
+# Verify output was actually produced (catches real failures like connection refused)
+if [[ ! -f "$ENV_A_LOG" ]] || ! command grep -q '"summary"' "$ENV_A_LOG" 2>/dev/null; then
+    echo -e "${RED}Error: ${LABEL_A} test run produced no results${NC}"
     echo -e "${RED}Check $ENV_A_LOG for details${NC}"
     exit 1
 fi
 
-if [[ $ENV_B_EXIT -ne 0 ]]; then
-    echo -e "${RED}Error: Failed to run tests against ${LABEL_B}${NC}"
+if [[ ! -f "$ENV_B_LOG" ]] || ! command grep -q '"summary"' "$ENV_B_LOG" 2>/dev/null; then
+    echo -e "${RED}Error: ${LABEL_B} test run produced no results${NC}"
     echo -e "${RED}Check $ENV_B_LOG for details${NC}"
     exit 1
 fi
