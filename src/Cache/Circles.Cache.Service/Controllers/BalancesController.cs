@@ -326,7 +326,7 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    if (!CirclesInvariants.IsValidBalance(addressLower, tokenId, registrations, wrapperLookup))
+                    if (!CirclesInvariants.IsValidToken(tokenId, registrations, wrapperLookup))
                         continue;
 
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);
@@ -394,7 +394,7 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    if (!CirclesInvariants.IsValidBalance(addressLower, tokenId, registrations, wrapperLookup))
+                    if (!CirclesInvariants.IsValidToken(tokenId, registrations, wrapperLookup))
                         continue;
 
                     var wrapperInfo = _caches.GetWrapperInfo(tokenId);

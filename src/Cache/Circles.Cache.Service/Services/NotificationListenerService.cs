@@ -984,9 +984,9 @@ public class NotificationListenerService : BackgroundService
                 var fromLower = from.ToLowerInvariant();
                 var toLower = to.ToLowerInvariant();
 
-                // Update sender balance — account + token must be valid
+                // Update sender balance — token must be valid (account may be stopped but still holds tokens)
                 if (from != "0x0000000000000000000000000000000000000000"
-                    && CirclesInvariants.IsValidBalance(fromLower, tokenAddress, _registrations, _wrapperLookup))
+                    && CirclesInvariants.IsValidToken(tokenAddress, _registrations, _wrapperLookup))
                 {
                     var fromKey = $"{fromLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(fromKey))
@@ -998,9 +998,9 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance — account + token must be valid
+                // Update receiver balance — token must be valid
                 if (to != "0x0000000000000000000000000000000000000000"
-                    && CirclesInvariants.IsValidBalance(toLower, tokenAddress, _registrations, _wrapperLookup))
+                    && CirclesInvariants.IsValidToken(tokenAddress, _registrations, _wrapperLookup))
                 {
                     var toKey = $"{toLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(toKey))
@@ -1091,9 +1091,9 @@ public class NotificationListenerService : BackgroundService
                 var fromLower = from.ToLowerInvariant();
                 var toLower = to.ToLowerInvariant();
 
-                // Update sender balance — account + token must be valid
+                // Update sender balance — token must be valid (account may be stopped)
                 if (from != "0x0000000000000000000000000000000000000000"
-                    && CirclesInvariants.IsValidBalance(fromLower, tokenKey, _registrations, _wrapperLookup))
+                    && CirclesInvariants.IsValidToken(tokenKey, _registrations, _wrapperLookup))
                 {
                     var fromKey = $"{fromLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(fromKey))
@@ -1105,9 +1105,9 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance — account + token must be valid
+                // Update receiver balance — token must be valid
                 if (to != "0x0000000000000000000000000000000000000000"
-                    && CirclesInvariants.IsValidBalance(toLower, tokenKey, _registrations, _wrapperLookup))
+                    && CirclesInvariants.IsValidToken(tokenKey, _registrations, _wrapperLookup))
                 {
                     var toKey = $"{toLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(toKey))
