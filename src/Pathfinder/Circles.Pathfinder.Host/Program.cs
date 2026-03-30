@@ -377,6 +377,11 @@ app.MapPost("/findPath", async (
     var arraySizeErr = FindPathHandler.ValidateArraySizes(request);
     if (arraySizeErr != null) return arraySizeErr;
 
+    // Sanitize user input early: strip CR/LF to prevent log forging, then lowercase.
+    request.Source = request.Source?.Replace("\r", "").Replace("\n", "").ToLowerInvariant();
+    request.Sink = request.Sink?.Replace("\r", "").Replace("\n", "").ToLowerInvariant();
+    request.TargetFlow = request.TargetFlow?.Replace("\r", "").Replace("\n", "");
+
     log.LogInformation("Deserialized request - Source: {Source}, Sink: {Sink}, TargetFlow: {TargetFlow}",
         request.Source, request.Sink, request.TargetFlow);
 
@@ -386,9 +391,6 @@ app.MapPost("/findPath", async (
     act?.SetTag("to", request.Sink);
     act?.SetTag("amount", request.TargetFlow);
     using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
-
-    request.Source = request.Source?.ToLowerInvariant();
-    request.Sink = request.Sink?.ToLowerInvariant();
 
     if (settings.ExcludeConsentedIntermediaries)
         request.SimulatedConsentedAvatars = null;
