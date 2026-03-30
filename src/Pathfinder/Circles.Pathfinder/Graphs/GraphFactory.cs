@@ -296,27 +296,33 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         int? sourceId = !string.IsNullOrWhiteSpace(request?.Source) ? AddressIdPool.IdOf(request.Source) : null;
         int? sinkId = !string.IsNullOrWhiteSpace(request?.Sink) ? AddressIdPool.IdOf(request.Sink) : null;
 
+        // Defense-in-depth: sanitize for logging to prevent log forging via embedded newlines.
+        // FlowRequest.Source/Sink are already sanitized at construction in FindPathHandler.BuildRequest,
+        // but guard here too since GraphFactory is a public API.
+        var logSource = request?.Source?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+        var logSink = request?.Sink?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+
         if (sourceId != null && capacityGraph.IsGroup(sourceId.Value))
         {
-            _logger.LogWarning("Rejected source '{Source}': address is a group", request!.Source);
+            _logger.LogWarning("Rejected source '{Source}': address is a group", logSource);
             throw new ArgumentException("Invalid source address.");
         }
 
         if (sinkId != null && capacityGraph.IsGroup(sinkId.Value))
         {
-            _logger.LogWarning("Rejected sink '{Sink}': address is a group", request!.Sink);
+            _logger.LogWarning("Rejected sink '{Sink}': address is a group", logSink);
             throw new ArgumentException("Invalid sink address.");
         }
 
         if (sourceId != null && capacityGraph.IsRouter(sourceId.Value))
         {
-            _logger.LogWarning("Rejected source '{Source}': address is the router", request!.Source);
+            _logger.LogWarning("Rejected source '{Source}': address is the router", logSource);
             throw new ArgumentException("Invalid source address.");
         }
 
         if (sinkId != null && capacityGraph.IsRouter(sinkId.Value))
         {
-            _logger.LogWarning("Rejected sink '{Sink}': address is the router", request!.Sink);
+            _logger.LogWarning("Rejected sink '{Sink}': address is the router", logSink);
             throw new ArgumentException("Invalid sink address.");
         }
 

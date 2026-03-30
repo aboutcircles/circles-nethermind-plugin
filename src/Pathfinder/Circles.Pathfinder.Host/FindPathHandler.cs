@@ -88,10 +88,15 @@ internal sealed class FindPathHandler(
         int? maxTransfers = null, bool? quantizedMode = null,
         bool? debugShowIntermediateSteps = null)
     {
+        // Normalize and sanitize addresses once so all downstream logging is safe
+        // (prevents log forging via embedded \r\n in user-supplied addresses).
+        var normalizedFrom = from.ToLowerInvariant().Replace("\r", string.Empty).Replace("\n", string.Empty);
+        var normalizedTo = to.ToLowerInvariant().Replace("\r", string.Empty).Replace("\n", string.Empty);
+
         return new FlowRequest
         {
-            Source = from.ToLowerInvariant(),
-            Sink = to.ToLowerInvariant(),
+            Source = normalizedFrom,
+            Sink = normalizedTo,
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
