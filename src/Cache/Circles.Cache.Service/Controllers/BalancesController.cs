@@ -150,8 +150,10 @@ public class BalancesController : ControllerBase
                 var key = $"{addressLower}:{tokenId}";
                 if (_caches.V2BalancesByAccountAndToken.TryGetValue(key, out var balance))
                 {
-                    // Registration filter: both account and token must be registered
-                    if (!CirclesInvariants.IsValidBalance(addressLower, tokenId, registrations, wrapperLookup))
+                    // Token-only filter: token owner must be registered.
+                    // Account is NOT checked — stopped avatars can still hold valid tokens.
+                    // Use IsValidBalance (checks both) only in pathfinder graph endpoints.
+                    if (!CirclesInvariants.IsValidToken(tokenId, registrations, wrapperLookup))
                         continue;
 
                     // Classify by checking the wrapper index first (O(1)).
