@@ -37,7 +37,9 @@ public static class CirclesInvariants
         long currentTimestamp,
         IRegistrationSet registrations)
     {
-        // Skip revoked/expired trust (expiryTime == 0 means never-set / indefinite → active)
+        // Skip revoked/expired trust. In Hub.sol, expiryTime=0 is an explicit untrust —
+        // but the cache never stores 0 (incremental removes on 0, warmup SQL excludes 0).
+        // This predicate is unreachable with expiryTime=0 in practice.
         if (expiryTime > 0 && expiryTime <= currentTimestamp)
             return false;
 

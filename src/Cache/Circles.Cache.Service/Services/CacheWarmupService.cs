@@ -1362,15 +1362,11 @@ public class CacheWarmupService : BackgroundService
                 lt.trustee AS ""member"",
                 lt.""expiryTime""
             FROM latest_trust lt
-            INNER JOIN registered_avatars ra ON ra.avatar = lt.trustee
+            INNER JOIN registered_avatars ra_member ON ra_member.avatar = lt.trustee
+            INNER JOIN registered_avatars ra_group ON ra_group.avatar = lt.truster
+            INNER JOIN ""CrcV2_RegisterGroup"" g ON g.""group"" = lt.truster AND g.""blockNumber"" <= @toBlock
             WHERE lt.rn = 1
-              AND lt.""expiryTime"" > @targetTimestamp
-              AND EXISTS (
-                  SELECT 1
-                  FROM ""CrcV2_RegisterGroup"" g
-                  WHERE g.""group"" = lt.truster
-                    AND g.""blockNumber"" <= @toBlock
-              )";
+              AND lt.""expiryTime"" > @targetTimestamp";
 
         var memberships = new Dictionary<string, (string Member, long ExpiryTime)>();
 

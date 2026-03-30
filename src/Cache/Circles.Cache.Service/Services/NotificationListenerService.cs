@@ -19,6 +19,7 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheContainer _caches;
     private readonly NpgsqlDataSource _readonlyDataSource;
     private readonly IRegistrationSet _registrations;
+    private readonly IWrapperLookup _wrapperLookup;
 
     // Serializes notification handling — Npgsql's conn.Notification callback is async void,
     // so overlapping notifications can fire concurrent HandleNotificationAsync calls. Without
@@ -44,6 +45,7 @@ public class NotificationListenerService : BackgroundService
         _caches = caches;
         _readonlyDataSource = readonlyDataSource;
         _registrations = new CacheRegistrationSet(caches);
+        _wrapperLookup = new CacheWrapperLookup(caches);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -982,9 +984,9 @@ public class NotificationListenerService : BackgroundService
                 var fromLower = from.ToLowerInvariant();
                 var toLower = to.ToLowerInvariant();
 
-                // Update sender balance — only for registered avatars
+                // Update sender balance — account + token must be valid
                 if (from != "0x0000000000000000000000000000000000000000"
-                    && (_registrations.IsRegistered(fromLower)))
+                    && CirclesInvariants.IsValidBalance(fromLower, tokenAddress, _registrations, _wrapperLookup))
                 {
                     var fromKey = $"{fromLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(fromKey))
@@ -996,9 +998,9 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance — only for registered avatars
+                // Update receiver balance — account + token must be valid
                 if (to != "0x0000000000000000000000000000000000000000"
-                    && (_registrations.IsRegistered(toLower)))
+                    && CirclesInvariants.IsValidBalance(toLower, tokenAddress, _registrations, _wrapperLookup))
                 {
                     var toKey = $"{toLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(toKey))
@@ -1089,9 +1091,9 @@ public class NotificationListenerService : BackgroundService
                 var fromLower = from.ToLowerInvariant();
                 var toLower = to.ToLowerInvariant();
 
-                // Update sender balance — only for registered avatars
+                // Update sender balance — account + token must be valid
                 if (from != "0x0000000000000000000000000000000000000000"
-                    && (_registrations.IsRegistered(fromLower)))
+                    && CirclesInvariants.IsValidBalance(fromLower, tokenKey, _registrations, _wrapperLookup))
                 {
                     var fromKey = $"{fromLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(fromKey))
@@ -1103,9 +1105,9 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance — only for registered avatars
+                // Update receiver balance — account + token must be valid
                 if (to != "0x0000000000000000000000000000000000000000"
-                    && (_registrations.IsRegistered(toLower)))
+                    && CirclesInvariants.IsValidBalance(toLower, tokenKey, _registrations, _wrapperLookup))
                 {
                     var toKey = $"{toLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(toKey))

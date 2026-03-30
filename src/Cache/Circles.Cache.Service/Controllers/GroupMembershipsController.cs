@@ -48,7 +48,7 @@ public class GroupMembershipsController : ControllerBase
                 return Ok(new GroupMembersResponse(groupLower, Array.Empty<GroupMembershipResponse>(), lastBlock, timestamp));
 
             var members = _caches.GetGroupMembers(groupLower)
-                .Where(m => (m.ExpiryTime == 0 || m.ExpiryTime > currentBlockTimestamp) && registrations.IsRegistered(m.Member))
+                .Where(m => m.ExpiryTime > currentBlockTimestamp && registrations.IsRegistered(m.Member))
                 .Select(m => new GroupMembershipResponse(
                     Group: groupLower,
                     Member: m.Member,
@@ -95,7 +95,7 @@ public class GroupMembershipsController : ControllerBase
                 return Ok(new MemberGroupsResponse(memberLower, Array.Empty<GroupMembershipResponse>(), lastBlock, timestamp));
 
             var groups = _caches.GetMemberGroups(memberLower)
-                .Where(g => (g.ExpiryTime == 0 || g.ExpiryTime > currentBlockTimestamp) && registrations.IsGroup(g.Group))
+                .Where(g => g.ExpiryTime > currentBlockTimestamp && registrations.IsGroup(g.Group))
                 .Select(g => new GroupMembershipResponse(
                     Group: g.Group,
                     Member: memberLower,
