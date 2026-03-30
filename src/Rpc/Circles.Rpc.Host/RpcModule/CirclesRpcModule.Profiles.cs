@@ -484,7 +484,8 @@ public partial class CirclesRpcModule
             return result;
         }
 
-        // Try cache service first, then fall back to database
+        // Fetch profile content from the profile pinning service (or cache-service fallback).
+        // The pinning service serves from its verified DB — no IPFS gateway dependency.
         if (_settings.UseCacheService && _cacheServiceClient != null)
         {
             try
@@ -511,43 +512,8 @@ public partial class CirclesRpcModule
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Cache service profile content fetch failed, falling back to database");
-                // Fall through to database
+                _logger?.LogWarning(ex, "Profile content service fetch failed — returning nulls for missing CIDs");
             }
-        }
-
-        // Fallback: Fetch missing profiles from database
-        const string query = @"
-            SELECT f.payload
-            FROM unnest(@cids) WITH ORDINALITY as u(_cid, _index)
-            LEFT JOIN ipfs_files f ON f.cid = u._cid
-            ORDER BY u._index";
-
-        await using var connection = await CreateConnectionAsync();
-        await using var command = new NpgsqlCommand(query, connection);
-        command.Parameters.AddWithValue("cids", missingCids.ToArray());
-
-        await using var reader = await command.ExecuteReaderAsync();
-        int readCount = 0;
-        while (await reader.ReadAsync())
-        {
-            int targetIndex = missingCidIndexes[readCount];
-            string targetCid = cids[targetIndex];
-
-            if (!reader.IsDBNull(0))
-            {
-                var payloadStr = reader.GetString(0);
-                var profile = JsonSerializer.Deserialize<JsonElement>(payloadStr);
-                var cleanedProfile = StripJsonLdFields(profile);
-                result[targetIndex] = cleanedProfile;
-                _profileByCidCache.Set(targetCid, cleanedProfile, new MemoryCacheEntryOptions { Size = 1 });
-            }
-            else
-            {
-                result[targetIndex] = null;
-            }
-
-            readCount++;
         }
 
         return result;
