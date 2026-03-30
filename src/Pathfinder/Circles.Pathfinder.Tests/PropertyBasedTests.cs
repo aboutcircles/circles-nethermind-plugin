@@ -54,6 +54,7 @@ public class PropertyBasedTests
         {
             int id = AddressIdPool.IdOf($"{prefix}{i:d34}");
             graph.AddAvatar(id);
+            graph.RegisteredAvatarIds.Add(id);
             avatars.Add(id);
         }
 
@@ -62,6 +63,7 @@ public class PropertyBasedTests
         {
             int id = AddressIdPool.IdOf($"{prefix}a{g:d33}");
             graph.AddGroup(id);
+            graph.RegisteredAvatarIds.Add(id);
             groups.Add(id);
         }
 
@@ -70,6 +72,7 @@ public class PropertyBasedTests
         {
             int routerId = AddressIdPool.IdOf($"{prefix}b{0:d33}");
             graph.SetRouter(routerId);
+            graph.RegisteredAvatarIds.Add(routerId);
         }
 
         // Build trust relationships: each avatar trusts some other avatars' tokens

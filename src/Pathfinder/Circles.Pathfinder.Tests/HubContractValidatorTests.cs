@@ -39,10 +39,13 @@ public class HubContractValidatorTests
         public HashSet<string> Consented { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<(string Truster, string CirclesId)> Trusts { get; set; } = new();
         public bool TrustAll { get; set; }
+        public HashSet<string> Registered { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public bool RegisterAll { get; set; } = true; // Default: all considered registered
 
         public string? RouterAddress => Router;
         public bool IsGroup(string address) => Groups.Contains(address);
         public bool HasAdvancedUsageFlags(string address) => Consented.Contains(address);
+        public bool IsRegistered(string address) => RegisterAll || Registered.Contains(address);
 
         public bool IsTrusted(string truster, string circlesId)
         {
@@ -596,5 +599,227 @@ public class HubContractValidatorTests
 
         Assert.That(errors, Is.Empty,
             $"Quantized+groups graph ({avatars} avatars, {groups} groups) validator errors:\n{string.Join("\n", errors)}");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule 9: AvatarRegistration
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void Rule9_AllRegistered_Passes()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob);
+        state.Registered.Add(Carol);
+
+        var steps = new[] { Step(Alice, Bob, Alice), Step(Bob, Carol, Bob) };
+        var result = HubContractValidator.Validate(steps, Alice, Carol, state);
+
+        var regErrors = result.Violations.Where(v => v.Rule == "AvatarRegistration").ToList();
+        Assert.That(regErrors, Is.Empty);
+    }
+
+    [Test]
+    public void Rule9_UnregisteredFrom_FailsWithError()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob); // Carol not registered
+
+        var steps = new[] { Step(Alice, Bob, Alice), Step(Carol, Bob, Carol) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var regErrors = result.Violations.Where(v => v.Rule == "AvatarRegistration" && v.Severity == "error").ToList();
+        Assert.That(regErrors, Has.Count.GreaterThanOrEqualTo(1));
+        Assert.That(regErrors.Any(v => v.Message.Contains(Carol[..10])), Is.True);
+    }
+
+    [Test]
+    public void Rule9_UnregisteredTo_FailsWithError()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        // Bob not registered
+
+        var steps = new[] { Step(Alice, Bob, Alice) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var regErrors = result.Violations.Where(v => v.Rule == "AvatarRegistration" && v.Severity == "error").ToList();
+        Assert.That(regErrors, Has.Count.GreaterThanOrEqualTo(1));
+    }
+
+    [Test]
+    public void Rule9_UnregisteredSourceSink_FailsWithError()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Bob); // Alice and Carol not registered
+
+        var steps = new[] { Step(Alice, Bob, Alice), Step(Bob, Carol, Bob) };
+        var result = HubContractValidator.Validate(steps, Alice, Carol, state);
+
+        var regErrors = result.Violations.Where(v => v.Rule == "AvatarRegistration" && v.Severity == "error").ToList();
+        Assert.That(regErrors, Has.Count.GreaterThanOrEqualTo(2), "Both source and sink should be flagged");
+    }
+
+    [Test]
+    public void Rule9_RouterExemptFromRegistrationCheck()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob);
+        state.Registered.Add(GroupA);
+        state.Groups.Add(GroupA);
+        // Router NOT in Registered — but should be exempt
+
+        var steps = new[]
+        {
+            Step(Alice, Router, Alice),
+            Step(Router, GroupA, Alice),
+            Step(GroupA, Bob, GroupA),
+        };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var regErrors = result.Violations.Where(v => v.Rule == "AvatarRegistration").ToList();
+        Assert.That(regErrors, Is.Empty, "Router should be exempt from registration check");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule 10: GroupRegistration
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void Rule10_ValidGroupMint_Passes()
+    {
+        var state = DefaultState();
+        state.Groups.Add(GroupA);
+
+        var steps = new[]
+        {
+            Step(Alice, Router, Alice),
+            Step(Router, GroupA, Alice),  // collateral
+            Step(GroupA, Bob, GroupA),     // mint
+        };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var groupErrors = result.Violations.Where(v => v.Rule == "GroupRegistration").ToList();
+        Assert.That(groupErrors, Is.Empty);
+    }
+
+    [Test]
+    public void Rule10_NonGroupInMintPattern_FailsWithError()
+    {
+        var state = DefaultState();
+        // Carol is NOT a group, but appears in group-mint pattern
+        state.RegisterAll = true;
+
+        var steps = new[]
+        {
+            Step(Alice, Router, Alice),
+            Step(Router, Carol, Alice),   // "collateral" to non-group
+            Step(Carol, Bob, Carol),      // Carol sends own token (like a group mint)
+        };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var groupErrors = result.Violations.Where(v => v.Rule == "GroupRegistration" && v.Severity == "error").ToList();
+        Assert.That(groupErrors, Has.Count.GreaterThanOrEqualTo(1));
+    }
+
+    [Test]
+    public void Rule10_NormalTransfer_NotFlagged()
+    {
+        var state = DefaultState();
+
+        // Simple A→B transfer — no router, no group pattern
+        var steps = new[] { Step(Alice, Bob, Alice) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var groupErrors = result.Violations.Where(v => v.Rule == "GroupRegistration").ToList();
+        Assert.That(groupErrors, Is.Empty);
+    }
+
+    [Test]
+    public void Rule10_NoRouter_Skips()
+    {
+        var state = new MockContractState { Router = null, TrustAll = true };
+
+        var steps = new[] { Step(Alice, Bob, Alice) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var groupErrors = result.Violations.Where(v => v.Rule == "GroupRegistration").ToList();
+        Assert.That(groupErrors, Is.Empty, "No router means no group minting possible");
+    }
+
+    // ═══════════════════════════════════════════
+    // Rule 11: TokenIdValidity
+    // ═══════════════════════════════════════════
+
+    [Test]
+    public void Rule11_RegisteredTokenOwner_Passes()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob);
+
+        var steps = new[] { Step(Alice, Bob, Alice) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var tokenErrors = result.Violations.Where(v => v.Rule == "TokenIdValidity").ToList();
+        Assert.That(tokenErrors, Is.Empty);
+    }
+
+    [Test]
+    public void Rule11_UnregisteredTokenOwner_FailsWithError()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob);
+        // Carol not registered — used as TokenOwner
+
+        var steps = new[] { Step(Alice, Bob, Carol) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var tokenErrors = result.Violations.Where(v => v.Rule == "TokenIdValidity" && v.Severity == "error").ToList();
+        Assert.That(tokenErrors, Has.Count.GreaterThanOrEqualTo(1));
+    }
+
+    [Test]
+    public void Rule11_GroupAsTokenOwner_Passes()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob);
+        state.Registered.Add(GroupA);
+        state.Groups.Add(GroupA);
+
+        var steps = new[] { Step(Alice, Bob, GroupA) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var tokenErrors = result.Violations.Where(v => v.Rule == "TokenIdValidity").ToList();
+        Assert.That(tokenErrors, Is.Empty, "Groups are registered — valid token owner");
+    }
+
+    [Test]
+    public void Rule11_RouterAsTokenOwner_Exempt()
+    {
+        var state = DefaultState();
+        state.RegisterAll = false;
+        state.Registered.Add(Alice);
+        state.Registered.Add(Bob);
+        // Router NOT in Registered but should be exempt
+
+        var steps = new[] { Step(Alice, Bob, Router) };
+        var result = HubContractValidator.Validate(steps, Alice, Bob, state);
+
+        var tokenErrors = result.Violations.Where(v => v.Rule == "TokenIdValidity").ToList();
+        Assert.That(tokenErrors, Is.Empty, "Router should be exempt from token validity check");
     }
 }
