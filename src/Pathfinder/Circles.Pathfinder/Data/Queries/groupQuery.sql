@@ -1,4 +1,4 @@
 SELECT
     "group" as group_address
 FROM "CrcV2_RegisterGroup"
-WHERE "mint" = LOWER(@router);
+WHERE "mint" = LOWER(@mintPolicy);

@@ -97,7 +97,7 @@ public class ProxyLoadGraph : ILoadGraph
         WHERE t2."group" IS NULL
         """;
 
-    // Group query with temporal filter — {1} = router address from Settings.GroupRouterAddress
+    // Group query with temporal filter — {1} = mint policy address from Settings.StandardMintPolicyAddress
     private const string GroupQueryTemplate = """
         SELECT "group" AS group_address
         FROM "CrcV2_RegisterGroup"
@@ -105,7 +105,7 @@ public class ProxyLoadGraph : ILoadGraph
           AND "blockNumber" <= {0}
         """;
 
-    // Group trust query with temporal filter: uses same trust_state CTE — {1} = router address
+    // Group trust query with temporal filter — {1} = mint policy address
     private const string GroupTrustQueryTemplate = """
         WITH trust_state AS (
             SELECT truster, trustee, "expiryTime",
@@ -226,7 +226,7 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<string> LoadGroups()
     {
-        var query = string.Format(GroupQueryTemplate, _client.BlockNumber, _settings.GroupRouterAddress);
+        var query = string.Format(GroupQueryTemplate, _client.BlockNumber, _settings.StandardMintPolicyAddress);
         var response = _client.ExecuteQueryAsync(query, maxRows: 10000).GetAwaiter().GetResult();
         var results = new List<string>();
 
@@ -241,7 +241,7 @@ public class ProxyLoadGraph : ILoadGraph
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber, _settings.GroupRouterAddress);
+        var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber, _settings.StandardMintPolicyAddress);
         var response = _client.ExecuteQueryAsync(query, maxRows: 100000).GetAwaiter().GetResult();
         var results = new List<(string GroupAddress, string TrustedToken)>();
 

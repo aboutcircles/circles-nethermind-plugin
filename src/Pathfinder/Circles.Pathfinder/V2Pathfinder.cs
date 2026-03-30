@@ -157,6 +157,12 @@ public class V2Pathfinder
         _logger.LogInformation("[{ReqId}] Graph: avatars={Avatars}, groups={Groups}, edges={Edges}",
             reqId, capacityGraph.AvatarNodes.Count, capacityGraph.GroupNodes.Count, capacityGraph.Edges.Count);
 
+        if (capacityGraph.GroupNodes.Count == 0)
+        {
+            _logger.LogWarning("[{ReqId}] Graph has 0 groups — group minting paths will be unavailable. " +
+                "Check group loading (SQL fallback may have broken filter, or Cache Service not returning groups).", reqId);
+        }
+
         return new PipelineContext
         {
             Graph = capacityGraph,

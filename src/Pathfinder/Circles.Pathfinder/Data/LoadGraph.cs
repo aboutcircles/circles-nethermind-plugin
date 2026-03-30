@@ -215,7 +215,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -240,7 +240,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -353,7 +353,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -376,7 +376,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())

@@ -128,7 +128,7 @@ public class IncrementalLoadGraph : ILoadGraph
     /// </summary>
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
-        // Use router-filtered groups from DB (matches groupQuery.sql parameterized by GroupRouterAddress)
+        // Groups filtered by standard mint policy from DB (matches groupQuery.sql parameterized by StandardMintPolicyAddress)
         var routerGroups = new HashSet<string>(_inner.LoadGroups().Select(g => g.ToLowerInvariant()));
         return _trustState.GetGroupTrusts(routerGroups, _maxBlockTimestamp);
     }
