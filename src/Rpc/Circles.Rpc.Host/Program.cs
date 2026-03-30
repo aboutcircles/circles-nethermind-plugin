@@ -726,6 +726,7 @@ static async Task<object> DispatchSingleRequest(
             "circles_getTokenHolders" => await ReflectionHandler(request, rpcModule),
             "circlesV2_findPath" => await HandleV2FindPath(request, rpcModule),
             // System & Query Methods
+            "circles_getBlockByTimestamp" => await HandleGetBlockByTimestamp(request, rpcModule),
             "circles_events" => await HandleEventsLegacy(request, rpcModule),
             "circles_events_paginated" => await HandleEventsPaginated(request, rpcModule),
             "circles_health" => await HandleHealth(request, rpcModule),
@@ -1513,6 +1514,23 @@ static async Task<object> ReflectionHandler(JsonRpcRequest request, CirclesRpcMo
     }
 
     return result ?? new object();
+}
+
+static async Task<object> HandleGetBlockByTimestamp(JsonRpcRequest request, CirclesRpcModule rpcModule)
+{
+    var parameters = JsonSerializer.Deserialize<JsonElement[]>(request.Params.GetRawText());
+
+    if (parameters == null || parameters.Length == 0 || parameters[0].ValueKind == JsonValueKind.Null)
+        throw new ArgumentException("timestamp parameter is required");
+
+    if (parameters[0].ValueKind != JsonValueKind.Number || !parameters[0].TryGetInt64(out var timestamp))
+        throw new ArgumentException("timestamp must be an integer");
+
+    string? direction = null;
+    if (parameters.Length > 1 && parameters[1].ValueKind != JsonValueKind.Null)
+        direction = parameters[1].GetString();
+
+    return await rpcModule.GetBlockByTimestamp(timestamp, direction);
 }
 
 static async Task<object> HandleHealth(JsonRpcRequest request, CirclesRpcModule rpcModule)

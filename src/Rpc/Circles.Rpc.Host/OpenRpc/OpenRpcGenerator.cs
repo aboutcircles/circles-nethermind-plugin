@@ -152,6 +152,11 @@ public static class OpenRpcGenerator
             "Execute a structured database query with cursor pagination",
             "Server-side cursor pagination version of `circles_query`. Returns `{columns, rows, hasMore, nextCursor}`. Pass `nextCursor` as the `cursor` parameter in subsequent calls.\n\n**Use this for**: Iterating through large query results without loading everything into memory.\n\n**Tip**: Pair with `circles_tables` to discover available tables and their columns."),
 
+        // ── Block Lookup ─────────────────────────────────────────────────────
+        ("circles_getBlockByTimestamp", "GetBlockByTimestamp", "Blocks",
+            "Convert a Unix timestamp to the nearest block number",
+            "Returns the block number closest to the given Unix timestamp. Use `direction: \"before\"` (default) for the block at or before the timestamp, or `\"after\"` for the block at or after. Useful for converting human-readable date ranges into block ranges for `circles_events` queries.\n\n**Common use case**: An explorer wants events between Jan 1 and Feb 1 — call this twice to get fromBlock and toBlock, then pass them to `circles_events`."),
+
         // ── System ───────────────────────────────────────────────────────────
         ("circles_health", "GetHealth", "System",
             "Check service health and sync status",
@@ -457,6 +462,13 @@ public static class OpenRpcGenerator
                 "Maximum number of holders to return. Default: 100, max: 200."),
             Param("cursor", false, "string",
                 "Cursor from a previous response's nextCursor field for pagination (account address).")
+        ],
+        ["circles_getBlockByTimestamp"] =
+        [
+            Param("timestamp", true, "integer",
+                "Unix timestamp in seconds (e.g., 1700000000 for 2023-11-14). Must be non-negative."),
+            Param("direction", false, "string",
+                "Lookup direction: 'before' (default) returns block at or before timestamp, 'after' returns block at or after. Useful for range queries: use 'after' for fromBlock, 'before' for toBlock.")
         ],
         ["circles_health"] =
         [
@@ -1114,6 +1126,28 @@ public static class OpenRpcGenerator
                 [
                     new() { Name = "tokenAddress", Value = ExampleToken },
                     new() { Name = "limit", Value = 100 },
+                ],
+            }
+        ],
+        ["circles_getBlockByTimestamp"] =
+        [
+            new()
+            {
+                Name = "Find block at a date (before)",
+                Description = "Get the block at or before 2025-01-31 00:00:00 UTC",
+                Params =
+                [
+                    new() { Name = "timestamp", Value = 1738281600 },
+                ],
+            },
+            new()
+            {
+                Name = "Find block at a date (after)",
+                Description = "Get the block at or after 2025-02-28 00:00:00 UTC",
+                Params =
+                [
+                    new() { Name = "timestamp", Value = 1740700800 },
+                    new() { Name = "direction", Value = "after" },
                 ],
             }
         ],
