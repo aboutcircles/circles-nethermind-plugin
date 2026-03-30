@@ -16,6 +16,9 @@ public class V2Pathfinder
     private readonly ILogger _logger;
     private readonly Settings _settings;
 
+    /// <summary>Strip CR/LF from values before logging (defense-in-depth against log forging).</summary>
+    private static string? Sanitize(string? v) => v?.Replace("\r", "").Replace("\n", "");
+
     public V2Pathfinder(ILogger<V2Pathfinder>? logger = null, Settings? settings = null)
     {
         _logger = logger ?? NullLogger<V2Pathfinder>.Instance;
@@ -150,13 +153,13 @@ public class V2Pathfinder
         if (!capacityGraph.AvatarNodes.ContainsKey(sourceId))
         {
             _logger.LogWarning("[{ReqId}] Source '{Source}' not in graph snapshot (block={Block}) — returning zero flow",
-                reqId, request.Source, capacityGraph.Block);
+                reqId, Sanitize(request.Source), capacityGraph.Block);
             return null;
         }
         if (!capacityGraph.AvatarNodes.ContainsKey(effSink))
         {
             _logger.LogWarning("[{ReqId}] Sink '{Sink}' not in graph snapshot (block={Block}) — returning zero flow",
-                reqId, request.Sink, capacityGraph.Block);
+                reqId, Sanitize(request.Sink), capacityGraph.Block);
             return null;
         }
 
@@ -175,7 +178,7 @@ public class V2Pathfinder
 
             _logger.LogInformation(
                 "[{ReqId}] Request: from={Source} to={Sink} amount={Amount} block={Block} flags=[{Flags}]",
-                reqId, request.Source, request.Sink, targetFlow, capacityGraph.Block,
+                reqId, Sanitize(request.Source), Sanitize(request.Sink), targetFlow, capacityGraph.Block,
                 flags.Count > 0 ? string.Join(",", flags) : "none");
         }
 

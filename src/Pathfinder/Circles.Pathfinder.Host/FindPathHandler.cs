@@ -88,10 +88,15 @@ internal sealed class FindPathHandler(
         int? maxTransfers = null, bool? quantizedMode = null,
         bool? debugShowIntermediateSteps = null)
     {
+        // Normalize and sanitize addresses once so all downstream logging is safe
+        // (prevents log forging via embedded \r\n in user-supplied addresses).
+        var normalizedFrom = from.ToLowerInvariant().Replace("\r", string.Empty).Replace("\n", string.Empty);
+        var normalizedTo = to.ToLowerInvariant().Replace("\r", string.Empty).Replace("\n", string.Empty);
+
         return new FlowRequest
         {
-            Source = from.ToLowerInvariant(),
-            Sink = to.ToLowerInvariant(),
+            Source = normalizedFrom,
+            Sink = normalizedTo,
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
@@ -110,6 +115,12 @@ internal sealed class FindPathHandler(
     /// Execute a solver call with semaphore guarding, graph rent, timeout, metrics, and exception handling.
     /// The <paramref name="solve"/> delegate receives the rented capacity graph and returns the result to serialize.
     /// </summary>
+    /// <summary>
+    /// Strip CR/LF from user-supplied values before logging (prevents log forging).
+    /// </summary>
+    private static string? SanitizeForLog(string? value) =>
+        value?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+
     internal async Task<IResult> ExecuteWithGuard(
         string route,
         FlowRequest request,
@@ -215,7 +226,7 @@ internal sealed class FindPathHandler(
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
             log.LogError("{Route} solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
-                route, settings.SolverTimeoutSeconds, request.Source, request.Sink, request.TargetFlow);
+                route, settings.SolverTimeoutSeconds, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow);
             return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
         }
         catch (ArgumentException ex)
@@ -228,7 +239,7 @@ internal sealed class FindPathHandler(
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
             log.LogError(ex, "{Route} threw exception for request: from={From}, to={To}, amount={Amount}",
-                route, request.Source, request.Sink, request.TargetFlow);
+                route, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow);
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
         finally

@@ -160,116 +160,116 @@ public class NotificationListenerService : BackgroundService
         await _notificationGate.WaitAsync(ct);
         try
         {
-        _logger.LogDebug("Received notification ping");
+            _logger.LogDebug("Received notification ping");
 
-        // Treat the notification as a ping - don't trust the payload content
-        // Instead, query the database for the actual latest blocks
-        List<(long BlockNumber, string BlockHash)> recentBlocks = new();
+            // Treat the notification as a ping - don't trust the payload content
+            // Instead, query the database for the actual latest blocks
+            List<(long BlockNumber, string BlockHash)> recentBlocks = new();
 
-        await WithReadonlyConnectionAsync(async (conn, token) =>
-        {
-            recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, token);
-        }, ct);
-
-        if (recentBlocks.Count == 0)
-        {
-            _logger.LogWarning("No blocks found in System_Block table");
-            return;
-        }
-
-        // Update the block ring buffer and detect any reorgs
-        var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(recentBlocks);
-
-        if (reorgPoint.HasValue)
-        {
-            if (reorgPoint.Value <= _state.WarmupTargetBlock)
+            await WithReadonlyConnectionAsync(async (conn, token) =>
             {
+                recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, token);
+            }, ct);
+
+            if (recentBlocks.Count == 0)
+            {
+                _logger.LogWarning("No blocks found in System_Block table");
+                return;
+            }
+
+            // Update the block ring buffer and detect any reorgs
+            var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(recentBlocks);
+
+            if (reorgPoint.HasValue)
+            {
+                if (reorgPoint.Value <= _state.WarmupTargetBlock)
+                {
+                    _logger.LogWarning(
+                        "Detected reorg at block {ReorgBlock} crossing warmup seed boundary {WarmupTarget}. Triggering full re-warmup.",
+                        reorgPoint.Value,
+                        _state.WarmupTargetBlock);
+
+                    CacheMetrics.ReorgsDetected.Inc();
+                    TriggerFullRewarmup();
+                    return;
+                }
+
                 _logger.LogWarning(
-                    "Detected reorg at block {ReorgBlock} crossing warmup seed boundary {WarmupTarget}. Triggering full re-warmup.",
-                    reorgPoint.Value,
-                    _state.WarmupTargetBlock);
+                    "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
+                    reorgPoint.Value, reorgPoint.Value);
 
+                // Track reorg in metrics
                 CacheMetrics.ReorgsDetected.Inc();
-                TriggerFullRewarmup();
-                return;
+
+                // Rollback all caches to the reorg point. If the reorg is deeper than
+                // RollbackCapacity, RollbackAll throws InvalidOperationException — in that
+                // case the only safe recovery is a full re-warmup.
+                try
+                {
+                    _caches.RollbackAll(reorgPoint.Value);
+
+                    // Rebuild secondary indexes after rollback
+                    _logger.LogInformation("Rebuilding secondary indexes after rollback...");
+                    _caches.RebuildSecondaryIndexes();
+
+                    // Update state
+                    _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
+
+                    _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
+                        reorgPoint.Value);
+                }
+                catch (InvalidOperationException rollbackEx)
+                {
+                    _logger.LogError(rollbackEx,
+                        "Reorg at block {ReorgBlock} exceeds rollback capacity. Triggering full re-warmup.",
+                        reorgPoint.Value);
+
+                    TriggerFullRewarmup();
+                    return;
+                }
             }
 
-            _logger.LogWarning(
-                "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
-                reorgPoint.Value, reorgPoint.Value);
+            // Process any new blocks that we haven't processed yet
+            var latestBlock = recentBlocks.Max(b => b.BlockNumber);
+            var fromBlock = _state.LastProcessedBlock + 1;
 
-            // Track reorg in metrics
-            CacheMetrics.ReorgsDetected.Inc();
-
-            // Rollback all caches to the reorg point. If the reorg is deeper than
-            // RollbackCapacity, RollbackAll throws InvalidOperationException — in that
-            // case the only safe recovery is a full re-warmup.
-            try
+            if (fromBlock <= latestBlock)
             {
-                _caches.RollbackAll(reorgPoint.Value);
+                var blocksProcessed = latestBlock - fromBlock + 1;
+                _logger.LogInformation("Processing block range {FromBlock} → {ToBlock} ({Count} blocks)",
+                    fromBlock, latestBlock, blocksProcessed);
 
-                // Rebuild secondary indexes after rollback
-                _logger.LogInformation("Rebuilding secondary indexes after rollback...");
-                _caches.RebuildSecondaryIndexes();
+                try
+                {
+                    // Process new blocks
+                    await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
 
-                // Update state
-                _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
+                    _state.LastProcessedBlock = latestBlock;
+                    _state.CurrentBlockTimestamp = await GetBlockTimestampAsync(latestBlock, ct);
 
-                _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
-                    reorgPoint.Value);
+                    // Track blocks processed
+                    CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
+
+                    _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
+                        fromBlock, latestBlock, _state.LastProcessedBlock);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Failed to process block range {FromBlock} → {ToBlock}", fromBlock, latestBlock);
+
+                    // Attempt to rollback caches to restore consistency with _state.LastProcessedBlock
+                    // The rollback target is fromBlock (first unprocessed block), which restores state to
+                    // what it was after processing (LastProcessedBlock = fromBlock - 1)
+                    await AttemptRecoveryRollbackAsync(fromBlock, ct);
+
+                    throw;
+                }
             }
-            catch (InvalidOperationException rollbackEx)
+            else
             {
-                _logger.LogError(rollbackEx,
-                    "Reorg at block {ReorgBlock} exceeds rollback capacity. Triggering full re-warmup.",
-                    reorgPoint.Value);
-
-                TriggerFullRewarmup();
-                return;
+                _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
+                    _state.LastProcessedBlock, latestBlock);
             }
-        }
-
-        // Process any new blocks that we haven't processed yet
-        var latestBlock = recentBlocks.Max(b => b.BlockNumber);
-        var fromBlock = _state.LastProcessedBlock + 1;
-
-        if (fromBlock <= latestBlock)
-        {
-            var blocksProcessed = latestBlock - fromBlock + 1;
-            _logger.LogInformation("Processing block range {FromBlock} → {ToBlock} ({Count} blocks)",
-                fromBlock, latestBlock, blocksProcessed);
-
-            try
-            {
-                // Process new blocks
-                await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
-
-                _state.LastProcessedBlock = latestBlock;
-                _state.CurrentBlockTimestamp = await GetBlockTimestampAsync(latestBlock, ct);
-
-                // Track blocks processed
-                CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
-
-                _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
-                    fromBlock, latestBlock, _state.LastProcessedBlock);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogError(ex, "Failed to process block range {FromBlock} → {ToBlock}", fromBlock, latestBlock);
-
-                // Attempt to rollback caches to restore consistency with _state.LastProcessedBlock
-                // The rollback target is fromBlock (first unprocessed block), which restores state to
-                // what it was after processing (LastProcessedBlock = fromBlock - 1)
-                await AttemptRecoveryRollbackAsync(fromBlock, ct);
-
-                throw;
-            }
-        }
-        else
-        {
-            _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
-                _state.LastProcessedBlock, latestBlock);
-        }
         }
         finally
         {
