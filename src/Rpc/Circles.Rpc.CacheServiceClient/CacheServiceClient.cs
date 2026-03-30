@@ -13,11 +13,13 @@ public class CacheServiceClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<CacheServiceClient>? _logger;
     private readonly string _baseUrl;
+    private readonly string _profileContentBaseUrl;
 
-    public CacheServiceClient(HttpClient httpClient, string baseUrl, ILogger<CacheServiceClient>? logger = null)
+    public CacheServiceClient(HttpClient httpClient, string baseUrl, ILogger<CacheServiceClient>? logger = null, string? profileContentBaseUrl = null)
     {
         _httpClient = httpClient;
         _baseUrl = baseUrl.TrimEnd('/');
+        _profileContentBaseUrl = (profileContentBaseUrl ?? baseUrl).TrimEnd('/');
         _logger = logger;
     }
 
@@ -323,7 +325,7 @@ public class CacheServiceClient
     {
         try
         {
-            var url = $"{_baseUrl}/api/profiles/content/{cid}";
+            var url = $"{_profileContentBaseUrl}/api/profiles/content/{cid}";
             return await _httpClient.GetFromJsonAsync<ProfileContentResponse>(url, cancellationToken);
         }
         catch (Exception ex)
@@ -340,7 +342,7 @@ public class CacheServiceClient
     {
         try
         {
-            var url = $"{_baseUrl}/api/profiles/content/batch";
+            var url = $"{_profileContentBaseUrl}/api/rawBatch";
             var request = new ProfileContentBatchRequest(cids);
             var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
             response.EnsureSuccessStatusCode();
