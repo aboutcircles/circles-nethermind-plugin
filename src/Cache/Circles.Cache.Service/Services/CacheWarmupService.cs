@@ -742,7 +742,9 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loading V2 balances from view...");
 
         // Build balances from transfers bounded to the warmup target block.
-        // Registration filter matches balanceQuery.sql: both account AND tokenAddress must be registered.
+        // Token-only filter: tokenAddress (= token owner) must be registered.
+        // Account is NOT filtered — stopped avatars can still hold valid tokens.
+        // (PathfinderGraphController applies the stricter IsValidBalance check at read time.)
         const string sql = @"
             WITH " + RegisteredAvatarsCte + @",
             account_balances AS (
@@ -779,7 +781,6 @@ public class CacheWarmupService : BackgroundService
             )
             SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
             FROM account_balances ab
-            INNER JOIN registered_avatars ra_account ON ra_account.avatar = ab.account
             INNER JOIN registered_avatars ra_token ON ra_token.avatar = ab.""tokenAddress""
             WHERE ab.account != '0x0000000000000000000000000000000000000000'";
 
@@ -872,8 +873,7 @@ public class CacheWarmupService : BackgroundService
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
             )
             SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
-            FROM account_balances ab
-            INNER JOIN registered_avatars ra ON ra.avatar = ab.account";
+            FROM account_balances ab";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
