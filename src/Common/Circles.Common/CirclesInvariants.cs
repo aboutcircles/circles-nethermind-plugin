@@ -37,8 +37,9 @@ public static class CirclesInvariants
         long currentTimestamp,
         IRegistrationSet registrations)
     {
-        // expiryTime=0 is an explicit untrust in Hub.sol. The write path (NotificationListenerService)
-        // removes entries on 0, so this is defensive — aligns the predicate with the write semantics.
+        // Hub.sol: expiryTime=0 means explicit untrust (or never set). Reject.
+        // The cache write path removes 0-entries and warmup SQL excludes them,
+        // so this is defense-in-depth — matches InMemoryTrustState semantics.
         if (expiryTime == 0 || expiryTime <= currentTimestamp)
             return false;
 
@@ -74,7 +75,7 @@ public static class CirclesInvariants
         if (!routerGroups.Contains(groupAddress))
             return false;
 
-        // Skip revoked/expired trust
+        // Hub.sol: expiryTime=0 means revoked/never-set. Reject.
         if (expiryTime == 0 || expiryTime <= currentTimestamp)
             return false;
 
@@ -155,7 +156,7 @@ public static class CirclesInvariants
         long currentTimestamp,
         IRegistrationSet registrations)
     {
-        // Must not be expired
+        // Hub.sol: expiryTime=0 means revoked/never-set. Reject.
         if (expiryTime == 0 || expiryTime <= currentTimestamp)
             return false;
 

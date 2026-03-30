@@ -87,10 +87,11 @@ public class InMemoryTrustState
 
     /// <summary>
     /// Get group trust edges (replicates groupTrustQuery.sql logic).
-    /// Returns trusts where the truster IS a group and trust hasn't expired.
+    /// Returns trusts where the truster IS a group, trustee is a registered avatar,
+    /// and trust hasn't expired.
     /// </summary>
     public IEnumerable<(string GroupAddress, string TrustedToken)> GetGroupTrusts(
-        HashSet<string> groupSet, long maxBlockTimestamp)
+        HashSet<string> groupSet, long maxBlockTimestamp, IReadOnlySet<string>? avatarSet = null)
     {
         foreach (var kv in _state)
         {
@@ -102,6 +103,9 @@ public class InMemoryTrustState
 
             // Filter expired
             if (expiryTime <= maxBlockTimestamp) continue;
+
+            // Trustee must be a registered avatar (mirrors groupTrustQuery.sql JOIN)
+            if (avatarSet != null && !avatarSet.Contains(trustee)) continue;
 
             yield return (truster, trustee);
         }

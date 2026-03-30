@@ -104,16 +104,16 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         var capacityGraph = new CapacityGraph();
 
-        // Add all avatar nodes from both graphs
-        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
-
-        // Ensure ALL registered avatars are valid source/sink candidates
+        // Build registered avatar set FIRST (needed for filtering in AddAllAvatarNodes)
         foreach (var avatar in loadGraph.LoadRegisteredAvatars())
         {
             var id = AddressIdPool.IdOf(avatar.ToLowerInvariant());
             capacityGraph.AddAvatar(id);
             capacityGraph.RegisteredAvatarIds.Add(id);
         }
+
+        // Add all avatar nodes from both graphs (filtered against registered set)
+        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
         // Load wrapper→avatar mappings (for DTO output resolution)
         LoadWrapperMappings(capacityGraph, cachedGroupData);
@@ -134,10 +134,12 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
 
         // Add ALL trust-based out-edges (no filters)
-        AddTokenPoolOutEdges(
+        var (totalGroupTokenEdges, routerFilteredCount) = AddTokenPoolOutEdges(
             capacityGraph, trustLookup,
             virtualSink: null, virtualSinkTrustedTokens: new HashSet<int>(),
             sinkId: null, new HashSet<int>(), new HashSet<int>());
+        capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
+        capacityGraph.RouterFilteredEdges = routerFilteredCount;
 
         // Add ALL group minting edges (no filters)
         AddGroupMintingEdges(
@@ -167,20 +169,27 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         var capacityGraph = new CapacityGraph();
 
-        // STEP 1: Add all avatar nodes from both graphs
-        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
-
-        // STEP 1a: Ensure ALL registered avatars are valid source/sink candidates
+        // STEP 1: Build registered avatar set FIRST (needed for filtering)
         if (cachedGroupData?.RegisteredAvatarIds != null)
         {
             foreach (var avatarId in cachedGroupData.RegisteredAvatarIds)
+            {
                 capacityGraph.AddAvatar(avatarId);
+                capacityGraph.RegisteredAvatarIds.Add(avatarId);
+            }
         }
         else
         {
             foreach (var avatar in loadGraph.LoadRegisteredAvatars())
-                capacityGraph.AddAvatar(AddressIdPool.IdOf(avatar.ToLowerInvariant()));
+            {
+                var id = AddressIdPool.IdOf(avatar.ToLowerInvariant());
+                capacityGraph.AddAvatar(id);
+                capacityGraph.RegisteredAvatarIds.Add(id);
+            }
         }
+
+        // STEP 1a: Add all avatar nodes from both graphs (filtered against registered set)
+        AddAllAvatarNodes(capacityGraph, balanceGraph, trustLookup);
 
         // STEP 1b: Add avatars referenced by simulated balances (holders + tokens)
         var simulated = NormalizeSimulatedBalances(request.SimulatedBalances);
@@ -211,10 +220,18 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         LoadConsentedFlowFlags(capacityGraph, cachedGroupData);
 
         // STEP 1g: Add simulated consented avatars (for testing)
+        // Capped at 100 to limit AddressIdPool growth from user input
         if (request?.SimulatedConsentedAvatars != null && request.SimulatedConsentedAvatars.Count > 0)
         {
+            const int maxSimulatedConsentedAvatars = 100;
+            if (request.SimulatedConsentedAvatars.Count > maxSimulatedConsentedAvatars)
+            {
+                _logger.LogWarning("SimulatedConsentedAvatars count {Count} exceeds limit {Limit}, truncating",
+                    request.SimulatedConsentedAvatars.Count, maxSimulatedConsentedAvatars);
+            }
+
             int addedCount = 0;
-            foreach (var avatar in request.SimulatedConsentedAvatars)
+            foreach (var avatar in request.SimulatedConsentedAvatars.Take(maxSimulatedConsentedAvatars))
             {
                 if (string.IsNullOrWhiteSpace(avatar))
                     continue;
@@ -250,26 +267,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         var sourceEqualsSink = request?.Source?.Trim().ToLowerInvariant() == request?.Sink?.Trim().ToLowerInvariant();
 
-        // Setup key filters
-        var toTokensFilter = request?.ToTokens?
-                                 .Select(AddressIdPool.IdOf)
-                                 .ToHashSet()
-                             ?? new HashSet<int>();
-
-        var fromTokensFilter = request?.FromTokens?
-                                   .Select(AddressIdPool.IdOf)
-                                   .ToHashSet()
-                               ?? new HashSet<int>();
-
-        var excludedFromTokensFilter = request?.ExcludedFromTokens?
-                                           .Select(AddressIdPool.IdOf)
-                                           .ToHashSet()
-                                       ?? new HashSet<int>();
-
-        var excludedToTokensFilter = request?.ExcludedToTokens?
-                                         .Select(AddressIdPool.IdOf)
-                                         .ToHashSet()
-                                     ?? new HashSet<int>();
+        // Setup key filters — use TryIdOf to avoid permanently allocating unknown
+        // addresses in the global AddressIdPool (M2: unbounded memory growth).
+        // Addresses not already in the pool can't match any graph node.
+        var toTokensFilter = ResolveFilterAddresses(request?.ToTokens);
+        var fromTokensFilter = ResolveFilterAddresses(request?.FromTokens);
+        var excludedFromTokensFilter = ResolveFilterAddresses(request?.ExcludedFromTokens);
+        var excludedToTokensFilter = ResolveFilterAddresses(request?.ExcludedToTokens);
 
         // STEP 1h: Expand filters with wrapper IDs when withWrap is enabled.
         // User-provided filters contain avatar addresses, but wrapped balances use wrapper
@@ -294,22 +298,26 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         if (sourceId != null && capacityGraph.IsGroup(sourceId.Value))
         {
-            throw new ArgumentException($"Groups cannot be source. '{request!.Source}' is a group.");
+            _logger.LogWarning("Rejected source '{Source}': address is a group", request!.Source);
+            throw new ArgumentException("Invalid source address.");
         }
 
         if (sinkId != null && capacityGraph.IsGroup(sinkId.Value))
         {
-            throw new ArgumentException($"Groups cannot be sink. '{request!.Sink}' is a group.");
+            _logger.LogWarning("Rejected sink '{Sink}': address is a group", request!.Sink);
+            throw new ArgumentException("Invalid sink address.");
         }
 
         if (sourceId != null && capacityGraph.IsRouter(sourceId.Value))
         {
-            throw new ArgumentException($"Router cannot be source. '{request!.Source}' is the router.");
+            _logger.LogWarning("Rejected source '{Source}': address is the router", request!.Source);
+            throw new ArgumentException("Invalid source address.");
         }
 
         if (sinkId != null && capacityGraph.IsRouter(sinkId.Value))
         {
-            throw new ArgumentException($"Router cannot be sink. '{request!.Sink}' is the router.");
+            _logger.LogWarning("Rejected sink '{Sink}': address is the router", request!.Sink);
+            throw new ArgumentException("Invalid sink address.");
         }
 
         // STEP 2a: Filter ToTokens to only include tokens the sink actually trusts
@@ -459,7 +467,7 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
 
         // STEP 6/7/8: Add trust-based out-edges from TokenPool→avatars (+ virtual sink in swap mode)
         // Groups can now receive tokens directly
-        AddTokenPoolOutEdges(
+        var (totalGroupTokenEdges, routerFilteredCount) = AddTokenPoolOutEdges(
             capacityGraph,
             mergedTrust,
             virtualSinkAddress,
@@ -467,6 +475,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             sinkId,
             toTokensFilter,
             excludedToTokensFilter);
+        capacityGraph.TotalGroupTokenEdges = totalGroupTokenEdges;
+        capacityGraph.RouterFilteredEdges = routerFilteredCount;
 
         // STEP 8: Add Group minting edges (Group → Avatar with group token)
         AddGroupMintingEdges(
@@ -784,8 +794,9 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
     }
 
-    // Modified version of AddTokenPoolOutEdges that allows Groups to receive tokens directly
-    private void AddTokenPoolOutEdges(
+    // Modified version of AddTokenPoolOutEdges that allows Groups to receive tokens directly.
+    // Returns (totalGroupTokenEdges, routerFilteredCount) for metrics.
+    private (int TotalGroupTokenEdges, int RouterFilteredCount) AddTokenPoolOutEdges(
         CapacityGraph g,
         IReadOnlyDictionary<int, HashSet<int>> accountTrusts,
         int? virtualSink,
@@ -831,12 +842,15 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         }
 
         int routerFilteredCount = 0;
+        int totalGroupTokenEdges = 0;
         foreach (var groupId in g.GroupNodes)
         {
             if (g.GroupTrustedTokens.TryGetValue(groupId, out var trustedTokens))
             {
                 foreach (var token in trustedTokens)
                 {
+                    totalGroupTokenEdges++;
+
                     // Fail-closed: if router trusts are unknown, block the edge.
                     // Missing router trust data would otherwise allow invalid paths
                     // that revert on-chain (the same bug this filter prevents).
@@ -878,6 +892,8 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 g.AddCapacityEdge(pool, virtualSink.Value, t, long.MaxValue);
             }
         }
+
+        return (totalGroupTokenEdges, routerFilteredCount);
     }
 
     // Add Group → Avatar edges for group token minting
@@ -953,14 +969,43 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             capacityGraph.AddAvatar(truster);
         }
 
-        // every token that is trusted by somebody
+        // every token that is trusted by somebody — only if registered
+        // (defense-in-depth: SQL queries should already filter, but guard against leaks)
+        // Fail-closed: if RegisteredAvatarIds is empty, no trusted tokens are added.
+        var registered = capacityGraph.RegisteredAvatarIds;
+        if (registered.Count == 0)
+        {
+            _logger.LogError("RegisteredAvatarIds is empty — no trusted tokens will be added to graph");
+        }
+
         foreach (var trustedSet in trustLookup.Values)
         {
             foreach (var tokenId in trustedSet)
             {
-                capacityGraph.AddAvatar(tokenId);
+                if (registered.Contains(tokenId))
+                {
+                    capacityGraph.AddAvatar(tokenId);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Resolves user-supplied filter addresses to AddressIdPool IDs without allocating
+    /// new entries for unknown addresses (prevents unbounded memory growth from attacker input).
+    /// </summary>
+    private static HashSet<int> ResolveFilterAddresses(IReadOnlyList<string>? addresses)
+    {
+        if (addresses == null || addresses.Count == 0)
+            return new HashSet<int>();
+
+        var result = new HashSet<int>(addresses.Count);
+        foreach (var addr in addresses)
+        {
+            if (AddressIdPool.TryIdOf(addr, out var id))
+                result.Add(id);
+        }
+        return result;
     }
 
     /// <summary>

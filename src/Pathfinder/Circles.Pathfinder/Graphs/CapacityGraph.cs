@@ -30,8 +30,11 @@ public class CapacityGraph : IGraph<CapacityEdge>
     // Track which tokens each group trusts
     public Dictionary<int, HashSet<int>> GroupTrustedTokens { get; } = new Dictionary<int, HashSet<int>>();
 
-    // Track avatars that have enabled consented flow
-    public HashSet<int> ConsentedAvatars { get; set; } = new HashSet<int>();
+    /// <summary>
+    /// Avatars with Hub.sol advancedUsageFlags enabled (consented flow).
+    /// Set during graph construction, immutable after publication to CapacityGraphPool.
+    /// </summary>
+    public HashSet<int> ConsentedAvatars { get; internal set; } = new HashSet<int>();
 
     // Track all registered V2 avatar IDs (cached to avoid per-request DB queries)
     public HashSet<int> RegisteredAvatarIds { get; } = new HashSet<int>();
@@ -42,6 +45,13 @@ public class CapacityGraph : IGraph<CapacityEdge>
 
     // Trust lookup for consented flow validation (truster -> set of trustees)
     public IReadOnlyDictionary<int, HashSet<int>>? TrustLookup { get; set; }
+
+    // Router trust coverage metrics (set during graph build)
+    public int TotalGroupTokenEdges { get; set; }
+    public int RouterFilteredEdges { get; set; }
+
+    // Block number of the snapshot this graph was built from (for replay logging)
+    public long Block { get; set; }
 
     public void AddTokenNode(int tokenId, int? poolNodeId = null)
     {

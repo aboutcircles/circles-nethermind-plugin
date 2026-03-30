@@ -64,7 +64,7 @@ public class CirclesInvariantsTests
     [Fact]
     public void IsValidTrustEdge_ZeroExpiry_TreatedAsUntrust()
     {
-        // expiryTime == 0 is explicit untrust in Hub.sol — write path removes these entries
+        // Hub.sol: expiryTime=0 is explicit untrust (or never-set default)
         CirclesInvariants.IsValidTrustEdge(Human1, Human2, 0, 1000, Registrations)
             .Should().BeFalse();
     }
@@ -135,6 +135,14 @@ public class CirclesInvariantsTests
     public void IsValidGroupTrustEdge_Expired_ReturnsFalse()
     {
         CirclesInvariants.IsValidGroupTrustEdge(Group1, Human1, 500, 1000, Registrations, RouterGroups)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidGroupTrustEdge_ZeroExpiry_TreatedAsUntrust()
+    {
+        // Hub.sol: expiryTime=0 is explicit untrust / never-set
+        CirclesInvariants.IsValidGroupTrustEdge(Group1, Human1, 0, 1000, Registrations, RouterGroups)
             .Should().BeFalse();
     }
 
@@ -223,6 +231,14 @@ public class CirclesInvariantsTests
     {
         // Human address as "group" — not a group
         CirclesInvariants.IsValidGroupMembership(Human1, Human2, 9999, 1000, Registrations)
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValidGroupMembership_ZeroExpiry_TreatedAsRevoked()
+    {
+        // Hub.sol: expiryTime=0 is revoked / never-set
+        CirclesInvariants.IsValidGroupMembership(Group1, Human1, 0, 1000, Registrations)
             .Should().BeFalse();
     }
 

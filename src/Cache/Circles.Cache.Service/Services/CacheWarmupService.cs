@@ -831,11 +831,11 @@ public class CacheWarmupService : BackgroundService
         // Aggregate wrapper transfers up to the warmup target block.
         // Without the block filter, transfers arriving during warmup would be double-counted
         // when gap processing re-applies them as deltas on top of the seeded balances.
-        // No registration filter here — wrapper token validity is enforced at read time
-        // via IsValidToken, and wrapper deployer registration is already enforced by
-        // ReplayV2Erc20WrapperDeployedAsync which filters by underlying avatar.
+        // Registration filter: account must be registered (matches balanceQuery.sql).
+        // Wrapper deployer registration is already enforced by ReplayV2Erc20WrapperDeployedAsync.
         const string sql = @"
-            WITH account_balances AS (
+            WITH " + RegisteredAvatarsCte + @",
+            account_balances AS (
                 SELECT
                     account,
                     ""tokenAddress"",
@@ -853,7 +853,8 @@ public class CacheWarmupService : BackgroundService
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
             )
             SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
-            FROM account_balances ab";
+            FROM account_balances ab
+            INNER JOIN registered_avatars ra ON ra.avatar = ab.account";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
