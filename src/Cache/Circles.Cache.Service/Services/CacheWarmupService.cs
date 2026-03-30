@@ -35,17 +35,11 @@ public class CacheWarmupService : BackgroundService
     /// </summary>
     private const string RegisteredAvatarsCte = @"
             registered_avatars AS MATERIALIZED (
-                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization""
-                WHERE ""blockNumber"" <= @toBlock
-                  AND NOT EXISTS (SELECT 1 FROM ""CrcV2_Stopped"" s WHERE s.""avatar"" = ""CrcV2_RegisterOrganization"".""organization"" AND s.""blockNumber"" <= @toBlock)
+                SELECT organization AS avatar FROM ""CrcV2_RegisterOrganization"" WHERE ""blockNumber"" <= @toBlock
                 UNION ALL
-                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup""
-                WHERE ""blockNumber"" <= @toBlock
-                  AND NOT EXISTS (SELECT 1 FROM ""CrcV2_Stopped"" s WHERE s.""avatar"" = ""CrcV2_RegisterGroup"".""group"" AND s.""blockNumber"" <= @toBlock)
+                SELECT ""group"" AS avatar FROM ""CrcV2_RegisterGroup"" WHERE ""blockNumber"" <= @toBlock
                 UNION ALL
-                SELECT avatar FROM ""CrcV2_RegisterHuman""
-                WHERE ""blockNumber"" <= @toBlock
-                  AND NOT EXISTS (SELECT 1 FROM ""CrcV2_Stopped"" s WHERE s.""avatar"" = ""CrcV2_RegisterHuman"".""avatar"" AND s.""blockNumber"" <= @toBlock)
+                SELECT avatar FROM ""CrcV2_RegisterHuman"" WHERE ""blockNumber"" <= @toBlock
             )";
 
     public CacheWarmupService(
@@ -499,7 +493,8 @@ public class CacheWarmupService : BackgroundService
         _logger.LogInformation("Loading V2 avatars...");
 
         // Load V2 avatars (humans and organizations) using Seed() for efficiency.
-        // Excludes stopped avatars so downstream registration checks auto-exclude their data.
+        // Stopped avatars are NOT excluded — Hub.sol stop() only prevents minting,
+        // it does not deregister the avatar. They can still transfer and be flow vertices.
         const string avatarSql = @"
             SELECT
                 r.""avatar"" as address,
@@ -507,11 +502,6 @@ public class CacheWarmupService : BackgroundService
                 'CrcV2_RegisterHuman' as type
             FROM ""CrcV2_RegisterHuman"" r
             WHERE r.""blockNumber"" <= @toBlock
-              AND NOT EXISTS (
-                  SELECT 1 FROM ""CrcV2_Stopped"" s
-                  WHERE s.""avatar"" = r.""avatar""
-                    AND s.""blockNumber"" <= @toBlock
-              )
 
             UNION ALL
 
@@ -520,12 +510,7 @@ public class CacheWarmupService : BackgroundService
                 r.""timestamp"",
                 'CrcV2_RegisterOrganization' as type
             FROM ""CrcV2_RegisterOrganization"" r
-            WHERE r.""blockNumber"" <= @toBlock
-              AND NOT EXISTS (
-                  SELECT 1 FROM ""CrcV2_Stopped"" s
-                  WHERE s.""avatar"" = r.""organization""
-                    AND s.""blockNumber"" <= @toBlock
-              )";
+            WHERE r.""blockNumber"" <= @toBlock";
 
         var v2Avatars = new Dictionary<string, (string Type, long Timestamp)>();
         var humanCount = 0;
@@ -566,12 +551,7 @@ public class CacheWarmupService : BackgroundService
                 r.""mint"",
                 r.""symbol""
             FROM ""CrcV2_RegisterGroup"" r
-            WHERE r.""blockNumber"" <= @toBlock
-              AND NOT EXISTS (
-                  SELECT 1 FROM ""CrcV2_Stopped"" s
-                  WHERE s.""avatar"" = r.""group""
-                    AND s.""blockNumber"" <= @toBlock
-              )";
+            WHERE r.""blockNumber"" <= @toBlock";
 
         var groups = new Dictionary<string, (string Name, string Mint, string Symbol)>();
 
