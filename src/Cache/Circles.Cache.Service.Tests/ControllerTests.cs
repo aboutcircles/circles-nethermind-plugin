@@ -197,8 +197,11 @@ public class ControllerTests
     {
         // Arrange
         var address = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
+        var v2TokenOwner = "0x42cedde51198d1773590311e2a340dc06b24cb37";
+        _cache.V2Avatars.Add(1000, address, ("Human", 1000));
+        _cache.V2Avatars.Add(1000, v2TokenOwner, ("Human", 1000));
         _cache.V1BalancesByAccountAndToken.Add(1000, $"{address}:0xtoken1", 100m); // V1 CRC (will be converted)
-        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:12345", 200m);    // V2 already in Circles
+        _cache.V2BalancesByAccountAndToken.Add(2000, $"{address}:{v2TokenOwner}", 200m); // V2 already in Circles
         _cache.RebuildSecondaryIndexes();
 
         var controller = CreateBalancesController();
