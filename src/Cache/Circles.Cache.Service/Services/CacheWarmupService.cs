@@ -853,7 +853,8 @@ public class CacheWarmupService : BackgroundService
                        SUM(CASE WHEN account = t.""from"" THEN t.amount ELSE 0 END) > 0
             )
             SELECT ab.account, ab.""tokenAddress"", ab.balance, ab.last_activity
-            FROM account_balances ab";
+            FROM account_balances ab
+            INNER JOIN registered_avatars ra ON ra.avatar = ab.account";
 
         await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("toBlock", toBlock);
