@@ -507,8 +507,9 @@ public class InMemoryAvatarStateTests
     }
 
     [Test]
-    public void StoppedAvatar_ExcludedFromContains()
+    public void StoppedAvatar_StillInContains()
     {
+        // Hub.sol stop() only prevents minting — avatar remains registered
         var state = new InMemoryAvatarState();
         state.InitializeFromFullLoad(new[]
         {
@@ -518,14 +519,16 @@ public class InMemoryAvatarStateTests
 
         state.InitializeStoppedAvatars(new[] { Alice });
 
-        Assert.That(state.Contains(Alice), Is.False);
+        Assert.That(state.Contains(Alice), Is.True, "Stopped avatars are still registered");
         Assert.That(state.Contains(Bob), Is.True);
         Assert.That(state.StoppedCount, Is.EqualTo(1));
+        Assert.That(state.IsStopped(Alice), Is.True);
     }
 
     [Test]
-    public void MarkStopped_ExcludesFromContains()
+    public void MarkStopped_StillInContains()
     {
+        // Hub.sol stop() only prevents minting — avatar remains registered
         var state = new InMemoryAvatarState();
         state.InitializeFromFullLoad(new[] { (Alice, "CrcV2_RegisterHuman") });
 
@@ -533,7 +536,8 @@ public class InMemoryAvatarStateTests
 
         state.MarkStopped(Alice);
 
-        Assert.That(state.Contains(Alice), Is.False);
+        Assert.That(state.Contains(Alice), Is.True, "Stopped avatars are still registered");
+        Assert.That(state.IsStopped(Alice), Is.True, "IsStopped tracks the stop event");
     }
 
     [Test]
@@ -544,8 +548,9 @@ public class InMemoryAvatarStateTests
         state.MarkStopped(Alice);
 
         var snapshot = state.Snapshot();
-        Assert.That(snapshot.Contains(Alice), Is.False);
+        Assert.That(snapshot.Contains(Alice), Is.True, "Stopped avatars remain in snapshot");
         Assert.That(snapshot.StoppedCount, Is.EqualTo(1));
+        Assert.That(snapshot.IsStopped(Alice), Is.True);
     }
 
     [Test]
@@ -580,8 +585,9 @@ public class InMemoryAvatarStateTests
     }
 
     [Test]
-    public void GetActiveAvatarSet_MarkStopped_InvalidatesCache()
+    public void GetActiveAvatarSet_MarkStopped_DoesNotExclude()
     {
+        // Hub.sol stop() only prevents minting — GetActiveAvatarSet includes stopped
         var state = new InMemoryAvatarState();
         state.InitializeFromFullLoad(new[]
         {
@@ -595,12 +601,12 @@ public class InMemoryAvatarStateTests
         state.MarkStopped(Alice);
 
         var set2 = state.GetActiveAvatarSet();
-        Assert.That(set2, Has.Count.EqualTo(1));
-        Assert.That(set2.Contains(Alice), Is.False);
+        Assert.That(set2, Has.Count.EqualTo(2), "Stopped avatars remain in active set");
+        Assert.That(set2.Contains(Alice), Is.True);
     }
 
     [Test]
-    public void GetActiveAvatarSet_InitializeFromFullLoad_InvalidatesCache()
+    public void GetActiveAvatarSet_InitializeFromFullLoad_ReplacesSet()
     {
         var state = new InMemoryAvatarState();
         state.InitializeFromFullLoad(new[] { (Alice, "CrcV2_RegisterHuman") });
@@ -616,8 +622,9 @@ public class InMemoryAvatarStateTests
     }
 
     [Test]
-    public void GetActiveAvatarSet_InitializeStoppedAvatars_InvalidatesCache()
+    public void GetActiveAvatarSet_InitializeStoppedAvatars_DoesNotExclude()
     {
+        // Stopped avatars remain in active set — stop() only prevents minting
         var state = new InMemoryAvatarState();
         state.InitializeFromFullLoad(new[]
         {
@@ -631,8 +638,8 @@ public class InMemoryAvatarStateTests
         state.InitializeStoppedAvatars(new[] { Bob });
 
         var set2 = state.GetActiveAvatarSet();
-        Assert.That(set2, Has.Count.EqualTo(1));
-        Assert.That(set2.Contains(Bob), Is.False);
+        Assert.That(set2, Has.Count.EqualTo(2), "Stopped avatars remain in active set");
+        Assert.That(set2.Contains(Bob), Is.True);
     }
 }
 
@@ -831,8 +838,9 @@ public class IncrementalLoadGraphTests
     }
 
     [Test]
-    public void LoadRegisteredAvatars_ExcludesStoppedAvatars()
+    public void LoadRegisteredAvatars_IncludesStoppedAvatars()
     {
+        // Hub.sol stop() only prevents minting — stopped avatars remain registered
         var avatars = CreateAvatarState(
             (Alice, "CrcV2_RegisterHuman"),
             (Bob, "CrcV2_RegisterHuman"));
@@ -845,7 +853,7 @@ public class IncrementalLoadGraphTests
         var registered = incGraph.LoadRegisteredAvatars().ToHashSet();
 
         Assert.That(registered.Contains(Alice), Is.True);
-        Assert.That(registered.Contains(Bob), Is.False);
+        Assert.That(registered.Contains(Bob), Is.True, "Stopped avatars are still registered");
     }
 
     [Test]

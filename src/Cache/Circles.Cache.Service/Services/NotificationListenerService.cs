@@ -516,9 +516,8 @@ public class NotificationListenerService : BackgroundService
         // Process V2 RegisterGroup
         await ProcessV2RegisterGroupAsync(conn, fromBlock, toBlock, ct);
 
-        // Process V2 Stopped (remove deregistered avatars — must run before trust/transfers
-        // so downstream registration checks exclude stopped avatars)
-        await ProcessV2StoppedAsync(conn, fromBlock, toBlock, ct);
+        // Note: CrcV2_Stopped is NOT processed here — stop() only prevents minting,
+        // it does not deregister the avatar. Stopped avatars remain in V2Avatars/Groups.
 
         // Process V2 Trust (for group memberships)
         await ProcessV2TrustAsync(conn, fromBlock, toBlock, ct);
@@ -645,41 +644,6 @@ public class NotificationListenerService : BackgroundService
         if (count > 0)
         {
             _logger.LogDebug("Processed {Count} V2 group registrations", count);
-        }
-    }
-
-    private async Task ProcessV2StoppedAsync(NpgsqlConnection conn, long fromBlock, long toBlock, CancellationToken ct)
-    {
-        const string sql = @"
-            SELECT s.""blockNumber"", s.""avatar""
-            FROM ""CrcV2_Stopped"" s
-            WHERE s.""blockNumber"" >= @fromBlock AND s.""blockNumber"" <= @toBlock
-            ORDER BY s.""blockNumber"", s.""transactionIndex"", s.""logIndex""";
-
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("fromBlock", fromBlock);
-        cmd.Parameters.AddWithValue("toBlock", toBlock);
-
-        var count = 0;
-        await using (var reader = await cmd.ExecuteReaderAsync(ct))
-        {
-            while (await reader.ReadAsync(ct))
-            {
-                var blockNumber = reader.GetInt64(0);
-                var avatar = reader.GetString(1).ToLowerInvariant();
-
-                // Remove from V2Avatars AND Groups — downstream registration checks will
-                // auto-exclude this avatar's trust, balances, wrappers, and consent flags.
-                // Groups can also be stopped (Hub.sol stop() works for any registered avatar).
-                _caches.V2Avatars.Remove(blockNumber, avatar);
-                _caches.Groups.Remove(blockNumber, avatar);
-                count++;
-            }
-        }
-
-        if (count > 0)
-        {
-            _logger.LogInformation("Processed {Count} V2 stopped events (removed from V2Avatars)", count);
         }
     }
 
