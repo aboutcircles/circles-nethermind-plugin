@@ -18,6 +18,8 @@ public class NotificationListenerService : BackgroundService
     private readonly CacheServiceState _state;
     private readonly CacheContainer _caches;
     private readonly NpgsqlDataSource _readonlyDataSource;
+    private readonly IRegistrationSet _registrations;
+    private readonly IWrapperLookup _wrapperLookup;
 
     // Serializes notification handling — Npgsql's conn.Notification callback is async void,
     // so overlapping notifications can fire concurrent HandleNotificationAsync calls. Without
@@ -42,6 +44,8 @@ public class NotificationListenerService : BackgroundService
         _state = state;
         _caches = caches;
         _readonlyDataSource = readonlyDataSource;
+        _registrations = new CacheRegistrationSet(caches);
+        _wrapperLookup = new CacheWrapperLookup(caches);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -156,116 +160,116 @@ public class NotificationListenerService : BackgroundService
         await _notificationGate.WaitAsync(ct);
         try
         {
-        _logger.LogDebug("Received notification ping");
+            _logger.LogDebug("Received notification ping");
 
-        // Treat the notification as a ping - don't trust the payload content
-        // Instead, query the database for the actual latest blocks
-        List<(long BlockNumber, string BlockHash)> recentBlocks = new();
+            // Treat the notification as a ping - don't trust the payload content
+            // Instead, query the database for the actual latest blocks
+            List<(long BlockNumber, string BlockHash)> recentBlocks = new();
 
-        await WithReadonlyConnectionAsync(async (conn, token) =>
-        {
-            recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, token);
-        }, ct);
-
-        if (recentBlocks.Count == 0)
-        {
-            _logger.LogWarning("No blocks found in System_Block table");
-            return;
-        }
-
-        // Update the block ring buffer and detect any reorgs
-        var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(recentBlocks);
-
-        if (reorgPoint.HasValue)
-        {
-            if (reorgPoint.Value <= _state.WarmupTargetBlock)
+            await WithReadonlyConnectionAsync(async (conn, token) =>
             {
+                recentBlocks = await GetRecentBlocksAsync(conn, _settings.RollbackCapacity, token);
+            }, ct);
+
+            if (recentBlocks.Count == 0)
+            {
+                _logger.LogWarning("No blocks found in System_Block table");
+                return;
+            }
+
+            // Update the block ring buffer and detect any reorgs
+            var reorgPoint = _state.BlockRingBuffer.UpdateFromBlocks(recentBlocks);
+
+            if (reorgPoint.HasValue)
+            {
+                if (reorgPoint.Value <= _state.WarmupTargetBlock)
+                {
+                    _logger.LogWarning(
+                        "Detected reorg at block {ReorgBlock} crossing warmup seed boundary {WarmupTarget}. Triggering full re-warmup.",
+                        reorgPoint.Value,
+                        _state.WarmupTargetBlock);
+
+                    CacheMetrics.ReorgsDetected.Inc();
+                    TriggerFullRewarmup();
+                    return;
+                }
+
                 _logger.LogWarning(
-                    "Detected reorg at block {ReorgBlock} crossing warmup seed boundary {WarmupTarget}. Triggering full re-warmup.",
-                    reorgPoint.Value,
-                    _state.WarmupTargetBlock);
+                    "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
+                    reorgPoint.Value, reorgPoint.Value);
 
+                // Track reorg in metrics
                 CacheMetrics.ReorgsDetected.Inc();
-                TriggerFullRewarmup();
-                return;
+
+                // Rollback all caches to the reorg point. If the reorg is deeper than
+                // RollbackCapacity, RollbackAll throws InvalidOperationException — in that
+                // case the only safe recovery is a full re-warmup.
+                try
+                {
+                    _caches.RollbackAll(reorgPoint.Value);
+
+                    // Rebuild secondary indexes after rollback
+                    _logger.LogInformation("Rebuilding secondary indexes after rollback...");
+                    _caches.RebuildSecondaryIndexes();
+
+                    // Update state
+                    _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
+
+                    _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
+                        reorgPoint.Value);
+                }
+                catch (InvalidOperationException rollbackEx)
+                {
+                    _logger.LogError(rollbackEx,
+                        "Reorg at block {ReorgBlock} exceeds rollback capacity. Triggering full re-warmup.",
+                        reorgPoint.Value);
+
+                    TriggerFullRewarmup();
+                    return;
+                }
             }
 
-            _logger.LogWarning(
-                "Detected reorg at block {ReorgBlock}! Rolling back caches from block {RollbackBlock}...",
-                reorgPoint.Value, reorgPoint.Value);
+            // Process any new blocks that we haven't processed yet
+            var latestBlock = recentBlocks.Max(b => b.BlockNumber);
+            var fromBlock = _state.LastProcessedBlock + 1;
 
-            // Track reorg in metrics
-            CacheMetrics.ReorgsDetected.Inc();
-
-            // Rollback all caches to the reorg point. If the reorg is deeper than
-            // RollbackCapacity, RollbackAll throws InvalidOperationException — in that
-            // case the only safe recovery is a full re-warmup.
-            try
+            if (fromBlock <= latestBlock)
             {
-                _caches.RollbackAll(reorgPoint.Value);
+                var blocksProcessed = latestBlock - fromBlock + 1;
+                _logger.LogInformation("Processing block range {FromBlock} → {ToBlock} ({Count} blocks)",
+                    fromBlock, latestBlock, blocksProcessed);
 
-                // Rebuild secondary indexes after rollback
-                _logger.LogInformation("Rebuilding secondary indexes after rollback...");
-                _caches.RebuildSecondaryIndexes();
+                try
+                {
+                    // Process new blocks
+                    await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
 
-                // Update state
-                _state.LastProcessedBlock = Math.Min(_state.LastProcessedBlock, reorgPoint.Value - 1);
+                    _state.LastProcessedBlock = latestBlock;
+                    _state.CurrentBlockTimestamp = await GetBlockTimestampAsync(latestBlock, ct);
 
-                _logger.LogInformation("Rollback completed. Will reprocess from block {FromBlock}",
-                    reorgPoint.Value);
+                    // Track blocks processed
+                    CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
+
+                    _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
+                        fromBlock, latestBlock, _state.LastProcessedBlock);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Failed to process block range {FromBlock} → {ToBlock}", fromBlock, latestBlock);
+
+                    // Attempt to rollback caches to restore consistency with _state.LastProcessedBlock
+                    // The rollback target is fromBlock (first unprocessed block), which restores state to
+                    // what it was after processing (LastProcessedBlock = fromBlock - 1)
+                    await AttemptRecoveryRollbackAsync(fromBlock, ct);
+
+                    throw;
+                }
             }
-            catch (InvalidOperationException rollbackEx)
+            else
             {
-                _logger.LogError(rollbackEx,
-                    "Reorg at block {ReorgBlock} exceeds rollback capacity. Triggering full re-warmup.",
-                    reorgPoint.Value);
-
-                TriggerFullRewarmup();
-                return;
+                _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
+                    _state.LastProcessedBlock, latestBlock);
             }
-        }
-
-        // Process any new blocks that we haven't processed yet
-        var latestBlock = recentBlocks.Max(b => b.BlockNumber);
-        var fromBlock = _state.LastProcessedBlock + 1;
-
-        if (fromBlock <= latestBlock)
-        {
-            var blocksProcessed = latestBlock - fromBlock + 1;
-            _logger.LogInformation("Processing block range {FromBlock} → {ToBlock} ({Count} blocks)",
-                fromBlock, latestBlock, blocksProcessed);
-
-            try
-            {
-                // Process new blocks
-                await ProcessBlockRangeAsync(fromBlock, latestBlock, ct);
-
-                _state.LastProcessedBlock = latestBlock;
-                _state.CurrentBlockTimestamp = await GetBlockTimestampAsync(latestBlock, ct);
-
-                // Track blocks processed
-                CacheMetrics.BlocksProcessed.Inc(blocksProcessed);
-
-                _logger.LogInformation("Completed processing blocks {FromBlock} → {ToBlock}. Cache now at block {CurrentBlock}",
-                    fromBlock, latestBlock, _state.LastProcessedBlock);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogError(ex, "Failed to process block range {FromBlock} → {ToBlock}", fromBlock, latestBlock);
-
-                // Attempt to rollback caches to restore consistency with _state.LastProcessedBlock
-                // The rollback target is fromBlock (first unprocessed block), which restores state to
-                // what it was after processing (LastProcessedBlock = fromBlock - 1)
-                await AttemptRecoveryRollbackAsync(fromBlock, ct);
-
-                throw;
-            }
-        }
-        else
-        {
-            _logger.LogDebug("No new blocks to process (last processed: {LastProcessed}, latest: {Latest})",
-                _state.LastProcessedBlock, latestBlock);
-        }
         }
         finally
         {
@@ -512,6 +516,9 @@ public class NotificationListenerService : BackgroundService
         // Process V2 RegisterGroup
         await ProcessV2RegisterGroupAsync(conn, fromBlock, toBlock, ct);
 
+        // Note: CrcV2_Stopped is NOT processed here — stop() only prevents minting,
+        // it does not deregister the avatar. Stopped avatars remain in V2Avatars/Groups.
+
         // Process V2 Trust (for group memberships)
         await ProcessV2TrustAsync(conn, fromBlock, toBlock, ct);
 
@@ -670,17 +677,20 @@ public class NotificationListenerService : BackgroundService
 
                 var trusterKey = truster.ToLowerInvariant();
                 var trusteeKey = trustee.ToLowerInvariant();
-                var trustKey = $"{trusterKey}:{trusteeKey}";
 
                 // Safely cast expiryTime to long
                 long expiryLong = expiryTimeBig > long.MaxValue ? long.MaxValue : (long)expiryTimeBig;
 
-                // Always update V2TrustRelations cache
+                // Registration check: both truster and trustee must be registered avatars.
+                // Removals (expiryTime == 0) always proceed — safe to remove non-existent entries.
+                var trusterRegistered = _registrations.IsRegistered(trusterKey);
+                var trusteeRegistered = _registrations.IsRegistered(trusteeKey);
+
                 if (expiryTimeBig == 0)
                 {
                     _caches.RemoveV2Trust(blockNumber, trusterKey, trusteeKey);
                 }
-                else
+                else if (trusterRegistered && trusteeRegistered)
                 {
                     _caches.UpsertV2Trust(blockNumber, trusterKey, trusteeKey, expiryLong);
                 }
@@ -689,14 +699,11 @@ public class NotificationListenerService : BackgroundService
                 // Also update GroupMemberships if truster is a group
                 if (_caches.Groups.ContainsKey(trusterKey))
                 {
-                    // Composite key: group:member
-                    var membershipKey = $"{trusterKey}:{trusteeKey}";
-
                     if (expiryTimeBig == 0)
                     {
                         _caches.RemoveGroupMembership(blockNumber, trusterKey, trusteeKey);
                     }
-                    else
+                    else if (trusteeRegistered)
                     {
                         _caches.UpsertGroupMembership(blockNumber, trusterKey, trusteeKey, expiryLong);
                     }
@@ -737,9 +744,14 @@ public class NotificationListenerService : BackgroundService
 
                     // Key by wrapper address (not avatar) to support avatars with multiple wrappers
                     var wrapperKey = erc20Wrapper.ToLowerInvariant();
+                    var avatarKey = avatar.ToLowerInvariant();
 
-                    _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
-                    count++;
+                    // Registration check: underlying avatar must be registered
+                    if (_registrations.IsRegistered(avatarKey))
+                    {
+                        _caches.UpsertWrapper(blockNumber, wrapperKey, avatar, circlesType);
+                        count++;
+                    }
                 }
             }
 
@@ -933,11 +945,14 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance and last activity
-                if (from != "0x0000000000000000000000000000000000000000")
+                var fromLower = from.ToLowerInvariant();
+                var toLower = to.ToLowerInvariant();
+
+                // Update sender balance — token must be valid (account may be stopped but still holds tokens)
+                if (from != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidToken(tokenAddress, _registrations, _wrapperLookup))
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenAddress}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var fromKey = $"{fromLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(fromKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
@@ -947,11 +962,11 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance and last activity
-                if (to != "0x0000000000000000000000000000000000000000")
+                // Update receiver balance — token must be valid
+                if (to != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidToken(tokenAddress, _registrations, _wrapperLookup))
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenAddress}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var toKey = $"{toLower}:{tokenAddress}";
                     if (!currentBalances.ContainsKey(toKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
@@ -1037,11 +1052,14 @@ public class NotificationListenerService : BackgroundService
                     currentBlock = blockNumber;
                 }
 
-                // Update sender balance and last activity
-                if (from != "0x0000000000000000000000000000000000000000")
+                var fromLower = from.ToLowerInvariant();
+                var toLower = to.ToLowerInvariant();
+
+                // Update sender balance — token must be valid (account may be stopped)
+                if (from != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidToken(tokenKey, _registrations, _wrapperLookup))
                 {
-                    var fromKey = $"{from.ToLowerInvariant()}:{tokenKey}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var fromKey = $"{fromLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(fromKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(fromKey, out var existingBalance);
@@ -1051,11 +1069,11 @@ public class NotificationListenerService : BackgroundService
                     _caches.V2LastActivity.Add(blockNumber, fromKey, timestamp);
                 }
 
-                // Update receiver balance and last activity
-                if (to != "0x0000000000000000000000000000000000000000")
+                // Update receiver balance — token must be valid
+                if (to != "0x0000000000000000000000000000000000000000"
+                    && CirclesInvariants.IsValidToken(tokenKey, _registrations, _wrapperLookup))
                 {
-                    var toKey = $"{to.ToLowerInvariant()}:{tokenKey}";
-                    // Initialize from cache if we haven't seen this key yet in this block range
+                    var toKey = $"{toLower}:{tokenKey}";
                     if (!currentBalances.ContainsKey(toKey))
                     {
                         _caches.V2BalancesByAccountAndToken.TryGetValue(toKey, out var existingBalance);
@@ -1266,8 +1284,12 @@ public class NotificationListenerService : BackgroundService
                 var avatar = reader.GetString(1).ToLowerInvariant();
                 var flag = (byte[])reader.GetValue(2);
 
-                _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
-                count++;
+                // Registration check: only store flags for registered avatars
+                if (_registrations.IsRegistered(avatar))
+                {
+                    _caches.ConsentedFlowFlags.Add(blockNumber, avatar, flag);
+                    count++;
+                }
             }
         }
 

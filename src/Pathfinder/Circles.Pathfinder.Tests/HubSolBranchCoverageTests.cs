@@ -489,6 +489,9 @@ public class HubSolBranchCoverageTests
                 (Bob.ToLower(), Alice.ToLower()),       // Bob trusts Alice's token
                 (Carol.ToLower(), GroupA.ToLower()),     // Carol trusts GroupA's token (for GroupA→Carol mint)
 
+                // Router trust: Router must trust token owners for Avatar→Router edges (Hub.sol:665)
+                (Router.ToLower(), Alice.ToLower()),     // Router trusts Alice's token
+
                 // Consented flow trusts: From trusts To
                 (Carol.ToLower(), Dave.ToLower()),       // Carol trusts Dave (consented branch)
             },

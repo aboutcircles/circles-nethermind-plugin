@@ -3,39 +3,43 @@ namespace Circles.Pathfinder.Data;
 /// <summary>
 /// In-memory set of registered avatars and groups.
 /// Used to filter trust/balance edges to only include registered participants.
-/// Stopped avatars (D13) are excluded from Contains() checks.
+///
+/// Hub.sol stop() only prevents future minting — it does NOT deregister the avatar.
+/// Stopped avatars remain registered, can transfer, and can be flow vertices.
+/// The _stopped set is retained for informational/metric purposes only.
 /// </summary>
 public class InMemoryAvatarState
 {
     private readonly HashSet<string> _avatars = new();
     private readonly HashSet<string> _groups = new();
     private readonly HashSet<string> _stopped = new();
-    private HashSet<string>? _cachedActiveSet;
 
     /// <summary>Total number of registered avatars (including stopped).</summary>
     public int Count => _avatars.Count;
     /// <summary>Number of registered groups.</summary>
     public int GroupCount => _groups.Count;
-    /// <summary>Number of stopped avatars.</summary>
+    /// <summary>Number of stopped avatars (informational only — they're still registered).</summary>
     public int StoppedCount => _stopped.Count;
 
-    /// <summary>All registered avatars (including groups), excluding stopped.</summary>
+    /// <summary>All registered avatars (including groups and stopped).</summary>
     public HashSet<string> AvatarSet => _avatars;
 
     /// <summary>Only registered groups (subset of avatars).</summary>
     public HashSet<string> GetGroupSet() => _groups;
 
-    /// <summary>All registered avatars excluding stopped avatars. Cached until mutation.</summary>
-    public IReadOnlySet<string> GetActiveAvatarSet()
-    {
-        return _cachedActiveSet ??= _avatars.Where(a => !_stopped.Contains(a)).ToHashSet();
-    }
+    /// <summary>All registered avatars. Stopped avatars are included (still registered per Hub.sol).</summary>
+    public IReadOnlySet<string> GetActiveAvatarSet() => _avatars;
 
-    /// <summary>Returns true if address is a registered, non-stopped avatar.</summary>
+    /// <summary>Returns true if address is a registered avatar (including stopped).</summary>
     public bool Contains(string address)
     {
-        var lower = address.ToLowerInvariant();
-        return _avatars.Contains(lower) && !_stopped.Contains(lower);
+        return _avatars.Contains(address.ToLowerInvariant());
+    }
+
+    /// <summary>Returns true if address was ever registered (same as Contains — stopped are registered).</summary>
+    public bool IsRegistered(string address)
+    {
+        return _avatars.Contains(address.ToLowerInvariant());
     }
 
     /// <summary>Returns true if address is a registered group.</summary>
@@ -47,7 +51,6 @@ public class InMemoryAvatarState
     /// </summary>
     public void InitializeFromFullLoad(IEnumerable<(string Avatar, string Type)> rows)
     {
-        _cachedActiveSet = null;
         _avatars.Clear();
         _groups.Clear();
         foreach (var row in rows)
@@ -59,27 +62,27 @@ public class InMemoryAvatarState
     }
 
     /// <summary>
-    /// Load stopped avatars (full state). Clears and repopulates the stopped set.
+    /// Load stopped avatars (informational only — does not affect registration checks).
     /// </summary>
     public void InitializeStoppedAvatars(IEnumerable<string> stoppedAvatars)
     {
-        _cachedActiveSet = null;
         _stopped.Clear();
         foreach (var avatar in stoppedAvatars)
             _stopped.Add(avatar.ToLowerInvariant());
     }
 
-    /// <summary>Mark an avatar as stopped (incremental delta).</summary>
+    /// <summary>Mark an avatar as stopped (informational only).</summary>
     public void MarkStopped(string avatar)
     {
-        _cachedActiveSet = null;
         _stopped.Add(avatar.ToLowerInvariant());
     }
+
+    /// <summary>Returns true if the avatar has been stopped (informational — they're still registered).</summary>
+    public bool IsStopped(string address) => _stopped.Contains(address.ToLowerInvariant());
 
     /// <summary>Register a new avatar (incremental delta). Groups added to both sets.</summary>
     public void AddAvatar(string avatar, string type)
     {
-        _cachedActiveSet = null;
         avatar = avatar.ToLowerInvariant();
         _avatars.Add(avatar);
         if (type == "CrcV2_RegisterGroup")

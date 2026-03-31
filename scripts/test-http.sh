@@ -95,7 +95,7 @@ run_test() {
     local data="${5:-}"
 
     local url="${BASE_URL}${endpoint}"
-    local curl_args=(-s -w "\n%{http_code}" -X "$method")
+    local curl_args=(-s -w "\n%{http_code}" --max-time 15 -X "$method")
 
     if [[ -n "$data" ]]; then
         curl_args+=(-H "Content-Type: application/json" -d "$data")
@@ -116,19 +116,19 @@ run_test() {
     local result="fail"
     if [[ "$status" == "$expected_status" ]]; then
         result="pass"
-        ((PASSED++))
+        ((++PASSED))
         if [[ "$JSON_OUTPUT" != "true" ]]; then
             log_pass "$name (HTTP $status)"
         fi
     elif [[ "$status" == "000" ]]; then
         result="skip"
-        ((SKIPPED++))
+        ((++SKIPPED))
         if [[ "$JSON_OUTPUT" != "true" ]]; then
             log_skip "$name - Connection failed"
         fi
     else
         result="fail"
-        ((FAILED++))
+        ((++FAILED))
         if [[ "$JSON_OUTPUT" != "true" ]]; then
             log_fail "$name (expected $expected_status, got $status)"
         fi

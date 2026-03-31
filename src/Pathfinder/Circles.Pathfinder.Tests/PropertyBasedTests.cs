@@ -38,7 +38,8 @@ public class PropertyBasedTests
         double trustDensity = 0.3,
         bool withRouter = true,
         bool withConsent = false,
-        double consentRate = 0.5)
+        double consentRate = 0.5,
+        double routerTrustDensity = 1.0)
     {
         var graph = new CapacityGraph();
         var avatars = new List<int>(avatarCount);
@@ -121,6 +122,28 @@ public class PropertyBasedTests
                 graph.GroupTrustedTokens[grp] = groupTrusts;
                 trustLookup[grp] = groupTrusts;
             }
+        }
+
+        // Router trusts a subset of group-trusted tokens (controlled by routerTrustDensity).
+        // At density=1.0 all group collateral edges pass; at <1.0 some are filtered,
+        // exercising the routerFilteredCount code path in GraphFactory.AddTokenPoolOutEdges.
+        if (withRouter && graph.RouterNode.HasValue)
+        {
+            var routerTrusts = new HashSet<int>();
+            foreach (var grp in groups)
+            {
+                if (graph.GroupTrustedTokens.TryGetValue(grp, out var gTrusts))
+                {
+                    foreach (var token in gTrusts)
+                    {
+                        if (rng.NextDouble() < routerTrustDensity)
+                            routerTrusts.Add(token);
+                    }
+                }
+            }
+
+            if (routerTrusts.Count > 0)
+                trustLookup[graph.RouterNode.Value] = routerTrusts;
         }
 
         graph.TrustLookup = trustLookup;
@@ -969,6 +992,53 @@ public class PropertyBasedTests
             "Same input should produce same MaxFlow");
         Assert.That(result1.Transfers.Count, Is.EqualTo(result2.Transfers.Count),
             "Same input should produce same number of transfers");
+    }
+
+    #endregion
+
+    #region Property: Router trust density filtering
+
+    /// <summary>
+    /// With routerTrustDensity &lt; 1.0, some group collateral tokens are not trusted by the Router.
+    /// Paths through filtered tokens should not appear in the output. MaxFlow may be reduced or zero,
+    /// but the pathfinder must never crash and flow conservation must hold.
+    /// </summary>
+    [Test]
+    [Repeat(10)]
+    public void PartialRouterTrust_NeverCrashes_FlowConserved()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 50000);
+        int avatars = rng.Next(4, 10);
+        int groups = rng.Next(1, 3);
+
+        var graph = BuildSyntheticGraph(avatars, groups, DefaultBalance, rng,
+            trustDensity: 0.5, withRouter: true, routerTrustDensity: 0.5);
+        var (source, sink) = PickSourceSink(graph, rng);
+
+        var pathfinder = new V2Pathfinder();
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+        };
+        UInt256 target = CirclesConverter.BlowUpToUInt256(DefaultBalance);
+
+        MaxFlowResponse result;
+        try
+        {
+            result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph is valid
+        }
+
+        // Must not crash. Flow conservation: if transfers exist, check balance at intermediaries.
+        if (result.Transfers.Count > 0)
+        {
+            AssertFlowConservation(result.Transfers,
+                AddressIdPool.StringOf(source), AddressIdPool.StringOf(sink));
+        }
     }
 
     #endregion

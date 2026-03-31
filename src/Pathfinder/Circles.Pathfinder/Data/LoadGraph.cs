@@ -118,21 +118,33 @@ namespace Circles.Pathfinder.Data
 
         private static readonly ConcurrentDictionary<string, string> _queryCache = new();
 
+        // Shared CTE body loaded once — injected into queries via {{registered_avatars_cte_body}}
+        private static readonly Lazy<string> RegisteredAvatarsCteBody = new(() =>
+            ReadEmbeddedResource("registeredAvatarsCte.sql"));
+
+        private static string ReadEmbeddedResource(string resourceName)
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var fullResourceName = $"Circles.Pathfinder.Data.Queries.{resourceName}";
+
+            using var stream = assembly.GetManifestResourceStream(fullResourceName);
+            if (stream == null)
+                throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
+
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
         private static string LoadQueryFromResource(string resourceName)
         {
             return _queryCache.GetOrAdd(resourceName, static name =>
             {
-                var assembly = Assembly.GetExecutingAssembly();
-                var fullResourceName = $"Circles.Pathfinder.Data.Queries.{name}";
+                var sql = ReadEmbeddedResource(name);
 
-                using var stream = assembly.GetManifestResourceStream(fullResourceName);
-                if (stream == null)
-                {
-                    throw new FileNotFoundException($"SQL query resource not found: {fullResourceName}");
-                }
+                if (sql.Contains("{{registered_avatars_cte_body}}"))
+                    sql = sql.Replace("{{registered_avatars_cte_body}}", RegisteredAvatarsCteBody.Value);
 
-                using var reader = new StreamReader(stream);
-                return reader.ReadToEnd();
+                return sql;
             });
         }
 
@@ -215,7 +227,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -240,7 +252,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -353,7 +365,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -376,7 +388,7 @@ namespace Circles.Pathfinder.Data
 
             using var command = new NpgsqlCommand(groupTrustQuery, connection, tx);
             command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
-            command.Parameters.AddWithValue("router", _settings.GroupRouterAddress);
+            command.Parameters.AddWithValue("mintPolicy", _settings.StandardMintPolicyAddress);
             using var reader = command.ExecuteReader();
 
             while (reader.Read())

@@ -74,6 +74,8 @@ public class PathfinderGraphController : ControllerBase
         try
         {
             // Pre-compute shared lookups once per request
+            var registrations = new CacheRegistrationSet(_caches);
+            var wrapperLookup = new CacheWrapperLookup(_caches);
             var routerGroups = sections.Contains("trust") || sections.Contains("groups") || sections.Contains("grouptrusts")
                 ? GetRouterFilteredGroups()
                 : null;
@@ -85,13 +87,13 @@ public class PathfinderGraphController : ControllerBase
                 SchemaVersion: SchemaVersion,
                 LastProcessedBlock: lastBlock,
                 Timestamp: timestamp,
-                Balances: sections.Contains("balances") ? BuildBalances() : null,
-                Trust: sections.Contains("trust") ? BuildTrust(routerGroups!, avatarToWrappers!) : null,
+                Balances: sections.Contains("balances") ? BuildBalances(registrations, wrapperLookup) : null,
+                Trust: sections.Contains("trust") ? BuildTrust(registrations, routerGroups!, avatarToWrappers!) : null,
                 Groups: sections.Contains("groups") ? BuildGroups(routerGroups!) : null,
-                GroupTrusts: sections.Contains("grouptrusts") ? BuildGroupTrusts(routerGroups!) : null,
-                ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow() : null,
+                GroupTrusts: sections.Contains("grouptrusts") ? BuildGroupTrusts(registrations, routerGroups!) : null,
+                ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow(registrations) : null,
                 Avatars: sections.Contains("avatars") ? BuildAvatars() : null,
-                WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings() : null
+                WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings(registrations) : null
             );
 
             _logger.LogDebug(
@@ -130,7 +132,7 @@ public class PathfinderGraphController : ControllerBase
     /// Applies demurrage from lastActivity → now for demurraged balances.
     /// Converts static (inflationary) balances to demurraged equivalent at target day.
     /// </summary>
-    private List<PathfinderBalanceRow> BuildBalances()
+    private List<PathfinderBalanceRow> BuildBalances(IRegistrationSet registrations, IWrapperLookup wrapperLookup)
     {
         var balances = new List<PathfinderBalanceRow>();
         var targetDay = CirclesConverter.DayFromTimestamp(DateTimeOffset.UtcNow, V2InflationDayZero);
@@ -147,22 +149,17 @@ public class PathfinderGraphController : ControllerBase
             var account = kvp.Key[..separatorIndex];
             var tokenAddress = kvp.Key[(separatorIndex + 1)..];
 
-            // Only include balances for registered V2 avatars
-            if (!_caches.V2Avatars.ContainsKey(account))
+            // Shared invariant: account + token must be registered
+            if (!CirclesInvariants.IsValidBalance(account, tokenAddress, registrations, wrapperLookup))
                 continue;
 
-            // Determine if this is a wrapper token
+            // Determine if this is a wrapper token (for demurrage handling)
             var isWrapped = false;
             var isStatic = false;
 
             if (_caches.Erc20WrapperAddresses.TryGetValue(tokenAddress, out var wrapperInfo))
             {
                 isWrapped = true;
-                // Wrapper underlying can be any registered avatar type, including groups.
-                // In cache state, groups are tracked in Groups cache and may be absent from V2Avatars.
-                if (!_caches.V2Avatars.ContainsKey(wrapperInfo.Avatar)
-                    && !_caches.Groups.ContainsKey(wrapperInfo.Avatar))
-                    continue;
                 isStatic = wrapperInfo.CirclesType == 1;
             }
 
@@ -212,6 +209,7 @@ public class PathfinderGraphController : ControllerBase
     /// Derives wrapper trust edges: if trustee has a wrapper, emit (truster, wrapperAddress) too.
     /// </summary>
     private List<PathfinderTrustRow> BuildTrust(
+        IRegistrationSet registrations,
         HashSet<string> routerGroups,
         Dictionary<string, List<string>> avatarToWrappers)
     {
@@ -228,17 +226,8 @@ public class PathfinderGraphController : ControllerBase
             var trustee = kvp.Key[(separatorIndex + 1)..];
             var expiryTime = kvp.Value;
 
-            // Skip revoked trust (expiryTime == 0 means indefinite/never set which is active)
-            if (expiryTime > 0 && expiryTime <= now)
-                continue;
-
-            // Both must be registered (avatars or groups)
-            if (!_caches.V2Avatars.ContainsKey(truster) ||
-                (!_caches.V2Avatars.ContainsKey(trustee) && !routerGroups.Contains(trustee)))
-                continue;
-
-            // Skip group trusters — they're handled separately in GroupTrusts
-            if (routerGroups.Contains(truster))
+            // Shared invariant: both registered, not expired, non-group truster
+            if (!CirclesInvariants.IsValidTrustEdge(truster, trustee, expiryTime, now, registrations))
                 continue;
 
             // Native trust edge
@@ -281,7 +270,7 @@ public class PathfinderGraphController : ControllerBase
     /// <summary>
     /// Builds group trust rows — trust edges where truster is a router-filtered group.
     /// </summary>
-    private List<PathfinderGroupTrustRow> BuildGroupTrusts(HashSet<string> routerGroups)
+    private List<PathfinderGroupTrustRow> BuildGroupTrusts(IRegistrationSet registrations, HashSet<string> routerGroups)
     {
         var groupTrusts = new List<PathfinderGroupTrustRow>();
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -296,12 +285,8 @@ public class PathfinderGraphController : ControllerBase
             var trustee = kvp.Key[(separatorIndex + 1)..];
             var expiryTime = kvp.Value;
 
-            // Only group trusters from the router-filtered set
-            if (!routerGroups.Contains(truster))
-                continue;
-
-            // Skip revoked trust
-            if (expiryTime > 0 && expiryTime <= now)
+            // Shared invariant: router group truster, registered trustee, not expired
+            if (!CirclesInvariants.IsValidGroupTrustEdge(truster, trustee, expiryTime, now, registrations, routerGroups))
                 continue;
 
             groupTrusts.Add(new PathfinderGroupTrustRow(
@@ -330,14 +315,13 @@ public class PathfinderGraphController : ControllerBase
     /// Builds wrapper→avatar mapping rows from the Erc20WrapperAddresses cache.
     /// Only includes wrappers whose underlying avatar is registered.
     /// </summary>
-    private List<PathfinderWrapperMappingRow> BuildWrapperMappings()
+    private List<PathfinderWrapperMappingRow> BuildWrapperMappings(IRegistrationSet registrations)
     {
         var mappings = new List<PathfinderWrapperMappingRow>();
         foreach (var kvp in _caches.Erc20WrapperAddresses.ReadOnlyDictionary)
         {
-            // Keep mappings for wrappers of humans/orgs and groups alike.
-            if (!_caches.V2Avatars.ContainsKey(kvp.Value.Avatar)
-                && !_caches.Groups.ContainsKey(kvp.Value.Avatar))
+            // Shared invariant: underlying avatar must be registered
+            if (!CirclesInvariants.IsValidWrapperMapping(kvp.Value.Avatar, registrations))
                 continue;
 
             mappings.Add(new PathfinderWrapperMappingRow(
@@ -352,14 +336,14 @@ public class PathfinderGraphController : ControllerBase
     /// Builds consented flow rows from the ConsentedFlowFlags cache.
     /// Extracts bit 0 of byte[31] to determine consent status.
     /// </summary>
-    private List<PathfinderConsentedFlowRow> BuildConsentedFlow()
+    private List<PathfinderConsentedFlowRow> BuildConsentedFlow(IRegistrationSet registrations)
     {
         var consent = new List<PathfinderConsentedFlowRow>();
 
         foreach (var kvp in _caches.ConsentedFlowFlags.ReadOnlyDictionary)
         {
-            // Only include flags for registered V2 avatars (mirrors BuildBalances/BuildTrust filters)
-            if (!_caches.V2Avatars.ContainsKey(kvp.Key))
+            // Shared invariant: avatar must be registered
+            if (!CirclesInvariants.IsValidConsentedFlowFlag(kvp.Key, registrations))
                 continue;
 
             var flagBytes = kvp.Value;
