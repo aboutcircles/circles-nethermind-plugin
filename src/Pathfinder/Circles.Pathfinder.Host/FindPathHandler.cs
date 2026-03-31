@@ -138,6 +138,11 @@ internal sealed class FindPathHandler(
         var sw = Stopwatch.StartNew();
         var graphBlock = state.LastKnownBlockNumber;
 
+        // Sanitize once for all log branches (prevents log forging via CR/LF in user input)
+        var safeSource = SanitizeForLog(request.Source);
+        var safeSink = SanitizeForLog(request.Sink);
+        var safeTargetFlow = SanitizeForLog(request.TargetFlow);
+
         FindPathMetrics.InFlightRequestsGauge.Inc();
         try
         {
@@ -151,6 +156,8 @@ internal sealed class FindPathHandler(
             }
 
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            graphBlock = h.Graph.Block; // use the rented graph's actual block
+
             var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
             var result = await Task.Run(() => solve(h.Graph)).WaitAsync(solverTimeout);
 
@@ -159,9 +166,8 @@ internal sealed class FindPathHandler(
             // Record consent + canary metrics if applicable
             if (result is MaxFlowResponse mfr)
             {
-                // Stamp graph block for staleness detection (use graph's own block, not
-                // state.Current.Block which may have advanced during solving)
-                mfr.GraphBlock = h.Graph.Block;
+                // Stamp graph block for staleness detection
+                mfr.GraphBlock = graphBlock;
 
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
@@ -219,17 +225,18 @@ internal sealed class FindPathHandler(
 
                 log.LogInformation(
                     "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
-                    route, request.Source, request.Sink, request.TargetFlow,
+                    route, safeSource, safeSink, safeTargetFlow,
                     mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
-                    h.Graph.Block, sw.ElapsedMilliseconds, 200,
+                    graphBlock, sw.ElapsedMilliseconds, 200,
                     request.WithWrap ?? false, request.QuantizedMode ?? false);
             }
             else
             {
+                // /findMaxFlow returns long, not MaxFlowResponse
                 log.LogInformation(
-                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers=0 maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
-                    route, request.Source, request.Sink, request.TargetFlow,
-                    result, request.MaxTransfers ?? -1,
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    route, safeSource, safeSink, safeTargetFlow,
+                    result, 0, request.MaxTransfers ?? -1,
                     graphBlock, sw.ElapsedMilliseconds, 200,
                     request.WithWrap ?? false, request.QuantizedMode ?? false);
             }
@@ -240,27 +247,33 @@ internal sealed class FindPathHandler(
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
             log.LogError(
-                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow= transfers=0 graphBlock={GraphBlock} durationMs={DurationMs} status={Status} error=timeout",
-                route, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow,
-                graphBlock, sw.ElapsedMilliseconds, 504);
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 504,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "timeout");
             return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
         }
         catch (ArgumentException ex)
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("bad_request").Inc();
             log.LogWarning(ex,
-                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow= transfers=0 graphBlock={GraphBlock} durationMs={DurationMs} status={Status} error=bad_request",
-                route, request.Source, request.Sink, request.TargetFlow,
-                graphBlock, sw.ElapsedMilliseconds, 400);
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 400,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "bad_request");
             return Results.BadRequest(ex.Message);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
             log.LogError(ex,
-                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow= transfers=0 graphBlock={GraphBlock} durationMs={DurationMs} status={Status} error=exception",
-                route, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow,
-                graphBlock, sw.ElapsedMilliseconds, 500);
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 500,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "exception");
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
         finally
