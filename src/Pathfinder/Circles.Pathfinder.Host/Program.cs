@@ -382,8 +382,6 @@ app.MapPost("/findPath", async (
     request.Sink = request.Sink?.Replace("\r", "").Replace("\n", "").ToLowerInvariant();
     request.TargetFlow = request.TargetFlow?.Replace("\r", "").Replace("\n", "");
 
-    log.LogInformation("Deserialized request - Source: {Source}, Sink: {Sink}, TargetFlow: {TargetFlow}",
-        request.Source, request.Sink, request.TargetFlow);
 
     using var act = Source.StartActivity("findPath", ActivityKind.Server);
     act?.SetTag("http.route", "/findPath");
