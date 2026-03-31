@@ -135,6 +135,14 @@ internal sealed class FindPathHandler(
             return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         }
 
+        var sw = Stopwatch.StartNew();
+        var graphBlock = state.LastKnownBlockNumber;
+
+        // Sanitize once for all log branches (prevents log forging via CR/LF in user input)
+        var safeSource = SanitizeForLog(request.Source);
+        var safeSink = SanitizeForLog(request.Sink);
+        var safeTargetFlow = SanitizeForLog(request.TargetFlow);
+
         FindPathMetrics.InFlightRequestsGauge.Inc();
         try
         {
@@ -148,6 +156,8 @@ internal sealed class FindPathHandler(
             }
 
             using var h = await pool.Rent(request, balanceGraph, trustGraph);
+            graphBlock = h.Graph.Block; // use the rented graph's actual block
+
             var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
             var result = await Task.Run(() => solve(h.Graph)).WaitAsync(solverTimeout);
 
@@ -156,9 +166,8 @@ internal sealed class FindPathHandler(
             // Record consent + canary metrics if applicable
             if (result is MaxFlowResponse mfr)
             {
-                // Stamp graph block for staleness detection (use graph's own block, not
-                // state.Current.Block which may have advanced during solving)
-                mfr.GraphBlock = h.Graph.Block;
+                // Stamp graph block for staleness detection
+                mfr.GraphBlock = graphBlock;
 
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
@@ -177,8 +186,6 @@ internal sealed class FindPathHandler(
                 }
 
                 // Simulation canary: enqueue for async eth_call validation.
-                // Skip when request has simulated inputs — those paths depend on
-                // state that doesn't exist on-chain, so eth_call would always revert.
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
                                     || (request.SimulatedTrusts?.Count > 0);
 
@@ -188,9 +195,6 @@ internal sealed class FindPathHandler(
                     && !string.IsNullOrEmpty(request.Sink)
                     && !hasSimulated)
                 {
-                    // Build wrapper→avatar string mapping for the canary to resolve
-                    // wrapper contract addresses back to avatar addresses before eth_call.
-                    // Wrapped in try-catch: canary is best-effort and must never affect the response.
                     Dictionary<string, string>? wrapperMap = null;
                     try
                     {
@@ -215,9 +219,26 @@ internal sealed class FindPathHandler(
                         Source: request.Source,
                         Sink: request.Sink,
                         GraphBlock: mfr.GraphBlock,
-                        Transfers: new List<TransferPathStep>(mfr.Transfers), // defensive copy
+                        Transfers: new List<TransferPathStep>(mfr.Transfers),
                         WrapperToAvatar: wrapperMap));
                 }
+
+                log.LogInformation(
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    route, safeSource, safeSink, safeTargetFlow,
+                    mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
+                    graphBlock, sw.ElapsedMilliseconds, 200,
+                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+            }
+            else
+            {
+                // /findMaxFlow returns long, not MaxFlowResponse
+                log.LogInformation(
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    route, safeSource, safeSink, safeTargetFlow,
+                    result, 0, request.MaxTransfers ?? -1,
+                    graphBlock, sw.ElapsedMilliseconds, 200,
+                    request.WithWrap ?? false, request.QuantizedMode ?? false);
             }
 
             return Results.Ok(result);
@@ -225,21 +246,34 @@ internal sealed class FindPathHandler(
         catch (TimeoutException)
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
-            log.LogError("{Route} solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
-                route, settings.SolverTimeoutSeconds, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow);
+            log.LogError(
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 504,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "timeout");
             return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
         }
         catch (ArgumentException ex)
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("bad_request").Inc();
-            log.LogWarning(ex, "{Route} validation error: {Message}", route, ex.Message);
+            log.LogWarning(ex,
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 400,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "bad_request");
             return Results.BadRequest(ex.Message);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
-            log.LogError(ex, "{Route} threw exception for request: from={From}, to={To}, amount={Amount}",
-                route, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow);
+            log.LogError(ex,
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                graphBlock, sw.ElapsedMilliseconds, 500,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "exception");
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
         finally
