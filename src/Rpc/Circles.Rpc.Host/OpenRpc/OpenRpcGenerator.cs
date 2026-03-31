@@ -339,11 +339,11 @@ public static class OpenRpcGenerator
             ParamArray("eventTypes", false, "string",
                 "Filter by event types. Examples: ['CrcV2_TransferSingle','CrcV2_Trust'], ['CrcV1_Transfer'], ['CrcV2_RegisterHuman']. Null = all event types. Use circles_tables to discover all event types."),
             ParamRef("filterPredicates", false, "FilterPredicateDto",
-                "Advanced filter predicates for SQL-like filtering. Supports AND/OR conjunctions, column-level filters with operators (equals, greaterThan, lessThan, like, in). See FilterPredicateDto schema."),
+                "Advanced filter predicates for SQL-like filtering. Each predicate has Type, FilterType, Column, and Value. IMPORTANT: For 'In'/'NotIn' FilterType, Value MUST be an array (e.g., [\"0xabc...\"]). For scalar operators (Equals, GreaterThan, etc.), Value is a single string or number. See FilterPredicateDto schema."),
             Param("sortAscending", false, "boolean",
-                "Sort order by block number. Default: false (newest first). Set true for chronological order."),
+                "Sort order by block number. Default: false (newest first). Set true for chronological order. Note: this is a positional parameter — you must pass it (or null) to set limit or cursor at later positions."),
             Param("limit", false, "integer",
-                "Maximum events to return per page. Default: 100, maximum: 1000."),
+                "Maximum events to return per page. Default: 100, maximum: 1000. Pass null or omit to use the default of 100."),
             Param("cursor", false, "string",
                 "Opaque cursor from a previous response's nextCursor field for pagination. Do not construct manually.")
         ],
@@ -359,11 +359,11 @@ public static class OpenRpcGenerator
             ParamArray("eventTypes", false, "string",
                 "Filter by event types. Examples: ['CrcV2_TransferSingle','CrcV2_Trust'], ['CrcV1_Transfer'], ['CrcV2_RegisterHuman']. Null = all event types. Use circles_tables to discover all event types."),
             ParamRef("filterPredicates", false, "FilterPredicateDto",
-                "Advanced filter predicates for SQL-like filtering. Supports AND/OR conjunctions, column-level filters with operators (equals, greaterThan, lessThan, like, in). See FilterPredicateDto schema."),
+                "Advanced filter predicates for SQL-like filtering. Each predicate has Type, FilterType, Column, and Value. IMPORTANT: For 'In'/'NotIn' FilterType, Value MUST be an array (e.g., [\"0xabc...\"]). For scalar operators (Equals, GreaterThan, etc.), Value is a single string or number. See FilterPredicateDto schema."),
             Param("sortAscending", false, "boolean",
-                "Sort order by block number. Default: false (newest first). Set true for chronological order."),
+                "Sort order by block number. Default: false (newest first). Set true for chronological order. Note: this is a positional parameter — you must pass it (or null) to set limit or cursor at later positions."),
             Param("limit", false, "integer",
-                "Maximum events to return per page. Default: 100, maximum: 1000."),
+                "Maximum events to return per page. Default: 100, maximum: 1000. Pass null or omit to use the default of 100."),
             Param("cursor", false, "string",
                 "Opaque cursor from a previous response's nextCursor field for pagination. Do not construct manually.")
         ],
@@ -2098,8 +2098,8 @@ public static class OpenRpcGenerator
         // ── FilterPredicateDto ──────────────────────────────────────────────
         { ("FilterPredicateDto", "type"), "Discriminator: always 'FilterPredicate'." },
         { ("FilterPredicateDto", "column"), "Column name to filter on." },
-        { ("FilterPredicateDto", "filterType"), "Comparison operator: 'Equals', 'NotEquals', 'GreaterThan', 'LessThan', 'GreaterThanOrEquals', 'LessThanOrEquals', 'Like', 'NotLike', 'In', 'NotIn'." },
-        { ("FilterPredicateDto", "value"), "Value to compare against. Type must match the column type." },
+        { ("FilterPredicateDto", "filterType"), "Comparison operator: 'Equals', 'NotEquals', 'GreaterThan', 'LessThan', 'GreaterThanOrEquals', 'LessThanOrEquals', 'Like', 'ILike', 'NotLike', 'In', 'NotIn', 'IsNull', 'IsNotNull'." },
+        { ("FilterPredicateDto", "value"), "Value to compare against. For scalar operators (Equals, GreaterThan, Like, etc.): a single value (string or number). For In/NotIn: an ARRAY of values, e.g. [\"0xabc...\", \"0xdef...\"] — max 1000 elements. For IsNull/IsNotNull: ignored." },
 
         // ── IFilterPredicateDto ─────────────────────────────────────────────
         { ("IFilterPredicateDto", "type"), "Discriminator for filter predicate polymorphism. Value: 'FilterPredicate'." },

@@ -413,49 +413,108 @@ curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
 
 #### `circles_events`
 
-Query indexed blockchain events with advanced filtering.
+Query indexed blockchain events with advanced filtering. Returns a flat array (backwards compatible).
 
-**Parameters:**
+**Positional Parameters (JSON-RPC `params` array):**
 
-- `address` (string, optional) - Filter by address
-- `fromBlock` (number, optional) - Start block (inclusive)
-- `toBlock` (number, optional) - End block (inclusive)
-- `eventTypes` (string[], optional) - Filter by event types
-- `filterPredicates` (FilterPredicate[], optional) - Advanced filters
-- `sortAscending` (boolean, optional) - Sort order (default: false)
+| Index | Name | Type | Default | Description |
+|-------|------|------|---------|-------------|
+| 0 | address | string\|null | null (all) | Filter by address |
+| 1 | fromBlock | number\|null | null | Start block (inclusive) |
+| 2 | toBlock | number\|null | null | End block (inclusive) |
+| 3 | eventTypes | string[]\|null | null (all) | Filter by event types |
+| 4 | filterPredicates | object[]\|null | null | Advanced filters (see below) |
+| 5 | sortAscending | bool\|null | false | Sort order |
+| 6 | limit | number\|null | 100 (max 1000) | Max events to return |
+| 7 | cursor | string\|null | null | Pagination cursor (use with `circles_events_paginated`) |
 
-**Returns:** `EventsResponse` - Flat array of events (backwards compatible). For paginated results, use `circles_events_paginated`.
+> **Note:** Parameters are positional. To set `limit` (index 6), you must pass all preceding params — use `null` or `false` for unused slots.
+
+**Returns:** `EventsResponse` — flat array of events. For paginated results with `hasMore`/`nextCursor`, use `circles_events_paginated`.
 
 **Filter Predicates:**
-Supports complex filters:
+
+Each filter predicate object has the following structure:
 
 ```typescript
 {
-  type: "FilterPredicate";
-  filterType: "Equals" | "In" | "GreaterThan" | "LessThan" | ...;
-  column: string;
-  value: any;
+  Type: "FilterPredicate",
+  FilterType: string,   // comparison operator (see table below)
+  Column: string,       // column name to filter on
+  Value: any            // value to compare — type depends on FilterType
 }
 ```
 
-**Example:**
+**FilterType operators and their Value types:**
+
+| FilterType | Value type | Description |
+|------------|-----------|-------------|
+| `Equals` | scalar (string\|number) | Exact match |
+| `NotEquals` | scalar (string\|number) | Not equal |
+| `GreaterThan` | scalar (string\|number) | Greater than |
+| `GreaterThanOrEquals` | scalar (string\|number) | Greater than or equal |
+| `LessThan` | scalar (string\|number) | Less than |
+| `LessThanOrEquals` | scalar (string\|number) | Less than or equal |
+| `Like` | string (with `%` wildcards) | SQL LIKE pattern |
+| `ILike` | string (with `%` wildcards) | Case-insensitive LIKE |
+| `NotLike` | string (with `%` wildcards) | SQL NOT LIKE |
+| `In` | **array** (string[]\|number[]) | Match any value in array |
+| `NotIn` | **array** (string[]\|number[]) | Exclude values in array |
+| `IsNull` | *(ignored)* | Column is NULL |
+| `IsNotNull` | *(ignored)* | Column is not NULL |
+
+> **Important:** `In` and `NotIn` require `Value` to be an **array** (e.g., `["0xabc...", "0xdef..."]`), not a single string. Max 1000 elements per array.
+
+**Examples:**
+
+Get all events for a specific transaction (up to 1000):
 
 ```bash
 curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
-  "jsonrpc": "2.0",
+  "jsonrpc": "2.0", "id": 1,
   "method": "circles_events",
-  "params": ["0xaddr...", 30282299, null],
-  "id": 1
+  "params": [null, 0, null, null,
+    [{"Type": "FilterPredicate", "FilterType": "In",
+      "Column": "transactionHash",
+      "Value": ["0xfc98cb9fbb96c19043c73214570660a04de9bbd78eb0ea127ce4371f4bbf0c5a"]}],
+    false, 1000]
+}'
+```
+
+Get CrcV2_Transfer events for an address (default limit 100):
+
+```bash
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "circles_events",
+  "params": ["0xaddr...", 30282299, null, ["CrcV2_Transfer"]]
 }'
 ```
 
 #### `circles_events_paginated`
 
-Same as `circles_events` but returns `{events, hasMore, nextCursor}` for cursor-based pagination.
+Same parameters as `circles_events` but returns `{events, hasMore, nextCursor}` for cursor-based pagination.
 
-**Parameters:** Same as `circles_events`.
+**Returns:** `PagedEventsResponse` — `{events: [...], hasMore: boolean, nextCursor: string | null}`
 
-**Returns:** `PagedEventsResponse` - `{events: [...], hasMore: boolean, nextCursor: string | null}`
+To paginate, pass the `nextCursor` from the previous response as param index 7:
+
+```bash
+# First page
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "circles_events_paginated",
+  "params": [null, 0, null, null, null, false, 500]
+}'
+# → {"events": [...], "hasMore": true, "nextCursor": "abc123..."}
+
+# Next page — pass cursor as param index 7
+curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{
+  "jsonrpc": "2.0", "id": 2,
+  "method": "circles_events_paginated",
+  "params": [null, 0, null, null, null, false, 500, "abc123..."]
+}'
+```
 
 #### `circles_query`
 
