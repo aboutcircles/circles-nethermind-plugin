@@ -449,7 +449,7 @@ public class V2Pathfinder
         }
 
         // Debug: compact transfer summary for replay analysis
-        if (ctx.Transfers.Count > 0 && _logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+        if (ctx.Transfers?.Count > 0 && _logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
         {
             static string Trunc(string s) => s[..Math.Min(10, s.Length)];
             var summary = string.Join(" | ", ctx.Transfers.Select(t =>
