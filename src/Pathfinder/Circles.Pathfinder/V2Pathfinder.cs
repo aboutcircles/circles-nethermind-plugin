@@ -185,6 +185,12 @@ public class V2Pathfinder
         _logger.LogInformation("[{ReqId}] Graph: avatars={Avatars}, groups={Groups}, edges={Edges}",
             reqId, capacityGraph.AvatarNodes.Count, capacityGraph.GroupNodes.Count, capacityGraph.Edges.Count);
 
+        if (capacityGraph.GroupNodes.Count == 0)
+        {
+            _logger.LogWarning("[{ReqId}] Graph has 0 groups — group minting paths will be unavailable. " +
+                "Check group loading (SQL fallback may have broken filter, or Cache Service not returning groups).", reqId);
+        }
+
         return new PipelineContext
         {
             Graph = capacityGraph,
@@ -443,7 +449,7 @@ public class V2Pathfinder
         }
 
         // Debug: compact transfer summary for replay analysis
-        if (ctx.Transfers.Count > 0 && _logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
+        if (ctx.Transfers?.Count > 0 && _logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
         {
             static string Trunc(string s) => s[..Math.Min(10, s.Length)];
             var summary = string.Join(" | ", ctx.Transfers.Select(t =>

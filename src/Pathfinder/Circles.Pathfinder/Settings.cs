@@ -109,12 +109,22 @@ public class Settings
     }
 
     /// <summary>
-    /// Address of the V2 base group router contract used to filter groups and group trusts.
-    /// Previously hardcoded in SQL; now parameterized to avoid silent data loss if the router changes.
+    /// Address of the V2 base group router contract. Used by GraphFactory to track
+    /// the router node and filter group collateral edges (AddTokenPoolOutEdges router
+    /// trust check). NOT used for SQL group filtering — see StandardMintPolicyAddress.
     /// Reads V2_BASE_GROUP_ROUTER env var (same as Common.Settings.BaseGroupRouter).
     /// </summary>
     public string GroupRouterAddress { get; set; } =
         Environment.GetEnvironmentVariable("V2_BASE_GROUP_ROUTER")?.ToLowerInvariant()
         ?? "0xdc287474114cc0551a81ddc2eb51783fbf34802f";
+
+    /// <summary>
+    /// Address of the standard group mint policy contract. Used to filter which groups
+    /// participate in pathfinding (only groups registered with this mint policy are included).
+    /// Must match the Cache Service's StandardTreasuryMint constant.
+    /// </summary>
+    public string StandardMintPolicyAddress { get; set; } =
+        Environment.GetEnvironmentVariable("V2_STANDARD_MINT_POLICY")?.ToLowerInvariant()
+        ?? "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
 
 }
