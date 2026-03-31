@@ -36,4 +36,11 @@ internal class FindPathMetrics
         Metrics.CreateCounter(
             "circles_consent_safetynet_triggered_total",
             "Times ValidateConsentedFlow safety net removed edges (indicates path-level filter gap)");
+
+    // Validator: Hub.sol rule violations detected in pathfinder output (should always be 0)
+    public static readonly Counter ValidatorViolationsTotal =
+        Metrics.CreateCounter(
+            "circles_validator_violations_total",
+            "Hub.sol rule violations detected in pathfinder output (non-blocking, alert-only)",
+            new CounterConfiguration { LabelNames = new[] { "rule" } });
 }

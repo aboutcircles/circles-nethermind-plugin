@@ -414,22 +414,22 @@ public class V2Pathfinder
             });
         }
 
-#if DEBUG
+        // Validator now runs in FindPathHandler (production, with metrics).
+        // Kept here for standalone/test usage without the Host layer.
         if (ctx.Transfers.Count > 0)
         {
-            var debugState = new Validation.CapacityGraphContractState(ctx.Graph);
-            var debugValidation = Validation.HubContractValidator.Validate(
-                ctx.Transfers, ctx.Request.Source!, ctx.Request.Sink!, debugState);
-            if (!debugValidation.IsValid)
+            var validationState = new Validation.CapacityGraphContractState(ctx.Graph);
+            var validation = Validation.HubContractValidator.Validate(
+                ctx.Transfers, ctx.Request.Source!, ctx.Request.Sink!, validationState);
+            if (!validation.IsValid)
             {
-                var errors = debugValidation.Violations
+                var errors = validation.Violations
                     .Where(v => v.Severity == "error")
                     .Select(v => $"[{v.Rule}] {v.Message}");
-                _logger.LogError("[{ReqId}] HubContractValidator REJECTED output: {Violations}",
+                _logger.LogWarning("[{ReqId}] HubContractValidator violations: {Violations}",
                     ctx.ReqId, string.Join("; ", errors));
             }
         }
-#endif
     }
 
     /* ======================================================================

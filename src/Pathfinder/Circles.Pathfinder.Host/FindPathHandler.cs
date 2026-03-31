@@ -3,6 +3,7 @@ using System.Text.Json;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Validation;
 using Nethermind.Int256;
 using static Circles.Pathfinder.Tracing;
 
@@ -147,6 +148,32 @@ internal sealed class FindPathHandler(
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
+
+                // Run Hub.sol validator on output (non-blocking — alert only)
+                if (mfr.Transfers is { Count: > 0 })
+                {
+                    var contractState = new CapacityGraphContractState(h.Graph);
+                    var validation = HubContractValidator.Validate(
+                        mfr.Transfers, request.Source!, request.Sink!, contractState);
+
+                    if (!validation.IsValid)
+                    {
+                        foreach (var v in validation.Violations.Where(v => v.Severity == "error"))
+                        {
+                            FindPathMetrics.ValidatorViolationsTotal.WithLabels(v.Rule).Inc();
+                        }
+
+                        var errors = validation.Violations
+                            .Where(v => v.Severity == "error")
+                            .Select(v => $"[{v.Rule}] {v.Message}");
+
+                        log.LogError(
+                            "HubContractValidator detected violations — path may revert on-chain. " +
+                            "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Violations: {Violations}",
+                            request.Source, request.Sink, state.LastKnownBlockNumber,
+                            mfr.Transfers.Count, string.Join("; ", errors));
+                    }
+                }
             }
 
             return Results.Ok(result);
