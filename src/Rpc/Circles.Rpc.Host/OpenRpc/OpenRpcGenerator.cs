@@ -1324,6 +1324,12 @@ public static class OpenRpcGenerator
             new OpenRpcServer { Name = "Production", Url = "https://rpc.aboutcircles.com" }
         ];
 
+        doc.ExternalDocs = new OpenRpcExternalDocs
+        {
+            Description = "Circles RPC Host README — full method reference, filter predicates, WebSocket subscriptions, rate limiting, batch requests, and environment variables",
+            Url = "https://github.com/aboutcircles/circles-nethermind-plugin/blob/dev/src/Rpc/Circles.Rpc.Host/README.md"
+        };
+
         var interfaceType = typeof(ICirclesRpcModule);
 
         foreach (var (rpcName, csharpName, tag, summary, description) in MethodMappings)
