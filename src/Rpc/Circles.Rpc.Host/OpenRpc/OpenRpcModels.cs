@@ -21,9 +21,23 @@ public class OpenRpcDocument
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<OpenRpcServer>? Servers { get; set; }
 
+    [JsonPropertyName("externalDocs")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OpenRpcExternalDocs? ExternalDocs { get; set; }
+
     [JsonPropertyName("components")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public OpenRpcComponents? Components { get; set; }
+}
+
+public class OpenRpcExternalDocs
+{
+    [JsonPropertyName("description")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("url")]
+    public string Url { get; set; } = "";
 }
 
 public class OpenRpcServer
