@@ -213,10 +213,11 @@ public class ConsentedFlowValidationTests
     }
 
     /// <summary>
-    /// Router edges should always be allowed through.
+    /// Consented Avatar→Router edge is rejected by safety net because Router
+    /// lacks advancedUsageFlags. Only Router→Avatar edge survives.
     /// </summary>
     [Test]
-    public void RouterEdges_AlwaysValid()
+    public void ConsentedAvatarToRouter_RejectedBySafetyNet()
     {
         // Arrange
         var capacityGraph = CreateCapacityGraph(
@@ -234,8 +235,8 @@ public class ConsentedFlowValidationTests
         // Act
         var result = ValidateConsentedFlow(edges, capacityGraph);
 
-        // Assert - router edges should pass through
-        Assert.That(result, Has.Count.EqualTo(2));
+        // Assert - consented Avatar→Router is caught; only Router→Bob survives
+        Assert.That(result, Has.Count.EqualTo(1));
     }
 
     /// <summary>
@@ -535,36 +536,127 @@ public class ConsentedFlowValidationTests
     }
 
     /// <summary>
-    /// Group edges should NOT count as consent violations because they become router
-    /// edges after InsertRouterInTransfers, and router bypasses consent checks.
+    /// Non-consented Avatar→Group edges are skipped (become Avatar→Router→Group, standard trust applies).
     /// </summary>
     [Test]
     [Category("consented-flow")]
-    public void PathLevel_GroupEdges_NotCountedAsViolation()
+    public void PathLevel_NonConsentedAvatarToGroupEdge_Skipped()
     {
-        // Arrange: Alice(consented) → GroupX (group node)
         var groupId = AddressIdPool.IdOf("0xcf08consent_group");
 
         var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice },
+            consentedAvatars: new HashSet<int> { Bob }, // Alice is NOT consented
             trustLookup: new Dictionary<int, HashSet<int>>
             {
-                { Alice, new HashSet<int>() } // Alice doesn't trust group — but it doesn't matter
+                { Alice, new HashSet<int>() }
             }
         );
         capacityGraph.AddGroup(groupId);
 
         var pathEdges = new List<(int From, int To, int Token, long Flow)>
         {
-            (Alice, groupId, AliceToken, 500) // Will become Avatar→Router→Group
+            (Alice, groupId, AliceToken, 500)
+        };
+
+        bool hasViolation = PathHasConsentViolation(pathEdges, capacityGraph);
+
+        Assert.That(hasViolation, Is.False,
+            "Non-consented Avatar→Group edges should be skipped");
+    }
+
+    /// <summary>
+    /// Consented Avatar→Group edges are NOT skipped — after Router insertion,
+    /// Avatar(consented)→Router fails isPermittedFlow (Router lacks advancedUsageFlags).
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void PathLevel_ConsentedAvatarToGroupEdge_DetectsViolation()
+    {
+        var groupId = AddressIdPool.IdOf("0xcf08consent_group2");
+
+        var capacityGraph = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int> { Alice },
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                { Alice, new HashSet<int>() }
+            }
+        );
+        capacityGraph.AddGroup(groupId);
+
+        var pathEdges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, groupId, AliceToken, 500) // Consented→Group → will become Consented→Router → fails
+        };
+
+        bool hasViolation = PathHasConsentViolation(pathEdges, capacityGraph);
+
+        Assert.That(hasViolation, Is.True,
+            "Consented Avatar→Group should be flagged — Router lacks advancedUsageFlags");
+    }
+
+    /// <summary>
+    /// Group→Avatar (mint) edges stay as-is after InsertRouterInTransfers and
+    /// must be consent-checked. Groups don't have advancedUsageFlags, so the
+    /// check passes — but the edge must NOT be skipped.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void PathLevel_GroupToAvatarEdge_IsConsentChecked_PassesWhenGroupNotConsented()
+    {
+        var groupId = AddressIdPool.IdOf("0xcf09consent_group_mint");
+
+        var capacityGraph = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int> { Alice }, // Only Alice consented, not the group
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                { groupId, new HashSet<int> { AliceToken } }
+            }
+        );
+        capacityGraph.AddGroup(groupId);
+
+        var pathEdges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (groupId, Alice, AliceToken, 500) // Group→Avatar mint edge (stays as-is)
         };
 
         // Act
         bool hasViolation = PathHasConsentViolation(pathEdges, capacityGraph);
 
-        // Assert — group edge should be skipped
+        // Assert — Group is not consented, so standard trust is sufficient → no violation
         Assert.That(hasViolation, Is.False,
-            "Group edges should be skipped (they become router edges which bypass consent)");
+            "Group→Avatar mint edge should pass: group has no advancedUsageFlags");
+    }
+
+    /// <summary>
+    /// Hypothetical: if a group DID have consented flow and didn't trust the recipient,
+    /// the consent check should catch it. This verifies the edge is NOT skipped.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void PathLevel_GroupToAvatarEdge_DetectsViolation_WhenGroupIsConsented()
+    {
+        var groupId = AddressIdPool.IdOf("0xcf10consent_group_consented");
+
+        var capacityGraph = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int> { groupId }, // Group has consented flow
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                // Group does NOT trust Alice
+            }
+        );
+        capacityGraph.AddGroup(groupId);
+
+        var pathEdges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (groupId, Alice, AliceToken, 500) // Group(consented)→Avatar — group doesn't trust Alice
+        };
+
+        // Act
+        bool hasViolation = PathHasConsentViolation(pathEdges, capacityGraph);
+
+        // Assert — group is consented but doesn't trust recipient → violation detected
+        Assert.That(hasViolation, Is.True,
+            "Group→Avatar edge with consented group that doesn't trust recipient should be caught");
     }
 
     /// <summary>
@@ -927,109 +1019,17 @@ public class ConsentedFlowValidationTests
         return graph;
     }
 
-    /// <summary>
-    /// Replicates the ValidateConsentedFlow logic from V2Pathfinder for testing.
-    /// This ensures we test the exact same logic without needing the full pathfinder.
-    /// </summary>
+    // Delegate to production V2Pathfinder methods (internal, accessible via InternalsVisibleTo)
+    // to avoid logic drift between test copies and production code.
+    private static readonly V2Pathfinder _consentValidator = new();
+
     private static List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
-    {
-        // If no consent data available, pass all edges through
-        if (capacityGraph.TrustLookup == null || capacityGraph.ConsentedAvatars.Count == 0)
-        {
-            return edges;
-        }
+        => _consentValidator.ValidateConsentedFlow(edges, capacityGraph);
 
-        var validEdges = new List<FlowEdge>(edges.Count);
-
-        foreach (var edge in edges)
-        {
-            // Skip pool nodes - they're not avatars
-            if (IsPoolNode(edge.From) || IsPoolNode(edge.To))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // Skip router edges
-            if (capacityGraph.IsRouter(edge.From) || capacityGraph.IsRouter(edge.To))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // If From doesn't have consented flow, standard trust is sufficient
-            if (!capacityGraph.ConsentedAvatars.Contains(edge.From))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // From has consented flow enabled - check additional requirements:
-            // 1. From must trust To
-            bool fromTrustsTo = capacityGraph.TrustLookup.TryGetValue(edge.From, out var fromTrusts)
-                               && fromTrusts.Contains(edge.To);
-            if (!fromTrustsTo)
-            {
-                // Invalid - From has consented flow but doesn't trust To
-                continue;
-            }
-
-            // 2. To must also have consented flow enabled
-            if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
-            {
-                // Invalid - To doesn't have consented flow enabled
-                continue;
-            }
-
-            // All checks passed
-            validEdges.Add(edge);
-        }
-
-        return validEdges;
-    }
-
-    private static bool IsPoolNode(int nodeId)
-    {
-        return AddressIdPool.IsBalanceNode(nodeId);
-    }
-
-    /// <summary>
-    /// Replicates the PathHasConsentViolation logic from V2Pathfinder for testing.
-    /// Checks if a collapsed path has any consent violation.
-    /// </summary>
     private static bool PathHasConsentViolation(
         List<(int From, int To, int Token, long Flow)> collapsedEdges,
         CapacityGraph capacityGraph)
-    {
-        if (capacityGraph.TrustLookup == null || capacityGraph.ConsentedAvatars.Count == 0)
-            return false;
-
-        foreach (var (from, to, _, _) in collapsedEdges)
-        {
-            // Skip group edges — they become router edges later
-            if (capacityGraph.IsGroup(from) || capacityGraph.IsGroup(to))
-                continue;
-
-            // Skip pool nodes
-            if (IsPoolNode(from) || IsPoolNode(to))
-                continue;
-
-            // If From doesn't have consented flow, standard trust is sufficient
-            if (!capacityGraph.ConsentedAvatars.Contains(from))
-                continue;
-
-            // From has consented flow — check requirements
-            bool fromTrustsTo = capacityGraph.TrustLookup.TryGetValue(from, out var fromTrusts)
-                                && fromTrusts.Contains(to);
-            if (!fromTrustsTo)
-                return true;
-
-            if (!capacityGraph.ConsentedAvatars.Contains(to))
-                return true;
-        }
-
-        return false;
-    }
+        => _consentValidator.PathHasConsentViolation(collapsedEdges, capacityGraph);
 
     #endregion
 }

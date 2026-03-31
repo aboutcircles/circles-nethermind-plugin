@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
 using Nethermind.Int256;
 using static Circles.Pathfinder.Tracing;
@@ -16,7 +17,8 @@ namespace Circles.Pathfinder.Host;
 internal sealed class FindPathHandler(
     Settings settings,
     SemaphoreSlim semaphore,
-    ILogger<FindPathHandler> log)
+    ILogger<FindPathHandler> log,
+    SimulationCanaryService? simulationCanary = null)
 {
     private const int MaxArrayEntries = 1000;
 
@@ -86,10 +88,15 @@ internal sealed class FindPathHandler(
         int? maxTransfers = null, bool? quantizedMode = null,
         bool? debugShowIntermediateSteps = null)
     {
+        // Normalize and sanitize addresses once so all downstream logging is safe
+        // (prevents log forging via embedded \r\n in user-supplied addresses).
+        var normalizedFrom = from.ToLowerInvariant().Replace("\r", string.Empty).Replace("\n", string.Empty);
+        var normalizedTo = to.ToLowerInvariant().Replace("\r", string.Empty).Replace("\n", string.Empty);
+
         return new FlowRequest
         {
-            Source = from.ToLowerInvariant(),
-            Sink = to.ToLowerInvariant(),
+            Source = normalizedFrom,
+            Sink = normalizedTo,
             TargetFlow = amount,
             FromTokens = fromTokens?.ToList(),
             ToTokens = toTokens?.ToList(),
@@ -108,6 +115,12 @@ internal sealed class FindPathHandler(
     /// Execute a solver call with semaphore guarding, graph rent, timeout, metrics, and exception handling.
     /// The <paramref name="solve"/> delegate receives the rented capacity graph and returns the result to serialize.
     /// </summary>
+    /// <summary>
+    /// Strip CR/LF from user-supplied values before logging (prevents log forging).
+    /// </summary>
+    private static string? SanitizeForLog(string? value) =>
+        value?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+
     internal async Task<IResult> ExecuteWithGuard(
         string route,
         FlowRequest request,
@@ -140,13 +153,71 @@ internal sealed class FindPathHandler(
 
             FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
 
-            // Record consent metrics if applicable
+            // Record consent + canary metrics if applicable
             if (result is MaxFlowResponse mfr)
             {
+                // Stamp graph block for staleness detection (use graph's own block, not
+                // state.Current.Block which may have advanced during solving)
+                mfr.GraphBlock = h.Graph.Block;
+
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
+
+                // Canary: record Hub.sol rule violations (observe-only)
+                if (mfr.ValidationErrors > 0)
+                {
+                    FindPathMetrics.CanaryValidationFailureTotal.WithLabels("any").Inc();
+                    if (mfr.ValidationViolationRules != null)
+                    {
+                        foreach (var rule in mfr.ValidationViolationRules)
+                            FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
+                    }
+                }
+
+                // Simulation canary: enqueue for async eth_call validation.
+                // Skip when request has simulated inputs — those paths depend on
+                // state that doesn't exist on-chain, so eth_call would always revert.
+                bool hasSimulated = (request.SimulatedBalances?.Count > 0)
+                                    || (request.SimulatedTrusts?.Count > 0);
+
+                if (simulationCanary != null
+                    && mfr.Transfers.Count > 0
+                    && !string.IsNullOrEmpty(request.Source)
+                    && !string.IsNullOrEmpty(request.Sink)
+                    && !hasSimulated)
+                {
+                    // Build wrapper→avatar string mapping for the canary to resolve
+                    // wrapper contract addresses back to avatar addresses before eth_call.
+                    // Wrapped in try-catch: canary is best-effort and must never affect the response.
+                    Dictionary<string, string>? wrapperMap = null;
+                    try
+                    {
+                        if (h.Graph.WrapperToAvatar.Count > 0)
+                        {
+                            wrapperMap = new Dictionary<string, string>(
+                                h.Graph.WrapperToAvatar.Count, StringComparer.OrdinalIgnoreCase);
+                            foreach (var kv in h.Graph.WrapperToAvatar)
+                            {
+                                wrapperMap[AddressIdPool.StringOf(kv.Key)] = AddressIdPool.StringOf(kv.Value);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "Failed to build wrapper map for canary — simulation will run without wrapper resolution");
+                        wrapperMap = null;
+                    }
+
+                    simulationCanary.TryEnqueue(new CanaryWorkItem(
+                        ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
+                        Source: request.Source,
+                        Sink: request.Sink,
+                        GraphBlock: mfr.GraphBlock,
+                        Transfers: new List<TransferPathStep>(mfr.Transfers), // defensive copy
+                        WrapperToAvatar: wrapperMap));
+                }
             }
 
             return Results.Ok(result);
@@ -155,7 +226,7 @@ internal sealed class FindPathHandler(
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
             log.LogError("{Route} solver timed out after {Timeout}s for request: from={From}, to={To}, amount={Amount}",
-                route, settings.SolverTimeoutSeconds, request.Source, request.Sink, request.TargetFlow);
+                route, settings.SolverTimeoutSeconds, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow);
             return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
         }
         catch (ArgumentException ex)
@@ -168,7 +239,7 @@ internal sealed class FindPathHandler(
         {
             FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
             log.LogError(ex, "{Route} threw exception for request: from={From}, to={To}, amount={Amount}",
-                route, request.Source, request.Sink, request.TargetFlow);
+                route, SanitizeForLog(request.Source), SanitizeForLog(request.Sink), request.TargetFlow);
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }
         finally

@@ -151,6 +151,59 @@ public partial class CirclesRpcModule
         );
     }
 
+    public async Task<BlockByTimestampResponse> GetBlockByTimestamp(long timestamp, string? direction = "before")
+    {
+        if (timestamp < 0)
+            throw new ArgumentException("timestamp must be non-negative");
+
+        if (direction != null
+            && !string.Equals(direction, "before", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(direction, "after", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("direction must be 'before' or 'after'");
+
+        var isAfter = string.Equals(direction, "after", StringComparison.OrdinalIgnoreCase);
+
+        var sql = isAfter
+            ? @"SELECT ""blockNumber"", ""timestamp"" FROM ""System_Block""
+               WHERE ""timestamp"" >= @ts ORDER BY ""timestamp"" ASC LIMIT 1"
+            : @"SELECT ""blockNumber"", ""timestamp"" FROM ""System_Block""
+               WHERE ""timestamp"" <= @ts ORDER BY ""timestamp"" DESC LIMIT 1";
+
+        await using var connection = await CreateConnectionAsync();
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.CommandTimeout = 30;
+        cmd.Parameters.AddWithValue("ts", timestamp);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new BlockByTimestampResponse(
+                reader.GetInt64(0),
+                reader.GetInt64(1)
+            );
+        }
+
+        // No block found — return nearest boundary (earliest indexed block for "before", latest for "after")
+        await reader.CloseAsync();
+        await using var fallbackCmd = new NpgsqlCommand(
+            isAfter
+                ? @"SELECT ""blockNumber"", ""timestamp"" FROM ""System_Block"" ORDER BY ""blockNumber"" DESC LIMIT 1"
+                : @"SELECT ""blockNumber"", ""timestamp"" FROM ""System_Block"" ORDER BY ""blockNumber"" ASC LIMIT 1",
+            connection);
+        fallbackCmd.CommandTimeout = 30;
+
+        await using var fallbackReader = await fallbackCmd.ExecuteReaderAsync();
+        if (await fallbackReader.ReadAsync())
+        {
+            return new BlockByTimestampResponse(
+                fallbackReader.GetInt64(0),
+                fallbackReader.GetInt64(1)
+            );
+        }
+
+        throw new InvalidOperationException("No blocks found in System_Block table");
+    }
+
     public Task<TableNamespace[]> GetTables()
     {
         var namespaces = new List<TableNamespace>();

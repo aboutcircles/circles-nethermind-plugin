@@ -8,6 +8,7 @@ using Circles.Pathfinder;
 using Circles.Pathfinder.Data;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host;
+using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
 using Circles.Pathfinder.Nodes;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -84,6 +85,18 @@ builder.Services.AddSingleton<CapacityGraphPool>(provider =>
 builder.Services.AddSingleton<V2Pathfinder>();
 builder.Services.AddSingleton<FindPathHandler>();
 builder.Services.AddHttpContextAccessor();
+
+// Simulation canary: async eth_call validation (opt-in via CANARY_SIMULATION_ENABLED=true)
+var canaryEnabled = string.Equals(
+    Environment.GetEnvironmentVariable("CANARY_SIMULATION_ENABLED"), "true",
+    StringComparison.OrdinalIgnoreCase);
+if (canaryEnabled)
+{
+    builder.Services.AddHttpClient("canary-simulation", c => c.Timeout = TimeSpan.FromSeconds(30));
+    builder.Services.AddSingleton<SimulationCanaryService>();
+    builder.Services.AddHostedService(p => p.GetRequiredService<SimulationCanaryService>());
+    Console.WriteLine("* Simulation canary enabled");
+}
 
 builder.Services.AddHostedService<NetworkStateUpdaterService>();
 builder.Services.AddHostedService<LogStatsService>();
@@ -364,6 +377,11 @@ app.MapPost("/findPath", async (
     var arraySizeErr = FindPathHandler.ValidateArraySizes(request);
     if (arraySizeErr != null) return arraySizeErr;
 
+    // Sanitize user input early: strip CR/LF to prevent log forging, then lowercase.
+    request.Source = request.Source?.Replace("\r", "").Replace("\n", "").ToLowerInvariant();
+    request.Sink = request.Sink?.Replace("\r", "").Replace("\n", "").ToLowerInvariant();
+    request.TargetFlow = request.TargetFlow?.Replace("\r", "").Replace("\n", "");
+
     log.LogInformation("Deserialized request - Source: {Source}, Sink: {Sink}, TargetFlow: {TargetFlow}",
         request.Source, request.Sink, request.TargetFlow);
 
@@ -373,9 +391,6 @@ app.MapPost("/findPath", async (
     act?.SetTag("to", request.Sink);
     act?.SetTag("amount", request.TargetFlow);
     using var scope = log.BeginScope("traceId:{TraceId}", act?.TraceId.ToString());
-
-    request.Source = request.Source?.ToLowerInvariant();
-    request.Sink = request.Sink?.ToLowerInvariant();
 
     if (settings.ExcludeConsentedIntermediaries)
         request.SimulatedConsentedAvatars = null;

@@ -423,8 +423,10 @@ public class EntityTypeFilterTests
         var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("1000000000000000000"));
 
-        // Group minting with consented flow should work when both parties consent
-        AssertMaxFlowPositive(result.MaxFlow);
+        // Consented source cannot do group minting — Router lacks advancedUsageFlags on-chain.
+        Assert.That(result.MaxFlow, Is.EqualTo("0"), "Consented source→Group correctly yields zero flow");
+        Assert.That(result.Transfers, Is.Null.Or.Empty, "No transfer steps when all paths are consent-blocked");
+        Assert.That(result.ConsentDroppedPaths, Is.GreaterThan(0), "At least one path dropped by consent filter");
     }
 
     [Test]
@@ -663,6 +665,9 @@ public class EntityTypeFilterTests
         var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = false });
         var result = pathfinder.ComputeMaxFlowWithPath(capacityGraph, request, UInt256.Parse("96000000000000000000"));
 
-        AssertMaxFlowPositive(result.MaxFlow);
+        // Consented source cannot do group minting — Router lacks advancedUsageFlags on-chain.
+        Assert.That(result.MaxFlow, Is.EqualTo("0"), "Consented source→Group correctly yields zero flow");
+        Assert.That(result.Transfers, Is.Null.Or.Empty, "No transfer steps when all paths are consent-blocked");
+        Assert.That(result.ConsentDroppedPaths, Is.GreaterThan(0), "At least one path dropped by consent filter");
     }
 }

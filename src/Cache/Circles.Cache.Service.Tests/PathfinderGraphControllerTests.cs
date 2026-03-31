@@ -132,6 +132,7 @@ public class PathfinderGraphControllerTests
         var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
         var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
+        _cache.V2Avatars.Add(1000, token, ("CrcV2_RegisterHuman", 1704067200L)); // token owner must be registered
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token}", 1.5m);
         // Set a recent lastActivity so demurrage is minimal
         var recentTimestamp = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
@@ -566,6 +567,7 @@ public class PathfinderGraphControllerTests
         var account = "0xde374ece6fa50e781e81aac78e811b33d16912c7";
         var token = "0x42cedde51198d1773590311e2a340dc06b24cb37";
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
+        _cache.V2Avatars.Add(1000, token, ("CrcV2_RegisterHuman", 1704067200L)); // token owner must be registered
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token}", 100m);
 
         // lastActivity 30 days ago — should show noticeable demurrage
@@ -700,6 +702,8 @@ public class PathfinderGraphControllerTests
         var now = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         _cache.V2Avatars.Add(1000, account, ("CrcV2_RegisterHuman", 1704067200L));
+        _cache.V2Avatars.Add(1000, token1, ("CrcV2_RegisterHuman", 1704067200L)); // token owners must be registered
+        _cache.V2Avatars.Add(1000, token2, ("CrcV2_RegisterHuman", 1704067200L));
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token1}", 1.0m);
         _cache.V2BalancesByAccountAndToken.Add(1000, $"{account}:{token2}", 2.0m);
         _cache.V2LastActivity.Add(1000, $"{account}:{token1}", now);

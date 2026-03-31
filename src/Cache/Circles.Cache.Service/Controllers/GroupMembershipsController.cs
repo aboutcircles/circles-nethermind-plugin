@@ -1,5 +1,6 @@
 using Circles.Cache.Service.Caches;
 using Circles.Cache.Service.Models;
+using Circles.Common;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Circles.Cache.Service.Controllers;
@@ -40,8 +41,14 @@ public class GroupMembershipsController : ControllerBase
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
+            var registrations = new CacheRegistrationSet(_caches);
+
+            // Short-circuit: if the group itself is stopped/unregistered, return empty
+            if (!registrations.IsGroup(groupLower))
+                return Ok(new GroupMembersResponse(groupLower, Array.Empty<GroupMembershipResponse>(), lastBlock, timestamp));
+
             var members = _caches.GetGroupMembers(groupLower)
-                .Where(m => m.ExpiryTime > currentBlockTimestamp)
+                .Where(m => m.ExpiryTime > currentBlockTimestamp && registrations.IsRegistered(m.Member))
                 .Select(m => new GroupMembershipResponse(
                     Group: groupLower,
                     Member: m.Member,
@@ -81,8 +88,14 @@ public class GroupMembershipsController : ControllerBase
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var currentBlockTimestamp = _state.CurrentBlockTimestamp;
 
+            var registrations = new CacheRegistrationSet(_caches);
+
+            // Short-circuit: if the member is stopped/unregistered, return empty
+            if (!registrations.IsRegistered(memberLower))
+                return Ok(new MemberGroupsResponse(memberLower, Array.Empty<GroupMembershipResponse>(), lastBlock, timestamp));
+
             var groups = _caches.GetMemberGroups(memberLower)
-                .Where(g => g.ExpiryTime > currentBlockTimestamp)
+                .Where(g => g.ExpiryTime > currentBlockTimestamp && registrations.IsGroup(g.Group))
                 .Select(g => new GroupMembershipResponse(
                     Group: g.Group,
                     Member: memberLower,

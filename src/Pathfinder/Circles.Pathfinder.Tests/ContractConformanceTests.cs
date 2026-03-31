@@ -182,7 +182,7 @@ public class ContractConformanceTests
     /// Router edges should always be permitted regardless of consent status.
     /// </summary>
     [Test]
-    public void IsPermittedFlow_RouterEdges_AlwaysPermitted()
+    public void IsPermittedFlow_ConsentedAvatarToRouter_RejectedBySafetyNet()
     {
         var graph = BuildGraphWithTrust(
             trusts: Array.Empty<(string, string)>(),
@@ -196,8 +196,8 @@ public class ContractConformanceTests
         };
 
         var validated = ValidateConsentedFlow(edges, graph);
-        Assert.That(validated.Count, Is.EqualTo(2),
-            "Router edges should bypass consent validation");
+        Assert.That(validated.Count, Is.EqualTo(1),
+            "Consented Avatar→Router is caught by safety net; only Router→Avatar survives");
     }
 
     #endregion
@@ -621,43 +621,11 @@ public class ContractConformanceTests
         return graph;
     }
 
-    /// <summary>
-    /// Replicates V2Pathfinder.ValidateConsentedFlow logic for unit testing.
-    /// </summary>
+    // Delegate to production method to avoid logic drift
+    private static readonly V2Pathfinder _consentValidator = new();
+
     private static List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph graph)
-    {
-        if (graph.TrustLookup == null || graph.ConsentedAvatars.Count == 0)
-            return edges;
-
-        var valid = new List<FlowEdge>(edges.Count);
-
-        foreach (var edge in edges)
-        {
-            // Skip router edges
-            if (graph.IsRouter(edge.From) || graph.IsRouter(edge.To))
-            {
-                valid.Add(edge);
-                continue;
-            }
-
-            // Non-consented: standard trust sufficient
-            if (!graph.ConsentedAvatars.Contains(edge.From))
-            {
-                valid.Add(edge);
-                continue;
-            }
-
-            // Consented: From trusts To AND To consented
-            bool fromTrustsTo = graph.TrustLookup.TryGetValue(edge.From, out var trusts)
-                                && trusts.Contains(edge.To);
-            if (!fromTrustsTo) continue;
-            if (!graph.ConsentedAvatars.Contains(edge.To)) continue;
-
-            valid.Add(edge);
-        }
-
-        return valid;
-    }
+        => _consentValidator.ValidateConsentedFlow(edges, graph);
 
     #endregion
 }

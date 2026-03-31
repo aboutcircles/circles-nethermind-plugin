@@ -1,10 +1,5 @@
 with registered_avatars as materialized (
-    select organization as avatar from "CrcV2_RegisterOrganization"
-    union all
-    select "group" as avatar from "CrcV2_RegisterGroup"
-    union all
-    select avatar from "CrcV2_RegisterHuman"
-),
+{{registered_avatars_cte_body}}),
 static_wrapper_transfers as (
     select t."timestamp"
          , t."tokenAddress"
@@ -72,6 +67,7 @@ native_sum as (
          , false as "isStatic"
     from "V_CrcV2_BalancesByAccountAndToken" b
     join registered_avatars ra on ra.avatar = b."account"
+    join registered_avatars ra_token on ra_token.avatar = b."tokenAddress"
     where b."totalBalance" > 0
 )
 select balance::text
