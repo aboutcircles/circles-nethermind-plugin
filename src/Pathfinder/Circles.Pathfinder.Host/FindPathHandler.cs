@@ -175,18 +175,18 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
 
-                // Validator: record Hub.sol rule violations (observe-only, alert via Prometheus)
+                // Path audit: record Hub.sol rule violations (observe-only, alert via Prometheus)
                 if (mfr.ValidationErrors > 0)
                 {
-                    FindPathMetrics.ValidatorViolationsTotal.WithLabels("any").Inc();
+                    FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
                     {
                         foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.ValidatorViolationsTotal.WithLabels(rule).Inc();
+                            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
 
                     log.LogError(
-                        "HubContractValidator detected violations — path may revert on-chain. " +
+                        "Path audit: Hub.sol rule violations detected — path may revert on-chain. " +
                         "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
                         request.Source, request.Sink, mfr.GraphBlock,
                         mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
