@@ -6,16 +6,21 @@ namespace Circles.Pathfinder.Graphs;
 
 public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph, ILogger<GraphFactory>? graphFactoryLogger = null)
 {
-    private volatile CapacityGraphSnapshot? _current;
+    private volatile SnapshotState? _state;
     private volatile CapacityGraphSnapshot? _currentWrapped;
-    private volatile CachedGroupData? _cachedGroupData;
     private readonly GraphFactory _gf = new(routerAddress, loadGraph, graphFactoryLogger);
 
+    /// <summary>
+    /// Packs snapshot + cachedGroupData into a single reference so readers
+    /// always see a consistent pair (no torn read between two volatile fields).
+    /// </summary>
+    private sealed record SnapshotState(CapacityGraphSnapshot Snapshot, CachedGroupData? GroupData);
+
     /// <summary>Whether a snapshot has been loaded (used by health checks).</summary>
-    public bool HasCurrentSnapshot => _current is not null;
+    public bool HasCurrentSnapshot => _state is not null;
 
     /// <summary>Current snapshot (for metrics). May be null before first load.</summary>
-    public CapacityGraphSnapshot? CurrentSnapshot => _current;
+    public CapacityGraphSnapshot? CurrentSnapshot => _state?.Snapshot;
 
     /// <summary>Current wrapped snapshot (for metrics). May be null before first load.</summary>
     public CapacityGraphSnapshot? CurrentWrappedSnapshot => _currentWrapped;
@@ -26,11 +31,9 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
 
     public void UpdateSnapshot(CapacityGraphSnapshot snap, CachedGroupData? groupData = null)
     {
-        // Store cached group data before snapshot so readers see it when they see the new snapshot
-        _cachedGroupData = groupData;
-        // Volatile write (field is already volatile) — old snapshot becomes
-        // eligible for GC once all in-flight requests release their references.
-        _current = snap;
+        // Single volatile write — readers always see consistent snapshot+groupData pair.
+        // Old state becomes eligible for GC once all in-flight requests release their references.
+        _state = new SnapshotState(snap, groupData);
     }
 
     /// <summary>
@@ -50,8 +53,9 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
         BalanceGraph balances,
         IReadOnlyDictionary<int, HashSet<int>> trust)
     {
-        var snap = _current;
-        if (snap == null)
+        // Single volatile read — snapshot and groupData are always consistent.
+        var state = _state;
+        if (state == null)
             throw new InvalidOperationException("No capacity graph available yet.");
 
         if (RequestNeedsFiltering(r))
@@ -68,13 +72,13 @@ public sealed class CapacityGraphPool(string routerAddress, ILoadGraph loadGraph
             }
 
             // build ad-hoc filtered graph, using cached group/consent data to skip DB queries
-            var g = _gf.CreateCapacityGraph(balances, trust, r, _cachedGroupData);
-            g.Block = snap.Block; // propagate block for replay logging
+            var g = _gf.CreateCapacityGraph(balances, trust, r, state.GroupData);
+            g.Block = state.Snapshot.Block; // propagate block for replay logging
             return Task.FromResult(new CapacityGraphHandle(g));
         }
 
         // Return the shared snapshot — GC keeps it alive while referenced
-        return Task.FromResult(new CapacityGraphHandle(snap.Base));
+        return Task.FromResult(new CapacityGraphHandle(state.Snapshot.Base));
     }
 
     /* ------------------------------------------------------------------ */
