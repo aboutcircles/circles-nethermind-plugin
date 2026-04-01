@@ -300,11 +300,20 @@ public class PathfinderGraphController : ControllerBase
 
     /// <summary>
     /// Returns all registered V2 avatar addresses from the cache.
+    /// Hub.sol considers humans, organizations, AND groups as registered avatars
+    /// (avatars[addr] != address(0) for all three types). The pathfinder uses this
+    /// list to populate RegisteredAvatarIds — missing any type causes validator
+    /// false positives (Rules 9/11: AvatarRegistration, TokenIdValidity).
     /// </summary>
     private List<string> BuildAvatars()
     {
-        var avatars = new List<string>(_caches.V2Avatars.Count);
+        var avatars = new List<string>(_caches.V2Avatars.Count + _caches.Groups.Count);
         foreach (var address in _caches.V2Avatars.ReadOnlyDictionary.Keys)
+        {
+            avatars.Add(address);
+        }
+        // Groups are registered avatars in Hub.sol — must be included
+        foreach (var address in _caches.Groups.ReadOnlyDictionary.Keys)
         {
             avatars.Add(address);
         }
