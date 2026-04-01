@@ -18,4 +18,10 @@ public interface IContractState
 
     /// <summary>The StandardRouter contract address (null if not set).</summary>
     string? RouterAddress { get; }
+
+    /// <summary>
+    /// Hub.avatars(address) != address(0) — is the address a registered Circles avatar?
+    /// Hub.sol:794-805 checks this for ALL flow vertices; error codes 0x24/0x25.
+    /// </summary>
+    bool IsRegistered(string address);
 }

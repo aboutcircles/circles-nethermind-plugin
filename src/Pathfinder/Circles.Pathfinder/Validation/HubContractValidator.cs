@@ -12,7 +12,7 @@ namespace Circles.Pathfinder.Validation;
 public static class HubContractValidator
 {
     /// <summary>
-    /// Run all 8 validation rules against the transfer path.
+    /// Run all 11 validation rules against the transfer path.
     /// </summary>
     /// <param name="steps">The transfer steps produced by the pathfinder.</param>
     /// <param name="source">The sender address.</param>
@@ -33,6 +33,9 @@ public static class HubContractValidator
         ValidateNoZeroFlowEdges(filtered, violations);
         ValidateAddressFormat(filtered, violations);
         ValidateVertexOrdering(filtered, source, sink, violations);
+        ValidateAvatarRegistration(filtered, source, sink, state, violations);
+        ValidateGroupRegistration(filtered, state, violations);
+        ValidateTokenIdValidity(filtered, state, violations);
         ValidateIsPermittedFlow(filtered, state, violations);
         ValidateFlowConservation(filtered, source, sink, violations);
         ValidateCollateralBeforeMint(filtered, state, violations);
@@ -185,6 +188,146 @@ public static class HubContractValidator
                     "VertexOrdering",
                     $"Duplicate uint160 value for different addresses: {sorted[i].Address} and {sorted[i - 1].Address}",
                     null, "error"));
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────
+    // Rule 9: Avatar registration
+    // Hub.sol:794-805 checks avatars[addr] != address(0) for ALL
+    // flow vertices. Error codes 0x24 (non-last) and 0x25 (last).
+    // The pathfinder only adds registered avatars to the graph, but
+    // this rule independently verifies the output.
+    // ────────────────────────────────────────────
+    internal static void ValidateAvatarRegistration(
+        IReadOnlyList<TransferPathStep> steps,
+        string source,
+        string sink,
+        IContractState state,
+        List<ValidationViolation> violations)
+    {
+        var router = state.RouterAddress?.ToLowerInvariant();
+
+        // Collect all unique vertex addresses (From and To only — TokenOwner checked by Rule 11)
+        var vertices = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            source.ToLowerInvariant(),
+            sink.ToLowerInvariant()
+        };
+
+        foreach (var step in steps)
+        {
+            vertices.Add(step.From.ToLowerInvariant());
+            vertices.Add(step.To.ToLowerInvariant());
+        }
+
+        foreach (var vertex in vertices)
+        {
+            // Router is a contract address — always registered on-chain
+            if (router != null && vertex == router)
+                continue;
+
+            // Skip malformed addresses (already caught by Rule 2)
+            if (!vertex.StartsWith("0x") || vertex.Length != 42)
+                continue;
+
+            if (!state.IsRegistered(vertex))
+            {
+                violations.Add(new ValidationViolation(
+                    "AvatarRegistration",
+                    $"Vertex '{vertex[..Math.Min(10, vertex.Length)]}' is not a registered avatar (Hub.sol error 0x24/0x25)",
+                    null, "error"));
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────
+    // Rule 10: Group registration for mint edges
+    // Hub.sol:707 checks isGroup(_group) inside _groupMint.
+    // Error code 0x40 (CirclesHubGroupIsNotRegistered).
+    // When _effectPathTransfers sees an edge where To is a group,
+    // it calls _groupMint — which reverts if isGroup(to) is false.
+    // This rule catches edges where From is expected to be a group
+    // (because it's minting its own token) but isn't registered.
+    // ────────────────────────────────────────────
+    internal static void ValidateGroupRegistration(
+        IReadOnlyList<TransferPathStep> steps,
+        IContractState state,
+        List<ValidationViolation> violations)
+    {
+        var router = state.RouterAddress?.ToLowerInvariant();
+        if (router == null) return; // No router means no group minting in this path
+
+        // Detect group-mint pattern: an address X is in a group mint flow when:
+        //   1. Router→X edge exists (collateral deposit)
+        //   2. X→Avatar edge exists where TokenOwner == X (X mints its own token)
+        // Hub.sol:893 calls _groupMint(sender, to, to, ...) when isGroup(to).
+        // Hub.sol:707 reverts with 0x40 if !isGroup(_group).
+
+        var receivesFromRouter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var step in steps)
+        {
+            if (step.From.ToLowerInvariant() == router)
+                receivesFromRouter.Add(step.To.ToLowerInvariant());
+        }
+
+        var mintCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var step in steps)
+        {
+            var from = step.From.ToLowerInvariant();
+            if (step.TokenOwner.ToLowerInvariant() == from && from != router)
+                mintCandidates.Add(from);
+        }
+
+        // Addresses in BOTH sets are in the group-mint pattern — verify IsGroup
+        foreach (var candidate in mintCandidates)
+        {
+            if (!receivesFromRouter.Contains(candidate))
+                continue;
+
+            if (!state.IsGroup(candidate))
+            {
+                violations.Add(new ValidationViolation(
+                    "GroupRegistration",
+                    $"Address '{candidate[..Math.Min(10, candidate.Length)]}' is in group-mint pattern (Router→X, X→Avatar with own token) but is not a registered group (Hub.sol error 0x40)",
+                    null, "error"));
+            }
+        }
+    }
+
+    // ────────────────────────────────────────────
+    // Rule 11: Token ID validity
+    // Hub.sol:718 _validateAddressFromId(_collateral[i], 1)
+    // checks that collateral token IDs encode valid registered
+    // avatar addresses. For personal Circles, tokenId == avatarAddress,
+    // so TokenOwner must be a registered avatar.
+    // ────────────────────────────────────────────
+    internal static void ValidateTokenIdValidity(
+        IReadOnlyList<TransferPathStep> steps,
+        IContractState state,
+        List<ValidationViolation> violations)
+    {
+        var router = state.RouterAddress?.ToLowerInvariant();
+        var checked_ = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < steps.Count; i++)
+        {
+            var tokenOwner = steps[i].TokenOwner.ToLowerInvariant();
+
+            // Skip already checked, malformed (caught by Rule 2), and router
+            if (!checked_.Add(tokenOwner))
+                continue;
+            if (!tokenOwner.StartsWith("0x") || tokenOwner.Length != 42)
+                continue;
+            if (router != null && tokenOwner == router)
+                continue;
+
+            if (!state.IsRegistered(tokenOwner))
+            {
+                violations.Add(new ValidationViolation(
+                    "TokenIdValidity",
+                    $"Edge {i}: TokenOwner '{tokenOwner[..Math.Min(10, tokenOwner.Length)]}' is not a registered avatar — invalid token ID (Hub.sol:718 _validateAddressFromId)",
+                    i, "error"));
             }
         }
     }

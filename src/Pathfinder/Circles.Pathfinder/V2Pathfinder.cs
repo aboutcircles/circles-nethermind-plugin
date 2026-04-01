@@ -457,7 +457,7 @@ public class V2Pathfinder
             _logger.LogDebug("[{ReqId}] Transfers: {Summary}", ctx.ReqId, summary);
         }
 
-        // Canary: run HubContractValidator on every response (observe-only, NEVER blocks)
+        // Path audit: run HubContractValidator on every response (observe-only, NEVER blocks)
         if (ctx.Transfers.Count > 0)
         {
             try
@@ -471,7 +471,7 @@ public class V2Pathfinder
                 {
                     var errors = errorViolations.Select(v => $"[{v.Rule}] {v.Message}");
                     _logger.LogError(
-                        "[{ReqId}] Canary: REJECTED from={Source} to={Sink} block={Block} violations: {Violations}",
+                        "[{ReqId}] Path audit: REJECTED from={Source} to={Sink} block={Block} violations: {Violations}",
                         ctx.ReqId, ctx.Request.Source, ctx.Request.Sink, ctx.Graph.Block,
                         string.Join("; ", errors));
                 }
@@ -482,7 +482,7 @@ public class V2Pathfinder
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "[{ReqId}] Canary: validator threw unexpected exception (observe-only, not blocking response)",
+                    "[{ReqId}] Path audit: unexpected exception (observe-only, not blocking response)",
                     ctx.ReqId);
             }
         }

@@ -4,6 +4,7 @@ using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Validation;
 using Nethermind.Int256;
 using static Circles.Pathfinder.Tracing;
 
@@ -174,15 +175,21 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
 
-                // Canary: record Hub.sol rule violations (observe-only)
+                // Path audit: record Hub.sol rule violations (observe-only, alert via Prometheus)
                 if (mfr.ValidationErrors > 0)
                 {
-                    FindPathMetrics.CanaryValidationFailureTotal.WithLabels("any").Inc();
+                    FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
                     {
                         foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
+                            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
+
+                    log.LogError(
+                        "Path audit: Hub.sol rule violations detected — path may revert on-chain. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        request.Source, request.Sink, mfr.GraphBlock,
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
                 }
 
                 // Simulation canary: enqueue for async eth_call validation.
