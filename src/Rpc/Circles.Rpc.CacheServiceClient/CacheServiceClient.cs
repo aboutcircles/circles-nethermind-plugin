@@ -326,7 +326,7 @@ public class CacheServiceClient
     {
         try
         {
-            var url = $"{_profileContentBaseUrl}/api/rawBatch";
+            var url = $"{_profileContentBaseUrl}/rawBatch";
             var request = new ProfileContentBatchRequest(cids);
             var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
             response.EnsureSuccessStatusCode();
