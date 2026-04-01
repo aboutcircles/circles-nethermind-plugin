@@ -32,6 +32,16 @@ public class Settings : Circles.Common.Settings
     public readonly string? ProfilePinningServiceUrl =
         Environment.GetEnvironmentVariable("PROFILE_PINNING_SERVICE_URL");
 
+    /// <summary>
+    /// Separate base URL for profile content resolution (IPFS payload by CID).
+    /// When set, CacheServiceClient uses this for GetProfileContent* calls
+    /// instead of CACHE_SERVICE_URL. Points to the profile pinning service
+    /// which serves content from its verified DB rather than IPFS gateways.
+    /// Falls back to CACHE_SERVICE_URL if not set.
+    /// </summary>
+    public readonly string? ProfileContentServiceUrl =
+        Environment.GetEnvironmentVariable("PROFILE_CONTENT_SERVICE_URL");
+
     #region RPC-specific database timeout configuration
 
     /// <summary>
