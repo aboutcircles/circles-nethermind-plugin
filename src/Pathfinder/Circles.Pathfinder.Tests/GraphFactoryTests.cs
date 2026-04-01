@@ -531,6 +531,7 @@ public class GraphFactoryTests
 
         var cached = new CachedGroupData(
             GroupNodes: new HashSet<int> { groupGId },
+            OrganizationNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>
             {
                 { groupGId, new HashSet<int> { tokenBId } }
@@ -569,6 +570,7 @@ public class GraphFactoryTests
 
         var cached = new CachedGroupData(
             GroupNodes: new HashSet<int> { groupGId },
+            OrganizationNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>
             {
                 { groupGId, new HashSet<int> { tokenAId } }
@@ -842,6 +844,7 @@ public class GraphFactoryTests
         int aliceId = AddressIdPool.IdOf(Alice.ToLowerInvariant());
         var cached = new CachedGroupData(
             GroupNodes: new HashSet<int>(),
+            OrganizationNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>(),
             ConsentedAvatars: new HashSet<int> { aliceId },
             RegisteredAvatarIds: new HashSet<int>(),
@@ -1258,6 +1261,7 @@ public class GraphFactoryTests
             => Enumerable.Empty<(string, string, int)>();
 
         public IEnumerable<string> LoadGroups() => Groups;
+        public IEnumerable<string> LoadOrganizations() => [];
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrusts;
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => RegisteredAvatars;

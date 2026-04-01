@@ -1374,6 +1374,7 @@ public class MutationKillerTests
             => Enumerable.Empty<(string, string, int)>();
 
         public IEnumerable<string> LoadGroups() => Groups;
+        public IEnumerable<string> LoadOrganizations() => [];
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrusts;
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
         public IEnumerable<string> LoadRegisteredAvatars() => Enumerable.Empty<string>();

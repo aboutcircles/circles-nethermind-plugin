@@ -930,6 +930,8 @@ public class IncrementalLoadGraphTests
 
         public IEnumerable<string> LoadGroups() => Groups;
 
+        public IEnumerable<string> LoadOrganizations() => [];
+
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts() => GroupTrustEntries;
 
         public IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags() => ConsentedFlags;
