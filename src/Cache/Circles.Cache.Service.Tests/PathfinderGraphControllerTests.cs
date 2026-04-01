@@ -646,6 +646,31 @@ public class PathfinderGraphControllerTests
     }
 
     [Fact]
+    public void GetGraph_ShouldIncludeGroupsInAvatarsList()
+    {
+        // Hub.sol considers groups registered avatars (avatars[group] != address(0)).
+        // BuildAvatars must include groups so the pathfinder's RegisteredAvatarIds
+        // contains them — otherwise validator Rules 9/11 fire false positives.
+        var human = "0xaaaa000000000000000000000000000000000002";
+        var group = "0xbbbb000000000000000000000000000000000001";
+
+        _cache.V2Avatars.Add(1000, human, ("CrcV2_RegisterHuman", 1704067200L));
+        _cache.Groups.Add(1000, group, ("TestGroup", StandardTreasuryMint, "TG"));
+
+        var controller = CreateController();
+        var result = controller.GetGraph();
+
+        var ok = result.Result as OkObjectResult;
+        ok.Should().NotBeNull();
+        var response = ok!.Value as PathfinderGraphResponse;
+        response.Should().NotBeNull();
+        response!.Avatars.Should().NotBeNull();
+        response.Avatars!.Count.Should().Be(2, "both humans and groups are registered avatars");
+        response.Avatars.Should().Contain(human);
+        response.Avatars.Should().Contain(group);
+    }
+
+    [Fact]
     public void GetGraph_AvatarsInclude_ShouldBeFilterable()
     {
         var alice = "0xaaaa000000000000000000000000000000000002";
