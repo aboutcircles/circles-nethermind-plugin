@@ -190,7 +190,8 @@ internal sealed class FindPathHandler(
                 // (Hub.sol operateFlowMatrix requires isApprovedForAll(source, msg.sender).
                 // Groups/Orgs don't self-approve — canary would get OperatorNotApprovedForSource).
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
-                                    || (request.SimulatedTrusts?.Count > 0);
+                                    || (request.SimulatedTrusts?.Count > 0)
+                                    || (request.SimulatedConsentedAvatars?.Count > 0);
 
                 bool sourceUnsimulatable = false;
                 if (!string.IsNullOrEmpty(request.Source)

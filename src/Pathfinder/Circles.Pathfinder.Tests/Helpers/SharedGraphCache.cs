@@ -186,6 +186,7 @@ public static class SharedGraphCache
         var balances = sourceLoader.LoadV2Balances().ToList();
         var trust = sourceLoader.LoadV2Trust().ToList();
         var groups = sourceLoader.LoadGroups().ToList();
+        var organizations = sourceLoader.LoadOrganizations().ToList();
         var groupTrusts = sourceLoader.LoadGroupTrusts().ToList();
         var consentedFlags = sourceLoader.LoadConsentedFlowFlags().ToList();
         var registeredAvatars = sourceLoader.LoadRegisteredAvatars().ToList();
@@ -206,6 +207,7 @@ public static class SharedGraphCache
             Balances = balances,
             Trust = trust,
             Groups = groups,
+            Organizations = organizations,
             GroupTrusts = groupTrusts,
             ConsentedFlags = consentedFlags,
             RegisteredAvatars = registeredAvatars,
@@ -256,6 +258,7 @@ public class CachedGraphData
     public List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> Balances { get; init; } = [];
     public List<(string Truster, string Trustee, int Limit)> Trust { get; init; } = [];
     public List<string> Groups { get; init; } = [];
+    public List<string> Organizations { get; init; } = [];
     public List<(string GroupAddress, string TrustedToken)> GroupTrusts { get; init; } = [];
     public List<(string Avatar, bool HasConsentedFlow)> ConsentedFlags { get; init; } = [];
     public List<string> RegisteredAvatars { get; init; } = [];
@@ -282,7 +285,7 @@ internal class CachedLoadGraph(CachedGraphData data) : ILoadGraph
     public IEnumerable<string>
         LoadGroups() => data.Groups;
 
-    public IEnumerable<string> LoadOrganizations() => [];
+    public IEnumerable<string> LoadOrganizations() => data.Organizations;
 
     public IEnumerable<(string GroupAddress, string TrustedToken)>
         LoadGroupTrusts() => data.GroupTrusts;

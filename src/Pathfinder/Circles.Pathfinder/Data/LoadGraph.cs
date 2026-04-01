@@ -11,13 +11,14 @@ using Npgsql;
 namespace Circles.Pathfinder.Data
 {
     /// <summary>
-    /// Result of <see cref="LoadGraph.LoadAll"/> — all 6 ILoadGraph queries executed
+    /// Result of <see cref="LoadGraph.LoadAll"/> — all ILoadGraph queries executed
     /// in a single REPEATABLE READ transaction.
     /// </summary>
     public sealed record LoadAllResult(
         IReadOnlyList<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> Balances,
         IReadOnlyList<(string Truster, string Trustee, int Limit)> Trust,
         IReadOnlyList<string> Groups,
+        IReadOnlyList<string> Organizations,
         IReadOnlyList<(string GroupAddress, string TrustedToken)> GroupTrusts,
         IReadOnlyList<(string Avatar, bool HasConsentedFlow)> ConsentedFlags,
         IReadOnlyList<string> RegisteredAvatars,
@@ -307,6 +308,7 @@ namespace Circles.Pathfinder.Data
             var balances = LoadV2BalancesInternal(connection, tx);
             var trust = LoadV2TrustInternal(connection, tx);
             var groups = LoadGroupsInternal(connection, tx);
+            var organizations = LoadOrganizationsInternal(connection, tx);
             var groupTrusts = LoadGroupTrustsInternal(connection, tx);
             var consentedFlags = LoadConsentedFlowFlagsInternal(connection, tx);
             var registeredAvatars = LoadRegisteredAvatarsInternal(connection, tx);
@@ -314,7 +316,7 @@ namespace Circles.Pathfinder.Data
 
             tx.Commit();
 
-            return new LoadAllResult(balances, trust, groups, groupTrusts, consentedFlags, registeredAvatars, wrapperMappings);
+            return new LoadAllResult(balances, trust, groups, organizations, groupTrusts, consentedFlags, registeredAvatars, wrapperMappings);
         }
 
         private List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
@@ -399,6 +401,27 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("groups", sw.Elapsed);
+            return results;
+        }
+
+        private List<string> LoadOrganizationsInternal(NpgsqlConnection connection, NpgsqlTransaction tx)
+        {
+            var orgQuery = LoadQueryFromResource("organizationQuery.sql");
+            var results = new List<string>(500);
+
+            var sw = Stopwatch.StartNew();
+
+            using var command = new NpgsqlCommand(orgQuery, connection, tx);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add(reader.GetString(0));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("organizations", sw.Elapsed);
             return results;
         }
 
