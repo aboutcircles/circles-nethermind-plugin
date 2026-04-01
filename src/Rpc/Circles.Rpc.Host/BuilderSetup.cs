@@ -87,7 +87,7 @@ public static class BuilderSetup
                 var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
                 var httpClient = httpClientFactory.CreateClient();
                 var logger = sp.GetService<ILogger<CacheServiceClient.CacheServiceClient>>();
-                return new CacheServiceClient.CacheServiceClient(httpClient, settings.CacheServiceUrl, logger);
+                return new CacheServiceClient.CacheServiceClient(httpClient, settings.CacheServiceUrl, logger, settings.ProfileContentServiceUrl);
             });
         }
 

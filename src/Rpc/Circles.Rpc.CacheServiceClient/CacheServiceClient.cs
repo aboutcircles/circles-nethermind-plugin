@@ -13,11 +13,13 @@ public class CacheServiceClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<CacheServiceClient>? _logger;
     private readonly string _baseUrl;
+    private readonly string _profileContentBaseUrl;
 
-    public CacheServiceClient(HttpClient httpClient, string baseUrl, ILogger<CacheServiceClient>? logger = null)
+    public CacheServiceClient(HttpClient httpClient, string baseUrl, ILogger<CacheServiceClient>? logger = null, string? profileContentBaseUrl = null)
     {
         _httpClient = httpClient;
         _baseUrl = baseUrl.TrimEnd('/');
+        _profileContentBaseUrl = (profileContentBaseUrl ?? baseUrl).TrimEnd('/');
         _logger = logger;
     }
 
@@ -317,30 +319,14 @@ public class CacheServiceClient
     }
 
     /// <summary>
-    /// Get profile content (IPFS payload) for a single CID
-    /// </summary>
-    public async Task<ProfileContentResponse?> GetProfileContentAsync(string cid, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var url = $"{_baseUrl}/api/profiles/content/{cid}";
-            return await _httpClient.GetFromJsonAsync<ProfileContentResponse>(url, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Error getting profile content from cache service for CID {Cid}", cid);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Get profile content (IPFS payloads) for multiple CIDs in batch
+    /// Get profile content (IPFS payloads) for multiple CIDs in batch.
+    /// Routes to the profile pinning service when PROFILE_CONTENT_SERVICE_URL is set.
     /// </summary>
     public async Task<ProfileContentResponse[]> GetProfileContentBatchAsync(string[] cids, CancellationToken cancellationToken = default)
     {
         try
         {
-            var url = $"{_baseUrl}/api/profiles/content/batch";
+            var url = $"{_profileContentBaseUrl}/api/rawBatch";
             var request = new ProfileContentBatchRequest(cids);
             var response = await _httpClient.PostAsJsonAsync(url, request, cancellationToken);
             response.EnsureSuccessStatusCode();
