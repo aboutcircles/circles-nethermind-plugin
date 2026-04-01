@@ -176,6 +176,13 @@ public class PathfinderGraphController : ControllerBase
                 // Static (inflationary) → convert to demurraged equivalent at target day
                 attoBalance = CirclesConverter.InflationaryToDemurrage(attoBalance, targetDay);
             }
+            else if (lastActivity == 0 && !_caches.V2LastActivity.ContainsKey(kvp.Key))
+            {
+                // lastActivity=0 from TryGetValue default means the entry is missing.
+                // Emitting a demurraged balance without decay would overestimate capacity
+                // and cause ERC1155InsufficientBalance reverts on-chain.
+                continue;
+            }
             else if (lastActivity >= V2InflationDayZero)
             {
                 // Demurraged: apply demurrage from lastActivity → now

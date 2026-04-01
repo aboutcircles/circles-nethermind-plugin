@@ -535,6 +535,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 continue;
             }
 
+            if (!IsValidEthereumAddress(st.Truster) || !IsValidEthereumAddress(st.Trustee))
+            {
+                continue;
+            }
+
             int trusterId = AddressIdPool.IdOf(st.Truster.ToLowerInvariant());
             int trusteeId = AddressIdPool.IdOf(st.Trustee.ToLowerInvariant());
 
@@ -594,6 +599,11 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
             bool tokenMissing = string.IsNullOrWhiteSpace(sb.Token);
             bool amountMissing = string.IsNullOrWhiteSpace(sb.Amount);
             if (holderMissing || tokenMissing || amountMissing)
+            {
+                continue;
+            }
+
+            if (!IsValidEthereumAddress(sb.Holder) || !IsValidEthereumAddress(sb.Token))
             {
                 continue;
             }
