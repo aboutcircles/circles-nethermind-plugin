@@ -32,6 +32,7 @@ namespace Circles.Pathfinder.Data
         IEnumerable<(string Truster, string Trustee, int Limit)> LoadV2Trust();
 
         IEnumerable<string> LoadGroups();
+        IEnumerable<string> LoadOrganizations();
         IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts();
 
         IEnumerable<(string Avatar, bool HasConsentedFlow)> LoadConsentedFlowFlags();
@@ -238,6 +239,29 @@ namespace Circles.Pathfinder.Data
 
             sw.Stop();
             OnQueryCompleted?.Invoke("groups", sw.Elapsed);
+            return results;
+        }
+
+        // Load organizations
+        public IEnumerable<string> LoadOrganizations()
+        {
+            var orgQuery = LoadQueryFromResource("organizationQuery.sql");
+            var results = new List<string>(500);
+
+            var sw = Stopwatch.StartNew();
+            using var connection = _dataSource.OpenConnection();
+
+            using var command = new NpgsqlCommand(orgQuery, connection);
+            command.CommandTimeout = _settings.PathfinderGroupTimeoutSeconds;
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                results.Add(reader.GetString(0));
+            }
+
+            sw.Stop();
+            OnQueryCompleted?.Invoke("organizations", sw.Elapsed);
             return results;
         }
 

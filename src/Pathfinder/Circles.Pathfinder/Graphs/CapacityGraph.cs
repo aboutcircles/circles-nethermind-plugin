@@ -9,6 +9,7 @@ namespace Circles.Pathfinder.Graphs;
 /// </summary>
 public sealed record CachedGroupData(
     HashSet<int> GroupNodes,
+    HashSet<int> OrganizationNodes,
     Dictionary<int, HashSet<int>> GroupTrustedTokens,
     HashSet<int> ConsentedAvatars,
     HashSet<int> RegisteredAvatarIds,
@@ -25,6 +26,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
 
     // Track special avatar types
     public HashSet<int> GroupNodes { get; } = new HashSet<int>();
+    public HashSet<int> OrganizationNodes { get; } = new HashSet<int>();
     public int? RouterNode { get; set; }
 
     // Track which tokens each group trusts
@@ -93,6 +95,7 @@ public class CapacityGraph : IGraph<CapacityEdge>
 
     // Helper methods
     public bool IsGroup(int nodeAddress) => GroupNodes.Contains(nodeAddress);
+    public bool IsOrganization(int nodeAddress) => OrganizationNodes.Contains(nodeAddress);
     public bool IsRouter(int nodeAddress) => RouterNode.HasValue && RouterNode.Value == nodeAddress;
 
     public void AddCapacityEdge(int from, int to, int token, long capacity)

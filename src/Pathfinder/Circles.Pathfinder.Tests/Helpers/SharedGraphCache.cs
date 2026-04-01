@@ -282,6 +282,8 @@ internal class CachedLoadGraph(CachedGraphData data) : ILoadGraph
     public IEnumerable<string>
         LoadGroups() => data.Groups;
 
+    public IEnumerable<string> LoadOrganizations() => [];
+
     public IEnumerable<(string GroupAddress, string TrustedToken)>
         LoadGroupTrusts() => data.GroupTrusts;
 

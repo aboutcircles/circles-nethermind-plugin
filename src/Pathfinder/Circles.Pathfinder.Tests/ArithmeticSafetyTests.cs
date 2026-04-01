@@ -624,6 +624,8 @@ public class ArithmeticSafetyTests
             return Enumerable.Empty<string>();
         }
 
+        public IEnumerable<string> LoadOrganizations() => [];
+
         public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
         {
             if (_throwOnGroups)

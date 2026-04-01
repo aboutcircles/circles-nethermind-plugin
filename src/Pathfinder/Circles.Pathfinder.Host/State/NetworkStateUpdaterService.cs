@@ -220,6 +220,7 @@ public class NetworkStateUpdaterService : BackgroundService
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
+            new HashSet<int>(cap.OrganizationNodes),
             cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
             new HashSet<int>(cap.ConsentedAvatars),
             new HashSet<int>(cap.RegisteredAvatarIds),
@@ -467,6 +468,7 @@ public class NetworkStateUpdaterService : BackgroundService
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
+            new HashSet<int>(cap.OrganizationNodes),
             cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
             new HashSet<int>(cap.ConsentedAvatars),
             new HashSet<int>(cap.RegisteredAvatarIds),
@@ -695,6 +697,7 @@ public class NetworkStateUpdaterService : BackgroundService
 
         var groupData = new CachedGroupData(
             new HashSet<int>(cap.GroupNodes),
+            new HashSet<int>(cap.OrganizationNodes),
             cap.GroupTrustedTokens.ToDictionary(kv => kv.Key, kv => new HashSet<int>(kv.Value)),
             new HashSet<int>(cap.ConsentedAvatars),
             new HashSet<int>(cap.RegisteredAvatarIds),

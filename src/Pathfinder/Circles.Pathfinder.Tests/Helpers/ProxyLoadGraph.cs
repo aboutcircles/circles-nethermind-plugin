@@ -239,6 +239,8 @@ public class ProxyLoadGraph : ILoadGraph
         return results;
     }
 
+    public IEnumerable<string> LoadOrganizations() => [];
+
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
         var query = string.Format(GroupTrustQueryTemplate, _client.BlockNumber, _settings.StandardMintPolicyAddress);

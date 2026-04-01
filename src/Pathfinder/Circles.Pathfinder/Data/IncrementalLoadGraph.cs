@@ -124,6 +124,11 @@ public class IncrementalLoadGraph : ILoadGraph
     public IEnumerable<string> LoadGroups() => _inner.LoadGroups();
 
     /// <summary>
+    /// Delegates to inner LoadGraph — organizations table is small.
+    /// </summary>
+    public IEnumerable<string> LoadOrganizations() => _inner.LoadOrganizations();
+
+    /// <summary>
     /// Derives group trusts from in-memory trust state — avoids the slow V_CrcV2_TrustRelations view.
     /// Uses the router-filtered group set from LoadGroups() (not the full avatar group set)
     /// to match the DB-backed groupTrustQuery.sql which filters by mint policy.

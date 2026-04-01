@@ -96,6 +96,8 @@ public class FixtureLoadGraph : ILoadGraph
         }
     }
 
+    public IEnumerable<string> LoadOrganizations() => [];
+
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
         if (_subgraph.GroupTrusts == null)

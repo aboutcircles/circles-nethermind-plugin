@@ -39,6 +39,7 @@
         <None Remove="Data\Queries\blockHashQuery.sql" />
         <None Remove="Data\Queries\wrapperMappingQuery.sql" />
         <None Remove="Data\Queries\registeredAvatarsCte.sql" />
+        <None Remove="Data\Queries\organizationQuery.sql" />
         <EmbeddedResource Include="Data\Queries\balanceQuery.sql" />
         <EmbeddedResource Include="Data\Queries\trustQuery.sql" />
         <EmbeddedResource Include="Data\Queries\groupQuery.sql" />
@@ -56,6 +57,7 @@
         <EmbeddedResource Include="Data\Queries\blockHashQuery.sql" />
         <EmbeddedResource Include="Data\Queries\wrapperMappingQuery.sql" />
         <EmbeddedResource Include="Data\Queries\registeredAvatarsCte.sql" />
+        <EmbeddedResource Include="Data\Queries\organizationQuery.sql" />
     </ItemGroup>
 
     <ItemGroup>

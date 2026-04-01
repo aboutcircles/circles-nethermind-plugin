@@ -186,14 +186,26 @@ internal sealed class FindPathHandler(
                 }
 
                 // Simulation canary: enqueue for async eth_call validation.
+                // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization
+                // (Hub.sol operateFlowMatrix requires isApprovedForAll(source, msg.sender).
+                // Groups/Orgs don't self-approve — canary would get OperatorNotApprovedForSource).
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
                                     || (request.SimulatedTrusts?.Count > 0);
+
+                bool sourceUnsimulatable = false;
+                if (!string.IsNullOrEmpty(request.Source)
+                    && AddressIdPool.TryIdOf(request.Source, out int sourceId))
+                {
+                    sourceUnsimulatable = h.Graph.IsGroup(sourceId)
+                                          || h.Graph.IsOrganization(sourceId);
+                }
 
                 if (simulationCanary != null
                     && mfr.Transfers.Count > 0
                     && !string.IsNullOrEmpty(request.Source)
                     && !string.IsNullOrEmpty(request.Sink)
-                    && !hasSimulated)
+                    && !hasSimulated
+                    && !sourceUnsimulatable)
                 {
                     Dictionary<string, string>? wrapperMap = null;
                     try

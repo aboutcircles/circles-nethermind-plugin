@@ -75,6 +75,8 @@ public sealed class CacheLoadGraph : ILoadGraph
             yield return row.GroupAddress.ToLowerInvariant();
     }
 
+    public IEnumerable<string> LoadOrganizations() => [];
+
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
         var rows = _snapshot.GroupTrusts ?? [];

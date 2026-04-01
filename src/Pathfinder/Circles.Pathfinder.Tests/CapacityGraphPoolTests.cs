@@ -156,6 +156,7 @@ public class CapacityGraphPoolTests
         // Provide cached group data so GraphFactory.CreateCapacityGraph skips DB queries
         var cachedGroups = new CachedGroupData(
             GroupNodes: new HashSet<int>(),
+            OrganizationNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>(),
             ConsentedAvatars: new HashSet<int>(),
             RegisteredAvatarIds: new HashSet<int>(),
@@ -391,6 +392,7 @@ public class CapacityGraphPoolTests
 
         var cachedGroups = new CachedGroupData(
             GroupNodes: new HashSet<int> { groupId },
+            OrganizationNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>
             {
                 [groupId] = new HashSet<int> { alice }

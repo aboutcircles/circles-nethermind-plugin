@@ -133,6 +133,8 @@ public class MockLoadGraph : ILoadGraph
         return _groups;
     }
 
+    public IEnumerable<string> LoadOrganizations() => [];
+
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {
         return _groupTrusts;
