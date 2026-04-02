@@ -209,7 +209,7 @@ The pathfinder can load its trust graph from the **Cache Service** (recommended)
 |----------|---------|-------------|
 | `MAX_CONCURRENT_REQUESTS` | `max(CPUCount × 2, 8)` | Max concurrent pathfinder requests |
 | `PATHFINDER_SOLVER_TIMEOUT_SECONDS` | `10` | MaxFlow solver timeout per request |
-| `PATHFINDER_DEMURRAGE_SAFETY_MARGIN` | `0.9995` | 0.05% haircut on demurraged balances to avoid rounding reverts |
+| `PATHFINDER_DEMURRAGE_SAFETY_MARGIN` | `1.0` | Multiplicative factor on demurraged balances (1.0 = disabled, <1.0 = haircut) |
 | `PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES` | `true` | Exclude consented avatars from intermediary positions in paths |
 
 ### Materialized View Refresh
