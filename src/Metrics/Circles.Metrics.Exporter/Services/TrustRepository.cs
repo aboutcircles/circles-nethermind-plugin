@@ -753,7 +753,7 @@ public class TrustRepository
                 var ageResult = await ExecuteScalarAsync<double>(ageSql, ct);
                 snapshotAgeSeconds = ageResult >= 0 ? ageResult : 0;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "Failed to query trust score history snapshot age");
             }
@@ -813,7 +813,7 @@ public class TrustRepository
                         spikes7d = reader.GetInt64(3);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogWarning(ex, "Failed to query trust score history for anomaly detection");
                 }

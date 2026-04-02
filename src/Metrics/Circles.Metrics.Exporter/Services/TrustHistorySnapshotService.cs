@@ -98,6 +98,7 @@ public class TrustHistorySnapshotService : BackgroundService
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to create trust score history snapshot");
+            TrustMetrics.SnapshotCreationErrors.Inc();
         }
     }
 }
