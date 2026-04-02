@@ -260,7 +260,7 @@ Uncomment the `consensus-gnosis` service in `docker-compose.caddy.yml` if you ne
 ```yaml
 consensus-gnosis:
   container_name: consensus-gnosis
-  image: sigp/lighthouse:v7.1.0
+  image: sigp/lighthouse:v8.1.3
   # ... rest of configuration
 ```
 
