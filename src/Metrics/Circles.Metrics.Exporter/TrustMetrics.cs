@@ -116,6 +116,10 @@ public static class TrustMetrics
             "Count of suspicious score increases (>30 pts) in time window",
             new GaugeConfiguration { LabelNames = new[] { "window" } });
 
+    public static readonly Gauge SnapshotAgeSeconds = Prometheus.Metrics
+        .CreateGauge("circles_trust_history_snapshot_age_seconds",
+            "Age of the most recent trust_scores_history snapshot in seconds (0 if no snapshots exist)");
+
     public static readonly Gauge LowTrustNewAccounts = Prometheus.Metrics
         .CreateGauge("circles_trust_low_trust_new_accounts",
             "New accounts scoring LOW or VERY_LOW in time window",
