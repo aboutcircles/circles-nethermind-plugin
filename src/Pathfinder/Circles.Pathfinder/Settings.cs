@@ -39,17 +39,17 @@ public class Settings
 
     /// <summary>
     /// Safety margin factor applied to demurraged balances to account for the delay
-    /// between graph-build time and on-chain execution. Default 1.0 (disabled).
-    /// The previous default of 0.9995 (0.05% haircut) blocked exact-amount transfers
+    /// between graph-build time and on-chain execution. Default 0.999999 (~7 min drift).
+    /// Only relevant for transfers using 100% of available balance (e.g. refunds).
+    /// The previous default of 0.9995 (~60h drift) blocked exact-amount transfers
     /// when the sender held precisely the required balance (e.g. organization refunds).
-    /// Demurrage drift over a realistic 60s delay is ~0.000014%, making even 0.9995
-    /// orders of magnitude too aggressive. Override via PATHFINDER_DEMURRAGE_SAFETY_MARGIN
-    /// if a margin is ever needed again. Only applies when TargetDemurrageTimestamp is null.
+    /// Override via PATHFINDER_DEMURRAGE_SAFETY_MARGIN. Set to 1.0 to disable entirely.
+    /// Only applies when TargetDemurrageTimestamp is null (live mode).
     /// </summary>
     public double DemurrageSafetyMargin { get; set; } =
         Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN") != null
         ? double.Parse(Environment.GetEnvironmentVariable("PATHFINDER_DEMURRAGE_SAFETY_MARGIN")!)
-        : 1.0;
+        : 0.999999;
 
     /// <summary>
     /// Timeout in seconds for the MaxFlow solver. Default 30s.
