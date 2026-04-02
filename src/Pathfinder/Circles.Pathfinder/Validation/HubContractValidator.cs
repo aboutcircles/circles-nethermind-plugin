@@ -259,16 +259,26 @@ public static class HubContractValidator
         if (router == null) return; // No router means no group minting in this path
 
         // Detect group-mint pattern: an address X is in a group mint flow when:
-        //   1. Router→X edge exists (collateral deposit)
+        //   1. Router→X edge exists where TokenOwner != X (collateral deposit — someone
+        //      else's token is being sent to X, not X's own token being forwarded)
         //   2. X→Avatar edge exists where TokenOwner == X (X mints its own token)
         // Hub.sol:893 calls _groupMint(sender, to, to, ...) when isGroup(to).
         // Hub.sol:707 reverts with 0x40 if !isGroup(_group).
+        //
+        // We must NOT flag Router→Bob where Bob simply receives a forwarded token
+        // (e.g., Alice→Router, Router→Bob with TokenOwner==Alice). That's normal flow.
 
         var receivesFromRouter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var step in steps)
         {
             if (step.From.ToLowerInvariant() == router)
-                receivesFromRouter.Add(step.To.ToLowerInvariant());
+            {
+                var to = step.To.ToLowerInvariant();
+                // Only track as collateral deposit when the token being sent is NOT
+                // the receiver's own token — group minting deposits third-party tokens.
+                if (step.TokenOwner.ToLowerInvariant() != to)
+                    receivesFromRouter.Add(to);
+            }
         }
 
         var mintCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
