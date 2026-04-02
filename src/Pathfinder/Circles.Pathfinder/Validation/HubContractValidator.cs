@@ -235,7 +235,7 @@ public static class HubContractValidator
             {
                 violations.Add(new ValidationViolation(
                     "AvatarRegistration",
-                    $"Vertex '{vertex[..Math.Min(10, vertex.Length)]}' is not a registered avatar (Hub.sol error 0x24/0x25)",
+                    $"Vertex '{vertex}' is not a registered avatar (Hub.sol error 0x24/0x25)",
                     null, "error"));
             }
         }
@@ -289,7 +289,7 @@ public static class HubContractValidator
             {
                 violations.Add(new ValidationViolation(
                     "GroupRegistration",
-                    $"Address '{candidate[..Math.Min(10, candidate.Length)]}' is in group-mint pattern (Router→X, X→Avatar with own token) but is not a registered group (Hub.sol error 0x40)",
+                    $"Address '{candidate}' is in group-mint pattern (Router→X, X→Avatar with own token) but is not a registered group (Hub.sol error 0x40)",
                     null, "error"));
             }
         }
@@ -299,8 +299,9 @@ public static class HubContractValidator
     // Rule 11: Token ID validity
     // Hub.sol:718 _validateAddressFromId(_collateral[i], 1)
     // checks that collateral token IDs encode valid registered
-    // avatar addresses. For personal Circles, tokenId == avatarAddress,
-    // so TokenOwner must be a registered avatar.
+    // avatar addresses. For personal Circles, tokenId == avatarAddress.
+    // For ERC20 wrappers, the token contract address differs from the
+    // underlying avatar — resolve wrappers before checking registration.
     // ────────────────────────────────────────────
     internal static void ValidateTokenIdValidity(
         IReadOnlyList<TransferPathStep> steps,
@@ -322,11 +323,21 @@ public static class HubContractValidator
             if (router != null && tokenOwner == router)
                 continue;
 
-            if (!state.IsRegistered(tokenOwner))
+            // ERC20 wrapper tokens have contract addresses that aren't registered avatars.
+            // Hub.sol resolves the token ID to the underlying avatar — we do the same.
+            var addressToCheck = tokenOwner;
+            if (state.IsWrapperToken(tokenOwner))
+            {
+                var underlying = state.ResolveWrapperToAvatar(tokenOwner);
+                if (underlying != null)
+                    addressToCheck = underlying;
+            }
+
+            if (!state.IsRegistered(addressToCheck))
             {
                 violations.Add(new ValidationViolation(
                     "TokenIdValidity",
-                    $"Edge {i}: TokenOwner '{tokenOwner[..Math.Min(10, tokenOwner.Length)]}' is not a registered avatar — invalid token ID (Hub.sol:718 _validateAddressFromId)",
+                    $"Edge {i}: TokenOwner '{tokenOwner}' is not a registered avatar — invalid token ID (Hub.sol:718 _validateAddressFromId)",
                     i, "error"));
             }
         }
@@ -372,7 +383,7 @@ public static class HubContractValidator
                 {
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
-                        $"Edge {i}: Avatar→Router — Router does not trust token owner '{tokenOwner[..Math.Min(10, tokenOwner.Length)]}'",
+                        $"Edge {i}: Avatar→Router — Router does not trust token owner '{tokenOwner}'",
                         i, "error"));
                 }
                 continue;
@@ -386,7 +397,7 @@ public static class HubContractValidator
                 {
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
-                        $"Edge {i}: standard flow — '{to[..Math.Min(10, to.Length)]}' does not trust token owner '{tokenOwner[..Math.Min(10, tokenOwner.Length)]}'",
+                        $"Edge {i}: standard flow — '{to}' does not trust token owner '{tokenOwner}'",
                         i, "error"));
                 }
             }
@@ -397,7 +408,7 @@ public static class HubContractValidator
                 {
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
-                        $"Edge {i}: consented flow — '{from[..Math.Min(10, from.Length)]}' does not trust '{to[..Math.Min(10, to.Length)]}'",
+                        $"Edge {i}: consented flow — '{from}' does not trust '{to}'",
                         i, "error"));
                 }
 
@@ -405,7 +416,7 @@ public static class HubContractValidator
                 {
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
-                        $"Edge {i}: consented flow — '{to[..Math.Min(10, to.Length)]}' does not have advancedUsageFlags enabled",
+                        $"Edge {i}: consented flow — '{to}' does not have advancedUsageFlags enabled",
                         i, "error"));
                 }
             }
@@ -451,7 +462,7 @@ public static class HubContractValidator
             {
                 violations.Add(new ValidationViolation(
                     "FlowConservation",
-                    $"Intermediate vertex '{vertex[..Math.Min(10, vertex.Length)]}' has net flow {net} (should be 0)",
+                    $"Intermediate vertex '{vertex}' has net flow {net} (should be 0)",
                     null, "error"));
             }
         }
@@ -494,7 +505,7 @@ public static class HubContractValidator
                 {
                     violations.Add(new ValidationViolation(
                         "CollateralBeforeMint",
-                        $"Edge {i}: Router→Group collateral for '{to[..Math.Min(10, to.Length)]}' appears after Group→Avatar mint",
+                        $"Edge {i}: Router→Group collateral for '{to}' appears after Group→Avatar mint",
                         i, "error"));
                 }
 
@@ -514,7 +525,7 @@ public static class HubContractValidator
                 {
                     violations.Add(new ValidationViolation(
                         "CollateralBeforeMint",
-                        $"Edge {i}: Group '{from[..Math.Min(10, from.Length)]}' has insufficient collateral. Inbound: {inbound}, required: {groupOutbound[from]}",
+                        $"Edge {i}: Group '{from}' has insufficient collateral. Inbound: {inbound}, required: {groupOutbound[from]}",
                         i, "error"));
                 }
             }
@@ -544,7 +555,7 @@ public static class HubContractValidator
             {
                 violations.Add(new ValidationViolation(
                     "NoDuplicateEdges",
-                    $"Edge {i}: duplicate (From={key.Item1[..Math.Min(10, key.Item1.Length)]}, To={key.Item2[..Math.Min(10, key.Item2.Length)]}, Token={key.Item3[..Math.Min(10, key.Item3.Length)]})",
+                    $"Edge {i}: duplicate (From={key.Item1}, To={key.Item2}, Token={key.Item3})",
                     i, "warning"));
             }
         }
@@ -570,7 +581,7 @@ public static class HubContractValidator
             {
                 violations.Add(new ValidationViolation(
                     "NoSelfTransfers",
-                    $"Edge {i}: self-transfer at '{from[..Math.Min(10, from.Length)]}'",
+                    $"Edge {i}: self-transfer at '{from}'",
                     i, "warning"));
             }
         }

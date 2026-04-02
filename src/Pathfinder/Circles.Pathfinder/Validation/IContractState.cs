@@ -24,4 +24,17 @@ public interface IContractState
     /// Hub.sol:794-805 checks this for ALL flow vertices; error codes 0x24/0x25.
     /// </summary>
     bool IsRegistered(string address);
+
+    /// <summary>
+    /// Is the address a known ERC20 wrapper token contract?
+    /// Wrapper tokens have their own contract addresses that are NOT registered avatars.
+    /// Hub.sol resolves wrapper token IDs to the underlying avatar for validation.
+    /// </summary>
+    bool IsWrapperToken(string address);
+
+    /// <summary>
+    /// Resolve a wrapper token address to its underlying avatar address.
+    /// Returns null if the address is not a wrapper.
+    /// </summary>
+    string? ResolveWrapperToAvatar(string wrapperAddress);
 }
