@@ -96,11 +96,12 @@ public class PathfinderGraphController : ControllerBase
                 GroupTrusts: sections.Contains("grouptrusts") ? BuildGroupTrusts(registrations, routerGroups!) : null,
                 ConsentedFlow: sections.Contains("consentedflow") ? BuildConsentedFlow(registrations) : null,
                 Avatars: sections.Contains("avatars") ? BuildAvatars() : null,
+                Organizations: sections.Contains("organizations") ? BuildOrganizations() : null,
                 WrapperMappings: sections.Contains("wrappermappings") ? BuildWrapperMappings(registrations) : null
             );
 
             _logger.LogDebug(
-                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}, wrappers={Wrappers}",
+                "Pathfinder graph snapshot: block={Block}, balances={Balances}, trust={Trust}, groups={Groups}, groupTrusts={GroupTrusts}, consent={Consent}, avatars={Avatars}, orgs={Orgs}, wrappers={Wrappers}",
                 lastBlock,
                 response.Balances?.Count ?? 0,
                 response.Trust?.Count ?? 0,
@@ -108,6 +109,7 @@ public class PathfinderGraphController : ControllerBase
                 response.GroupTrusts?.Count ?? 0,
                 response.ConsentedFlow?.Count ?? 0,
                 response.Avatars?.Count ?? 0,
+                response.Organizations?.Count ?? 0,
                 response.WrapperMappings?.Count ?? 0);
 
             return Ok(response);
@@ -122,7 +124,7 @@ public class PathfinderGraphController : ControllerBase
     private static HashSet<string> ParseInclude(string? include)
     {
         if (string.IsNullOrWhiteSpace(include))
-            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow", "avatars", "wrappermappings" };
+            return new HashSet<string> { "balances", "trust", "groups", "grouptrusts", "consentedflow", "avatars", "organizations", "wrappermappings" };
 
         return new HashSet<string>(
             include.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -328,6 +330,23 @@ public class PathfinderGraphController : ControllerBase
             avatars.Add(address);
         }
         return avatars;
+    }
+
+    /// <summary>
+    /// Returns all V2 organization addresses from the cache.
+    /// Organizations are stored in V2Avatars with type "CrcV2_RegisterOrganization".
+    /// The pathfinder uses this to populate CapacityGraph.OrganizationNodes for
+    /// canary simulation gating (orgs can't be simulated — Hub.sol requires operator approval).
+    /// </summary>
+    private List<string> BuildOrganizations()
+    {
+        var organizations = new List<string>();
+        foreach (var kvp in _caches.V2Avatars.ReadOnlyDictionary)
+        {
+            if (kvp.Value.Type == "CrcV2_RegisterOrganization")
+                organizations.Add(kvp.Key);
+        }
+        return organizations;
     }
 
     /// <summary>
