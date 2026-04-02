@@ -230,6 +230,9 @@ public class TrustCollectorService : BackgroundService
             TrustMetrics.ScoreSpikes.WithLabels("24h").Set(anomaly.ScoreSpikes24h);
             TrustMetrics.ScoreSpikes.WithLabels("7d").Set(anomaly.ScoreSpikes7d);
 
+            // Snapshot age (enables staleness alerting)
+            TrustMetrics.SnapshotAgeSeconds.Set(anomaly.SnapshotAgeSeconds);
+
             if (anomaly.ScoreSpikes24h > 10)
             {
                 _logger.LogWarning("Detected {Count} suspicious trust score spikes in last 24h", anomaly.ScoreSpikes24h);
