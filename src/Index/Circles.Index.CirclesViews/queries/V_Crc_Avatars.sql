@@ -125,15 +125,69 @@ END;
 $$;
 
 -- ================================================================
--- IPFS queue triggers — REMOVED
--- Profile content is now served by the profile pinning service
--- (PROFILE_CONTENT_SERVICE_URL). The ipfs_queue and ipfs_files tables
--- are kept for now but no longer written to.
--- Drop the triggers that previously inserted into ipfs_queue:
+-- ipfs_enqueue_triggers.sql
+-- Automatically adds CID rows to ipfs_queue whenever metadata-
+-- digest rows land in the V1/V2 tables.
+--
+-- Assumes a `base58_encode(bytea)` function is available.
 -- ================================================================
-DROP TRIGGER IF EXISTS trg_enq_ipfs_v1 ON public."CrcV1_UpdateMetadataDigest";
-DROP TRIGGER IF EXISTS trg_enq_ipfs_v2 ON public."CrcV2_UpdateMetadataDigest";
-DROP FUNCTION IF EXISTS public.enqueue_ipfs_from_update();
+-- ----------------------------------------------------------------
+-- 1. Trigger function (statement-level, shared by both tables)
+-- ----------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.enqueue_ipfs_from_update()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    /*  Collect all distinct CIDs created by this INSERT and push only the
+        ones we haven’t already downloaded or queued.  */
+    WITH candidate_cids AS (
+                SELECT DISTINCT
+               base58_encode(decode('1220','hex') || nr."metadataDigest") AS cid,
+               nr."metadataDigest"                                             AS metadata_digest
+        FROM new_rows nr
+        WHERE nr."metadataDigest" IS NOT NULL
+     ),
+              missing AS (
+                 SELECT cid, metadata_digest
+                 FROM candidate_cids c
+                 WHERE NOT EXISTS (SELECT 1 FROM ipfs_files f WHERE f.cid = c.cid)
+                   AND NOT EXISTS (SELECT 1 FROM ipfs_queue q WHERE q.cid = c.cid)
+              )
+         INSERT INTO ipfs_queue (cid, metadata_digest, status, attempt_count, next_retry, updated_at)
+              SELECT cid, metadata_digest, 'PENDING', 0, NOW(), NOW()
+        FROM missing
+    ON CONFLICT DO NOTHING; -- double-insert safety
+
+    RETURN NULL;
+END;
+$$;
+
+-- ----------------------------------------------------------------
+-- 2. Attach the trigger to both metadata-digest tables
+-- ----------------------------------------------------------------
+-- V1
+DROP TRIGGER IF EXISTS trg_enq_ipfs_v1
+    ON public."CrcV1_UpdateMetadataDigest";
+
+CREATE TRIGGER trg_enq_ipfs_v1
+    AFTER INSERT
+    ON public."CrcV1_UpdateMetadataDigest"
+    REFERENCING NEW TABLE AS new_rows
+    FOR EACH STATEMENT
+EXECUTE FUNCTION public.enqueue_ipfs_from_update();
+
+-- V2
+DROP TRIGGER IF EXISTS trg_enq_ipfs_v2
+    ON public."CrcV2_UpdateMetadataDigest";
+
+CREATE TRIGGER trg_enq_ipfs_v2
+    AFTER INSERT
+    ON public."CrcV2_UpdateMetadataDigest"
+    REFERENCING NEW TABLE AS new_rows
+    FOR EACH STATEMENT
+EXECUTE FUNCTION public.enqueue_ipfs_from_update();
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
