@@ -84,4 +84,22 @@ public sealed class CapacityGraphContractState : IContractState
 
         return _graph.RegisteredAvatarIds.Contains(id);
     }
+
+    public bool IsWrapperToken(string address)
+    {
+        var lower = address.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int id))
+            return false;
+        return _graph.WrapperToAvatar.ContainsKey(id);
+    }
+
+    public string? ResolveWrapperToAvatar(string wrapperAddress)
+    {
+        var lower = wrapperAddress.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int wrapperId))
+            return null;
+        if (!_graph.WrapperToAvatar.TryGetValue(wrapperId, out int avatarId))
+            return null;
+        return AddressIdPool.StringOf(avatarId);
+    }
 }

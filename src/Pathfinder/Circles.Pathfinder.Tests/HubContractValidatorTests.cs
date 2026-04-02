@@ -46,6 +46,9 @@ public class HubContractValidatorTests
         public bool IsGroup(string address) => Groups.Contains(address);
         public bool HasAdvancedUsageFlags(string address) => Consented.Contains(address);
         public bool IsRegistered(string address) => RegisterAll || Registered.Contains(address);
+        public Dictionary<string, string> Wrappers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public bool IsWrapperToken(string address) => Wrappers.ContainsKey(address);
+        public string? ResolveWrapperToAvatar(string a) => Wrappers.TryGetValue(a, out var v) ? v : null;
 
         public bool IsTrusted(string truster, string circlesId)
         {
