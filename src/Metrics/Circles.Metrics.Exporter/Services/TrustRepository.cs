@@ -741,15 +741,17 @@ public class TrustRepository
         if (historyExists)
         {
             // First check snapshot age — stale snapshots produce meaningless comparisons
+            // COALESCE to -1 when table is empty (MAX returns NULL), avoids Nullable<T>
+            // incompatibility with Convert.ChangeType in ExecuteScalarAsync
             const string ageSql = """
-                SELECT EXTRACT(EPOCH FROM (NOW() - MAX(snapshot_date)))
+                SELECT COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(snapshot_date))), -1)
                 FROM trust_scores_history
                 """;
 
             try
             {
-                var ageResult = await ExecuteScalarAsync<double?>(ageSql, ct);
-                snapshotAgeSeconds = ageResult ?? 0;
+                var ageResult = await ExecuteScalarAsync<double>(ageSql, ct);
+                snapshotAgeSeconds = ageResult >= 0 ? ageResult : 0;
             }
             catch (Exception ex)
             {
