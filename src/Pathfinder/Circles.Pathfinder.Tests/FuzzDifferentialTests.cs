@@ -357,11 +357,10 @@ public class FuzzDifferentialTests
     /// The backward propagation of quantization adjustments through group minting edges
     /// is a known fragile area — this fuzzes that code path extensively.
     ///
-    /// KNOWN ISSUE: QuantizeSinkBoundEdgesByToken only quantizes Group-Sink edges but
-    /// doesn't reduce upstream Router-Group collateral, causing NettedFlowMismatch at group
-    /// vertices. This is a documented pre-existing bug — we Assert.Warn instead of Assert.Fail
-    /// so the test logs the occurrence without blocking the suite. Once the quantization
-    /// backward-propagation fix lands, flip this back to Assert.Fail.
+    /// Previously, PropagateQuantizationBackwards could process a group vertex before all
+    /// its downstream successors had been adjusted (BFS ordering bug), causing stale
+    /// collateral scaling and NettedFlowMismatch. Fixed by adding convergence passes
+    /// after the initial BFS — vertices are re-checked until totalIn == totalOut everywhere.
     /// </summary>
     [Test, Repeat(20)]
     public void Fuzz_QuantizedWithGroups_NoConservationViolation()
@@ -409,17 +408,10 @@ public class FuzzDifferentialTests
             .Where(v => v.Rule == "FlowConservation" && v.Severity == "error")
             .ToList();
 
-        if (conservationViolations.Count > 0)
-        {
-            // Log as warning — known pre-existing quantization backward-propagation bug
-            Assert.Warn(
-                $"KNOWN ISSUE: FlowConservation violated in quantized+groups mode " +
-                $"(quantization backward-propagation bug)\n" +
-                $"Graph: {avatars} avatars, {groups} groups, density={density:F2}\n" +
-                $"Violations:\n{string.Join("\n", conservationViolations.Select(v => $"  {v.Message}"))}\n" +
-                "TODO: flip to Assert.Fail once QuantizeSinkBoundEdgesByToken propagates upstream");
-            return; // Skip self-loop check — conservation is already broken
-        }
+        Assert.That(conservationViolations, Is.Empty,
+            $"FlowConservation violated in quantized+groups mode\n" +
+            $"Graph: {avatars} avatars, {groups} groups, density={density:F2}\n" +
+            $"Violations:\n{string.Join("\n", conservationViolations.Select(v => $"  {v.Message}"))}");
 
         // Check for NON-conservation errors that would indicate a new bug
         var otherErrors = validation.Violations
