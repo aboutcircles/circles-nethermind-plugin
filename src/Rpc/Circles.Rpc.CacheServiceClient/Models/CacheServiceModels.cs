@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace Circles.Rpc.CacheServiceClient.Models;
 
 /// <summary>
@@ -145,19 +143,16 @@ public record TokenInfoResponse(
 public record TokenInfoBatchRequest(string[] TokenAddresses);
 
 /// <summary>
-/// Response for profile content (IPFS payload) queries.
-/// Uses JsonPropertyName to accept camelCase from the profile pinning service.
+/// Response for profile content (IPFS payload) queries
 /// </summary>
 public record ProfileContentResponse(
-    [property: JsonPropertyName("cid")] string Cid,
-    [property: JsonPropertyName("content")] string? Content,
-    [property: JsonPropertyName("lastProcessedBlock")] long LastProcessedBlock = -1,
-    [property: JsonPropertyName("timestamp")] long Timestamp = 0
+    string Cid,
+    string? Content,
+    long LastProcessedBlock = -1,
+    long Timestamp = 0
 );
 
 /// <summary>
 /// Batch request for profile content
 /// </summary>
-public record ProfileContentBatchRequest(
-    [property: JsonPropertyName("cids")] string[] Cids
-);
+public record ProfileContentBatchRequest(string[] Cids);
