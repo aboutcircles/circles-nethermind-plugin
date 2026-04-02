@@ -23,8 +23,11 @@ public class PathfinderGraphController : ControllerBase
     /// <summary>
     /// Standard treasury mint address — only groups with this mint policy
     /// participate in the pathfinder's transitive transfer routing.
+    /// Reads V2_STANDARD_MINT_POLICY env var (same as Pathfinder Settings.StandardMintPolicyAddress).
     /// </summary>
-    private const string StandardTreasuryMint = "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
+    private static readonly string StandardTreasuryMint =
+        Environment.GetEnvironmentVariable("V2_STANDARD_MINT_POLICY")?.Trim().ToLowerInvariant()
+        ?? "0xcdfc5135aec0afbf102c108e7f5c8a88c6112842";
 
     private const int SchemaVersion = 1;
 
@@ -168,15 +171,23 @@ public class PathfinderGraphController : ControllerBase
             if (attoBalance == BigInteger.Zero)
                 continue;
 
-            // Get last activity timestamp
-            _caches.V2LastActivity.TryGetValue(kvp.Key, out var lastActivity);
+            // Get last activity timestamp.
+            // Defensive: warmup and incremental paths always write lastActivity alongside
+            // balance from the same source. This guard protects against hypothetical cache
+            // inconsistency — skip rather than emit an undecayed balance.
+            var hasLastActivity = _caches.V2LastActivity.TryGetValue(kvp.Key, out var lastActivity);
 
             if (isStatic)
             {
                 // Static (inflationary) → convert to demurraged equivalent at target day
                 attoBalance = CirclesConverter.InflationaryToDemurrage(attoBalance, targetDay);
             }
-            else if (lastActivity >= V2InflationDayZero)
+            else if (!hasLastActivity || lastActivity < V2InflationDayZero)
+            {
+                // Missing or pre-epoch timestamp → cannot compute demurrage → skip
+                continue;
+            }
+            else
             {
                 // Demurraged: apply demurrage from lastActivity → now
                 var lastActivityDay = (ulong)(lastActivity - V2InflationDayZero) / (ulong)SecondsPerDay;

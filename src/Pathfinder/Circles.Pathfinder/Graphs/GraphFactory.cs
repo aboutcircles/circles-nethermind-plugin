@@ -535,8 +535,16 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 continue;
             }
 
-            int trusterId = AddressIdPool.IdOf(st.Truster.ToLowerInvariant());
-            int trusteeId = AddressIdPool.IdOf(st.Trustee.ToLowerInvariant());
+            var trusterNorm = st.Truster.Trim().ToLowerInvariant();
+            var trusteeNorm = st.Trustee.Trim().ToLowerInvariant();
+            if (!IsValidEthereumAddress(trusterNorm) || !IsValidEthereumAddress(trusteeNorm))
+            {
+                _logger.LogWarning("Invalid address in simulated trust: truster='{Truster}' trustee='{Trustee}' (skipped)", st.Truster, st.Trustee);
+                continue;
+            }
+
+            int trusterId = AddressIdPool.IdOf(trusterNorm);
+            int trusteeId = AddressIdPool.IdOf(trusteeNorm);
 
             if (!result.TryGetValue(trusterId, out var set))
             {
@@ -598,10 +606,23 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
                 continue;
             }
 
-            int holderId = AddressIdPool.IdOf(sb.Holder.ToLowerInvariant());
-            int tokenId = AddressIdPool.IdOf(sb.Token.ToLowerInvariant());
+            var holderNorm = sb.Holder.Trim().ToLowerInvariant();
+            var tokenNorm = sb.Token.Trim().ToLowerInvariant();
+            if (!IsValidEthereumAddress(holderNorm) || !IsValidEthereumAddress(tokenNorm))
+            {
+                _logger.LogWarning("Invalid address in simulated balance: holder='{Holder}' token='{Token}' (skipped)", sb.Holder, sb.Token);
+                continue;
+            }
 
-            var amt = CirclesConverter.TruncateToInt64(UInt256.Parse(sb.Amount));
+            int holderId = AddressIdPool.IdOf(holderNorm);
+            int tokenId = AddressIdPool.IdOf(tokenNorm);
+
+            if (!UInt256.TryParse(sb.Amount, out var parsedAmount))
+            {
+                _logger.LogWarning("Invalid amount in simulated balance: '{Amount}' (skipped)", sb.Amount);
+                continue;
+            }
+            var amt = CirclesConverter.TruncateToInt64(parsedAmount);
             if (amt <= 0)
             {
                 continue;
