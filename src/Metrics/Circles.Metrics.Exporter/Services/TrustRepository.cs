@@ -720,7 +720,8 @@ public class TrustRepository
     public record AnomalyDetectionBatched(
         long ScoreDrops24h, long ScoreDrops7d,
         long ScoreSpikes24h, long ScoreSpikes7d,
-        long LowTrustNew24h, long LowTrustNew7d
+        long LowTrustNew24h, long LowTrustNew7d,
+        double SnapshotAgeSeconds
     );
 
     /// <summary>
@@ -735,61 +736,95 @@ public class TrustRepository
         bool historyExists = await CheckTableExistsAsync("trust_scores_history", ct);
 
         long drops24h = 0, drops7d = 0, spikes24h = 0, spikes7d = 0;
+        double snapshotAgeSeconds = 0;
 
         if (historyExists)
         {
-            // Query historical comparisons in one batch
-            var historySql = $"""
-                WITH
-                now_ts AS (SELECT NOW() as ts),
-                snapshot_24h AS (
-                    SELECT MAX(snapshot_date) as dt FROM trust_scores_history
-                    WHERE snapshot_date < (SELECT ts FROM now_ts) - INTERVAL '1 day'
-                ),
-                snapshot_7d AS (
-                    SELECT MAX(snapshot_date) as dt FROM trust_scores_history
-                    WHERE snapshot_date < (SELECT ts FROM now_ts) - INTERVAL '7 days'
-                ),
-                changes_24h AS (
-                    SELECT
-                        COUNT(*) FILTER (WHERE (h.trust_score - c.trust_score) > {dropThreshold}) as drops,
-                        COUNT(*) FILTER (WHERE (c.trust_score - h.trust_score) > {spikeThreshold}) as spikes
-                    FROM "V_TrustScores_Current" c
-                    JOIN trust_scores_history h ON c.avatar = h.avatar
-                    WHERE h.snapshot_date = (SELECT dt FROM snapshot_24h)
-                ),
-                changes_7d AS (
-                    SELECT
-                        COUNT(*) FILTER (WHERE (h.trust_score - c.trust_score) > {dropThreshold}) as drops,
-                        COUNT(*) FILTER (WHERE (c.trust_score - h.trust_score) > {spikeThreshold}) as spikes
-                    FROM "V_TrustScores_Current" c
-                    JOIN trust_scores_history h ON c.avatar = h.avatar
-                    WHERE h.snapshot_date = (SELECT dt FROM snapshot_7d)
-                )
-                SELECT
-                    COALESCE(c24.drops, 0), COALESCE(c7.drops, 0),
-                    COALESCE(c24.spikes, 0), COALESCE(c7.spikes, 0)
-                FROM changes_24h c24, changes_7d c7
+            // First check snapshot age — stale snapshots produce meaningless comparisons
+            // COALESCE to -1 when table is empty (MAX returns NULL), avoids Nullable<T>
+            // incompatibility with Convert.ChangeType in ExecuteScalarAsync
+            const string ageSql = """
+                SELECT COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(snapshot_date))), -1)
+                FROM trust_scores_history
                 """;
 
             try
             {
-                await using var conn = new NpgsqlConnection(_connectionString);
-                await conn.OpenAsync(ct);
-                await using var cmd = new NpgsqlCommand(historySql, conn) { CommandTimeout = 60 };
-                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                var ageResult = await ExecuteScalarAsync<double>(ageSql, ct);
+                snapshotAgeSeconds = ageResult >= 0 ? ageResult : 0;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Failed to query trust score history snapshot age");
+            }
 
-                if (await reader.ReadAsync(ct))
+            // Guard: skip anomaly comparison if snapshot is older than 48 hours
+            // Comparing against weeks-old data produces false positives from normal organic growth
+            const double maxSnapshotAgeSeconds = 48 * 3600; // 48 hours
+
+            if (snapshotAgeSeconds > 0 && snapshotAgeSeconds <= maxSnapshotAgeSeconds)
+            {
+                // Query historical comparisons in one batch
+                var historySql = $"""
+                    WITH
+                    now_ts AS (SELECT NOW() as ts),
+                    snapshot_24h AS (
+                        SELECT MAX(snapshot_date) as dt FROM trust_scores_history
+                        WHERE snapshot_date < (SELECT ts FROM now_ts) - INTERVAL '1 day'
+                    ),
+                    snapshot_7d AS (
+                        SELECT MAX(snapshot_date) as dt FROM trust_scores_history
+                        WHERE snapshot_date < (SELECT ts FROM now_ts) - INTERVAL '7 days'
+                    ),
+                    changes_24h AS (
+                        SELECT
+                            COUNT(*) FILTER (WHERE (h.trust_score - c.trust_score) > {dropThreshold}) as drops,
+                            COUNT(*) FILTER (WHERE (c.trust_score - h.trust_score) > {spikeThreshold}) as spikes
+                        FROM "V_TrustScores_Current" c
+                        JOIN trust_scores_history h ON c.avatar = h.avatar
+                        WHERE h.snapshot_date = (SELECT dt FROM snapshot_24h)
+                    ),
+                    changes_7d AS (
+                        SELECT
+                            COUNT(*) FILTER (WHERE (h.trust_score - c.trust_score) > {dropThreshold}) as drops,
+                            COUNT(*) FILTER (WHERE (c.trust_score - h.trust_score) > {spikeThreshold}) as spikes
+                        FROM "V_TrustScores_Current" c
+                        JOIN trust_scores_history h ON c.avatar = h.avatar
+                        WHERE h.snapshot_date = (SELECT dt FROM snapshot_7d)
+                    )
+                    SELECT
+                        COALESCE(c24.drops, 0), COALESCE(c7.drops, 0),
+                        COALESCE(c24.spikes, 0), COALESCE(c7.spikes, 0)
+                    FROM changes_24h c24, changes_7d c7
+                    """;
+
+                try
                 {
-                    drops24h = reader.GetInt64(0);
-                    drops7d = reader.GetInt64(1);
-                    spikes24h = reader.GetInt64(2);
-                    spikes7d = reader.GetInt64(3);
+                    await using var conn = new NpgsqlConnection(_connectionString);
+                    await conn.OpenAsync(ct);
+                    await using var cmd = new NpgsqlCommand(historySql, conn) { CommandTimeout = 60 };
+                    await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                    if (await reader.ReadAsync(ct))
+                    {
+                        drops24h = reader.GetInt64(0);
+                        drops7d = reader.GetInt64(1);
+                        spikes24h = reader.GetInt64(2);
+                        spikes7d = reader.GetInt64(3);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Failed to query trust score history for anomaly detection");
                 }
             }
-            catch (Exception ex)
+            else if (snapshotAgeSeconds > maxSnapshotAgeSeconds)
             {
-                _logger.LogWarning(ex, "Failed to query trust score history for anomaly detection");
+                _logger.LogWarning(
+                    "Trust score history snapshot is {Age:F0}h old (max {Max}h). " +
+                    "Anomaly detection skipped — comparisons against stale data produce false positives. " +
+                    "Check if TrustHistorySnapshotService is running and can write to the database.",
+                    snapshotAgeSeconds / 3600, maxSnapshotAgeSeconds / 3600);
             }
         }
 
@@ -827,7 +862,8 @@ public class TrustRepository
 
         return new AnomalyDetectionBatched(
             drops24h, drops7d, spikes24h, spikes7d,
-            lowNew24h, lowNew7d
+            lowNew24h, lowNew7d,
+            snapshotAgeSeconds
         );
     }
 
