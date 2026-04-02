@@ -667,19 +667,21 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         int routerId = AddressIdPool.IdOf(routerAddress);
         capacityGraph.SetRouter(routerId);
 
-        // Use cached data if available (avoids 2 DB queries per filtered request)
+        // Use cached data if available (avoids DB queries per filtered request)
         if (cached != null)
         {
             foreach (var groupId in cached.GroupNodes)
                 capacityGraph.AddGroup(groupId);
+            foreach (var orgId in cached.OrganizationNodes)
+                capacityGraph.OrganizationNodes.Add(orgId);
             foreach (var (groupId, tokens) in cached.GroupTrustedTokens)
             {
                 capacityGraph.GroupTrustedTokens[groupId] = new HashSet<int>(tokens);
                 foreach (var tokenId in tokens)
                     capacityGraph.AddAvatar(tokenId);  // Ensure group-trusted tokens are valid graph nodes
             }
-            _logger.LogDebug("Used cached group data: {GroupCount} groups, {TrustCount} group-trust entries",
-                cached.GroupNodes.Count, cached.GroupTrustedTokens.Count);
+            _logger.LogDebug("Used cached group data: {GroupCount} groups, {OrgCount} orgs, {TrustCount} group-trust entries",
+                cached.GroupNodes.Count, cached.OrganizationNodes.Count, cached.GroupTrustedTokens.Count);
             return;
         }
 
@@ -689,6 +691,13 @@ public class GraphFactory(string routerAddress, ILoadGraph loadGraph, ILogger<Gr
         {
             int groupId = AddressIdPool.IdOf(groupAddress.ToLowerInvariant());
             capacityGraph.AddGroup(groupId);
+        }
+
+        // Load organizations from DB (needed for canary source-type filtering)
+        foreach (var orgAddress in loadGraph.LoadOrganizations())
+        {
+            int orgId = AddressIdPool.IdOf(orgAddress.ToLowerInvariant());
+            capacityGraph.OrganizationNodes.Add(orgId);
         }
 
         // Load group trust relationships from DB

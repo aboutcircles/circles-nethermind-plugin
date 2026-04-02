@@ -1923,7 +1923,7 @@ run_test_json "gas_estimation" "eth_estimateGas (with block param)" '{
 run_test_json "gas_estimation" "eth_estimateGas (EIP-1559 gas params)" '{
   "jsonrpc": "2.0",
   "method": "eth_estimateGas",
-  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37", "maxFeePerGas": "0x30D40", "maxPriorityFeePerGas": "0x2710"}],
+  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37", "maxFeePerGas": "0x1000", "maxPriorityFeePerGas": "0x36"}],
   "id": 1
 }'
 
@@ -1931,7 +1931,7 @@ run_test_json "gas_estimation" "eth_estimateGas (EIP-1559 gas params)" '{
 run_test_json "gas_estimation" "eth_estimateGas (full viem params)" '{
   "jsonrpc": "2.0",
   "method": "eth_estimateGas",
-  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37", "maxFeePerGas": "0x30D40", "maxPriorityFeePerGas": "0x2710", "nonce": "0x1"}],
+  "params": [{"from": "'"$TEST_ADDR_2"'", "to": "'"$ROUTER_CONTRACT"'", "data": "0x2c3df1de000000000000000000000000'"${GROUP_ADDR_1:2}"'0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000100000000000000000000000042cedde51198d1773590311e2a340dc06b24cb37", "maxFeePerGas": "0x1000", "maxPriorityFeePerGas": "0x36", "nonce": "0x1"}],
   "id": 1
 }'
 
@@ -1954,7 +1954,7 @@ run_test_json "gas_estimation" "eth_estimateGas (Safe execTransaction)" '{
 run_test_json "gas_estimation" "eth_estimateGas (Safe execTx + EIP-1559)" '{
   "jsonrpc": "2.0",
   "method": "eth_estimateGas",
-  "params": [{"from": "'"$SAFE_EXEC_OWNER"'", "to": "'"$HIGH_ACTIVITY_ADDR_1"'", "data": "'"$SAFE_EXEC_TX"'", "maxFeePerGas": "0x30D40", "maxPriorityFeePerGas": "0x2710"}],
+  "params": [{"from": "'"$SAFE_EXEC_OWNER"'", "to": "'"$HIGH_ACTIVITY_ADDR_1"'", "data": "'"$SAFE_EXEC_TX"'", "maxFeePerGas": "0x1000", "maxPriorityFeePerGas": "0x36"}],
   "id": 1
 }'
 

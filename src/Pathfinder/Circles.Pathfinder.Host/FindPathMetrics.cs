@@ -37,10 +37,10 @@ internal class FindPathMetrics
             "circles_consent_safetynet_triggered_total",
             "Times ValidateConsentedFlow safety net removed edges (indicates path-level filter gap)");
 
-    // Canary: validation failures detected by HubContractValidator (observe-only, never blocks)
-    public static readonly Counter CanaryValidationFailureTotal =
+    // Path audit: Hub.sol rule violations detected in pathfinder output (should always be 0)
+    public static readonly Counter PathAuditViolationsTotal =
         Metrics.CreateCounter(
-            "circles_canary_validation_failure_total",
-            "Hub.sol rule violations detected in pathfinder output (observe-only)",
+            "circles_path_audit_violations_total",
+            "Hub.sol rule violations detected in pathfinder output (non-blocking, alert-only)",
             new CounterConfiguration { LabelNames = new[] { "rule" } });
 }

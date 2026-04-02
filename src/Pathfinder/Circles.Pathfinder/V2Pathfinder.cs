@@ -457,7 +457,7 @@ public class V2Pathfinder
             _logger.LogDebug("[{ReqId}] Transfers: {Summary}", ctx.ReqId, summary);
         }
 
-        // Canary: run HubContractValidator on every response (observe-only, NEVER blocks)
+        // Path audit: run HubContractValidator on every response (observe-only, NEVER blocks)
         if (ctx.Transfers.Count > 0)
         {
             try
@@ -471,7 +471,7 @@ public class V2Pathfinder
                 {
                     var errors = errorViolations.Select(v => $"[{v.Rule}] {v.Message}");
                     _logger.LogError(
-                        "[{ReqId}] Canary: REJECTED from={Source} to={Sink} block={Block} violations: {Violations}",
+                        "[{ReqId}] Path audit: REJECTED from={Source} to={Sink} block={Block} violations: {Violations}",
                         ctx.ReqId, ctx.Request.Source, ctx.Request.Sink, ctx.Graph.Block,
                         string.Join("; ", errors));
                 }
@@ -482,7 +482,7 @@ public class V2Pathfinder
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "[{ReqId}] Canary: validator threw unexpected exception (observe-only, not blocking response)",
+                    "[{ReqId}] Path audit: unexpected exception (observe-only, not blocking response)",
                     ctx.ReqId);
             }
         }
@@ -1523,7 +1523,7 @@ public class V2Pathfinder
             outList.Add(i);
         }
 
-        // BFS backwards from sink
+        // Phase 1: BFS backwards from sink to discover all reachable vertices.
         var queue = new Queue<int>();
         var visited = new HashSet<int>();
 
@@ -1538,126 +1538,172 @@ public class V2Pathfinder
             }
         }
 
+        // First pass: BFS discover + adjust
         while (queue.Count > 0)
         {
             int vertex = queue.Dequeue();
             if (!visited.Add(vertex)) continue;
-            if (vertex == sourceId) continue; // Source net flow is allowed to change
+            if (vertex == sourceId) continue;
 
             if (!incomingEdges.TryGetValue(vertex, out var inIndices) || inIndices.Count == 0)
-                continue; // No incoming edges — this is a source vertex
+                continue;
 
-            // Determine if this is a token-converting vertex (e.g., group minting).
-            // At groups: collateral tokens come in, group tokens go out — different types.
-            // At normal intermediaries: same token types flow through.
-            var inTokenTypes = new HashSet<int>();
+            AdjustVertexInflow(edges, vertex, inIndices,
+                outgoingEdges.GetValueOrDefault(vertex), sourceId);
+
+            // Enqueue upstream vertices for discovery
             foreach (int idx in inIndices)
-                inTokenTypes.Add(edges[idx].Token);
+            {
+                int from = edges[idx].From;
+                if (from != sourceId && !visited.Contains(from))
+                    queue.Enqueue(from);
+            }
+        }
 
-            var outTokenTypes = new HashSet<int>();
-            long totalOut = 0;
-            if (outgoingEdges.TryGetValue(vertex, out var outIndices))
+        // Phase 2: Convergence passes over all discovered vertices.
+        // The BFS above may process a vertex before all its downstream successors
+        // have been adjusted (e.g., group G feeds both sink directly and avatar M
+        // indirectly — if G is dequeued before M, G's collateral scaling uses stale
+        // G→M flow). Re-pass until no vertex needs further adjustment.
+        // Convergence is guaranteed: each pass only reduces flows (non-negative integers).
+        const int maxPasses = 20; // Safety limit; practical convergence in 1–3 passes
+        for (int pass = 0; pass < maxPasses; pass++)
+        {
+            bool changed = false;
+            foreach (int vertex in visited)
+            {
+                if (vertex == sourceId) continue;
+                if (!incomingEdges.TryGetValue(vertex, out var inIndices) || inIndices.Count == 0)
+                    continue;
+
+                if (AdjustVertexInflow(edges, vertex, inIndices,
+                        outgoingEdges.GetValueOrDefault(vertex), sourceId))
+                    changed = true;
+            }
+
+            if (!changed) break;
+        }
+    }
+
+    /// <summary>
+    /// Scale incoming edges of a vertex to match its (now-reduced) total outflow.
+    /// Returns true if any edge flow was actually changed.
+    /// </summary>
+    private static bool AdjustVertexInflow(
+        List<FlowEdge> edges,
+        int vertex,
+        List<int> inIndices,
+        List<int>? outIndices,
+        int sourceId)
+    {
+        // Compute token types and totals
+        var inTokenTypes = new HashSet<int>();
+        long totalIn = 0;
+        foreach (int idx in inIndices)
+        {
+            inTokenTypes.Add(edges[idx].Token);
+            totalIn += edges[idx].Flow;
+        }
+
+        var outTokenTypes = new HashSet<int>();
+        long totalOut = 0;
+        if (outIndices != null)
+        {
+            foreach (int idx in outIndices)
+            {
+                outTokenTypes.Add(edges[idx].Token);
+                totalOut += edges[idx].Flow;
+            }
+        }
+
+        if (totalIn <= totalOut) return false; // Already balanced
+
+        // Token conversion: outflow contains token types not present in inflow.
+        // This happens at group minting vertices (collateral in → group token out).
+        // When quantization zeroes a token, in={A,B} out={A} — out IS a subset of in,
+        // so per-token scaling correctly handles it (token B gets scaled to 0).
+        bool isTokenConverting = !outTokenTypes.IsSubsetOf(inTokenTypes);
+
+        if (isTokenConverting)
+        {
+            // Token-converting vertex (group minting): use total-based scaling.
+            // Per-token conservation doesn't apply here — token types change.
+            long allocated = 0;
+            for (int j = 0; j < inIndices.Count; j++)
+            {
+                int idx = inIndices[j];
+                var e = edges[idx];
+                long newFlow;
+
+                if (j == inIndices.Count - 1)
+                    newFlow = totalOut - allocated;
+                else
+                    newFlow = totalIn > 0 ? (e.Flow * totalOut) / totalIn : 0;
+
+                if (newFlow < 0) newFlow = 0;
+                e.Flow = newFlow;
+                allocated += newFlow;
+            }
+        }
+        else
+        {
+            // Same token types in/out: scale per-token independently.
+            // This preserves per-token flow conservation — total-based scaling
+            // would redistribute flow between token types, violating Hub.sol's
+            // per-token NettedFlowMismatch check.
+            var outflowByToken = new Dictionary<int, long>();
+            if (outIndices != null)
             {
                 foreach (int idx in outIndices)
                 {
-                    outTokenTypes.Add(edges[idx].Token);
-                    totalOut += edges[idx].Flow;
+                    var e = edges[idx];
+                    outflowByToken.TryGetValue(e.Token, out long current);
+                    outflowByToken[e.Token] = current + e.Flow;
                 }
             }
 
-            long totalIn = 0;
+            var inByToken = new Dictionary<int, List<int>>();
             foreach (int idx in inIndices)
-                totalIn += edges[idx].Flow;
-
-            if (totalIn <= totalOut) continue; // Already balanced
-
-            // Token conversion: outflow contains token types not present in inflow.
-            // This happens at group minting vertices (collateral in → group token out).
-            // When quantization zeroes a token, in={A,B} out={A} — out IS a subset of in,
-            // so per-token scaling correctly handles it (token B gets scaled to 0).
-            bool isTokenConverting = !outTokenTypes.IsSubsetOf(inTokenTypes);
-
-            if (isTokenConverting)
             {
-                // Token-converting vertex (group minting): use total-based scaling.
-                // Per-token conservation doesn't apply here — token types change.
-                long allocated = 0;
-                for (int j = 0; j < inIndices.Count; j++)
+                int token = edges[idx].Token;
+                if (!inByToken.TryGetValue(token, out var list))
                 {
-                    int idx = inIndices[j];
+                    list = new List<int>();
+                    inByToken[token] = list;
+                }
+                list.Add(idx);
+            }
+
+            foreach (var (token, tokenInIndices) in inByToken)
+            {
+                outflowByToken.TryGetValue(token, out long tokenOut);
+
+                long tokenIn = 0;
+                foreach (int idx in tokenInIndices)
+                    tokenIn += edges[idx].Flow;
+
+                if (tokenIn <= tokenOut) continue;
+
+                long allocated = 0;
+                for (int j = 0; j < tokenInIndices.Count; j++)
+                {
+                    int idx = tokenInIndices[j];
                     var e = edges[idx];
                     long newFlow;
 
-                    if (j == inIndices.Count - 1)
-                        newFlow = totalOut - allocated;
+                    if (j == tokenInIndices.Count - 1)
+                        newFlow = tokenOut - allocated;
                     else
-                        newFlow = totalIn > 0 ? (e.Flow * totalOut) / totalIn : 0;
+                        newFlow = tokenIn > 0 ? (e.Flow * tokenOut) / tokenIn : 0;
 
                     if (newFlow < 0) newFlow = 0;
                     e.Flow = newFlow;
                     allocated += newFlow;
-                    queue.Enqueue(e.From);
-                }
-            }
-            else
-            {
-                // Same token types in/out: scale per-token independently.
-                // This preserves per-token flow conservation — total-based scaling
-                // would redistribute flow between token types, violating Hub.sol's
-                // per-token NettedFlowMismatch check.
-                var outflowByToken = new Dictionary<int, long>();
-                if (outIndices != null)
-                {
-                    foreach (int idx in outIndices)
-                    {
-                        var e = edges[idx];
-                        outflowByToken.TryGetValue(e.Token, out long current);
-                        outflowByToken[e.Token] = current + e.Flow;
-                    }
-                }
-
-                var inByToken = new Dictionary<int, List<int>>();
-                foreach (int idx in inIndices)
-                {
-                    int token = edges[idx].Token;
-                    if (!inByToken.TryGetValue(token, out var list))
-                    {
-                        list = new List<int>();
-                        inByToken[token] = list;
-                    }
-                    list.Add(idx);
-                }
-
-                foreach (var (token, tokenInIndices) in inByToken)
-                {
-                    outflowByToken.TryGetValue(token, out long tokenOut);
-
-                    long tokenIn = 0;
-                    foreach (int idx in tokenInIndices)
-                        tokenIn += edges[idx].Flow;
-
-                    if (tokenIn <= tokenOut) continue;
-
-                    long allocated = 0;
-                    for (int j = 0; j < tokenInIndices.Count; j++)
-                    {
-                        int idx = tokenInIndices[j];
-                        var e = edges[idx];
-                        long newFlow;
-
-                        if (j == tokenInIndices.Count - 1)
-                            newFlow = tokenOut - allocated;
-                        else
-                            newFlow = tokenIn > 0 ? (e.Flow * tokenOut) / tokenIn : 0;
-
-                        if (newFlow < 0) newFlow = 0;
-                        e.Flow = newFlow;
-                        allocated += newFlow;
-                        queue.Enqueue(e.From);
-                    }
                 }
             }
         }
+
+        return true;
     }
 
     /* ------------------------------------------------------------------------

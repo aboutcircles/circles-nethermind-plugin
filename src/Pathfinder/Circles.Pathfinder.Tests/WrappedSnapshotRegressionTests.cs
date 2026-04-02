@@ -60,6 +60,7 @@ public class WrappedSnapshotRegressionTests
     {
         return new CachedGroupData(
             GroupNodes: new HashSet<int>(),
+            OrganizationNodes: new HashSet<int>(),
             GroupTrustedTokens: new Dictionary<int, HashSet<int>>(),
             ConsentedAvatars: new HashSet<int>(),
             RegisteredAvatarIds: new HashSet<int>(),

@@ -4,6 +4,7 @@ using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
 using Circles.Pathfinder.Host.Canary;
 using Circles.Pathfinder.Host.State;
+using Circles.Pathfinder.Validation;
 using Nethermind.Int256;
 using static Circles.Pathfinder.Tracing;
 
@@ -174,26 +175,45 @@ internal sealed class FindPathHandler(
                 if (mfr.ConsentSafetyNetRejected > 0)
                     FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
 
-                // Canary: record Hub.sol rule violations (observe-only)
+                // Path audit: record Hub.sol rule violations (observe-only, alert via Prometheus)
                 if (mfr.ValidationErrors > 0)
                 {
-                    FindPathMetrics.CanaryValidationFailureTotal.WithLabels("any").Inc();
+                    FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
                     if (mfr.ValidationViolationRules != null)
                     {
                         foreach (var rule in mfr.ValidationViolationRules)
-                            FindPathMetrics.CanaryValidationFailureTotal.WithLabels(rule).Inc();
+                            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
                     }
+
+                    log.LogError(
+                        "Path audit: Hub.sol rule violations detected — path may revert on-chain. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        safeSource, safeSink, mfr.GraphBlock,
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
                 }
 
                 // Simulation canary: enqueue for async eth_call validation.
+                // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization
+                // (Hub.sol operateFlowMatrix requires isApprovedForAll(source, msg.sender).
+                // Groups/Orgs don't self-approve — canary would get OperatorNotApprovedForSource).
                 bool hasSimulated = (request.SimulatedBalances?.Count > 0)
-                                    || (request.SimulatedTrusts?.Count > 0);
+                                    || (request.SimulatedTrusts?.Count > 0)
+                                    || (request.SimulatedConsentedAvatars?.Count > 0);
+
+                bool sourceUnsimulatable = false;
+                if (!string.IsNullOrEmpty(request.Source)
+                    && AddressIdPool.TryIdOf(request.Source.ToLowerInvariant(), out int sourceId))
+                {
+                    sourceUnsimulatable = h.Graph.IsGroup(sourceId)
+                                          || h.Graph.IsOrganization(sourceId);
+                }
 
                 if (simulationCanary != null
                     && mfr.Transfers.Count > 0
                     && !string.IsNullOrEmpty(request.Source)
                     && !string.IsNullOrEmpty(request.Sink)
-                    && !hasSimulated)
+                    && !hasSimulated
+                    && !sourceUnsimulatable)
                 {
                     Dictionary<string, string>? wrapperMap = null;
                     try

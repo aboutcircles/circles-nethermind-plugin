@@ -66,18 +66,24 @@ public class MockLoadGraph : ILoadGraph
 
     /// <summary>
     /// Add a group address using integer node ID.
+    /// Hub.sol: registerGroup calls _insertAvatar, so groups are registered avatars.
     /// </summary>
     public void AddGroup(int groupId)
     {
-        _groups.Add(AddressIdPool.StringOf(groupId));
+        var addr = AddressIdPool.StringOf(groupId);
+        _groups.Add(addr);
+        _registeredAvatars.Add(addr);
     }
 
     /// <summary>
     /// Add a group address using address string.
+    /// Hub.sol: registerGroup calls _insertAvatar, so groups are registered avatars.
     /// </summary>
     public void AddGroup(string groupAddress)
     {
-        _groups.Add(groupAddress.ToLowerInvariant());
+        var lower = groupAddress.ToLowerInvariant();
+        _groups.Add(lower);
+        _registeredAvatars.Add(lower);
     }
 
     /// <summary>
@@ -132,6 +138,8 @@ public class MockLoadGraph : ILoadGraph
     {
         return _groups;
     }
+
+    public IEnumerable<string> LoadOrganizations() => [];
 
     public IEnumerable<(string GroupAddress, string TrustedToken)> LoadGroupTrusts()
     {

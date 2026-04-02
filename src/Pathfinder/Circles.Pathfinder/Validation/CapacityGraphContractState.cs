@@ -68,4 +68,20 @@ public sealed class CapacityGraphContractState : IContractState
 
         return false; // Truster exists but trusts nothing
     }
+
+    /// <summary>
+    /// Hub.sol: avatars[address] != address(0) — is the address registered?
+    /// Permissive when RegisteredAvatarIds is empty (synthetic test graphs).
+    /// </summary>
+    public bool IsRegistered(string address)
+    {
+        if (_graph.RegisteredAvatarIds.Count == 0)
+            return false; // Fail-closed: missing registration data must not silently pass
+
+        var lower = address.ToLowerInvariant();
+        if (!AddressIdPool.TryIdOf(lower, out int id))
+            return false;
+
+        return _graph.RegisteredAvatarIds.Contains(id);
+    }
 }
