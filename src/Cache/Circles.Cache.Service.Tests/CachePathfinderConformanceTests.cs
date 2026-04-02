@@ -44,7 +44,7 @@ public class CachePathfinderConformanceTests
     private const string WrapperUnregistered = "0x0000000000000000000000000000000000000012";
 
     private const long Block = 100;
-    private const long CurrentTimestamp = 10000;
+    private const long CurrentTimestamp = 1_702_000_000; // 2023-12-08, must be after V2InflationDayZero
     // Must be after wall-clock time since BuildTrust uses DateTimeOffset.UtcNow
     private static readonly long FutureExpiry = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 86400 * 365;
     private const long PastExpiry = 500;

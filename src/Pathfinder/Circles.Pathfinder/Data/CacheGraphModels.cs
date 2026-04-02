@@ -15,6 +15,7 @@ public record PathfinderGraphSnapshot(
     IReadOnlyList<PathfinderGraphGroupTrustRow>? GroupTrusts,
     IReadOnlyList<PathfinderGraphConsentedFlowRow>? ConsentedFlow,
     IReadOnlyList<string>? Avatars,
+    IReadOnlyList<string>? Organizations = null,
     IReadOnlyList<PathfinderGraphWrapperMappingRow>? WrapperMappings = null
 );
 
@@ -82,6 +83,9 @@ internal sealed class PathfinderGraphSnapshotDto
     [JsonPropertyName("avatars")]
     public List<string>? Avatars { get; set; }
 
+    [JsonPropertyName("organizations")]
+    public List<string>? Organizations { get; set; }
+
     [JsonPropertyName("wrapperMappings")]
     public List<PathfinderGraphWrapperMappingRow>? WrapperMappings { get; set; }
 
@@ -95,5 +99,6 @@ internal sealed class PathfinderGraphSnapshotDto
         GroupTrusts,
         ConsentedFlow,
         Avatars,
+        Organizations,
         WrapperMappings);
 }
