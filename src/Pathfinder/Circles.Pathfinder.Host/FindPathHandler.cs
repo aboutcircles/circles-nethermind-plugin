@@ -188,7 +188,7 @@ internal sealed class FindPathHandler(
                     log.LogError(
                         "Path audit: Hub.sol rule violations detected — path may revert on-chain. " +
                         "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
-                        request.Source, request.Sink, mfr.GraphBlock,
+                        safeSource, safeSink, mfr.GraphBlock,
                         mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
                 }
 
@@ -202,7 +202,7 @@ internal sealed class FindPathHandler(
 
                 bool sourceUnsimulatable = false;
                 if (!string.IsNullOrEmpty(request.Source)
-                    && AddressIdPool.TryIdOf(request.Source, out int sourceId))
+                    && AddressIdPool.TryIdOf(request.Source.ToLowerInvariant(), out int sourceId))
                 {
                     sourceUnsimulatable = h.Graph.IsGroup(sourceId)
                                           || h.Graph.IsOrganization(sourceId);

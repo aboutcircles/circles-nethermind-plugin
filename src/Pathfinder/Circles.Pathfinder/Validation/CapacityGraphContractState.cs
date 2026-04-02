@@ -76,7 +76,7 @@ public sealed class CapacityGraphContractState : IContractState
     public bool IsRegistered(string address)
     {
         if (_graph.RegisteredAvatarIds.Count == 0)
-            return true; // Permissive when no registration data (synthetic graphs)
+            return false; // Fail-closed: missing registration data must not silently pass
 
         var lower = address.ToLowerInvariant();
         if (!AddressIdPool.TryIdOf(lower, out int id))
