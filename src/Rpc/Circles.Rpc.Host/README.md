@@ -1393,7 +1393,11 @@ CacheServiceClient
 | `circles_rpc_request_duration_seconds` | Histogram | method | Request duration |
 | `circles_rpc_errors_total` | Counter | method, error_type | Errors by type |
 | `circles_rpc_inflight_requests` | Gauge | method | Currently in-flight |
-| `circles_rpc_active_subscriptions` | Gauge | — | Active WebSocket subscriptions |
+| `circles_rpc_active_circles_subscriptions` | Gauge | — | Active Circles WebSocket subscriptions |
+| `circles_rpc_active_eth_subscriptions` | Gauge | — | Active eth_subscribe subscriptions (proxied) |
+| `circles_rpc_eth_subscriptions_total` | Counter | — | Total eth_subscribe subscriptions created |
+| `circles_rpc_nethermind_ws_reconnects_total` | Counter | — | Nethermind WebSocket reconnections |
+| `circles_rpc_active_ws_sessions` | Gauge | — | Active WebSocket client sessions |
 | `circles_rpc_rejected_total` | Counter | — | Rejected by concurrency limit |
 | `circles_rpc_proxied_total` | Counter | method | Proxied to Nethermind |
 | `circles_rpc_proxy_duration_seconds` | Histogram | method | Proxy request duration |
