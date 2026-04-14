@@ -44,11 +44,39 @@ public static class RpcMetrics
         new GaugeConfiguration { LabelNames = new[] { "method" } });
 
     /// <summary>
-    /// Active WebSocket subscriptions.
+    /// Active Circles WebSocket subscriptions (via CirclesSubscriptionService).
     /// </summary>
-    public static readonly Gauge ActiveSubscriptions = Metrics.CreateGauge(
-        "circles_rpc_active_subscriptions",
-        "Number of active WebSocket subscriptions");
+    public static readonly Gauge ActiveCirclesSubscriptions = Metrics.CreateGauge(
+        "circles_rpc_active_circles_subscriptions",
+        "Number of active Circles WebSocket subscriptions");
+
+    /// <summary>
+    /// Active Ethereum WebSocket subscriptions (proxied to Nethermind).
+    /// </summary>
+    public static readonly Gauge ActiveEthSubscriptions = Metrics.CreateGauge(
+        "circles_rpc_active_eth_subscriptions",
+        "Number of active eth_subscribe WebSocket subscriptions");
+
+    /// <summary>
+    /// Total eth_subscribe subscriptions created.
+    /// </summary>
+    public static readonly Counter EthSubscriptionsTotal = Metrics.CreateCounter(
+        "circles_rpc_eth_subscriptions_total",
+        "Total eth_subscribe subscriptions created");
+
+    /// <summary>
+    /// Nethermind WebSocket reconnection count.
+    /// </summary>
+    public static readonly Counter NethermindWsReconnects = Metrics.CreateCounter(
+        "circles_rpc_nethermind_ws_reconnects_total",
+        "Number of Nethermind WebSocket reconnections");
+
+    /// <summary>
+    /// Active WebSocket sessions (client connections).
+    /// </summary>
+    public static readonly Gauge ActiveWsSessions = Metrics.CreateGauge(
+        "circles_rpc_active_ws_sessions",
+        "Number of active WebSocket client sessions");
 
     /// <summary>
     /// Total RPC requests rejected due to concurrency limit.

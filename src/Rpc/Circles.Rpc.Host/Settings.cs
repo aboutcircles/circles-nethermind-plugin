@@ -9,6 +9,15 @@ public class Settings : Circles.Common.Settings
         Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")
         ?? "http://localhost:8545";
 
+    public readonly string NethermindWsUrl =
+        Environment.GetEnvironmentVariable("NETHERMIND_WS_URL")
+        ?? (Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL") ?? "http://localhost:8545")
+            .Replace("https://", "wss://")
+            .Replace("http://", "ws://");
+
+    public readonly bool EthSubscribeEnabled =
+        Environment.GetEnvironmentVariable("ETH_SUBSCRIBE_ENABLED")?.ToLowerInvariant() != "false";
+
     public readonly string BalanceMode =
         Environment.GetEnvironmentVariable("BALANCE_MODE")
         ?? "live"; // "database" or "live"
