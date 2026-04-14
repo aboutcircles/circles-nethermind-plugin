@@ -398,8 +398,36 @@ public sealed class NethermindWsProxy : IAsyncDisposable
         if (_byProxyId.TryRemove(proxyId, out var removed))
         {
             _nethermindToProxy.TryRemove(removed.NethermindSubId, out _);
+
+            // Best-effort upstream unsubscribe — stop Nethermind from sending orphaned notifications
+            _ = SendBestEffortUnsubscribeAsync(removed.NethermindSubId);
+
             RpcMetrics.ActiveEthSubscriptions.Dec();
             _logger.LogInformation("Removed stale eth subscription proxy={ProxyId}", proxyId);
+        }
+    }
+
+    private async Task SendBestEffortUnsubscribeAsync(string nethermindSubId)
+    {
+        try
+        {
+            if (_ws?.State != WebSocketState.Open) return;
+
+            var requestId = Interlocked.Increment(ref _nextRequestId);
+            var request = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                jsonrpc = "2.0",
+                method = "eth_unsubscribe",
+                @params = new[] { nethermindSubId },
+                id = requestId
+            });
+            await SendToNethermindAsync(request, _cts.Token);
+        }
+        catch (ObjectDisposedException) { /* shutdown race — expected */ }
+        catch (OperationCanceledException) { /* shutdown — expected */ }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Best-effort eth_unsubscribe failed for {SubId}", nethermindSubId);
         }
     }
 

@@ -10,8 +10,9 @@ public class Settings : Circles.Common.Settings
         ?? "http://localhost:8545";
 
     public readonly string NethermindWsUrl =
-        Environment.GetEnvironmentVariable("NETHERMIND_WS_URL")
-        ?? (Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL") ?? "http://localhost:8545")
+        (Environment.GetEnvironmentVariable("NETHERMIND_WS_URL")
+        ?? Environment.GetEnvironmentVariable("NETHERMIND_RPC_URL")
+        ?? "http://localhost:8545")
             .Replace("https://", "wss://")
             .Replace("http://", "ws://");
 
