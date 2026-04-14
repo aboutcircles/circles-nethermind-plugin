@@ -72,4 +72,5 @@ public static class RpcMethodClassifier
         method != null && (method.StartsWith("eth_", StringComparison.Ordinal)
             || method.StartsWith("net_", StringComparison.Ordinal)
             || method.StartsWith("web3_", StringComparison.Ordinal));
+
 }
