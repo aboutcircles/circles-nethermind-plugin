@@ -237,23 +237,23 @@ public sealed class WebSocketSession : IAsyncDisposable
 
     private async Task HandleEthSubscribeAsync(JsonElement root, JsonElement? id, CancellationToken ct)
     {
-        if (!_settings.EthSubscribeEnabled)
-        {
-            await SendErrorAsync(id, -32601, "eth_subscribe is disabled on this node", ct);
-            return;
-        }
-
         if (!TryCheckSubscriptionLimit(out _))
         {
             await SendErrorAsync(id, -32000, $"Subscription limit reached ({MaxSubscriptionsPerSession})", ct);
             return;
         }
 
-        // Backward compat: eth_subscribe(["circles", ...]) → route to circles
+        // Backward compat: eth_subscribe(["circles", ...]) → route to circles (works even when eth proxy is disabled)
         if (IsCirclesCompatSubscription(root))
         {
             _logger.LogWarning("Deprecated: eth_subscribe with 'circles' topic — use circles_subscribe instead");
             await HandleCirclesSubscribeFromEthCompatAsync(root, id, ct);
+            return;
+        }
+
+        if (!_settings.EthSubscribeEnabled)
+        {
+            await SendErrorAsync(id, -32601, "eth_subscribe is disabled on this node", ct);
             return;
         }
 
