@@ -26,10 +26,10 @@ public sealed class CirclesSubscriptionService : BackgroundService
         _scopeFactory = scopeFactory;
     }
 
-    public string Subscribe(WebSocket webSocket, string? filterAddress)
+    public string Subscribe(WebSocket webSocket, string? filterAddress, SemaphoreSlim? externalSendLock = null)
     {
         var subscriptionId = Guid.NewGuid().ToString("N");
-        var subscriber = new WebSocketSubscriber(webSocket, filterAddress?.ToLowerInvariant(), _logger);
+        var subscriber = new WebSocketSubscriber(webSocket, filterAddress?.ToLowerInvariant(), _logger, externalSendLock);
         _subscribers[subscriptionId] = subscriber;
         _logger.LogInformation(
             "Registered subscription {SubscriptionId} (filter: {Filter})",
@@ -163,14 +163,17 @@ public sealed class CirclesSubscriptionService : BackgroundService
     {
         private readonly WebSocket _webSocket;
         private readonly ILogger _logger;
-        private readonly SemaphoreSlim _sendLock = new(1, 1);
+        private readonly SemaphoreSlim _sendLock;
+        private readonly bool _ownsLock;
         private readonly string? _filterAddress;
 
-        public WebSocketSubscriber(WebSocket webSocket, string? filterAddress, ILogger logger)
+        public WebSocketSubscriber(WebSocket webSocket, string? filterAddress, ILogger logger, SemaphoreSlim? externalSendLock = null)
         {
             _webSocket = webSocket;
             _filterAddress = string.IsNullOrWhiteSpace(filterAddress) ? null : filterAddress;
             _logger = logger;
+            _ownsLock = externalSendLock == null;
+            _sendLock = externalSendLock ?? new SemaphoreSlim(1, 1);
         }
 
         public async Task SendAsync(object[] eventsPayload, CancellationToken cancellationToken)
@@ -229,7 +232,8 @@ public sealed class CirclesSubscriptionService : BackgroundService
 
         public void Dispose()
         {
-            _sendLock.Dispose();
+            if (_ownsLock)
+                _sendLock.Dispose();
         }
     }
 }
