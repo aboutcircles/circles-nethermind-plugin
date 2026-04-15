@@ -159,6 +159,28 @@ public class RevertClassifierTests
         Assert.That(label, Is.EqualTo("empty_revert"));
     }
 
+    // ── NettedFlowMismatch (0xb8c358de) ──────────────────────────
+
+    [Test]
+    public void NettedFlowMismatch_ClassifiedAsBug()
+    {
+        var revert = "execution reverted: 0xb8c358de" + Zeros + Zeros + Zeros;
+        var (category, label) = RevertClassifier.Classify(revert);
+        Assert.That(category, Is.EqualTo("bug"));
+        Assert.That(label, Is.EqualTo("netted_flow_mismatch"));
+    }
+
+    [Test]
+    public void NettedFlowMismatch_BareSelector_ClassifiedAsBug()
+    {
+        var revert = "0xb8c358de" + Zeros + Zeros + Zeros;
+        var (category, label) = RevertClassifier.Classify(revert);
+        Assert.That(category, Is.EqualTo("bug"));
+        Assert.That(label, Is.EqualTo("netted_flow_mismatch"));
+    }
+
+    // ── Edge cases ─────────────────────────────────────────────
+
     [Test]
     public void TruncatedData_AddressUintArgs_FallsBackToUnknown()
     {

@@ -43,4 +43,10 @@ internal class FindPathMetrics
             "circles_path_audit_violations_total",
             "Hub.sol rule violations detected in pathfinder output (non-blocking, alert-only)",
             new CounterConfiguration { LabelNames = new[] { "rule" } });
+
+    // Canary: validator threw an unexpected exception (non-zero = validator bug, not pathfinder bug)
+    public static readonly Counter CanaryValidatorExceptionTotal =
+        Metrics.CreateCounter(
+            "circles_canary_validator_exception_total",
+            "Times HubContractValidator threw an unexpected exception");
 }

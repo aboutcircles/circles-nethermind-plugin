@@ -191,6 +191,8 @@ internal sealed class FindPathHandler(
                         safeSource, safeSink, mfr.GraphBlock,
                         mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
                 }
+                if (mfr.ValidatorException)
+                    FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
                 // Simulation canary: enqueue for async eth_call validation.
                 // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization
@@ -230,17 +232,25 @@ internal sealed class FindPathHandler(
                     }
                     catch (Exception ex)
                     {
-                        log.LogError(ex, "Failed to build wrapper map for canary — simulation will run without wrapper resolution");
+                        log.LogError(ex, "Failed to build wrapper map for canary — skipping simulation (would produce false positives)");
                         wrapperMap = null;
                     }
 
-                    simulationCanary.TryEnqueue(new CanaryWorkItem(
-                        ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
-                        Source: request.Source,
-                        Sink: request.Sink,
-                        GraphBlock: mfr.GraphBlock,
-                        Transfers: new List<TransferPathStep>(mfr.Transfers),
-                        WrapperToAvatar: wrapperMap));
+                    if (wrapperMap == null && h.Graph.WrapperToAvatar.Count > 0)
+                    {
+                        // Wrapper resolution failed — simulation without it would produce
+                        // false-positive AvatarMustBeRegistered reverts. Skip entirely.
+                    }
+                    else
+                    {
+                        simulationCanary.TryEnqueue(new CanaryWorkItem(
+                            ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
+                            Source: request.Source,
+                            Sink: request.Sink,
+                            GraphBlock: mfr.GraphBlock,
+                            Transfers: new List<TransferPathStep>(mfr.Transfers),
+                            WrapperToAvatar: wrapperMap));
+                    }
                 }
 
                 log.LogInformation(

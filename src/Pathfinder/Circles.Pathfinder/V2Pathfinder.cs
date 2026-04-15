@@ -130,9 +130,10 @@ public class V2Pathfinder
         public int ConsentSafetyNetRejected { get; set; }
         public DebugPipelineStages? DebugStages { get; set; }
 
-        // Canary: HubContractValidator results (runs in Release mode)
+        // Canary: HubContractValidator results (runs on every response, observe-only)
         public int ValidationErrors { get; set; }
         public IReadOnlyList<string>? ValidationViolationRules { get; set; }
+        public bool ValidatorException { get; set; }
     }
 
     /* ======================================================================
@@ -484,6 +485,7 @@ public class V2Pathfinder
                 _logger.LogError(ex,
                     "[{ReqId}] Path audit: unexpected exception (observe-only, not blocking response)",
                     ctx.ReqId);
+                ctx.ValidatorException = true;
             }
         }
     }
@@ -516,7 +518,8 @@ public class V2Pathfinder
             ConsentDroppedPaths = ctx.ConsentDroppedPaths,
             ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected,
             ValidationErrors = ctx.ValidationErrors,
-            ValidationViolationRules = ctx.ValidationViolationRules
+            ValidationViolationRules = ctx.ValidationViolationRules,
+            ValidatorException = ctx.ValidatorException
         };
     }
 
