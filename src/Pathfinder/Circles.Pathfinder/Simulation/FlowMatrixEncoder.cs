@@ -125,7 +125,7 @@ public static class FlowMatrixEncoder
         // 32 (array length=1) + 32 (offset to stream[0]) + 32 (sourceCoord)
         // + 32 (offset to edgeIds) + 32 (offset to data)
         // + 32 (edgeIds length) + N*32 (edgeIds) + 32 (data length=0)
-        int streamsSize = 32 + 32 + 32 + 32 + 32 + terminalEdgeIds.Length * 32 + 32;
+        int streamsSize = 32 + 32 + 32 + 32 + 32 + 32 + terminalEdgeIds.Length * 32 + 32;
         int packedCoordinatesSize = 32 + ((packedCoordinates.Length / 2 + 31) / 32) * 32;
 
         sb.Append(currentOffset.ToString("x").PadLeft(64, '0'));
