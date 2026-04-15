@@ -572,6 +572,9 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         // Build request with conditional ETag header if we have a cached version
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
 
+        // Note: X-Max-Block-Number is NOT forwarded here because the pathfinder's /snapshot
+        // endpoint always returns the live graph. Historical snapshots are not supported.
+
         string? cachedETag;
         JsonElement? cached;
         lock (_snapshotLock)
@@ -629,9 +632,19 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
         var jsonContent = JsonSerializer.Serialize(flowRequest, SharedJsonOptions.CamelCase);
 
-        using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(jsonContent, Encoding.UTF8, "application/json")
+        };
 
-        using var response = await HttpClient.PostAsync(url, content);
+        // Forward X-Max-Block-Number header to pathfinder for historical queries
+        var maxBlockNumber = GetMaxBlockNumberFromHeader();
+        if (maxBlockNumber.HasValue)
+        {
+            request.Headers.Add(MaxBlockNumberHeader, maxBlockNumber.Value.ToString());
+        }
+
+        using var response = await HttpClient.SendAsync(request);
 
         if (!response.IsSuccessStatusCode)
         {
