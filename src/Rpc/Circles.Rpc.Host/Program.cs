@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Circles.Common.Dto;
@@ -188,63 +187,34 @@ app.MapGet("/docs", (HttpContext ctx) =>
     return Results.Content(html, "text/html");
 }).ExcludeFromDescription();
 
-async Task HandleSubscriptionWebSocket(HttpContext context, CirclesSubscriptionService subscriptionService, ILogger<Program> logger)
+async Task HandleUnifiedWebSocket(
+    HttpContext context,
+    CirclesSubscriptionService circlesSvc,
+    NethermindWsProxy nethermindProxy,
+    Settings settings,
+    ILogger<Program> logger)
 {
     var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    logger.LogInformation("Incoming WebSocket subscription request from {RemoteIp}", remoteIp);
 
     if (!context.WebSockets.IsWebSocketRequest)
     {
-        logger.LogWarning("Rejected non-WebSocket subscription request from {RemoteIp}", remoteIp);
+        logger.LogWarning("Rejected non-WebSocket request from {RemoteIp}", remoteIp);
         context.Response.StatusCode = StatusCodes.Status400BadRequest;
         await context.Response.WriteAsync("WebSocket request expected.");
         return;
     }
 
+    logger.LogInformation("WebSocket session started from {RemoteIp}", remoteIp);
     using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-    var request = await ReceiveSubscriptionRequestAsync(webSocket, context.RequestAborted);
 
-    if (request == null)
-    {
-        logger.LogWarning("Subscription payload missing or invalid from {RemoteIp}", remoteIp);
-        await SendSubscriptionErrorAsync(webSocket, null, "Invalid subscription payload", context.RequestAborted);
-        await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Invalid subscription payload", context.RequestAborted);
-        return;
-    }
+    await using var session = new WebSocketSession(webSocket, circlesSvc, nethermindProxy, settings, logger);
+    await session.RunAsync(context.RequestAborted);
 
-    if (!string.Equals(request.Jsonrpc, "2.0", StringComparison.OrdinalIgnoreCase) ||
-        !string.Equals(request.Method, "circles_subscribe", StringComparison.OrdinalIgnoreCase))
-    {
-        logger.LogWarning("Unsupported subscription method '{Method}' from {RemoteIp}", request.Method, remoteIp);
-        await SendSubscriptionErrorAsync(webSocket, request.Id, "Unsupported method", context.RequestAborted);
-        await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Unsupported method", context.RequestAborted);
-        return;
-    }
-
-    var subscriptionId = subscriptionService.Subscribe(webSocket, request.Params?.Address);
-    RpcMetrics.ActiveSubscriptions.Inc();
-    logger.LogInformation(
-        "Subscription {SubscriptionId} established from {RemoteIp} (address filter: {Address})",
-        subscriptionId,
-        remoteIp,
-        request.Params?.Address ?? "*"
-    );
-
-    try
-    {
-        await SendSubscriptionAckAsync(webSocket, request.Id, subscriptionId, context.RequestAborted);
-        await PumpWebSocketAsync(webSocket, context.RequestAborted);
-    }
-    finally
-    {
-        subscriptionService.Unsubscribe(subscriptionId);
-        RpcMetrics.ActiveSubscriptions.Dec();
-        logger.LogInformation("Subscription {SubscriptionId} closed for {RemoteIp}", subscriptionId, remoteIp);
-    }
+    logger.LogInformation("WebSocket session ended for {RemoteIp}", remoteIp);
 }
 
-app.Map("/ws/subscribe", HandleSubscriptionWebSocket).DisableAntiforgery();
-app.Map("/ws", HandleSubscriptionWebSocket).DisableAntiforgery();
+app.Map("/ws/subscribe", HandleUnifiedWebSocket).DisableAntiforgery();
+app.Map("/ws", HandleUnifiedWebSocket).DisableAntiforgery();
 
 // ─── Concurrency & rate limiting ─────────────────────────────────────────────
 // Concurrency semaphore: limits simultaneous in-flight requests (prevents DB pool exhaustion).
@@ -832,216 +802,6 @@ static async Task<object> DispatchSingleRequest(
 }
 
 app.Run();
-
-static async Task<SubscriptionRequest?> ReceiveSubscriptionRequestAsync(WebSocket webSocket, CancellationToken cancellationToken)
-{
-    var buffer = new byte[4096];
-    using var stream = new MemoryStream();
-
-    while (true)
-    {
-        var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-
-        if (result.MessageType == WebSocketMessageType.Close)
-        {
-            return null;
-        }
-
-        if (result.MessageType != WebSocketMessageType.Text)
-        {
-            continue;
-        }
-
-        stream.Write(buffer, 0, result.Count);
-
-        if (result.EndOfMessage)
-        {
-            break;
-        }
-    }
-
-    if (stream.Length == 0)
-    {
-        return null;
-    }
-
-    var payload = Encoding.UTF8.GetString(stream.ToArray());
-    return ParseSubscriptionRequest(payload);
-}
-
-static SubscriptionRequest? ParseSubscriptionRequest(string payload)
-{
-    using var document = JsonDocument.Parse(payload);
-    var root = document.RootElement;
-
-    var jsonrpc = root.TryGetProperty("jsonrpc", out var jsonrpcElement)
-        ? jsonrpcElement.GetString()
-        : null;
-
-    var method = root.TryGetProperty("method", out var methodElement)
-        ? methodElement.GetString()
-        : null;
-
-    JsonElement? id = root.TryGetProperty("id", out var idElement)
-        ? idElement.Clone()
-        : null;
-
-    var parameters = ParseSubscriptionParams(method, root);
-
-    // Compatibility: accept eth_subscribe payloads for circles subscriptions
-    if (string.Equals(method, "eth_subscribe", StringComparison.OrdinalIgnoreCase) &&
-        parameters != null)
-    {
-        method = "circles_subscribe";
-    }
-
-    return new SubscriptionRequest
-    {
-        Jsonrpc = jsonrpc,
-        Method = method,
-        Params = parameters,
-        Id = id
-    };
-}
-
-static SubscriptionParams? ParseSubscriptionParams(string? method, JsonElement root)
-{
-    if (!root.TryGetProperty("params", out var paramsElement) ||
-        paramsElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-    {
-        return new SubscriptionParams();
-    }
-
-    // Native payload shape:
-    // { "method": "circles_subscribe", "params": { "address": "0x..." } }
-    if (paramsElement.ValueKind == JsonValueKind.Object)
-    {
-        var address = paramsElement.TryGetProperty("address", out var addrElement)
-            ? addrElement.GetString()
-            : null;
-
-        return new SubscriptionParams { Address = address };
-    }
-
-    // Compatibility payload shape:
-    // { "method": "eth_subscribe", "params": ["circles", "{\"address\":\"0x...\"}"] }
-    if (paramsElement.ValueKind == JsonValueKind.Array)
-    {
-        var parts = paramsElement.EnumerateArray().ToArray();
-        if (parts.Length == 0)
-        {
-            return new SubscriptionParams();
-        }
-
-        if (string.Equals(method, "eth_subscribe", StringComparison.OrdinalIgnoreCase))
-        {
-            var topic = parts[0].ValueKind == JsonValueKind.String ? parts[0].GetString() : null;
-            if (!string.Equals(topic, "circles", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            if (parts.Length < 2)
-            {
-                return new SubscriptionParams();
-            }
-
-            var second = parts[1];
-
-            if (second.ValueKind == JsonValueKind.Object)
-            {
-                var addr = second.TryGetProperty("address", out var addrElement)
-                    ? addrElement.GetString()
-                    : null;
-                return new SubscriptionParams { Address = addr };
-            }
-
-            if (second.ValueKind == JsonValueKind.String)
-            {
-                var raw = second.GetString();
-                if (!string.IsNullOrWhiteSpace(raw))
-                {
-                    try
-                    {
-                        using var nested = JsonDocument.Parse(raw);
-                        var nestedRoot = nested.RootElement;
-                        if (nestedRoot.ValueKind == JsonValueKind.Object)
-                        {
-                            var addr = nestedRoot.TryGetProperty("address", out var addrElement)
-                                ? addrElement.GetString()
-                                : null;
-                            return new SubscriptionParams { Address = addr };
-                        }
-                    }
-                    catch (JsonException)
-                    {
-                        // Fallback: treat raw string itself as address
-                        return new SubscriptionParams { Address = raw };
-                    }
-                }
-
-                return new SubscriptionParams();
-            }
-
-            return new SubscriptionParams();
-        }
-    }
-
-    return null;
-}
-
-static async Task SendSubscriptionAckAsync(WebSocket socket, JsonElement? id, string subscriptionId, CancellationToken cancellationToken)
-{
-    var envelope = BuildSubscriptionResponse(id, subscriptionId, null);
-    await socket.SendAsync(envelope, WebSocketMessageType.Text, true, cancellationToken);
-}
-
-static async Task SendSubscriptionErrorAsync(WebSocket socket, JsonElement? id, string message, CancellationToken cancellationToken)
-{
-    var error = new { code = -32600, message };
-    var envelope = BuildSubscriptionResponse(id, null, error);
-    await socket.SendAsync(envelope, WebSocketMessageType.Text, true, cancellationToken);
-}
-
-static async Task PumpWebSocketAsync(WebSocket socket, CancellationToken cancellationToken)
-{
-    var buffer = new byte[1024];
-    while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
-    {
-        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-        if (result.MessageType == WebSocketMessageType.Close)
-        {
-            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", cancellationToken);
-            break;
-        }
-    }
-}
-
-static ArraySegment<byte> BuildSubscriptionResponse(JsonElement? id, object? result, object? error)
-{
-    var payload = new Dictionary<string, object?>
-    {
-        ["jsonrpc"] = "2.0"
-    };
-
-    if (result != null)
-    {
-        payload["result"] = result;
-    }
-
-    if (error != null)
-    {
-        payload["error"] = error;
-    }
-
-    if (id is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null })
-    {
-        payload["id"] = id.Value;
-    }
-
-    var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
-    return new ArraySegment<byte>(bytes);
-}
 
 // ─── RPC Handler Methods ──────────────────────────────────────────────────
 

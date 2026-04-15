@@ -42,6 +42,8 @@ public static class BuilderSetup
         Console.WriteLine($"* DB Name: {csb.Database}");
         Console.WriteLine($"* DB Port: {csb.Port}");
         Console.WriteLine($"* Nethermind RPC URL: {settings.NethermindRpcUrl}");
+        Console.WriteLine($"* Nethermind WS URL: {settings.NethermindWsUrl}");
+        Console.WriteLine($"* eth_subscribe enabled: {settings.EthSubscribeEnabled}");
         Console.WriteLine($"* Balance Mode: {settings.BalanceMode}");
         Console.WriteLine($"* Cache Service URL: {settings.CacheServiceUrl ?? "Not configured"}");
         Console.WriteLine($"* Use Cache Service: {settings.UseCacheService}");
@@ -105,6 +107,14 @@ public static class BuilderSetup
 
         builder.Services.AddSingleton<CirclesSubscriptionService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<CirclesSubscriptionService>());
+
+        // Nethermind WebSocket proxy for unified eth_subscribe support
+        builder.Services.AddSingleton(sp =>
+        {
+            var s = sp.GetRequiredService<Settings>();
+            var logger = sp.GetRequiredService<ILogger<NethermindWsProxy>>();
+            return new NethermindWsProxy(s.NethermindWsUrl, logger);
+        });
 
         // ─── Logging ────────────────────────────────────────────────────────────────
         builder.Logging.ClearProviders();
