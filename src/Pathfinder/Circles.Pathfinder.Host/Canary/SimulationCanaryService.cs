@@ -139,6 +139,9 @@ internal sealed class SimulationCanaryService : BackgroundService
             // Simulate at the exact block the graph was built from — eliminates false
             // positives from chain state drift between graph build and simulation.
             var blockTag = item.GraphBlock > 0 ? $"0x{item.GraphBlock:x}" : "latest";
+            if (item.GraphBlock <= 0)
+                _log.LogWarning("[{ReqId}] SimulationCanary: GraphBlock={Block} — simulating at 'latest', results may not match served graph",
+                    item.ReqId, item.GraphBlock);
 
             var rpcRequest = new
             {
