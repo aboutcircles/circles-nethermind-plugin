@@ -1,0 +1,240 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using Circles.Pathfinder.Data;
+using Circles.Pathfinder.Graphs;
+using Circles.Pathfinder.Host.Data;
+using Npgsql;
+
+namespace Circles.Pathfinder.Host.State;
+
+/// <summary>
+/// LRU cache of block-filtered graph data for historical pathfinding.
+/// When a request arrives with X-Max-Block-Number, the pathfinder loads graph data
+/// at that block (using block-filtered SQL) and caches the materialized results.
+///
+/// Thread-safe. Each cached entry holds materialized trust/balance/group data (~100-200MB,
+/// network-dependent). Max entries configurable (default 5, budget ~0.5-1GB).
+/// Blockchain data at block N is immutable, so cached graphs never become stale.
+///
+/// A dedicated load semaphore (default 2 concurrent loads) prevents historical
+/// graph loading from starving live pathfinding requests.
+/// </summary>
+public sealed class HistoricalGraphCache
+{
+    private readonly NpgsqlDataSource _dataSource;
+    private readonly Settings _settings;
+    private readonly string _routerAddress;
+    private readonly ILogger<HistoricalGraphCache> _logger;
+    private readonly int _maxEntries;
+
+    private readonly ConcurrentDictionary<long, CachedHistoricalGraph> _cache = new();
+    private readonly ConcurrentDictionary<long, SemaphoreSlim> _loadLocks = new();
+
+    /// <summary>
+    /// Limits concurrent historical graph loads to prevent DB/memory exhaustion.
+    /// Separate from the pathfinder's request semaphore.
+    /// </summary>
+    private readonly SemaphoreSlim _globalLoadSemaphore;
+
+    public HistoricalGraphCache(
+        NpgsqlDataSource dataSource,
+        Settings settings,
+        ILogger<HistoricalGraphCache> logger)
+    {
+        ArgumentNullException.ThrowIfNull(dataSource);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        _dataSource = dataSource;
+        _settings = settings;
+        _routerAddress = settings.RouterAddress;
+        _logger = logger;
+
+        _maxEntries = Math.Max(1, int.TryParse(
+            Environment.GetEnvironmentVariable("HISTORICAL_GRAPH_CACHE_MAX_ENTRIES"),
+            out var max) ? max : 5);
+
+        var maxConcurrentLoads = Math.Max(1, int.TryParse(
+            Environment.GetEnvironmentVariable("HISTORICAL_MAX_CONCURRENT_LOADS"),
+            out var loads) ? loads : 2);
+        _globalLoadSemaphore = new SemaphoreSlim(maxConcurrentLoads, maxConcurrentLoads);
+    }
+
+    /// <summary>
+    /// Gets (or loads) a GraphFactory for the given block number.
+    /// The factory is backed by cached materialized data — no DB I/O on cache hit.
+    /// </summary>
+    public async Task<GraphFactory> GetOrLoadFactoryAsync(long blockNumber)
+    {
+        // Fast path: already cached
+        if (_cache.TryGetValue(blockNumber, out var cached))
+        {
+            Interlocked.Exchange(ref cached.LastAccessedTicks, DateTimeOffset.UtcNow.Ticks);
+            return cached.Factory;
+        }
+
+        // Serialize loading per block to prevent duplicate loads
+        var loadLock = _loadLocks.GetOrAdd(blockNumber, _ => new SemaphoreSlim(1, 1));
+        await loadLock.WaitAsync();
+        try
+        {
+            // Double-check after acquiring lock
+            if (_cache.TryGetValue(blockNumber, out cached))
+            {
+                Interlocked.Exchange(ref cached.LastAccessedTicks, DateTimeOffset.UtcNow.Ticks);
+                return cached.Factory;
+            }
+
+            // Evict oldest if at capacity (bounded loop)
+            var evictionAttempts = 0;
+            while (_cache.Count >= _maxEntries && evictionAttempts++ < _maxEntries + 1)
+            {
+                EvictOldest();
+            }
+
+            // Acquire global load semaphore to limit concurrent DB pressure
+            await _globalLoadSemaphore.WaitAsync();
+            try
+            {
+                var factory = await Task.Run(() => LoadGraph(blockNumber));
+
+                _cache[blockNumber] = new CachedHistoricalGraph
+                {
+                    Factory = factory,
+                    LastAccessedTicks = DateTimeOffset.UtcNow.Ticks
+                };
+
+                return factory;
+            }
+            finally
+            {
+                _globalLoadSemaphore.Release();
+            }
+        }
+        finally
+        {
+            loadLock.Release();
+        }
+    }
+
+    private GraphFactory LoadGraph(long blockNumber)
+    {
+        var sw = Stopwatch.StartNew();
+        _logger.LogInformation("Loading historical graph for block {Block}...", blockNumber);
+
+        // Copy all relevant settings for consistent behavior between live and historical
+        var historicalSettings = new Settings
+        {
+            StandardMintPolicyAddress = _settings.StandardMintPolicyAddress,
+            ExcludeConsentedIntermediaries = _settings.ExcludeConsentedIntermediaries,
+            DisableConsentedFlow = _settings.DisableConsentedFlow,
+            DemurrageSafetyMargin = 1.0 // No safety margin needed for historical (deterministic timestamp)
+        };
+
+        var loader = new HistoricalLoadGraph(_dataSource, blockNumber, historicalSettings,
+            _logger as ILogger);
+
+        // Look up the block's timestamp for deterministic demurrage
+        var blockTimestamp = loader.GetBlockTimestamp();
+        if (blockTimestamp <= 0)
+        {
+            throw new ArgumentException(
+                $"Block {blockNumber} not found in System_Block table — cannot load historical graph. " +
+                "Ensure the block number is valid and has been indexed.");
+        }
+
+        historicalSettings.TargetDemurrageTimestamp =
+            DateTimeOffset.FromUnixTimeSeconds(blockTimestamp);
+
+        // Materialize all graph data into memory (the expensive part — subsequent uses are free)
+        var balances = loader.LoadV2Balances().ToList();
+        var trust = loader.LoadV2Trust().ToList();
+        var groups = loader.LoadGroups().ToList();
+        var organizations = loader.LoadOrganizations().ToList();
+        var groupTrusts = loader.LoadGroupTrusts().ToList();
+        var consentedFlags = loader.LoadConsentedFlowFlags().ToList();
+        var registeredAvatars = loader.LoadRegisteredAvatars().ToList();
+        var wrapperMappings = loader.LoadWrapperMappings().ToList();
+
+        // Create a factory backed by the materialized data (zero I/O on use)
+        var cachedLoader = new MaterializedLoadGraph(
+            balances, trust, groups, organizations, groupTrusts,
+            consentedFlags, registeredAvatars, wrapperMappings);
+
+        var factory = new GraphFactory(_routerAddress, cachedLoader);
+
+        sw.Stop();
+        _logger.LogInformation(
+            "Historical graph for block {Block} loaded: {Trust} trust, {Balances} balances, " +
+            "{Groups} groups, {Avatars} avatars in {Elapsed}ms",
+            blockNumber, trust.Count, balances.Count, groups.Count,
+            registeredAvatars.Count, sw.ElapsedMilliseconds);
+
+        return factory;
+    }
+
+    private void EvictOldest()
+    {
+        long oldestKey = -1;
+        long oldestTicks = long.MaxValue;
+
+        // Find oldest by iterating (safe on ConcurrentDictionary, returns snapshot)
+        foreach (var kvp in _cache)
+        {
+            var ticks = Interlocked.Read(ref kvp.Value.LastAccessedTicks);
+            if (ticks < oldestTicks)
+            {
+                oldestTicks = ticks;
+                oldestKey = kvp.Key;
+            }
+        }
+
+        if (oldestKey >= 0 && _cache.TryRemove(oldestKey, out _))
+        {
+            if (_loadLocks.TryRemove(oldestKey, out var evictedLock))
+                evictedLock.Dispose();
+
+            _logger.LogInformation("Evicted historical graph for block {Block}", oldestKey);
+        }
+    }
+
+    private sealed class CachedHistoricalGraph
+    {
+        public required GraphFactory Factory { get; init; }
+        public long LastAccessedTicks;
+    }
+}
+
+/// <summary>
+/// ILoadGraph implementation backed by pre-materialized in-memory data.
+/// All methods return cached lists — zero I/O.
+/// </summary>
+internal sealed class MaterializedLoadGraph(
+    List<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)> balances,
+    List<(string Truster, string Trustee, int Limit)> trust,
+    List<string> groups,
+    List<string> organizations,
+    List<(string GroupAddress, string TrustedToken)> groupTrusts,
+    List<(string Avatar, bool HasConsentedFlow)> consentedFlags,
+    List<string> registeredAvatars,
+    List<(string WrapperAddress, string UnderlyingAvatar)> wrapperMappings) : ILoadGraph
+{
+    public IEnumerable<(string Balance, int Account, int TokenAddress, bool IsWrapped, bool IsStatic)>
+        LoadV2Balances() => balances;
+
+    public IEnumerable<(string Truster, string Trustee, int Limit)>
+        LoadV2Trust() => trust;
+
+    public IEnumerable<string> LoadGroups() => groups;
+    public IEnumerable<string> LoadOrganizations() => organizations;
+
+    public IEnumerable<(string GroupAddress, string TrustedToken)>
+        LoadGroupTrusts() => groupTrusts;
+
+    public IEnumerable<(string Avatar, bool HasConsentedFlow)>
+        LoadConsentedFlowFlags() => consentedFlags;
+
+    public IEnumerable<string> LoadRegisteredAvatars() => registeredAvatars;
+
+    public IEnumerable<(string WrapperAddress, string UnderlyingAvatar)>
+        LoadWrapperMappings() => wrapperMappings;
+}
