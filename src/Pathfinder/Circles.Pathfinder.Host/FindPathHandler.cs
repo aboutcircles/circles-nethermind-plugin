@@ -191,6 +191,8 @@ internal sealed class FindPathHandler(
                         safeSource, safeSink, mfr.GraphBlock,
                         mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
                 }
+                if (mfr.ValidatorException)
+                    FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
                 // Simulation canary: enqueue for async eth_call validation.
                 // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization

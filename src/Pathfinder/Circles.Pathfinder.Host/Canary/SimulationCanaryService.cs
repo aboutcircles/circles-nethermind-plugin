@@ -136,6 +136,10 @@ internal sealed class SimulationCanaryService : BackgroundService
         try
         {
             using var client = _httpClientFactory.CreateClient("canary-simulation");
+            // Simulate at the exact block the graph was built from — eliminates false
+            // positives from chain state drift between graph build and simulation.
+            var blockTag = item.GraphBlock > 0 ? $"0x{item.GraphBlock:x}" : "latest";
+
             var rpcRequest = new
             {
                 jsonrpc = "2.0",
@@ -143,7 +147,7 @@ internal sealed class SimulationCanaryService : BackgroundService
                 @params = new object[]
                 {
                     new { from = item.Source, to = FlowMatrixEncoder.CirclesHubAddress, data = calldata },
-                    "latest"
+                    blockTag
                 },
                 id = 1
             };
@@ -195,9 +199,9 @@ internal sealed class SimulationCanaryService : BackgroundService
                 // Full replay context: everything needed to reproduce
                 _log.LogError(
                     "[{ReqId}] SimulationCanary: REVERT category={Category} label={Label} " +
-                    "from={Source} to={Sink} graphBlock={Block} simBlock=latest steps={Steps} revert={Revert}",
+                    "from={Source} to={Sink} graphBlock={Block} simBlock={SimBlock} steps={Steps} revert={Revert}",
                     item.ReqId, category, label,
-                    item.Source, item.Sink, item.GraphBlock,
+                    item.Source, item.Sink, item.GraphBlock, blockTag,
                     item.Transfers.Count, revertMsg);
 
                 if (revertData == null && revertMsg?.Contains("revert", StringComparison.OrdinalIgnoreCase) == true)
