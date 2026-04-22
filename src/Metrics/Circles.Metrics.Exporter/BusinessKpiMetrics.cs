@@ -507,9 +507,17 @@ public static class BusinessKpiMetrics
         .CreateGauge("circles_price_last_updated_timestamp",
             "Unix timestamp of last successful price update");
 
+    public static readonly Gauge CrcPriceBalancerXdai = Prometheus.Metrics
+        .CreateGauge("circles_crc_price_balancer_xdai",
+            "Market-based dCRC price in xDAI from Balancer V3 (sCRC/xDAI ÷ convFactor)");
+
+    public static readonly Gauge CrcPriceBalancerConvFactor = Prometheus.Metrics
+        .CreateGauge("circles_crc_price_balancer_conv_factor",
+            "Current sCRC→dCRC conversion factor (demurrage)");
+
     public static readonly Gauge PriceSource = Prometheus.Metrics
         .CreateGauge("circles_price_source",
-            "Price source indicator: 1=CoinGecko live, 2=cached, 3=fallback manual",
+            "Per-source boolean: label=coingecko|cached|fallback|balancer, value=1 when active",
             new GaugeConfiguration { LabelNames = new[] { "source" } });
 
     // ===========================================

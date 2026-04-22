@@ -1333,6 +1333,15 @@ public class KpiCollectorService : BackgroundService
             BusinessKpiMetrics.PriceSource.WithLabels("coingecko").Set(source == PriceService.PriceSource.CoinGeckoLive ? 1 : 0);
             BusinessKpiMetrics.PriceSource.WithLabels("cached").Set(source == PriceService.PriceSource.Cached ? 1 : 0);
             BusinessKpiMetrics.PriceSource.WithLabels("fallback").Set(source == PriceService.PriceSource.FallbackManual ? 1 : 0);
+            BusinessKpiMetrics.PriceSource.WithLabels("balancer").Set(source == PriceService.PriceSource.BalancerLive ? 1 : 0);
+
+            // Balancer market price (independent gauge, always set when available)
+            if (_priceService.LastBalancerDcrcXdai > 0)
+            {
+                BusinessKpiMetrics.CrcPriceBalancerXdai.Set(_priceService.LastBalancerDcrcXdai);
+                BusinessKpiMetrics.CrcPriceBalancerConvFactor.Set(
+                    BalancerPriceService.GetConvFactor(DateTimeOffset.UtcNow));
+            }
 
             if (_priceService.LastUpdate > DateTimeOffset.MinValue)
             {
