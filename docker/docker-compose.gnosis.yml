@@ -383,6 +383,8 @@ services:
       - CoinGecko__ApiKey=${COINGECKO_API_KEY:-}
       - Pricing__FallbackCrcPriceUsd=${PRICING_FALLBACK_CRC_PRICE_USD:-0.01}
       - Pricing__CacheExpiryMinutes=${PRICING_CACHE_EXPIRY_MINUTES:-5}
+      - Balancer__ApiUrl=${BALANCER_API_URL:-https://api-v3.balancer.fi/graphql}
+      - Balancer__ReferenceScrcAddress=${BALANCER_REFERENCE_SCRC:-}
       - Deployment__Environments__Staging=${DEPLOYMENT__ENVIRONMENTS__STAGING:-}
     deploy:
       resources:
