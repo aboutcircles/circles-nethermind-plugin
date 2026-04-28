@@ -73,13 +73,6 @@ public class MaxFlowResponse
     public int ConsentDroppedPaths { get; set; }
 
     /// <summary>
-    /// Number of edges removed by the ValidateConsentedFlow safety net.
-    /// Non-zero means the path-level filter has a gap. Not serialized.
-    /// </summary>
-    [JsonIgnore]
-    public int ConsentSafetyNetRejected { get; set; }
-
-    /// <summary>
     /// Pipeline request ID for log correlation across canary layers.
     /// Not serialized — used internally for metrics and simulation canary.
     /// </summary>

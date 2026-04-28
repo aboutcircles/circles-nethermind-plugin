@@ -95,113 +95,6 @@ public class ContractConformanceTests
 
     #endregion
 
-    #region isPermittedFlow Conformance
-
-    /// <summary>
-    /// Non-consented avatar: only needs receiver trusts circlesId.
-    /// This should pass validation.
-    /// </summary>
-    [Test]
-    public void IsPermittedFlow_NonConsented_ReceiverTrustsToken_Passes()
-    {
-        var graph = BuildGraphWithTrust(
-            trusts: new[] { (Avatar1Addr, Token1Addr) }, // Avatar1 trusts Token1
-            consented: Array.Empty<string>());
-
-        var edges = new List<FlowEdge>
-        {
-            new(Source, Avatar1, Token1, 100) { Flow = 100 }
-        };
-
-        // Source is NOT consented → standard trust check: Avatar1 trusts Token1 → pass
-        var validated = ValidateConsentedFlow(edges, graph);
-        Assert.That(validated.Count, Is.EqualTo(1));
-    }
-
-    /// <summary>
-    /// Consented avatar: needs From trusts To AND To has consented flow.
-    /// Both conditions met → should pass.
-    /// </summary>
-    [Test]
-    public void IsPermittedFlow_Consented_BothConditionsMet_Passes()
-    {
-        var graph = BuildGraphWithTrust(
-            trusts: new[] { (SourceAddr, Avatar1Addr) }, // Source trusts Avatar1
-            consented: new[] { SourceAddr, Avatar1Addr }); // Both consented
-
-        var edges = new List<FlowEdge>
-        {
-            new(Source, Avatar1, Token1, 100) { Flow = 100 }
-        };
-
-        var validated = ValidateConsentedFlow(edges, graph);
-        Assert.That(validated.Count, Is.EqualTo(1));
-    }
-
-    /// <summary>
-    /// Consented avatar: From trusts To but To does NOT have consented flow → fails.
-    /// </summary>
-    [Test]
-    public void IsPermittedFlow_Consented_ToNotConsented_Fails()
-    {
-        var graph = BuildGraphWithTrust(
-            trusts: new[] { (SourceAddr, Avatar1Addr) }, // Source trusts Avatar1
-            consented: new[] { SourceAddr }); // Only Source is consented, Avatar1 is NOT
-
-        var edges = new List<FlowEdge>
-        {
-            new(Source, Avatar1, Token1, 100) { Flow = 100 }
-        };
-
-        var validated = ValidateConsentedFlow(edges, graph);
-        Assert.That(validated.Count, Is.EqualTo(0),
-            "Edge should be filtered: To doesn't have consented flow");
-    }
-
-    /// <summary>
-    /// Consented avatar: From does NOT trust To → fails even if To is consented.
-    /// </summary>
-    [Test]
-    public void IsPermittedFlow_Consented_FromDoesNotTrustTo_Fails()
-    {
-        var graph = BuildGraphWithTrust(
-            trusts: Array.Empty<(string, string)>(), // No trusts!
-            consented: new[] { SourceAddr, Avatar1Addr }); // Both consented
-
-        var edges = new List<FlowEdge>
-        {
-            new(Source, Avatar1, Token1, 100) { Flow = 100 }
-        };
-
-        var validated = ValidateConsentedFlow(edges, graph);
-        Assert.That(validated.Count, Is.EqualTo(0),
-            "Edge should be filtered: From doesn't trust To");
-    }
-
-    /// <summary>
-    /// Router edges should always be permitted regardless of consent status.
-    /// </summary>
-    [Test]
-    public void IsPermittedFlow_ConsentedAvatarToRouter_RejectedBySafetyNet()
-    {
-        var graph = BuildGraphWithTrust(
-            trusts: Array.Empty<(string, string)>(),
-            consented: new[] { SourceAddr }); // Source consented but trusts nobody
-        graph.SetRouter(Router);
-
-        var edges = new List<FlowEdge>
-        {
-            new(Source, Router, Token1, 100) { Flow = 100 },
-            new(Router, Avatar1, Token1, 100) { Flow = 100 },
-        };
-
-        var validated = ValidateConsentedFlow(edges, graph);
-        Assert.That(validated.Count, Is.EqualTo(1),
-            "Consented Avatar→Router is caught by safety net; only Router→Avatar survives");
-    }
-
-    #endregion
-
     #region Collateral Before Mint
 
     /// <summary>
@@ -620,12 +513,6 @@ public class ContractConformanceTests
 
         return graph;
     }
-
-    // Delegate to production method to avoid logic drift
-    private static readonly V2Pathfinder _consentValidator = new();
-
-    private static List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph graph)
-        => _consentValidator.ValidateConsentedFlow(edges, graph);
 
     #endregion
 }

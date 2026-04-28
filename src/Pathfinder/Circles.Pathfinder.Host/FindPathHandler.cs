@@ -195,8 +195,6 @@ internal sealed class FindPathHandler(
 
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
-                if (mfr.ConsentSafetyNetRejected > 0)
-                    FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
 
                 // Path audit: record Hub.sol rule violations (observe-only, alert via Prometheus)
                 if (mfr.ValidationErrors > 0)
@@ -388,8 +386,6 @@ internal sealed class FindPathHandler(
                 // Track consent metrics (same as live path)
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
-                if (mfr.ConsentSafetyNetRejected > 0)
-                    FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
 
                 // Track Hub.sol rule violations (same as live path)
                 if (mfr.ValidationErrors > 0)

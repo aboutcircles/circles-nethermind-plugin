@@ -127,7 +127,6 @@ public class V2Pathfinder
         public List<FlowEdge> Edges { get; set; } = new();
         public List<TransferPathStep> Transfers { get; set; } = new();
         public int ConsentDroppedPaths { get; set; }
-        public int ConsentSafetyNetRejected { get; set; }
         public DebugPipelineStages? DebugStages { get; set; }
 
         // Canary: HubContractValidator results (runs on every response, observe-only)
@@ -336,22 +335,15 @@ public class V2Pathfinder
 
     private void ValidateConsent(PipelineContext ctx)
     {
-        var beforeCount = ctx.Edges.Count;
-
-        ctx.Edges = _settings.ExcludeConsentedIntermediaries
-            ? ctx.Edges
-            : ValidateConsentedFlow(ctx.Edges, ctx.Graph);
-
-        ctx.ConsentSafetyNetRejected = beforeCount - ctx.Edges.Count;
-
-        {
-            int routerEdges = beforeCount - ctx.Aggregated.Edges.Count;
-            _logger.LogInformation(
-                "[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}, safetyNetRejected={Rejected}",
-                ctx.ReqId, Math.Max(0, routerEdges),
-                _settings.ExcludeConsentedIntermediaries ? "exclude-intermediaries" : "validate-rules",
-                ctx.ConsentDroppedPaths, ctx.ConsentSafetyNetRejected);
-        }
+        // Single source of truth for consent enforcement: PathHasConsentViolation /
+        // PathHasConsentedIntermediary in CollapseBalanceNodes (path level, pre-aggregation).
+        // No post-aggregation safety net — see 2026-04-28 decision (one check is enough).
+        int routerEdges = ctx.Edges.Count - ctx.Aggregated.Edges.Count;
+        _logger.LogInformation(
+            "[{ReqId}] Router: +{RouterEdges} edges | Consent: mode={Mode}, pathsDropped={PathsDropped}",
+            ctx.ReqId, Math.Max(0, routerEdges),
+            _settings.ExcludeConsentedIntermediaries ? "exclude-intermediaries" : "validate-rules",
+            ctx.ConsentDroppedPaths);
 
         if (ctx.WantDebug)
             ctx.DebugStages!.RouterInserted = ConvertFlowEdgesToTransferSteps(ctx.Edges);
@@ -516,7 +508,6 @@ public class V2Pathfinder
         {
             ReqId = ctx.ReqId,
             ConsentDroppedPaths = ctx.ConsentDroppedPaths,
-            ConsentSafetyNetRejected = ctx.ConsentSafetyNetRejected,
             ValidationErrors = ctx.ValidationErrors,
             ValidationViolationRules = ctx.ValidationViolationRules,
             ValidatorException = ctx.ValidatorException
@@ -541,12 +532,12 @@ public class V2Pathfinder
      * depositing them to groups. The contract's operateFlowMatrix expects
      * all Avatar→Group transfers to go through the Router.
      *
-     * IMPORTANT: This MUST run BEFORE ValidateConsentedFlow because:
-     * 1. Without router insertion, edges are Avatar→Group
-     * 2. ValidateConsentedFlow would incorrectly check consent for Avatar→Group
-     * 3. After insertion, edges become Avatar→Router→Group
-     * 4. Router edges are skipped in ValidateConsentedFlow (router has no consent)
-     * 5. This matches Hub.sol:723 where _groupMint uses Router as _sender
+     * Consent enforcement is handled at the path level (PathHasConsentViolation /
+     * PathHasConsentedIntermediary in CollapseBalanceNodes) BEFORE this rewrite.
+     * Both filters reject consented sender → Group unconditionally because, after
+     * Router insertion, Avatar(consented)→Router would always revert on-chain
+     * (Hub.sol's isPermittedFlow requires advancedUsageFlags[to] != 0 for
+     * consented senders, but the Router contract never calls setAdvancedUsageFlag).
      * --------------------------------------------------------------------- */
     internal List<FlowEdge> InsertRouterInTransfers(List<FlowEdge> transfers, CapacityGraph capacityGraph)
     {
@@ -587,113 +578,6 @@ public class V2Pathfinder
         }
 
         return result;
-    }
-
-    /* ------------------------------------------------------------------------
-     * SAFETY NET: Validate consented flow rules on aggregated transfer edges.
-     *
-     * Mirrors Hub.sol:668-676 isPermittedFlow():
-     * - If From NOT consented → standard trust sufficient
-     * - If From consented → requires isTrusted(From, To) && advancedUsageFlags[To]
-     *
-     * Router edges are skipped here — this is the post-insertion counterpart of
-     * the IsGroup(to) skip in PathHasConsentViolation. Both exempt group-minting
-     * paths from consent checks: PathHasConsentViolation skips Avatar→Group
-     * (pre-insertion), this method skips Avatar→Router and Router→Group
-     * (post-insertion). Removing either skip breaks the symmetry.
-     *
-     * Since path-level consent filtering in CollapseBalanceNodes should catch
-     * all violations BEFORE aggregation, this method should never filter
-     * anything. If it does, log an ERROR — the path-level filter has a gap.
-     *
-     * Still removes edges for safety (better to produce reduced flow than
-     * let the contract revert).
-     * --------------------------------------------------------------------- */
-    /// <summary>
-    /// Safety-net consent validation on post-router-insertion edges.
-    /// Removes edges violating Hub.sol isPermittedFlow consent rules.
-    /// Should never filter anything if PathHasConsentViolation works correctly.
-    /// </summary>
-    internal List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
-    {
-        // If no consent data available, pass all edges through
-        if (capacityGraph.TrustLookup == null || capacityGraph.ConsentedAvatars.Count == 0)
-        {
-            return edges;
-        }
-
-        var validEdges = new List<FlowEdge>(edges.Count);
-        int rejected = 0;
-
-        foreach (var edge in edges)
-        {
-            // Skip pool nodes - they're not avatars
-            if (IsPoolNode(edge.From) || IsPoolNode(edge.To))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // Catch consented Avatar→Router edges that PathHasConsentViolation should have dropped.
-            // Router lacks advancedUsageFlags — consented senders cannot send to it.
-            if (capacityGraph.IsRouter(edge.To) && capacityGraph.ConsentedAvatars.Contains(edge.From))
-            {
-                _logger.LogError(
-                    "[ValidateConsentedFlow] SAFETY-NET: consented avatar {From}→Router should have been caught by PathHasConsentViolation",
-                    AddressIdPool.StringOf(edge.From)[..10]);
-                rejected++;
-                continue;
-            }
-
-            // Skip remaining router edges — Router is never consented, so standard trust applies.
-            // This is the post-insertion counterpart of the IsGroup(to) skip in PathHasConsentViolation.
-            if (capacityGraph.IsRouter(edge.From) || capacityGraph.IsRouter(edge.To))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // If From doesn't have consented flow, standard trust is sufficient
-            if (!capacityGraph.ConsentedAvatars.Contains(edge.From))
-            {
-                validEdges.Add(edge);
-                continue;
-            }
-
-            // From has consented flow enabled - check additional requirements:
-            // 1. From must trust To
-            bool fromTrustsTo = capacityGraph.TrustLookup.TryGetValue(edge.From, out var fromTrusts)
-                               && fromTrusts.Contains(edge.To);
-            if (!fromTrustsTo)
-            {
-                _logger.LogError("[ValidateConsentedFlow] SAFETY-NET triggered: edge {From}→{To} should have been caught by path-level filter. " +
-                    "Consented avatar doesn't trust recipient.",
-                    AddressIdPool.StringOf(edge.From)[..10], AddressIdPool.StringOf(edge.To)[..10]);
-                rejected++;
-                continue;
-            }
-
-            // 2. To must also have consented flow enabled
-            if (!capacityGraph.ConsentedAvatars.Contains(edge.To))
-            {
-                _logger.LogError("[ValidateConsentedFlow] SAFETY-NET triggered: edge {From}→{To} should have been caught by path-level filter. " +
-                    "Recipient doesn't have consented flow enabled.",
-                    AddressIdPool.StringOf(edge.From)[..10], AddressIdPool.StringOf(edge.To)[..10]);
-                rejected++;
-                continue;
-            }
-
-            // All checks passed
-            validEdges.Add(edge);
-        }
-
-        if (rejected > 0)
-        {
-            _logger.LogError("[ValidateConsentedFlow] SAFETY-NET removed {Rejected} edges — path-level consent filter has a gap!",
-                rejected);
-        }
-
-        return validEdges;
     }
 
     /* ------------------------------------------------------------------------
@@ -884,11 +768,16 @@ public class V2Pathfinder
 
         foreach (var (from, to, _, _) in collapsedEdges)
         {
-            // Skip Avatar→Group edges ONLY when sender is NOT consented.
-            // Non-consented: safe — standard trust applies after Router insertion.
-            // Consented: DO NOT skip — after Router insertion, Avatar(consented)→Router
-            // fails isPermittedFlow because Router lacks advancedUsageFlags.
-            if (capacityGraph.IsGroup(to) && !capacityGraph.ConsentedAvatars.Contains(from))
+            // Consented sender → Group: UNCONDITIONAL violation.
+            // After InsertRouterInTransfers, this becomes Avatar(consented) → Router → Group.
+            // Hub.sol's isPermittedFlow(Avatar, Router, token) always fails because the
+            // Router contract never calls setAdvancedUsageFlag — advancedUsageFlags[Router] == 0.
+            // No exceptions, even if the Group itself is consented and trusted.
+            if (capacityGraph.IsGroup(to) && capacityGraph.ConsentedAvatars.Contains(from))
+                return true;
+
+            // Non-consented sender → Group: safe — standard trust applies after Router insertion.
+            if (capacityGraph.IsGroup(to))
                 continue;
 
             // Skip pool nodes (shouldn't exist after collapse, but safety check)
@@ -932,10 +821,15 @@ public class V2Pathfinder
 
         foreach (var (from, to, _, _) in edges)
         {
-            // Skip Avatar→Group edges ONLY when sender is NOT consented.
-            // Consented sender → Group becomes Consented → Router after insertion,
-            // which fails isPermittedFlow (Router lacks advancedUsageFlags).
-            if (graph.IsGroup(to) && !graph.ConsentedAvatars.Contains(from))
+            // Consented sender → Group: UNCONDITIONAL exclusion (even if sender is source).
+            // After InsertRouterInTransfers, this becomes Avatar(consented) → Router → Group.
+            // Hub.sol's isPermittedFlow(Avatar, Router, token) always fails because the
+            // Router contract never calls setAdvancedUsageFlag.
+            if (graph.IsGroup(to) && graph.ConsentedAvatars.Contains(from))
+                return true;
+
+            // Non-consented sender → Group: safe — standard trust applies after Router insertion.
+            if (graph.IsGroup(to))
                 continue;
 
             if (from != sourceId && from != sinkId && graph.ConsentedAvatars.Contains(from))

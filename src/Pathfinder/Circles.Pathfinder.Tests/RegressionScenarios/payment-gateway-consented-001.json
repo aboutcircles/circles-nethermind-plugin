@@ -5,7 +5,7 @@
   "block": 44289365,
   "source": "0x4b6F72008e7ACa33De36B6565eF30264626B21dB",
   "sink": "0x1f6db4d3cd8a506307952897a5b6d3bdedffbd1e",
-  "description": "Routed transfer to payment gateway with CONSENTED FLOW ENABLED on source avatar. Tests the isPermittedFlow fix where InsertRouterInTransfers must run BEFORE ValidateConsentedFlow. The Safe trusts the Router at this block (enabled at block 44289356). Uses 4Birthday group tokens.",
+  "description": "Routed transfer to payment gateway with CONSENTED FLOW ENABLED on source avatar. Tests path-level consent enforcement (PathHasConsentViolation) for routed transfers — consented sender → Group is rejected unconditionally because Avatar(consented)→Router would revert on-chain. The Safe trusts the Router at this block (enabled at block 44289356). Uses 4Birthday group tokens.",
   "shouldFindPath": true,
   "minFlow": "100000000000000000",
   "expectedRevertReason": null,
