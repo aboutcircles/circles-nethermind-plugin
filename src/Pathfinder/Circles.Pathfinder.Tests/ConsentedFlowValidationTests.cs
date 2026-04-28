@@ -28,434 +28,6 @@ public class ConsentedFlowValidationTests
     private static readonly int AliceToken = AddressIdPool.IdOf("0xcf06consent_alicetoken");
     private static readonly int BobToken = AddressIdPool.IdOf("0xcf07consent_bobtoken");
 
-    /// <summary>
-    /// Standard case: From (Alice) does NOT have consented flow enabled.
-    /// Edge should be valid regardless of other conditions.
-    /// </summary>
-    [Test]
-    public void NoConsentedFlow_EdgeIsValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int>(), // No one has consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Bob, new HashSet<int> { AliceToken } } // Bob trusts Alice's token (standard trust)
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[0].To, Is.EqualTo(Bob));
-    }
-
-    /// <summary>
-    /// From (Alice) has consented flow, To (Bob) does NOT have consented flow.
-    /// Edge should be INVALID and filtered out.
-    /// </summary>
-    [Test]
-    public void FromHasConsentedFlow_ToDoesNot_EdgeIsInvalid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice }, // Only Alice has consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int> { Bob } }, // Alice trusts Bob
-                { Bob, new HashSet<int> { AliceToken } } // Bob trusts Alice's token
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - edge should be filtered out
-        Assert.That(result, Is.Empty);
-    }
-
-    /// <summary>
-    /// From (Alice) has consented flow, To (Bob) has consented flow,
-    /// but From does NOT trust To.
-    /// Edge should be INVALID and filtered out.
-    /// </summary>
-    [Test]
-    public void BothHaveConsentedFlow_FromDoesNotTrustTo_EdgeIsInvalid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice, Bob }, // Both have consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                // Alice does NOT trust Bob (missing entry)
-                { Bob, new HashSet<int> { AliceToken } } // Bob trusts Alice's token
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - edge should be filtered out
-        Assert.That(result, Is.Empty);
-    }
-
-    /// <summary>
-    /// From (Alice) has consented flow, To (Bob) has consented flow,
-    /// and From trusts To.
-    /// Edge should be VALID.
-    /// </summary>
-    [Test]
-    public void BothHaveConsentedFlow_FromTrustsTo_EdgeIsValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice, Bob }, // Both have consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int> { Bob } }, // Alice trusts Bob
-                { Bob, new HashSet<int> { AliceToken } } // Bob trusts Alice's token
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[0].To, Is.EqualTo(Bob));
-    }
-
-    /// <summary>
-    /// Multi-hop path: Alice → Bob → Carol
-    /// Alice has consented flow, Bob has consented flow, Carol does NOT.
-    /// Alice→Bob should be valid (both have consent, Alice trusts Bob)
-    /// Bob→Carol should be invalid (Bob has consent, Carol doesn't)
-    /// </summary>
-    [Test]
-    public void MultiHopPath_PartialConsentedFlow_FiltersInvalidEdges()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice, Bob }, // Alice and Bob have consented flow, Carol doesn't
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int> { Bob } }, // Alice trusts Bob
-                { Bob, new HashSet<int> { AliceToken, Carol } }, // Bob trusts Alice's token and Carol
-                { Carol, new HashSet<int> { AliceToken } } // Carol trusts Alice's token
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 },
-            new FlowEdge(Bob, Carol, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - only Alice→Bob should remain
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[0].To, Is.EqualTo(Bob));
-    }
-
-    /// <summary>
-    /// Pool nodes should always be allowed through (they're not avatars).
-    /// </summary>
-    [Test]
-    public void PoolNodeEdges_AlwaysValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice },
-            trustLookup: new Dictionary<int, HashSet<int>>()
-        );
-
-        // Pool nodes are tracked in AddressIdPool.BalanceNodeIds
-        var poolId = AddressIdPool.BalanceNodeIdOf("tpool-consent-test");
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, poolId, AliceToken, 1000) { Flow = 500 }, // Avatar → Pool
-            new FlowEdge(poolId, Bob, AliceToken, 1000) { Flow = 500 }    // Pool → Avatar
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - pool edges should pass through
-        Assert.That(result, Has.Count.EqualTo(2));
-    }
-
-    /// <summary>
-    /// Consented Avatar→Router edge is rejected by safety net because Router
-    /// lacks advancedUsageFlags. Only Router→Avatar edge survives.
-    /// </summary>
-    [Test]
-    public void ConsentedAvatarToRouter_RejectedBySafetyNet()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice },
-            trustLookup: new Dictionary<int, HashSet<int>>()
-        );
-        capacityGraph.SetRouter(Router);
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Router, AliceToken, 1000) { Flow = 500 },
-            new FlowEdge(Router, Bob, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - consented Avatar→Router is caught; only Router→Bob survives
-        Assert.That(result, Has.Count.EqualTo(1));
-    }
-
-    /// <summary>
-    /// Empty consented avatars set means no validation needed (backwards compatible).
-    /// </summary>
-    [Test]
-    public void EmptyConsentedAvatars_AllEdgesValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int>(), // No one has consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>()
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 },
-            new FlowEdge(Bob, Carol, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - all edges should pass through
-        Assert.That(result, Has.Count.EqualTo(2));
-    }
-
-    /// <summary>
-    /// Null trust lookup means no validation can be done - pass all through.
-    /// </summary>
-    [Test]
-    public void NullTrustLookup_AllEdgesValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice, Bob },
-            trustLookup: null!
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - should pass through (no validation possible)
-        Assert.That(result, Has.Count.EqualTo(1));
-    }
-
-    #region Consented Avatar as Path Intermediate Tests
-
-    /// <summary>
-    /// Scenario: A (non-consented) → B (consented) → C (non-consented)
-    ///
-    /// Edge A→B: A doesn't have consented flow, so standard trust applies → VALID
-    /// Edge B→C: B has consented flow, but C doesn't have consented flow → INVALID
-    ///
-    /// This tests the case where a consented flow avatar is in the MIDDLE of a path,
-    /// not as the source. The consented avatar's outbound edges are still validated.
-    /// </summary>
-    [Test]
-    [Category("consented-flow")]
-    public void ConsentedAvatarAsIntermediate_NonConsentedSource_OutboundEdgeFiltered()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Bob }, // Only Bob has consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int>() },  // Alice trusts no one (doesn't matter - no consent)
-                { Bob, new HashSet<int> { Carol } }, // Bob trusts Carol
-                { Carol, new HashSet<int> { AliceToken } } // Carol trusts Alice's token
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 },  // A → B
-            new FlowEdge(Bob, Carol, AliceToken, 1000) { Flow = 500 }   // B → C
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert:
-        // - A→B should pass (A has no consented flow, standard trust applies)
-        // - B→C should be filtered (B has consented flow, C doesn't)
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[0].To, Is.EqualTo(Bob));
-    }
-
-    /// <summary>
-    /// Scenario: A (non-consented) → B (consented) → C (consented)
-    /// Both B and C have consented flow, and B trusts C.
-    ///
-    /// Edge A→B: A doesn't have consented flow, standard trust → VALID
-    /// Edge B→C: B has consented flow, C has consented flow, B trusts C → VALID
-    ///
-    /// Full path should be valid when intermediate consented avatars trust each other.
-    /// </summary>
-    [Test]
-    [Category("consented-flow")]
-    public void ConsentedAvatarAsIntermediate_BothConsentedAndTrusted_FullPathValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Bob, Carol }, // B and C have consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int>() },
-                { Bob, new HashSet<int> { Carol } }, // Bob trusts Carol
-                { Carol, new HashSet<int> { AliceToken } }
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 },
-            new FlowEdge(Bob, Carol, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert - both edges should be valid
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[1].From, Is.EqualTo(Bob));
-    }
-
-    /// <summary>
-    /// Scenario: A (consented) → B (consented) → C (non-consented)
-    ///
-    /// Tests a longer chain where the SOURCE also has consented flow.
-    /// Both edges require full consented flow validation.
-    ///
-    /// Edge A→B: A has consent, B has consent, A trusts B → VALID
-    /// Edge B→C: B has consent, C doesn't have consent → INVALID
-    /// </summary>
-    [Test]
-    [Category("consented-flow")]
-    public void ConsentedAvatarAsIntermediate_ConsentedSourceChain_PartiallyValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Alice, Bob }, // A and B have consented flow
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int> { Bob } }, // Alice trusts Bob
-                { Bob, new HashSet<int> { Carol } }, // Bob trusts Carol
-                { Carol, new HashSet<int> { AliceToken } }
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 },
-            new FlowEdge(Bob, Carol, AliceToken, 1000) { Flow = 500 }
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert:
-        // - A→B valid (both consented, A trusts B)
-        // - B→C invalid (C doesn't have consent)
-        Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[0].To, Is.EqualTo(Bob));
-    }
-
-    /// <summary>
-    /// Scenario: A → B (consented) → C (consented) → D
-    /// Tests a 4-hop path with consented avatars in the middle.
-    ///
-    /// This is a realistic scenario where tokens flow through a "consented circle"
-    /// of avatars before exiting to a non-consented recipient.
-    /// </summary>
-    [Test]
-    [Category("consented-flow")]
-    public void FourHopPath_ConsentedCircleInMiddle_OnlyCircleEdgesValid()
-    {
-        // Arrange
-        var capacityGraph = CreateCapacityGraph(
-            consentedAvatars: new HashSet<int> { Bob, Carol }, // B and C form a "consented circle"
-            trustLookup: new Dictionary<int, HashSet<int>>
-            {
-                { Alice, new HashSet<int>() },
-                { Bob, new HashSet<int> { Carol } }, // B trusts C
-                { Carol, new HashSet<int> { Dave, AliceToken } }, // C trusts D (but D has no consent)
-                { Dave, new HashSet<int> { AliceToken } }
-            }
-        );
-
-        var edges = new List<FlowEdge>
-        {
-            new FlowEdge(Alice, Bob, AliceToken, 1000) { Flow = 500 },  // Non-consented → consented
-            new FlowEdge(Bob, Carol, AliceToken, 1000) { Flow = 500 },  // Consented → consented
-            new FlowEdge(Carol, Dave, AliceToken, 1000) { Flow = 500 }  // Consented → non-consented
-        };
-
-        // Act
-        var result = ValidateConsentedFlow(edges, capacityGraph);
-
-        // Assert:
-        // - A→B valid (A has no consent, standard trust)
-        // - B→C valid (both consented, B trusts C)
-        // - C→D invalid (C consented, D not consented)
-        Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0].From, Is.EqualTo(Alice));
-        Assert.That(result[0].To, Is.EqualTo(Bob));
-        Assert.That(result[1].From, Is.EqualTo(Bob));
-        Assert.That(result[1].To, Is.EqualTo(Carol));
-    }
-
-    #endregion
 
     #region Path-Level Consent Filtering Tests
 
@@ -592,6 +164,41 @@ public class ConsentedFlowValidationTests
 
         Assert.That(hasViolation, Is.True,
             "Consented Avatar→Group should be flagged — Router lacks advancedUsageFlags");
+    }
+
+    /// <summary>
+    /// Regression: consented Avatar → consented Group with mutual trust.
+    /// Even though the Group is consented and trusted by the Avatar, this
+    /// MUST be a violation because InsertRouterInTransfers converts this to
+    /// Avatar(consented) → Router → Group. Hub.sol's isPermittedFlow(Avatar, Router, token)
+    /// always fails: Router never calls setAdvancedUsageFlag.
+    /// Before the fix, PathHasConsentViolation would allow this path.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void PathLevel_ConsentedAvatarToConsentedTrustedGroup_StillViolation()
+    {
+        var groupId = AddressIdPool.IdOf("0xcf10consent_group_trusted");
+
+        var capacityGraph = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int> { Alice, groupId }, // Both consented
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                { Alice, new HashSet<int> { groupId } }, // Alice trusts Group
+                { groupId, new HashSet<int> { AliceToken } } // Group trusts Alice's token
+            }
+        );
+        capacityGraph.AddGroup(groupId);
+
+        var pathEdges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, groupId, AliceToken, 500)
+        };
+
+        bool hasViolation = PathHasConsentViolation(pathEdges, capacityGraph);
+
+        Assert.That(hasViolation, Is.True,
+            "Consented Avatar→Consented Group MUST be violation — Router lacks advancedUsageFlags regardless of Group's consent status");
     }
 
     /// <summary>
@@ -904,6 +511,39 @@ public class ConsentedFlowValidationTests
     }
 
     /// <summary>
+    /// Regression for the source-via-group-mint loophole closed on 2026-04-28.
+    /// Pre-fix: PathHasConsentedIntermediary exempted source/sink from the consent
+    /// check, so a consented SOURCE could route through a group mint — but on-chain,
+    /// after Router insertion, Avatar(consented)→Router always reverts.
+    /// Post-fix: consented sender → Group is unconditionally rejected even if sender
+    /// is the source vertex.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_ConsentedSource_ToGroup_StillExcluded()
+    {
+        var groupId = AddressIdPool.IdOf("0xcf28consent_excl_source_group");
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Alice }, // Alice (the source) is consented
+            new Dictionary<int, HashSet<int>>());
+        graph.AddGroup(groupId);
+
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        // Source(consented) → Group → Sink — pre-fix this slipped through because Alice
+        // was source, post-fix it's caught at the IsGroup(to) edge regardless of position.
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, groupId, AliceToken, 500),
+            (groupId, Bob, groupId, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Bob);
+        Assert.That(result, Is.True,
+            "Consented source → Group must be excluded even when sender is source — Avatar(consented)→Router fails on-chain");
+    }
+
+    /// <summary>
     /// End-to-end: V2Pathfinder with DisableConsentedFlow=true excludes paths through
     /// consented intermediaries while preserving flow conservation.
     /// </summary>
@@ -998,6 +638,55 @@ public class ConsentedFlowValidationTests
 
     #endregion
 
+    #region Consent Flag Removal
+
+    /// <summary>
+    /// Verifies that removing the consented flag (avatar calls setAdvancedUsageFlag(0))
+    /// correctly transitions behavior: with consent → violation, without → no violation.
+    /// Simulates the SQL query returning flag=0 (latest state) for a previously consented avatar.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentFlagRemoval_SameAvatar_TransitionsBehavior()
+    {
+        // Phase 1: Alice has consent enabled
+        var graphWithConsent = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int> { Alice },
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                { Alice, new HashSet<int> { Bob } },
+                { Bob, new HashSet<int> { AliceToken } }
+            }
+        );
+
+        // Alice→Carol: Carol is NOT consented → should be violation
+        var pathEdges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Carol, AliceToken, 500)
+        };
+
+        bool hasViolationWithConsent = PathHasConsentViolation(pathEdges, graphWithConsent);
+        Assert.That(hasViolationWithConsent, Is.True,
+            "With consent enabled, Alice→Carol should be a violation (Carol not consented)");
+
+        // Phase 2: Alice removes consent (setAdvancedUsageFlag(0))
+        // SQL DISTINCT ON returns flag=0 → Alice NOT in consentedAvatars
+        var graphWithoutConsent = CreateCapacityGraph(
+            consentedAvatars: new HashSet<int>(), // Alice no longer consented
+            trustLookup: new Dictionary<int, HashSet<int>>
+            {
+                { Alice, new HashSet<int> { Bob } },
+                { Bob, new HashSet<int> { AliceToken } }
+            }
+        );
+
+        bool hasViolationWithoutConsent = PathHasConsentViolation(pathEdges, graphWithoutConsent);
+        Assert.That(hasViolationWithoutConsent, Is.False,
+            "With consent removed, Alice→Carol should NOT be a violation (standard trust applies)");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private static CapacityGraph CreateCapacityGraph(
@@ -1019,12 +708,9 @@ public class ConsentedFlowValidationTests
         return graph;
     }
 
-    // Delegate to production V2Pathfinder methods (internal, accessible via InternalsVisibleTo)
+    // Delegate to production V2Pathfinder method (internal, accessible via InternalsVisibleTo)
     // to avoid logic drift between test copies and production code.
     private static readonly V2Pathfinder _consentValidator = new();
-
-    private static List<FlowEdge> ValidateConsentedFlow(List<FlowEdge> edges, CapacityGraph capacityGraph)
-        => _consentValidator.ValidateConsentedFlow(edges, capacityGraph);
 
     private static bool PathHasConsentViolation(
         List<(int From, int To, int Token, long Flow)> collapsedEdges,

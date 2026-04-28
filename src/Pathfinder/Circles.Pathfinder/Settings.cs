@@ -84,10 +84,19 @@ public class Settings
 
     /// <summary>
     /// When true, consented avatars are excluded from intermediary positions in flows.
-    /// They can still be source or sink. This avoids consent rule validation entirely
-    /// for the risky multi-hop case. Default: true (conservative).
-    /// When false, the existing consent validation logic runs (PathHasConsentViolation
-    /// + ValidateConsentedFlow safety net).
+    /// They can still be source or sink for direct (non-group) transfers, but NOT
+    /// for group-mint routes — consented sender → Group is unconditionally excluded
+    /// (even when the consented avatar is the source) because the post-Router
+    /// edge Avatar(consented)→Router always reverts on-chain (Router has no
+    /// advancedUsageFlags). This makes the flag broader than its name implies:
+    /// it excludes consented sources from group-mint routes too. Default: true.
+    ///
+    /// When false, the path-level filter PathHasConsentViolation enforces full
+    /// per-edge consent validation matching Hub.sol's isPermittedFlow rules.
+    /// Validation mode is more permissive: it allows consented sources for direct
+    /// transfers (with mutual consent + trust) and rejects only the specific edges
+    /// Hub.sol would reject.
+    ///
     /// Reads PATHFINDER_EXCLUDE_CONSENTED_INTERMEDIARIES first, falls back to
     /// PATHFINDER_DISABLE_CONSENTED_FLOW for backward compatibility.
     /// </summary>

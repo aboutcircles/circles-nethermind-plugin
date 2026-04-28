@@ -31,12 +31,6 @@ internal class FindPathMetrics
             "circles_consent_paths_dropped_total",
             "Paths dropped due to consented flow rules (intermediary exclusion or validation)");
 
-    // Consent: safety net triggered — gap indicator (should always be 0)
-    public static readonly Counter ConsentSafetyNetTriggeredTotal =
-        Metrics.CreateCounter(
-            "circles_consent_safetynet_triggered_total",
-            "Times ValidateConsentedFlow safety net removed edges (indicates path-level filter gap)");
-
     // Path audit: Hub.sol rule violations detected in pathfinder output (should always be 0)
     public static readonly Counter PathAuditViolationsTotal =
         Metrics.CreateCounter(

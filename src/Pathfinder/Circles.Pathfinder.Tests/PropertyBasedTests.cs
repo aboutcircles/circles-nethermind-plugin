@@ -644,6 +644,49 @@ public class PropertyBasedTests
     }
 
     /// <summary>
+    /// Consent + groups + router in VALIDATION MODE (ExcludeConsentedIntermediaries=false).
+    /// Verifies that the isPermittedFlow rule-based filtering produces flow-conserving
+    /// results and passes HubContractValidator. This is the mode we want to bring to prod.
+    /// </summary>
+    [Test]
+    [Repeat(15)]
+    public void RandomGraph_WithGroups_WithConsent_ValidationMode_FlowConservation()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 750);
+        int avatars = rng.Next(4, 10);
+        int groups = rng.Next(1, 3);
+
+        var graph = BuildSyntheticGraph(avatars, groups, DefaultBalance, rng,
+            trustDensity: 0.4, withRouter: true, withConsent: true, consentRate: 0.5);
+        var (source, sink) = PickSourceSink(graph, rng);
+
+        // Validation mode: ExcludeConsentedIntermediaries = false
+        var pathfinder = new V2Pathfinder(settings: new Settings { ExcludeConsentedIntermediaries = false });
+        var request = new FlowRequest
+        {
+            Source = AddressIdPool.StringOf(source),
+            Sink = AddressIdPool.StringOf(sink),
+        };
+        UInt256 target = CirclesConverter.BlowUpToUInt256(DefaultBalance);
+
+        MaxFlowResponse result;
+        try
+        {
+            result = pathfinder.ComputeMaxFlowWithPath(graph, request, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            return; // Empty graph — valid
+        }
+
+        if (result.Transfers.Count > 0)
+        {
+            AssertFlowConservation(result.Transfers, request.Source!, request.Sink!);
+            AssertAllFlowsPositive(result.Transfers);
+        }
+    }
+
+    /// <summary>
     /// Consent + quantized mode: flow conservation must hold.
     /// Exercises both consent intermediary exclusion AND quantization together.
     /// </summary>

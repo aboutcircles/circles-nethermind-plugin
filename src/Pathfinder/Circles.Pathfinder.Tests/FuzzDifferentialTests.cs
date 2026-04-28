@@ -1,3 +1,4 @@
+using System.Threading;
 using Circles.Common;
 using Circles.Common.Dto;
 using Circles.Pathfinder.Graphs;
@@ -268,6 +269,103 @@ public class FuzzDifferentialTests
         Assert.That(permissionViolations, Is.Empty,
             $"Consented flow violations (avatars={avatars}, consentRate={consentRate:F2}):\n" +
             string.Join("\n", permissionViolations.Select(v => $"  [{v.Rule}] {v.Message}")));
+    }
+
+    #endregion
+
+    #region Fuzz_ConsentGroupRouter_BothModesValid
+
+    // Skip-rate guardrail: track BAD_INPUT skips across iterations to catch a degenerate
+    // graph generator that produces unsolvable graphs every time.
+    private static int _consentFuzzSkipCount;
+    private const int ConsentFuzzMaxSkips = 20; // out of 30 iterations
+
+    /// <summary>
+    /// Triple combo: consent + groups + router. Forces all three features active.
+    /// Runs BOTH modes (exclusion and validation) against the SAME graph instance.
+    ///
+    /// Validation mode (the prod target) MUST produce validator-clean output — every
+    /// path Hub.sol's isPermittedFlow would reject is filtered before output. Any
+    /// validator error here is a real regression that would revert on-chain.
+    ///
+    /// Exclusion mode (the prod fallback) is checked for FlowConservation only. It is
+    /// known to admit consented_source → non_consented_recipient direct transfers
+    /// (its rule is "no consented intermediaries", not "no consent violations"), so
+    /// IsPermittedFlow violations there are a known limitation, not a regression.
+    ///
+    /// Building one graph for both modes is required: the consent fix is mode-agnostic
+    /// at the graph level; only the Settings differ. Building twice and trying to share
+    /// addresses fails because RNG state drifts between the two `BuildSyntheticGraph`
+    /// calls — different prefixes → different addresses → source/sink from graph A do
+    /// not exist in graph B → ResolveAndGuard returns empty response, silently no-op-ing
+    /// the assertion. Caught by code review on 2026-04-28.
+    /// </summary>
+    [Test, Repeat(30)]
+    public void Fuzz_ConsentGroupRouter_BothModesValid()
+    {
+        var rng = new Random(TestContext.CurrentContext.CurrentRepeatCount + 700_000);
+        int avatars = rng.Next(5, 12);
+        int groups = rng.Next(1, 4);
+        double density = rng.NextDouble() * 0.4 + 0.2;
+        double consentRate = rng.NextDouble() * 0.5 + 0.2;
+
+        // Build the graph ONCE — both modes share it. CapacityGraph is mode-agnostic.
+        var graph = PropertyBasedTests.BuildSyntheticGraph(avatars, groups, DefaultBalance, rng,
+            trustDensity: density, withRouter: true, withConsent: true, consentRate: consentRate);
+        var (srcId, snkId) = PropertyBasedTests.PickSourceSink(graph, rng);
+        var srcAddr = AddressIdPool.StringOf(srcId);
+        var snkAddr = AddressIdPool.StringOf(snkId);
+        UInt256 target = CirclesConverter.BlowUpToUInt256(DefaultBalance);
+
+        var pfExcl = new V2Pathfinder(settings: new Settings { ExcludeConsentedIntermediaries = true });
+        var pfVal = new V2Pathfinder(settings: new Settings { ExcludeConsentedIntermediaries = false });
+
+        MaxFlowResponse resultExcl, resultVal;
+        try
+        {
+            resultExcl = pfExcl.ComputeMaxFlowWithPath(graph, new FlowRequest { Source = srcAddr, Sink = snkAddr }, target);
+            resultVal = pfVal.ComputeMaxFlowWithPath(graph, new FlowRequest { Source = srcAddr, Sink = snkAddr }, target);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("BAD_INPUT"))
+        {
+            int skips = Interlocked.Increment(ref _consentFuzzSkipCount);
+            Assert.That(skips, Is.LessThanOrEqualTo(ConsentFuzzMaxSkips),
+                $"Consent fuzz skipped {skips} iterations with BAD_INPUT — graph generator is producing degenerate graphs");
+            return;
+        }
+
+        var state = new CapacityGraphContractState(graph);
+
+        // Validation mode (PROD TARGET): must be validator-clean. No exceptions —
+        // any violation is a regression that would revert on-chain.
+        if (resultVal.Transfers.Count > 0)
+        {
+            var valVal = HubContractValidator.Validate(resultVal.Transfers, srcAddr, snkAddr, state);
+            var errors = valVal.Violations
+                .Where(v => v.Severity == "error")
+                .Select(v => $"  [{v.Rule}] {v.Message}")
+                .ToList();
+            Assert.That(errors, Is.Empty,
+                $"Validation mode errors (avatars={avatars}, groups={groups}, consent={consentRate:F2}):\n" +
+                string.Join("\n", errors));
+        }
+
+        // Exclusion mode: only FlowConservation must hold. IsPermittedFlow violations
+        // here are a known limitation (consented_source → non_consented_recipient is
+        // allowed because the rule is "no consented intermediaries", not full consent
+        // validation). Tightening exclusion mode is tracked separately — for now, this
+        // weaker assertion guards against new classes of bug (Conservation, Ordering,
+        // SelfTransfer, DuplicateEdge, etc.) without producing false positives.
+        if (resultExcl.Transfers.Count > 0)
+        {
+            var valExcl = HubContractValidator.Validate(resultExcl.Transfers, srcAddr, snkAddr, state);
+            var conservationErrors = valExcl.Violations
+                .Where(v => v.Rule == "FlowConservation" && v.Severity == "error")
+                .ToList();
+            Assert.That(conservationErrors, Is.Empty,
+                $"Exclusion mode FlowConservation errors:\n" +
+                string.Join("\n", conservationErrors.Select(v => $"  [{v.Rule}] {v.Message}")));
+        }
     }
 
     #endregion

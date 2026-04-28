@@ -5,11 +5,11 @@
   "block": 43193632,
   "source": "0x0202ad5b682c0858c167be39b910de61a844a254",
   "sink": "0x04cd1e34baa4d2818aa43ab26e4051d1ebaa90e6",
-  "description": "Consented source \u002B consented intermediary sending via group minting with multiple collateral tokens. Tests: 1) Path-level consent filtering preserves valid paths (both avatars consented, source trusts intermediary), 2) Router edge insertion before consent validation, 3) Edge ordering for multiple collateral deposits. Validates that consent \u002B group minting produces correct on-chain transactions.",
-  "shouldFindPath": true,
+  "description": "Consented source sending via group minting. After InsertRouterInTransfers, Source(consented)\u2192Router\u2192Group fails Hub.sol isPermittedFlow because Router lacks advancedUsageFlags. Path correctly rejected \u2014 consented avatars cannot use group-mint routes in path transfers.",
+  "shouldFindPath": false,
   "minFlow": "1000000000000000000",
   "expectedRevertReason": null,
-  "runOnAnvil": true,
+  "runOnAnvil": false,
   "simulatedConsentedAvatars": [
     "0x0202ad5b682c0858c167be39b910de61a844a254",
     "0xa571627c6ce9c7faebd2ae67cc9212787ad77f0c"
@@ -23,7 +23,7 @@
     "simulated"
   ],
   "fixedIn": null,
-  "notes": "E2E re-enabled after demurrage safety margin fix (A1)-adjusted balance mismatch.",
+  "notes": "Negative scenario — runOnAnvil disabled because shouldFindPath=false skips Anvil run. Validated via unit test PathLevel_ConsentedAvatarToConsentedTrustedGroup_StillViolation and embedded subgraph regression.",
   "subgraph": {
     "trust": [
       [
