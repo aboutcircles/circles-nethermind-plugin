@@ -422,11 +422,14 @@ public class ConsentedFlowValidationTests
     }
 
     /// <summary>
-    /// Source and sink are consented — they should NOT be treated as intermediaries.
+    /// Consented source and sink with a non-consented intermediary — path is still excluded.
+    /// Pre-2026-04-28 the filter exempted endpoints, missing that the edge Alice(consented)→Bob(non-consented)
+    /// itself violates Hub.sol's isPermittedFlow regardless of Bob's intermediary status.
+    /// Hub.sol checks every edge: if from is consented, to must be consented.
     /// </summary>
     [Test]
     [Category("consented-flow")]
-    public void ConsentedIntermediary_SourceAndSinkConsented_NotExcluded()
+    public void ConsentedIntermediary_ConsentedEndpoints_NonConsentedHop_StillExcluded()
     {
         var graph = CreateCapacityGraph(
             new HashSet<int> { Alice, Carol },
@@ -435,12 +438,14 @@ public class ConsentedFlowValidationTests
 
         var edges = new List<(int From, int To, int Token, long Flow)>
         {
-            (Alice, Bob, AliceToken, 500),
+            (Alice, Bob, AliceToken, 500),  // consented → non-consented: rejected by Hub.sol
             (Bob, Carol, AliceToken, 500)
         };
 
         bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Carol);
-        Assert.That(result, Is.False, "Source and sink consented but should not be treated as intermediaries");
+        Assert.That(result, Is.True,
+            "Even if both endpoints are consented, a non-consented hop in between is rejected by Hub.sol " +
+            "isPermittedFlow on the consented-source→non-consented-hop edge");
     }
 
     /// <summary>
@@ -466,15 +471,16 @@ public class ConsentedFlowValidationTests
     }
 
     /// <summary>
-    /// Direct transfer (no intermediaries): source=consented → sink.
-    /// Should NOT be excluded since there are no intermediaries.
+    /// Direct transfer with no consent involvement at all — path is not excluded.
+    /// (Originally tested consented-source → non-consented-sink as "no intermediaries to exclude",
+    /// but Hub.sol rejects that edge directly. This test now verifies the genuine no-consent case.)
     /// </summary>
     [Test]
     [Category("consented-flow")]
-    public void ConsentedIntermediary_DirectTransfer_NoExclusion()
+    public void ConsentedIntermediary_DirectTransfer_NoConsentInvolved_NotExcluded()
     {
         var graph = CreateCapacityGraph(
-            new HashSet<int> { Alice },
+            new HashSet<int> { Carol }, // Carol exists in consented set but is not on the path
             new Dictionary<int, HashSet<int>>());
         var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
 
@@ -484,7 +490,31 @@ public class ConsentedFlowValidationTests
         };
 
         bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Bob);
-        Assert.That(result, Is.False, "Direct transfer has no intermediaries to exclude");
+        Assert.That(result, Is.False,
+            "Direct transfer between non-consented avatars is not affected by exclusion mode");
+    }
+
+    /// <summary>
+    /// Direct transfer from consented source to non-consented sink — Hub.sol rejects.
+    /// Even though there are no intermediaries, the direct edge itself violates isPermittedFlow.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_DirectTransfer_ConsentedSource_NonConsentedSink_Excluded()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Alice }, // Alice is consented, Bob is not
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Bob);
+        Assert.That(result, Is.True,
+            "Direct edge consented → non-consented violates Hub.sol isPermittedFlow regardless of position");
     }
 
     /// <summary>
@@ -541,6 +571,61 @@ public class ConsentedFlowValidationTests
         bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Bob);
         Assert.That(result, Is.True,
             "Consented source → Group must be excluded even when sender is source — Avatar(consented)→Router fails on-chain");
+    }
+
+    /// <summary>
+    /// Regression for the prod 2026-04-28 violation (PathfinderPathAuditViolation alert).
+    /// Consented source → non-consented human intermediary slipped past the exclusion filter
+    /// because the existing rules (consented avatar in intermediary slot) didn't fire when
+    /// the intermediary was a regular human and the consented party was the source vertex.
+    /// Hub.sol's isPermittedFlow rejects this — advancedUsageFlags[Bob] is required but unset.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_ConsentedSource_NonConsentedHuman_PathExcluded()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Alice }, // Only Alice (source) is consented
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500),  // consented → non-consented: Hub.sol rejects
+            (Bob, Carol, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Carol);
+        Assert.That(result, Is.True,
+            "Consented source → non-consented human intermediary must be excluded — " +
+            "Hub.sol isPermittedFlow requires advancedUsageFlags[to] when from is consented");
+    }
+
+    /// <summary>
+    /// Symmetric case to the prod regression: consented source → consented sink with
+    /// only consented avatars in between would be valid per Hub.sol — but the existing
+    /// "exclude-intermediaries" mode is intentionally pessimistic and drops ALL paths that
+    /// touch consented avatars in non-endpoint positions. Documents that behavior.
+    /// </summary>
+    [Test]
+    [Category("consented-flow")]
+    public void ConsentedIntermediary_AllConsentedChain_StillExcludedInPessimisticMode()
+    {
+        var graph = CreateCapacityGraph(
+            new HashSet<int> { Alice, Bob, Carol }, // entire chain consented
+            new Dictionary<int, HashSet<int>>());
+        var pathfinder = new V2Pathfinder(settings: new Settings { DisableConsentedFlow = true });
+
+        var edges = new List<(int From, int To, int Token, long Flow)>
+        {
+            (Alice, Bob, AliceToken, 500),
+            (Bob, Carol, AliceToken, 500)
+        };
+
+        bool result = pathfinder.PathHasConsentedIntermediary(edges, graph, Alice, Carol);
+        Assert.That(result, Is.True,
+            "Exclude-intermediaries mode is intentionally conservative — " +
+            "paths through consented intermediaries are dropped even if all-consented and Hub-valid");
     }
 
     /// <summary>

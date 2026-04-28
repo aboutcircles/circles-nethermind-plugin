@@ -90,6 +90,23 @@ public class V2Pathfinder
         if (ctx is null)
             return new MaxFlowResponse("0", new List<TransferPathStep>(), null);
 
+        // Hub.sol invariant: if advancedUsageFlags[from]==true then advancedUsageFlags[to]==true is required
+        // for every flow edge (Hub.sol:668-676 isPermittedFlow). By induction, a consented source can ONLY
+        // reach consented sinks. Skip the solver entirely — any path it found would be rejected by the
+        // path-level filter or the audit safety net anyway.
+        if (capacityGraph.ConsentedAvatars.Contains(ctx.SourceId)
+            && !capacityGraph.ConsentedAvatars.Contains(ctx.SinkId))
+        {
+            _logger.LogInformation(
+                "[{ReqId}] Consented source → non-consented sink — no path possible per Hub.sol isPermittedFlow",
+                ctx.ReqId);
+            return new MaxFlowResponse("0", new List<TransferPathStep>(), null)
+            {
+                ReqId = ctx.ReqId,
+                GraphBlock = capacityGraph.Block
+            };
+        }
+
         SolveAndExtractPaths(ctx);
         PruneByMaxTransfers(ctx);
         ConvertToFlowEdges(ctx);
@@ -831,6 +848,13 @@ public class V2Pathfinder
             // Non-consented sender → Group: safe — standard trust applies after Router insertion.
             if (graph.IsGroup(to))
                 continue;
+
+            // Consented sender → non-consented non-Group receiver: violates Hub.sol isPermittedFlow.
+            // Hub.sol:668-676 requires advancedUsageFlags[to]==true when advancedUsageFlags[from]==true.
+            // Mirrors the validation-mode check in PathHasConsentViolation.
+            // Closes the consented-source → regular-human-intermediary case (prod 2026-04-28).
+            if (graph.ConsentedAvatars.Contains(from) && !graph.ConsentedAvatars.Contains(to))
+                return true;
 
             if (from != sourceId && from != sinkId && graph.ConsentedAvatars.Contains(from))
                 return true;
