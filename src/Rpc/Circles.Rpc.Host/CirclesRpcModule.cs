@@ -726,9 +726,18 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         // predicate for those tables entirely and returned every flow-scope
         // event in the block range regardless of avatar — a bug that surfaced
         // as profile pages showing transfers from unrelated transactions.
-        // Scope the subquery to ALL address-bearing event tables (not just
-        // those in eventTypes) so flow-scope events stay tied to genuine
-        // avatar participation even when the caller filters event types.
+        //
+        // Scope to V2 address-bearing tables only: flow-scope events are
+        // emitted exclusively inside Hub.operateFlowMatrix calls, which always
+        // also emit V2 transfer/mint events in the same tx. A flow-scope row
+        // never appears in a V1- or wrapper-only tx, so other namespaces
+        // contribute zero useful tx hashes — and including them would
+        // wrongly tie unrelated multi-call txs to flow-scope events.
+        //
+        // Wrapped at finalSql composition into "WITH avatar_txs AS
+        // MATERIALIZED (...)" so PG evaluates the UNION exactly once and
+        // address-less flow-scope tables hash-join into the materialized
+        // set instead of re-executing the UNION per address-less table.
         string? addressTxHashSubquery = null;
         if (address != null)
         {
@@ -740,7 +749,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 var nameParts = addrTable.Key.Split('_', 2);
                 if (nameParts.Length < 2) continue;
                 var ns = nameParts[0];
-                if (ns == "System" || ns.StartsWith('V')) continue;
+                if (ns != "CrcV2") continue;
 
                 var cols = DatabaseSchemaMap.GetTableColumns(addrTable.Key);
                 if (cols == null
@@ -811,7 +820,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 }
                 else if (addressTxHashSubquery != null)
                 {
-                    whereClauses.Add($"t.\"transactionHash\" IN ({addressTxHashSubquery})");
+                    whereClauses.Add("t.\"transactionHash\" IN (SELECT \"transactionHash\" FROM avatar_txs)");
                 }
                 else
                 {
@@ -857,6 +866,16 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         // Fetch one extra row to determine if there are more results
         var finalSql = string.Join(" UNION ALL ", queries);
         finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder} LIMIT {effectiveLimit + 1}";
+
+        // Prepend the materialized CTE (when we built one) so the avatar's
+        // tx-hash set is evaluated exactly once. Address-less flow-scope
+        // tables reference avatar_txs via WHERE ... IN (SELECT ... FROM
+        // avatar_txs) and hash-join into the materialized set instead of
+        // re-executing the UNION per table.
+        if (addressTxHashSubquery != null)
+        {
+            finalSql = $"WITH avatar_txs AS MATERIALIZED ({addressTxHashSubquery}) {finalSql}";
+        }
 
         // Execute the combined query
         await using var connection = await CreateConnectionAsync();
