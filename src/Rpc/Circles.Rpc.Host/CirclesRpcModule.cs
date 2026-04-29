@@ -719,6 +719,52 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         var sortOrder = sortAscending == true ? "ASC" : "DESC";
         var cursorComparison = sortAscending == true ? ">" : "<";
 
+        // Pre-build the tx-hash subquery used to address-filter flow-scope event
+        // tables. Tables like CrcV2_FlowEdgesScopeLastEnded / *_SingleStarted
+        // have no address column, so we can't filter them directly by avatar.
+        // Without this restriction, the previous logic skipped the address
+        // predicate for those tables entirely and returned every flow-scope
+        // event in the block range regardless of avatar — a bug that surfaced
+        // as profile pages showing transfers from unrelated transactions.
+        // Scope the subquery to ALL address-bearing event tables (not just
+        // those in eventTypes) so flow-scope events stay tied to genuine
+        // avatar participation even when the caller filters event types.
+        string? addressTxHashSubquery = null;
+        if (address != null)
+        {
+            var addressTxQueries = new List<string>();
+            foreach (var addrTable in eventTables)
+            {
+                if (!addrTable.Value.Any()) continue;
+
+                var nameParts = addrTable.Key.Split('_', 2);
+                if (nameParts.Length < 2) continue;
+                var ns = nameParts[0];
+                if (ns == "System" || ns.StartsWith('V')) continue;
+
+                var cols = DatabaseSchemaMap.GetTableColumns(addrTable.Key);
+                if (cols == null
+                    || !cols.ContainsKey("transactionHash")
+                    || !cols.ContainsKey("blockNumber"))
+                {
+                    continue;
+                }
+
+                var addrPredicate = $"({string.Join(" OR ", addrTable.Value.Select(c => $"\"{c}\" = @address"))})";
+                var subClauses = new List<string> { addrPredicate };
+                if (fromBlock.HasValue) subClauses.Add("\"blockNumber\" >= @fromBlock");
+                if (toBlock.HasValue) subClauses.Add("\"blockNumber\" <= @toBlock");
+
+                var subWhere = $" WHERE {string.Join(" AND ", subClauses)}";
+                addressTxQueries.Add($"SELECT \"transactionHash\" FROM \"{addrTable.Key}\"{subWhere}");
+            }
+
+            if (addressTxQueries.Count > 0)
+            {
+                addressTxHashSubquery = string.Join(" UNION ", addressTxQueries);
+            }
+        }
+
         foreach (var table in relevantTables)
         {
             // Extract namespace from table name (format: "Namespace_TableName")
@@ -751,10 +797,26 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
             var whereClauses = new List<string>();
 
-            // Basic address filter - only add if address is specified and table has address columns
-            if (address != null && table.Value.Any())
+            // Address filter. For tables that have address columns (most event
+            // tables) we filter directly. For tables without address columns
+            // (flow-scope: CrcV2_FlowEdgesScope*) we restrict to txHashes
+            // where this avatar appears in any address-bearing event in the
+            // same block range. If no address-bearing table exists for this
+            // address we skip the table entirely rather than over-returning.
+            if (address != null)
             {
-                whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
+                if (table.Value.Any())
+                {
+                    whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
+                }
+                else if (addressTxHashSubquery != null)
+                {
+                    whereClauses.Add($"t.\"transactionHash\" IN ({addressTxHashSubquery})");
+                }
+                else
+                {
+                    continue;
+                }
             }
 
             // Block range filters
