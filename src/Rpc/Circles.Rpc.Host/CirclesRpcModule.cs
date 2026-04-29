@@ -36,6 +36,16 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
     private const int MaxInFilterElements = 1000;
 
+    // Namespaces whose address-bearing tables seed the avatar tx-hash CTE used to
+    // address-filter address-less flow-scope tables in GetEvents. Flow-scope events
+    // are emitted exclusively inside Hub.operateFlowMatrix calls, which always also
+    // emit V2 transfer/mint events for participating avatars in the same tx — so V2
+    // is the only namespace whose tx-hashes pull in legitimate flow-scope rows.
+    // If a future protocol introduces flow-scope-style events, add its namespace here
+    // or its address-filtered queries will silently return zero flow-scope rows.
+    private static readonly HashSet<string> FlowScopeAddressFilterNamespaces =
+        new(StringComparer.Ordinal) { "CrcV2" };
+
     #region GetTransactionHistory - Version-specific query builders
 
     /// <summary>
@@ -749,7 +759,7 @@ public partial class CirclesRpcModule : ICirclesRpcModule
                 var nameParts = addrTable.Key.Split('_', 2);
                 if (nameParts.Length < 2) continue;
                 var ns = nameParts[0];
-                if (ns != "CrcV2") continue;
+                if (!FlowScopeAddressFilterNamespaces.Contains(ns)) continue;
 
                 var cols = DatabaseSchemaMap.GetTableColumns(addrTable.Key);
                 if (cols == null
@@ -770,7 +780,10 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
             if (addressTxQueries.Count > 0)
             {
-                addressTxHashSubquery = string.Join(" UNION ", addressTxQueries);
+                // UNION ALL skips the dedup pass — duplicates are absorbed naturally
+                // by the outer "WHERE transactionHash IN (SELECT ... FROM avatar_txs)"
+                // (set semantics). Cheaper materialization at no result-set cost.
+                addressTxHashSubquery = string.Join(" UNION ALL ", addressTxQueries);
             }
         }
 
