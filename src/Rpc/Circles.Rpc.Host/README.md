@@ -729,6 +729,8 @@ Query indexed blockchain events with advanced filtering. Returns a **flat array*
 
 **Returns:** Flat event array (for paginated results with `hasMore`/`nextCursor`, use `circles_events_paginated`)
 
+> **Address filter behavior on flow-scope events:** When `address` is set, tables that have no address column (e.g. `CrcV2_FlowEdgesScopeLastEnded`, `CrcV2_FlowEdgesScopeSingleStarted`) are restricted to transactions where some address-bearing event for that avatar exists in the same block range. Without this restriction, address-filtered queries would over-return every flow-scope event in the range regardless of avatar.
+
 ```bash
 # All events for a specific transaction
 curl -X POST http://localhost:8081 -H 'Content-Type: application/json' -d '{

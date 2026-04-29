@@ -298,6 +298,48 @@ public class RpcMethodSnapshotTests
         Assert.That(result.TryGetProperty("nextCursor", out _), Is.True);
     }
 
+    [Test]
+    public async Task GetEvents_WithAddressFilter_FlowScopeEventsTiedToAvatarTxs()
+    {
+        // Regression: address-filtered circles_events used to include
+        // CrcV2_FlowEdgesScope* rows from txs the avatar wasn't part of,
+        // because flow-scope tables have no address column and the server
+        // skipped the address predicate entirely. Every flow-scope event
+        // returned for an address-filtered query must share a transactionHash
+        // with at least one address-bearing event in the same response.
+        var result = await CallRpc("circles_events", KnownV2Human, null, null, null, null, false);
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+
+        var addressBearingTxs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var flowScopeTxs = new List<string>();
+
+        foreach (var element in result.EnumerateArray())
+        {
+            if (!element.TryGetProperty("event", out var eventNameProp)) continue;
+            if (!element.TryGetProperty("values", out var values)) continue;
+            if (!values.TryGetProperty("transactionHash", out var txHashProp)) continue;
+
+            var eventName = eventNameProp.GetString() ?? string.Empty;
+            var txHash = txHashProp.GetString() ?? string.Empty;
+            if (string.IsNullOrEmpty(txHash)) continue;
+
+            if (eventName.StartsWith("CrcV2_FlowEdgesScope", StringComparison.Ordinal))
+            {
+                flowScopeTxs.Add(txHash);
+            }
+            else
+            {
+                addressBearingTxs.Add(txHash);
+            }
+        }
+
+        foreach (var txHash in flowScopeTxs)
+        {
+            Assert.That(addressBearingTxs, Does.Contain(txHash),
+                $"Flow-scope event in tx {txHash} has no address-bearing event for {KnownV2Human} in the same response");
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Profile queries
     // ═══════════════════════════════════════════════════════════════════════
