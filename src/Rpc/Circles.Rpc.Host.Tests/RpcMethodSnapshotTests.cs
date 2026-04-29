@@ -340,6 +340,27 @@ public class RpcMethodSnapshotTests
         }
     }
 
+    [Test]
+    public async Task GetEvents_AddressWithNoV2Events_ReturnsNoFlowScopeRows()
+    {
+        // Fail-closed branch: when the V2 address-bearing UNION returns an
+        // empty set (avatar has no V2 events at all — here a guaranteed-empty
+        // burn address), the materialized avatar_txs CTE is not built and
+        // address-less flow-scope tables are skipped entirely. This must
+        // never over-return flow-scope rows from unrelated transactions.
+        const string emptyAvatar = "0xdead000000000000000000000000000000000000";
+        var result = await CallRpc("circles_events", emptyAvatar, null, null, null, null, false);
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+
+        foreach (var element in result.EnumerateArray())
+        {
+            if (!element.TryGetProperty("event", out var eventNameProp)) continue;
+            var eventName = eventNameProp.GetString() ?? string.Empty;
+            Assert.That(eventName, Does.Not.StartWith("CrcV2_FlowEdgesScope"),
+                $"address-less flow-scope row leaked through fail-closed branch for empty avatar (event {eventName})");
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Profile queries
     // ═══════════════════════════════════════════════════════════════════════
