@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
     <PackageReference Include="Nethereum.Util" Version="5.8.0" />
   </ItemGroup>
 
