@@ -51,7 +51,8 @@ public sealed class NethermindWsProxy : IAsyncDisposable
         WebSocket clientWs,
         SemaphoreSlim clientSendLock,
         JsonElement @params,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<string>? onEvicted = null)
     {
         await EnsureConnectedAsync(ct);
 
@@ -93,7 +94,8 @@ public sealed class NethermindWsProxy : IAsyncDisposable
                 NethermindSubId: nethermindSubId,
                 ClientWs: clientWs,
                 ClientSendLock: clientSendLock,
-                OriginalParams: @params.Clone());
+                OriginalParams: @params.Clone(),
+                OnEvicted: onEvicted);
 
             _byProxyId[proxyId] = entry;
             _nethermindToProxy[nethermindSubId] = proxyId;
@@ -382,9 +384,19 @@ public sealed class NethermindWsProxy : IAsyncDisposable
                 entry.ClientSendLock.Release();
             }
         }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        {
+            // Server shutting down — leave subscription in place; DisposeAsync handles cleanup.
+        }
         catch (OperationCanceledException)
         {
-            // Server shutting down or send timeout — don't remove, let DisposeAsync handle it
+            // 5-second SendAsync timeout — client is unresponsive. Drop the subscription
+            // so we don't leak proxy mappings or keep the upstream eth_subscribe alive
+            // for a dead client.
+            _logger.LogWarning(
+                "Notification send timed out for proxy={ProxyId}, removing stale subscription",
+                proxyId);
+            RemoveStaleSubscription(proxyId);
         }
         catch (Exception ex)
         {
@@ -403,6 +415,12 @@ public sealed class NethermindWsProxy : IAsyncDisposable
             _ = SendBestEffortUnsubscribeAsync(removed.NethermindSubId);
 
             RpcMetrics.ActiveEthSubscriptions.Dec();
+
+            // Notify the owning session so its per-session state (e.g. _ethSubIds) stays in
+            // sync with the proxy's view; otherwise the session's subscription-limit count
+            // and eth_unsubscribe handling would diverge from reality.
+            NotifyEvicted(removed);
+
             _logger.LogInformation("Removed stale eth subscription proxy={ProxyId}", proxyId);
         }
     }
@@ -539,6 +557,7 @@ public sealed class NethermindWsProxy : IAsyncDisposable
                             entry.ProxyId, response);
                         _byProxyId.TryRemove(entry.ProxyId, out _);
                         RpcMetrics.ActiveEthSubscriptions.Dec();
+                        NotifyEvicted(entry);
                     }
                 }
                 finally
@@ -551,6 +570,7 @@ public sealed class NethermindWsProxy : IAsyncDisposable
                 _logger.LogWarning(ex, "Failed to re-subscribe proxy={ProxyId}", entry.ProxyId);
                 _byProxyId.TryRemove(entry.ProxyId, out _);
                 RpcMetrics.ActiveEthSubscriptions.Dec();
+                NotifyEvicted(entry);
             }
         }
     }
@@ -621,5 +641,19 @@ public sealed class NethermindWsProxy : IAsyncDisposable
         string NethermindSubId,
         WebSocket ClientWs,
         SemaphoreSlim ClientSendLock,
-        JsonElement OriginalParams);
+        JsonElement OriginalParams,
+        Action<string>? OnEvicted = null);
+
+    private void NotifyEvicted(SubscriptionEntry entry)
+    {
+        if (entry.OnEvicted is null) return;
+        try
+        {
+            entry.OnEvicted(entry.ProxyId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OnEvicted callback threw for proxy={ProxyId}", entry.ProxyId);
+        }
+    }
 }
