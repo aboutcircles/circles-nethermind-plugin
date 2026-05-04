@@ -173,7 +173,11 @@ public class BalancerPriceService
             var targetUnix = new DateTimeOffset(targetDate.ToDateTime(TimeOnly.Parse("12:00")), TimeSpan.Zero)
                 .ToUnixTimeSeconds();
 
-            // Find the closest price point to the target date
+            // Find the closest price point to the target date.
+            // Bound the accepted distance so requests for dates far outside the available
+            // historical range don't silently return a globally-nearest sample (which
+            // would then be cached under a date the data doesn't actually cover).
+            const long MaxAcceptedDistanceSeconds = 36L * 60 * 60; // daily series + tolerance
             double closestPrice = 0;
             long closestDist = long.MaxValue;
 
@@ -188,6 +192,14 @@ public class BalancerPriceService
                     closestDist = dist;
                     closestPrice = entry.GetProperty("price").GetDouble();
                 }
+            }
+
+            if (closestDist > MaxAcceptedDistanceSeconds)
+            {
+                _logger.LogDebug(
+                    "Historic Balancer price for {Date} rejected: nearest sample is {Dist}s away (> {Max}s)",
+                    targetDate, closestDist, MaxAcceptedDistanceSeconds);
+                return 0;
             }
 
             if (closestPrice > 0)
