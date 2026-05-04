@@ -487,7 +487,12 @@ public class V2Pathfinder
                 }
 
                 ctx.ValidationErrors = errorViolations.Count;
-                ctx.ValidationViolationRules = errorViolations.Select(v => v.Rule).ToList();
+                // Deduplicate rules so per-rule audit metrics aren't multiply incremented
+                // when a single response has several violations of the same rule.
+                ctx.ValidationViolationRules = errorViolations
+                    .Select(v => v.Rule)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
             }
             catch (Exception ex)
             {

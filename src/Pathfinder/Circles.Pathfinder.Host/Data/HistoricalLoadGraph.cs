@@ -91,7 +91,9 @@ public sealed class HistoricalLoadGraph : ILoadGraph
         SELECT t1.truster, t1.trustee FROM active_trust t1
         INNER JOIN registered_avatars a1 ON a1.avatar = t1.truster
         INNER JOIN registered_avatars a2 ON a2.avatar = t1.trustee
-        LEFT JOIN "CrcV2_RegisterGroup" t2 ON t2."group" = t1.truster
+        LEFT JOIN "CrcV2_RegisterGroup" t2
+            ON t2."group" = t1.truster
+           AND t2."blockNumber" <= {0}
         WHERE t2."group" IS NULL
         """;
 
