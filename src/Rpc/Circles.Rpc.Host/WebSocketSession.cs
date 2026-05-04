@@ -265,7 +265,15 @@ public sealed class WebSocketSession : IAsyncDisposable
 
         try
         {
-            var proxyId = await _nethermindProxy.SubscribeAsync(_clientWs, _sendLock, @params, ct);
+            var proxyId = await _nethermindProxy.SubscribeAsync(_clientWs, _sendLock, @params, ct,
+                onEvicted: evictedId =>
+                {
+                    // Proxy evicted (send timeout or re-subscribe failure) — drop our
+                    // local tracking so the per-session subscription limit and
+                    // eth_unsubscribe handling stay consistent with proxy state.
+                    lock (_subListLock)
+                        _ethSubIds.Remove(evictedId);
+                });
 
             lock (_subListLock)
                 _ethSubIds.Add(proxyId);
