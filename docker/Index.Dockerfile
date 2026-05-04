@@ -43,7 +43,7 @@ RUN dotnet publish \
     -o /circles-nethermind-plugin \
     --no-restore
 
-FROM nethermind/nethermind:1.36.2 AS base
+FROM nethermind/nethermind:1.37.1 AS base
 
 # Install psql for manual DB operations (runs as root, compose sets runtime user)
 RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
