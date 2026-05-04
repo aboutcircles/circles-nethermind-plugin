@@ -31,16 +31,25 @@ internal class FindPathMetrics
             "circles_consent_paths_dropped_total",
             "Paths dropped due to consented flow rules (intermediary exclusion or validation)");
 
-    // Consent: safety net triggered — gap indicator (should always be 0)
-    public static readonly Counter ConsentSafetyNetTriggeredTotal =
-        Metrics.CreateCounter(
-            "circles_consent_safetynet_triggered_total",
-            "Times ValidateConsentedFlow safety net removed edges (indicates path-level filter gap)");
-
     // Path audit: Hub.sol rule violations detected in pathfinder output (should always be 0)
     public static readonly Counter PathAuditViolationsTotal =
         Metrics.CreateCounter(
             "circles_path_audit_violations_total",
-            "Hub.sol rule violations detected in pathfinder output (non-blocking, alert-only)",
+            "Hub.sol rule violations detected in pathfinder output",
             new CounterConfiguration { LabelNames = new[] { "rule" } });
+
+    // Path audit: counts when the safety net replaced a violating response with the empty path.
+    // Should track 1:1 with PathAuditViolationsTotal — divergence indicates a code path that
+    // detects but does not block. Counter exists per rule so we can tell which rule triggered.
+    public static readonly Counter PathAuditBlockedTotal =
+        Metrics.CreateCounter(
+            "circles_path_audit_blocked_total",
+            "Pathfinder responses replaced with empty path because audit detected a Hub.sol violation",
+            new CounterConfiguration { LabelNames = new[] { "rule" } });
+
+    // Canary: validator threw an unexpected exception (non-zero = validator bug, not pathfinder bug)
+    public static readonly Counter CanaryValidatorExceptionTotal =
+        Metrics.CreateCounter(
+            "circles_canary_validator_exception_total",
+            "Times HubContractValidator threw an unexpected exception");
 }

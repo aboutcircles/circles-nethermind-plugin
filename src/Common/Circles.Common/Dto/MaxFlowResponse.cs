@@ -73,13 +73,6 @@ public class MaxFlowResponse
     public int ConsentDroppedPaths { get; set; }
 
     /// <summary>
-    /// Number of edges removed by the ValidateConsentedFlow safety net.
-    /// Non-zero means the path-level filter has a gap. Not serialized.
-    /// </summary>
-    [JsonIgnore]
-    public int ConsentSafetyNetRejected { get; set; }
-
-    /// <summary>
     /// Pipeline request ID for log correlation across canary layers.
     /// Not serialized — used internally for metrics and simulation canary.
     /// </summary>
@@ -100,6 +93,12 @@ public class MaxFlowResponse
     /// </summary>
     [JsonIgnore]
     public IReadOnlyList<string>? ValidationViolationRules { get; set; }
+
+    /// <summary>
+    /// Canary: true if HubContractValidator threw an exception (validator bug, not pathfinder bug).
+    /// </summary>
+    [JsonIgnore]
+    public bool ValidatorException { get; set; }
 
     /// <summary>
     /// Block number of the graph snapshot used for this computation.

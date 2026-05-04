@@ -298,6 +298,69 @@ public class RpcMethodSnapshotTests
         Assert.That(result.TryGetProperty("nextCursor", out _), Is.True);
     }
 
+    [Test]
+    public async Task GetEvents_WithAddressFilter_FlowScopeEventsTiedToAvatarTxs()
+    {
+        // Regression: address-filtered circles_events used to include
+        // CrcV2_FlowEdgesScope* rows from txs the avatar wasn't part of,
+        // because flow-scope tables have no address column and the server
+        // skipped the address predicate entirely. Every flow-scope event
+        // returned for an address-filtered query must share a transactionHash
+        // with at least one address-bearing event in the same response.
+        var result = await CallRpc("circles_events", KnownV2Human, null, null, null, null, false);
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+
+        var addressBearingTxs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var flowScopeTxs = new List<string>();
+
+        foreach (var element in result.EnumerateArray())
+        {
+            if (!element.TryGetProperty("event", out var eventNameProp)) continue;
+            if (!element.TryGetProperty("values", out var values)) continue;
+            if (!values.TryGetProperty("transactionHash", out var txHashProp)) continue;
+
+            var eventName = eventNameProp.GetString() ?? string.Empty;
+            var txHash = txHashProp.GetString() ?? string.Empty;
+            if (string.IsNullOrEmpty(txHash)) continue;
+
+            if (eventName.StartsWith("CrcV2_FlowEdgesScope", StringComparison.Ordinal))
+            {
+                flowScopeTxs.Add(txHash);
+            }
+            else
+            {
+                addressBearingTxs.Add(txHash);
+            }
+        }
+
+        foreach (var txHash in flowScopeTxs)
+        {
+            Assert.That(addressBearingTxs, Does.Contain(txHash),
+                $"Flow-scope event in tx {txHash} has no address-bearing event for {KnownV2Human} in the same response");
+        }
+    }
+
+    [Test]
+    public async Task GetEvents_AddressWithNoV2Events_ReturnsNoFlowScopeRows()
+    {
+        // Fail-closed branch: when the V2 address-bearing UNION returns an
+        // empty set (avatar has no V2 events at all — here a guaranteed-empty
+        // burn address), the materialized avatar_txs CTE is not built and
+        // address-less flow-scope tables are skipped entirely. This must
+        // never over-return flow-scope rows from unrelated transactions.
+        const string emptyAvatar = "0xdead000000000000000000000000000000000000";
+        var result = await CallRpc("circles_events", emptyAvatar, null, null, null, null, false);
+        Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Array));
+
+        foreach (var element in result.EnumerateArray())
+        {
+            if (!element.TryGetProperty("event", out var eventNameProp)) continue;
+            var eventName = eventNameProp.GetString() ?? string.Empty;
+            Assert.That(eventName, Does.Not.StartWith("CrcV2_FlowEdgesScope"),
+                $"address-less flow-scope row leaked through fail-closed branch for empty avatar (event {eventName})");
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Profile queries
     // ═══════════════════════════════════════════════════════════════════════

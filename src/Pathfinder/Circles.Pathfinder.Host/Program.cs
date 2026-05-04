@@ -83,6 +83,7 @@ builder.Services.AddSingleton<CapacityGraphPool>(provider =>
         provider.GetRequiredService<LoadGraph>(),
         provider.GetRequiredService<ILoggerFactory>().CreateLogger<GraphFactory>()));
 builder.Services.AddSingleton<V2Pathfinder>();
+builder.Services.AddSingleton<HistoricalGraphCache>();
 builder.Services.AddSingleton<FindPathHandler>();
 builder.Services.AddHttpContextAccessor();
 

@@ -364,7 +364,10 @@ public static class HubContractValidator
     //
     // Router edge handling (Hub.sol:665, Hub.sol:723):
     //   Router→Group: internal group mint — Router is _sender, isPermittedFlow N/A.
-    //   Avatar→Router: Hub.sol:665 checks trustMarkers[Router][tokenOwner].expiry.
+    //   Avatar→Router: Hub.sol runs the FULL isPermittedFlow check on this edge:
+    //     1. trustMarkers[Router][tokenOwner].expiry — Router must trust token owner
+    //     2. If From is consented → advancedUsageFlags[Router] != 0 — Router contract
+    //        never calls setAdvancedUsageFlag, so this ALWAYS fails for consented senders.
     //   Router→NonGroup: fall through to normal validation (fail-closed).
     // ────────────────────────────────────────────
     internal static void ValidateIsPermittedFlow(
@@ -385,8 +388,10 @@ public static class HubContractValidator
             if (router != null && from == router && state.IsGroup(to))
                 continue;
 
-            // Avatar→Router: Hub.sol:665 checks trustMarkers[Router][tokenOwner].expiry
-            // Router must trust the token owner for this transfer to succeed.
+            // Avatar→Router: Hub.sol:665-676 runs the full isPermittedFlow check.
+            // Router must trust the token owner AND, if sender is consented,
+            // advancedUsageFlags[Router] must be non-zero — but Router never calls
+            // setAdvancedUsageFlag, so consented senders into Router ALWAYS revert.
             if (router != null && to == router)
             {
                 if (!state.IsTrusted(router, tokenOwner))
@@ -394,6 +399,16 @@ public static class HubContractValidator
                     violations.Add(new ValidationViolation(
                         "IsPermittedFlow",
                         $"Edge {i}: Avatar→Router — Router does not trust token owner '{tokenOwner}'",
+                        i, "error"));
+                }
+
+                // Consented sender into Router fails Hub.sol's `advancedUsageFlags[to] != 0`
+                // check because the Router contract never enables consented flow.
+                if (state.HasAdvancedUsageFlags(from))
+                {
+                    violations.Add(new ValidationViolation(
+                        "IsPermittedFlow",
+                        $"Edge {i}: Avatar→Router — consented sender '{from}' cannot route through Router (Router has no advancedUsageFlags)",
                         i, "error"));
                 }
                 continue;

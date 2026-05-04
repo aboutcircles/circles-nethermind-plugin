@@ -19,6 +19,8 @@ internal sealed class FindPathHandler(
     Settings settings,
     SemaphoreSlim semaphore,
     ILogger<FindPathHandler> log,
+    IHttpContextAccessor httpContextAccessor,
+    HistoricalGraphCache historicalGraphCache,
     SimulationCanaryService? simulationCanary = null)
 {
     private const int MaxArrayEntries = 1000;
@@ -113,14 +115,28 @@ internal sealed class FindPathHandler(
     }
 
     /// <summary>
-    /// Execute a solver call with semaphore guarding, graph rent, timeout, metrics, and exception handling.
-    /// The <paramref name="solve"/> delegate receives the rented capacity graph and returns the result to serialize.
-    /// </summary>
-    /// <summary>
     /// Strip CR/LF from user-supplied values before logging (prevents log forging).
     /// </summary>
     private static string? SanitizeForLog(string? value) =>
         value?.Replace("\r", string.Empty).Replace("\n", string.Empty);
+
+    /// <summary>
+    /// Extracts X-Max-Block-Number header from the current HTTP request, if present.
+    /// When set, the pathfinder uses a historical graph at that block instead of the live graph.
+    /// </summary>
+    private long? GetMaxBlockNumberFromHeader()
+    {
+        var httpContext = httpContextAccessor.HttpContext;
+        if (httpContext == null) return null;
+
+        if (httpContext.Request.Headers.TryGetValue("X-Max-Block-Number", out var headerValue)
+            && long.TryParse(headerValue.FirstOrDefault(), out var blockNumber))
+        {
+            return blockNumber;
+        }
+
+        return null;
+    }
 
     internal async Task<IResult> ExecuteWithGuard(
         string route,
@@ -129,6 +145,13 @@ internal sealed class FindPathHandler(
         CapacityGraphPool pool,
         Func<CapacityGraph, object> solve)
     {
+        // Check for historical block header — if present, use block-filtered graph
+        var maxBlockNumber = GetMaxBlockNumberFromHeader();
+        if (maxBlockNumber.HasValue)
+        {
+            return await ExecuteHistorical(route, request, maxBlockNumber.Value, solve);
+        }
+
         if (!semaphore.Wait(0))
         {
             FindPathMetrics.RejectedRequestsCounter.Inc();
@@ -172,10 +195,11 @@ internal sealed class FindPathHandler(
 
                 if (mfr.ConsentDroppedPaths > 0)
                     FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
-                if (mfr.ConsentSafetyNetRejected > 0)
-                    FindPathMetrics.ConsentSafetyNetTriggeredTotal.Inc(mfr.ConsentSafetyNetRejected);
 
-                // Path audit: record Hub.sol rule violations (observe-only, alert via Prometheus)
+                // Path audit: when HubContractValidator detected Hub.sol rule violations,
+                // the produced path would revert on-chain. Record metrics, log, then replace
+                // the broken transfers with the canonical empty response so the wallet can't
+                // submit a doomed tx. The API contract still returns MaxFlowResponse — never errors.
                 if (mfr.ValidationErrors > 0)
                 {
                     FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
@@ -186,11 +210,31 @@ internal sealed class FindPathHandler(
                     }
 
                     log.LogError(
-                        "Path audit: Hub.sol rule violations detected — path may revert on-chain. " +
+                        "Path audit: Hub.sol rule violations detected — replacing path with empty response. " +
                         "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
                         safeSource, safeSink, mfr.GraphBlock,
                         mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
+
+                    FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
+                    if (mfr.ValidationViolationRules != null)
+                    {
+                        foreach (var rule in mfr.ValidationViolationRules)
+                            FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
+                    }
+
+                    var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
+                    {
+                        ReqId = mfr.ReqId,
+                        GraphBlock = mfr.GraphBlock,
+                        ValidationErrors = mfr.ValidationErrors,
+                        ValidationViolationRules = mfr.ValidationViolationRules,
+                        ValidatorException = mfr.ValidatorException
+                    };
+                    result = emptyResponse;
+                    mfr = emptyResponse;
                 }
+                if (mfr.ValidatorException)
+                    FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
 
                 // Simulation canary: enqueue for async eth_call validation.
                 // Skip when: simulated balances/trusts (not real state), or source is a Group/Organization
@@ -230,17 +274,25 @@ internal sealed class FindPathHandler(
                     }
                     catch (Exception ex)
                     {
-                        log.LogError(ex, "Failed to build wrapper map for canary — simulation will run without wrapper resolution");
+                        log.LogError(ex, "Failed to build wrapper map for canary — skipping simulation (would produce false positives)");
                         wrapperMap = null;
                     }
 
-                    simulationCanary.TryEnqueue(new CanaryWorkItem(
-                        ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
-                        Source: request.Source,
-                        Sink: request.Sink,
-                        GraphBlock: mfr.GraphBlock,
-                        Transfers: new List<TransferPathStep>(mfr.Transfers),
-                        WrapperToAvatar: wrapperMap));
+                    if (wrapperMap == null && h.Graph.WrapperToAvatar.Count > 0)
+                    {
+                        // Wrapper resolution failed — simulation without it would produce
+                        // false-positive AvatarMustBeRegistered reverts. Skip entirely.
+                    }
+                    else
+                    {
+                        simulationCanary.TryEnqueue(new CanaryWorkItem(
+                            ReqId: mfr.ReqId ?? Guid.NewGuid().ToString("N")[..8],
+                            Source: request.Source,
+                            Sink: request.Sink,
+                            GraphBlock: mfr.GraphBlock,
+                            Transfers: new List<TransferPathStep>(mfr.Transfers),
+                            WrapperToAvatar: wrapperMap));
+                    }
                 }
 
                 log.LogInformation(
@@ -293,6 +345,153 @@ internal sealed class FindPathHandler(
                 route, safeSource, safeSink, safeTargetFlow,
                 "", 0, request.MaxTransfers ?? -1,
                 graphBlock, sw.ElapsedMilliseconds, 500,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "exception");
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+        finally
+        {
+            semaphore.Release();
+            FindPathMetrics.InFlightRequestsGauge.Dec();
+        }
+    }
+
+    /// <summary>
+    /// Execute pathfinding against a historical block-filtered graph.
+    /// Uses the same semaphore and timeout as live requests.
+    /// Simulation canary is intentionally skipped — historical paths compute against past state,
+    /// not current on-chain state, so eth_call validation would be meaningless.
+    /// </summary>
+    private async Task<IResult> ExecuteHistorical(
+        string route,
+        FlowRequest request,
+        long blockNumber,
+        Func<CapacityGraph, object> solve)
+    {
+        if (!semaphore.Wait(0))
+        {
+            FindPathMetrics.RejectedRequestsCounter.Inc();
+            log.LogWarning("Concurrency limit hit — historical request rejected");
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var sw = Stopwatch.StartNew();
+        var safeSource = SanitizeForLog(request.Source);
+        var safeSink = SanitizeForLog(request.Sink);
+        var safeTargetFlow = SanitizeForLog(request.TargetFlow);
+
+        FindPathMetrics.InFlightRequestsGauge.Inc();
+        try
+        {
+            log.LogInformation(
+                "Historical {Route}: loading graph at block {Block} for {Source} → {Sink}",
+                route, blockNumber, safeSource, safeSink);
+
+            var factory = await historicalGraphCache.GetOrLoadFactoryAsync(blockNumber);
+
+            var trustGraph = factory.V2TrustGraph();
+            var balanceGraph = factory.V2BalanceGraph();
+            var trustLookup = GraphFactory.BuildTrustLookup(trustGraph);
+
+            var capacityGraph = factory.CreateCapacityGraph(balanceGraph, trustLookup, request);
+            capacityGraph.Block = blockNumber;
+
+            var solverTimeout = TimeSpan.FromSeconds(settings.SolverTimeoutSeconds);
+            var result = await Task.Run(() => solve(capacityGraph)).WaitAsync(solverTimeout);
+
+            FindPathMetrics.SolverStatusTotal.WithLabels("success").Inc();
+
+            if (result is MaxFlowResponse mfr)
+            {
+                mfr.GraphBlock = blockNumber;
+
+                // Track consent metrics (same as live path)
+                if (mfr.ConsentDroppedPaths > 0)
+                    FindPathMetrics.ConsentPathsDroppedTotal.Inc(mfr.ConsentDroppedPaths);
+
+                // Track Hub.sol rule violations (same as live path) — and replace with empty.
+                if (mfr.ValidationErrors > 0)
+                {
+                    FindPathMetrics.PathAuditViolationsTotal.WithLabels("any").Inc();
+                    if (mfr.ValidationViolationRules != null)
+                    {
+                        foreach (var rule in mfr.ValidationViolationRules)
+                            FindPathMetrics.PathAuditViolationsTotal.WithLabels(rule).Inc();
+                    }
+
+                    log.LogError(
+                        "Historical path audit: Hub.sol rule violations — replacing path with empty response. " +
+                        "Source={Source}, Sink={Sink}, Block={Block}, Steps={Steps}, Errors={Errors}",
+                        safeSource, safeSink, blockNumber,
+                        mfr.Transfers?.Count ?? 0, mfr.ValidationErrors);
+
+                    FindPathMetrics.PathAuditBlockedTotal.WithLabels("any").Inc();
+                    if (mfr.ValidationViolationRules != null)
+                    {
+                        foreach (var rule in mfr.ValidationViolationRules)
+                            FindPathMetrics.PathAuditBlockedTotal.WithLabels(rule).Inc();
+                    }
+
+                    var emptyResponse = new MaxFlowResponse("0", new List<TransferPathStep>(), null)
+                    {
+                        ReqId = mfr.ReqId,
+                        GraphBlock = mfr.GraphBlock,
+                        ValidationErrors = mfr.ValidationErrors,
+                        ValidationViolationRules = mfr.ValidationViolationRules,
+                        ValidatorException = mfr.ValidatorException
+                    };
+                    result = emptyResponse;
+                    mfr = emptyResponse;
+                }
+
+                log.LogInformation(
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    route, safeSource, safeSink, safeTargetFlow,
+                    mfr.MaxFlow, mfr.Transfers?.Count ?? 0, request.MaxTransfers ?? -1,
+                    blockNumber, sw.ElapsedMilliseconds, 200,
+                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+            }
+            else
+            {
+                log.LogInformation(
+                    "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
+                    route, safeSource, safeSink, safeTargetFlow,
+                    result, 0, request.MaxTransfers ?? -1,
+                    blockNumber, sw.ElapsedMilliseconds, 200,
+                    request.WithWrap ?? false, request.QuantizedMode ?? false);
+            }
+
+            return Results.Ok(result);
+        }
+        catch (TimeoutException)
+        {
+            FindPathMetrics.SolverStatusTotal.WithLabels("timeout").Inc();
+            log.LogError(
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                blockNumber, sw.ElapsedMilliseconds, 504,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "timeout");
+            return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+        }
+        catch (ArgumentException ex)
+        {
+            FindPathMetrics.SolverStatusTotal.WithLabels("bad_request").Inc();
+            log.LogWarning(ex,
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                blockNumber, sw.ElapsedMilliseconds, 400,
+                request.WithWrap ?? false, request.QuantizedMode ?? false, "bad_request");
+            return Results.BadRequest(ex.Message);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            FindPathMetrics.SolverStatusTotal.WithLabels("error").Inc();
+            log.LogError(ex,
+                "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode} error={Error}",
+                route, safeSource, safeSink, safeTargetFlow,
+                "", 0, request.MaxTransfers ?? -1,
+                blockNumber, sw.ElapsedMilliseconds, 500,
                 request.WithWrap ?? false, request.QuantizedMode ?? false, "exception");
             return Results.StatusCode(StatusCodes.Status500InternalServerError);
         }

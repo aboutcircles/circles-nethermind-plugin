@@ -36,6 +36,16 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
     private const int MaxInFilterElements = 1000;
 
+    // Namespaces whose address-bearing tables seed the avatar tx-hash CTE used to
+    // address-filter address-less flow-scope tables in GetEvents. Flow-scope events
+    // are emitted exclusively inside Hub.operateFlowMatrix calls, which always also
+    // emit V2 transfer/mint events for participating avatars in the same tx — so V2
+    // is the only namespace whose tx-hashes pull in legitimate flow-scope rows.
+    // If a future protocol introduces flow-scope-style events, add its namespace here
+    // or its address-filtered queries will silently return zero flow-scope rows.
+    private static readonly HashSet<string> FlowScopeAddressFilterNamespaces =
+        new(StringComparer.Ordinal) { "CrcV2" };
+
     #region GetTransactionHistory - Version-specific query builders
 
     /// <summary>
@@ -572,6 +582,9 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         // Build request with conditional ETag header if we have a cached version
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
 
+        // Note: X-Max-Block-Number is NOT forwarded here because the pathfinder's /snapshot
+        // endpoint always returns the live graph. Historical snapshots are not supported.
+
         string? cachedETag;
         JsonElement? cached;
         lock (_snapshotLock)
@@ -629,9 +642,19 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
         var jsonContent = JsonSerializer.Serialize(flowRequest, SharedJsonOptions.CamelCase);
 
-        using var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(jsonContent, Encoding.UTF8, "application/json")
+        };
 
-        using var response = await HttpClient.PostAsync(url, content);
+        // Forward X-Max-Block-Number header to pathfinder for historical queries
+        var maxBlockNumber = GetMaxBlockNumberFromHeader();
+        if (maxBlockNumber.HasValue)
+        {
+            request.Headers.Add(MaxBlockNumberHeader, maxBlockNumber.Value.ToString());
+        }
+
+        using var response = await HttpClient.SendAsync(request);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -706,6 +729,64 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         var sortOrder = sortAscending == true ? "ASC" : "DESC";
         var cursorComparison = sortAscending == true ? ">" : "<";
 
+        // Pre-build the tx-hash subquery used to address-filter flow-scope event
+        // tables. Tables like CrcV2_FlowEdgesScopeLastEnded / *_SingleStarted
+        // have no address column, so we can't filter them directly by avatar.
+        // Without this restriction, the previous logic skipped the address
+        // predicate for those tables entirely and returned every flow-scope
+        // event in the block range regardless of avatar — a bug that surfaced
+        // as profile pages showing transfers from unrelated transactions.
+        //
+        // Scope to V2 address-bearing tables only: flow-scope events are
+        // emitted exclusively inside Hub.operateFlowMatrix calls, which always
+        // also emit V2 transfer/mint events in the same tx. A flow-scope row
+        // never appears in a V1- or wrapper-only tx, so other namespaces
+        // contribute zero useful tx hashes — and including them would
+        // wrongly tie unrelated multi-call txs to flow-scope events.
+        //
+        // Wrapped at finalSql composition into "WITH avatar_txs AS
+        // MATERIALIZED (...)" so PG evaluates the UNION exactly once and
+        // address-less flow-scope tables hash-join into the materialized
+        // set instead of re-executing the UNION per address-less table.
+        string? addressTxHashSubquery = null;
+        if (address != null)
+        {
+            var addressTxQueries = new List<string>();
+            foreach (var addrTable in eventTables)
+            {
+                if (!addrTable.Value.Any()) continue;
+
+                var nameParts = addrTable.Key.Split('_', 2);
+                if (nameParts.Length < 2) continue;
+                var ns = nameParts[0];
+                if (!FlowScopeAddressFilterNamespaces.Contains(ns)) continue;
+
+                var cols = DatabaseSchemaMap.GetTableColumns(addrTable.Key);
+                if (cols == null
+                    || !cols.ContainsKey("transactionHash")
+                    || !cols.ContainsKey("blockNumber"))
+                {
+                    continue;
+                }
+
+                var addrPredicate = $"({string.Join(" OR ", addrTable.Value.Select(c => $"\"{c}\" = @address"))})";
+                var subClauses = new List<string> { addrPredicate };
+                if (fromBlock.HasValue) subClauses.Add("\"blockNumber\" >= @fromBlock");
+                if (toBlock.HasValue) subClauses.Add("\"blockNumber\" <= @toBlock");
+
+                var subWhere = $" WHERE {string.Join(" AND ", subClauses)}";
+                addressTxQueries.Add($"SELECT \"transactionHash\" FROM \"{addrTable.Key}\"{subWhere}");
+            }
+
+            if (addressTxQueries.Count > 0)
+            {
+                // UNION ALL skips the dedup pass — duplicates are absorbed naturally
+                // by the outer "WHERE transactionHash IN (SELECT ... FROM avatar_txs)"
+                // (set semantics). Cheaper materialization at no result-set cost.
+                addressTxHashSubquery = string.Join(" UNION ALL ", addressTxQueries);
+            }
+        }
+
         foreach (var table in relevantTables)
         {
             // Extract namespace from table name (format: "Namespace_TableName")
@@ -738,10 +819,26 @@ public partial class CirclesRpcModule : ICirclesRpcModule
 
             var whereClauses = new List<string>();
 
-            // Basic address filter - only add if address is specified and table has address columns
-            if (address != null && table.Value.Any())
+            // Address filter. For tables that have address columns (most event
+            // tables) we filter directly. For tables without address columns
+            // (flow-scope: CrcV2_FlowEdgesScope*) we restrict to txHashes
+            // where this avatar appears in any address-bearing event in the
+            // same block range. If no address-bearing table exists for this
+            // address we skip the table entirely rather than over-returning.
+            if (address != null)
             {
-                whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
+                if (table.Value.Any())
+                {
+                    whereClauses.Add($"({string.Join(" OR ", table.Value.Select(col => $"t.\"{col}\" = @address"))})");
+                }
+                else if (addressTxHashSubquery != null)
+                {
+                    whereClauses.Add("t.\"transactionHash\" IN (SELECT \"transactionHash\" FROM avatar_txs)");
+                }
+                else
+                {
+                    continue;
+                }
             }
 
             // Block range filters
@@ -782,6 +879,16 @@ public partial class CirclesRpcModule : ICirclesRpcModule
         // Fetch one extra row to determine if there are more results
         var finalSql = string.Join(" UNION ALL ", queries);
         finalSql = $"SELECT * FROM ({finalSql}) combined ORDER BY \"blockNumber\" {sortOrder}, \"transactionIndex\" {sortOrder}, \"logIndex\" {sortOrder} LIMIT {effectiveLimit + 1}";
+
+        // Prepend the materialized CTE (when we built one) so the avatar's
+        // tx-hash set is evaluated exactly once. Address-less flow-scope
+        // tables reference avatar_txs via WHERE ... IN (SELECT ... FROM
+        // avatar_txs) and hash-join into the materialized set instead of
+        // re-executing the UNION per table.
+        if (addressTxHashSubquery != null)
+        {
+            finalSql = $"WITH avatar_txs AS MATERIALIZED ({addressTxHashSubquery}) {finalSql}";
+        }
 
         // Execute the combined query
         await using var connection = await CreateConnectionAsync();

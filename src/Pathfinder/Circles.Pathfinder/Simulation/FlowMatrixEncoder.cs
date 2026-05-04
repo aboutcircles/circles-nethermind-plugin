@@ -70,6 +70,9 @@ public static class FlowMatrixEncoder
         {
             var t = transfers[i];
             var amount = BigInteger.Parse(t.Value);
+            if (amount <= 0)
+                throw new InvalidOperationException(
+                    $"Transfer step [{i}] has non-positive amount '{t.Value}' (from={t.From}, to={t.To})");
             var toAddr = t.To.ToLowerInvariant();
 
             ushort streamSinkId = toAddr == receiverLower ? (ushort)1 : (ushort)0;
@@ -119,6 +122,9 @@ public static class FlowMatrixEncoder
         int currentOffset = 4 * 32;
         int flowVerticesSize = 32 + flowVertices.Count * 32;
         int flowEdgesSize = 32 + flowEdges.Count * 64;
+        // 32 (array length=1) + 32 (offset to stream[0]) + 32 (sourceCoord)
+        // + 32 (offset to edgeIds) + 32 (offset to data)
+        // + 32 (edgeIds length) + N*32 (edgeIds) + 32 (data length=0)
         int streamsSize = 32 + 32 + 32 + 32 + 32 + 32 + terminalEdgeIds.Length * 32 + 32;
         int packedCoordinatesSize = 32 + ((packedCoordinates.Length / 2 + 31) / 32) * 32;
 
