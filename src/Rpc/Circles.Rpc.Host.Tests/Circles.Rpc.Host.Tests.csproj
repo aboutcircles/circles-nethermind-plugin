@@ -5,7 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPackable>false</IsPackable>
-        <NethermindReferenceAssembliesVersion>1.36.2</NethermindReferenceAssembliesVersion>
+        <NethermindReferenceAssembliesVersion>1.37.1</NethermindReferenceAssembliesVersion>
         <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../..'))</RepoRoot>
         <NethermindRuntimeDir>$(RepoRoot)/nethermind-dev/nethermind</NethermindRuntimeDir>
     </PropertyGroup>
