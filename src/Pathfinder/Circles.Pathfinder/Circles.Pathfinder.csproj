@@ -18,7 +18,7 @@
     <ItemGroup>
         <PackageReference Include="Google.OrTools" Version="9.15.6755" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
-        <PackageReference Include="Npgsql" Version="9.0.3" />
+        <PackageReference Include="Npgsql" Version="10.0.1" />
     </ItemGroup>
 
     <ItemGroup>
