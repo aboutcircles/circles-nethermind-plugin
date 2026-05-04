@@ -82,6 +82,19 @@ probe() {
         return 1
     fi
 
+    # circles_events can return HTTP 200 with a JSON-RPC error body. Without this
+    # guard, (.result // []) collapses to an empty array and the script reports a
+    # clean run from a failed call.
+    if ! jq -e '.error | not' <<<"$body" >/dev/null; then
+        echo "ERROR: JSON-RPC error from $url: $(jq -c '.error' <<<"$body")" >&2
+        return 1
+    fi
+
+    if ! jq -e '(.result | type) == "array"' <<<"$body" >/dev/null; then
+        echo "ERROR: JSON-RPC result from $url is not an array" >&2
+        return 1
+    fi
+
     local wall_seconds total flow leaked
     wall_seconds=$(python3 -c "print(($end_ns - $start_ns) / 1e9)")
 

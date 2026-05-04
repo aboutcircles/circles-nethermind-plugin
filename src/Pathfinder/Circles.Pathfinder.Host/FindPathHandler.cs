@@ -443,6 +443,12 @@ internal sealed class FindPathHandler(
                     mfr = emptyResponse;
                 }
 
+                // Track validator exceptions on the historical path the same way the
+                // live path does — otherwise validator bugs disappear from telemetry
+                // whenever a request uses X-Max-Block-Number.
+                if (mfr.ValidatorException)
+                    FindPathMetrics.CanaryValidatorExceptionTotal.Inc();
+
                 log.LogInformation(
                     "{Route} source={Source} sink={Sink} targetFlow={TargetFlow} maxFlow={MaxFlow} transfers={Transfers} maxTransfers={MaxTransfers} graphBlock={GraphBlock} durationMs={DurationMs} status={Status} withWrap={WithWrap} quantizedMode={QuantizedMode}",
                     route, safeSource, safeSink, safeTargetFlow,

@@ -383,6 +383,19 @@ public static class HubContractValidator
             var to = steps[i].To.ToLowerInvariant();
             var tokenOwner = steps[i].TokenOwner.ToLowerInvariant();
 
+            // Resolve ERC20 wrapper to its underlying avatar before trust checks.
+            // Hub.sol resolves the token ID to the underlying avatar — without this
+            // step, a wrapped-token edge fails IsPermittedFlow against the wrapper
+            // contract address rather than the avatar that actually owns the token.
+            // Mirrors the resolution already done in Rule 3 (TokenIdValidity) and
+            // SimulationCanaryService.ResolveWrapperTokenOwners.
+            if (state.IsWrapperToken(tokenOwner))
+            {
+                var underlying = state.ResolveWrapperToAvatar(tokenOwner);
+                if (!string.IsNullOrWhiteSpace(underlying))
+                    tokenOwner = underlying.ToLowerInvariant();
+            }
+
             // Router→Group: internal group mint — Hub.sol uses Router as _sender,
             // isPermittedFlow does not apply (Hub.sol:723). Safe to skip.
             if (router != null && from == router && state.IsGroup(to))
