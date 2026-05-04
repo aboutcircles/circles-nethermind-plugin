@@ -25,6 +25,19 @@ services:
       - ../.state/jwtsecret-gnosis/jwt.hex:/jwt.hex
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
+    # WORKAROUND for Nethermind 1.37.1 /health endpoint regression (upstream issue
+    # NethermindEth/nethermind#11473, fix PR #11474 — not in 1.37.1).
+    # The CL-message tracker is wired to a no-op singleton; the real one polled by
+    # NodeHealthService never receives updates, so /health flips to Unhealthy with
+    # `ClUnavailable` after `MaxIntervalClRequestTime` (default 300s) regardless of
+    # actual EL↔CL state. Setting the interval to Int32.MaxValue (≈68 years)
+    # effectively disables this specific check until the upstream fix lands.
+    # CL outage detection is still covered by the separate `ConsensusNotHealthy`
+    # alert (probes Lighthouse `/eth/v1/node/health` directly) and the full-stack
+    # `/ready` probe.
+    # REMOVE the `--HealthChecks.MaxIntervalClRequestTime=...` line below when
+    # bumping to Nethermind 1.37.2 or later (verify by checking that #11474 is
+    # merged into the target version).
     command: |
       --config=gnosis
       --datadir=/data
@@ -49,6 +62,7 @@ services:
       --Network.EnableUPnP=${NETHERMIND_ENABLE_UPNP:-false}
       --HealthChecks.Enabled=true
       --HealthChecks.UIEnabled=true
+      --HealthChecks.MaxIntervalClRequestTime=2147483647
       --Metrics.Enabled=true
       --Metrics.ExposePort=6060
     env_file:
