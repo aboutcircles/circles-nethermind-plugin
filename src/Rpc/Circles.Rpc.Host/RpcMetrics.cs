@@ -137,6 +137,7 @@ public static class RpcMetrics
     //   proxy_error_then_sql   proxy non-2xx, SQL ran as fallback
     //   proxy_timeout_then_sql proxy threw timeout/transport, SQL ran as fallback
     //   sql_only               ProfilePinningServiceUrl unset, SQL ran directly
+    //   short_circuit_empty    all tokens <=1 char, returned empty without searching
 
     /// <summary>
     /// Total circles_searchProfiles requests, labelled by which code path served them.
@@ -160,7 +161,8 @@ public static class RpcMetrics
         });
 
     /// <summary>
-    /// Distribution of normalized search query lengths (post-trim, post-token-join).
+    /// Distribution of search query lengths after trim, observed for every request
+    /// (including short-circuit-empty rejections).
     /// </summary>
     public static readonly Histogram SearchProfilesQueryLength = Metrics.CreateHistogram(
         "circles_search_profiles_query_length_chars",

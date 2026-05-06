@@ -585,12 +585,17 @@ public partial class CirclesRpcModule
             throw new ArgumentException($"limit must not exceed {hardLimit} (got {limit}).");
         }
 
+        var sw = Stopwatch.StartNew();
         string qText = text.Trim();
+        RpcMetrics.SearchProfilesQueryLength.Observe(qText.Length);
+
         string[] tokens = qText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (!tokens.Any(o => o.Length > 1))
         {
-            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            var emptyResult = new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            RecordSearchProfilesPath("short_circuit_empty", sw.Elapsed, emptyResult);
+            return emptyResult;
         }
 
         if (tokens.Length > 3)
@@ -606,9 +611,6 @@ public partial class CirclesRpcModule
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
-        RpcMetrics.SearchProfilesQueryLength.Observe(qText.Length);
-
-        var sw = Stopwatch.StartNew();
         string path = "sql_only";
 
         // Try profile pinning service first (fast path)
