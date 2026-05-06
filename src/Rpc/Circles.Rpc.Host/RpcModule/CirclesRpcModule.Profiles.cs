@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Circles.Common;
@@ -574,6 +575,8 @@ public partial class CirclesRpcModule
         return await GetProfileByCidBatchInternal(cids);
     }
 
+    private enum SearchProxyOutcome { Hit, Zero, Error }
+
     public async Task<ProfileSearchResult> SearchProfiles(string text, int limit = 20, int offset = 0, string[]? types = null)
     {
         const int hardLimit = 100;
@@ -582,12 +585,17 @@ public partial class CirclesRpcModule
             throw new ArgumentException($"limit must not exceed {hardLimit} (got {limit}).");
         }
 
+        var sw = Stopwatch.StartNew();
         string qText = text.Trim();
+        RpcMetrics.SearchProfilesQueryLength.Observe(qText.Length);
+
         string[] tokens = qText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (!tokens.Any(o => o.Length > 1))
         {
-            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            var emptyResult = new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            RecordSearchProfilesPath("short_circuit_empty", sw.Elapsed, emptyResult);
+            return emptyResult;
         }
 
         if (tokens.Length > 3)
@@ -603,32 +611,61 @@ public partial class CirclesRpcModule
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
+        string path = "sql_only";
+
         // Try profile pinning service first (fast path)
         if (!string.IsNullOrEmpty(_settings.ProfilePinningServiceUrl))
         {
             try
             {
-                var proxyResult = await SearchProfilesViaProxy(qText, limit, offset, typeFilter);
-                if (proxyResult != null)
+                var (outcome, proxyResult) = await SearchProfilesViaProxy(qText, limit, offset, typeFilter);
+                switch (outcome)
                 {
-                    return proxyResult;
+                    case SearchProxyOutcome.Hit:
+                        RecordSearchProfilesPath("proxy_hit", sw.Elapsed, proxyResult!);
+                        return proxyResult!;
+                    case SearchProxyOutcome.Zero:
+                        path = "proxy_zero_then_sql";
+                        break;
+                    case SearchProxyOutcome.Error:
+                        path = "proxy_error_then_sql";
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Profile pinning service proxy failed, falling back to SQL");
+                path = ClassifyProxyException(ex);
+                _logger?.LogWarning(ex, "Profile pinning service proxy failed ({Path}), falling back to SQL", path);
             }
         }
 
         // Fallback: direct SQL search
-        return await SearchProfilesViaSql(qText, limit, offset, typeFilter);
+        var sqlResult = await SearchProfilesViaSql(qText, limit, offset, typeFilter);
+        RecordSearchProfilesPath(path, sw.Elapsed, sqlResult);
+        return sqlResult;
     }
+
+    private static void RecordSearchProfilesPath(string path, TimeSpan elapsed, ProfileSearchResult result)
+    {
+        RpcMetrics.SearchProfilesPathTotal.WithLabels(path).Inc();
+        RpcMetrics.SearchProfilesDuration.WithLabels(path).Observe(elapsed.TotalSeconds);
+        if (result.Total == 0)
+        {
+            RpcMetrics.SearchProfilesZeroResultsTotal.WithLabels(path).Inc();
+        }
+    }
+
+    private static string ClassifyProxyException(Exception ex) => ex switch
+    {
+        OperationCanceledException => "proxy_timeout_then_sql",
+        _ => "proxy_error_then_sql",
+    };
 
     /// <summary>
     /// Fast path: proxy search to the profile-pinning service REST API.
-    /// Returns null if the service is unavailable or returns an error.
+    /// Returns an outcome indicating Hit/Zero/Error so the caller can label metrics.
     /// </summary>
-    private async Task<ProfileSearchResult?> SearchProfilesViaProxy(
+    private async Task<(SearchProxyOutcome outcome, ProfileSearchResult? result)> SearchProfilesViaProxy(
         string qText, int limit, int offset, string[]? typeFilter)
     {
         var baseUrl = _settings.ProfilePinningServiceUrl!.TrimEnd('/');
@@ -653,7 +690,7 @@ public partial class CirclesRpcModule
         if (!response.IsSuccessStatusCode)
         {
             _logger?.LogWarning("Profile pinning service returned {StatusCode}", response.StatusCode);
-            return null;
+            return (SearchProxyOutcome.Error, null);
         }
 
         var json = await response.Content.ReadAsStringAsync(cts.Token);
@@ -661,8 +698,7 @@ public partial class CirclesRpcModule
 
         if (proxyResults == null || proxyResults.Length == 0)
         {
-            // Return null to fall through to SQL fallback
-            return null;
+            return (SearchProxyOutcome.Zero, null);
         }
 
         // Safety net: server handles offset, but cap to requested limit
@@ -676,7 +712,7 @@ public partial class CirclesRpcModule
 
         if (addresses.Length == 0)
         {
-            return new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>());
+            return (SearchProxyOutcome.Hit, new ProfileSearchResult(Total: 0, Results: Array.Empty<ProfileSearchResultItem>()));
         }
 
         // Batch avatar info lookup (single DB call instead of N+1)
@@ -712,7 +748,7 @@ public partial class CirclesRpcModule
             ));
         }
 
-        return new ProfileSearchResult(Total: results.Count, Results: results.ToArray());
+        return (SearchProxyOutcome.Hit, new ProfileSearchResult(Total: results.Count, Results: results.ToArray()));
     }
 
     /// <summary>
